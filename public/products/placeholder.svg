@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <rect width="400" height="400" fill="#f6f8fa"/>
+  <rect x="120" y="120" width="160" height="160" rx="12" fill="#e3e8ee"/>
+  <path d="M150 230l30-30 25 25 35-40 30 45" fill="none" stroke="#aab4c0" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="170" cy="165" r="14" fill="#aab4c0"/>
+  <text x="200" y="320" font-family="Arial" font-size="18" fill="#8a94a0" text-anchor="middle">תמונת מוצר</text>
+</svg>

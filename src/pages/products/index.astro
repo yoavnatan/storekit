@@ -1,0 +1,20 @@
+---
+/** Product listing — all products in a grid. Static, fully SEO-indexable. */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProductCard from '../../components/ProductCard.astro';
+import { getAllProducts } from '../../data/products.js';
+
+const products = getAllProducts();
+---
+
+<BaseLayout title="Products" description="Browse all products in the store">
+  <section class="section container">
+    <div class="section__head">
+      <h1>All products</h1>
+      <p class="muted">{products.length} products</p>
+    </div>
+    <div class="grid">
+      {products.map((p) => <ProductCard product={p} />)}
+    </div>
+  </section>
+</BaseLayout>

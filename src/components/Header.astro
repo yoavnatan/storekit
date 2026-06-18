@@ -1,0 +1,77 @@
+---
+/** Header — logo, nav, and cart button with live item count. */
+import { store } from '../config/store.config.js';
+const logo = store.logo;
+---
+
+<header class="site-header">
+  <div class="container between flex">
+    <a href="/" class="logo" aria-label={store.name}>
+      {logo.type === 'image'
+        ? <img src={logo.image} alt={store.name} height="32" />
+        : <span>{logo.text}</span>}
+    </a>
+
+    <nav aria-label="Main navigation">
+      <ul role="list" class="flex gap">
+        {store.nav.map((item) => (
+          <li><a href={item.href}>{item.label}</a></li>
+        ))}
+      </ul>
+    </nav>
+
+    <button id="cart-toggle" class="cart-btn" aria-label="Open cart">
+      🛒 <span id="cart-count" class="cart-count">0</span>
+    </button>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+    padding-block: 0.75rem;
+  }
+  .logo { font-weight: 800; font-size: 1.2rem; color: var(--color-primary); }
+  nav ul { margin: 0; }
+  nav a { font-weight: 600; }
+  nav a:hover { color: var(--color-primary); }
+  .cart-btn {
+    position: relative;
+    font-size: 1.1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .cart-count {
+    min-width: 1.3rem;
+    height: 1.3rem;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+</style>
+
+<script>
+  import { getCount } from '../lib/cart.js';
+
+  function refresh() {
+    const el = document.getElementById('cart-count');
+    if (el) el.textContent = String(getCount());
+  }
+
+  document.getElementById('cart-toggle')?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('cart:open'));
+  });
+
+  window.addEventListener('cart:change', refresh);
+  refresh();
+</script>

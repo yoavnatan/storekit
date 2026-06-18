@@ -1,0 +1,70 @@
+---
+/**
+ * BaseLayout — the shell every page uses.
+ *
+ * Responsibilities:
+ *  - inject theme tokens from store.config.js as CSS variables (so the whole
+ *    palette is config-driven, no hardcoded colors in components)
+ *  - set <html lang/dir> for accessibility + SEO
+ *  - render <Seo>, Header, the page <slot/>, Footer and the cart drawer
+ */
+import { store } from '../config/store.config.js';
+import Seo from '../components/Seo.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import CartDrawer from '../components/CartDrawer.astro';
+
+import '../styles/reset.css';
+import '../styles/global.css';
+
+const { title, description, image, type, noindex, jsonLd } = Astro.props;
+const t = store.theme;
+---
+
+<!doctype html>
+<html lang={store.language} dir={store.direction}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} />
+
+    <style is:global define:vars={{
+      colorPrimary: t.primary,
+      colorPrimaryDark: t.primaryDark,
+      colorAccent: t.accent,
+      colorBg: t.bg,
+      colorSurface: t.surface,
+      colorText: t.text,
+      colorMuted: t.muted,
+      colorBorder: t.border,
+      radius: t.radius,
+      fontBase: t.font,
+      maxWidth: t.maxWidth,
+    }}>
+      :root {
+        --color-primary: var(--colorPrimary);
+        --color-primary-dark: var(--colorPrimaryDark);
+        --color-accent: var(--colorAccent);
+        --color-bg: var(--colorBg);
+        --color-surface: var(--colorSurface);
+        --color-text: var(--colorText);
+        --color-muted: var(--colorMuted);
+        --color-border: var(--colorBorder);
+        --radius: var(--radius);
+        --font-base: var(--fontBase);
+        --max-width: var(--maxWidth);
+      }
+    </style>
+  </head>
+  <body>
+    <Header />
+    <main>
+      <slot />
+    </main>
+    <Footer />
+    <CartDrawer />
+  </body>
+</html>

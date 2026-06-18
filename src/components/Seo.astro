@@ -1,0 +1,51 @@
+---
+/**
+ * SEO — central place for all <head> meta tags.
+ *
+ * Renders: title, description, canonical, robots, Open Graph, Twitter card,
+ * and JSON-LD structured data. Every page passes its own title/description;
+ * sensible defaults come from store.config.js.
+ *
+ * This component is the backbone of the "high SEO" goal — keep meta logic
+ * here so no page forgets a tag.
+ */
+import { store } from '../config/store.config.js';
+
+const {
+  title,
+  description = store.description,
+  image = store.social.ogImage,
+  type = 'website',
+  noindex = false,
+  jsonLd = null,
+} = Astro.props;
+
+const fullTitle = title ? `${title} | ${store.name}` : `${store.name} — ${store.tagline}`;
+const canonical = new URL(Astro.url.pathname, store.url).href;
+const ogImage = image ? new URL(image, store.url).href : '';
+---
+
+<!-- Primary -->
+<title>{fullTitle}</title>
+<meta name="description" content={description} />
+<link rel="canonical" href={canonical} />
+<meta name="robots" content={noindex ? 'noindex,nofollow' : 'index,follow'} />
+
+<!-- Open Graph -->
+<meta property="og:type" content={type} />
+<meta property="og:site_name" content={store.name} />
+<meta property="og:title" content={fullTitle} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={canonical} />
+<meta property="og:locale" content={store.locale} />
+{ogImage && <meta property="og:image" content={ogImage} />}
+
+<!-- Twitter -->
+<meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
+{store.social.twitter && <meta name="twitter:site" content={store.social.twitter} />}
+<meta name="twitter:title" content={fullTitle} />
+<meta name="twitter:description" content={description} />
+{ogImage && <meta name="twitter:image" content={ogImage} />}
+
+<!-- Structured data -->
+{jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}

@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "checkJs": false,
+    "paths": {
+      "@config/*": ["src/config/*"],
+      "@components/*": ["src/components/*"],
+      "@layouts/*": ["src/layouts/*"],
+      "@lib/*": ["src/lib/*"],
+      "@data/*": ["src/data/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}

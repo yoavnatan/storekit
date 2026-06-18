@@ -1,0 +1,154 @@
+---
+/** Homepage — renders sections in the order defined in store.config.js. */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ProductCard from '../components/ProductCard.astro';
+import { store } from '../config/store.config.js';
+import { getFeaturedProducts } from '../data/products.js';
+
+const hp = store.homepage;
+const featured = getFeaturedProducts(hp.featuredProducts.count);
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: store.name,
+  url: store.url,
+  description: store.description,
+};
+---
+
+<BaseLayout title={null} jsonLd={jsonLd}>
+  {hp.sections.map((section) => {
+    if (section === 'hero' && hp.hero.enabled) {
+      return (
+        <section class="hero">
+          <div class="container hero__inner">
+            <div class="hero__badge">Store builder</div>
+            <h1>{hp.hero.title}</h1>
+            <p class="hero__sub">{hp.hero.subtitle}</p>
+            <div class="hero__actions">
+              <a href={hp.hero.ctaHref} class="btn">{hp.hero.ctaText}</a>
+              <a href="/admin" class="btn btn--ghost">Admin demo →</a>
+            </div>
+            <ul class="hero__pills" role="list">
+              <li>✓ Built-in SEO</li>
+              <li>✓ Cart & checkout</li>
+              <li>✓ No code needed</li>
+              <li>✓ One config file</li>
+            </ul>
+          </div>
+        </section>
+      );
+    }
+    if (section === 'featuredProducts' && hp.featuredProducts.enabled) {
+      return (
+        <section class="section container">
+          <div class="section__head center">
+            <h2>{hp.featuredProducts.title}</h2>
+            <p class="muted">Pick the plan that fits your store.</p>
+          </div>
+          <div class="grid">
+            {featured.map((p) => <ProductCard product={p} />)}
+          </div>
+        </section>
+      );
+    }
+    return null;
+  })}
+
+  <!-- How it works -->
+  <section class="section how container">
+    <div class="section__head center">
+      <h2>How it works</h2>
+    </div>
+    <ol class="steps" role="list">
+      <li class="step">
+        <span class="step__num">1</span>
+        <h3>Edit one config file</h3>
+        <p class="muted">Set your store name, colors, logo, and sections in <code>store.config.js</code>.</p>
+      </li>
+      <li class="step">
+        <span class="step__num">2</span>
+        <h3>Add your products</h3>
+        <p class="muted">Drop products into <code>products.js</code>. Each one gets its own SEO-optimized page automatically.</p>
+      </li>
+      <li class="step">
+        <span class="step__num">3</span>
+        <h3>Deploy & go live</h3>
+        <p class="muted">Run <code>npm run build</code>. Upload to any host. Your store is live with a sitemap, structured data, and fast static pages.</p>
+      </li>
+    </ol>
+  </section>
+</BaseLayout>
+
+<style>
+  /* Hero */
+  .hero {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .hero__inner {
+    padding-block: 5rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+  }
+  .hero__badge {
+    display: inline-block;
+    padding: 0.25rem 0.85rem;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .hero__inner h1 { max-width: 680px; }
+  .hero__sub {
+    font-size: 1.15rem;
+    color: var(--color-muted);
+    max-width: 560px;
+    margin: 0;
+  }
+  .hero__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
+  .hero__pills {
+    display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+    padding: 0; margin: 0;
+    font-size: 0.88rem; font-weight: 600; color: var(--color-muted);
+  }
+  .hero__pills li { list-style: none; }
+
+  /* How it works */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+    padding: 0; margin: 0; list-style: none;
+  }
+  .step {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+  }
+  .step__num {
+    display: inline-flex;
+    align-items: center; justify-content: center;
+    width: 2rem; height: 2rem;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: #fff;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+  }
+  .step h3 { margin-bottom: 0.4rem; }
+  code {
+    background: var(--color-border);
+    padding: 0.1rem 0.35rem;
+    border-radius: 5px;
+    font-size: 0.85em;
+  }
+</style>

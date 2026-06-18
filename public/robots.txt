@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /checkout
+Disallow: /api
+
+# Update the host below to your real domain.
+Sitemap: https://example.com/sitemap-index.xml

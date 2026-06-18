@@ -1,0 +1,77 @@
+---
+/**
+ * Product page — one static page per product (great for SEO).
+ * Includes Product JSON-LD so Google can show rich results (price, availability).
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { store, formatPrice } from '../../config/store.config.js';
+import { getAllProducts, getProductBySlug } from '../../data/products.js';
+
+export function getStaticPaths() {
+  return getAllProducts().map((p) => ({ params: { slug: p.slug } }));
+}
+
+const { slug } = Astro.params;
+const product = getProductBySlug(slug);
+if (!product) return Astro.redirect('/404');
+
+const out = product.stock <= 0;
+const canonical = new URL(`/products/${product.slug}`, store.url).href;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: product.name,
+  description: product.description,
+  image: new URL(product.image, store.url).href,
+  offers: {
+    '@type': 'Offer',
+    url: canonical,
+    priceCurrency: store.business.currency,
+    price: product.price,
+    availability: out
+      ? 'https://schema.org/OutOfStock'
+      : 'https://schema.org/InStock',
+  },
+};
+---
+
+<BaseLayout title={product.name} description={product.description} image={product.image} type="product" jsonLd={jsonLd}>
+  <section class="section container product-page">
+    <div class="product-page__media">
+      <img src={product.image} alt={product.name} width="600" height="600" />
+    </div>
+    <div class="product-page__info">
+      <h1>{product.name}</h1>
+      <p class="price">{formatPrice(product.price)}</p>
+      <p>{product.body}</p>
+      {out
+        ? <p class="badge">Out of stock</p>
+        : <button class="btn add-to-cart" data-slug={product.slug}>Add to cart</button>}
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { addItem } from '../../lib/cart.js';
+  import { getProductBySlug } from '../../data/products.js';
+
+  document.querySelectorAll('.add-to-cart').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const product = getProductBySlug(btn.getAttribute('data-slug'));
+      if (product) {
+        addItem(product, 1);
+        window.dispatchEvent(new CustomEvent('cart:open'));
+      }
+    });
+  });
+</script>
+
+<style>
+  .product-page { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+  .product-page__media img { width: 100%; border-radius: var(--radius); background: var(--color-surface); }
+  .price { font-size: 1.6rem; font-weight: 800; margin: 0.75rem 0; }
+  @media (max-width: 720px) {
+    .product-page { grid-template-columns: 1fr; }
+  }
+</style>

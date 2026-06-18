@@ -1,0 +1,101 @@
+---
+/** CartDrawer — slide-in panel showing cart contents. Pure client-side. */
+import { store } from '../config/store.config.js';
+---
+
+<div id="cart-overlay" class="cart-overlay" hidden></div>
+<aside id="cart-drawer" class="cart-drawer" aria-label="Shopping cart" hidden>
+  <header class="cart-drawer__head flex between">
+    <h2>Your cart</h2>
+    <button id="cart-close" aria-label="Close">✕</button>
+  </header>
+  <div id="cart-lines" class="cart-drawer__lines"></div>
+  <footer class="cart-drawer__foot">
+    <div class="flex between">
+      <span>Subtotal</span>
+      <strong id="cart-subtotal">{store.business.currencySymbol}0</strong>
+    </div>
+    <a href="/checkout" class="btn cart-checkout">Proceed to checkout</a>
+  </footer>
+</aside>
+
+<style>
+  .cart-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 90;
+  }
+  .cart-drawer {
+    position: fixed;
+    top: 0; bottom: 0;
+    inset-inline-start: 0;
+    width: min(380px, 90vw);
+    background: var(--color-bg);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 40px rgba(0,0,0,0.2);
+  }
+  .cart-drawer__head { padding: 1rem; border-bottom: 1px solid var(--color-border); }
+  .cart-drawer__lines { flex: 1; overflow-y: auto; padding: 1rem; }
+  .cart-drawer__foot { padding: 1rem; border-top: 1px solid var(--color-border); display: grid; gap: 0.75rem; }
+  .cart-checkout { width: 100%; }
+  .cart-line { display: flex; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--color-border); }
+  .cart-line img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--color-surface); }
+  .cart-line__info { flex: 1; }
+  .cart-line__qty { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
+  .cart-line__qty button { width: 26px; height: 26px; border: 1px solid var(--color-border); border-radius: 6px; }
+  .cart-empty { color: var(--color-muted); text-align: center; padding: 2rem 0; }
+</style>
+
+<script>
+  import { getItems, getSubtotal, setQty, removeItem } from '../lib/cart.js';
+  import { formatPrice } from '../config/store.config.js';
+
+  const drawer = document.getElementById('cart-drawer');
+  const overlay = document.getElementById('cart-overlay');
+  const lines = document.getElementById('cart-lines');
+  const subtotalEl = document.getElementById('cart-subtotal');
+
+  function open() { drawer.hidden = false; overlay.hidden = false; render(); }
+  function close() { drawer.hidden = true; overlay.hidden = true; }
+
+  function render() {
+    const items = getItems();
+    if (!items.length) {
+      lines.innerHTML = '<p class="cart-empty">Your cart is empty</p>';
+    } else {
+      lines.innerHTML = items.map((i) => `
+        <div class="cart-line">
+          <img src="${i.image}" alt="${i.name}" />
+          <div class="cart-line__info">
+            <strong>${i.name}</strong>
+            <div>${formatPrice(i.price)}</div>
+            <div class="cart-line__qty">
+              <button data-act="dec" data-slug="${i.slug}">−</button>
+              <span>${i.qty}</span>
+              <button data-act="inc" data-slug="${i.slug}">+</button>
+              <button data-act="rm" data-slug="${i.slug}" style="margin-inline-start:auto">🗑</button>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+    subtotalEl.textContent = formatPrice(getSubtotal());
+  }
+
+  lines?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const slug = btn.dataset.slug;
+    const item = getItems().find((i) => i.slug === slug);
+    if (!item) return;
+    if (btn.dataset.act === 'inc') setQty(slug, item.qty + 1);
+    if (btn.dataset.act === 'dec') setQty(slug, item.qty - 1);
+    if (btn.dataset.act === 'rm') removeItem(slug);
+  });
+
+  document.getElementById('cart-close')?.addEventListener('click', close);
+  overlay?.addEventListener('click', close);
+  window.addEventListener('cart:open', open);
+  window.addEventListener('cart:change', render);
+</script>
