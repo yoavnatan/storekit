@@ -1,12 +1,8 @@
 ---
-/** Homepage — renders sections in the order defined in store.config.js. */
 import BaseLayout from '../layouts/BaseLayout.astro';
-import ProductCard from '../components/ProductCard.astro';
 import { store } from '../config/store.config.js';
-import { getFeaturedProducts } from '../data/products.js';
 
 const hp = store.homepage;
-const featured = getFeaturedProducts(hp.featuredProducts.count);
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -23,32 +19,19 @@ const jsonLd = {
       return (
         <section class="hero">
           <div class="container hero__inner">
-            <div class="hero__badge">Store builder</div>
+            <div class="hero__badge">Online marketplace</div>
             <h1>{hp.hero.title}</h1>
             <p class="hero__sub">{hp.hero.subtitle}</p>
             <div class="hero__actions">
-              <a href={hp.hero.ctaHref} class="btn">{hp.hero.ctaText}</a>
-              <a href="/admin" class="btn btn--ghost">Admin demo →</a>
+              <a href={hp.hero.ctaHref} class="btn btn--accent">{hp.hero.ctaText}</a>
+              <a href="/seller/login" class="btn btn--ghost">Log in</a>
             </div>
             <ul class="hero__pills" role="list">
-              <li>✓ Built-in SEO</li>
-              <li>✓ Cart & checkout</li>
-              <li>✓ No code needed</li>
-              <li>✓ One config file</li>
+              <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Free to start</li>
+              <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Your own storefront</li>
+              <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Built-in SEO</li>
+              <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> No code needed</li>
             </ul>
-          </div>
-        </section>
-      );
-    }
-    if (section === 'featuredProducts' && hp.featuredProducts.enabled) {
-      return (
-        <section class="section container">
-          <div class="section__head center">
-            <h2>{hp.featuredProducts.title}</h2>
-            <p class="muted">Pick the plan that fits your store.</p>
-          </div>
-          <div class="grid">
-            {featured.map((p) => <ProductCard product={p} />)}
           </div>
         </section>
       );
@@ -56,33 +39,35 @@ const jsonLd = {
     return null;
   })}
 
-  <!-- How it works -->
   <section class="section how container">
     <div class="section__head center">
       <h2>How it works</h2>
+      <p class="muted">Three steps and you're selling.</p>
     </div>
     <ol class="steps" role="list">
       <li class="step">
         <span class="step__num">1</span>
-        <h3>Edit one config file</h3>
-        <p class="muted">Set your store name, colors, logo, and sections in <code>store.config.js</code>.</p>
+        <h3>Create your account</h3>
+        <p class="muted">Sign up with your email in under a minute. No credit card, no commitment.</p>
       </li>
       <li class="step">
         <span class="step__num">2</span>
-        <h3>Add your products</h3>
-        <p class="muted">Drop products into <code>products.js</code>. Each one gets its own SEO-optimized page automatically.</p>
+        <h3>Set up your store</h3>
+        <p class="muted">Give your store a name, pick your colors, and write a short description. Done.</p>
       </li>
       <li class="step">
         <span class="step__num">3</span>
-        <h3>Deploy & go live</h3>
-        <p class="muted">Run <code>npm run build</code>. Upload to any host. Your store is live with a sitemap, structured data, and fast static pages.</p>
+        <h3>Add products & go live</h3>
+        <p class="muted">Upload your products. Your store gets its own page, found by search engines from day one.</p>
       </li>
     </ol>
+    <div class="center" style="margin-top:2.5rem">
+      <a href="/seller/register" class="btn btn--accent">Get started — it's free</a>
+    </div>
   </section>
 </BaseLayout>
 
 <style>
-  /* Hero */
   .hero {
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
@@ -99,18 +84,18 @@ const jsonLd = {
     display: inline-block;
     padding: 0.25rem 0.85rem;
     border-radius: 999px;
-    background: var(--color-primary);
+    background: var(--color-accent);
     color: #fff;
     font-size: 0.8rem;
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  .hero__inner h1 { max-width: 680px; }
+  .hero__inner h1 { max-width: 620px; }
   .hero__sub {
     font-size: 1.15rem;
     color: var(--color-muted);
-    max-width: 560px;
+    max-width: 520px;
     margin: 0;
   }
   .hero__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
@@ -119,9 +104,9 @@ const jsonLd = {
     padding: 0; margin: 0;
     font-size: 0.88rem; font-weight: 600; color: var(--color-muted);
   }
-  .hero__pills li { list-style: none; }
+  .hero__pills li { list-style: none; display: flex; align-items: center; gap: 0.3rem; }
+  .pill-icon { color: var(--color-primary); flex-shrink: 0; }
 
-  /* How it works */
   .steps {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -145,10 +130,4 @@ const jsonLd = {
     margin-bottom: 0.75rem;
   }
   .step h3 { margin-bottom: 0.4rem; }
-  code {
-    background: var(--color-border);
-    padding: 0.1rem 0.35rem;
-    border-radius: 5px;
-    font-size: 0.85em;
-  }
 </style>

@@ -1,0 +1,99 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import type { AstroCookies } from 'astro';
+
+const SELLERS_PATH = path.join(process.cwd(), 'data/sellers.json');
+const COOKIE_NAME = 'seller_session';
+const ONE_DAY = 60 * 60 * 24;
+
+export interface Seller {
+  id: string;
+  email: string;
+  passwordHash: string;
+  createdAt: string;
+}
+
+function secret(): string {
+  return import.meta.env.AUTH_SECRET || 'dev-insecure-secret';
+}
+
+function sign(value: string): string {
+  return crypto.createHmac('sha256', secret()).update(value).digest('hex');
+}
+
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.createHmac('sha256', salt).update(password).digest('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, stored: string): boolean {
+  const [salt, hash] = stored.split(':');
+  return crypto.createHmac('sha256', salt!).update(password).digest('hex') === hash;
+}
+
+function readSellers(): Seller[] {
+  try { return JSON.parse(fs.readFileSync(SELLERS_PATH, 'utf8')) as Seller[]; }
+  catch { return []; }
+}
+
+function writeSellers(sellers: Seller[]): void {
+  fs.writeFileSync(SELLERS_PATH, JSON.stringify(sellers, null, 2));
+}
+
+export function registerSeller(email: string, password: string): Seller | null {
+  const sellers = readSellers();
+  if (sellers.find((s) => s.email === email)) return null;
+  const seller: Seller = {
+    id: crypto.randomUUID(),
+    email,
+    passwordHash: hashPassword(password),
+    createdAt: new Date().toISOString(),
+  };
+  sellers.push(seller);
+  writeSellers(sellers);
+  return seller;
+}
+
+export function loginSeller(email: string, password: string): Seller | null {
+  const seller = readSellers().find((s) => s.email === email);
+  if (!seller || !verifyPassword(password, seller.passwordHash)) return null;
+  return seller;
+}
+
+function makeToken(sellerId: string): string {
+  const exp = Math.floor(Date.now() / 1000) + ONE_DAY;
+  const payload = `${sellerId}|${exp}`;
+  return `${payload}.${sign(payload)}`;
+}
+
+function verifyToken(token: string | undefined): string | null {
+  if (!token) return null;
+  const lastDot = token.lastIndexOf('.');
+  if (lastDot === -1) return null;
+  const payload = token.slice(0, lastDot);
+  const sig = token.slice(lastDot + 1);
+  if (sign(payload) !== sig) return null;
+  const [sellerId, exp] = payload.split('|');
+  if (Number(exp) < Math.floor(Date.now() / 1000)) return null;
+  return sellerId ?? null;
+}
+
+export function setSellerSession(cookies: AstroCookies, sellerId: string): void {
+  cookies.set(COOKIE_NAME, makeToken(sellerId), {
+    httpOnly: true,
+    secure: import.meta.env.PROD,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: ONE_DAY,
+  });
+}
+
+export function getSellerSession(cookies: AstroCookies): string | null {
+  return verifyToken(cookies.get(COOKIE_NAME)?.value);
+}
+
+export function clearSellerSession(cookies: AstroCookies): void {
+  cookies.delete(COOKIE_NAME, { path: '/' });
+}

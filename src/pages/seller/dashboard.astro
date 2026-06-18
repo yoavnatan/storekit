@@ -1,0 +1,157 @@
+---
+export const prerender = false;
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getSellerSession } from '../../lib/seller-auth.js';
+import { getStoreBySellerId, updateStore } from '../../lib/stores.js';
+
+const sellerId = getSellerSession(Astro.cookies);
+if (!sellerId) return Astro.redirect('/seller/login');
+
+let store = getStoreBySellerId(sellerId);
+if (!store) return Astro.redirect('/seller/login');
+
+let success = false;
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const name        = String(form.get('name')        || '').trim();
+  const tagline     = String(form.get('tagline')     || '').trim();
+  const description = String(form.get('description') || '').trim();
+  const hexRe = /^#[0-9a-fA-F]{6}$/;
+  const rawPrimary = String(form.get('primary') || '');
+  const rawAccent  = String(form.get('accent')  || '');
+  const primary = hexRe.test(rawPrimary) ? rawPrimary : store.colors.primary;
+  const accent  = hexRe.test(rawAccent)  ? rawAccent  : store.colors.accent;
+
+  if (!name) {
+    error = 'Store name is required.';
+  } else {
+    store = updateStore(store.id, { name, tagline, description, colors: { primary, accent } }) ?? store;
+    success = true;
+  }
+}
+---
+
+<BaseLayout title="My Store — Dashboard" noindex={true}>
+  <section class="section container">
+
+    <div class="dash-head flex between">
+      <div>
+        <h1>{store.name}</h1>
+        <p class="muted" style="margin-top:0.2rem">Your store · <code>/store/{store.slug}</code></p>
+      </div>
+      <form method="POST" action="/seller/logout">
+        <button class="btn btn--ghost">Log out</button>
+      </form>
+    </div>
+
+    {success && <p class="dash-success">Changes saved.</p>}
+    {error   && <p class="dash-error">{error}</p>}
+
+    <div class="dash-grid">
+      <div class="card dash-card">
+        <h2>Store settings</h2>
+        <form method="POST" class="dash-form">
+
+          <label class="field">
+            <span>Store name</span>
+            <input class="input" name="name" value={store.name} required />
+          </label>
+
+          <label class="field">
+            <span>Tagline</span>
+            <input class="input" name="tagline" value={store.tagline} placeholder="A short line about your store" />
+          </label>
+
+          <label class="field">
+            <span>Description</span>
+            <textarea class="input" name="description" rows="3">{store.description}</textarea>
+          </label>
+
+          <div class="color-grid">
+            <label class="field">
+              <span>Primary color</span>
+              <div class="color-row">
+                <input type="color" name="primary" value={store.colors.primary} class="color-swatch" id="pick-primary" />
+                <input class="input mono" id="text-primary" value={store.colors.primary} placeholder="#1e7a46" maxlength="7" />
+              </div>
+            </label>
+            <label class="field">
+              <span>Accent color</span>
+              <div class="color-row">
+                <input type="color" name="accent" value={store.colors.accent} class="color-swatch" id="pick-accent" />
+                <input class="input mono" id="text-accent" value={store.colors.accent} placeholder="#f97316" maxlength="7" />
+              </div>
+            </label>
+          </div>
+
+          <button class="btn" type="submit">Save changes</button>
+        </form>
+      </div>
+
+      <div class="card dash-card">
+        <h2>Store URL</h2>
+        <p class="muted" style="margin-top:0.5rem">Your public store is live at:</p>
+        <p class="store-url">
+          <a href={`/store/${store.slug}`} class="store-url-link" target="_blank" rel="noopener">
+            /store/{store.slug}
+          </a>
+        </p>
+      </div>
+    </div>
+
+  </section>
+</BaseLayout>
+
+<style>
+  .dash-head { margin-bottom: 1.5rem; align-items: flex-start; }
+  .dash-success {
+    background: #e4f5eb; color: #155c33;
+    padding: 0.6rem 0.9rem; border-radius: var(--radius);
+    font-size: 0.9rem; margin-bottom: 1.25rem;
+  }
+  .dash-error {
+    background: #fde8e8; color: #b00020;
+    padding: 0.6rem 0.9rem; border-radius: var(--radius);
+    font-size: 0.9rem; margin-bottom: 1.25rem;
+  }
+  .dash-grid {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+  }
+  .dash-card { padding: 1.5rem; }
+  .dash-form { margin-top: 1rem; }
+  .color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .color-row { display: flex; align-items: center; gap: 0.5rem; }
+  .color-swatch {
+    width: 2.6rem; height: 2.6rem;
+    border-radius: 8px; border: 1px solid var(--color-border);
+    cursor: pointer; padding: 3px; flex-shrink: 0;
+  }
+  .mono { font-family: monospace; }
+  textarea.input { resize: vertical; }
+  .store-url { margin-top: 0.75rem; font-size: 1.05rem; }
+  .store-url-link { color: var(--color-primary); font-weight: 600; text-decoration: none; }
+  .store-url-link:hover { text-decoration: underline; }
+  @media (max-width: 760px) {
+    .dash-grid { grid-template-columns: 1fr; }
+    .color-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<script>
+  function syncPair(pickerId, textId) {
+    const picker = document.getElementById(pickerId);
+    const text   = document.getElementById(textId);
+    if (!(picker instanceof HTMLInputElement) || !(text instanceof HTMLInputElement)) return;
+    picker.addEventListener('input', () => { text.value = picker.value; });
+    text.addEventListener('input', () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(text.value)) picker.value = text.value;
+    });
+  }
+  syncPair('pick-primary', 'text-primary');
+  syncPair('pick-accent',  'text-accent');
+</script>

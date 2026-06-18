@@ -24,3 +24,6 @@ yarn-error.log*
 
 # astro
 .astro/
+
+# runtime data (sellers, stores — created at runtime, not source)
+data/*.json

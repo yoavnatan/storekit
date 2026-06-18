@@ -1,0 +1,53 @@
+---
+export const prerender = false;
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { loginSeller, setSellerSession, getSellerSession } from '../../lib/seller-auth.js';
+
+if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
+
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const email    = String(form.get('email')    || '');
+  const password = String(form.get('password') || '');
+  const seller   = loginSeller(email, password);
+  if (seller) {
+    setSellerSession(Astro.cookies, seller.id);
+    return Astro.redirect('/seller/dashboard');
+  }
+  error = 'Incorrect email or password.';
+}
+---
+
+<BaseLayout title="Seller login" noindex={true}>
+  <section class="section container auth-wrap">
+    <h1>Seller login</h1>
+
+    {error && <p class="auth-error">{error}</p>}
+
+    <form method="POST" class="auth-form">
+      <label class="field">
+        <span>Email</span>
+        <input class="input" type="email" name="email" required autocomplete="email" />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input class="input" type="password" name="password" required autocomplete="current-password" />
+      </label>
+      <button class="btn" type="submit">Log in</button>
+      <p class="muted auth-switch">Don't have a store yet? <a href="/seller/register">Open one</a></p>
+    </form>
+  </section>
+</BaseLayout>
+
+<style>
+  .auth-wrap { max-width: 420px; }
+  .auth-error {
+    background: #fde8e8; color: #b00020;
+    padding: 0.6rem 0.9rem; border-radius: var(--radius);
+    font-size: 0.9rem; margin-top: 0.75rem;
+  }
+  .auth-form { margin-top: 1.25rem; }
+  .auth-switch { margin-top: 1rem; font-size: 0.9rem; }
+</style>

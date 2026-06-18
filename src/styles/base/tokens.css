@@ -1,38 +1,30 @@
-/*
- * Design tokens — CSS custom properties.
- *
- * Fallback values are defined here. The real values are injected at
- * build time by BaseLayout via Astro's `define:vars`, sourced from
- * src/config/store.config.js → theme. Never hardcode these values
- * anywhere else in the codebase; always use var(--token-name).
- */
 :root {
-  /* Colors */
-  --color-primary:      #5b4cf5;
-  --color-primary-dark: #4035d1;
-  --color-accent:       #ff6b35;
-  --color-bg:           #ffffff;
-  --color-surface:      #f8f7ff;
-  --color-text:         #1a1523;
-  --color-muted:        #6b6580;
-  --color-border:       #e8e5f5;
+  --color-primary: #60967a;
+  --color-primary-dark: #467059;
+  --color-accent: #4a7a96;
+  --color-bg: #f5f8f6;
+  --color-surface: #ffffff;
+  --color-text: #19241e;
+  --color-muted: #6e8579;
+  --color-border: #dae3de;
 
-  /* Typography */
   --font-base: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
 
-  /* Shape */
   --radius: 14px;
 
-  /* Layout */
   --max-width: 1160px;
 }
 
-/* Base body styles that depend on tokens */
 body {
   font-family: var(--font-base);
   background: var(--color-bg);
   color: var(--color-text);
 }
 
-h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); }
-h2 { font-size: clamp(1.4rem, 3vw, 2rem); }
+h1 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+}
+
+h2 {
+  font-size: clamp(1.4rem, 3vw, 2rem);
+}

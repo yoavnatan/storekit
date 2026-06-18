@@ -20,4 +20,10 @@
 }
 .btn--ghost:hover { background: var(--color-surface); }
 
+.btn--accent {
+  background: var(--color-accent);
+  color: #fff;
+}
+.btn--accent:hover { background: #e06010; }
+
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }

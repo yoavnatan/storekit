@@ -1,8 +1,4 @@
 ---
-/**
- * Product page — one static page per product (great for SEO).
- * Includes Product JSON-LD so Google can show rich results (price, availability).
- */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { store, formatPrice } from '../../config/store.config.js';
 import { getAllProducts, getProductBySlug } from '../../data/products.js';
@@ -17,6 +13,13 @@ if (!product) return Astro.redirect('/404');
 
 const out = product.stock <= 0;
 const canonical = new URL(`/products/${product.slug}`, store.url).href;
+
+const icons = {
+  zap: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  star: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  briefcase: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
+};
+const iconHtml = icons[product.icon] ?? icons.zap;
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -38,16 +41,21 @@ const jsonLd = {
 
 <BaseLayout title={product.name} description={product.description} image={product.image} type="product" jsonLd={jsonLd}>
   <section class="section container product-page">
-    <div class="product-page__media">
-      <img src={product.image} alt={product.name} width="600" height="600" />
+    <div class="product-page__visual">
+      <div class="product-page__icon-wrap">
+        <Fragment set:html={iconHtml} />
+        {product.badge && <span class="product-badge">{product.badge}</span>}
+      </div>
     </div>
     <div class="product-page__info">
       <h1>{product.name}</h1>
-      <p class="price">{formatPrice(product.price)}</p>
-      <p>{product.body}</p>
+      <p class="price">
+        {product.price === 0 ? 'Free forever' : `${formatPrice(product.price)}/mo`}
+      </p>
+      <p class="product-page__body">{product.body}</p>
       {out
         ? <p class="badge">Out of stock</p>
-        : <button class="btn add-to-cart" data-slug={product.slug}>Add to cart</button>}
+        : <button class="btn add-to-cart" data-slug={product.slug}>Get started</button>}
     </div>
   </section>
 </BaseLayout>
@@ -57,20 +65,56 @@ const jsonLd = {
   import { getProductBySlug } from '../../data/products.js';
 
   document.querySelectorAll('.add-to-cart').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const product = getProductBySlug(btn.getAttribute('data-slug'));
-      if (product) {
+    const product = getProductBySlug(btn.getAttribute('data-slug'));
+    if (product) {
+      btn.addEventListener('click', () => {
         addItem(product, 1);
         window.dispatchEvent(new CustomEvent('cart:open'));
-      }
-    });
+      });
+    }
   });
 </script>
 
 <style>
-  .product-page { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
-  .product-page__media img { width: 100%; border-radius: var(--radius); background: var(--color-surface); }
-  .price { font-size: 1.6rem; font-weight: 800; margin: 0.75rem 0; }
+  .product-page {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    align-items: start;
+  }
+  .product-page__icon-wrap {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 4rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-primary);
+    position: relative;
+  }
+  .product-badge {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: var(--color-accent);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .product-page__info { display: flex; flex-direction: column; gap: 1rem; }
+  .price {
+    font-size: 2.2rem;
+    font-weight: 800;
+    color: var(--color-accent);
+    margin: 0;
+  }
+  .product-page__body { color: var(--color-muted); line-height: 1.7; }
+  .add-to-cart { align-self: flex-start; }
   @media (max-width: 720px) {
     .product-page { grid-template-columns: 1fr; }
   }

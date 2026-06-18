@@ -7,8 +7,24 @@ import CartDrawer from '../components/CartDrawer.astro';
 
 import '../styles/main.css';
 
-const { title, description, image, type, noindex, jsonLd } = Astro.props;
-const t = store.theme;
+const { title, description, image, type, noindex, jsonLd, storeColors } = Astro.props;
+
+function safeHex(v) {
+  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : null;
+}
+
+let colorOverrideCss = null;
+if (storeColors) {
+  const p = safeHex(storeColors.primary);
+  const a = safeHex(storeColors.accent);
+  if (p || a) {
+    let css = ':root {';
+    if (p) css += ` --color-primary: ${p}; --color-primary-dark: ${p};`;
+    if (a) css += ` --color-accent: ${a};`;
+    css += ' }';
+    colorOverrideCss = css;
+  }
+}
 ---
 
 <!doctype html>
@@ -20,39 +36,7 @@ const t = store.theme;
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} />
-
-    <!--
-      Inject theme values from store.config.js as CSS custom properties.
-      These override the fallback values in base/tokens.css.
-      To change colors/fonts — only edit store.config.js → theme.
-    -->
-    <style is:global define:vars={{
-      colorPrimary:     t.primary,
-      colorPrimaryDark: t.primaryDark,
-      colorAccent:      t.accent,
-      colorBg:          t.bg,
-      colorSurface:     t.surface,
-      colorText:        t.text,
-      colorMuted:       t.muted,
-      colorBorder:      t.border,
-      radius:           t.radius,
-      fontBase:         t.font,
-      maxWidth:         t.maxWidth,
-    }}>
-      :root {
-        --color-primary:      var(--colorPrimary);
-        --color-primary-dark: var(--colorPrimaryDark);
-        --color-accent:       var(--colorAccent);
-        --color-bg:           var(--colorBg);
-        --color-surface:      var(--colorSurface);
-        --color-text:         var(--colorText);
-        --color-muted:        var(--colorMuted);
-        --color-border:       var(--colorBorder);
-        --radius:             var(--radius);
-        --font-base:          var(--fontBase);
-        --max-width:          var(--maxWidth);
-      }
-    </style>
+    {colorOverrideCss && <style set:html={colorOverrideCss} />}
   </head>
   <body>
     <Header />

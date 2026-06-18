@@ -1,24 +1,17 @@
 # Current Task
 
-> Write your task under **Your instruction**, then say "read current_task and go".
-
----
-
 ## Your instruction
-*(write here)*
+
+1. תעדכן מה שצריך כדי שאוכל לפתוח סשן חדש
+2. צריך לוודא שאין טייפ any 
+3. אף פעם אל תמחק את הצעד הנוכחי לפני שסיימנו אותו! רק אני משנה את הצעד הנוכחי, אתה רק מציע את הצעד הבא
 
 ---
-
 
 ## Next step
-- `npm run dev` → verify cart opens/closes
-- Wire Stripe payments, or build product editing in admin UI
 
-## Status
-- [x] Scaffold — Astro, plain CSS, plain JS
-- [x] Modular config + SEO (sitemap, JSON-LD, Seo.astro)
-- [x] Cart + drawer, checkout page, Stripe placeholder
-- [x] Admin login / dashboard / logout
-- [x] Site as platform demo (StoreKit)
-- [ ] Real Stripe integration
-- [ ] Admin UI for editing products/settings
+Let sellers add and manage their own products from the dashboard (instead of the hardcoded products.ts).
+
+## Recommended next step
+
+After seller product management: show per-store products on `/store/[slug]`.

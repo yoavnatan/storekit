@@ -15,16 +15,20 @@ import { store } from '../config/store.config.js';
 
     <div class="checkout__grid">
       <form id="checkout-form" class="checkout__form">
-        <label class="field"><span>Full name</span>
-          <input class="input" name="name" required /></label>
-        <label class="field"><span>Email</span>
-          <input class="input" type="email" name="email" required /></label>
-        <label class="field"><span>Shipping address</span>
-          <input class="input" name="address" required /></label>
+        <label class="field"
+          ><span>Full name</span>
+          <input class="input" name="name" required /></label
+        >
+        <label class="field"
+          ><span>Email</span>
+          <input class="input" type="email" name="email" required /></label
+        >
+        <label class="field"
+          ><span>Shipping address</span>
+          <input class="input" name="address" required /></label
+        >
 
-        <button type="submit" class="btn" id="pay-btn">
-          Secure checkout
-        </button>
+        <button type="submit" class="btn" id="pay-btn"> Secure checkout </button>
         <p class="muted" style="font-size:.85rem;margin-top:.5rem">
           Payment provider: {store.checkout.provider}
         </p>
@@ -50,7 +54,12 @@ import { store } from '../config/store.config.js';
     const subtotal = getSubtotal();
     const ship = subtotal >= store.checkout.freeShippingOver ? 0 : store.checkout.shippingFlat;
     document.getElementById('summary-lines').innerHTML = items.length
-      ? items.map((i) => `<div class="flex between"><span>${i.name} × ${i.qty}</span><span>${formatPrice(i.price * i.qty)}</span></div>`).join('')
+      ? items
+          .map(
+            (i) =>
+              `<div class="flex between"><span>${i.name} × ${i.qty}</span><span>${formatPrice(i.price * i.qty)}</span></div>`
+          )
+          .join('')
       : '<p class="muted">Your cart is empty</p>';
     document.getElementById('ship').textContent = ship === 0 ? 'Free' : formatPrice(ship);
     document.getElementById('total').textContent = formatPrice(subtotal + ship);
@@ -59,7 +68,7 @@ import { store } from '../config/store.config.js';
   document.getElementById('checkout-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
-      customer: Object.fromEntries(new FormData(e.target)),
+      customer: Object.fromEntries(new FormData(e.target as HTMLFormElement)),
       items: getItems(),
     };
     const res = await fetch('/api/checkout', {
@@ -77,10 +86,30 @@ import { store } from '../config/store.config.js';
 </script>
 
 <style>
-  .checkout__grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 2rem; }
-  .checkout__summary { padding: 1.25rem; height: fit-content; }
-  .checkout__summary h2 { margin-bottom: 1rem; }
-  .checkout__summary hr { border: none; border-top: 1px solid var(--color-border); margin: 0.75rem 0; }
-  .total { margin-top: 0.5rem; font-size: 1.15rem; }
-  @media (max-width: 760px) { .checkout__grid { grid-template-columns: 1fr; } }
+  .checkout__grid {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 2rem;
+  }
+  .checkout__summary {
+    padding: 1.25rem;
+    height: fit-content;
+  }
+  .checkout__summary h2 {
+    margin-bottom: 1rem;
+  }
+  .checkout__summary hr {
+    border: none;
+    border-top: 1px solid var(--color-border);
+    margin: 0.75rem 0;
+  }
+  .total {
+    margin-top: 0.5rem;
+    font-size: 1.15rem;
+  }
+  @media (max-width: 760px) {
+    .checkout__grid {
+      grid-template-columns: 1fr;
+    }
+  }
 </style>

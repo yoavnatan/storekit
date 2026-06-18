@@ -1,0 +1,69 @@
+---
+export const prerender = false;
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { registerSeller, setSellerSession, getSellerSession } from '../../lib/seller-auth.js';
+import { createStore } from '../../lib/stores.js';
+
+if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
+
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const email     = String(form.get('email')      || '').trim();
+  const password  = String(form.get('password')   || '');
+  const storeName = String(form.get('store_name') || '').trim();
+
+  if (!email || !password || !storeName) {
+    error = 'All fields are required.';
+  } else if (password.length < 6) {
+    error = 'Password must be at least 6 characters.';
+  } else {
+    const seller = registerSeller(email, password);
+    if (!seller) {
+      error = 'An account with this email already exists.';
+    } else {
+      createStore(seller.id, { name: storeName });
+      setSellerSession(Astro.cookies, seller.id);
+      return Astro.redirect('/seller/dashboard');
+    }
+  }
+}
+---
+
+<BaseLayout title="Open your store" noindex={true}>
+  <section class="section container auth-wrap">
+    <h1>Open your store</h1>
+    <p class="muted">Create a free account and go live in minutes.</p>
+
+    {error && <p class="auth-error">{error}</p>}
+
+    <form method="POST" class="auth-form">
+      <label class="field">
+        <span>Email</span>
+        <input class="input" type="email" name="email" required autocomplete="email" />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input class="input" type="password" name="password" required minlength="6" autocomplete="new-password" />
+      </label>
+      <label class="field">
+        <span>Store name</span>
+        <input class="input" type="text" name="store_name" required placeholder="e.g. Sarah's Candles" />
+      </label>
+      <button class="btn btn--accent" type="submit">Create my store</button>
+      <p class="muted auth-switch">Already have a store? <a href="/seller/login">Log in</a></p>
+    </form>
+  </section>
+</BaseLayout>
+
+<style>
+  .auth-wrap { max-width: 460px; }
+  .auth-error {
+    background: #fde8e8; color: #b00020;
+    padding: 0.6rem 0.9rem; border-radius: var(--radius);
+    font-size: 0.9rem; margin-top: 0.75rem;
+  }
+  .auth-form { margin-top: 1.5rem; }
+  .auth-switch { margin-top: 1rem; font-size: 0.9rem; }
+</style>
