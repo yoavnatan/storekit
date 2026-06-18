@@ -9,9 +9,6 @@
 
 ---
 
-## Last session
-Fixed cart close button (`[hidden]` CSS bug). Redesigned homepage as platform demo — StoreKit brand, hero, "how it works", plans as products.
-**Files:** `reset.css`, `store.config.js`, `products.js`, `index.astro`, `AI_INSTRUCTIONS.md`, `public/products/*.svg`
 
 ## Next step
 - `npm run dev` → verify cart opens/closes

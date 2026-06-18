@@ -1,16 +1,11 @@
-/* Minimal modern CSS reset */
 *,
 *::before,
-*::after {
-  box-sizing: border-box;
-}
+*::after { box-sizing: border-box; }
 
 /* Ensure the HTML `hidden` attribute always wins over CSS display rules */
 [hidden] { display: none !important; }
 
-* {
-  margin: 0;
-}
+* { margin: 0; }
 
 html {
   -webkit-text-size-adjust: 100%;
@@ -24,47 +19,20 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-img,
-picture,
-svg,
-video {
+img, picture, svg, video {
   display: block;
   max-width: 100%;
   height: auto;
 }
 
-input,
-button,
-textarea,
-select {
-  font: inherit;
-  color: inherit;
-}
-
-button {
-  cursor: pointer;
-  border: none;
-  background: none;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
+input, button, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: none; background: none; }
+a { color: inherit; text-decoration: none; }
 
 ul[role='list'],
-ol[role='list'] {
-  list-style: none;
-  padding: 0;
-}
+ol[role='list'] { list-style: none; padding: 0; }
 
-h1,
-h2,
-h3,
-h4 {
-  line-height: 1.2;
-  text-wrap: balance;
-}
+h1, h2, h3, h4 { line-height: 1.2; text-wrap: balance; }
 
 :where(:focus-visible) {
   outline: 2px solid var(--color-primary);

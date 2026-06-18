@@ -1,0 +1,14 @@
+.field { display: block; margin-bottom: 1rem; }
+.field > span { display: block; margin-bottom: 0.35rem; font-weight: 600; }
+
+.input {
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+.input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
