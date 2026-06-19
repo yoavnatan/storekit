@@ -1,6 +1,14 @@
 ---
+export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { store } from '../config/store.config.js';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoreBySellerId } from '../lib/stores.js';
+
+const sellerId = getSellerSession(Astro.cookies);
+const sellerStore = sellerId ? getStoreBySellerId(sellerId) : null;
+const isLoggedIn = !!sellerId;
+const hasStore = !!sellerStore;
 
 const hp = store.homepage;
 
@@ -13,121 +21,71 @@ const jsonLd = {
 };
 ---
 
-<BaseLayout title={null} jsonLd={jsonLd}>
-  {hp.sections.map((section) => {
-    if (section === 'hero' && hp.hero.enabled) {
-      return (
-        <section class="hero">
-          <div class="container hero__inner">
-            <div class="hero__badge">Online marketplace</div>
-            <h1>{hp.hero.title}</h1>
-            <p class="hero__sub">{hp.hero.subtitle}</p>
-            <div class="hero__actions">
-              <a href={hp.hero.ctaHref} class="btn btn--accent">{hp.hero.ctaText}</a>
-              <a href="/seller/login" class="btn btn--ghost">Log in</a>
-            </div>
-            <ul class="hero__pills" role="list">
-              <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Free to start</li>
-              <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Your own storefront</li>
-              <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Built-in SEO</li>
-              <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> No code needed</li>
-            </ul>
-          </div>
-        </section>
-      );
-    }
-    return null;
-  })}
+<BaseLayout title={null} jsonLd={jsonLd} isLoggedIn={isLoggedIn} hasStore={hasStore}>
+  {hasStore ? (
+    <section class="welcome-back section">
+      <div class="container welcome-back__inner">
+        <p class="muted welcome-back__label">Welcome back</p>
+        <h1>{sellerStore!.name}</h1>
+        <p class="muted welcome-back__sub">
+          Your store is live at <a href={`/store/${sellerStore!.slug}`} class="welcome-back__store-link" target="_blank" rel="noopener">/store/{sellerStore!.slug}</a>
+        </p>
+        <a href="/seller/dashboard" class="btn">Go to dashboard</a>
+      </div>
+    </section>
+  ) : (
+    <>
+      {hp.sections.map((section) => {
+        if (section === 'hero' && hp.hero.enabled) {
+          return (
+            <section class="hero">
+              <div class="container hero__inner">
+                <div class="hero__badge">Online marketplace</div>
+                <h1>{hp.hero.title}</h1>
+                <p class="hero__sub">{hp.hero.subtitle}</p>
+                <div class="hero__actions">
+                  <a href={hp.hero.ctaHref} class="btn">{hp.hero.ctaText}</a>
+                  <a href="/seller/login" class="btn btn--ghost">Log in</a>
+                </div>
+                <ul class="hero__pills" role="list">
+                  <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Free to start</li>
+                  <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Your own storefront</li>
+                  <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Built-in SEO</li>
+                  <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> No code needed</li>
+                </ul>
+              </div>
+            </section>
+          );
+        }
+        return null;
+      })}
 
-  <section class="section how container">
-    <div class="section__head center">
-      <h2>How it works</h2>
-      <p class="muted">Three steps and you're selling.</p>
-    </div>
-    <ol class="steps" role="list">
-      <li class="step">
-        <span class="step__num">1</span>
-        <h3>Create your account</h3>
-        <p class="muted">Sign up with your email in under a minute. No credit card, no commitment.</p>
-      </li>
-      <li class="step">
-        <span class="step__num">2</span>
-        <h3>Set up your store</h3>
-        <p class="muted">Give your store a name, pick your colors, and write a short description. Done.</p>
-      </li>
-      <li class="step">
-        <span class="step__num">3</span>
-        <h3>Add products & go live</h3>
-        <p class="muted">Upload your products. Your store gets its own page, found by search engines from day one.</p>
-      </li>
-    </ol>
-    <div class="center" style="margin-top:2.5rem">
-      <a href="/seller/register" class="btn btn--accent">Get started — it's free</a>
-    </div>
-  </section>
+      <section class="section how container">
+        <div class="section__head center">
+          <h2>How it works</h2>
+          <p class="muted">Three steps and you're selling.</p>
+        </div>
+        <ol class="steps" role="list">
+          <li class="step">
+            <span class="step__num">1</span>
+            <h3>Create your account</h3>
+            <p class="muted">Sign up with your email in under a minute. No credit card, no commitment.</p>
+          </li>
+          <li class="step">
+            <span class="step__num">2</span>
+            <h3>Set up your store</h3>
+            <p class="muted">Give your store a name, pick your colors, and write a short description. Done.</p>
+          </li>
+          <li class="step">
+            <span class="step__num">3</span>
+            <h3>Add products & go live</h3>
+            <p class="muted">Upload your products. Your store gets its own page, found by search engines from day one.</p>
+          </li>
+        </ol>
+        <div class="center" style="margin-top:2.5rem">
+          <a href="/seller/register" class="btn">Get started — it's free</a>
+        </div>
+      </section>
+    </>
+  )}
 </BaseLayout>
-
-<style>
-  .hero {
-    background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
-  }
-  .hero__inner {
-    padding-block: 5rem;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1.25rem;
-  }
-  .hero__badge {
-    display: inline-block;
-    padding: 0.25rem 0.85rem;
-    border-radius: 999px;
-    background: var(--color-accent);
-    color: #fff;
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-  .hero__inner h1 { max-width: 620px; }
-  .hero__sub {
-    font-size: 1.15rem;
-    color: var(--color-muted);
-    max-width: 520px;
-    margin: 0;
-  }
-  .hero__actions { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
-  .hero__pills {
-    display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
-    padding: 0; margin: 0;
-    font-size: 0.88rem; font-weight: 600; color: var(--color-muted);
-  }
-  .hero__pills li { list-style: none; display: flex; align-items: center; gap: 0.3rem; }
-  .pill-icon { color: var(--color-primary); flex-shrink: 0; }
-
-  .steps {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1.5rem;
-    padding: 0; margin: 0; list-style: none;
-  }
-  .step {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 1.5rem;
-  }
-  .step__num {
-    display: inline-flex;
-    align-items: center; justify-content: center;
-    width: 2rem; height: 2rem;
-    border-radius: 50%;
-    background: var(--color-primary);
-    color: #fff;
-    font-weight: 700;
-    margin-bottom: 0.75rem;
-  }
-  .step h3 { margin-bottom: 0.4rem; }
-</style>

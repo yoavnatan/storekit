@@ -2,14 +2,21 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getStoreBySlug } from '../../lib/stores.js';
-import { store as platform } from '../../config/store.config.js';
+import { getProductsByStoreId } from '../../lib/store-products.js';
+import { store as platform, formatPrice } from '../../config/store.config.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
 
 const { slug } = Astro.params;
-const shopStore = getStoreBySlug(slug);
+if (!slug) return Astro.redirect('/404');
 
+const shopStore = getStoreBySlug(slug);
 if (!shopStore) return Astro.redirect('/404');
 
+const isLoggedIn = !!getSellerSession(Astro.cookies);
+
+const products = getProductsByStoreId(shopStore.id);
 const storeUrl = new URL(`/store/${shopStore.slug}`, Astro.url).href;
+const today = new Date().toDateString();
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -25,6 +32,8 @@ const jsonLd = {
   description={shopStore.tagline || shopStore.description || `Shop at ${shopStore.name} on ${platform.name}`}
   jsonLd={jsonLd}
   storeColors={shopStore.colors}
+  isLoggedIn={isLoggedIn}
+  storeMode={true}
 >
   <div class="store-page">
 
@@ -43,14 +52,55 @@ const jsonLd = {
 
     <section class="section container">
       <h2 class="products-heading">Products</h2>
-      <div class="empty-state">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-          <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-          <line x1="3" y1="6" x2="21" y2="6"/>
-          <path d="M16 10a4 4 0 0 1-8 0"/>
-        </svg>
-        <p>This store is setting up. Check back soon.</p>
-      </div>
+      {products.length === 0 ? (
+        <div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <path d="M16 10a4 4 0 0 1-8 0"/>
+          </svg>
+          <p>This store is setting up. Check back soon.</p>
+        </div>
+      ) : (
+        <ul class="product-grid" role="list">
+          {products.map((p) => {
+            const isNew = new Date(p.createdAt).toDateString() === today;
+            return (
+              <li class="product-card card">
+                <div class="product-card__img-wrap">
+                  {p.image
+                    ? <img src={p.image} alt={p.name} class="product-card__img" width="400" height="400" loading="lazy" decoding="async" />
+                    : <div class="product-card__img-placeholder" aria-hidden="true">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                          <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                          <line x1="12" y1="22.08" x2="12" y2="12"/>
+                        </svg>
+                      </div>
+                  }
+                </div>
+                <div class="product-card__body">
+                  {isNew && <span class="badge badge--new">New</span>}
+                  <h3 class="product-card__name">{p.name}</h3>
+                  {p.description && <p class="product-card__desc">{p.description}</p>}
+                  <div class="product-card__footer">
+                    <span class="product-card__price">{formatPrice(p.price)}</span>
+                    {p.stock <= 0
+                      ? <span class="badge badge--muted">Out of stock</span>
+                      : <button
+                          class="btn btn--sm add-to-cart-btn"
+                          data-slug={p.slug}
+                          data-name={p.name}
+                          data-price={String(p.price)}
+                          data-image={p.image ?? ''}
+                        >Add to cart</button>}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
 
     <footer class="store-platform-note">
@@ -62,78 +112,14 @@ const jsonLd = {
   </div>
 </BaseLayout>
 
-<style>
-  .store-page { min-height: 60vh; }
+<script>
+  import { addItem } from '../../lib/cart.js';
+  document.querySelectorAll<HTMLButtonElement>('.add-to-cart-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const { slug = '', name = '', price = '0', image = '' } = btn.dataset;
+      addItem({ slug, name, price: Number(price), image });
+      window.dispatchEvent(new CustomEvent('cart:open'));
+    });
+  });
+</script>
 
-  .store-banner {
-    background: var(--color-primary);
-    color: #fff;
-    padding: 3rem 0 2.5rem;
-  }
-
-  .store-name {
-    font-size: clamp(2rem, 5vw, 3.2rem);
-    font-weight: 700;
-    color: #fff;
-    margin: 0;
-  }
-
-  .store-tagline {
-    margin: 0.6rem 0 0;
-    font-size: 1.15rem;
-    opacity: 0.88;
-  }
-
-  .store-about {
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 2rem;
-  }
-
-  .store-desc {
-    font-size: 1.05rem;
-    line-height: 1.7;
-    max-width: 680px;
-    color: var(--color-muted);
-  }
-
-  .products-heading {
-    margin-bottom: 1.5rem;
-  }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    padding: 3rem 1rem;
-    color: var(--color-muted);
-    text-align: center;
-  }
-
-  .empty-state svg {
-    opacity: 0.4;
-  }
-
-  .empty-state p {
-    font-size: 1rem;
-    margin: 0;
-  }
-
-  .store-platform-note {
-    border-top: 1px solid var(--color-border);
-    padding: 1.25rem 0;
-    text-align: center;
-    font-size: 0.85rem;
-    color: var(--color-muted);
-  }
-
-  .store-platform-note p { margin: 0; }
-
-  .platform-link {
-    color: var(--color-primary);
-    font-weight: 600;
-    text-decoration: none;
-  }
-
-  .platform-link:hover { text-decoration: underline; }
-</style>

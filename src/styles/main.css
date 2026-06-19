@@ -1,6 +1,6 @@
 /* ============================================================
  *  main.css — single entry point for all styles.
- *  Import order matters: base → layout → components → utilities.
+ *  Import order matters: base → layout → components → pages → utilities.
  * ============================================================ */
 
 /* Base */
@@ -14,6 +14,20 @@
 @import './components/buttons.css';
 @import './components/cards.css';
 @import './components/forms.css';
+@import './components/header.css';
+@import './components/footer.css';
+@import './components/cart-drawer.css';
+@import './components/product-card.css';
+@import './components/confirm-modal.css';
+
+/* Pages */
+@import './pages/home.css';
+@import './pages/auth.css';
+@import './pages/dashboard.css';
+@import './pages/store.css';
+@import './pages/checkout.css';
+@import './pages/product.css';
+@import './pages/admin.css';
 
 /* Utilities */
 @import './utilities/utils.css';

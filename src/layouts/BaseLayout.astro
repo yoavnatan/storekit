@@ -4,12 +4,13 @@ import Seo from '../components/Seo.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import CartDrawer from '../components/CartDrawer.astro';
+import ConfirmModal from '../components/ConfirmModal.astro';
 
 import '../styles/main.css';
 
-const { title, description, image, type, noindex, jsonLd, storeColors } = Astro.props;
+const { title, description, image, type, noindex, jsonLd, storeColors, isLoggedIn, hasStore, storeMode } = Astro.props;
 
-function safeHex(v) {
+function safeHex(v: unknown) {
   return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : null;
 }
 
@@ -39,11 +40,12 @@ if (storeColors) {
     {colorOverrideCss && <style set:html={colorOverrideCss} />}
   </head>
   <body>
-    <Header />
+    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} />
     <main>
       <slot />
     </main>
     <Footer />
     <CartDrawer />
+    <ConfirmModal />
   </body>
 </html>

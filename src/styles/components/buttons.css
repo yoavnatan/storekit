@@ -18,12 +18,17 @@
   color: var(--color-primary);
   border: 1px solid var(--color-border);
 }
-.btn--ghost:hover { background: var(--color-surface); }
+.btn--ghost:hover { background: #eaf4ef; color: var(--color-primary-dark); border-color: var(--color-primary); }
 
 .btn--accent {
-  background: var(--color-accent);
+  background: var(--color-primary);
   color: #fff;
 }
-.btn--accent:hover { background: #e06010; }
+.btn--accent:hover { background: var(--color-primary-dark); }
 
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn--sm { font-size: 0.8rem; padding: 0.3rem 0.75rem; }
+
+.btn--danger { background: #b00020; color: #fff; border-color: #b00020; }
+.btn--danger:hover { background: #8c0018; }

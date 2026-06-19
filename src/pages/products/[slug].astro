@@ -19,7 +19,7 @@ const icons = {
   star: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   briefcase: `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
 };
-const iconHtml = icons[product.icon] ?? icons.zap;
+const iconHtml = icons[product.icon as keyof typeof icons] ?? icons.zap;
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -65,7 +65,7 @@ const jsonLd = {
   import { getProductBySlug } from '../../data/products.js';
 
   document.querySelectorAll('.add-to-cart').forEach((btn) => {
-    const product = getProductBySlug(btn.getAttribute('data-slug'));
+    const product = getProductBySlug(btn.getAttribute('data-slug') ?? '');
     if (product) {
       btn.addEventListener('click', () => {
         addItem(product, 1);
@@ -75,47 +75,3 @@ const jsonLd = {
   });
 </script>
 
-<style>
-  .product-page {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 3rem;
-    align-items: start;
-  }
-  .product-page__icon-wrap {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 4rem 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-primary);
-    position: relative;
-  }
-  .product-badge {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    background: var(--color-accent);
-    color: #fff;
-    font-size: 0.72rem;
-    font-weight: 700;
-    padding: 0.25rem 0.75rem;
-    border-radius: 999px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .product-page__info { display: flex; flex-direction: column; gap: 1rem; }
-  .price {
-    font-size: 2.2rem;
-    font-weight: 800;
-    color: var(--color-accent);
-    margin: 0;
-  }
-  .product-page__body { color: var(--color-muted); line-height: 1.7; }
-  .add-to-cart { align-self: flex-start; }
-  @media (max-width: 720px) {
-    .product-page { grid-template-columns: 1fr; }
-  }
-</style>

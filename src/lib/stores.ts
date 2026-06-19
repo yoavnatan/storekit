@@ -65,6 +65,10 @@ export function getStoreBySellerId(sellerId: string): Store | null {
   return readStores().find((s) => s.sellerId === sellerId) ?? null;
 }
 
+export function getStoresBySellerId(sellerId: string): Store[] {
+  return readStores().filter((s) => s.sellerId === sellerId);
+}
+
 export function getStoreBySlug(slug: string): Store | null {
   return readStores().find((s) => s.slug === slug) ?? null;
 }

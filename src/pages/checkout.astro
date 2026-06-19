@@ -53,16 +53,16 @@ import { store } from '../config/store.config.js';
     const items = getItems();
     const subtotal = getSubtotal();
     const ship = subtotal >= store.checkout.freeShippingOver ? 0 : store.checkout.shippingFlat;
-    document.getElementById('summary-lines').innerHTML = items.length
-      ? items
-          .map(
-            (i) =>
-              `<div class="flex between"><span>${i.name} × ${i.qty}</span><span>${formatPrice(i.price * i.qty)}</span></div>`
-          )
-          .join('')
+    const linesEl = document.getElementById('summary-lines');
+    const shipEl  = document.getElementById('ship');
+    const totalEl = document.getElementById('total');
+    if (linesEl) linesEl.innerHTML = items.length
+      ? items.map((i) =>
+          `<div class="flex between"><span>${i.name} × ${i.qty}</span><span>${formatPrice(i.price * i.qty)}</span></div>`
+        ).join('')
       : '<p class="muted">Your cart is empty</p>';
-    document.getElementById('ship').textContent = ship === 0 ? 'Free' : formatPrice(ship);
-    document.getElementById('total').textContent = formatPrice(subtotal + ship);
+    if (shipEl)  shipEl.textContent  = ship === 0 ? 'Free' : formatPrice(ship);
+    if (totalEl) totalEl.textContent = formatPrice(subtotal + ship);
   }
 
   document.getElementById('checkout-form')?.addEventListener('submit', async (e) => {
@@ -85,31 +85,3 @@ import { store } from '../config/store.config.js';
   render();
 </script>
 
-<style>
-  .checkout__grid {
-    display: grid;
-    grid-template-columns: 1.3fr 1fr;
-    gap: 2rem;
-  }
-  .checkout__summary {
-    padding: 1.25rem;
-    height: fit-content;
-  }
-  .checkout__summary h2 {
-    margin-bottom: 1rem;
-  }
-  .checkout__summary hr {
-    border: none;
-    border-top: 1px solid var(--color-border);
-    margin: 0.75rem 0;
-  }
-  .total {
-    margin-top: 0.5rem;
-    font-size: 1.15rem;
-  }
-  @media (max-width: 760px) {
-    .checkout__grid {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>

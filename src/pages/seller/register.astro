@@ -31,7 +31,7 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<BaseLayout title="Open your store" noindex={true}>
+<BaseLayout title="Open your store" noindex={true} isLoggedIn={false} hasStore={false}>
   <section class="section container auth-wrap">
     <h1>Open your store</h1>
     <p class="muted">Create a free account and go live in minutes.</p>
@@ -57,13 +57,3 @@ if (Astro.request.method === 'POST') {
   </section>
 </BaseLayout>
 
-<style>
-  .auth-wrap { max-width: 460px; }
-  .auth-error {
-    background: #fde8e8; color: #b00020;
-    padding: 0.6rem 0.9rem; border-radius: var(--radius);
-    font-size: 0.9rem; margin-top: 0.75rem;
-  }
-  .auth-form { margin-top: 1.5rem; }
-  .auth-switch { margin-top: 1rem; font-size: 0.9rem; }
-</style>

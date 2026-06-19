@@ -23,4 +23,10 @@ export default defineConfig({
   image: {
     responsiveStyles: true,
   },
+
+  vite: {
+    optimizeDeps: {
+      exclude: ['@imgly/background-removal'],
+    },
+  },
 });

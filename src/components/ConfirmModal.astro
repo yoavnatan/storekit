@@ -1,0 +1,49 @@
+---
+---
+<dialog id="confirm-dialog" class="confirm-dialog">
+  <div class="confirm-dialog__inner">
+    <h3 class="confirm-dialog__title" id="confirm-title"></h3>
+    <p class="confirm-dialog__message" id="confirm-message"></p>
+    <div class="confirm-dialog__actions">
+      <button id="confirm-cancel" class="btn btn--ghost">Cancel</button>
+      <button id="confirm-ok" class="btn btn--danger">Confirm</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  const dialog = document.getElementById('confirm-dialog') as HTMLDialogElement | null;
+  const titleEl = document.getElementById('confirm-title');
+  const msgEl = document.getElementById('confirm-message');
+  const cancelBtn = document.getElementById('confirm-cancel');
+  const okBtn = document.getElementById('confirm-ok');
+
+  let pending: (() => void) | null = null;
+
+  window.addEventListener('confirm:open', (e: Event) => {
+    const detail = (e as CustomEvent<{ title?: string; message?: string; okLabel?: string; onConfirm?: () => void }>).detail;
+    if (titleEl) titleEl.textContent = detail.title ?? 'Are you sure?';
+    if (msgEl) msgEl.textContent = detail.message ?? 'This action cannot be undone.';
+    if (okBtn) okBtn.textContent = detail.okLabel ?? 'Confirm';
+    pending = detail.onConfirm ?? null;
+    dialog?.showModal();
+  });
+
+  cancelBtn?.addEventListener('click', () => {
+    dialog?.close();
+    pending = null;
+  });
+
+  okBtn?.addEventListener('click', () => {
+    dialog?.close();
+    pending?.();
+    pending = null;
+  });
+
+  dialog?.addEventListener('click', (e) => {
+    if (e.target === dialog) {
+      dialog.close();
+      pending = null;
+    }
+  });
+</script>

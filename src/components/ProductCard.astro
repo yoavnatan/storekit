@@ -8,7 +8,7 @@ const icons = {
   star: `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   briefcase: `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
 };
-const iconHtml = icons[product.icon] ?? icons.zap;
+const iconHtml = icons[product.icon as keyof typeof icons] ?? icons.zap;
 ---
 
 <article class="card plan-card">
@@ -39,7 +39,7 @@ const iconHtml = icons[product.icon] ?? icons.zap;
 
   document.querySelectorAll('.plan-add-to-cart').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const slug = btn.getAttribute('data-slug');
+      const slug = btn.getAttribute('data-slug') ?? '';
       const product = getProductBySlug(slug);
       if (product) {
         addItem(product, 1);
@@ -49,52 +49,3 @@ const iconHtml = icons[product.icon] ?? icons.zap;
   });
 </script>
 
-<style>
-  .plan-card__icon-area {
-    background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
-    padding: 2.5rem 1rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    color: var(--color-primary);
-  }
-  .plan-badge {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    background: var(--color-accent);
-    color: #fff;
-    font-size: 0.7rem;
-    font-weight: 700;
-    padding: 0.2rem 0.65rem;
-    border-radius: 999px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .plan-card__body {
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    flex: 1;
-  }
-  .plan-card__name { font-size: 1.05rem; font-weight: 700; }
-  .plan-card__name a:hover { color: var(--color-primary); }
-  .plan-card__desc { font-size: 0.88rem; }
-  .plan-card__price {
-    font-size: 2rem;
-    font-weight: 800;
-    color: var(--color-accent);
-    line-height: 1;
-    margin: 0.4rem 0;
-  }
-  .plan-card__period {
-    font-size: 1rem;
-    font-weight: 400;
-    color: var(--color-muted);
-  }
-  .plan-card__action { margin-top: auto; padding-top: 0.75rem; }
-  .plan-add-to-cart { width: 100%; }
-</style>

@@ -1,17 +1,14 @@
 # Current Task
 
-## Your instruction
+1. אחרי שעושים ״הסר את הרקע״ צריך שתהיה אפשרות לחזור למקורי ואז לחזור לרקע החתוך מבלי שהוא יצטרך שוב לחתוך את הרקע... כלומר יותר מהר על מה שהוא כבר עבד קודם. 
+2. צריך גם שתהיה אפשרות לעשות זום לתמונה אחרי שמעלים אותה, לחתוך אותה. להתאים אותה לריבוע שמוצג באתר.
+3. בנוסף, צריך שתוך כדי שהמערכת מסירה את הרקע יהיה אפשר לעשות לה ״בטל״ כדי לבטל את הסרת הרקע ולהשאר עם התמונה הרגילה.
 
-1. תעדכן מה שצריך כדי שאוכל לפתוח סשן חדש
-2. צריך לוודא שאין טייפ any 
-3. אף פעם אל תמחק את הצעד הנוכחי לפני שסיימנו אותו! רק אני משנה את הצעד הנוכחי, אתה רק מציע את הצעד הבא
+## Next
 
----
-
-## Next step
-
-Let sellers add and manage their own products from the dashboard (instead of the hardcoded products.ts).
+- בדשבורד אין צורך שיהיה חלק שלם שמוקדש לurl, מיותר ותופס מקום. במקום זה צריך שם סיכום יפה של החנות: כמה מוצרים, ועוד נתונים שאנחנו נוסיף בהמשך.
+- כאשר מוצר חדש צריכה להיות איזושהי אנימציה לnew, סולידית אך ניכרת.
 
 ## Recommended next step
 
-After seller product management: show per-store products on `/store/[slug]`.
+Replace the "Store URL" card in the dashboard right column with a store summary card: product count, total stock value, and a link to the live store. Data comes from `getProductsByStoreId` at render time.

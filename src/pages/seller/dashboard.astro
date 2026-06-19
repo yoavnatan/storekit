@@ -2,40 +2,104 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoreBySellerId, updateStore } from '../../lib/stores.js';
+import { getStoresBySellerId, createStore, updateStore } from '../../lib/stores.js';
+import {
+  getProductsByStoreId,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+} from '../../lib/store-products.js';
+import { formatPrice } from '../../config/store.config.js';
 
 const sellerId = getSellerSession(Astro.cookies);
 if (!sellerId) return Astro.redirect('/seller/login');
 
-let store = getStoreBySellerId(sellerId);
-if (!store) return Astro.redirect('/seller/login');
+const cloudinaryCloud = import.meta.env.PUBLIC_CLOUDINARY_CLOUD_NAME ?? '';
+const cloudinaryPreset = import.meta.env.PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
 
-let success = false;
 let error = '';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const name        = String(form.get('name')        || '').trim();
-  const tagline     = String(form.get('tagline')     || '').trim();
-  const description = String(form.get('description') || '').trim();
-  const hexRe = /^#[0-9a-fA-F]{6}$/;
-  const rawPrimary = String(form.get('primary') || '');
-  const rawAccent  = String(form.get('accent')  || '');
-  const primary = hexRe.test(rawPrimary) ? rawPrimary : store.colors.primary;
-  const accent  = hexRe.test(rawAccent)  ? rawAccent  : store.colors.accent;
+  const action = String(form.get('_action') || 'save-settings');
 
-  if (!name) {
-    error = 'Store name is required.';
-  } else {
-    store = updateStore(store.id, { name, tagline, description, colors: { primary, accent } }) ?? store;
-    success = true;
+  if (action === 'save-settings') {
+    const storeId = String(form.get('storeId') || '');
+    const name = String(form.get('name') || '').trim();
+    const tagline = String(form.get('tagline') || '').trim();
+    const description = String(form.get('description') || '').trim();
+    if (!name) {
+      error = 'Store name is required.';
+    } else {
+      const stores = getStoresBySellerId(sellerId);
+      const target = stores.find((s) => s.id === storeId) ?? stores[0];
+      if (target) {
+        updateStore(target.id, { name, tagline, description, colors: target.colors });
+        return Astro.redirect(`/seller/dashboard?store=${target.id}&saved=1`);
+      }
+    }
+  } else if (action === 'create-store') {
+    const name = String(form.get('name') || '').trim();
+    const tagline = String(form.get('tagline') || '').trim();
+    const description = String(form.get('description') || '').trim();
+    if (!name) {
+      error = 'Store name is required.';
+    } else {
+      const { id: newStoreId } = createStore(sellerId, { name, tagline, description });
+      return Astro.redirect(`/seller/dashboard?store=${newStoreId}`);
+    }
+  } else if (action === 'add-product') {
+    const storeId = String(form.get('storeId') || '');
+    const name = String(form.get('name') || '').trim();
+    const description = String(form.get('description') || '').trim();
+    const price = parseFloat(String(form.get('price') || '0'));
+    const stock = parseInt(String(form.get('stock') || '0'), 10);
+
+    if (!name) {
+      error = 'Product name is required.';
+    } else if (isNaN(price) || price < 0) {
+      error = 'Enter a valid price.';
+    } else {
+      createProduct(storeId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
+      return Astro.redirect(`/seller/dashboard?store=${storeId}&added=1`);
+    }
+  } else if (action === 'edit-product') {
+    const productId = String(form.get('productId') || '');
+    const name = String(form.get('name') || '').trim();
+    const description = String(form.get('description') || '').trim();
+    const price = parseFloat(String(form.get('price') || '0'));
+    const stock = parseInt(String(form.get('stock') || '0'), 10);
+
+    if (!name) {
+      error = 'Product name is required.';
+    } else if (isNaN(price) || price < 0) {
+      error = 'Enter a valid price.';
+    } else {
+      updateProduct(productId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
+      const sid = Astro.url.searchParams.get('store') ?? '';
+      return Astro.redirect(sid ? `/seller/dashboard?store=${sid}` : '/seller/dashboard');
+    }
+  } else if (action === 'delete-product') {
+    const productId = String(form.get('productId') || '');
+    const sid = String(form.get('storeId') || '');
+    deleteProduct(productId);
+    return Astro.redirect(sid ? `/seller/dashboard?store=${sid}` : '/seller/dashboard');
   }
 }
+
+const allStores = getStoresBySellerId(sellerId);
+if (allStores.length === 0) return Astro.redirect('/seller/login');
+
+const activeStoreId = Astro.url.searchParams.get('store') ?? '';
+const store = allStores.find((s) => s.id === activeStoreId) ?? allStores[0]!;
+const settingsSuccess = Astro.url.searchParams.get('saved') === '1';
+const productSuccess = Astro.url.searchParams.get('added') === '1';
+const products = getProductsByStoreId(store.id);
 ---
 
-<BaseLayout title="My Store — Dashboard" noindex={true}>
+<BaseLayout title="My Store — Dashboard" noindex={true} isLoggedIn={true} hasStore={true}>
+  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} hidden></div>
   <section class="section container">
-
     <div class="dash-head flex between">
       <div>
         <h1>{store.name}</h1>
@@ -46,13 +110,65 @@ if (Astro.request.method === 'POST') {
       </form>
     </div>
 
-    {success && <p class="dash-success">Changes saved.</p>}
-    {error   && <p class="dash-error">{error}</p>}
+    {
+      allStores.length > 1 && (
+        <div class="store-tabs">
+          {allStores.map((s) => (
+            <a
+              href={`/seller/dashboard?store=${s.id}`}
+              class={`store-tab${s.id === store.id ? ' store-tab--active' : ''}`}
+            >
+              {s.name}
+            </a>
+          ))}
+          <button class="store-tab store-tab--new" id="toggle-new-store">
+            + New store
+          </button>
+        </div>
+      )
+    }
+    {
+      allStores.length === 1 && (
+        <div class="store-tabs">
+          <span class="store-tab store-tab--active">{store.name}</span>
+          <button class="store-tab store-tab--new" id="toggle-new-store">
+            + New store
+          </button>
+        </div>
+      )
+    }
+
+    <div id="new-store-form" class="add-form" hidden>
+      <h3>Create a new store</h3>
+      <form method="POST" class="dash-form">
+        <input type="hidden" name="_action" value="create-store" />
+        <div class="field-row">
+          <label class="field">
+            <span>Store name <span class="req">*</span></span>
+            <input class="input" name="name" required placeholder="e.g. Sarah's Ceramics" />
+          </label>
+          <label class="field">
+            <span>Tagline</span>
+            <input class="input" name="tagline" placeholder="A short description" />
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="submit">Create store</button>
+          <button class="btn btn--ghost" type="button" id="cancel-new-store">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    {settingsSuccess && <p class="dash-success">Store settings saved.</p>}
+    {productSuccess && <p class="dash-success">Product added.</p>}
+    {error && <p class="dash-error">{error}</p>}
 
     <div class="dash-grid">
       <div class="card dash-card">
         <h2>Store settings</h2>
-        <form method="POST" class="dash-form">
+        <form method="POST" action="/api/store" class="dash-form" id="settings-form">
+          <input type="hidden" name="_action" value="save-settings" />
+          <input type="hidden" name="storeId" value={store.id} />
 
           <label class="field">
             <span>Store name</span>
@@ -61,7 +177,12 @@ if (Astro.request.method === 'POST') {
 
           <label class="field">
             <span>Tagline</span>
-            <input class="input" name="tagline" value={store.tagline} placeholder="A short line about your store" />
+            <input
+              class="input"
+              name="tagline"
+              value={store.tagline}
+              placeholder="A short line about your store"
+            />
           </label>
 
           <label class="field">
@@ -69,23 +190,7 @@ if (Astro.request.method === 'POST') {
             <textarea class="input" name="description" rows="3">{store.description}</textarea>
           </label>
 
-          <div class="color-grid">
-            <label class="field">
-              <span>Primary color</span>
-              <div class="color-row">
-                <input type="color" name="primary" value={store.colors.primary} class="color-swatch" id="pick-primary" />
-                <input class="input mono" id="text-primary" value={store.colors.primary} placeholder="#1e7a46" maxlength="7" />
-              </div>
-            </label>
-            <label class="field">
-              <span>Accent color</span>
-              <div class="color-row">
-                <input type="color" name="accent" value={store.colors.accent} class="color-swatch" id="pick-accent" />
-                <input class="input mono" id="text-accent" value={store.colors.accent} placeholder="#f97316" maxlength="7" />
-              </div>
-            </label>
-          </div>
-
+          <p id="settings-status" hidden></p>
           <button class="btn" type="submit">Save changes</button>
         </form>
       </div>
@@ -101,57 +206,905 @@ if (Astro.request.method === 'POST') {
       </div>
     </div>
 
+    <div class="card dash-card products-section">
+      <div class="products-header">
+        <h2>Products</h2>
+        <button class="btn btn--sm" id="toggle-add-form">+ Add product</button>
+      </div>
+
+      <div id="add-product-form" class="add-form" hidden>
+        <h3>New product</h3>
+        <form method="POST" class="dash-form">
+          <input type="hidden" name="_action" value="add-product" />
+          <input type="hidden" name="storeId" value={store.id} />
+
+          <div class="field-row">
+            <label class="field">
+              <span>Name <span class="req">*</span></span>
+              <input class="input" name="name" required placeholder="e.g. Handmade candle" />
+            </label>
+            <label class="field">
+              <span>Price ($)</span>
+              <input
+                class="input"
+                name="price"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+              />
+            </label>
+            <label class="field">
+              <span>Stock</span>
+              <input class="input" name="stock" type="number" min="0" step="1" placeholder="0" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Description</span>
+            <textarea
+              class="input"
+              name="description"
+              rows="2"
+              placeholder="Short product description"></textarea>
+          </label>
+
+          <div class="field">
+            <span class="field-label">Product image</span>
+            <div class="img-widget">
+              <label class="img-upload-zone">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Upload image</span>
+                <input type="file" accept="image/*" class="visually-hidden img-file-input" />
+              </label>
+              <div class="img-preview" hidden>
+                <div class="img-preview-box">
+                  <img class="img-preview__img" src="" alt="Product preview" width="160" height="160" />
+                  <div class="img-loading-overlay" hidden>
+                    <div class="spinner"></div>
+                    <span>Removing background…</span>
+                  </div>
+                </div>
+                <div class="img-preview__actions">
+                  <button type="button" class="btn btn--sm btn-remove-bg">Remove background</button>
+                  <button type="button" class="btn btn--ghost btn--sm btn-restore-bg" hidden>Restore removed BG</button>
+                  <button type="button" class="btn btn--ghost btn--sm btn-keep-bg" hidden>Keep original</button>
+                  <button type="button" class="btn btn--ghost btn--sm btn-crop">Crop</button>
+                  <button type="button" class="btn btn--ghost btn--sm img-change-btn">Change image</button>
+                  <button type="button" class="btn btn--danger btn--sm btn-remove-img">Remove image</button>
+                </div>
+              </div>
+              <p class="img-status" hidden></p>
+              <input type="hidden" name="image" class="img-url-input" value="" />
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn" type="submit">Add product</button>
+            <button class="btn btn--ghost" type="button" id="cancel-add">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <p id="empty-products" class="empty-products" hidden={products.length > 0}>No products yet. Add your first one above.</p>
+      <table id="products-table" class="products-table" hidden={products.length === 0}>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Price</th>
+            <th>Stock</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody id="products-tbody">
+          {products.map((p) => (
+            <>
+              <tr data-product-display={p.id}>
+                <td>
+                  <div class="product-name-cell">
+                    {p.image && <img src={p.image} alt="" class="product-thumb" width="30" height="30" loading="lazy" decoding="async" />}
+                    <div>
+                      <span class="product-name">{p.name}</span>
+                      {p.description && <span class="product-desc">{p.description}</span>}
+                    </div>
+                  </div>
+                </td>
+                <td class="num">{formatPrice(p.price)}</td>
+                <td class="num">{p.stock}</td>
+                <td class="actions">
+                  <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle={p.id}>Edit</button>
+                  <button class="btn btn--danger btn--sm" type="button" data-delete-product={p.id} data-store-id={store.id}>Delete</button>
+                </td>
+              </tr>
+              <tr class="edit-row" data-product-edit={p.id} hidden>
+                <td colspan="4">
+                  <form method="POST" action="/api/product" class="dash-form inline-edit-form">
+                    <input type="hidden" name="_action" value="edit-product" />
+                    <input type="hidden" name="productId" value={p.id} />
+                    <div class="field-row">
+                      <label class="field">
+                        <span>Name <span class="req">*</span></span>
+                        <input class="input" name="name" value={p.name} required />
+                      </label>
+                      <label class="field">
+                        <span>Price ($)</span>
+                        <input class="input" name="price" type="number" min="0" step="0.01" value={p.price} />
+                      </label>
+                      <label class="field">
+                        <span>Stock</span>
+                        <input class="input" name="stock" type="number" min="0" step="1" value={p.stock} />
+                      </label>
+                    </div>
+                    <label class="field">
+                      <span>Description</span>
+                      <textarea class="input" name="description" rows="2">{p.description}</textarea>
+                    </label>
+                    <div class="field">
+                      <span class="field-label">Product image</span>
+                      <div class="img-widget">
+                        <label class="img-upload-zone" hidden={!!p.image}>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                          <span>Upload image</span>
+                          <input type="file" accept="image/*" class="visually-hidden img-file-input" />
+                        </label>
+                        <div class="img-preview" hidden={!p.image}>
+                          <div class="img-preview-box">
+                            <img class="img-preview__img" src={p.image ?? ''} alt="Product preview" width="160" height="160" />
+                            <div class="img-loading-overlay" hidden>
+                              <div class="spinner"></div>
+                              <span>Removing background…</span>
+                            </div>
+                          </div>
+                          <div class="img-preview__actions">
+                            <button type="button" class="btn btn--sm btn-remove-bg">Remove background</button>
+                            <button type="button" class="btn btn--ghost btn--sm btn-restore-bg" hidden>Restore removed BG</button>
+                            <button type="button" class="btn btn--ghost btn--sm btn-keep-bg" hidden>Keep original</button>
+                            <button type="button" class="btn btn--ghost btn--sm btn-crop">Crop</button>
+                            <button type="button" class="btn btn--ghost btn--sm img-change-btn">Change image</button>
+                            <button type="button" class="btn btn--danger btn--sm btn-remove-img">Remove image</button>
+                          </div>
+                        </div>
+                        <p class="img-status" hidden></p>
+                        <input type="hidden" name="image" class="img-url-input" value={p.image ?? ''} />
+                      </div>
+                    </div>
+                    <div class="form-actions">
+                      <button class="btn btn--sm" type="submit">Save</button>
+                      <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>Cancel</button>
+                    </div>
+                  </form>
+                </td>
+              </tr>
+            </>
+          ))}
+        </tbody>
+      </table>
+    </div>
   </section>
 </BaseLayout>
 
-<style>
-  .dash-head { margin-bottom: 1.5rem; align-items: flex-start; }
-  .dash-success {
-    background: #e4f5eb; color: #155c33;
-    padding: 0.6rem 0.9rem; border-radius: var(--radius);
-    font-size: 0.9rem; margin-bottom: 1.25rem;
-  }
-  .dash-error {
-    background: #fde8e8; color: #b00020;
-    padding: 0.6rem 0.9rem; border-radius: var(--radius);
-    font-size: 0.9rem; margin-bottom: 1.25rem;
-  }
-  .dash-grid {
-    display: grid;
-    grid-template-columns: 1.5fr 1fr;
-    gap: 1.5rem;
-    align-items: start;
-  }
-  .dash-card { padding: 1.5rem; }
-  .dash-form { margin-top: 1rem; }
-  .color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  .color-row { display: flex; align-items: center; gap: 0.5rem; }
-  .color-swatch {
-    width: 2.6rem; height: 2.6rem;
-    border-radius: 8px; border: 1px solid var(--color-border);
-    cursor: pointer; padding: 3px; flex-shrink: 0;
-  }
-  .mono { font-family: monospace; }
-  textarea.input { resize: vertical; }
-  .store-url { margin-top: 0.75rem; font-size: 1.05rem; }
-  .store-url-link { color: var(--color-primary); font-weight: 600; text-decoration: none; }
-  .store-url-link:hover { text-decoration: underline; }
-  @media (max-width: 760px) {
-    .dash-grid { grid-template-columns: 1fr; }
-    .color-grid { grid-template-columns: 1fr; }
-  }
-</style>
+<div class="crop-modal" id="crop-modal" hidden aria-modal="true" role="dialog">
+  <div class="crop-panel">
+    <h3>Crop image</h3>
+    <div class="crop-viewport" id="crop-viewport">
+      <img class="crop-img" id="crop-img" alt="" />
+    </div>
+    <div class="crop-controls">
+      <label class="crop-zoom-label">
+        Zoom
+        <input type="range" class="crop-zoom-input" id="crop-zoom" min="1" max="3" step="0.01" value="1" />
+      </label>
+    </div>
+    <div class="crop-actions">
+      <button class="btn btn--sm" id="crop-apply" type="button">Apply crop</button>
+      <button class="btn btn--ghost btn--sm" id="crop-cancel" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <script>
-  function syncPair(pickerId, textId) {
-    const picker = document.getElementById(pickerId);
-    const text   = document.getElementById(textId);
-    if (!(picker instanceof HTMLInputElement) || !(text instanceof HTMLInputElement)) return;
-    picker.addEventListener('input', () => { text.value = picker.value; });
-    text.addEventListener('input', () => {
-      if (/^#[0-9a-fA-F]{6}$/.test(text.value)) picker.value = text.value;
+  import BgWorker from '../../workers/bg-removal?worker';
+
+  // ── utils ──────────────────────────────────────────────────────────
+  function fmtPrice(n: number) { return `$${n.toFixed(2)}`; }
+  function esc(s: string) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ── clean status params from URL (prevents message on refresh) ─────
+  {
+    const u = new URL(window.location.href);
+    if (u.searchParams.has('saved') || u.searchParams.has('added')) {
+      u.searchParams.delete('saved');
+      u.searchParams.delete('added');
+      history.replaceState(null, '', u.toString());
+    }
+  }
+
+  // ── image upload: Cloudinary + @imgly/background-removal (Web Worker) ──
+  const uploadCfg = document.getElementById('upload-config');
+  const CLOUD = uploadCfg?.dataset.cloud ?? '';
+  const PRESET = uploadCfg?.dataset.preset ?? '';
+  const HAS_CLOUD = !!(CLOUD && PRESET);
+
+  async function cloudinaryUpload(blob: Blob): Promise<string> {
+    const fd = new FormData();
+    fd.append('file', blob);
+    fd.append('upload_preset', PRESET);
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD}/image/upload`, { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    const json = await res.json() as { secure_url: string };
+    return json.secure_url;
+  }
+
+  // BG removal runs in a dedicated worker so the main thread stays responsive
+  let _bgWorker: Worker | null = null;
+  let _msgId = 0;
+  const _pending = new Map<number, { resolve: (b: Blob) => void; reject: (e: Error) => void }>();
+
+  function getBgWorker(): Worker {
+    if (!_bgWorker) {
+      _bgWorker = new BgWorker();
+      _bgWorker.addEventListener('message', (e: MessageEvent) => {
+        const { id, success, blob, error } = e.data as { id: number; success: boolean; blob?: Blob; error?: string };
+        const cb = _pending.get(id);
+        _pending.delete(id);
+        if (cb) {
+          if (success && blob) cb.resolve(blob);
+          else cb.reject(new Error(error ?? 'BG removal failed'));
+        }
+      });
+    }
+    return _bgWorker;
+  }
+
+  function removeBackgroundInWorker(blob: Blob): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const id = ++_msgId;
+      _pending.set(id, { resolve, reject });
+      getBgWorker().postMessage({ id, blob });
     });
   }
-  syncPair('pick-primary', 'text-primary');
-  syncPair('pick-accent',  'text-accent');
+
+  interface WidgetState { original?: Blob; processed?: Blob; useProcessed: boolean; processing: boolean }
+  const wState = new WeakMap<Element, WidgetState>();
+
+  function initWidget(container: Element) {
+    if ((container as HTMLElement).dataset.widgetInit) return;
+    (container as HTMLElement).dataset.widgetInit = '1';
+
+    const fileInput      = container.querySelector<HTMLInputElement>('.img-file-input');
+    const previewImg     = container.querySelector<HTMLImageElement>('.img-preview__img');
+    const previewWrap    = container.querySelector<HTMLElement>('.img-preview');
+    const loadingOverlay = container.querySelector<HTMLElement>('.img-loading-overlay');
+    const removeBgBtn    = container.querySelector<HTMLButtonElement>('.btn-remove-bg');
+    const restoreBgBtn   = container.querySelector<HTMLButtonElement>('.btn-restore-bg');
+    const keepBtn        = container.querySelector<HTMLButtonElement>('.btn-keep-bg');
+    const cropBtn        = container.querySelector<HTMLButtonElement>('.btn-crop');
+    const removeImgBtn   = container.querySelector<HTMLButtonElement>('.btn-remove-img');
+    const uploadZone     = container.querySelector<HTMLElement>('.img-upload-zone');
+    const changeBtn      = container.querySelector<HTMLButtonElement>('.img-change-btn');
+    const form           = container.closest<HTMLFormElement>('form');
+    const submitBtn      = form?.querySelector<HTMLButtonElement>('[type="submit"]');
+
+    if (!fileInput) return;
+
+    const state: WidgetState = { useProcessed: false, processing: false };
+    wState.set(container, state);
+
+    function setPreview(blob: Blob) {
+      if (previewImg) previewImg.src = URL.createObjectURL(blob);
+      previewWrap?.removeAttribute('hidden');
+      uploadZone?.setAttribute('hidden', '');
+    }
+
+    function setLoading(active: boolean, msg = 'Removing background…') {
+      state.processing = active;
+      if (loadingOverlay) loadingOverlay.hidden = !active;
+      const span = loadingOverlay?.querySelector('span');
+      if (span) span.textContent = msg;
+      if (submitBtn) submitBtn.disabled = active;
+    }
+
+    function updateButtons() {
+      const hasProcessed = !!state.processed;
+      const showingProcessed = hasProcessed && state.useProcessed;
+      const isProcessing = state.processing;
+      // "Remove BG" only when no cached result and not currently processing
+      removeBgBtn?.toggleAttribute('hidden', hasProcessed || isProcessing);
+      // "Restore removed BG" only when we have a cached result but aren't showing it
+      restoreBgBtn?.toggleAttribute('hidden', !hasProcessed || showingProcessed || isProcessing);
+      // "Keep original" when showing processed OR while processing (acts as cancel)
+      keepBtn?.toggleAttribute('hidden', !showingProcessed && !isProcessing);
+    }
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      state.original = file;
+      state.processed = undefined;
+      state.useProcessed = false;
+      setPreview(file);
+      updateButtons();
+    });
+
+    removeBgBtn?.addEventListener('click', async () => {
+      if (!state.original) {
+        const urlInput = container.querySelector<HTMLInputElement>('.img-url-input');
+        const existingUrl = urlInput?.value;
+        if (!existingUrl) return;
+        setLoading(true, 'Fetching image…');
+        try {
+          const resp = await fetch(existingUrl);
+          if (!resp.ok) throw new Error('fetch failed');
+          state.original = await resp.blob();
+        } catch {
+          setLoading(false);
+          updateButtons();
+          return;
+        }
+      }
+      setLoading(true, 'Removing background…');
+      updateButtons(); // immediately replace "Remove BG" with "Keep original"
+      try {
+        const processed = await removeBackgroundInWorker(state.original!);
+        state.processed = processed;
+        state.useProcessed = true;
+        setPreview(processed);
+      } catch (err) {
+        if (err instanceof Error && err.message === 'cancelled') return;
+      } finally {
+        setLoading(false);
+        updateButtons();
+      }
+    });
+
+    // "Keep original" also acts as cancel during in-progress BG removal
+    keepBtn?.addEventListener('click', () => {
+      if (state.processing) {
+        if (_bgWorker) { _bgWorker.terminate(); _bgWorker = null; }
+        _pending.forEach(({ reject: r }) => r(new Error('cancelled')));
+        _pending.clear();
+      }
+      if (!state.original) return;
+      state.useProcessed = false;
+      setPreview(state.original);
+      setLoading(false);
+      updateButtons();
+    });
+
+    restoreBgBtn?.addEventListener('click', () => {
+      if (!state.processed) return;
+      state.useProcessed = true;
+      setPreview(state.processed);
+      updateButtons();
+    });
+
+    cropBtn?.addEventListener('click', () => {
+      const blob = state.useProcessed && state.processed ? state.processed : state.original;
+      if (!blob) return;
+      openCropModal(container, blob, !!(state.useProcessed && state.processed));
+    });
+
+    removeImgBtn?.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: 'Remove image?',
+          message: 'The product image will be removed.',
+          okLabel: 'Remove',
+          onConfirm: () => {
+            state.original = undefined;
+            state.processed = undefined;
+            state.useProcessed = false;
+            if (previewImg) previewImg.src = '';
+            previewWrap?.setAttribute('hidden', '');
+            uploadZone?.removeAttribute('hidden');
+            const urlInput = container.querySelector<HTMLInputElement>('.img-url-input');
+            if (urlInput) urlInput.value = '';
+            fileInput.value = '';
+          },
+        },
+      }));
+    });
+
+    changeBtn?.addEventListener('click', () => fileInput.click());
+  }
+
+  // ── crop modal ─────────────────────────────────────────────────────
+  const cropModal    = document.getElementById('crop-modal') as HTMLDivElement | null;
+  const cropViewport = document.getElementById('crop-viewport') as HTMLDivElement | null;
+  const cropImgEl    = document.getElementById('crop-img') as HTMLImageElement | null;
+  const cropZoomEl   = document.getElementById('crop-zoom') as HTMLInputElement | null;
+  const cropApplyBtn = document.getElementById('crop-apply') as HTMLButtonElement | null;
+  const cropCancelEl = document.getElementById('crop-cancel') as HTMLButtonElement | null;
+
+  const VP_SIZE = 280;
+  const OUT_SIZE = 512;
+
+  let cropWidget: Element | null = null;
+  let cropIsProcessed = false;
+  let cropFitScale = 1;
+  let cropZoomVal = 1;
+  let cropPanX = 0;
+  let cropPanY = 0;
+  let isDragging = false;
+  let hadDragMotion = false;
+  let dragStartX = 0, dragStartY = 0, dragStartPanX = 0, dragStartPanY = 0;
+
+  function clampCropPan() {
+    if (!cropImgEl?.naturalWidth) return;
+    const s = cropFitScale * cropZoomVal;
+    const halfW = Math.max(0, (cropImgEl.naturalWidth * s - VP_SIZE) / 2);
+    const halfH = Math.max(0, (cropImgEl.naturalHeight * s - VP_SIZE) / 2);
+    cropPanX = Math.min(halfW, Math.max(-halfW, cropPanX));
+    cropPanY = Math.min(halfH, Math.max(-halfH, cropPanY));
+  }
+
+  function updateCropDisplay() {
+    if (!cropImgEl?.naturalWidth) return;
+    const s = cropFitScale * cropZoomVal;
+    const w = cropImgEl.naturalWidth * s;
+    const h = cropImgEl.naturalHeight * s;
+    cropImgEl.style.width = `${w}px`;
+    cropImgEl.style.height = `${h}px`;
+    cropImgEl.style.left = `${(VP_SIZE - w) / 2 + cropPanX}px`;
+    cropImgEl.style.top = `${(VP_SIZE - h) / 2 + cropPanY}px`;
+  }
+
+  function openCropModal(widget: Element, blob: Blob, isProcessed: boolean) {
+    if (!cropModal || !cropImgEl || !cropZoomEl) return;
+    cropWidget = widget;
+    cropIsProcessed = isProcessed;
+    cropPanX = 0; cropPanY = 0; cropZoomVal = 1;
+    cropZoomEl.value = '1';
+    cropImgEl.onload = () => {
+      cropFitScale = Math.max(VP_SIZE / cropImgEl!.naturalWidth, VP_SIZE / cropImgEl!.naturalHeight);
+      updateCropDisplay();
+    };
+    cropImgEl.src = URL.createObjectURL(blob);
+    cropModal.hidden = false;
+  }
+
+  function closeCropModal() {
+    if (!cropModal) return;
+    cropModal.hidden = true;
+    if (cropImgEl) cropImgEl.src = '';
+    cropWidget = null;
+  }
+
+  async function applyCrop() {
+    if (!cropImgEl?.naturalWidth || !cropWidget) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = OUT_SIZE; canvas.height = OUT_SIZE;
+    const ctx = canvas.getContext('2d')!;
+    const s = cropFitScale * cropZoomVal;
+    const srcSize = VP_SIZE / s;
+    const srcX = cropImgEl.naturalWidth / 2 - (VP_SIZE / 2 + cropPanX) / s;
+    const srcY = cropImgEl.naturalHeight / 2 - (VP_SIZE / 2 + cropPanY) / s;
+    ctx.drawImage(cropImgEl, srcX, srcY, srcSize, srcSize, 0, 0, OUT_SIZE, OUT_SIZE);
+
+    const croppedBlob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'));
+    if (!croppedBlob) { closeCropModal(); return; }
+
+    const st = wState.get(cropWidget);
+    if (st) {
+      if (cropIsProcessed) st.processed = croppedBlob;
+      else st.original = croppedBlob;
+      const showingCropped = cropIsProcessed ? st.useProcessed : !st.useProcessed || !st.processed;
+      if (showingCropped) {
+        const previewImg = cropWidget.querySelector<HTMLImageElement>('.img-preview__img');
+        if (previewImg) previewImg.src = URL.createObjectURL(croppedBlob);
+      }
+    }
+    closeCropModal();
+  }
+
+  cropViewport?.addEventListener('mousedown', (e: MouseEvent) => {
+    isDragging = true;
+    hadDragMotion = false;
+    dragStartX = e.clientX; dragStartY = e.clientY;
+    dragStartPanX = cropPanX; dragStartPanY = cropPanY;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e: MouseEvent) => {
+    if (!isDragging) return;
+    hadDragMotion = true;
+    cropPanX = dragStartPanX + (e.clientX - dragStartX);
+    cropPanY = dragStartPanY + (e.clientY - dragStartY);
+    clampCropPan(); updateCropDisplay();
+  });
+  document.addEventListener('mouseup', () => { isDragging = false; });
+
+  cropViewport?.addEventListener('touchstart', (e: TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    isDragging = true;
+    hadDragMotion = false;
+    dragStartX = e.touches[0].clientX; dragStartY = e.touches[0].clientY;
+    dragStartPanX = cropPanX; dragStartPanY = cropPanY;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e: TouchEvent) => {
+    if (!isDragging || e.touches.length !== 1) return;
+    hadDragMotion = true;
+    cropPanX = dragStartPanX + (e.touches[0].clientX - dragStartX);
+    cropPanY = dragStartPanY + (e.touches[0].clientY - dragStartY);
+    clampCropPan(); updateCropDisplay();
+  }, { passive: true });
+  document.addEventListener('touchend', () => { isDragging = false; });
+
+  cropViewport?.addEventListener('wheel', (e: WheelEvent) => {
+    e.preventDefault();
+    cropZoomVal = Math.min(3, Math.max(1, cropZoomVal - e.deltaY * 0.002));
+    if (cropZoomEl) cropZoomEl.value = String(cropZoomVal);
+    clampCropPan(); updateCropDisplay();
+  }, { passive: false });
+
+  cropZoomEl?.addEventListener('input', () => {
+    cropZoomVal = parseFloat(cropZoomEl!.value);
+    clampCropPan(); updateCropDisplay();
+  });
+
+  cropApplyBtn?.addEventListener('click', () => void applyCrop());
+  cropCancelEl?.addEventListener('click', closeCropModal);
+  // Close on backdrop click only if user didn't just finish dragging
+  cropModal?.addEventListener('click', (e) => {
+    if (e.target === cropModal && !hadDragMotion) closeCropModal();
+    hadDragMotion = false;
+  });
+
+  async function resolveImageUrl(container: Element | null): Promise<string | null> {
+    if (!container) return null;
+    const state = wState.get(container);
+    const urlInput = container.querySelector<HTMLInputElement>('.img-url-input');
+
+    if (!state?.original) return urlInput?.value || null;
+    if (!HAS_CLOUD) return urlInput?.value || null;
+
+    const blob = state.useProcessed && state.processed ? state.processed : state.original;
+    return await cloudinaryUpload(blob);
+  }
+
+  // init widgets already in DOM
+  document.querySelectorAll<Element>('.img-widget').forEach(initWidget);
+
+  // ── status flash ───────────────────────────────────────────────────
+  let statusTimer: ReturnType<typeof setTimeout>;
+  function showStatus(msg: string, isError = false) {
+    let el = document.getElementById('ajax-status');
+    if (!el) {
+      el = document.createElement('p');
+      el.id = 'ajax-status';
+      document.querySelector('.products-header')?.after(el);
+    }
+    el.className = isError ? 'dash-error' : 'dash-success';
+    el.textContent = msg;
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => el?.remove(), 3000);
+  }
+
+  // ── build product row pair ─────────────────────────────────────────
+  interface ProductData { id: string; storeId: string; name: string; description: string; price: number; stock: number; image?: string }
+
+  function imgWidgetHtml(currentUrl = '') {
+    return `
+      <div class="img-widget">
+        <label class="img-upload-zone"${currentUrl ? ' hidden' : ''}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>Upload image</span>
+          <input type="file" accept="image/*" class="visually-hidden img-file-input">
+        </label>
+        <div class="img-preview"${currentUrl ? '' : ' hidden'}>
+          <div class="img-preview-box">
+            <img class="img-preview__img" src="${esc(currentUrl)}" alt="Product preview" width="160" height="160">
+            <div class="img-loading-overlay" hidden>
+              <div class="spinner"></div>
+              <span>Removing background…</span>
+            </div>
+          </div>
+          <div class="img-preview__actions">
+            <button type="button" class="btn btn--sm btn-remove-bg">Remove background</button>
+            <button type="button" class="btn btn--ghost btn--sm btn-restore-bg" hidden>Restore removed BG</button>
+            <button type="button" class="btn btn--ghost btn--sm btn-keep-bg" hidden>Keep original</button>
+            <button type="button" class="btn btn--ghost btn--sm btn-crop">Crop</button>
+            <button type="button" class="btn btn--ghost btn--sm img-change-btn">Change image</button>
+            <button type="button" class="btn btn--danger btn--sm btn-remove-img">Remove image</button>
+          </div>
+        </div>
+        <p class="img-status" hidden></p>
+        <input type="hidden" name="image" class="img-url-input" value="${esc(currentUrl)}">
+      </div>`;
+  }
+
+  function buildRows(p: ProductData): [HTMLTableRowElement, HTMLTableRowElement] {
+    const display = document.createElement('tr');
+    display.dataset.productDisplay = p.id;
+    display.innerHTML = `
+      <td>
+        <div class="product-name-cell">
+          ${p.image ? `<img src="${esc(p.image)}" alt="" class="product-thumb" width="30" height="30" loading="lazy">` : ''}
+          <div>
+            <span class="product-name">${esc(p.name)}</span>
+            ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
+          </div>
+        </div>
+      </td>
+      <td class="num">${fmtPrice(p.price)}</td>
+      <td class="num">${p.stock}</td>
+      <td class="actions">
+        <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle="${p.id}">Edit</button>
+        <button class="btn btn--danger btn--sm" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}">Delete</button>
+      </td>`;
+
+    const edit = document.createElement('tr');
+    edit.className = 'edit-row';
+    edit.dataset.productEdit = p.id;
+    edit.hidden = true;
+    edit.innerHTML = `
+      <td colspan="4">
+        <form method="POST" action="/api/product" class="dash-form inline-edit-form">
+          <input type="hidden" name="_action" value="edit-product">
+          <input type="hidden" name="productId" value="${p.id}">
+          <div class="field-row">
+            <label class="field"><span>Name <span class="req">*</span></span><input class="input" name="name" value="${esc(p.name)}" required></label>
+            <label class="field"><span>Price ($)</span><input class="input" name="price" type="number" min="0" step="0.01" value="${p.price}"></label>
+            <label class="field"><span>Stock</span><input class="input" name="stock" type="number" min="0" step="1" value="${p.stock}"></label>
+          </div>
+          <label class="field"><span>Description</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
+          <div class="field">
+            <span class="field-label">Product image</span>
+            ${imgWidgetHtml(p.image ?? '')}
+          </div>
+          <div class="form-actions">
+            <button class="btn btn--sm" type="submit">Save</button>
+            <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit="${p.id}">Cancel</button>
+          </div>
+        </form>
+      </td>`;
+
+    return [display, edit];
+  }
+
+  // ── edit submit via fetch ──────────────────────────────────────────
+  async function handleEditSubmit(e: SubmitEvent) {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const productId = String(new FormData(form).get('productId'));
+    const submitBtn = form.querySelector<HTMLButtonElement>('[type="submit"]');
+    const origText = submitBtn?.textContent ?? 'Save';
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
+
+    try {
+      // resolve image URL (upload to Cloudinary if new image selected)
+      const widget = form.querySelector<Element>('.img-widget');
+      let imageUrl: string | null = null;
+      try {
+        imageUrl = await resolveImageUrl(widget);
+      } catch {
+        showStatus('Image upload failed. Please try again.', true);
+        return;
+      }
+      const imgInput = form.querySelector<HTMLInputElement>('.img-url-input');
+      if (imgInput && imageUrl) imgInput.value = imageUrl;
+
+      const fd = new FormData(form);
+      const res = await fetch('/api/product', { method: 'POST', body: fd });
+      const data = await res.json() as { ok: boolean; image?: string | null; error?: string };
+      if (!data.ok) { showStatus(data.error ?? 'Error saving.', true); return; }
+
+      const display = document.querySelector<HTMLTableRowElement>(`[data-product-display="${productId}"]`);
+      const editRow = document.querySelector<HTMLTableRowElement>(`[data-product-edit="${productId}"]`);
+      if (display) {
+        const name = String(fd.get('name'));
+        const description = String(fd.get('description'));
+        const price = parseFloat(String(fd.get('price')));
+        const stock = String(fd.get('stock'));
+        const savedImage = imageUrl ?? data.image ?? null;
+
+        const nameCell = display.querySelector<HTMLElement>('.product-name-cell');
+        if (nameCell) {
+          let thumb = nameCell.querySelector<HTMLImageElement>('.product-thumb');
+          if (savedImage) {
+            if (!thumb) {
+              thumb = document.createElement('img');
+              thumb.className = 'product-thumb';
+              thumb.width = 30; thumb.height = 30;
+              thumb.loading = 'lazy'; thumb.alt = '';
+              nameCell.prepend(thumb);
+            }
+            thumb.src = savedImage;
+          } else { thumb?.remove(); }
+        }
+
+        const nameEl = display.querySelector('.product-name');
+        if (nameEl) nameEl.textContent = name;
+
+        let descEl = display.querySelector('.product-desc');
+        if (description) {
+          if (!descEl) { descEl = document.createElement('span'); descEl.className = 'product-desc'; nameEl?.after(descEl); }
+          descEl.textContent = description;
+        } else { descEl?.remove(); }
+
+        const cells = display.querySelectorAll('td');
+        if (cells[1]) cells[1].textContent = fmtPrice(price);
+        if (cells[2]) cells[2].textContent = stock;
+      }
+      if (editRow) editRow.hidden = true;
+      if (display) display.hidden = false;
+      showStatus('Product updated.');
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
+    }
+  }
+
+  // ── attach listeners to a row pair ────────────────────────────────
+  function attachListeners(display: HTMLTableRowElement, edit: HTMLTableRowElement) {
+    display.querySelector('[data-edit-toggle]')?.addEventListener('click', () => {
+      display.hidden = true; edit.hidden = false;
+    });
+    edit.querySelector('[data-cancel-edit]')?.addEventListener('click', () => {
+      edit.hidden = true; display.hidden = false;
+    });
+    (edit.querySelector('form') as HTMLFormElement | null)?.addEventListener('submit', handleEditSubmit);
+    const widget = edit.querySelector<Element>('.img-widget');
+    if (widget) initWidget(widget);
+  }
+
+  // ── bind existing rows ─────────────────────────────────────────────
+  document.querySelectorAll<HTMLTableRowElement>('[data-product-display]').forEach((display) => {
+    const edit = document.querySelector<HTMLTableRowElement>(`[data-product-edit="${display.dataset.productDisplay}"]`);
+    if (edit) attachListeners(display, edit);
+  });
+
+  // ── add product via fetch ──────────────────────────────────────────
+  const addFormWrap = document.getElementById('add-product-form');
+  const addForm = addFormWrap?.querySelector('form') as HTMLFormElement | null;
+  const storeIdInput = addForm?.querySelector<HTMLInputElement>('input[name="storeId"]');
+
+  addForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submitBtn = addForm.querySelector<HTMLButtonElement>('[type="submit"]');
+    const origText = submitBtn?.textContent ?? 'Add product';
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
+
+    try {
+    // resolve image URL before building FormData
+    const widget = addForm.querySelector<Element>('.img-widget');
+    let imageUrl: string | null = null;
+    try {
+      imageUrl = await resolveImageUrl(widget);
+    } catch {
+      showStatus('Image upload failed. Please try again.', true);
+      return;
+    }
+    const imgInput = addForm.querySelector<HTMLInputElement>('.img-url-input');
+    if (imgInput && imageUrl) imgInput.value = imageUrl;
+
+    const fd = new FormData(addForm);
+    const res = await fetch('/api/product', { method: 'POST', body: fd });
+    const data = await res.json() as { ok: boolean; product?: ProductData; error?: string };
+    if (!data.ok) { showStatus(data.error ?? 'Error adding product.', true); return; }
+
+    const p = { ...data.product!, storeId: storeIdInput?.value ?? '' };
+    const tbody = document.getElementById('products-tbody') as HTMLTableSectionElement | null;
+    const table = document.getElementById('products-table') as HTMLTableElement | null;
+    const emptyMsg = document.getElementById('empty-products');
+
+    if (table) table.hidden = false;
+    if (emptyMsg) emptyMsg.hidden = true;
+
+    if (tbody) {
+      const [display, edit] = buildRows(p);
+      attachListeners(display, edit);
+      tbody.append(display, edit);
+    }
+
+    addForm.reset();
+    // reset image widget state
+    if (widget) {
+      const previewWrap = widget.querySelector<HTMLElement>('.img-preview');
+      const uploadZone = widget.querySelector<HTMLElement>('.img-upload-zone');
+      const urlInput = widget.querySelector<HTMLInputElement>('.img-url-input');
+      if (previewWrap) previewWrap.setAttribute('hidden', '');
+      if (uploadZone) uploadZone.removeAttribute('hidden');
+      if (urlInput) urlInput.value = '';
+      wState.delete(widget);
+    }
+    addFormWrap?.setAttribute('hidden', '');
+    document.getElementById('toggle-add-form')?.removeAttribute('hidden');
+    showStatus('Product added.');
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
+    }
+  });
+
+  // ── store settings via fetch ──────────────────────────────────────
+  const settingsForm = document.getElementById('settings-form') as HTMLFormElement | null;
+  const settingsStatus = document.getElementById('settings-status') as HTMLElement | null;
+  let settingsTimer: ReturnType<typeof setTimeout>;
+
+  function showSettingsStatus(msg: string, isError = false) {
+    if (!settingsStatus) return;
+    settingsStatus.className = isError ? 'dash-error' : 'dash-success';
+    settingsStatus.textContent = msg;
+    settingsStatus.hidden = false;
+    clearTimeout(settingsTimer);
+    settingsTimer = setTimeout(() => { settingsStatus.hidden = true; }, 3000);
+  }
+
+  settingsForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(settingsForm);
+    const res = await fetch('/api/store', { method: 'POST', body: fd });
+    const data = await res.json() as { ok: boolean; name?: string; error?: string };
+    if (!data.ok) { showSettingsStatus(data.error ?? 'Error saving.', true); return; }
+
+    // update the page heading and active tab to reflect the new name
+    const newName = data.name ?? String(fd.get('name'));
+    const heading = document.querySelector('.dash-head h1');
+    if (heading) heading.textContent = newName;
+    const activeTab = document.querySelector('.store-tab--active');
+    if (activeTab) activeTab.textContent = newName;
+
+    showSettingsStatus('Settings saved.');
+  });
+
+  // ── add product form toggle ────────────────────────────────────────
+  const toggleAdd = document.getElementById('toggle-add-form');
+  const cancelAdd = document.getElementById('cancel-add');
+  toggleAdd?.addEventListener('click', () => {
+    addFormWrap?.removeAttribute('hidden');
+    toggleAdd.setAttribute('hidden', '');
+  });
+  cancelAdd?.addEventListener('click', () => {
+    addFormWrap?.setAttribute('hidden', '');
+    toggleAdd?.removeAttribute('hidden');
+  });
+
+  // ── auto-hide server-rendered status messages ─────────────────────
+  document.querySelectorAll<HTMLElement>('.dash-success, .dash-error').forEach((el) => {
+    setTimeout(() => el.remove(), 3000);
+  });
+
+  // ── delete product via confirm modal ──────────────────────────────
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as Element).closest<HTMLButtonElement>('[data-delete-product]');
+    if (!btn) return;
+    const productId = btn.dataset.deleteProduct ?? '';
+    const storeId = btn.dataset.storeId ?? '';
+    const row = document.querySelector(`[data-product-display="${productId}"]`);
+    const productName = row?.querySelector('.product-name')?.textContent ?? 'this product';
+
+    window.dispatchEvent(new CustomEvent('confirm:open', {
+      detail: {
+        title: 'Delete product?',
+        message: `"${productName}" will be permanently deleted.`,
+        okLabel: 'Delete',
+        onConfirm: async () => {
+          const fd = new FormData();
+          fd.set('_action', 'delete-product');
+          fd.set('productId', productId);
+          fd.set('storeId', storeId);
+          const res = await fetch('/api/product', { method: 'POST', body: fd });
+          const data = await res.json() as { ok: boolean; error?: string };
+          if (!data.ok) { showStatus(data.error ?? 'Error deleting.', true); return; }
+
+          document.querySelector(`[data-product-display="${productId}"]`)?.remove();
+          document.querySelector(`[data-product-edit="${productId}"]`)?.remove();
+
+          const tbody = document.getElementById('products-tbody');
+          if (tbody && tbody.querySelectorAll('[data-product-display]').length === 0) {
+            document.getElementById('products-table')?.setAttribute('hidden', '');
+            document.getElementById('empty-products')?.removeAttribute('hidden');
+          }
+          showStatus('Product deleted.');
+        },
+      },
+    }));
+  });
+
+  // ── new store form toggle ──────────────────────────────────────────
+  const toggleNew = document.getElementById('toggle-new-store');
+  const newStoreForm = document.getElementById('new-store-form');
+  const cancelNew = document.getElementById('cancel-new-store');
+  toggleNew?.addEventListener('click', () => newStoreForm?.removeAttribute('hidden'));
+  cancelNew?.addEventListener('click', () => newStoreForm?.setAttribute('hidden', ''));
 </script>

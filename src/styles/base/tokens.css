@@ -2,6 +2,7 @@
   --color-primary: #60967a;
   --color-primary-dark: #467059;
   --color-accent: #4a7a96;
+  --color-accent-dark: #3a6278;
   --color-bg: #f5f8f6;
   --color-surface: #ffffff;
   --color-text: #19241e;
@@ -19,7 +20,12 @@ body {
   font-family: var(--font-base);
   background: var(--color-bg);
   color: var(--color-text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
+
+main { flex: 1; }
 
 h1 {
   font-size: clamp(1.8rem, 4vw, 2.6rem);
