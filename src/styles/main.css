@@ -1,6 +1,11 @@
+/* Tailwind CSS v4 — utilities available across the project */
+@import "tailwindcss";
+
 /* ============================================================
  *  main.css — single entry point for all styles.
  *  Import order matters: base → layout → components → pages → utilities.
+ *  New code uses Tailwind utility classes.
+ *  Existing CSS files are kept as-is and take precedence (not in @layer).
  * ============================================================ */
 
 /* Base */

@@ -1,17 +1,17 @@
 :root {
-  --color-primary: #60967a;
-  --color-primary-dark: #467059;
-  --color-accent: #4a7a96;
-  --color-accent-dark: #3a6278;
-  --color-bg: #f5f8f6;
+  --color-primary: #2a3547;
+  --color-primary-dark: #1c2333;
+  --color-accent: #4870c0;
+  --color-accent-dark: #3a5ca8;
+  --color-bg: #f7f8fa;
   --color-surface: #ffffff;
-  --color-text: #19241e;
-  --color-muted: #6e8579;
-  --color-border: #dae3de;
+  --color-text: #1c2333;
+  --color-muted: #6b7589;
+  --color-border: #e2e5eb;
 
-  --font-base: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --font-base: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 
-  --radius: 14px;
+  --radius: 6px;
 
   --max-width: 1160px;
 }

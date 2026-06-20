@@ -2,33 +2,37 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  background: var(--color-bg);
+  background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
-  padding-block: 0.75rem;
+  padding-block: 0.65rem;
 }
 
-.logo { font-weight: 800; font-size: 1.2rem; color: var(--color-primary); }
+.logo { font-weight: 800; font-size: 1.15rem; color: var(--color-text); letter-spacing: -0.01em; }
 
 nav ul { margin: 0; }
-nav a { font-weight: 600; }
-nav a:hover { color: var(--color-primary); }
+nav a { font-weight: 500; font-size: 0.9rem; color: var(--color-muted); }
+nav a:hover { color: var(--color-text); }
 
 .cart-btn {
   position: relative;
-  font-size: 1.1rem;
+  font-size: 1rem;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  color: var(--color-muted);
+  transition: color 0.1s;
 }
+.cart-btn:hover { color: var(--color-text); }
 
 .cart-count {
-  min-width: 1.3rem;
-  height: 1.3rem;
-  padding: 0 0.3rem;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  padding: 0 0.25rem;
   border-radius: 999px;
-  background: var(--color-primary);
+  background: var(--color-accent);
   color: #fff;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -46,17 +50,17 @@ nav a:hover { color: var(--color-primary); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 1.9rem;
+  height: 1.9rem;
   border-radius: 50%;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   cursor: pointer;
-  color: var(--color-text);
-  transition: border-color 0.15s, color 0.15s;
+  color: var(--color-muted);
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
 }
 
-.user-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.user-btn:hover { color: var(--color-text); background: var(--color-bg); }
 
 .user-dropdown {
   position: absolute;
@@ -66,7 +70,7 @@ nav a:hover { color: var(--color-primary); }
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   z-index: 60;
   overflow: hidden;
 }
@@ -74,8 +78,8 @@ nav a:hover { color: var(--color-primary); }
 .user-dropdown__item {
   display: block;
   width: 100%;
-  padding: 0.65rem 1rem;
-  font-size: 0.9rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
   font-weight: 500;
   text-align: start;
   color: var(--color-text);
@@ -85,7 +89,7 @@ nav a:hover { color: var(--color-primary); }
   cursor: pointer;
 }
 
-.user-dropdown__item:hover { background: var(--color-bg); color: var(--color-primary); }
+.user-dropdown__item:hover { background: var(--color-bg); }
 
 .user-dropdown form { margin: 0; }
 .user-dropdown form + a,

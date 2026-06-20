@@ -30,10 +30,14 @@ The cross-store experience is the core product differentiator: recommend related
 
 ## Hard rules
 - **TypeScript everywhere** (no plain `.js` files in `src/`). Astro frontmatter + lib + config + API routes all in `.ts`. No `any` — use proper interfaces or `unknown`.
-- No Tailwind, no React/Vue. Plain CSS + Astro only.
-- **All styles in `src/styles/`.** Never write `<style>` blocks inside Astro files — not in components, not in pages.
-- **Colors only via CSS variables in `tokens.css`.** Never hardcode hex values in components. Never inject from JS.
+- **Tailwind CSS v4 for all new styling.** No React/Vue. Keep components as Astro server components (`.astro`) wherever possible. Existing CSS files are kept until touched; new code uses Tailwind utility classes only — do not add new CSS files or `<style>` blocks.
+- **`<Image />` from `astro:assets` for all platform images** (product cards, store pages, public-facing content). External Cloudinary URLs are whitelisted in `astro.config.mjs`. The dashboard upload widget keeps `<img>` for live previews (blob URLs — Image component requires static src).
+- **Colors in Tailwind theme via CSS variables from `tokens.css`**. Never hardcode hex values. In Tailwind classes, reference CSS vars with `[color:var(--color-primary)]` syntax or extend the theme.
 - **No emoji in UI.** Use inline SVG icons (`aria-hidden="true"`, `currentColor`). Emoji are not indexable.
+- **Lighthouse 100 target:** static pages where possible (`prerender` default), semantic HTML, proper `alt`/`width`/`height` on all images, lazy loading, no render-blocking resources, minimal JS.
+- **Mobile-first:** design for 375px viewport first, scale up with `sm:` / `md:` / `lg:` breakpoints.
+- **Modular Architecture (Encapsulation):** All new features must be self-contained modules. UI components handle display only; all DB/API/Cloudinary logic must live strictly in `/src/services/` or `/pages/api/`. No file should exceed 200 lines without being split. Progressive Tailwind migration: when touching an existing CSS file, convert it to Tailwind at that point.
+- **Micro-interactions:** Every interactive element must have an intentional, purposeful hover/active/focus state. Use `transition` of 100–200ms. Good patterns: image scale on card hover, `scale(0.97)` on button press, shadow growth on card hover, smooth opacity shifts. Never border-darkening on hover — use shadow or background instead. Animations must have a logical reason (feedback, affordance, delight) — not decoration for its own sake.
 - File content always in English. Chat can be Hebrew.
 
 ## SEO rules
@@ -67,7 +71,7 @@ src/lib/cart.ts                 ← CartItem interface + localStorage cart + eve
 src/lib/auth.ts                 ← original admin HMAC-cookie auth
 src/lib/seller-auth.ts          ← Seller interface + registerSeller, loginSeller, set/get/clearSellerSession
 src/lib/stores.ts               ← Store/StoreColors interfaces + createStore, getStoreBySellerId, getStoresBySellerId, getStoreBySlug, getAllStores, updateStore
-src/lib/store-products.ts       ← StoreProduct interface + createProduct, getProductsByStoreId, getProductById, updateProduct, deleteProduct
+src/lib/store-products.ts       ← StoreProduct interface (uses images?: string[] array, up to 5) + createProduct, getProductsByStoreId, getProductById, updateProduct, deleteProduct
 src/workers/bg-removal.ts       ← Web Worker: BG removal via @imgly/background-removal (runs off main thread)
 src/pages/index.astro           ← SSR; shows welcome-back if hasStore, marketing landing if not
 src/pages/products/[slug].astro ← static demo product pages
@@ -94,7 +98,7 @@ src/styles/
   pages/home.css                ← hero, steps, welcome-back
   pages/auth.css                ← login/register
   pages/dashboard.css           ← seller dashboard
-  pages/store.css               ← public store page + store product cards
+  pages/store.css               ← public store page + store product cards + lightbox
   pages/checkout.css
   pages/product.css             ← demo product page
   pages/admin.css
@@ -119,7 +123,7 @@ public/                         favicon, robots.txt, product images
 - [x] Footer always at bottom (flex sticky footer pattern)
 - [x] Store page (`/store/[slug]`) has store-mode header: no platform nav, user icon dropdown (Dashboard + Log out) for logged-in sellers
 - [x] All store links from seller interface open in new tab (`target="_blank"`)
-- [x] Button colors unified to `--color-primary` (green) across all components
+- [x] Full UI redesign: neutral slate blue-gray palette, Plus Jakarta Sans font, compact buttons, edge-to-edge cover images on product cards, micro-interactions (image zoom, button scale), no border-darkening hovers, dashboard tabs square + active has pointer-events:none
 - [x] Dashboard mutations (add/edit product, save settings) via AJAX — no page reload, DOM updated in place
 - [x] All dashboard status messages auto-hide after 3 seconds
 - [x] Add to cart button on store product cards — opens cart drawer via cart:open event
@@ -130,6 +134,10 @@ public/                         favicon, robots.txt, product images
 - [x] Delete product via AJAX with confirm modal — DOM updated in place, no page reload
 - [x] Product image upload: Cloudinary unsigned upload, placeholder SVG if no image, image shown in store cards + cart drawer
 - [x] Image widget in dashboard: BG removal via Web Worker (@imgly), manual trigger, cached toggle (Keep original ↔ Restore removed BG), crop/zoom modal (cover mode, drag + scroll-wheel zoom, canvas render), Remove image with confirm modal
+- [x] Multi-image support: up to 5 images per product (`StoreProduct.images: string[]`); gallery widget with 5 slots in dashboard; BG removal + crop available per slot via shared edit panel
+- [x] Store page lightbox: click product image → full-screen viewer with prev/next arrows, keyboard nav (← → Esc), touch swipe
+- [x] Tailwind CSS v4 installed + configured via `@tailwindcss/vite`; Cloudinary domain whitelisted for Astro `<Image />` component; hard rules updated (Tailwind-first, mobile-first, Lighthouse 100)
+- [x] Dashboard right column: replace Store URL card with store summary card (product count, in-stock count, stock value, live link button)
 - [ ] Browse stores discovery page
 - [ ] Payments
 
@@ -146,18 +154,9 @@ public/                         favicon, robots.txt, product images
 ---
 
 ## Session log
-- **S1** Built full scaffold: Astro, CSS vars, cart, auth, SEO, admin, checkout placeholder.
-- **S2** Translated all files to English.
-- **S3** Fixed cart bug. Site redesigned as platform demo (StoreKit brand, hero, "how it works", plans as products).
-- **S4** CSS architecture refactor: `main.css` single entry point, split into `base/`, `layout/`, `components/`, `utilities/`.
-- **S5** Color scheme green/orange. All emoji → inline SVG icons. AI_INSTRUCTIONS updated.
-- **S6** Product cards redesigned: SVG icon + orange price, no images. Orange used in CTA, price, badges. Color system moved to `tokens.css` as single source of truth (removed BaseLayout injection).
-- **S7** Project vision clarified: multi-vendor internet mall, not single store builder. AI_INSTRUCTIONS rewritten to reflect real architecture goal.
-- **S8** CURRENT_TASK.md trimmed to current+next step only. Build status + full project structure moved into AI_INSTRUCTIONS. Built /store/[slug] SSR page with per-store color overrides + JSON-LD. Dashboard now links to live store.
-- **S9** Full TypeScript migration: tsconfig.json, @types/node, all lib/config/data/API files converted to .ts with proper interfaces (CartItem, Store, Seller, Product, PlatformConfig). Build passes clean.
-- **S10** Verified zero `any` types. Fixed AI_INSTRUCTIONS: architecture updated to reflect current multi-vendor state, workflow rule added (only user changes "Your instruction"), no-any rule added to Hard rules.
-- **S11** Seller product management: store-products.ts CRUD, dashboard product table (add/edit/delete), /store/[slug] shows live products. Multi-store: getStoresBySellerId, store tabs in dashboard, "+ New store" inline form. Nav session-aware (Dashboard / Log in toggle). Homepage: welcome-back view for logged-in sellers hides marketing content. CSS fully extracted from all Astro files into src/styles/pages/ and src/styles/components/. Button color unified to --color-accent (#4a7a96) everywhere.
-- **S12** UI polish: buttons unified to --color-primary (green), dashboard tab hover fixed, footer sticky (flex column body), "Go to dashboard" button width fixed. Store links from seller interface open in new tab. Store page gets store-mode header: no platform nav, user icon dropdown (Dashboard + Log out) for logged-in sellers. Session-end workflow instruction added to AI_INSTRUCTIONS.
-- **S13** Dashboard UX overhaul: tab hover flicker fixed. Color picker removed. Fixed form-resubmission bug (PRG). Product edit now opens inline (no URL change). Add-product + edit-product + save-settings all via AJAX (fetch → /api/product.ts, /api/store.ts) — DOM updated in place, no page reload. All status messages auto-hide after 3s. AJAX-first pattern saved to memory.
-- **S14** Store page purchase UX: Add to cart button on product cards, "New" badge for products added today, stock count hidden (only "Out of stock" shown). Cart drawer refactored to slide in from right with CSS transform animation. Global ConfirmModal component (<dialog>) added to BaseLayout — used for dashboard delete-product (AJAX) and cart item removal. delete-product added to /api/product.ts. .claudeignore added. Bash/Edit/Write/Read/Skill all auto-approved in settings.local.json.
-- **S15** Product image upload: Cloudinary unsigned upload, placeholder SVG in store cards + cart drawer. Image widget in dashboard: BG removal in dedicated Web Worker (@imgly/background-removal, off main thread), manual trigger with spinner, cached toggle (Keep original ↔ Restore removed BG without re-run), "Keep original" also cancels in-progress removal, crop/zoom modal (280px viewport, drag + scroll-wheel + slider, cover fit, canvas 512×512 output), Remove image with confirm modal. URL param cleanup (?saved, ?added) via history.replaceState.
+- **S1–S14** Foundation built: scaffold, TypeScript migration, seller auth, multi-store, seller dashboard (AJAX), store product management, public store page, cart + drawer, confirm modal, SVG icons, CSS architecture, SEO/JSON-LD.
+- **S15** Product image upload: Cloudinary unsigned upload, BG removal Web Worker (@imgly), crop/zoom modal (canvas 512×512), Remove image confirm.
+- **S16** Multi-image gallery (up to 5/product, images[] model), store page lightbox (arrows, keyboard, swipe). Tailwind v4 installed + Cloudinary whitelisted in astro.config.
+- **S17** Dashboard right column: store summary card (product count, in-stock, stock value, live link).
+- **S18** Adopted permanent modular architecture rules (encapsulation, layer separation, SRP, ≤200 lines). Progressive Tailwind migration: convert on contact. "New" badge pulse animation (CSS keyframe, store.css).
+- **S19** Full UI redesign: slate blue-gray palette (#2a3547 primary, #4870c0 accent, #f7f8fa bg), Plus Jakarta Sans font, compact buttons with scale(0.97) press, edge-to-edge cover images with zoom on hover, no border-darkening hovers anywhere, dashboard tabs square (radius) + active pointer-events:none, micro-interactions rule added to AI_INSTRUCTIONS.
