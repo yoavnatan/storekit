@@ -2,6 +2,7 @@
 import { defineConfig } from 'astro/config';
 import node from '@astrojs/node';
 import sitemap from '@astrojs/sitemap';
+import tailwindcss from '@tailwindcss/vite';
 import { store } from './src/config/store.config.js';
 
 // SEO note: `site` MUST be set to the real domain so canonical URLs,
@@ -22,9 +23,12 @@ export default defineConfig({
   // Built-in image optimization helps Core Web Vitals (LCP).
   image: {
     responsiveStyles: true,
+    // Allow Cloudinary as an external image service for Astro <Image />
+    domains: ['res.cloudinary.com'],
   },
 
   vite: {
+    plugins: [tailwindcss()],
     optimizeDeps: {
       exclude: ['@imgly/background-removal'],
     },

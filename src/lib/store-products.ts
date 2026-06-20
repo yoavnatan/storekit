@@ -12,7 +12,7 @@ export interface StoreProduct {
   description: string;
   price: number;
   stock: number;
-  image?: string;
+  images?: string[];
   createdAt: string;
 }
 
@@ -34,10 +34,10 @@ interface CreateProductInput {
   description?: string;
   price: number;
   stock?: number;
-  image?: string;
+  images?: string[];
 }
 
-export function createProduct(storeId: string, { name, description = '', price, stock = 0, image }: CreateProductInput): StoreProduct {
+export function createProduct(storeId: string, { name, description = '', price, stock = 0, images }: CreateProductInput): StoreProduct {
   const products = readProducts();
   const storeProducts = products.filter((p) => p.storeId === storeId);
   const base = slugify(name) || 'product';
@@ -53,7 +53,7 @@ export function createProduct(storeId: string, { name, description = '', price, 
     description,
     price,
     stock,
-    ...(image ? { image } : {}),
+    ...(images?.length ? { images } : {}),
     createdAt: new Date().toISOString(),
   };
   products.push(product);

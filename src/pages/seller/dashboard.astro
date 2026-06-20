@@ -95,6 +95,65 @@ const store = allStores.find((s) => s.id === activeStoreId) ?? allStores[0]!;
 const settingsSuccess = Astro.url.searchParams.get('saved') === '1';
 const productSuccess = Astro.url.searchParams.get('added') === '1';
 const products = getProductsByStoreId(store.id);
+const productCount = products.length;
+const inStockCount = products.filter((p) => p.stock > 0).length;
+const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function galleryWidgetHtml(images: string[] = []): string {
+  const uploadIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+  const editIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+  const removeIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
+  const slots = [0, 1, 2, 3, 4].map((i) => {
+    const url = images[i] ?? '';
+    const hasUrl = !!url;
+    return `
+      <div class="gallery-slot" data-slot="${i}">
+        <label class="gallery-slot__empty"${hasUrl ? ' hidden' : ''}>
+          ${i === 0 ? '<span class="gallery-slot__label">Main</span>' : ''}
+          ${uploadIcon}
+          <input type="file" accept="image/*" class="visually-hidden gallery-file-input">
+        </label>
+        <div class="gallery-slot__filled"${hasUrl ? '' : ' hidden'}>
+          <img class="gallery-slot__img" src="${escHtml(url)}" alt="" width="88" height="88" loading="lazy" decoding="async">
+          <div class="gallery-slot__overlay">
+            <button type="button" class="gallery-slot__action gallery-slot__action--edit" aria-label="Edit image">${editIcon}</button>
+            <button type="button" class="gallery-slot__action gallery-slot__action--remove" aria-label="Remove image">${removeIcon}</button>
+          </div>
+          <div class="gallery-slot__loading" hidden><div class="spinner spinner--sm"></div></div>
+        </div>
+        <input type="hidden" name="images" class="gallery-slot__url" value="${escHtml(url)}">
+      </div>`;
+  });
+
+  return `
+    <div class="gallery-widget">
+      <div class="gallery-grid">${slots.join('')}</div>
+      <div class="gallery-panel" hidden>
+        <div class="gallery-panel__inner">
+          <div class="img-preview-box">
+            <img class="gallery-panel__img img-preview__img" src="" alt="Product image" width="160" height="160">
+            <div class="img-loading-overlay" hidden>
+              <div class="spinner"></div>
+              <span>Removing background…</span>
+            </div>
+          </div>
+          <div class="img-preview__actions">
+            <button type="button" class="btn btn--sm gallery-remove-bg-btn">Remove background</button>
+            <button type="button" class="btn btn--ghost btn--sm gallery-restore-bg-btn" hidden>Restore removed BG</button>
+            <button type="button" class="btn btn--ghost btn--sm gallery-keep-bg-btn" hidden>Keep original</button>
+            <button type="button" class="btn btn--ghost btn--sm gallery-crop-btn">Crop</button>
+            <button type="button" class="btn btn--ghost btn--sm gallery-change-btn">Change image</button>
+            <button type="button" class="btn btn--ghost btn--sm gallery-done-btn">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
 ---
 
 <BaseLayout title="My Store — Dashboard" noindex={true} isLoggedIn={true} hasStore={true}>
@@ -196,13 +255,24 @@ const products = getProductsByStoreId(store.id);
       </div>
 
       <div class="card dash-card">
-        <h2>Store URL</h2>
-        <p class="muted" style="margin-top:0.5rem">Your public store is live at:</p>
-        <p class="store-url">
-          <a href={`/store/${store.slug}`} class="store-url-link" target="_blank" rel="noopener">
-            /store/{store.slug}
-          </a>
-        </p>
+        <h2>Store overview</h2>
+        <dl style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem">
+          <div class="flex items-baseline justify-between">
+            <dt class="muted">Products</dt>
+            <dd class="font-semibold">{productCount}</dd>
+          </div>
+          <div class="flex items-baseline justify-between">
+            <dt class="muted">In stock</dt>
+            <dd class="font-semibold">{inStockCount}</dd>
+          </div>
+          <div class="flex items-baseline justify-between">
+            <dt class="muted">Stock value</dt>
+            <dd class="font-semibold">{formatPrice(totalStockValue)}</dd>
+          </div>
+        </dl>
+        <a href={`/store/${store.slug}`} class="btn" style="display:block;text-align:center;margin-top:1.25rem" target="_blank" rel="noopener">
+          View live store
+        </a>
       </div>
     </div>
 
@@ -250,33 +320,8 @@ const products = getProductsByStoreId(store.id);
           </label>
 
           <div class="field">
-            <span class="field-label">Product image</span>
-            <div class="img-widget">
-              <label class="img-upload-zone">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <span>Upload image</span>
-                <input type="file" accept="image/*" class="visually-hidden img-file-input" />
-              </label>
-              <div class="img-preview" hidden>
-                <div class="img-preview-box">
-                  <img class="img-preview__img" src="" alt="Product preview" width="160" height="160" />
-                  <div class="img-loading-overlay" hidden>
-                    <div class="spinner"></div>
-                    <span>Removing background…</span>
-                  </div>
-                </div>
-                <div class="img-preview__actions">
-                  <button type="button" class="btn btn--sm btn-remove-bg">Remove background</button>
-                  <button type="button" class="btn btn--ghost btn--sm btn-restore-bg" hidden>Restore removed BG</button>
-                  <button type="button" class="btn btn--ghost btn--sm btn-keep-bg" hidden>Keep original</button>
-                  <button type="button" class="btn btn--ghost btn--sm btn-crop">Crop</button>
-                  <button type="button" class="btn btn--ghost btn--sm img-change-btn">Change image</button>
-                  <button type="button" class="btn btn--danger btn--sm btn-remove-img">Remove image</button>
-                </div>
-              </div>
-              <p class="img-status" hidden></p>
-              <input type="hidden" name="image" class="img-url-input" value="" />
-            </div>
+            <span class="field-label">Product images</span>
+            <div set:html={galleryWidgetHtml([])}></div>
           </div>
 
           <div class="form-actions">
@@ -302,7 +347,7 @@ const products = getProductsByStoreId(store.id);
               <tr data-product-display={p.id}>
                 <td>
                   <div class="product-name-cell">
-                    {p.image && <img src={p.image} alt="" class="product-thumb" width="30" height="30" loading="lazy" decoding="async" />}
+                    {p.images?.[0] && <img src={p.images[0]} alt="" class="product-thumb" width="30" height="30" loading="lazy" decoding="async" />}
                     <div>
                       <span class="product-name">{p.name}</span>
                       {p.description && <span class="product-desc">{p.description}</span>}
@@ -340,33 +385,8 @@ const products = getProductsByStoreId(store.id);
                       <textarea class="input" name="description" rows="2">{p.description}</textarea>
                     </label>
                     <div class="field">
-                      <span class="field-label">Product image</span>
-                      <div class="img-widget">
-                        <label class="img-upload-zone" hidden={!!p.image}>
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                          <span>Upload image</span>
-                          <input type="file" accept="image/*" class="visually-hidden img-file-input" />
-                        </label>
-                        <div class="img-preview" hidden={!p.image}>
-                          <div class="img-preview-box">
-                            <img class="img-preview__img" src={p.image ?? ''} alt="Product preview" width="160" height="160" />
-                            <div class="img-loading-overlay" hidden>
-                              <div class="spinner"></div>
-                              <span>Removing background…</span>
-                            </div>
-                          </div>
-                          <div class="img-preview__actions">
-                            <button type="button" class="btn btn--sm btn-remove-bg">Remove background</button>
-                            <button type="button" class="btn btn--ghost btn--sm btn-restore-bg" hidden>Restore removed BG</button>
-                            <button type="button" class="btn btn--ghost btn--sm btn-keep-bg" hidden>Keep original</button>
-                            <button type="button" class="btn btn--ghost btn--sm btn-crop">Crop</button>
-                            <button type="button" class="btn btn--ghost btn--sm img-change-btn">Change image</button>
-                            <button type="button" class="btn btn--danger btn--sm btn-remove-img">Remove image</button>
-                          </div>
-                        </div>
-                        <p class="img-status" hidden></p>
-                        <input type="hidden" name="image" class="img-url-input" value={p.image ?? ''} />
-                      </div>
+                      <span class="field-label">Product images</span>
+                      <div set:html={galleryWidgetHtml(p.images ?? [])}></div>
                     </div>
                     <div class="form-actions">
                       <button class="btn btn--sm" type="submit">Save</button>
@@ -411,7 +431,7 @@ const products = getProductsByStoreId(store.id);
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // ── clean status params from URL (prevents message on refresh) ─────
+  // ── clean status params from URL ──────────────────────────────────
   {
     const u = new URL(window.location.href);
     if (u.searchParams.has('saved') || u.searchParams.has('added')) {
@@ -421,7 +441,7 @@ const products = getProductsByStoreId(store.id);
     }
   }
 
-  // ── image upload: Cloudinary + @imgly/background-removal (Web Worker) ──
+  // ── Cloudinary upload ─────────────────────────────────────────────
   const uploadCfg = document.getElementById('upload-config');
   const CLOUD = uploadCfg?.dataset.cloud ?? '';
   const PRESET = uploadCfg?.dataset.preset ?? '';
@@ -437,7 +457,7 @@ const products = getProductsByStoreId(store.id);
     return json.secure_url;
   }
 
-  // BG removal runs in a dedicated worker so the main thread stays responsive
+  // ── BG removal worker ─────────────────────────────────────────────
   let _bgWorker: Worker | null = null;
   let _msgId = 0;
   const _pending = new Map<number, { resolve: (b: Blob) => void; reject: (e: Error) => void }>();
@@ -469,145 +489,257 @@ const products = getProductsByStoreId(store.id);
   interface WidgetState { original?: Blob; processed?: Blob; useProcessed: boolean; processing: boolean }
   const wState = new WeakMap<Element, WidgetState>();
 
-  function initWidget(container: Element) {
-    if ((container as HTMLElement).dataset.widgetInit) return;
-    (container as HTMLElement).dataset.widgetInit = '1';
+  // ── gallery widget HTML generator (client-side) ────────────────────
+  function galleryWidgetHtml(images: string[] = []): string {
+    const uploadIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+    const editIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+    const removeIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    const slots = [0, 1, 2, 3, 4].map((i) => {
+      const url = images[i] ?? '';
+      const hasUrl = !!url;
+      return `<div class="gallery-slot" data-slot="${i}">
+        <label class="gallery-slot__empty"${hasUrl ? ' hidden' : ''}>${i === 0 ? '<span class="gallery-slot__label">Main</span>' : ''}${uploadIcon}<input type="file" accept="image/*" class="visually-hidden gallery-file-input"></label>
+        <div class="gallery-slot__filled"${hasUrl ? '' : ' hidden'}>
+          <img class="gallery-slot__img" src="${esc(url)}" alt="" width="88" height="88" loading="lazy" decoding="async">
+          <div class="gallery-slot__overlay">
+            <button type="button" class="gallery-slot__action gallery-slot__action--edit" aria-label="Edit image">${editIcon}</button>
+            <button type="button" class="gallery-slot__action gallery-slot__action--remove" aria-label="Remove image">${removeIcon}</button>
+          </div>
+          <div class="gallery-slot__loading" hidden><div class="spinner spinner--sm"></div></div>
+        </div>
+        <input type="hidden" name="images" class="gallery-slot__url" value="${esc(url)}">
+      </div>`;
+    });
+    return `<div class="gallery-widget"><div class="gallery-grid">${slots.join('')}</div><div class="gallery-panel" hidden><div class="gallery-panel__inner"><div class="img-preview-box"><img class="gallery-panel__img img-preview__img" src="" alt="Product image" width="160" height="160"><div class="img-loading-overlay" hidden><div class="spinner"></div><span>Removing background…</span></div></div><div class="img-preview__actions"><button type="button" class="btn btn--sm gallery-remove-bg-btn">Remove background</button><button type="button" class="btn btn--ghost btn--sm gallery-restore-bg-btn" hidden>Restore removed BG</button><button type="button" class="btn btn--ghost btn--sm gallery-keep-bg-btn" hidden>Keep original</button><button type="button" class="btn btn--ghost btn--sm gallery-crop-btn">Crop</button><button type="button" class="btn btn--ghost btn--sm gallery-change-btn">Change image</button><button type="button" class="btn btn--ghost btn--sm gallery-done-btn">Done</button></div></div></div></div>`;
+  }
 
-    const fileInput      = container.querySelector<HTMLInputElement>('.img-file-input');
-    const previewImg     = container.querySelector<HTMLImageElement>('.img-preview__img');
-    const previewWrap    = container.querySelector<HTMLElement>('.img-preview');
-    const loadingOverlay = container.querySelector<HTMLElement>('.img-loading-overlay');
-    const removeBgBtn    = container.querySelector<HTMLButtonElement>('.btn-remove-bg');
-    const restoreBgBtn   = container.querySelector<HTMLButtonElement>('.btn-restore-bg');
-    const keepBtn        = container.querySelector<HTMLButtonElement>('.btn-keep-bg');
-    const cropBtn        = container.querySelector<HTMLButtonElement>('.btn-crop');
-    const removeImgBtn   = container.querySelector<HTMLButtonElement>('.btn-remove-img');
-    const uploadZone     = container.querySelector<HTMLElement>('.img-upload-zone');
-    const changeBtn      = container.querySelector<HTMLButtonElement>('.img-change-btn');
-    const form           = container.closest<HTMLFormElement>('form');
+  // ── gallery widget initializer ─────────────────────────────────────
+  function initGalleryWidget(gallery: Element) {
+    if ((gallery as HTMLElement).dataset.galleryInit) return;
+    (gallery as HTMLElement).dataset.galleryInit = '1';
+
+    const panel          = gallery.querySelector<HTMLElement>('.gallery-panel');
+    const panelImg       = gallery.querySelector<HTMLImageElement>('.gallery-panel__img');
+    const loadingOverlay = gallery.querySelector<HTMLElement>('.img-loading-overlay');
+    const removeBgBtn    = gallery.querySelector<HTMLButtonElement>('.gallery-remove-bg-btn');
+    const restoreBgBtn   = gallery.querySelector<HTMLButtonElement>('.gallery-restore-bg-btn');
+    const keepBgBtn      = gallery.querySelector<HTMLButtonElement>('.gallery-keep-bg-btn');
+    const cropBtn        = gallery.querySelector<HTMLButtonElement>('.gallery-crop-btn');
+    const changeBtn      = gallery.querySelector<HTMLButtonElement>('.gallery-change-btn');
+    const doneBtn        = gallery.querySelector<HTMLButtonElement>('.gallery-done-btn');
+    const form           = gallery.closest<HTMLFormElement>('form');
     const submitBtn      = form?.querySelector<HTMLButtonElement>('[type="submit"]');
 
-    if (!fileInput) return;
+    let activeSlot: Element | null = null;
 
-    const state: WidgetState = { useProcessed: false, processing: false };
-    wState.set(container, state);
-
-    function setPreview(blob: Blob) {
-      if (previewImg) previewImg.src = URL.createObjectURL(blob);
-      previewWrap?.removeAttribute('hidden');
-      uploadZone?.setAttribute('hidden', '');
+    function getState(): WidgetState | null {
+      return activeSlot ? (wState.get(activeSlot) ?? null) : null;
     }
 
     function setLoading(active: boolean, msg = 'Removing background…') {
-      state.processing = active;
+      const st = getState();
+      if (st) st.processing = active;
       if (loadingOverlay) loadingOverlay.hidden = !active;
       const span = loadingOverlay?.querySelector('span');
       if (span) span.textContent = msg;
       if (submitBtn) submitBtn.disabled = active;
     }
 
-    function updateButtons() {
-      const hasProcessed = !!state.processed;
-      const showingProcessed = hasProcessed && state.useProcessed;
-      const isProcessing = state.processing;
-      // "Remove BG" only when no cached result and not currently processing
+    function updatePanelButtons() {
+      const st = getState();
+      if (!st) return;
+      const hasProcessed = !!st.processed;
+      const showingProcessed = hasProcessed && st.useProcessed;
+      const isProcessing = st.processing;
       removeBgBtn?.toggleAttribute('hidden', hasProcessed || isProcessing);
-      // "Restore removed BG" only when we have a cached result but aren't showing it
       restoreBgBtn?.toggleAttribute('hidden', !hasProcessed || showingProcessed || isProcessing);
-      // "Keep original" when showing processed OR while processing (acts as cancel)
-      keepBtn?.toggleAttribute('hidden', !showingProcessed && !isProcessing);
+      keepBgBtn?.toggleAttribute('hidden', !showingProcessed && !isProcessing);
     }
 
-    fileInput.addEventListener('change', () => {
-      const file = fileInput.files?.[0];
-      if (!file) return;
-      state.original = file;
-      state.processed = undefined;
-      state.useProcessed = false;
-      setPreview(file);
-      updateButtons();
+    function setSlotThumbnail(slot: Element, src: string) {
+      const slotImg = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
+      const empty   = slot.querySelector<HTMLElement>('.gallery-slot__empty');
+      const filled  = slot.querySelector<HTMLElement>('.gallery-slot__filled');
+      if (slotImg) slotImg.src = src;
+      empty?.setAttribute('hidden', '');
+      filled?.removeAttribute('hidden');
+    }
+
+    function clearSlot(slot: Element) {
+      const st = wState.get(slot);
+      if (st) { st.original = undefined; st.processed = undefined; st.useProcessed = false; }
+      const slotImg   = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
+      const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
+      const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
+      const urlInput  = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
+      const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
+      if (slotImg) slotImg.src = '';
+      empty?.removeAttribute('hidden');
+      filled?.setAttribute('hidden', '');
+      if (urlInput) urlInput.value = '';
+      if (fileInput) fileInput.value = '';
+    }
+
+    function activateSlot(slot: Element) {
+      activeSlot = slot;
+      gallery.querySelectorAll<Element>('.gallery-slot').forEach(s => s.classList.remove('gallery-slot--active'));
+      slot.classList.add('gallery-slot--active');
+      const st = wState.get(slot);
+      if (!st) return;
+      const blob = st.useProcessed && st.processed ? st.processed : st.original;
+      if (blob) {
+        if (panelImg) panelImg.src = URL.createObjectURL(blob);
+      } else {
+        const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
+        if (panelImg && urlInput?.value) panelImg.src = urlInput.value;
+      }
+      panel?.removeAttribute('hidden');
+      updatePanelButtons();
+    }
+
+    function closePanel() {
+      activeSlot = null;
+      gallery.querySelectorAll<Element>('.gallery-slot').forEach(s => s.classList.remove('gallery-slot--active'));
+      panel?.setAttribute('hidden', '');
+      if (panelImg) panelImg.src = '';
+    }
+
+    gallery.querySelectorAll<Element>('.gallery-slot').forEach((slot) => {
+      const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
+      const editBtn   = slot.querySelector<HTMLButtonElement>('.gallery-slot__action--edit');
+      const removeBtn = slot.querySelector<HTMLButtonElement>('.gallery-slot__action--remove');
+      const st: WidgetState = { useProcessed: false, processing: false };
+      wState.set(slot, st);
+
+      fileInput?.addEventListener('change', () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        st.original = file; st.processed = undefined; st.useProcessed = false;
+        setSlotThumbnail(slot, URL.createObjectURL(file));
+        activateSlot(slot);
+      });
+
+      editBtn?.addEventListener('click', (e) => { e.stopPropagation(); activateSlot(slot); });
+
+      removeBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.dispatchEvent(new CustomEvent('confirm:open', {
+          detail: {
+            title: 'Remove image?',
+            message: 'This image will be removed from the product.',
+            okLabel: 'Remove',
+            onConfirm: () => { clearSlot(slot); if (activeSlot === slot) closePanel(); },
+          },
+        }));
+      });
     });
 
     removeBgBtn?.addEventListener('click', async () => {
-      if (!state.original) {
-        const urlInput = container.querySelector<HTMLInputElement>('.img-url-input');
-        const existingUrl = urlInput?.value;
-        if (!existingUrl) return;
+      if (!activeSlot) return;
+      const st = wState.get(activeSlot)!;
+      if (!st.original) {
+        const urlInput = activeSlot.querySelector<HTMLInputElement>('.gallery-slot__url');
+        const url = urlInput?.value;
+        if (!url) return;
         setLoading(true, 'Fetching image…');
         try {
-          const resp = await fetch(existingUrl);
+          const resp = await fetch(url);
           if (!resp.ok) throw new Error('fetch failed');
-          state.original = await resp.blob();
-        } catch {
-          setLoading(false);
-          updateButtons();
-          return;
-        }
+          st.original = await resp.blob();
+        } catch { setLoading(false); updatePanelButtons(); return; }
       }
       setLoading(true, 'Removing background…');
-      updateButtons(); // immediately replace "Remove BG" with "Keep original"
+      updatePanelButtons();
       try {
-        const processed = await removeBackgroundInWorker(state.original!);
-        state.processed = processed;
-        state.useProcessed = true;
-        setPreview(processed);
+        const processed = await removeBackgroundInWorker(st.original!);
+        st.processed = processed; st.useProcessed = true;
+        if (panelImg) panelImg.src = URL.createObjectURL(processed);
+        if (activeSlot) setSlotThumbnail(activeSlot, URL.createObjectURL(processed));
       } catch (err) {
         if (err instanceof Error && err.message === 'cancelled') return;
-      } finally {
-        setLoading(false);
-        updateButtons();
-      }
+      } finally { setLoading(false); updatePanelButtons(); }
     });
 
-    // "Keep original" also acts as cancel during in-progress BG removal
-    keepBtn?.addEventListener('click', () => {
-      if (state.processing) {
+    keepBgBtn?.addEventListener('click', () => {
+      if (!activeSlot) return;
+      const st = wState.get(activeSlot)!;
+      if (st.processing) {
         if (_bgWorker) { _bgWorker.terminate(); _bgWorker = null; }
         _pending.forEach(({ reject: r }) => r(new Error('cancelled')));
         _pending.clear();
       }
-      if (!state.original) return;
-      state.useProcessed = false;
-      setPreview(state.original);
-      setLoading(false);
-      updateButtons();
+      if (!st.original) return;
+      st.useProcessed = false;
+      if (panelImg) panelImg.src = URL.createObjectURL(st.original);
+      setSlotThumbnail(activeSlot, URL.createObjectURL(st.original));
+      setLoading(false); updatePanelButtons();
     });
 
     restoreBgBtn?.addEventListener('click', () => {
-      if (!state.processed) return;
-      state.useProcessed = true;
-      setPreview(state.processed);
-      updateButtons();
+      if (!activeSlot) return;
+      const st = wState.get(activeSlot)!;
+      if (!st.processed) return;
+      st.useProcessed = true;
+      if (panelImg) panelImg.src = URL.createObjectURL(st.processed);
+      setSlotThumbnail(activeSlot, URL.createObjectURL(st.processed));
+      updatePanelButtons();
     });
 
     cropBtn?.addEventListener('click', () => {
-      const blob = state.useProcessed && state.processed ? state.processed : state.original;
+      if (!activeSlot) return;
+      const st = wState.get(activeSlot)!;
+      const blob = st.useProcessed && st.processed ? st.processed : st.original;
       if (!blob) return;
-      openCropModal(container, blob, !!(state.useProcessed && state.processed));
+      const isProcessed = !!(st.useProcessed && st.processed);
+      const slotRef = activeSlot;
+      openCropModal(null, blob, isProcessed, (croppedBlob, wasProcessed) => {
+        const st2 = wState.get(slotRef)!;
+        if (wasProcessed) st2.processed = croppedBlob;
+        else st2.original = croppedBlob;
+        if (panelImg) panelImg.src = URL.createObjectURL(croppedBlob);
+        setSlotThumbnail(slotRef, URL.createObjectURL(croppedBlob));
+      });
     });
 
-    removeImgBtn?.addEventListener('click', () => {
-      window.dispatchEvent(new CustomEvent('confirm:open', {
-        detail: {
-          title: 'Remove image?',
-          message: 'The product image will be removed.',
-          okLabel: 'Remove',
-          onConfirm: () => {
-            state.original = undefined;
-            state.processed = undefined;
-            state.useProcessed = false;
-            if (previewImg) previewImg.src = '';
-            previewWrap?.setAttribute('hidden', '');
-            uploadZone?.removeAttribute('hidden');
-            const urlInput = container.querySelector<HTMLInputElement>('.img-url-input');
-            if (urlInput) urlInput.value = '';
-            fileInput.value = '';
-          },
-        },
-      }));
+    changeBtn?.addEventListener('click', () => {
+      if (!activeSlot) return;
+      activeSlot.querySelector<HTMLInputElement>('.gallery-file-input')?.click();
     });
 
-    changeBtn?.addEventListener('click', () => fileInput.click());
+    doneBtn?.addEventListener('click', closePanel);
+  }
+
+  // ── resolve gallery URLs (upload blobs to Cloudinary) ─────────────
+  async function resolveGalleryUrls(gallery: Element): Promise<void> {
+    const slots = gallery.querySelectorAll<Element>('.gallery-slot');
+    for (const slot of slots) {
+      const st = wState.get(slot);
+      const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
+      if (!st?.original || !HAS_CLOUD) continue;
+      const blob = st.useProcessed && st.processed ? st.processed : st.original;
+      const url = await cloudinaryUpload(blob);
+      if (urlInput) urlInput.value = url;
+    }
+  }
+
+  function resetGallery(gallery: Element) {
+    gallery.querySelectorAll<Element>('.gallery-slot').forEach((slot) => {
+      const st = wState.get(slot);
+      if (st) { st.original = undefined; st.processed = undefined; st.useProcessed = false; }
+      const slotImg   = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
+      const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
+      const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
+      const urlInput  = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
+      const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
+      if (slotImg) slotImg.src = '';
+      empty?.removeAttribute('hidden');
+      filled?.setAttribute('hidden', '');
+      if (urlInput) urlInput.value = '';
+      if (fileInput) fileInput.value = '';
+    });
+    gallery.querySelector<HTMLElement>('.gallery-panel')?.setAttribute('hidden', '');
+    const panelImg = gallery.querySelector<HTMLImageElement>('.gallery-panel__img');
+    if (panelImg) panelImg.src = '';
   }
 
   // ── crop modal ─────────────────────────────────────────────────────
@@ -621,7 +753,7 @@ const products = getProductsByStoreId(store.id);
   const VP_SIZE = 280;
   const OUT_SIZE = 512;
 
-  let cropWidget: Element | null = null;
+  let cropApplyCallback: ((blob: Blob, isProcessed: boolean) => void) | null = null;
   let cropIsProcessed = false;
   let cropFitScale = 1;
   let cropZoomVal = 1;
@@ -651,10 +783,10 @@ const products = getProductsByStoreId(store.id);
     cropImgEl.style.top = `${(VP_SIZE - h) / 2 + cropPanY}px`;
   }
 
-  function openCropModal(widget: Element, blob: Blob, isProcessed: boolean) {
+  function openCropModal(_widget: Element | null, blob: Blob, isProcessed: boolean, onApply?: (blob: Blob, isProcessed: boolean) => void) {
     if (!cropModal || !cropImgEl || !cropZoomEl) return;
-    cropWidget = widget;
     cropIsProcessed = isProcessed;
+    cropApplyCallback = onApply ?? null;
     cropPanX = 0; cropPanY = 0; cropZoomVal = 1;
     cropZoomEl.value = '1';
     cropImgEl.onload = () => {
@@ -669,11 +801,11 @@ const products = getProductsByStoreId(store.id);
     if (!cropModal) return;
     cropModal.hidden = true;
     if (cropImgEl) cropImgEl.src = '';
-    cropWidget = null;
+    cropApplyCallback = null;
   }
 
   async function applyCrop() {
-    if (!cropImgEl?.naturalWidth || !cropWidget) return;
+    if (!cropImgEl?.naturalWidth) return;
     const canvas = document.createElement('canvas');
     canvas.width = OUT_SIZE; canvas.height = OUT_SIZE;
     const ctx = canvas.getContext('2d')!;
@@ -686,16 +818,7 @@ const products = getProductsByStoreId(store.id);
     const croppedBlob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'));
     if (!croppedBlob) { closeCropModal(); return; }
 
-    const st = wState.get(cropWidget);
-    if (st) {
-      if (cropIsProcessed) st.processed = croppedBlob;
-      else st.original = croppedBlob;
-      const showingCropped = cropIsProcessed ? st.useProcessed : !st.useProcessed || !st.processed;
-      if (showingCropped) {
-        const previewImg = cropWidget.querySelector<HTMLImageElement>('.img-preview__img');
-        if (previewImg) previewImg.src = URL.createObjectURL(croppedBlob);
-      }
-    }
+    if (cropApplyCallback) cropApplyCallback(croppedBlob, cropIsProcessed);
     closeCropModal();
   }
 
@@ -751,21 +874,6 @@ const products = getProductsByStoreId(store.id);
     hadDragMotion = false;
   });
 
-  async function resolveImageUrl(container: Element | null): Promise<string | null> {
-    if (!container) return null;
-    const state = wState.get(container);
-    const urlInput = container.querySelector<HTMLInputElement>('.img-url-input');
-
-    if (!state?.original) return urlInput?.value || null;
-    if (!HAS_CLOUD) return urlInput?.value || null;
-
-    const blob = state.useProcessed && state.processed ? state.processed : state.original;
-    return await cloudinaryUpload(blob);
-  }
-
-  // init widgets already in DOM
-  document.querySelectorAll<Element>('.img-widget').forEach(initWidget);
-
   // ── status flash ───────────────────────────────────────────────────
   let statusTimer: ReturnType<typeof setTimeout>;
   function showStatus(msg: string, isError = false) {
@@ -782,37 +890,7 @@ const products = getProductsByStoreId(store.id);
   }
 
   // ── build product row pair ─────────────────────────────────────────
-  interface ProductData { id: string; storeId: string; name: string; description: string; price: number; stock: number; image?: string }
-
-  function imgWidgetHtml(currentUrl = '') {
-    return `
-      <div class="img-widget">
-        <label class="img-upload-zone"${currentUrl ? ' hidden' : ''}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <span>Upload image</span>
-          <input type="file" accept="image/*" class="visually-hidden img-file-input">
-        </label>
-        <div class="img-preview"${currentUrl ? '' : ' hidden'}>
-          <div class="img-preview-box">
-            <img class="img-preview__img" src="${esc(currentUrl)}" alt="Product preview" width="160" height="160">
-            <div class="img-loading-overlay" hidden>
-              <div class="spinner"></div>
-              <span>Removing background…</span>
-            </div>
-          </div>
-          <div class="img-preview__actions">
-            <button type="button" class="btn btn--sm btn-remove-bg">Remove background</button>
-            <button type="button" class="btn btn--ghost btn--sm btn-restore-bg" hidden>Restore removed BG</button>
-            <button type="button" class="btn btn--ghost btn--sm btn-keep-bg" hidden>Keep original</button>
-            <button type="button" class="btn btn--ghost btn--sm btn-crop">Crop</button>
-            <button type="button" class="btn btn--ghost btn--sm img-change-btn">Change image</button>
-            <button type="button" class="btn btn--danger btn--sm btn-remove-img">Remove image</button>
-          </div>
-        </div>
-        <p class="img-status" hidden></p>
-        <input type="hidden" name="image" class="img-url-input" value="${esc(currentUrl)}">
-      </div>`;
-  }
+  interface ProductData { id: string; storeId: string; name: string; description: string; price: number; stock: number; images?: string[] }
 
   function buildRows(p: ProductData): [HTMLTableRowElement, HTMLTableRowElement] {
     const display = document.createElement('tr');
@@ -820,7 +898,7 @@ const products = getProductsByStoreId(store.id);
     display.innerHTML = `
       <td>
         <div class="product-name-cell">
-          ${p.image ? `<img src="${esc(p.image)}" alt="" class="product-thumb" width="30" height="30" loading="lazy">` : ''}
+          ${p.images?.[0] ? `<img src="${esc(p.images[0])}" alt="" class="product-thumb" width="30" height="30" loading="lazy">` : ''}
           <div>
             <span class="product-name">${esc(p.name)}</span>
             ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
@@ -850,8 +928,8 @@ const products = getProductsByStoreId(store.id);
           </div>
           <label class="field"><span>Description</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
           <div class="field">
-            <span class="field-label">Product image</span>
-            ${imgWidgetHtml(p.image ?? '')}
+            <span class="field-label">Product images</span>
+            ${galleryWidgetHtml(p.images ?? [])}
           </div>
           <div class="form-actions">
             <button class="btn btn--sm" type="submit">Save</button>
@@ -873,22 +951,21 @@ const products = getProductsByStoreId(store.id);
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
 
     try {
-      // resolve image URL (upload to Cloudinary if new image selected)
-      const widget = form.querySelector<Element>('.img-widget');
-      let imageUrl: string | null = null;
+      const gallery = form.querySelector<Element>('.gallery-widget');
       try {
-        imageUrl = await resolveImageUrl(widget);
+        if (gallery) await resolveGalleryUrls(gallery);
       } catch {
         showStatus('Image upload failed. Please try again.', true);
         return;
       }
-      const imgInput = form.querySelector<HTMLInputElement>('.img-url-input');
-      if (imgInput && imageUrl) imgInput.value = imageUrl;
 
       const fd = new FormData(form);
       const res = await fetch('/api/product', { method: 'POST', body: fd });
-      const data = await res.json() as { ok: boolean; image?: string | null; error?: string };
+      const data = await res.json() as { ok: boolean; images?: string[]; error?: string };
       if (!data.ok) { showStatus(data.error ?? 'Error saving.', true); return; }
+
+      const savedImages = data.images ?? [];
+      const savedImage = savedImages[0] ?? null;
 
       const display = document.querySelector<HTMLTableRowElement>(`[data-product-display="${productId}"]`);
       const editRow = document.querySelector<HTMLTableRowElement>(`[data-product-edit="${productId}"]`);
@@ -897,7 +974,6 @@ const products = getProductsByStoreId(store.id);
         const description = String(fd.get('description'));
         const price = parseFloat(String(fd.get('price')));
         const stock = String(fd.get('stock'));
-        const savedImage = imageUrl ?? data.image ?? null;
 
         const nameCell = display.querySelector<HTMLElement>('.product-name-cell');
         if (nameCell) {
@@ -944,8 +1020,8 @@ const products = getProductsByStoreId(store.id);
       edit.hidden = true; display.hidden = false;
     });
     (edit.querySelector('form') as HTMLFormElement | null)?.addEventListener('submit', handleEditSubmit);
-    const widget = edit.querySelector<Element>('.img-widget');
-    if (widget) initWidget(widget);
+    const gallery = edit.querySelector<Element>('.gallery-widget');
+    if (gallery) initGalleryWidget(gallery);
   }
 
   // ── bind existing rows ─────────────────────────────────────────────
@@ -966,51 +1042,38 @@ const products = getProductsByStoreId(store.id);
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
 
     try {
-    // resolve image URL before building FormData
-    const widget = addForm.querySelector<Element>('.img-widget');
-    let imageUrl: string | null = null;
-    try {
-      imageUrl = await resolveImageUrl(widget);
-    } catch {
-      showStatus('Image upload failed. Please try again.', true);
-      return;
-    }
-    const imgInput = addForm.querySelector<HTMLInputElement>('.img-url-input');
-    if (imgInput && imageUrl) imgInput.value = imageUrl;
+      const gallery = addForm.querySelector<Element>('.gallery-widget');
+      try {
+        if (gallery) await resolveGalleryUrls(gallery);
+      } catch {
+        showStatus('Image upload failed. Please try again.', true);
+        return;
+      }
 
-    const fd = new FormData(addForm);
-    const res = await fetch('/api/product', { method: 'POST', body: fd });
-    const data = await res.json() as { ok: boolean; product?: ProductData; error?: string };
-    if (!data.ok) { showStatus(data.error ?? 'Error adding product.', true); return; }
+      const fd = new FormData(addForm);
+      const res = await fetch('/api/product', { method: 'POST', body: fd });
+      const data = await res.json() as { ok: boolean; product?: ProductData; error?: string };
+      if (!data.ok) { showStatus(data.error ?? 'Error adding product.', true); return; }
 
-    const p = { ...data.product!, storeId: storeIdInput?.value ?? '' };
-    const tbody = document.getElementById('products-tbody') as HTMLTableSectionElement | null;
-    const table = document.getElementById('products-table') as HTMLTableElement | null;
-    const emptyMsg = document.getElementById('empty-products');
+      const p = { ...data.product!, storeId: storeIdInput?.value ?? '' };
+      const tbody = document.getElementById('products-tbody') as HTMLTableSectionElement | null;
+      const table = document.getElementById('products-table') as HTMLTableElement | null;
+      const emptyMsg = document.getElementById('empty-products');
 
-    if (table) table.hidden = false;
-    if (emptyMsg) emptyMsg.hidden = true;
+      if (table) table.hidden = false;
+      if (emptyMsg) emptyMsg.hidden = true;
 
-    if (tbody) {
-      const [display, edit] = buildRows(p);
-      attachListeners(display, edit);
-      tbody.append(display, edit);
-    }
+      if (tbody) {
+        const [display, edit] = buildRows(p);
+        attachListeners(display, edit);
+        tbody.append(display, edit);
+      }
 
-    addForm.reset();
-    // reset image widget state
-    if (widget) {
-      const previewWrap = widget.querySelector<HTMLElement>('.img-preview');
-      const uploadZone = widget.querySelector<HTMLElement>('.img-upload-zone');
-      const urlInput = widget.querySelector<HTMLInputElement>('.img-url-input');
-      if (previewWrap) previewWrap.setAttribute('hidden', '');
-      if (uploadZone) uploadZone.removeAttribute('hidden');
-      if (urlInput) urlInput.value = '';
-      wState.delete(widget);
-    }
-    addFormWrap?.setAttribute('hidden', '');
-    document.getElementById('toggle-add-form')?.removeAttribute('hidden');
-    showStatus('Product added.');
+      addForm.reset();
+      if (gallery) resetGallery(gallery);
+      addFormWrap?.setAttribute('hidden', '');
+      document.getElementById('toggle-add-form')?.removeAttribute('hidden');
+      showStatus('Product added.');
     } finally {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
     }
@@ -1107,4 +1170,7 @@ const products = getProductsByStoreId(store.id);
   const cancelNew = document.getElementById('cancel-new-store');
   toggleNew?.addEventListener('click', () => newStoreForm?.removeAttribute('hidden'));
   cancelNew?.addEventListener('click', () => newStoreForm?.setAttribute('hidden', ''));
+
+  // ── init gallery widgets already in DOM ────────────────────────────
+  document.querySelectorAll<Element>('.gallery-widget').forEach(initGalleryWidget);
 </script>

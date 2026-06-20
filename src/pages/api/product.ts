@@ -11,6 +11,10 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function parseImages(form: FormData): string[] {
+  return form.getAll('images').map(v => String(v).trim()).filter(Boolean);
+}
+
 export const POST: APIRoute = async ({ request, cookies }) => {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
@@ -27,12 +31,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const description = String(form.get('description') || '').trim();
     const price = parseFloat(String(form.get('price') || '0'));
     const stock = parseInt(String(form.get('stock') || '0'), 10);
-    const image = String(form.get('image') || '').trim() || undefined;
+    const images = parseImages(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
 
-    const product = createProduct(storeId, { name, description, price, stock: isNaN(stock) ? 0 : stock, image });
+    const product = createProduct(storeId, { name, description, price, stock: isNaN(stock) ? 0 : stock, images: images.length ? images : undefined });
     return json({ ok: true, product });
   }
 
@@ -42,19 +46,19 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const description = String(form.get('description') || '').trim();
     const price = parseFloat(String(form.get('price') || '0'));
     const stock = parseInt(String(form.get('stock') || '0'), 10);
-    const imageVal = String(form.get('image') || '').trim();
+    const images = parseImages(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
 
     const updates: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {
       name, description, price, stock: isNaN(stock) ? 0 : stock,
+      images,
     };
-    if (imageVal) updates.image = imageVal;
 
     const updated = updateProduct(productId, updates);
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
-    return json({ ok: true, image: updated.image ?? null });
+    return json({ ok: true, images: updated.images ?? [] });
   }
 
   if (action === 'delete-product') {
