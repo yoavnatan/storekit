@@ -44,3 +44,31 @@
 .cart-line__qty { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
 .cart-line__qty button { width: 26px; height: 26px; border: 1px solid var(--color-border); border-radius: 6px; }
 .cart-empty { color: var(--color-muted); text-align: center; padding: 2rem 0; }
+
+.cart-store-divider { border: none; border-top: 2px solid var(--color-border); margin: 0.5rem 0; }
+
+.cart-store-group__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0 0.4rem;
+}
+.cart-store-group__name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+.cart-store-group__name:hover { text-decoration: underline; }
+.cart-store-group__count {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  margin-inline-start: auto;
+}
+.cart-store-group__items { display: flex; flex-direction: column; }
+.cart-store-group__foot {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.75rem 0 0.5rem;
+  border-top: 1px solid var(--color-border);
+}

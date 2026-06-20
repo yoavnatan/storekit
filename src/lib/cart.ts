@@ -6,67 +6,98 @@ export interface CartItem {
   qty: number;
 }
 
-type Cart = Record<string, CartItem>;
+interface StoreCart {
+  storeName: string;
+  storeSlug: string;
+  items: Record<string, CartItem>;
+}
 
-const KEY = 'store_cart_v1';
+export interface ActiveStoreCart {
+  storeSlug: string;
+  storeName: string;
+  count: number;
+  items: CartItem[];
+}
 
-function read(): Cart {
-  if (typeof localStorage === 'undefined') return {};
+const KEY_PREFIX = 'store_cart_v2_';
+
+function storeKey(storeSlug: string): string {
+  return `${KEY_PREFIX}${storeSlug}`;
+}
+
+function readStoreCart(storeSlug: string): StoreCart | null {
+  if (typeof localStorage === 'undefined') return null;
   try {
-    return (JSON.parse(localStorage.getItem(KEY) ?? 'null') ?? {}) as Cart;
+    const raw = localStorage.getItem(storeKey(storeSlug));
+    return raw ? (JSON.parse(raw) as StoreCart) : null;
   } catch {
-    return {};
+    return null;
   }
 }
 
-function write(cart: Cart): void {
-  localStorage.setItem(KEY, JSON.stringify(cart));
-  window.dispatchEvent(new CustomEvent('cart:change', { detail: cart }));
+function writeStoreCart(cart: StoreCart): void {
+  localStorage.setItem(storeKey(cart.storeSlug), JSON.stringify(cart));
+  window.dispatchEvent(new CustomEvent('cart:change'));
 }
 
-export function getCart(): Cart {
-  return read();
+export function getStoreItems(storeSlug: string): CartItem[] {
+  return Object.values(readStoreCart(storeSlug)?.items ?? {});
 }
 
-export function getItems(): CartItem[] {
-  return Object.values(read());
+export function addItem(
+  storeSlug: string,
+  storeName: string,
+  product: Pick<CartItem, 'slug' | 'name' | 'price' | 'image'>,
+  qty = 1
+): void {
+  const cart = readStoreCart(storeSlug) ?? { storeName, storeSlug, items: {} };
+  cart.storeName = storeName;
+  const prev = cart.items[product.slug];
+  cart.items[product.slug] = { ...product, qty: (prev?.qty ?? 0) + qty };
+  writeStoreCart(cart);
 }
 
-export function addItem(product: Pick<CartItem, 'slug' | 'name' | 'price' | 'image'>, qty = 1): void {
-  const cart = read();
-  const existing = cart[product.slug];
-  cart[product.slug] = {
-    slug: product.slug,
-    name: product.name,
-    price: product.price,
-    image: product.image,
-    qty: (existing ? existing.qty : 0) + qty,
-  };
-  write(cart);
+export function removeItem(storeSlug: string, slug: string): void {
+  const cart = readStoreCart(storeSlug);
+  if (!cart) return;
+  delete cart.items[slug];
+  if (Object.keys(cart.items).length === 0) {
+    localStorage.removeItem(storeKey(storeSlug));
+    window.dispatchEvent(new CustomEvent('cart:change'));
+  } else {
+    writeStoreCart(cart);
+  }
 }
 
-export function setQty(slug: string, qty: number): void {
-  const cart = read();
-  if (!cart[slug]) return;
-  if (qty <= 0) delete cart[slug];
-  else cart[slug].qty = qty;
-  write(cart);
+export function setQty(storeSlug: string, slug: string, qty: number): void {
+  if (qty <= 0) { removeItem(storeSlug, slug); return; }
+  const cart = readStoreCart(storeSlug);
+  if (!cart?.items[slug]) return;
+  cart.items[slug]!.qty = qty;
+  writeStoreCart(cart);
 }
 
-export function removeItem(slug: string): void {
-  const cart = read();
-  delete cart[slug];
-  write(cart);
-}
-
-export function clearCart(): void {
-  write({});
+export function getActiveStoreCarts(): ActiveStoreCart[] {
+  if (typeof localStorage === 'undefined') return [];
+  const result: ActiveStoreCart[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key?.startsWith(KEY_PREFIX)) continue;
+    try {
+      const cart = JSON.parse(localStorage.getItem(key) ?? 'null') as StoreCart | null;
+      if (!cart) continue;
+      const items = Object.values(cart.items);
+      const count = items.reduce((s, item) => s + item.qty, 0);
+      if (count > 0) result.push({ storeSlug: cart.storeSlug, storeName: cart.storeName, count, items });
+    } catch { /* skip */ }
+  }
+  return result;
 }
 
 export function getCount(): number {
-  return getItems().reduce((sum, i) => sum + i.qty, 0);
+  return getActiveStoreCarts().reduce((s, c) => s + c.count, 0);
 }
 
-export function getSubtotal(): number {
-  return getItems().reduce((sum, i) => sum + i.price * i.qty, 0);
+export function getSubtotal(storeSlug: string): number {
+  return getStoreItems(storeSlug).reduce((sum, i) => sum + i.price * i.qty, 0);
 }

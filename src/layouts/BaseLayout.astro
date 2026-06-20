@@ -8,24 +8,7 @@ import ConfirmModal from '../components/ConfirmModal.astro';
 
 import '../styles/main.css';
 
-const { title, description, image, type, noindex, jsonLd, storeColors, isLoggedIn, hasStore, storeMode } = Astro.props;
-
-function safeHex(v: unknown) {
-  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : null;
-}
-
-let colorOverrideCss = null;
-if (storeColors) {
-  const p = safeHex(storeColors.primary);
-  const a = safeHex(storeColors.accent);
-  if (p || a) {
-    let css = ':root {';
-    if (p) css += ` --color-primary: ${p}; --color-primary-dark: ${p};`;
-    if (a) css += ` --color-accent: ${a};`;
-    css += ' }';
-    colorOverrideCss = css;
-  }
-}
+const { title, description, image, type, noindex, jsonLd, isLoggedIn, hasStore, storeMode, storeName, storeSlug } = Astro.props;
 ---
 
 <!doctype html>
@@ -40,10 +23,9 @@ if (storeColors) {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} />
-    {colorOverrideCss && <style set:html={colorOverrideCss} />}
   </head>
   <body>
-    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} />
+    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} />
     <main>
       <slot />
     </main>

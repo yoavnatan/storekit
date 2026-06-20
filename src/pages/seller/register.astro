@@ -10,16 +10,17 @@ let error = '';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const email     = String(form.get('email')      || '').trim();
-  const password  = String(form.get('password')   || '');
-  const storeName = String(form.get('store_name') || '').trim();
+  const name      = String(form.get('name')        || '').trim();
+  const email     = String(form.get('email')       || '').trim();
+  const password  = String(form.get('password')    || '');
+  const storeName = String(form.get('store_name')  || '').trim();
 
-  if (!email || !password || !storeName) {
+  if (!name || !email || !password || !storeName) {
     error = 'All fields are required.';
   } else if (password.length < 6) {
     error = 'Password must be at least 6 characters.';
   } else {
-    const seller = registerSeller(email, password);
+    const seller = registerSeller(email, password, name);
     if (!seller) {
       error = 'An account with this email already exists.';
     } else {
@@ -39,6 +40,10 @@ if (Astro.request.method === 'POST') {
     {error && <p class="auth-error">{error}</p>}
 
     <form method="POST" class="auth-form">
+      <label class="field">
+        <span>Your name</span>
+        <input class="input" type="text" name="name" required autocomplete="name" placeholder="e.g. Sarah Cohen" />
+      </label>
       <label class="field">
         <span>Email</span>
         <input class="input" type="email" name="email" required autocomplete="email" />

@@ -112,7 +112,7 @@ public/                         favicon, robots.txt, product images
 - [x] SEO: Seo.astro, sitemap, JSON-LD, semantic HTML
 - [x] Cart (localStorage) + CartDrawer + checkout placeholder
 - [x] SVG icons everywhere (no emoji)
-- [x] Homepage — shows marketing landing for guests, welcome-back for logged-in sellers
+- [x] Homepage — customer discovery page: search bar + store grid; seller CTA banner at bottom; "Your carts" chips bar (active store carts, client-side)
 - [x] Seller auth: register / login / session (HMAC cookie)
 - [x] Seller dashboard: edit store settings (name, tagline, description) — color picker removed (not relevant yet)
 - [x] Multi-store: seller can create multiple stores, switch between them in dashboard
@@ -138,7 +138,11 @@ public/                         favicon, robots.txt, product images
 - [x] Store page lightbox: click product image → full-screen viewer with prev/next arrows, keyboard nav (← → Esc), touch swipe
 - [x] Tailwind CSS v4 installed + configured via `@tailwindcss/vite`; Cloudinary domain whitelisted for Astro `<Image />` component; hard rules updated (Tailwind-first, mobile-first, Lighthouse 100)
 - [x] Dashboard right column: replace Store URL card with store summary card (product count, in-stock count, stock value, live link button)
-- [ ] Browse stores discovery page
+- [x] Browse stores discovery page (`/`) — search + store grid + seller CTA banner
+- [x] Per-store cart: `store_cart_v2_{slug}` in localStorage; CartDrawer grouped by store with per-store checkout button; global count in header badge (no flash via is:inline script)
+- [x] Seller `name` field: added to Seller interface + registration form; welcome banner shows user name not store name
+- [x] Store logo in store-mode header: shows store name, links back to `/store/[slug]` (keeps customer in store)
+- [x] Unified UI theme: per-store color overrides removed; platform uses single tokens.css palette; store branding = logo + banner + product images only
 - [ ] Payments
 
 ## Workflow
@@ -160,3 +164,4 @@ public/                         favicon, robots.txt, product images
 - **S17** Dashboard right column: store summary card (product count, in-stock, stock value, live link).
 - **S18** Adopted permanent modular architecture rules (encapsulation, layer separation, SRP, ≤200 lines). Progressive Tailwind migration: convert on contact. "New" badge pulse animation (CSS keyframe, store.css).
 - **S19** Full UI redesign: slate blue-gray palette (#2a3547 primary, #4870c0 accent, #f7f8fa bg), Plus Jakarta Sans font, compact buttons with scale(0.97) press, edge-to-edge cover images with zoom on hover, no border-darkening hovers anywhere, dashboard tabs square (radius) + active pointer-events:none, micro-interactions rule added to AI_INSTRUCTIONS.
+- **S20** Customer discovery homepage (search + store grid + seller CTA banner). Per-store cart architecture (store_cart_v2_{slug}), CartDrawer grouped by store with per-store checkout. Cart badge no-flash fix (is:inline). Seller name field added. Store-mode logo links back to store. Unified platform theme (per-store color overrides removed).

@@ -9,6 +9,7 @@ const ONE_DAY = 60 * 60 * 24;
 
 export interface Seller {
   id: string;
+  name: string;
   email: string;
   passwordHash: string;
   createdAt: string;
@@ -42,11 +43,12 @@ function writeSellers(sellers: Seller[]): void {
   fs.writeFileSync(SELLERS_PATH, JSON.stringify(sellers, null, 2));
 }
 
-export function registerSeller(email: string, password: string): Seller | null {
+export function registerSeller(email: string, password: string, name: string): Seller | null {
   const sellers = readSellers();
   if (sellers.find((s) => s.email === email)) return null;
   const seller: Seller = {
     id: crypto.randomUUID(),
+    name,
     email,
     passwordHash: hashPassword(password),
     createdAt: new Date().toISOString(),
@@ -54,6 +56,10 @@ export function registerSeller(email: string, password: string): Seller | null {
   sellers.push(seller);
   writeSellers(sellers);
   return seller;
+}
+
+export function getSellerById(id: string): Seller | null {
+  return readSellers().find((s) => s.id === id) ?? null;
 }
 
 export function loginSeller(email: string, password: string): Seller | null {

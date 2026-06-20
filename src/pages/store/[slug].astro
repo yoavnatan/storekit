@@ -31,22 +31,19 @@ const jsonLd = {
   title={shopStore.name}
   description={shopStore.tagline || shopStore.description || `Shop at ${shopStore.name} on ${platform.name}`}
   jsonLd={jsonLd}
-  storeColors={shopStore.colors}
   isLoggedIn={isLoggedIn}
   storeMode={true}
+  storeName={shopStore.name}
+  storeSlug={shopStore.slug}
 >
-  <div class="store-page">
+  <div class="store-page" data-store-slug={shopStore.slug} data-store-name={shopStore.name}>
 
-    <header class="store-banner">
-      <div class="container">
-        <h1 class="store-name">{shopStore.name}</h1>
-        {shopStore.tagline && <p class="store-tagline">{shopStore.tagline}</p>}
-      </div>
-    </header>
+    <h1 class="visually-hidden">{shopStore.name}</h1>
 
-    {shopStore.description && (
+    {(shopStore.tagline || shopStore.description) && (
       <section class="section container store-about">
-        <p class="store-desc">{shopStore.description}</p>
+        {shopStore.tagline && <p class="store-tagline store-desc">{shopStore.tagline}</p>}
+        {shopStore.description && <p class="store-desc">{shopStore.description}</p>}
       </section>
     )}
 
@@ -137,11 +134,15 @@ const jsonLd = {
 <script>
   import { addItem } from '../../lib/cart.js';
 
+  const storePage = document.querySelector<HTMLElement>('.store-page[data-store-slug]');
+  const storeSlug = storePage?.dataset.storeSlug ?? '';
+  const storeName = storePage?.dataset.storeName ?? '';
+
   // ── Add to cart ───────────────────────────────────────────────────
   document.querySelectorAll<HTMLButtonElement>('.add-to-cart-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const { slug = '', name = '', price = '0', image = '' } = btn.dataset;
-      addItem({ slug, name, price: Number(price), image });
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image });
       window.dispatchEvent(new CustomEvent('cart:open'));
     });
   });

@@ -1,91 +1,184 @@
 ---
 export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { store } from '../config/store.config.js';
-import { getSellerSession } from '../lib/seller-auth.js';
-import { getStoreBySellerId } from '../lib/stores.js';
+import { store as platform } from '../config/store.config.js';
+import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
+import { getStoreBySellerId, getAllStores } from '../lib/stores.js';
 
 const sellerId = getSellerSession(Astro.cookies);
+const seller = sellerId ? getSellerById(sellerId) : null;
 const sellerStore = sellerId ? getStoreBySellerId(sellerId) : null;
 const isLoggedIn = !!sellerId;
 const hasStore = !!sellerStore;
 
-const hp = store.homepage;
+const stores = getAllStores();
 
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  name: store.name,
-  url: store.url,
-  description: store.description,
+  name: platform.name,
+  url: platform.url,
+  description: platform.description,
 };
 ---
 
-<BaseLayout title={null} jsonLd={jsonLd} isLoggedIn={isLoggedIn} hasStore={hasStore}>
-  {hasStore ? (
-    <section class="welcome-back section">
-      <div class="container welcome-back__inner">
-        <p class="muted welcome-back__label">Welcome back</p>
-        <h1>{sellerStore!.name}</h1>
-        <p class="muted welcome-back__sub">
-          Your store is live at <a href={`/store/${sellerStore!.slug}`} class="welcome-back__store-link" target="_blank" rel="noopener">/store/{sellerStore!.slug}</a>
-        </p>
-        <a href="/seller/dashboard" class="btn">Go to dashboard</a>
+<BaseLayout
+  title="Browse Stores"
+  description={`Discover stores on ${platform.name}. Browse products from local sellers all in one place.`}
+  jsonLd={jsonLd}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+>
+
+  {isLoggedIn && seller && (
+    <div class="bg-[var(--color-surface)] border-b border-[var(--color-border)]">
+      <div class="container flex items-center gap-2 py-3 text-sm">
+        <span class="text-[var(--color-muted)] font-medium">Welcome back</span>
+        <span class="text-[var(--color-border)]" aria-hidden="true">·</span>
+        <span class="font-semibold text-[var(--color-primary)]">{seller.name}</span>
+      </div>
+    </div>
+  )}
+
+  <div id="active-carts-bar" hidden class="bg-[var(--color-surface)] border-b border-[var(--color-border)] px-4 py-3">
+    <div class="container flex flex-wrap items-center gap-3">
+      <span class="text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wide shrink-0">Your carts</span>
+      <div id="active-carts-list" class="flex flex-wrap gap-2"></div>
+    </div>
+  </div>
+
+  <section class="bg-[var(--color-surface)] border-b border-[var(--color-border)] py-10 px-4">
+    <div class="container flex flex-col items-center gap-5 text-center max-w-xl mx-auto">
+      <h1 class="text-3xl font-bold leading-tight">Discover Stores</h1>
+      <p class="text-[var(--color-muted)] text-base max-w-sm">Browse local stores and find products you'll love.</p>
+      <div class="w-full max-w-sm relative">
+        <label for="store-search" class="sr-only">Search stores</label>
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)] pointer-events-none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input
+          id="store-search"
+          type="search"
+          placeholder="Search stores..."
+          autocomplete="off"
+          class="w-full pl-9 pr-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-primary)] text-sm placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] transition duration-150"
+        />
+      </div>
+    </div>
+  </section>
+
+  <section class="section container" aria-label="Store listing">
+    {stores.length === 0 ? (
+      <div class="flex flex-col items-center gap-4 py-16 text-center">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-[var(--color-muted)]" aria-hidden="true">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <p class="text-[var(--color-muted)]">No stores yet. Be the first to open one.</p>
+        <a href="/seller/register" class="btn">Open a store — it's free</a>
+      </div>
+    ) : (
+      <>
+        <ul id="store-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" role="list">
+          {stores.map((s) => (
+            <li
+              class="card"
+              data-name={s.name.toLowerCase()}
+              data-tagline={(s.tagline || s.description || '').toLowerCase()}
+            >
+              <div class="flex flex-col gap-3 p-5 flex-1">
+                <div>
+                  <h2 class="text-base font-semibold leading-snug">{s.name}</h2>
+                  {(s.tagline || s.description) && (
+                    <p class="text-sm text-[var(--color-muted)] mt-1 line-clamp-2">{s.tagline || s.description}</p>
+                  )}
+                </div>
+                <a
+                  href={`/store/${s.slug}`}
+                  class="btn btn--sm self-start mt-auto inline-flex items-center gap-1"
+                >
+                  Visit store
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </a>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p id="no-results" class="hidden text-center text-[var(--color-muted)] py-12">No stores match your search.</p>
+      </>
+    )}
+  </section>
+
+  {!hasStore && (
+    <section class="bg-[var(--color-primary)] py-16 px-4">
+      <div class="container flex flex-col items-center gap-6 text-center max-w-lg mx-auto">
+        <div class="flex flex-col gap-3">
+          <h2 class="text-2xl sm:text-3xl font-bold text-white leading-tight">Start selling today</h2>
+          <p class="text-white/70 text-base">Open your own store in minutes — no code, no complexity. Just your products and your customers.</p>
+        </div>
+        <ul class="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm font-medium text-white/60" role="list">
+          <li class="flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Free to start
+          </li>
+          <li class="flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Your own storefront
+          </li>
+          <li class="flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Built-in SEO
+          </li>
+        </ul>
+        <a
+          href="/seller/register"
+          class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white font-semibold text-sm text-[var(--color-primary)] transition duration-150 hover:bg-white/90 active:scale-[0.97]"
+        >
+          Open a store — it's free
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
       </div>
     </section>
-  ) : (
-    <>
-      {hp.sections.map((section) => {
-        if (section === 'hero' && hp.hero.enabled) {
-          return (
-            <section class="hero">
-              <div class="container hero__inner">
-                <div class="hero__badge">Online marketplace</div>
-                <h1>{hp.hero.title}</h1>
-                <p class="hero__sub">{hp.hero.subtitle}</p>
-                <div class="hero__actions">
-                  <a href={hp.hero.ctaHref} class="btn">{hp.hero.ctaText}</a>
-                  <a href="/seller/login" class="btn btn--ghost">Log in</a>
-                </div>
-                <ul class="hero__pills" role="list">
-                  <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Free to start</li>
-                  <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Your own storefront</li>
-                  <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Built-in SEO</li>
-                  <li><svg class="pill-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> No code needed</li>
-                </ul>
-              </div>
-            </section>
-          );
-        }
-        return null;
-      })}
-
-      <section class="section how container">
-        <div class="section__head center">
-          <h2>How it works</h2>
-          <p class="muted">Three steps and you're selling.</p>
-        </div>
-        <ol class="steps" role="list">
-          <li class="step">
-            <span class="step__num">1</span>
-            <h3>Create your account</h3>
-            <p class="muted">Sign up with your email in under a minute. No credit card, no commitment.</p>
-          </li>
-          <li class="step">
-            <span class="step__num">2</span>
-            <h3>Set up your store</h3>
-            <p class="muted">Give your store a name, pick your colors, and write a short description. Done.</p>
-          </li>
-          <li class="step">
-            <span class="step__num">3</span>
-            <h3>Add products & go live</h3>
-            <p class="muted">Upload your products. Your store gets its own page, found by search engines from day one.</p>
-          </li>
-        </ol>
-        <div class="center" style="margin-top:2.5rem">
-          <a href="/seller/register" class="btn">Get started — it's free</a>
-        </div>
-      </section>
-    </>
   )}
+
 </BaseLayout>
+
+<script>
+  import { getActiveStoreCarts } from '../lib/cart.js';
+
+  // ── Active carts bar ──────────────────────────────────────────────
+  const cartsBar  = document.getElementById('active-carts-bar');
+  const cartsList = document.getElementById('active-carts-list');
+
+  function renderActiveCarts() {
+    const carts = getActiveStoreCarts();
+    if (!cartsList || !cartsBar) return;
+    if (!carts.length) { cartsBar.setAttribute('hidden', ''); return; }
+    cartsBar.removeAttribute('hidden');
+    cartsList.innerHTML = carts.map((c) => `
+      <a href="/store/${encodeURIComponent(c.storeSlug)}" class="active-cart-chip">
+        ${c.storeName}
+        <span class="active-cart-chip__count">${c.count}</span>
+      </a>`).join('');
+  }
+
+  renderActiveCarts();
+  window.addEventListener('cart:change', renderActiveCarts);
+
+  // ── Store search ──────────────────────────────────────────────────
+  const search = document.getElementById('store-search') as HTMLInputElement | null;
+  const list = document.getElementById('store-list');
+  const noResults = document.getElementById('no-results');
+
+  if (search && list) {
+    search.addEventListener('input', () => {
+      const q = search.value.toLowerCase().trim();
+      let visible = 0;
+      list.querySelectorAll<HTMLLIElement>('li[data-name]').forEach((li) => {
+        const match = q === '' || (li.dataset.name ?? '').includes(q) || (li.dataset.tagline ?? '').includes(q);
+        li.hidden = !match;
+        if (match) visible++;
+      });
+      if (noResults) noResults.classList.toggle('hidden', visible > 0 || q === '');
+    });
+  }
+</script>

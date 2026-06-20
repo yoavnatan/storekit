@@ -5,9 +5,11 @@ interface Props {
   isLoggedIn?: boolean;
   hasStore?: boolean;
   storeMode?: boolean;
+  storeName?: string;
+  storeSlug?: string;
 }
 
-const { isLoggedIn = false, storeMode = false } = Astro.props;
+const { isLoggedIn = false, storeMode = false, storeName, storeSlug } = Astro.props;
 const logo = store.logo;
 
 type NavItem = { label: string; href: string };
@@ -31,11 +33,14 @@ if (!storeMode) {
 
 <header class="site-header">
   <div class="container between flex">
-    <a href="/" class="logo" aria-label={store.name}>
-      {logo.type === 'image'
-        ? <img src={logo.image} alt={store.name} height="32" />
-        : <span>{logo.text}</span>}
-    </a>
+    {storeMode && storeName && storeSlug
+      ? <a href={`/store/${storeSlug}`} class="logo" aria-label={storeName}><span>{storeName}</span></a>
+      : <a href="/" class="logo" aria-label={store.name}>
+          {logo.type === 'image'
+            ? <img src={logo.image} alt={store.name} height="32" />
+            : <span>{logo.text}</span>}
+        </a>
+    }
 
     {!storeMode && (
       <nav aria-label="Main navigation">
@@ -64,8 +69,24 @@ if (!storeMode) {
 
       <button id="cart-toggle" class="cart-btn" aria-label="Open cart">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-        <span id="cart-count" class="cart-count">0</span>
+        <span id="cart-count" class="cart-count" hidden></span>
       </button>
+      <script is:inline>
+        (function () {
+          try {
+            var count = 0;
+            for (var i = 0; i < localStorage.length; i++) {
+              var k = localStorage.key(i);
+              if (!k || k.indexOf('store_cart_v2_') !== 0) continue;
+              var c = JSON.parse(localStorage.getItem(k) || 'null') || {};
+              var items = c.items ? Object.values(c.items) : [];
+              count += items.reduce(function (s, item) { return s + ((item && item.qty) || 0); }, 0);
+            }
+            var el = document.getElementById('cart-count');
+            if (el && count > 0) { el.textContent = String(count); el.removeAttribute('hidden'); }
+          } catch (_) {}
+        })();
+      </script>
     </div>
   </div>
 </header>
@@ -76,7 +97,11 @@ if (!storeMode) {
 
   function refresh() {
     const el = document.getElementById('cart-count');
-    if (el) el.textContent = String(getCount());
+    if (!el) return;
+    const count = getCount();
+    el.textContent = String(count);
+    if (count > 0) el.removeAttribute('hidden');
+    else el.setAttribute('hidden', '');
   }
 
   document.getElementById('cart-toggle')?.addEventListener('click', () => {
