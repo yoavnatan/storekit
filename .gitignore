@@ -27,3 +27,6 @@ yarn-error.log*
 
 # runtime data (sellers, stores — created at runtime, not source)
 data/*.json
+
+# local images / assets not for version control
+pics/
