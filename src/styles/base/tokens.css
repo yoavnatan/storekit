@@ -8,8 +8,9 @@
   --color-text: #1c2333;
   --color-muted: #6b7589;
   --color-border: #e2e5eb;
+  --color-danger: #dc2626;
 
-  --font-base: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-base: 'Heebo', system-ui, -apple-system, sans-serif;
 
   --radius: 6px;
 

@@ -2,8 +2,12 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { loginSeller, setSellerSession, getSellerSession } from '../../lib/seller-auth.js';
+import { getLang, getT } from '../../i18n/index.js';
 
 if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
+
+const lang = getLang(Astro.cookies);
+const t    = getT(lang);
 
 let error = '';
 
@@ -16,28 +20,27 @@ if (Astro.request.method === 'POST') {
     setSellerSession(Astro.cookies, seller.id);
     return Astro.redirect('/seller/dashboard');
   }
-  error = 'Incorrect email or password.';
+  error = t.auth.wrongCredentials;
 }
 ---
 
-<BaseLayout title="Seller login" noindex={true} isLoggedIn={false} hasStore={false}>
+<BaseLayout title={t.auth.sellerLogin} noindex={true} isLoggedIn={false} hasStore={false}>
   <section class="section container auth-wrap">
-    <h1>Seller login</h1>
+    <h1>{t.auth.sellerLogin}</h1>
 
     {error && <p class="auth-error">{error}</p>}
 
     <form method="POST" class="auth-form">
       <label class="field">
-        <span>Email</span>
+        <span>{t.auth.email}</span>
         <input class="input" type="email" name="email" required autocomplete="email" />
       </label>
       <label class="field">
-        <span>Password</span>
+        <span>{t.auth.password}</span>
         <input class="input" type="password" name="password" required autocomplete="current-password" />
       </label>
-      <button class="btn" type="submit">Log in</button>
-      <p class="muted auth-switch">Don't have a store yet? <a href="/seller/register">Open one</a></p>
+      <button class="btn" type="submit">{t.auth.login}</button>
+      <p class="muted auth-switch">{t.auth.noStore} <a href="/seller/register">{t.auth.openOne}</a></p>
     </form>
   </section>
 </BaseLayout>
-

@@ -1,7 +1,10 @@
 ---
-/** Footer — config-driven links and note. */
 import { store } from '../config/store.config.js';
+import { getLang, getT } from '../i18n/index.js';
+
 const year = new Date().getFullYear();
+const lang = getLang(Astro.cookies);
+const t    = getT(lang);
 ---
 
 <footer class="site-footer">
@@ -10,13 +13,11 @@ const year = new Date().getFullYear();
       <p class="muted">© {year} {store.business.legalName || store.name}</p>
       <nav aria-label="Footer links">
         <ul role="list" class="flex gap">
-          {store.footer.links.map((l) => (
-            <li><a href={l.href} class="muted">{l.label}</a></li>
-          ))}
+          <li><a href="/terms" class="muted">{t.footer.terms}</a></li>
+          <li><a href="/contact" class="muted">{t.footer.contact}</a></li>
         </ul>
       </nav>
     </div>
-    <p class="muted note">{store.footer.note}</p>
+    <p class="muted note">{t.footer.note}</p>
   </div>
 </footer>
-

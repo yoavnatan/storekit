@@ -3,8 +3,12 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { registerSeller, setSellerSession, getSellerSession } from '../../lib/seller-auth.js';
 import { createStore } from '../../lib/stores.js';
+import { getLang, getT } from '../../i18n/index.js';
 
 if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
+
+const lang = getLang(Astro.cookies);
+const t    = getT(lang);
 
 let error = '';
 
@@ -16,13 +20,13 @@ if (Astro.request.method === 'POST') {
   const storeName = String(form.get('store_name')  || '').trim();
 
   if (!name || !email || !password || !storeName) {
-    error = 'All fields are required.';
+    error = t.auth.allRequired;
   } else if (password.length < 6) {
-    error = 'Password must be at least 6 characters.';
+    error = t.auth.passwordTooShort;
   } else {
     const seller = registerSeller(email, password, name);
     if (!seller) {
-      error = 'An account with this email already exists.';
+      error = t.auth.emailExists;
     } else {
       createStore(seller.id, { name: storeName });
       setSellerSession(Astro.cookies, seller.id);
@@ -32,33 +36,32 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<BaseLayout title="Open your store" noindex={true} isLoggedIn={false} hasStore={false}>
+<BaseLayout title={t.auth.openStore} noindex={true} isLoggedIn={false} hasStore={false}>
   <section class="section container auth-wrap">
-    <h1>Open your store</h1>
-    <p class="muted">Create a free account and go live in minutes.</p>
+    <h1>{t.auth.openStore}</h1>
+    <p class="muted">{t.auth.createFree}</p>
 
     {error && <p class="auth-error">{error}</p>}
 
     <form method="POST" class="auth-form">
       <label class="field">
-        <span>Your name</span>
-        <input class="input" type="text" name="name" required autocomplete="name" placeholder="e.g. Sarah Cohen" />
+        <span>{t.auth.yourName}</span>
+        <input class="input" type="text" name="name" required autocomplete="name" placeholder={t.auth.namePlaceholder} />
       </label>
       <label class="field">
-        <span>Email</span>
+        <span>{t.auth.email}</span>
         <input class="input" type="email" name="email" required autocomplete="email" />
       </label>
       <label class="field">
-        <span>Password</span>
+        <span>{t.auth.password}</span>
         <input class="input" type="password" name="password" required minlength="6" autocomplete="new-password" />
       </label>
       <label class="field">
-        <span>Store name</span>
-        <input class="input" type="text" name="store_name" required placeholder="e.g. Sarah's Candles" />
+        <span>{t.auth.storeName}</span>
+        <input class="input" type="text" name="store_name" required placeholder={t.auth.storeNamePlaceholder} />
       </label>
-      <button class="btn btn--accent" type="submit">Create my store</button>
-      <p class="muted auth-switch">Already have a store? <a href="/seller/login">Log in</a></p>
+      <button class="btn btn--accent" type="submit">{t.auth.createStore}</button>
+      <p class="muted auth-switch">{t.auth.alreadyHaveStore} <a href="/seller/login">{t.auth.loginLink}</a></p>
     </form>
   </section>
 </BaseLayout>
-

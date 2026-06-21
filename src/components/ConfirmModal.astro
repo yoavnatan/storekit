@@ -1,17 +1,21 @@
 ---
 ---
-<dialog id="confirm-dialog" class="confirm-dialog">
+<dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
   <div class="confirm-dialog__inner">
     <h3 class="confirm-dialog__title" id="confirm-title"></h3>
     <p class="confirm-dialog__message" id="confirm-message"></p>
     <div class="confirm-dialog__actions">
-      <button id="confirm-cancel" class="btn btn--ghost">Cancel</button>
-      <button id="confirm-ok" class="btn btn--danger">Confirm</button>
+      <button id="confirm-cancel" class="btn btn--ghost"></button>
+      <button id="confirm-ok" class="btn btn--danger"></button>
     </div>
   </div>
 </dialog>
 
 <script>
+  function getI18n() {
+    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}'); } catch { return {}; }
+  }
+
   const dialog = document.getElementById('confirm-dialog') as HTMLDialogElement | null;
   const titleEl = document.getElementById('confirm-title');
   const msgEl = document.getElementById('confirm-message');
@@ -21,10 +25,12 @@
   let pending: (() => void) | null = null;
 
   window.addEventListener('confirm:open', (e: Event) => {
+    const i18n = getI18n().confirm ?? {};
     const detail = (e as CustomEvent<{ title?: string; message?: string; okLabel?: string; onConfirm?: () => void }>).detail;
-    if (titleEl) titleEl.textContent = detail.title ?? 'Are you sure?';
-    if (msgEl) msgEl.textContent = detail.message ?? 'This action cannot be undone.';
-    if (okBtn) okBtn.textContent = detail.okLabel ?? 'Confirm';
+    if (titleEl) titleEl.textContent = detail.title ?? i18n.defaultTitle ?? 'Are you sure?';
+    if (msgEl) msgEl.textContent = detail.message ?? i18n.defaultMsg ?? 'This action cannot be undone.';
+    if (okBtn) okBtn.textContent = detail.okLabel ?? i18n.confirm ?? 'Confirm';
+    if (cancelBtn) cancelBtn.textContent = i18n.cancel ?? 'Cancel';
     pending = detail.onConfirm ?? null;
     dialog?.showModal();
   });

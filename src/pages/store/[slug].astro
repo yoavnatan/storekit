@@ -5,6 +5,7 @@ import { getStoreBySlug } from '../../lib/stores.js';
 import { getProductsByStoreId } from '../../lib/store-products.js';
 import { store as platform, formatPrice } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
+import { getLang, getT } from '../../i18n/index.js';
 
 const { slug } = Astro.params;
 if (!slug) return Astro.redirect('/404');
@@ -17,6 +18,9 @@ const isLoggedIn = !!getSellerSession(Astro.cookies);
 const products = getProductsByStoreId(shopStore.id);
 const storeUrl = new URL(`/store/${shopStore.slug}`, Astro.url).href;
 const today = new Date().toDateString();
+
+const lang = getLang(Astro.cookies);
+const t    = getT(lang);
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -48,7 +52,7 @@ const jsonLd = {
     )}
 
     <section class="section container">
-      <h2 class="products-heading">Products</h2>
+      <h2 class="products-heading">{t.store.products}</h2>
       {products.length === 0 ? (
         <div class="empty-state">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
@@ -56,14 +60,15 @@ const jsonLd = {
             <line x1="3" y1="6" x2="21" y2="6"/>
             <path d="M16 10a4 4 0 0 1-8 0"/>
           </svg>
-          <p>This store is setting up. Check back soon.</p>
+          <p>{t.store.emptyStore}</p>
         </div>
       ) : (
         <Fragment>
           <div class="flex flex-col sm:flex-row gap-2" style="margin-bottom:2rem">
             <div class="relative flex-1">
-              <svg class="absolute left-[0.65rem] top-1/2 -translate-y-1/2 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <input type="search" id="product-search" placeholder="Search products…" class="input" style="padding-left:2.15rem;padding-top:0.5rem;padding-bottom:0.5rem;font-size:0.875rem" autocomplete="off" />
+              <svg class={`absolute ${lang === 'he' ? 'right-[0.65rem]' : 'left-[0.65rem]'} top-1/2 -translate-y-1/2 pointer-events-none`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <label for="product-search" class="visually-hidden">{t.store.searchLabel}</label>
+              <input type="search" id="product-search" placeholder={t.store.searchPlaceholder} class="input py-2 text-sm" style={lang === 'he' ? 'padding-right:2.15rem;padding-left:0.75rem' : 'padding-left:2.15rem;padding-right:0.75rem'} autocomplete="off" />
             </div>
             <div class="relative w-full sm:w-44" id="sort-dropdown">
               <button
@@ -71,23 +76,23 @@ const jsonLd = {
                 id="sort-trigger"
                 aria-haspopup="listbox"
                 aria-expanded="false"
-                class="input flex items-center justify-between gap-3 select-none whitespace-nowrap w-full"
-                style="padding-top:0.5rem;padding-bottom:0.5rem;font-size:0.875rem;cursor:pointer">
-                <span id="sort-label">Sort: Default</span>
+                class="input flex items-center justify-between gap-3 select-none whitespace-nowrap w-full py-2 text-sm cursor-pointer">
+                <span id="sort-label">{t.store.sortDefault}</span>
                 <svg id="sort-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
               <ul
                 id="sort-menu"
                 role="listbox"
+                aria-labelledby="sort-trigger"
                 hidden
-                class="absolute right-0 top-full z-20 mt-1 bg-white overflow-hidden w-full"
+                class="absolute ltr:right-0 rtl:left-0 top-full z-20 mt-1 bg-white overflow-hidden w-full"
                 style="border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.1)">
-                <li role="option" data-value="default" aria-selected="true" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Sort: Default</li>
-                <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Name: A → Z</li>
-                <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Name: Z → A</li>
-                <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Price: Low → High</li>
-                <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Price: High → Low</li>
-                <li role="option" data-value="newest" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Newest first</li>
+                <li role="option" data-value="default" aria-selected="true" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortDefault}</li>
+                <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNameAsc}</li>
+                <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNameDesc}</li>
+                <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortPriceAsc}</li>
+                <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortPriceDesc}</li>
+                <li role="option" data-value="newest" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNewest}</li>
               </ul>
             </div>
           </div>
@@ -99,7 +104,7 @@ const jsonLd = {
                 <li class="product-card card" data-images={hasImages ? JSON.stringify(p.images) : undefined} data-product-name={p.name} data-price={String(p.price)} data-created-at={p.createdAt}>
                   <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}`}
                        role={hasImages ? 'button' : undefined}
-                       aria-label={hasImages ? `View images of ${p.name}` : undefined}
+                       aria-label={hasImages ? `${p.name}` : undefined}
                        tabindex={hasImages ? 0 : undefined}>
                     {p.images?.[0]
                       ? <img src={p.images[0]} alt={p.name} class="product-card__img" width="400" height="400" loading="lazy" decoding="async" />
@@ -111,22 +116,23 @@ const jsonLd = {
                           </svg>
                         </div>
                     }
+                    {isNew && <span class="badge badge--new">{t.store.badgeNew}</span>}
                   </div>
                   <div class="product-card__body">
-                    {isNew && <span class="badge badge--new">New</span>}
                     <h3 class="product-card__name" dir="auto">{p.name}</h3>
                     {p.description && <p class="product-card__desc" dir="auto">{p.description}</p>}
                     <div class="product-card__footer">
                       <span class="product-card__price">{formatPrice(p.price)}</span>
                       {p.stock <= 0
-                        ? <span class="badge badge--muted">Out of stock</span>
+                        ? <span class="badge badge--muted">{t.store.outOfStock}</span>
                         : <button
                             class="btn btn--sm add-to-cart-btn"
                             data-slug={p.slug}
                             data-name={p.name}
                             data-price={String(p.price)}
                             data-image={p.images?.[0] ?? ''}
-                          >Add to cart</button>}
+                            data-label-added={t.store.addedToCart}
+                          >{t.store.addToCart}</button>}
                     </div>
                   </div>
                 </li>
@@ -135,7 +141,7 @@ const jsonLd = {
           </ul>
           <div id="no-results" class="empty-state" hidden>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <p>No products match your search.</p>
+            <p>{t.store.noProductsFound}</p>
           </div>
         </Fragment>
       )}
@@ -161,7 +167,7 @@ const jsonLd = {
 
     <footer class="store-platform-note">
       <p>
-        <a href="/" class="platform-link">{platform.name}</a> — open your own store today
+        <a href="/" class="platform-link">{platform.name}</a> — {t.store.platformNote}
       </p>
     </footer>
 
@@ -187,11 +193,37 @@ const jsonLd = {
   if (storeSlug) syncCartImages(storeSlug, currentProducts);
 
   // ── Add to cart ───────────────────────────────────────────────────
+  const checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-inline-end:4px"><polyline points="20 6 9 17 4 12"/></svg>';
+
   document.querySelectorAll<HTMLButtonElement>('.add-to-cart-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
+      if (btn.disabled) return;
       const { slug = '', name = '', price = '0', image = '' } = btn.dataset;
       addItem(storeSlug, storeName, { slug, name, price: Number(price), image });
-      window.dispatchEvent(new CustomEvent('cart:open'));
+
+      const originalText = btn.textContent?.trim() ?? '';
+      const addedLabel   = btn.dataset.labelAdded ?? originalText;
+
+      btn.innerHTML  = `${checkSvg}${addedLabel}`;
+      btn.disabled   = true;
+      btn.style.opacity = '0.72';
+
+      // spring pop on add
+      btn.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.1)' }, { transform: 'scale(1)' }],
+        { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+      );
+
+      setTimeout(() => {
+        btn.textContent   = originalText;
+        btn.style.opacity = '';
+        btn.disabled      = false;
+        // gentle settle on revert
+        btn.animate(
+          [{ transform: 'scale(0.94)' }, { transform: 'scale(1)' }],
+          { duration: 160, easing: 'ease-out' }
+        );
+      }, 1500);
     });
   });
 
@@ -247,27 +279,52 @@ const jsonLd = {
   function openSort() {
     sortMenu?.removeAttribute('hidden');
     sortTrigger?.setAttribute('aria-expanded', 'true');
-    if (sortChevron) (sortChevron as HTMLElement).style.transform = 'rotate(180deg)';
+    if (sortChevron) (sortChevron as unknown as HTMLElement).style.transform = 'rotate(180deg)';
   }
 
   function closeSort() {
     sortMenu?.setAttribute('hidden', '');
     sortTrigger?.setAttribute('aria-expanded', 'false');
-    if (sortChevron) (sortChevron as HTMLElement).style.transform = '';
+    if (sortChevron) (sortChevron as unknown as HTMLElement).style.transform = '';
+  }
+
+  const sortOptions = sortMenu
+    ? Array.from(sortMenu.querySelectorAll<HTMLElement>('[role="option"]'))
+    : [];
+
+  function selectSortOption(opt: HTMLElement) {
+    sortOptions.forEach(o => o.setAttribute('aria-selected', 'false'));
+    opt.setAttribute('aria-selected', 'true');
+    currentSort = opt.dataset.value ?? 'default';
+    if (sortLabel) sortLabel.textContent = opt.textContent?.trim() ?? '';
+    closeSort();
+    sortTrigger?.focus();
+    filterAndSort();
   }
 
   sortTrigger?.addEventListener('click', () => {
     sortMenu?.hidden ? openSort() : closeSort();
   });
 
-  sortMenu?.querySelectorAll<HTMLElement>('[role="option"]').forEach(opt => {
-    opt.addEventListener('click', () => {
-      sortMenu?.querySelectorAll('[role="option"]').forEach(o => o.setAttribute('aria-selected', 'false'));
-      opt.setAttribute('aria-selected', 'true');
-      currentSort = opt.dataset.value ?? 'default';
-      if (sortLabel) sortLabel.textContent = opt.textContent?.trim() ?? '';
-      closeSort();
-      filterAndSort();
+  sortTrigger?.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (sortMenu?.hidden) openSort();
+      const idx = e.key === 'ArrowDown' ? 0 : sortOptions.length - 1;
+      sortOptions[idx]?.focus();
+    }
+  });
+
+  sortOptions.forEach((opt, i) => {
+    opt.setAttribute('tabindex', '-1');
+    opt.addEventListener('click', () => selectSortOption(opt));
+    opt.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectSortOption(opt); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); sortOptions[(i + 1) % sortOptions.length]?.focus(); }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); sortOptions[(i - 1 + sortOptions.length) % sortOptions.length]?.focus(); }
+      if (e.key === 'Home')      { e.preventDefault(); sortOptions[0]?.focus(); }
+      if (e.key === 'End')       { e.preventDefault(); sortOptions[sortOptions.length - 1]?.focus(); }
+      if (e.key === 'Tab')       { closeSort(); }
     });
   });
 
@@ -295,12 +352,22 @@ const jsonLd = {
   const lbCounter  = document.getElementById('lightbox-counter') as HTMLDivElement | null;
 
   let lbImages: string[] = [];
+  let lbProductName = '';
   let lbIndex = 0;
   let touchStartX = 0;
+
+  let lbPrevFocus: HTMLElement | null = null;
+
+  function getLightboxFocusable(): HTMLButtonElement[] {
+    return [lbClose, lbPrev, lbNext].filter(
+      (el): el is HTMLButtonElement => !!el && !el.hidden
+    );
+  }
 
   function openLightbox(images: string[], startIndex = 0) {
     lbImages = images;
     lbIndex = startIndex;
+    lbPrevFocus = document.activeElement as HTMLElement;
     showImage();
     lightbox?.removeAttribute('hidden');
     document.body.style.overflow = 'hidden';
@@ -311,11 +378,13 @@ const jsonLd = {
     lightbox?.setAttribute('hidden', '');
     document.body.style.overflow = '';
     lbImages = [];
+    lbPrevFocus?.focus();
+    lbPrevFocus = null;
   }
 
   function showImage() {
     const url = lbImages[lbIndex] ?? '';
-    if (lbImg) { lbImg.src = url; lbImg.alt = `Image ${lbIndex + 1}`; }
+    if (lbImg) { lbImg.src = url; lbImg.alt = lbProductName ? `${lbProductName} — ${lbIndex + 1}` : `Image ${lbIndex + 1}`; }
     const multi = lbImages.length > 1;
     if (lbPrev) lbPrev.hidden = !multi;
     if (lbNext) lbNext.hidden = !multi;
@@ -328,12 +397,12 @@ const jsonLd = {
   function prevImage() { lbIndex = (lbIndex - 1 + lbImages.length) % lbImages.length; showImage(); }
   function nextImage() { lbIndex = (lbIndex + 1) % lbImages.length; showImage(); }
 
-  // Click on product image wrap
   document.querySelectorAll<HTMLElement>('.product-card__img-wrap--clickable').forEach((wrap) => {
     wrap.addEventListener('click', () => {
       const card = wrap.closest<HTMLElement>('[data-images]');
       if (!card?.dataset.images) return;
       const images: string[] = JSON.parse(card.dataset.images);
+      lbProductName = card.dataset.productName ?? '';
       if (images.length) openLightbox(images, 0);
     });
     wrap.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -351,12 +420,22 @@ const jsonLd = {
 
   document.addEventListener('keydown', (e: KeyboardEvent) => {
     if (lightbox?.hidden !== false) return;
-    if (e.key === 'Escape') closeLightbox();
-    if (e.key === 'ArrowLeft') prevImage();
-    if (e.key === 'ArrowRight') nextImage();
+    if (e.key === 'Escape') { closeLightbox(); return; }
+    if (e.key === 'ArrowLeft') { prevImage(); return; }
+    if (e.key === 'ArrowRight') { nextImage(); return; }
+    if (e.key === 'Tab') {
+      const focusable = getLightboxFocusable();
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last  = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
   });
 
-  // Touch swipe
   lightbox?.addEventListener('touchstart', (e: TouchEvent) => {
     touchStartX = e.touches[0].clientX;
   }, { passive: true });
@@ -365,4 +444,3 @@ const jsonLd = {
     if (Math.abs(dx) > 50) dx < 0 ? nextImage() : prevImage();
   }, { passive: true });
 </script>
-

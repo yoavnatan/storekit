@@ -1,5 +1,6 @@
 ---
 import { store } from '../config/store.config.js';
+import { getLang, getT } from '../i18n/index.js';
 
 interface Props {
   isLoggedIn?: boolean;
@@ -13,20 +14,24 @@ interface Props {
 const { isLoggedIn = false, storeMode = false, sellerMode = false, storeName, storeSlug } = Astro.props;
 const logo = store.logo;
 
+const lang = getLang(Astro.cookies);
+const t    = getT(lang);
+const nextLang = lang === 'he' ? 'en' : 'he';
+
 type NavItem = { label: string; href: string };
 
 let navItems: NavItem[] = [];
 if (!storeMode && !sellerMode) {
   if (isLoggedIn) {
     navItems = [
-      { label: 'Home', href: '/' },
-      { label: 'Dashboard', href: '/seller/dashboard' },
+      { label: t.nav.home, href: '/' },
+      { label: t.nav.dashboard, href: '/seller/dashboard' },
     ];
   } else {
     navItems = [
-      { label: 'Home', href: '/' },
-      { label: 'Open a store', href: '/seller/register' },
-      { label: 'Log in', href: '/seller/login' },
+      { label: t.nav.home, href: '/' },
+      { label: t.nav.openStore, href: '/seller/register' },
+      { label: t.nav.login, href: '/seller/login' },
     ];
   }
 }
@@ -56,13 +61,13 @@ if (!storeMode && !sellerMode) {
     <div class="header-actions">
       {(storeMode || sellerMode) && isLoggedIn && (
         <div class="user-menu">
-          <button class="user-btn" id="user-menu-toggle" aria-label="User menu">
+          <button class="user-btn" id="user-menu-toggle" aria-label="User menu" aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
           </button>
-          <div class="user-dropdown" id="user-dropdown" hidden>
-            <a href="/seller/dashboard" class="user-dropdown__item">Sellers dashboard</a>
+          <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
+            <a href="/seller/dashboard" class="user-dropdown__item" role="menuitem">{t.nav.sellersDashboard}</a>
             <form method="POST" action="/seller/logout">
-              <button class="user-dropdown__item user-dropdown__item--btn" type="submit">Log out</button>
+              <button class="user-dropdown__item user-dropdown__item--btn" type="submit" role="menuitem">{t.nav.logout}</button>
             </form>
           </div>
         </div>
@@ -70,9 +75,9 @@ if (!storeMode && !sellerMode) {
 
       {!sellerMode && (
         <Fragment>
-          <button id="cart-toggle" class="cart-btn" aria-label="Open cart">
+          <button id="cart-toggle" class="cart-btn" aria-label={t.nav.openCart}>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-            <span id="cart-count" class="cart-count" hidden></span>
+            <span id="cart-count" class="cart-count" hidden aria-live="polite" aria-atomic="true"></span>
           </button>
           <script is:inline>
             (function () {
@@ -92,6 +97,12 @@ if (!storeMode && !sellerMode) {
           </script>
         </Fragment>
       )}
+
+      <form method="POST" action={`/api/lang?l=${nextLang}`} class="lang-toggle-form">
+        <button type="submit" class="lang-toggle-btn" aria-label={t.nav.switchLangLabel}>
+          {t.nav.switchLang}
+        </button>
+      </form>
     </div>
   </div>
 </header>
@@ -116,17 +127,33 @@ if (!storeMode && !sellerMode) {
   window.addEventListener('cart:change', refresh);
   refresh();
 
-  const userToggle = document.getElementById('user-menu-toggle');
+  const userToggle = document.getElementById('user-menu-toggle') as HTMLButtonElement | null;
   const userDropdown = document.getElementById('user-dropdown');
+
+  function openUserMenu() {
+    userDropdown?.removeAttribute('hidden');
+    userToggle?.setAttribute('aria-expanded', 'true');
+    (userDropdown?.querySelector<HTMLElement>('[role="menuitem"]'))?.focus();
+  }
+
+  function closeUserMenu() {
+    userDropdown?.setAttribute('hidden', '');
+    userToggle?.setAttribute('aria-expanded', 'false');
+  }
 
   userToggle?.addEventListener('click', (e) => {
     e.stopPropagation();
-    userDropdown?.toggleAttribute('hidden');
+    userDropdown?.hasAttribute('hidden') ? openUserMenu() : closeUserMenu();
   });
 
   document.addEventListener('click', () => {
-    if (userDropdown && !userDropdown.hasAttribute('hidden')) {
-      userDropdown.setAttribute('hidden', '');
+    if (userDropdown && !userDropdown.hasAttribute('hidden')) closeUserMenu();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && userDropdown && !userDropdown.hasAttribute('hidden')) {
+      closeUserMenu();
+      userToggle?.focus();
     }
   });
 </script>

@@ -152,11 +152,14 @@
 }
 
 .badge--new {
+  position: absolute;
+  top: 0.5rem;
+  inset-inline-start: 0.5rem;
+  z-index: 1;
   background: var(--color-accent);
   color: #fff;
   font-weight: 700;
   font-size: 0.7rem;
-  align-self: flex-start;
   animation: badge-pulse 2.5s ease-out infinite;
 }
 

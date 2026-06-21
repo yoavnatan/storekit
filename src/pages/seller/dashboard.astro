@@ -11,6 +11,12 @@ import {
 } from '../../lib/store-products.js';
 import { formatPrice } from '../../config/store.config.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
+import { getLang, getT } from '../../i18n/index.js';
+
+const lang = getLang(Astro.cookies);
+const t    = getT(lang);
+const d    = t.dashboard;
+const g    = t.gallery;
 
 const sellerId = getSellerSession(Astro.cookies);
 if (!sellerId) return Astro.redirect('/seller/login');
@@ -30,7 +36,7 @@ if (Astro.request.method === 'POST') {
     const tagline = String(form.get('tagline') || '').trim();
     const description = String(form.get('description') || '').trim();
     if (!name) {
-      error = 'Store name is required.';
+      error = d.storeNameRequired;
     } else {
       const stores = getStoresBySellerId(sellerId);
       const target = stores.find((s) => s.id === storeId) ?? stores[0];
@@ -44,7 +50,7 @@ if (Astro.request.method === 'POST') {
     const tagline = String(form.get('tagline') || '').trim();
     const description = String(form.get('description') || '').trim();
     if (!name) {
-      error = 'Store name is required.';
+      error = d.storeNameRequired;
     } else {
       const { id: newStoreId } = createStore(sellerId, { name, tagline, description });
       return Astro.redirect(`/seller/dashboard?store=${newStoreId}`);
@@ -57,9 +63,9 @@ if (Astro.request.method === 'POST') {
     const stock = parseInt(String(form.get('stock') || '0'), 10);
 
     if (!name) {
-      error = 'Product name is required.';
+      error = d.productNameRequired;
     } else if (isNaN(price) || price < 0) {
-      error = 'Enter a valid price.';
+      error = d.priceInvalid;
     } else {
       createProduct(storeId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
       return Astro.redirect(`/seller/dashboard?store=${storeId}&added=1`);
@@ -72,9 +78,9 @@ if (Astro.request.method === 'POST') {
     const stock = parseInt(String(form.get('stock') || '0'), 10);
 
     if (!name) {
-      error = 'Product name is required.';
+      error = d.productNameRequired;
     } else if (isNaN(price) || price < 0) {
-      error = 'Enter a valid price.';
+      error = d.priceInvalid;
     } else {
       updateProduct(productId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
       const sid = Astro.url.searchParams.get('store') ?? '';
@@ -102,13 +108,13 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 
 ---
 
-<BaseLayout title="My Store — Dashboard" noindex={true} isLoggedIn={true} hasStore={true} sellerMode={true}>
+<BaseLayout title={d.title} noindex={true} isLoggedIn={true} hasStore={true} sellerMode={true}>
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} hidden></div>
   <section class="section container">
     <div class="dash-head flex between">
       <div>
         <h1>{store.name}</h1>
-        <p class="muted" style="margin-top:0.2rem">Your store · <code>/store/{store.slug}</code></p>
+        <p class="muted" style="margin-top:0.2rem">{d.storeSubtitle} · <code>/store/{store.slug}</code></p>
       </div>
     </div>
 
@@ -124,7 +130,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
             </a>
           ))}
           <button class="store-tab store-tab--new" id="toggle-new-store">
-            + New store
+            {d.newStore}
           </button>
         </div>
       )
@@ -134,41 +140,41 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
         <div class="store-tabs">
           <span class="store-tab store-tab--active">{store.name}</span>
           <button class="store-tab store-tab--new" id="toggle-new-store">
-            + New store
+            {d.newStore}
           </button>
         </div>
       )
     }
 
     <div id="new-store-form" class="add-form" hidden>
-      <h3>Create a new store</h3>
+      <h3>{d.createStoreTitle}</h3>
       <form method="POST" class="dash-form">
         <input type="hidden" name="_action" value="create-store" />
         <div class="field-row">
           <label class="field">
-            <span>Store name <span class="req">*</span></span>
-            <input class="input" name="name" required placeholder="e.g. Sarah's Ceramics" />
+            <span>{d.storeNameReq}</span>
+            <input class="input" name="name" required placeholder={d.storeNamePlaceholder} />
           </label>
           <label class="field">
-            <span>Tagline</span>
-            <input class="input" name="tagline" placeholder="A short description" />
+            <span>{d.tagline}</span>
+            <input class="input" name="tagline" placeholder={d.taglinePlaceholder} />
           </label>
         </div>
         <div class="form-actions">
-          <button class="btn" type="submit">Create store</button>
-          <button class="btn btn--ghost" type="button" id="cancel-new-store">Cancel</button>
+          <button class="btn" type="submit">{d.createStoreBtn}</button>
+          <button class="btn btn--ghost" type="button" id="cancel-new-store">{d.cancel}</button>
         </div>
       </form>
     </div>
 
-    {settingsSuccess && <p class="dash-success">Store settings saved.</p>}
-    {productSuccess && <p class="dash-success">Product added.</p>}
+    {settingsSuccess && <p class="dash-success">{d.settingsSaved}</p>}
+    {productSuccess && <p class="dash-success">{d.productAdded}</p>}
     {error && <p class="dash-error">{error}</p>}
 
     <div class="dash-grid">
       <div class="card dash-card">
         <div class="settings-header" id="settings-header" role="button" tabindex="0" aria-expanded="false" aria-controls="settings-body">
-          <h2>Store settings</h2>
+          <h2>{d.storeSettings}</h2>
           <svg class="settings-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div id="settings-body" hidden>
@@ -177,72 +183,72 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
             <input type="hidden" name="storeId" value={store.id} />
 
             <label class="field">
-              <span>Store name</span>
+              <span>{d.storeName}</span>
               <input class="input" name="name" value={store.name} required />
             </label>
 
             <label class="field">
-              <span>Tagline</span>
+              <span>{d.tagline}</span>
               <input
                 class="input"
                 name="tagline"
                 value={store.tagline}
-                placeholder="A short line about your store"
+                placeholder={d.descPlaceholder}
               />
             </label>
 
             <label class="field">
-              <span>Description</span>
+              <span>{d.description}</span>
               <textarea class="input" name="description" rows="3">{store.description}</textarea>
             </label>
 
             <p id="settings-status" hidden></p>
-            <button class="btn" type="submit">Save changes</button>
+            <button class="btn" type="submit">{d.saveChanges}</button>
           </form>
         </div>
       </div>
 
       <div class="card dash-card">
-        <h2>Store overview</h2>
+        <h2>{d.storeOverview}</h2>
         <dl style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem">
           <div class="flex items-baseline justify-between">
-            <dt class="muted">Products</dt>
+            <dt class="muted">{d.products}</dt>
             <dd class="font-semibold">{productCount}</dd>
           </div>
           <div class="flex items-baseline justify-between">
-            <dt class="muted">In stock</dt>
+            <dt class="muted">{d.inStock}</dt>
             <dd class="font-semibold">{inStockCount}</dd>
           </div>
           <div class="flex items-baseline justify-between">
-            <dt class="muted">Stock value</dt>
+            <dt class="muted">{d.stockValue}</dt>
             <dd class="font-semibold">{formatPrice(totalStockValue)}</dd>
           </div>
         </dl>
         <a href={`/store/${store.slug}`} class="btn" style="display:block;text-align:center;margin-top:1.25rem" target="_blank" rel="noopener">
-          View live store
+          {d.viewLive}
         </a>
       </div>
     </div>
 
     <div class="card dash-card products-section">
       <div class="products-header">
-        <h2>Products</h2>
-        <button class="btn btn--sm" id="toggle-add-form">+ Add product</button>
+        <h2>{d.productsTitle}</h2>
+        <button class="btn btn--sm" id="toggle-add-form">{d.addProduct}</button>
       </div>
 
       <div id="add-product-form" class="add-form" hidden>
-        <h3>New product</h3>
+        <h3>{d.newProduct}</h3>
         <form method="POST" class="dash-form">
           <input type="hidden" name="_action" value="add-product" />
           <input type="hidden" name="storeId" value={store.id} />
 
           <div class="field-row">
             <label class="field">
-              <span>Name <span class="req">*</span></span>
-              <input class="input" name="name" required placeholder="e.g. Handmade candle" />
+              <span>{d.nameReq}</span>
+              <input class="input" name="name" required placeholder={d.namePlaceholder} />
             </label>
             <label class="field">
-              <span>Price ($)</span>
+              <span>{d.priceLabel}</span>
               <input
                 class="input"
                 name="price"
@@ -253,98 +259,105 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
               />
             </label>
             <label class="field">
-              <span>Stock</span>
+              <span>{d.colStock}</span>
               <input class="input" name="stock" type="number" min="0" step="1" placeholder="0" />
             </label>
           </div>
 
           <label class="field">
-            <span>Description</span>
+            <span>{d.descLabel}</span>
             <textarea
               class="input"
               name="description"
               rows="2"
-              placeholder="Short product description"></textarea>
+              placeholder={d.descPlaceholderProduct}></textarea>
           </label>
 
           <div class="field">
-            <span class="field-label">Product images</span>
-            <div set:html={galleryWidgetHtml([])}></div>
+            <span class="field-label">{d.productImages}</span>
+            <div set:html={galleryWidgetHtml([], g)}></div>
           </div>
 
           <div class="form-actions">
-            <button class="btn" type="submit">Add product</button>
-            <button class="btn btn--ghost" type="button" id="cancel-add">Cancel</button>
+            <button class="btn" type="submit">{d.addProductBtn}</button>
+            <button class="btn btn--ghost" type="button" id="cancel-add">{d.cancel}</button>
           </div>
         </form>
       </div>
 
-      <p id="empty-products" class="empty-products" hidden={products.length > 0}>No products yet. Add your first one above.</p>
+      <p id="empty-products" class="empty-products" hidden={products.length > 0}>{d.noProducts}</p>
       <table id="products-table" class="products-table" hidden={products.length === 0}>
         <thead>
           <tr>
+            <th class="num" style="width:2rem">#</th>
             <th>
-              <button type="button" class="sort-btn" data-sort-col="name">Name<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+              <button type="button" class="sort-btn" data-sort-col="name">{d.colName}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
             </th>
             <th>
-              <button type="button" class="sort-btn" data-sort-col="price">Price<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+              <button type="button" class="sort-btn" data-sort-col="price">{d.colPrice}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
             </th>
             <th>
-              <button type="button" class="sort-btn" data-sort-col="stock">Stock<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+              <button type="button" class="sort-btn" data-sort-col="stock">{d.colStock}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
             </th>
             <th />
           </tr>
         </thead>
         <tbody id="products-tbody">
-          {products.map((p) => (
+          {products.map((p, idx) => (
             <>
               <tr data-product-display={p.id} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)}>
+                <td class="num row-num">{idx + 1}</td>
                 <td>
                   <div class="product-name-cell">
-                    {p.images?.[0] && <img src={p.images[0]} alt="" class="product-thumb" width="30" height="30" loading="lazy" decoding="async" />}
+                    {p.images?.[0] && <img src={p.images[0]} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" />}
                     <div>
                       <span class="product-name">{p.name}</span>
                       {p.description && <span class="product-desc">{p.description}</span>}
                     </div>
                   </div>
                 </td>
-                <td class="num">{formatPrice(p.price)}</td>
-                <td class="num">{p.stock}</td>
+                <td class="num product-price">{formatPrice(p.price)}</td>
+                <td class="num product-stock">
+                  {p.stock}
+                  {p.stock <= 0 && (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);vertical-align:-2px;margin-inline-start:4px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  )}
+                </td>
                 <td class="actions">
-                  <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle={p.id}>Edit</button>
-                  <button class="btn btn--danger btn--sm" type="button" data-delete-product={p.id} data-store-id={store.id}>Delete</button>
+                  <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle={p.id}>{d.edit}</button>
+                  <button class="btn btn--danger btn--sm" type="button" data-delete-product={p.id} data-store-id={store.id}>{d.delete}</button>
                 </td>
               </tr>
               <tr class="edit-row" data-product-edit={p.id} hidden>
-                <td colspan="4">
+                <td colspan="5">
                   <form method="POST" action="/api/product" class="dash-form inline-edit-form">
                     <input type="hidden" name="_action" value="edit-product" />
                     <input type="hidden" name="productId" value={p.id} />
                     <div class="field-row">
                       <label class="field">
-                        <span>Name <span class="req">*</span></span>
+                        <span>{d.nameReq}</span>
                         <input class="input" name="name" value={p.name} required />
                       </label>
                       <label class="field">
-                        <span>Price ($)</span>
+                        <span>{d.priceLabel}</span>
                         <input class="input" name="price" type="number" min="0" step="0.01" value={p.price} />
                       </label>
                       <label class="field">
-                        <span>Stock</span>
+                        <span>{d.colStock}</span>
                         <input class="input" name="stock" type="number" min="0" step="1" value={p.stock} />
                       </label>
                     </div>
                     <label class="field">
-                      <span>Description</span>
+                      <span>{d.descLabel}</span>
                       <textarea class="input" name="description" rows="2">{p.description}</textarea>
                     </label>
                     <div class="field">
-                      <span class="field-label">Product images</span>
-                      <div set:html={galleryWidgetHtml(p.images ?? [])}></div>
+                      <span class="field-label">{d.productImages}</span>
+                      <div set:html={galleryWidgetHtml(p.images ?? [], g)}></div>
                     </div>
                     <div class="form-actions">
-                      <button class="btn btn--sm" type="submit">Save</button>
-                      <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>Cancel</button>
+                      <button class="btn btn--sm" type="submit">{d.save}</button>
+                      <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
                     </div>
                   </form>
                 </td>
@@ -359,19 +372,19 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 
 <div class="crop-modal" id="crop-modal" hidden aria-modal="true" role="dialog">
   <div class="crop-panel">
-    <h3>Crop image</h3>
+    <h3>{d.cropTitle}</h3>
     <div class="crop-viewport" id="crop-viewport">
       <img class="crop-img" id="crop-img" alt="" />
     </div>
     <div class="crop-controls">
       <label class="crop-zoom-label">
-        Zoom
+        {d.cropZoom}
         <input type="range" class="crop-zoom-input" id="crop-zoom" min="1" max="3" step="0.01" value="1" />
       </label>
     </div>
     <div class="crop-actions">
-      <button class="btn btn--sm" id="crop-apply" type="button">Apply crop</button>
-      <button class="btn btn--ghost btn--sm" id="crop-cancel" type="button">Cancel</button>
+      <button class="btn btn--sm" id="crop-apply" type="button">{d.cropApply}</button>
+      <button class="btn btn--ghost btn--sm" id="crop-cancel" type="button">{d.cancel}</button>
     </div>
   </div>
 </div>

@@ -132,7 +132,7 @@ textarea.input { resize: vertical; }
 }
 
 .products-table th {
-  text-align: left;
+  text-align: start;
   font-weight: 600;
   color: var(--color-muted);
   font-size: 0.8rem;
@@ -166,7 +166,7 @@ textarea.input { resize: vertical; }
 }
 
 .num { white-space: nowrap; }
-.actions { white-space: nowrap; text-align: right; }
+.actions { white-space: nowrap; text-align: end; }
 
 .edit-row td { padding: 1rem 0.75rem; background: var(--color-surface); }
 .inline-edit-form { margin: 0; }
@@ -358,14 +358,14 @@ textarea.input { resize: vertical; }
 
 /* Thumbnail in products table */
 .product-thumb {
-  width: 30px;
-  height: 30px;
-  object-fit: contain;
-  border-radius: 4px;
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 6px;
   border: 1px solid var(--color-border);
   background: var(--color-bg);
-  margin-right: 0.4rem;
-  vertical-align: middle;
+  margin-inline-end: 0.5rem;
+  margin-block: -6px;
   flex-shrink: 0;
 }
 

@@ -3,10 +3,10 @@
 ---
 
 <div id="cart-overlay" class="cart-overlay"></div>
-<aside id="cart-drawer" class="cart-drawer" aria-label="Shopping cart" aria-hidden="true">
+<aside id="cart-drawer" class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title" aria-hidden="true">
   <header class="cart-drawer__head flex between">
-    <h2>Your cart</h2>
-    <button id="cart-close" aria-label="Close">
+    <h2 id="cart-drawer-title">Cart</h2>
+    <button id="cart-close" aria-label="Close cart">
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </header>
@@ -18,25 +18,62 @@
   import { getActiveStoreCarts, getSubtotal, getGrandTotal, setQty, removeItem } from '../lib/cart.js';
   import { formatPrice } from '../config/store.config.js';
 
+  function getI18n() {
+    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}'); } catch { return {}; }
+  }
+
   const drawer  = document.getElementById('cart-drawer') as HTMLElement | null;
   const overlay = document.getElementById('cart-overlay') as HTMLElement | null;
   const lines   = document.getElementById('cart-lines') as HTMLElement | null;
+  const titleEl = document.getElementById('cart-drawer-title') as HTMLElement | null;
 
   const esc = (s: unknown) =>
     String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+  let prevFocus: HTMLElement | null = null;
+
+  function getFocusable(): HTMLElement[] {
+    if (!drawer) return [];
+    return Array.from(
+      drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])')
+    );
+  }
+
+  function trapFocus(e: KeyboardEvent) {
+    if (drawer?.getAttribute('aria-hidden') === 'true') return;
+    if (e.key === 'Escape') { close(); return; }
+    if (e.key !== 'Tab') return;
+    const focusable = getFocusable();
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last  = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
   function open() {
+    prevFocus = document.activeElement as HTMLElement;
     drawer?.classList.add('is-open');
     overlay?.classList.add('is-open');
     drawer?.removeAttribute('aria-hidden');
     render();
+    requestAnimationFrame(() => {
+      (document.getElementById('cart-close') as HTMLButtonElement | null)?.focus();
+    });
   }
 
   function close() {
     drawer?.classList.remove('is-open');
     overlay?.classList.remove('is-open');
     drawer?.setAttribute('aria-hidden', 'true');
+    prevFocus?.focus();
+    prevFocus = null;
   }
+
+  document.addEventListener('keydown', trapFocus);
 
   function placeholderSvg() {
     return `<div class="cart-line__img-placeholder" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>`;
@@ -44,9 +81,15 @@
 
   function render() {
     if (!lines) return;
+    const i18n = getI18n().cart ?? {};
     const carts = getActiveStoreCarts();
+
+    if (titleEl) titleEl.textContent = i18n.title ?? 'Cart';
+    const closeBtn = document.getElementById('cart-close');
+    if (closeBtn) closeBtn.setAttribute('aria-label', i18n.closeCart ?? 'Close cart');
+
     if (!carts.length) {
-      lines.innerHTML = '<p class="cart-empty">Your cart is empty</p>';
+      lines.innerHTML = `<p class="cart-empty">${i18n.empty ?? 'Your cart is empty'}</p>`;
       return;
     }
 
@@ -56,7 +99,7 @@
       <div class="cart-store-group" data-store-slug="${esc(c.storeSlug)}">
         <div class="cart-store-group__head">
           <a href="/store/${esc(c.storeSlug)}" class="cart-store-group__name">${esc(c.storeName)}</a>
-          <span class="cart-store-group__count">${c.count} item${c.count !== 1 ? 's' : ''}</span>
+          <span class="cart-store-group__count">${c.count} ${c.count !== 1 ? (i18n.items ?? 'items') : (i18n.item ?? 'item')}</span>
         </div>
         <div class="cart-store-group__items">
           ${c.items.map((i) => `
@@ -68,10 +111,10 @@
                 <strong>${esc(i.name)}</strong>
                 <div>${formatPrice(i.price)}</div>
                 <div class="cart-line__qty">
-                  <button data-act="dec" data-slug="${esc(i.slug)}" data-store="${esc(c.storeSlug)}">−</button>
-                  <span>${i.qty}</span>
-                  <button data-act="inc" data-slug="${esc(i.slug)}" data-store="${esc(c.storeSlug)}">+</button>
-                  <button data-act="rm" data-slug="${esc(i.slug)}" data-store="${esc(c.storeSlug)}" data-name="${esc(i.name)}" aria-label="Remove" style="margin-inline-start:auto">
+                  <button data-act="dec" data-slug="${esc(i.slug)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyDecrease ?? 'Decrease quantity')} ${esc(i.name)}">−</button>
+                  <span aria-live="polite" aria-atomic="true">${i.qty}</span>
+                  <button data-act="inc" data-slug="${esc(i.slug)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyIncrease ?? 'Increase quantity')} ${esc(i.name)}">+</button>
+                  <button data-act="rm" data-slug="${esc(i.slug)}" data-store="${esc(c.storeSlug)}" data-name="${esc(i.name)}" aria-label="${esc(i18n.removeOk ?? 'Remove')} ${esc(i.name)}" style="margin-inline-start:auto">
                     <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                   </button>
                 </div>
@@ -80,22 +123,22 @@
         </div>
         <div class="cart-store-group__foot">
           <div class="flex between" style="font-size:0.88rem">
-            <span>Subtotal</span>
+            <span>${i18n.subtotal ?? 'Subtotal'}</span>
             <strong>${formatPrice(getSubtotal(c.storeSlug))}</strong>
           </div>
           <a href="/checkout?store=${esc(c.storeSlug)}" class="btn cart-checkout">
-            Checkout — ${esc(c.storeName)}
+            ${i18n.checkout ?? 'Checkout'} — ${esc(c.storeName)}
           </a>
         </div>
       </div>`).join('<hr class="cart-store-divider">') +
       (carts.length > 1 ? `
         <div class="cart-grand-total">
           <div class="cart-grand-total__row">
-            <span>Total (${carts.length} stores)</span>
+            <span>${i18n.total ?? 'Total'} (${carts.length} ${i18n.stores ?? 'stores'})</span>
             <strong>${formatPrice(grandTotal)}</strong>
           </div>
           <a href="/checkout?stores=all" class="btn cart-checkout">
-            Pay all stores
+            ${i18n.payAll ?? 'Pay all stores'}
           </a>
         </div>` : '');
   }
@@ -109,6 +152,7 @@
     const name  = btn.dataset.name ?? slug;
     if (!slug || !store) return;
 
+    const i18n = getI18n().cart ?? {};
     const storeCart = getActiveStoreCarts().find((c) => c.storeSlug === store);
     const item = storeCart?.items.find((i) => i.slug === slug);
 
@@ -117,9 +161,9 @@
     if (btn.dataset.act === 'rm') {
       window.dispatchEvent(new CustomEvent('confirm:open', {
         detail: {
-          title: 'Remove item?',
-          message: `Remove "${name}" from your cart?`,
-          okLabel: 'Remove',
+          title: i18n.removeTitle ?? 'Remove item?',
+          message: `${i18n.removeMsg ?? 'Remove from your cart?'} "${name}"`,
+          okLabel: i18n.removeOk ?? 'Remove',
           onConfirm: () => removeItem(store, slug),
         },
       }));

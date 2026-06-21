@@ -30,7 +30,11 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
     return activeSlot ? (wState.get(activeSlot) ?? null) : null;
   }
 
-  function setLoading(active: boolean, msg = 'Removing background…') {
+  function getRemovingBgMsg() {
+    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').gallery?.removingBg ?? 'Removing background…'; } catch { return 'Removing background…'; }
+  }
+
+  function setLoading(active: boolean, msg = getRemovingBgMsg()) {
     const st = getState();
     if (st) st.processing = active;
     if (loadingOverlay) loadingOverlay.hidden = !active;
@@ -48,6 +52,9 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
     removeBgBtn?.toggleAttribute('hidden', hasProcessed || isProcessing);
     restoreBgBtn?.toggleAttribute('hidden', !hasProcessed || showingProcessed || isProcessing);
     keepBgBtn?.toggleAttribute('hidden', !showingProcessed && !isProcessing);
+    const lockEdit = showingProcessed || isProcessing;
+    if (cropBtn)   cropBtn.disabled   = lockEdit;
+    if (changeBtn) changeBtn.disabled = lockEdit;
   }
 
   function setSlotThumbnail(slot: Element, src: string) {
@@ -133,14 +140,14 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
       const urlInput = activeSlot.querySelector<HTMLInputElement>('.gallery-slot__url');
       const url = urlInput?.value;
       if (!url) return;
-      setLoading(true, 'Fetching image…');
+      setLoading(true);
       try {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error('fetch failed');
         st.original = await resp.blob();
       } catch { setLoading(false); updatePanelButtons(); return; }
     }
-    setLoading(true, 'Removing background…');
+    setLoading(true);
     updatePanelButtons();
     try {
       const processed = await removeBackgroundInWorker(st.original!);

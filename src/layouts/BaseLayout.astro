@@ -1,18 +1,23 @@
 ---
-import { store } from '../config/store.config.js';
 import Seo from '../components/Seo.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import CartDrawer from '../components/CartDrawer.astro';
 import ConfirmModal from '../components/ConfirmModal.astro';
+import { getLang, getDir, getT } from '../i18n/index.js';
 
 import '../styles/main.css';
 
 const { title, description, image, type, noindex, jsonLd, isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode } = Astro.props;
+
+const lang = getLang(Astro.cookies);
+const dir  = getDir(lang);
+const t    = getT(lang);
+const i18nJson = JSON.stringify({ cart: t.cart, confirm: t.confirm, dashboard: t.dashboard, gallery: t.gallery });
 ---
 
 <!doctype html>
-<html lang={store.language} dir={store.direction}>
+<html lang={lang} dir={dir}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -21,12 +26,14 @@ const { title, description, image, type, noindex, jsonLd, isLoggedIn, hasStore, 
     <link rel="sitemap" href="/sitemap-index.xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" />
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} />
   </head>
   <body>
+    <a href="#main-content" class="skip-link">{t.nav.skipToMain}</a>
+    <script type="application/json" id="i18n-data" is:inline set:html={i18nJson}></script>
     <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} />
-    <main>
+    <main id="main-content">
       <slot />
     </main>
     <Footer />
