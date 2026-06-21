@@ -42,8 +42,8 @@ const jsonLd = {
 
     {(shopStore.tagline || shopStore.description) && (
       <section class="section container store-about">
-        {shopStore.tagline && <p class="store-tagline store-desc">{shopStore.tagline}</p>}
-        {shopStore.description && <p class="store-desc">{shopStore.description}</p>}
+        {shopStore.tagline && <p class="store-tagline store-desc" dir="auto">{shopStore.tagline}</p>}
+        {shopStore.description && <p class="store-desc" dir="auto">{shopStore.description}</p>}
       </section>
     )}
 
@@ -59,48 +59,85 @@ const jsonLd = {
           <p>This store is setting up. Check back soon.</p>
         </div>
       ) : (
-        <ul class="product-grid" role="list">
-          {products.map((p) => {
-            const isNew = new Date(p.createdAt).toDateString() === today;
-            const hasImages = !!(p.images?.length);
-            return (
-              <li class="product-card card" data-images={hasImages ? JSON.stringify(p.images) : undefined} data-product-name={p.name}>
-                <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}`}
-                     role={hasImages ? 'button' : undefined}
-                     aria-label={hasImages ? `View images of ${p.name}` : undefined}
-                     tabindex={hasImages ? 0 : undefined}>
-                  {p.images?.[0]
-                    ? <img src={p.images[0]} alt={p.name} class="product-card__img" width="400" height="400" loading="lazy" decoding="async" />
-                    : <div class="product-card__img-placeholder" aria-hidden="true">
-                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-                          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                          <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-                          <line x1="12" y1="22.08" x2="12" y2="12"/>
-                        </svg>
-                      </div>
-                  }
-                </div>
-                <div class="product-card__body">
-                  {isNew && <span class="badge badge--new">New</span>}
-                  <h3 class="product-card__name">{p.name}</h3>
-                  {p.description && <p class="product-card__desc">{p.description}</p>}
-                  <div class="product-card__footer">
-                    <span class="product-card__price">{formatPrice(p.price)}</span>
-                    {p.stock <= 0
-                      ? <span class="badge badge--muted">Out of stock</span>
-                      : <button
-                          class="btn btn--sm add-to-cart-btn"
-                          data-slug={p.slug}
-                          data-name={p.name}
-                          data-price={String(p.price)}
-                          data-image={p.images?.[0] ?? ''}
-                        >Add to cart</button>}
+        <Fragment>
+          <div class="flex flex-col sm:flex-row gap-2" style="margin-bottom:2rem">
+            <div class="relative flex-1">
+              <svg class="absolute left-[0.65rem] top-1/2 -translate-y-1/2 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input type="search" id="product-search" placeholder="Search products…" class="input" style="padding-left:2.15rem;padding-top:0.5rem;padding-bottom:0.5rem;font-size:0.875rem" autocomplete="off" />
+            </div>
+            <div class="relative w-full sm:w-44" id="sort-dropdown">
+              <button
+                type="button"
+                id="sort-trigger"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                class="input flex items-center justify-between gap-3 select-none whitespace-nowrap w-full"
+                style="padding-top:0.5rem;padding-bottom:0.5rem;font-size:0.875rem;cursor:pointer">
+                <span id="sort-label">Sort: Default</span>
+                <svg id="sort-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <ul
+                id="sort-menu"
+                role="listbox"
+                hidden
+                class="absolute right-0 top-full z-20 mt-1 bg-white overflow-hidden w-full"
+                style="border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.1)">
+                <li role="option" data-value="default" aria-selected="true" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Sort: Default</li>
+                <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Name: A → Z</li>
+                <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Name: Z → A</li>
+                <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Price: Low → High</li>
+                <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Price: High → Low</li>
+                <li role="option" data-value="newest" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">Newest first</li>
+              </ul>
+            </div>
+          </div>
+          <ul class="product-grid" role="list">
+            {products.map((p) => {
+              const isNew = new Date(p.createdAt).toDateString() === today;
+              const hasImages = !!(p.images?.length);
+              return (
+                <li class="product-card card" data-images={hasImages ? JSON.stringify(p.images) : undefined} data-product-name={p.name} data-price={String(p.price)} data-created-at={p.createdAt}>
+                  <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}`}
+                       role={hasImages ? 'button' : undefined}
+                       aria-label={hasImages ? `View images of ${p.name}` : undefined}
+                       tabindex={hasImages ? 0 : undefined}>
+                    {p.images?.[0]
+                      ? <img src={p.images[0]} alt={p.name} class="product-card__img" width="400" height="400" loading="lazy" decoding="async" />
+                      : <div class="product-card__img-placeholder" aria-hidden="true">
+                          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                            <line x1="12" y1="22.08" x2="12" y2="12"/>
+                          </svg>
+                        </div>
+                    }
                   </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                  <div class="product-card__body">
+                    {isNew && <span class="badge badge--new">New</span>}
+                    <h3 class="product-card__name" dir="auto">{p.name}</h3>
+                    {p.description && <p class="product-card__desc" dir="auto">{p.description}</p>}
+                    <div class="product-card__footer">
+                      <span class="product-card__price">{formatPrice(p.price)}</span>
+                      {p.stock <= 0
+                        ? <span class="badge badge--muted">Out of stock</span>
+                        : <button
+                            class="btn btn--sm add-to-cart-btn"
+                            data-slug={p.slug}
+                            data-name={p.name}
+                            data-price={String(p.price)}
+                            data-image={p.images?.[0] ?? ''}
+                          >Add to cart</button>}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div id="no-results" class="empty-state" hidden>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <p>No products match your search.</p>
+          </div>
+        </Fragment>
       )}
     </section>
 
@@ -132,11 +169,22 @@ const jsonLd = {
 </BaseLayout>
 
 <script>
-  import { addItem } from '../../lib/cart.js';
+  import { addItem, syncCartImages } from '../../lib/cart.js';
 
   const storePage = document.querySelector<HTMLElement>('.store-page[data-store-slug]');
   const storeSlug = storePage?.dataset.storeSlug ?? '';
   const storeName = storePage?.dataset.storeName ?? '';
+
+  // ── Sync cart images with current product data ────────────────────
+  const currentProducts = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('.add-to-cart-btn')
+  ).map((btn) => ({
+    slug: btn.dataset.slug ?? '',
+    name: btn.dataset.name ?? '',
+    price: Number(btn.dataset.price ?? 0),
+    image: btn.dataset.image ?? '',
+  })).filter((p) => p.slug);
+  if (storeSlug) syncCartImages(storeSlug, currentProducts);
 
   // ── Add to cart ───────────────────────────────────────────────────
   document.querySelectorAll<HTMLButtonElement>('.add-to-cart-btn').forEach((btn) => {
@@ -146,6 +194,96 @@ const jsonLd = {
       window.dispatchEvent(new CustomEvent('cart:open'));
     });
   });
+
+  // ── Search + Sort ─────────────────────────────────────────────────
+  const searchInput = document.getElementById('product-search') as HTMLInputElement | null;
+  const sortTrigger = document.getElementById('sort-trigger')   as HTMLButtonElement | null;
+  const sortMenu    = document.getElementById('sort-menu')      as HTMLUListElement | null;
+  const sortLabel   = document.getElementById('sort-label')     as HTMLSpanElement | null;
+  const sortChevron = document.getElementById('sort-chevron')   as SVGElement | null;
+  const productGrid = document.querySelector<HTMLElement>('.product-grid');
+  const noResults   = document.getElementById('no-results');
+
+  let currentSort = 'default';
+
+  const originalOrder = productGrid
+    ? Array.from(productGrid.querySelectorAll<HTMLElement>('li[data-product-name]'))
+    : [];
+
+  function filterAndSort() {
+    if (!productGrid) return;
+    const query = (searchInput?.value ?? '').toLowerCase().trim();
+
+    const cards = currentSort === 'default'
+      ? [...originalOrder]
+      : Array.from(productGrid.querySelectorAll<HTMLElement>('li[data-product-name]'));
+
+    if (currentSort !== 'default') {
+      cards.sort((a, b) => {
+        switch (currentSort) {
+          case 'name-asc':   return (a.dataset.productName ?? '').localeCompare(b.dataset.productName ?? '');
+          case 'name-desc':  return (b.dataset.productName ?? '').localeCompare(a.dataset.productName ?? '');
+          case 'price-asc':  return Number(a.dataset.price ?? 0) - Number(b.dataset.price ?? 0);
+          case 'price-desc': return Number(b.dataset.price ?? 0) - Number(a.dataset.price ?? 0);
+          case 'newest':     return (b.dataset.createdAt ?? '') > (a.dataset.createdAt ?? '') ? 1 : -1;
+          default: return 0;
+        }
+      });
+    }
+
+    cards.forEach(c => productGrid.appendChild(c));
+
+    let visible = 0;
+    cards.forEach(card => {
+      const name = (card.dataset.productName ?? '').toLowerCase();
+      const show = !query || name.includes(query);
+      card.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    if (noResults) noResults.hidden = visible > 0;
+  }
+
+  function openSort() {
+    sortMenu?.removeAttribute('hidden');
+    sortTrigger?.setAttribute('aria-expanded', 'true');
+    if (sortChevron) (sortChevron as HTMLElement).style.transform = 'rotate(180deg)';
+  }
+
+  function closeSort() {
+    sortMenu?.setAttribute('hidden', '');
+    sortTrigger?.setAttribute('aria-expanded', 'false');
+    if (sortChevron) (sortChevron as HTMLElement).style.transform = '';
+  }
+
+  sortTrigger?.addEventListener('click', () => {
+    sortMenu?.hidden ? openSort() : closeSort();
+  });
+
+  sortMenu?.querySelectorAll<HTMLElement>('[role="option"]').forEach(opt => {
+    opt.addEventListener('click', () => {
+      sortMenu?.querySelectorAll('[role="option"]').forEach(o => o.setAttribute('aria-selected', 'false'));
+      opt.setAttribute('aria-selected', 'true');
+      currentSort = opt.dataset.value ?? 'default';
+      if (sortLabel) sortLabel.textContent = opt.textContent?.trim() ?? '';
+      closeSort();
+      filterAndSort();
+    });
+  });
+
+  document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('sort-dropdown');
+    if (dropdown && !dropdown.contains(e.target as Node)) closeSort();
+  });
+
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && sortMenu && !sortMenu.hidden) {
+      closeSort();
+      sortTrigger?.focus();
+    }
+  });
+
+  searchInput?.addEventListener('input', filterAndSort);
 
   // ── Lightbox ──────────────────────────────────────────────────────
   const lightbox   = document.getElementById('lightbox') as HTMLDivElement | null;

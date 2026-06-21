@@ -8,7 +8,7 @@ import ConfirmModal from '../components/ConfirmModal.astro';
 
 import '../styles/main.css';
 
-const { title, description, image, type, noindex, jsonLd, isLoggedIn, hasStore, storeMode, storeName, storeSlug } = Astro.props;
+const { title, description, image, type, noindex, jsonLd, isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode } = Astro.props;
 ---
 
 <!doctype html>
@@ -25,7 +25,7 @@ const { title, description, image, type, noindex, jsonLd, isLoggedIn, hasStore, 
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} />
   </head>
   <body>
-    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} />
+    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} />
     <main>
       <slot />
     </main>

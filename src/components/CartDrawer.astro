@@ -15,7 +15,7 @@
 
 
 <script>
-  import { getActiveStoreCarts, getSubtotal, setQty, removeItem } from '../lib/cart.js';
+  import { getActiveStoreCarts, getSubtotal, getGrandTotal, setQty, removeItem } from '../lib/cart.js';
   import { formatPrice } from '../config/store.config.js';
 
   const drawer  = document.getElementById('cart-drawer') as HTMLElement | null;
@@ -49,6 +49,8 @@
       lines.innerHTML = '<p class="cart-empty">Your cart is empty</p>';
       return;
     }
+
+    const grandTotal = getGrandTotal();
 
     lines.innerHTML = carts.map((c) => `
       <div class="cart-store-group" data-store-slug="${esc(c.storeSlug)}">
@@ -85,7 +87,17 @@
             Checkout — ${esc(c.storeName)}
           </a>
         </div>
-      </div>`).join('<hr class="cart-store-divider">');
+      </div>`).join('<hr class="cart-store-divider">') +
+      (carts.length > 1 ? `
+        <div class="cart-grand-total">
+          <div class="cart-grand-total__row">
+            <span>Total (${carts.length} stores)</span>
+            <strong>${formatPrice(grandTotal)}</strong>
+          </div>
+          <a href="/checkout?stores=all" class="btn cart-checkout">
+            Pay all stores
+          </a>
+        </div>` : '');
   }
 
   lines?.addEventListener('click', (e) => {

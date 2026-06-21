@@ -10,6 +10,7 @@ import {
   deleteProduct,
 } from '../../lib/store-products.js';
 import { formatPrice } from '../../config/store.config.js';
+import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
 
 const sellerId = getSellerSession(Astro.cookies);
 if (!sellerId) return Astro.redirect('/seller/login');
@@ -99,64 +100,9 @@ const productCount = products.length;
 const inStockCount = products.filter((p) => p.stock > 0).length;
 const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function galleryWidgetHtml(images: string[] = []): string {
-  const uploadIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
-  const editIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-  const removeIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-
-  const slots = [0, 1, 2, 3, 4].map((i) => {
-    const url = images[i] ?? '';
-    const hasUrl = !!url;
-    return `
-      <div class="gallery-slot" data-slot="${i}">
-        <label class="gallery-slot__empty"${hasUrl ? ' hidden' : ''}>
-          ${i === 0 ? '<span class="gallery-slot__label">Main</span>' : ''}
-          ${uploadIcon}
-          <input type="file" accept="image/*" class="visually-hidden gallery-file-input">
-        </label>
-        <div class="gallery-slot__filled"${hasUrl ? '' : ' hidden'}>
-          <img class="gallery-slot__img" src="${escHtml(url)}" alt="" width="88" height="88" loading="lazy" decoding="async">
-          <div class="gallery-slot__overlay">
-            <button type="button" class="gallery-slot__action gallery-slot__action--edit" aria-label="Edit image">${editIcon}</button>
-            <button type="button" class="gallery-slot__action gallery-slot__action--remove" aria-label="Remove image">${removeIcon}</button>
-          </div>
-          <div class="gallery-slot__loading" hidden><div class="spinner spinner--sm"></div></div>
-        </div>
-        <input type="hidden" name="images" class="gallery-slot__url" value="${escHtml(url)}">
-      </div>`;
-  });
-
-  return `
-    <div class="gallery-widget">
-      <div class="gallery-grid">${slots.join('')}</div>
-      <div class="gallery-panel" hidden>
-        <div class="gallery-panel__inner">
-          <div class="img-preview-box">
-            <img class="gallery-panel__img img-preview__img" src="" alt="Product image" width="160" height="160">
-            <div class="img-loading-overlay" hidden>
-              <div class="spinner"></div>
-              <span>Removing background…</span>
-            </div>
-          </div>
-          <div class="img-preview__actions">
-            <button type="button" class="btn btn--sm gallery-remove-bg-btn">Remove background</button>
-            <button type="button" class="btn btn--ghost btn--sm gallery-restore-bg-btn" hidden>Restore removed BG</button>
-            <button type="button" class="btn btn--ghost btn--sm gallery-keep-bg-btn" hidden>Keep original</button>
-            <button type="button" class="btn btn--ghost btn--sm gallery-crop-btn">Crop</button>
-            <button type="button" class="btn btn--ghost btn--sm gallery-change-btn">Change image</button>
-            <button type="button" class="btn btn--ghost btn--sm gallery-done-btn">Done</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-}
 ---
 
-<BaseLayout title="My Store — Dashboard" noindex={true} isLoggedIn={true} hasStore={true}>
+<BaseLayout title="My Store — Dashboard" noindex={true} isLoggedIn={true} hasStore={true} sellerMode={true}>
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} hidden></div>
   <section class="section container">
     <div class="dash-head flex between">
@@ -164,9 +110,6 @@ function galleryWidgetHtml(images: string[] = []): string {
         <h1>{store.name}</h1>
         <p class="muted" style="margin-top:0.2rem">Your store · <code>/store/{store.slug}</code></p>
       </div>
-      <form method="POST" action="/seller/logout">
-        <button class="btn btn--ghost">Log out</button>
-      </form>
     </div>
 
     {
@@ -224,34 +167,39 @@ function galleryWidgetHtml(images: string[] = []): string {
 
     <div class="dash-grid">
       <div class="card dash-card">
-        <h2>Store settings</h2>
-        <form method="POST" action="/api/store" class="dash-form" id="settings-form">
-          <input type="hidden" name="_action" value="save-settings" />
-          <input type="hidden" name="storeId" value={store.id} />
+        <div class="settings-header" id="settings-header" role="button" tabindex="0" aria-expanded="false" aria-controls="settings-body">
+          <h2>Store settings</h2>
+          <svg class="settings-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div id="settings-body" hidden>
+          <form method="POST" action="/api/store" class="dash-form" id="settings-form">
+            <input type="hidden" name="_action" value="save-settings" />
+            <input type="hidden" name="storeId" value={store.id} />
 
-          <label class="field">
-            <span>Store name</span>
-            <input class="input" name="name" value={store.name} required />
-          </label>
+            <label class="field">
+              <span>Store name</span>
+              <input class="input" name="name" value={store.name} required />
+            </label>
 
-          <label class="field">
-            <span>Tagline</span>
-            <input
-              class="input"
-              name="tagline"
-              value={store.tagline}
-              placeholder="A short line about your store"
-            />
-          </label>
+            <label class="field">
+              <span>Tagline</span>
+              <input
+                class="input"
+                name="tagline"
+                value={store.tagline}
+                placeholder="A short line about your store"
+              />
+            </label>
 
-          <label class="field">
-            <span>Description</span>
-            <textarea class="input" name="description" rows="3">{store.description}</textarea>
-          </label>
+            <label class="field">
+              <span>Description</span>
+              <textarea class="input" name="description" rows="3">{store.description}</textarea>
+            </label>
 
-          <p id="settings-status" hidden></p>
-          <button class="btn" type="submit">Save changes</button>
-        </form>
+            <p id="settings-status" hidden></p>
+            <button class="btn" type="submit">Save changes</button>
+          </form>
+        </div>
       </div>
 
       <div class="card dash-card">
@@ -335,16 +283,22 @@ function galleryWidgetHtml(images: string[] = []): string {
       <table id="products-table" class="products-table" hidden={products.length === 0}>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Price</th>
-            <th>Stock</th>
+            <th>
+              <button type="button" class="sort-btn" data-sort-col="name">Name<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+            </th>
+            <th>
+              <button type="button" class="sort-btn" data-sort-col="price">Price<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+            </th>
+            <th>
+              <button type="button" class="sort-btn" data-sort-col="stock">Stock<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+            </th>
             <th />
           </tr>
         </thead>
         <tbody id="products-tbody">
           {products.map((p) => (
             <>
-              <tr data-product-display={p.id}>
+              <tr data-product-display={p.id} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)}>
                 <td>
                   <div class="product-name-cell">
                     {p.images?.[0] && <img src={p.images[0]} alt="" class="product-thumb" width="30" height="30" loading="lazy" decoding="async" />}
@@ -423,754 +377,27 @@ function galleryWidgetHtml(images: string[] = []): string {
 </div>
 
 <script>
-  import BgWorker from '../../workers/bg-removal?worker';
+  import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
+  import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
+  import { bindExistingRows, initAddProduct, initDeleteProduct, initTableSort } from '../../scripts/dashboard/products.js';
+  import { initSettingsForm, initFormToggles, initNewStoreForm, initSettingsCollapsible, initAutoHideStatus } from '../../scripts/dashboard/ui.js';
 
-  // ── utils ──────────────────────────────────────────────────────────
-  function fmtPrice(n: number) { return `$${n.toFixed(2)}`; }
-  function esc(s: string) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  // ── clean status params from URL ──────────────────────────────────
-  {
-    const u = new URL(window.location.href);
-    if (u.searchParams.has('saved') || u.searchParams.has('added')) {
-      u.searchParams.delete('saved');
-      u.searchParams.delete('added');
-      history.replaceState(null, '', u.toString());
-    }
-  }
-
-  // ── Cloudinary upload ─────────────────────────────────────────────
   const uploadCfg = document.getElementById('upload-config');
-  const CLOUD = uploadCfg?.dataset.cloud ?? '';
+  const CLOUD  = uploadCfg?.dataset.cloud  ?? '';
   const PRESET = uploadCfg?.dataset.preset ?? '';
-  const HAS_CLOUD = !!(CLOUD && PRESET);
 
-  async function cloudinaryUpload(blob: Blob): Promise<string> {
-    const fd = new FormData();
-    fd.append('file', blob);
-    fd.append('upload_preset', PRESET);
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD}/image/upload`, { method: 'POST', body: fd });
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-    const json = await res.json() as { secure_url: string };
-    return json.secure_url;
-  }
-
-  // ── BG removal worker ─────────────────────────────────────────────
-  let _bgWorker: Worker | null = null;
-  let _msgId = 0;
-  const _pending = new Map<number, { resolve: (b: Blob) => void; reject: (e: Error) => void }>();
-
-  function getBgWorker(): Worker {
-    if (!_bgWorker) {
-      _bgWorker = new BgWorker();
-      _bgWorker.addEventListener('message', (e: MessageEvent) => {
-        const { id, success, blob, error } = e.data as { id: number; success: boolean; blob?: Blob; error?: string };
-        const cb = _pending.get(id);
-        _pending.delete(id);
-        if (cb) {
-          if (success && blob) cb.resolve(blob);
-          else cb.reject(new Error(error ?? 'BG removal failed'));
-        }
-      });
-    }
-    return _bgWorker;
-  }
-
-  function removeBackgroundInWorker(blob: Blob): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-      const id = ++_msgId;
-      _pending.set(id, { resolve, reject });
-      getBgWorker().postMessage({ id, blob });
-    });
-  }
-
-  interface WidgetState { original?: Blob; processed?: Blob; useProcessed: boolean; processing: boolean }
-  const wState = new WeakMap<Element, WidgetState>();
-
-  // ── gallery widget HTML generator (client-side) ────────────────────
-  function galleryWidgetHtml(images: string[] = []): string {
-    const uploadIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
-    const editIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-    const removeIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-    const slots = [0, 1, 2, 3, 4].map((i) => {
-      const url = images[i] ?? '';
-      const hasUrl = !!url;
-      return `<div class="gallery-slot" data-slot="${i}">
-        <label class="gallery-slot__empty"${hasUrl ? ' hidden' : ''}>${i === 0 ? '<span class="gallery-slot__label">Main</span>' : ''}${uploadIcon}<input type="file" accept="image/*" class="visually-hidden gallery-file-input"></label>
-        <div class="gallery-slot__filled"${hasUrl ? '' : ' hidden'}>
-          <img class="gallery-slot__img" src="${esc(url)}" alt="" width="88" height="88" loading="lazy" decoding="async">
-          <div class="gallery-slot__overlay">
-            <button type="button" class="gallery-slot__action gallery-slot__action--edit" aria-label="Edit image">${editIcon}</button>
-            <button type="button" class="gallery-slot__action gallery-slot__action--remove" aria-label="Remove image">${removeIcon}</button>
-          </div>
-          <div class="gallery-slot__loading" hidden><div class="spinner spinner--sm"></div></div>
-        </div>
-        <input type="hidden" name="images" class="gallery-slot__url" value="${esc(url)}">
-      </div>`;
-    });
-    return `<div class="gallery-widget"><div class="gallery-grid">${slots.join('')}</div><div class="gallery-panel" hidden><div class="gallery-panel__inner"><div class="img-preview-box"><img class="gallery-panel__img img-preview__img" src="" alt="Product image" width="160" height="160"><div class="img-loading-overlay" hidden><div class="spinner"></div><span>Removing background…</span></div></div><div class="img-preview__actions"><button type="button" class="btn btn--sm gallery-remove-bg-btn">Remove background</button><button type="button" class="btn btn--ghost btn--sm gallery-restore-bg-btn" hidden>Restore removed BG</button><button type="button" class="btn btn--ghost btn--sm gallery-keep-bg-btn" hidden>Keep original</button><button type="button" class="btn btn--ghost btn--sm gallery-crop-btn">Crop</button><button type="button" class="btn btn--ghost btn--sm gallery-change-btn">Change image</button><button type="button" class="btn btn--ghost btn--sm gallery-done-btn">Done</button></div></div></div></div>`;
-  }
-
-  // ── gallery widget initializer ─────────────────────────────────────
-  function initGalleryWidget(gallery: Element) {
-    if ((gallery as HTMLElement).dataset.galleryInit) return;
-    (gallery as HTMLElement).dataset.galleryInit = '1';
-
-    const panel          = gallery.querySelector<HTMLElement>('.gallery-panel');
-    const panelImg       = gallery.querySelector<HTMLImageElement>('.gallery-panel__img');
-    const loadingOverlay = gallery.querySelector<HTMLElement>('.img-loading-overlay');
-    const removeBgBtn    = gallery.querySelector<HTMLButtonElement>('.gallery-remove-bg-btn');
-    const restoreBgBtn   = gallery.querySelector<HTMLButtonElement>('.gallery-restore-bg-btn');
-    const keepBgBtn      = gallery.querySelector<HTMLButtonElement>('.gallery-keep-bg-btn');
-    const cropBtn        = gallery.querySelector<HTMLButtonElement>('.gallery-crop-btn');
-    const changeBtn      = gallery.querySelector<HTMLButtonElement>('.gallery-change-btn');
-    const doneBtn        = gallery.querySelector<HTMLButtonElement>('.gallery-done-btn');
-    const form           = gallery.closest<HTMLFormElement>('form');
-    const submitBtn      = form?.querySelector<HTMLButtonElement>('[type="submit"]');
-
-    let activeSlot: Element | null = null;
-
-    function getState(): WidgetState | null {
-      return activeSlot ? (wState.get(activeSlot) ?? null) : null;
-    }
-
-    function setLoading(active: boolean, msg = 'Removing background…') {
-      const st = getState();
-      if (st) st.processing = active;
-      if (loadingOverlay) loadingOverlay.hidden = !active;
-      const span = loadingOverlay?.querySelector('span');
-      if (span) span.textContent = msg;
-      if (submitBtn) submitBtn.disabled = active;
-    }
-
-    function updatePanelButtons() {
-      const st = getState();
-      if (!st) return;
-      const hasProcessed = !!st.processed;
-      const showingProcessed = hasProcessed && st.useProcessed;
-      const isProcessing = st.processing;
-      removeBgBtn?.toggleAttribute('hidden', hasProcessed || isProcessing);
-      restoreBgBtn?.toggleAttribute('hidden', !hasProcessed || showingProcessed || isProcessing);
-      keepBgBtn?.toggleAttribute('hidden', !showingProcessed && !isProcessing);
-    }
-
-    function setSlotThumbnail(slot: Element, src: string) {
-      const slotImg = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
-      const empty   = slot.querySelector<HTMLElement>('.gallery-slot__empty');
-      const filled  = slot.querySelector<HTMLElement>('.gallery-slot__filled');
-      if (slotImg) slotImg.src = src;
-      empty?.setAttribute('hidden', '');
-      filled?.removeAttribute('hidden');
-    }
-
-    function clearSlot(slot: Element) {
-      const st = wState.get(slot);
-      if (st) { st.original = undefined; st.processed = undefined; st.useProcessed = false; }
-      const slotImg   = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
-      const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
-      const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
-      const urlInput  = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
-      const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
-      if (slotImg) slotImg.src = '';
-      empty?.removeAttribute('hidden');
-      filled?.setAttribute('hidden', '');
-      if (urlInput) urlInput.value = '';
-      if (fileInput) fileInput.value = '';
-    }
-
-    function activateSlot(slot: Element) {
-      activeSlot = slot;
-      gallery.querySelectorAll<Element>('.gallery-slot').forEach(s => s.classList.remove('gallery-slot--active'));
-      slot.classList.add('gallery-slot--active');
-      const st = wState.get(slot);
-      if (!st) return;
-      const blob = st.useProcessed && st.processed ? st.processed : st.original;
-      if (blob) {
-        if (panelImg) panelImg.src = URL.createObjectURL(blob);
-      } else {
-        const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
-        if (panelImg && urlInput?.value) panelImg.src = urlInput.value;
-      }
-      panel?.removeAttribute('hidden');
-      updatePanelButtons();
-    }
-
-    function closePanel() {
-      activeSlot = null;
-      gallery.querySelectorAll<Element>('.gallery-slot').forEach(s => s.classList.remove('gallery-slot--active'));
-      panel?.setAttribute('hidden', '');
-      if (panelImg) panelImg.src = '';
-    }
-
-    gallery.querySelectorAll<Element>('.gallery-slot').forEach((slot) => {
-      const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
-      const editBtn   = slot.querySelector<HTMLButtonElement>('.gallery-slot__action--edit');
-      const removeBtn = slot.querySelector<HTMLButtonElement>('.gallery-slot__action--remove');
-      const st: WidgetState = { useProcessed: false, processing: false };
-      wState.set(slot, st);
-
-      fileInput?.addEventListener('change', () => {
-        const file = fileInput.files?.[0];
-        if (!file) return;
-        st.original = file; st.processed = undefined; st.useProcessed = false;
-        setSlotThumbnail(slot, URL.createObjectURL(file));
-        activateSlot(slot);
-      });
-
-      editBtn?.addEventListener('click', (e) => { e.stopPropagation(); activateSlot(slot); });
-
-      removeBtn?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        window.dispatchEvent(new CustomEvent('confirm:open', {
-          detail: {
-            title: 'Remove image?',
-            message: 'This image will be removed from the product.',
-            okLabel: 'Remove',
-            onConfirm: () => { clearSlot(slot); if (activeSlot === slot) closePanel(); },
-          },
-        }));
-      });
-    });
-
-    removeBgBtn?.addEventListener('click', async () => {
-      if (!activeSlot) return;
-      const st = wState.get(activeSlot)!;
-      if (!st.original) {
-        const urlInput = activeSlot.querySelector<HTMLInputElement>('.gallery-slot__url');
-        const url = urlInput?.value;
-        if (!url) return;
-        setLoading(true, 'Fetching image…');
-        try {
-          const resp = await fetch(url);
-          if (!resp.ok) throw new Error('fetch failed');
-          st.original = await resp.blob();
-        } catch { setLoading(false); updatePanelButtons(); return; }
-      }
-      setLoading(true, 'Removing background…');
-      updatePanelButtons();
-      try {
-        const processed = await removeBackgroundInWorker(st.original!);
-        st.processed = processed; st.useProcessed = true;
-        if (panelImg) panelImg.src = URL.createObjectURL(processed);
-        if (activeSlot) setSlotThumbnail(activeSlot, URL.createObjectURL(processed));
-      } catch (err) {
-        if (err instanceof Error && err.message === 'cancelled') return;
-      } finally { setLoading(false); updatePanelButtons(); }
-    });
-
-    keepBgBtn?.addEventListener('click', () => {
-      if (!activeSlot) return;
-      const st = wState.get(activeSlot)!;
-      if (st.processing) {
-        if (_bgWorker) { _bgWorker.terminate(); _bgWorker = null; }
-        _pending.forEach(({ reject: r }) => r(new Error('cancelled')));
-        _pending.clear();
-      }
-      if (!st.original) return;
-      st.useProcessed = false;
-      if (panelImg) panelImg.src = URL.createObjectURL(st.original);
-      setSlotThumbnail(activeSlot, URL.createObjectURL(st.original));
-      setLoading(false); updatePanelButtons();
-    });
-
-    restoreBgBtn?.addEventListener('click', () => {
-      if (!activeSlot) return;
-      const st = wState.get(activeSlot)!;
-      if (!st.processed) return;
-      st.useProcessed = true;
-      if (panelImg) panelImg.src = URL.createObjectURL(st.processed);
-      setSlotThumbnail(activeSlot, URL.createObjectURL(st.processed));
-      updatePanelButtons();
-    });
-
-    cropBtn?.addEventListener('click', () => {
-      if (!activeSlot) return;
-      const st = wState.get(activeSlot)!;
-      const blob = st.useProcessed && st.processed ? st.processed : st.original;
-      if (!blob) return;
-      const isProcessed = !!(st.useProcessed && st.processed);
-      const slotRef = activeSlot;
-      openCropModal(null, blob, isProcessed, (croppedBlob, wasProcessed) => {
-        const st2 = wState.get(slotRef)!;
-        if (wasProcessed) st2.processed = croppedBlob;
-        else st2.original = croppedBlob;
-        if (panelImg) panelImg.src = URL.createObjectURL(croppedBlob);
-        setSlotThumbnail(slotRef, URL.createObjectURL(croppedBlob));
-      });
-    });
-
-    changeBtn?.addEventListener('click', () => {
-      if (!activeSlot) return;
-      activeSlot.querySelector<HTMLInputElement>('.gallery-file-input')?.click();
-    });
-
-    doneBtn?.addEventListener('click', closePanel);
-  }
-
-  // ── resolve gallery URLs (upload blobs to Cloudinary) ─────────────
-  async function resolveGalleryUrls(gallery: Element): Promise<void> {
-    const slots = gallery.querySelectorAll<Element>('.gallery-slot');
-    for (const slot of slots) {
-      const st = wState.get(slot);
-      const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
-      if (!st?.original || !HAS_CLOUD) continue;
-      const blob = st.useProcessed && st.processed ? st.processed : st.original;
-      const url = await cloudinaryUpload(blob);
-      if (urlInput) urlInput.value = url;
-    }
-  }
-
-  function resetGallery(gallery: Element) {
-    gallery.querySelectorAll<Element>('.gallery-slot').forEach((slot) => {
-      const st = wState.get(slot);
-      if (st) { st.original = undefined; st.processed = undefined; st.useProcessed = false; }
-      const slotImg   = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
-      const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
-      const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
-      const urlInput  = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
-      const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
-      if (slotImg) slotImg.src = '';
-      empty?.removeAttribute('hidden');
-      filled?.setAttribute('hidden', '');
-      if (urlInput) urlInput.value = '';
-      if (fileInput) fileInput.value = '';
-    });
-    gallery.querySelector<HTMLElement>('.gallery-panel')?.setAttribute('hidden', '');
-    const panelImg = gallery.querySelector<HTMLImageElement>('.gallery-panel__img');
-    if (panelImg) panelImg.src = '';
-  }
-
-  // ── crop modal ─────────────────────────────────────────────────────
-  const cropModal    = document.getElementById('crop-modal') as HTMLDivElement | null;
-  const cropViewport = document.getElementById('crop-viewport') as HTMLDivElement | null;
-  const cropImgEl    = document.getElementById('crop-img') as HTMLImageElement | null;
-  const cropZoomEl   = document.getElementById('crop-zoom') as HTMLInputElement | null;
-  const cropApplyBtn = document.getElementById('crop-apply') as HTMLButtonElement | null;
-  const cropCancelEl = document.getElementById('crop-cancel') as HTMLButtonElement | null;
-
-  const VP_SIZE = 280;
-  const OUT_SIZE = 512;
-
-  let cropApplyCallback: ((blob: Blob, isProcessed: boolean) => void) | null = null;
-  let cropIsProcessed = false;
-  let cropFitScale = 1;
-  let cropZoomVal = 1;
-  let cropPanX = 0;
-  let cropPanY = 0;
-  let isDragging = false;
-  let hadDragMotion = false;
-  let dragStartX = 0, dragStartY = 0, dragStartPanX = 0, dragStartPanY = 0;
-
-  function clampCropPan() {
-    if (!cropImgEl?.naturalWidth) return;
-    const s = cropFitScale * cropZoomVal;
-    const halfW = Math.max(0, (cropImgEl.naturalWidth * s - VP_SIZE) / 2);
-    const halfH = Math.max(0, (cropImgEl.naturalHeight * s - VP_SIZE) / 2);
-    cropPanX = Math.min(halfW, Math.max(-halfW, cropPanX));
-    cropPanY = Math.min(halfH, Math.max(-halfH, cropPanY));
-  }
-
-  function updateCropDisplay() {
-    if (!cropImgEl?.naturalWidth) return;
-    const s = cropFitScale * cropZoomVal;
-    const w = cropImgEl.naturalWidth * s;
-    const h = cropImgEl.naturalHeight * s;
-    cropImgEl.style.width = `${w}px`;
-    cropImgEl.style.height = `${h}px`;
-    cropImgEl.style.left = `${(VP_SIZE - w) / 2 + cropPanX}px`;
-    cropImgEl.style.top = `${(VP_SIZE - h) / 2 + cropPanY}px`;
-  }
-
-  function openCropModal(_widget: Element | null, blob: Blob, isProcessed: boolean, onApply?: (blob: Blob, isProcessed: boolean) => void) {
-    if (!cropModal || !cropImgEl || !cropZoomEl) return;
-    cropIsProcessed = isProcessed;
-    cropApplyCallback = onApply ?? null;
-    cropPanX = 0; cropPanY = 0; cropZoomVal = 1;
-    cropZoomEl.value = '1';
-    cropImgEl.onload = () => {
-      cropFitScale = Math.max(VP_SIZE / cropImgEl!.naturalWidth, VP_SIZE / cropImgEl!.naturalHeight);
-      updateCropDisplay();
-    };
-    cropImgEl.src = URL.createObjectURL(blob);
-    cropModal.hidden = false;
-  }
-
-  function closeCropModal() {
-    if (!cropModal) return;
-    cropModal.hidden = true;
-    if (cropImgEl) cropImgEl.src = '';
-    cropApplyCallback = null;
-  }
-
-  async function applyCrop() {
-    if (!cropImgEl?.naturalWidth) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = OUT_SIZE; canvas.height = OUT_SIZE;
-    const ctx = canvas.getContext('2d')!;
-    const s = cropFitScale * cropZoomVal;
-    const srcSize = VP_SIZE / s;
-    const srcX = cropImgEl.naturalWidth / 2 - (VP_SIZE / 2 + cropPanX) / s;
-    const srcY = cropImgEl.naturalHeight / 2 - (VP_SIZE / 2 + cropPanY) / s;
-    ctx.drawImage(cropImgEl, srcX, srcY, srcSize, srcSize, 0, 0, OUT_SIZE, OUT_SIZE);
-
-    const croppedBlob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'));
-    if (!croppedBlob) { closeCropModal(); return; }
-
-    if (cropApplyCallback) cropApplyCallback(croppedBlob, cropIsProcessed);
-    closeCropModal();
-  }
-
-  cropViewport?.addEventListener('mousedown', (e: MouseEvent) => {
-    isDragging = true;
-    hadDragMotion = false;
-    dragStartX = e.clientX; dragStartY = e.clientY;
-    dragStartPanX = cropPanX; dragStartPanY = cropPanY;
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', (e: MouseEvent) => {
-    if (!isDragging) return;
-    hadDragMotion = true;
-    cropPanX = dragStartPanX + (e.clientX - dragStartX);
-    cropPanY = dragStartPanY + (e.clientY - dragStartY);
-    clampCropPan(); updateCropDisplay();
-  });
-  document.addEventListener('mouseup', () => { isDragging = false; });
-
-  cropViewport?.addEventListener('touchstart', (e: TouchEvent) => {
-    if (e.touches.length !== 1) return;
-    isDragging = true;
-    hadDragMotion = false;
-    dragStartX = e.touches[0].clientX; dragStartY = e.touches[0].clientY;
-    dragStartPanX = cropPanX; dragStartPanY = cropPanY;
-  }, { passive: true });
-  document.addEventListener('touchmove', (e: TouchEvent) => {
-    if (!isDragging || e.touches.length !== 1) return;
-    hadDragMotion = true;
-    cropPanX = dragStartPanX + (e.touches[0].clientX - dragStartX);
-    cropPanY = dragStartPanY + (e.touches[0].clientY - dragStartY);
-    clampCropPan(); updateCropDisplay();
-  }, { passive: true });
-  document.addEventListener('touchend', () => { isDragging = false; });
-
-  cropViewport?.addEventListener('wheel', (e: WheelEvent) => {
-    e.preventDefault();
-    cropZoomVal = Math.min(3, Math.max(1, cropZoomVal - e.deltaY * 0.002));
-    if (cropZoomEl) cropZoomEl.value = String(cropZoomVal);
-    clampCropPan(); updateCropDisplay();
-  }, { passive: false });
-
-  cropZoomEl?.addEventListener('input', () => {
-    cropZoomVal = parseFloat(cropZoomEl!.value);
-    clampCropPan(); updateCropDisplay();
-  });
-
-  cropApplyBtn?.addEventListener('click', () => void applyCrop());
-  cropCancelEl?.addEventListener('click', closeCropModal);
-  // Close on backdrop click only if user didn't just finish dragging
-  cropModal?.addEventListener('click', (e) => {
-    if (e.target === cropModal && !hadDragMotion) closeCropModal();
-    hadDragMotion = false;
-  });
-
-  // ── status flash ───────────────────────────────────────────────────
-  let statusTimer: ReturnType<typeof setTimeout>;
-  function showStatus(msg: string, isError = false) {
-    let el = document.getElementById('ajax-status');
-    if (!el) {
-      el = document.createElement('p');
-      el.id = 'ajax-status';
-      document.querySelector('.products-header')?.after(el);
-    }
-    el.className = isError ? 'dash-error' : 'dash-success';
-    el.textContent = msg;
-    clearTimeout(statusTimer);
-    statusTimer = setTimeout(() => el?.remove(), 3000);
-  }
-
-  // ── build product row pair ─────────────────────────────────────────
-  interface ProductData { id: string; storeId: string; name: string; description: string; price: number; stock: number; images?: string[] }
-
-  function buildRows(p: ProductData): [HTMLTableRowElement, HTMLTableRowElement] {
-    const display = document.createElement('tr');
-    display.dataset.productDisplay = p.id;
-    display.innerHTML = `
-      <td>
-        <div class="product-name-cell">
-          ${p.images?.[0] ? `<img src="${esc(p.images[0])}" alt="" class="product-thumb" width="30" height="30" loading="lazy">` : ''}
-          <div>
-            <span class="product-name">${esc(p.name)}</span>
-            ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
-          </div>
-        </div>
-      </td>
-      <td class="num">${fmtPrice(p.price)}</td>
-      <td class="num">${p.stock}</td>
-      <td class="actions">
-        <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle="${p.id}">Edit</button>
-        <button class="btn btn--danger btn--sm" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}">Delete</button>
-      </td>`;
-
-    const edit = document.createElement('tr');
-    edit.className = 'edit-row';
-    edit.dataset.productEdit = p.id;
-    edit.hidden = true;
-    edit.innerHTML = `
-      <td colspan="4">
-        <form method="POST" action="/api/product" class="dash-form inline-edit-form">
-          <input type="hidden" name="_action" value="edit-product">
-          <input type="hidden" name="productId" value="${p.id}">
-          <div class="field-row">
-            <label class="field"><span>Name <span class="req">*</span></span><input class="input" name="name" value="${esc(p.name)}" required></label>
-            <label class="field"><span>Price ($)</span><input class="input" name="price" type="number" min="0" step="0.01" value="${p.price}"></label>
-            <label class="field"><span>Stock</span><input class="input" name="stock" type="number" min="0" step="1" value="${p.stock}"></label>
-          </div>
-          <label class="field"><span>Description</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
-          <div class="field">
-            <span class="field-label">Product images</span>
-            ${galleryWidgetHtml(p.images ?? [])}
-          </div>
-          <div class="form-actions">
-            <button class="btn btn--sm" type="submit">Save</button>
-            <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit="${p.id}">Cancel</button>
-          </div>
-        </form>
-      </td>`;
-
-    return [display, edit];
-  }
-
-  // ── edit submit via fetch ──────────────────────────────────────────
-  async function handleEditSubmit(e: SubmitEvent) {
-    e.preventDefault();
-    const form = e.target as HTMLFormElement;
-    const productId = String(new FormData(form).get('productId'));
-    const submitBtn = form.querySelector<HTMLButtonElement>('[type="submit"]');
-    const origText = submitBtn?.textContent ?? 'Save';
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
-
-    try {
-      const gallery = form.querySelector<Element>('.gallery-widget');
-      try {
-        if (gallery) await resolveGalleryUrls(gallery);
-      } catch {
-        showStatus('Image upload failed. Please try again.', true);
-        return;
-      }
-
-      const fd = new FormData(form);
-      const res = await fetch('/api/product', { method: 'POST', body: fd });
-      const data = await res.json() as { ok: boolean; images?: string[]; error?: string };
-      if (!data.ok) { showStatus(data.error ?? 'Error saving.', true); return; }
-
-      const savedImages = data.images ?? [];
-      const savedImage = savedImages[0] ?? null;
-
-      const display = document.querySelector<HTMLTableRowElement>(`[data-product-display="${productId}"]`);
-      const editRow = document.querySelector<HTMLTableRowElement>(`[data-product-edit="${productId}"]`);
-      if (display) {
-        const name = String(fd.get('name'));
-        const description = String(fd.get('description'));
-        const price = parseFloat(String(fd.get('price')));
-        const stock = String(fd.get('stock'));
-
-        const nameCell = display.querySelector<HTMLElement>('.product-name-cell');
-        if (nameCell) {
-          let thumb = nameCell.querySelector<HTMLImageElement>('.product-thumb');
-          if (savedImage) {
-            if (!thumb) {
-              thumb = document.createElement('img');
-              thumb.className = 'product-thumb';
-              thumb.width = 30; thumb.height = 30;
-              thumb.loading = 'lazy'; thumb.alt = '';
-              nameCell.prepend(thumb);
-            }
-            thumb.src = savedImage;
-          } else { thumb?.remove(); }
-        }
-
-        const nameEl = display.querySelector('.product-name');
-        if (nameEl) nameEl.textContent = name;
-
-        let descEl = display.querySelector('.product-desc');
-        if (description) {
-          if (!descEl) { descEl = document.createElement('span'); descEl.className = 'product-desc'; nameEl?.after(descEl); }
-          descEl.textContent = description;
-        } else { descEl?.remove(); }
-
-        const cells = display.querySelectorAll('td');
-        if (cells[1]) cells[1].textContent = fmtPrice(price);
-        if (cells[2]) cells[2].textContent = stock;
-      }
-      if (editRow) editRow.hidden = true;
-      if (display) display.hidden = false;
-      showStatus('Product updated.');
-    } finally {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
-    }
-  }
-
-  // ── attach listeners to a row pair ────────────────────────────────
-  function attachListeners(display: HTMLTableRowElement, edit: HTMLTableRowElement) {
-    display.querySelector('[data-edit-toggle]')?.addEventListener('click', () => {
-      display.hidden = true; edit.hidden = false;
-    });
-    edit.querySelector('[data-cancel-edit]')?.addEventListener('click', () => {
-      edit.hidden = true; display.hidden = false;
-    });
-    (edit.querySelector('form') as HTMLFormElement | null)?.addEventListener('submit', handleEditSubmit);
-    const gallery = edit.querySelector<Element>('.gallery-widget');
-    if (gallery) initGalleryWidget(gallery);
-  }
-
-  // ── bind existing rows ─────────────────────────────────────────────
-  document.querySelectorAll<HTMLTableRowElement>('[data-product-display]').forEach((display) => {
-    const edit = document.querySelector<HTMLTableRowElement>(`[data-product-edit="${display.dataset.productDisplay}"]`);
-    if (edit) attachListeners(display, edit);
-  });
-
-  // ── add product via fetch ──────────────────────────────────────────
-  const addFormWrap = document.getElementById('add-product-form');
-  const addForm = addFormWrap?.querySelector('form') as HTMLFormElement | null;
-  const storeIdInput = addForm?.querySelector<HTMLInputElement>('input[name="storeId"]');
-
-  addForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const submitBtn = addForm.querySelector<HTMLButtonElement>('[type="submit"]');
-    const origText = submitBtn?.textContent ?? 'Add product';
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
-
-    try {
-      const gallery = addForm.querySelector<Element>('.gallery-widget');
-      try {
-        if (gallery) await resolveGalleryUrls(gallery);
-      } catch {
-        showStatus('Image upload failed. Please try again.', true);
-        return;
-      }
-
-      const fd = new FormData(addForm);
-      const res = await fetch('/api/product', { method: 'POST', body: fd });
-      const data = await res.json() as { ok: boolean; product?: ProductData; error?: string };
-      if (!data.ok) { showStatus(data.error ?? 'Error adding product.', true); return; }
-
-      const p = { ...data.product!, storeId: storeIdInput?.value ?? '' };
-      const tbody = document.getElementById('products-tbody') as HTMLTableSectionElement | null;
-      const table = document.getElementById('products-table') as HTMLTableElement | null;
-      const emptyMsg = document.getElementById('empty-products');
-
-      if (table) table.hidden = false;
-      if (emptyMsg) emptyMsg.hidden = true;
-
-      if (tbody) {
-        const [display, edit] = buildRows(p);
-        attachListeners(display, edit);
-        tbody.append(display, edit);
-      }
-
-      addForm.reset();
-      if (gallery) resetGallery(gallery);
-      addFormWrap?.setAttribute('hidden', '');
-      document.getElementById('toggle-add-form')?.removeAttribute('hidden');
-      showStatus('Product added.');
-    } finally {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
-    }
-  });
-
-  // ── store settings via fetch ──────────────────────────────────────
-  const settingsForm = document.getElementById('settings-form') as HTMLFormElement | null;
-  const settingsStatus = document.getElementById('settings-status') as HTMLElement | null;
-  let settingsTimer: ReturnType<typeof setTimeout>;
-
-  function showSettingsStatus(msg: string, isError = false) {
-    if (!settingsStatus) return;
-    settingsStatus.className = isError ? 'dash-error' : 'dash-success';
-    settingsStatus.textContent = msg;
-    settingsStatus.hidden = false;
-    clearTimeout(settingsTimer);
-    settingsTimer = setTimeout(() => { settingsStatus.hidden = true; }, 3000);
-  }
-
-  settingsForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fd = new FormData(settingsForm);
-    const res = await fetch('/api/store', { method: 'POST', body: fd });
-    const data = await res.json() as { ok: boolean; name?: string; error?: string };
-    if (!data.ok) { showSettingsStatus(data.error ?? 'Error saving.', true); return; }
-
-    // update the page heading and active tab to reflect the new name
-    const newName = data.name ?? String(fd.get('name'));
-    const heading = document.querySelector('.dash-head h1');
-    if (heading) heading.textContent = newName;
-    const activeTab = document.querySelector('.store-tab--active');
-    if (activeTab) activeTab.textContent = newName;
-
-    showSettingsStatus('Settings saved.');
-  });
-
-  // ── add product form toggle ────────────────────────────────────────
-  const toggleAdd = document.getElementById('toggle-add-form');
-  const cancelAdd = document.getElementById('cancel-add');
-  toggleAdd?.addEventListener('click', () => {
-    addFormWrap?.removeAttribute('hidden');
-    toggleAdd.setAttribute('hidden', '');
-  });
-  cancelAdd?.addEventListener('click', () => {
-    addFormWrap?.setAttribute('hidden', '');
-    toggleAdd?.removeAttribute('hidden');
-  });
-
-  // ── auto-hide server-rendered status messages ─────────────────────
-  document.querySelectorAll<HTMLElement>('.dash-success, .dash-error').forEach((el) => {
-    setTimeout(() => el.remove(), 3000);
-  });
-
-  // ── delete product via confirm modal ──────────────────────────────
-  document.addEventListener('click', (e) => {
-    const btn = (e.target as Element).closest<HTMLButtonElement>('[data-delete-product]');
-    if (!btn) return;
-    const productId = btn.dataset.deleteProduct ?? '';
-    const storeId = btn.dataset.storeId ?? '';
-    const row = document.querySelector(`[data-product-display="${productId}"]`);
-    const productName = row?.querySelector('.product-name')?.textContent ?? 'this product';
-
-    window.dispatchEvent(new CustomEvent('confirm:open', {
-      detail: {
-        title: 'Delete product?',
-        message: `"${productName}" will be permanently deleted.`,
-        okLabel: 'Delete',
-        onConfirm: async () => {
-          const fd = new FormData();
-          fd.set('_action', 'delete-product');
-          fd.set('productId', productId);
-          fd.set('storeId', storeId);
-          const res = await fetch('/api/product', { method: 'POST', body: fd });
-          const data = await res.json() as { ok: boolean; error?: string };
-          if (!data.ok) { showStatus(data.error ?? 'Error deleting.', true); return; }
-
-          document.querySelector(`[data-product-display="${productId}"]`)?.remove();
-          document.querySelector(`[data-product-edit="${productId}"]`)?.remove();
-
-          const tbody = document.getElementById('products-tbody');
-          if (tbody && tbody.querySelectorAll('[data-product-display]').length === 0) {
-            document.getElementById('products-table')?.setAttribute('hidden', '');
-            document.getElementById('empty-products')?.removeAttribute('hidden');
-          }
-          showStatus('Product deleted.');
-        },
-      },
-    }));
-  });
-
-  // ── new store form toggle ──────────────────────────────────────────
-  const toggleNew = document.getElementById('toggle-new-store');
-  const newStoreForm = document.getElementById('new-store-form');
-  const cancelNew = document.getElementById('cancel-new-store');
-  toggleNew?.addEventListener('click', () => newStoreForm?.removeAttribute('hidden'));
-  cancelNew?.addEventListener('click', () => newStoreForm?.setAttribute('hidden', ''));
-
-  // ── init gallery widgets already in DOM ────────────────────────────
-  document.querySelectorAll<Element>('.gallery-widget').forEach(initGalleryWidget);
+  // clean status params from URL
+  { const u = new URL(window.location.href); if (u.searchParams.has('saved') || u.searchParams.has('added')) { u.searchParams.delete('saved'); u.searchParams.delete('added'); history.replaceState(null, '', u.toString()); } }
+
+  initCropModal();
+  document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g, CLOUD, PRESET));
+  bindExistingRows(CLOUD, PRESET);
+  initAddProduct(CLOUD, PRESET);
+  initDeleteProduct();
+  initSettingsForm();
+  initFormToggles();
+  initNewStoreForm();
+  initSettingsCollapsible();
+  initAutoHideStatus();
+  initTableSort();
 </script>

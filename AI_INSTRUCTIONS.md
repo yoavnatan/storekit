@@ -13,6 +13,48 @@ Two SEO surfaces:
 
 The cross-store experience is the core product differentiator: recommend related stores, surface similar products, keep shoppers inside the mall.
 
+## Vision & Mission
+
+**Vision:** Enable anyone to open an online store easily and efficiently — one that generates profit, is fair, and is fully transparent.
+
+**Mission:** Build a Hebrew-language digital shopping mall that removes the technological and financial barriers for small businesses through built-in automation, a clean minimalist management interface, and a fair success-based payment model (no fixed monthly fees; success fee only; each seller has their own separate checkout).
+
+---
+
+## The Physical Mall Model — our north star
+
+Every product decision must be tested against one question: **does this match how a real, physical mall works?**
+
+### The mapping
+
+| Physical mall | This platform |
+|---|---|
+| Mall entrance & corridors | Homepage (`/`) — discovery, trending stores, search |
+| Store storefront & window display | `/store/[slug]` — each store's own page, branding, products |
+| Walking past a store and getting curious | Cross-store recommendations, related stores surfaced on the homepage and between stores |
+| Picking items up as you walk | Unified cart — items from any store collected together, grouped visually by store |
+| Each store's own cash register | Hybrid checkout — pay per store OR pay everything at once (system splits to each seller behind the scenes) |
+| Mall directory / map | Browse page, category filters, store search |
+| The mall's reputation = trust for small stores | Platform brand gives legitimacy to sellers who couldn't build it alone |
+| Rent + % of sales → here: success-fee only | No fixed monthly cost; platform earns only when the seller earns |
+| Store hours | Store active/inactive status |
+| Foot traffic from the mall's location | SEO — platform discoverability drives traffic to individual stores |
+| Store pulls you IN (window, smell, music) | Store page UX must create immersion: the customer should feel "in" the store, not "on a product listing" |
+
+### Key behavioral rules derived from this model
+
+1. **Each store is sovereign.** Its page, brand, and voice must feel like an independent business — not a template inside a directory.
+2. **The mall is infrastructure, not the star.** Platform chrome (header, nav, footer) fades when you're inside a store. The store takes over.
+3. **Discovery is serendipitous, not deliberate.** Cross-store signals (related stores, trending) appear naturally — not as popups or aggressive upsells. Like a window display you notice while walking by.
+4. **One bag, grouped by store.** The cart is unified — a customer can add products from multiple stores into one bag. But inside the cart, items are clearly grouped under their store, like carrying separate store bags inside a single mall shopping bag. The customer always knows what came from where.
+5. **Hybrid checkout — flexibility without friction.** Two payment paths exist side by side:
+   - **Per-store payment:** pay only for one store's items (quick checkout from a single store, leaves others in the cart).
+   - **Consolidated payment (Split Payment):** pay for everything in one transaction. Behind the scenes, the platform splits the payment — each seller receives their share directly, and the platform takes its commission. This is a marketplace model (Stripe Connect or equivalent).
+   The default UX should surface per-store checkout first (keeps each store feeling like its own register), with consolidated checkout as a convenience option.
+6. **The mall benefits when stores succeed.** Every platform feature that helps a seller sell more is also good for the platform. Never build features that extract value from sellers at the buyer's expense, or vice versa.
+
+---
+
 ## Core priorities (in order)
 1. **SEO-first** — every decision must support discoverability. Static pages, structured data, semantic HTML, fast load, no orphan pages. Both platform-level and per-store SEO must be strong independently.
 2. **Automation-ready** — config-driven content, clean data shapes, separation of data and UI. Every feature should be triggerable programmatically (for future AI/API automation).
@@ -38,6 +80,7 @@ The cross-store experience is the core product differentiator: recommend related
 - **Mobile-first:** design for 375px viewport first, scale up with `sm:` / `md:` / `lg:` breakpoints.
 - **Modular Architecture (Encapsulation):** All new features must be self-contained modules. UI components handle display only; all DB/API/Cloudinary logic must live strictly in `/src/services/` or `/pages/api/`. No file should exceed 200 lines without being split. Progressive Tailwind migration: when touching an existing CSS file, convert it to Tailwind at that point.
 - **Micro-interactions:** Every interactive element must have an intentional, purposeful hover/active/focus state. Use `transition` of 100–200ms. Good patterns: image scale on card hover, `scale(0.97)` on button press, shadow growth on card hover, smooth opacity shifts. Never border-darkening on hover — use shadow or background instead. Animations must have a logical reason (feedback, affordance, delight) — not decoration for its own sake.
+- **Scalability (design for many sellers + buyers):** The platform must remain stable under concurrent load. Three non-negotiable rules: (1) **API routes must be stateless** — no module-level mutable variables, no in-process caches that accumulate across requests; (2) **JSON file storage is dev-only** — `data/*.json` is acceptable now, but every lib function must be written as a pure DB adapter (read/write, no side effects), ready to swap for SQLite/Postgres with no API change; (3) **No shared write state** — writes must be safe if two Node processes run simultaneously (no file-lock assumptions, no singleton patterns). Before adding any feature, ask: would this break if 1000 sellers and 10,000 buyers used it at the same time?
 - File content always in English. Chat can be Hebrew.
 
 ## SEO rules
@@ -72,7 +115,16 @@ src/lib/auth.ts                 ← original admin HMAC-cookie auth
 src/lib/seller-auth.ts          ← Seller interface + registerSeller, loginSeller, set/get/clearSellerSession
 src/lib/stores.ts               ← Store/StoreColors interfaces + createStore, getStoreBySellerId, getStoresBySellerId, getStoreBySlug, getAllStores, updateStore
 src/lib/store-products.ts       ← StoreProduct interface (uses images?: string[] array, up to 5) + createProduct, getProductsByStoreId, getProductById, updateProduct, deleteProduct
+src/lib/gallery-widget.ts       ← esc + galleryWidgetHtml — shared between server (dashboard frontmatter) and client scripts
 src/workers/bg-removal.ts       ← Web Worker: BG removal via @imgly/background-removal (runs off main thread)
+src/scripts/dashboard/
+  bg-worker.ts                  ← BG Worker singleton + removeBackgroundInWorker + cancelBgWorker
+  cloudinary.ts                 ← cloudinaryUpload(blob, cloud, preset)
+  status.ts                     ← showStatus (AJAX flash messages)
+  crop-modal.ts                 ← crop modal state + initCropModal + openCropModal
+  gallery.ts                    ← initGalleryWidget, resolveGalleryUrls, resetGallery
+  products.ts                   ← buildRows, attachListeners, bindExistingRows, initAddProduct, initDeleteProduct, initTableSort
+  ui.ts                         ← initSettingsForm, initFormToggles, initNewStoreForm, initSettingsCollapsible, initAutoHideStatus
 src/pages/index.astro           ← SSR; shows welcome-back if hasStore, marketing landing if not
 src/pages/products/[slug].astro ← static demo product pages
 src/pages/store/[slug].astro    ← SSR; public store page with per-store products grid
@@ -143,6 +195,21 @@ public/                         favicon, robots.txt, product images
 - [x] Seller `name` field: added to Seller interface + registration form; welcome banner shows user name not store name
 - [x] Store logo in store-mode header: shows store name, links back to `/store/[slug]` (keeps customer in store)
 - [x] Unified UI theme: per-store color overrides removed; platform uses single tokens.css palette; store branding = logo + banner + product images only
+- [x] Cart image sync: `syncCartImages()` in cart.ts — on store page load, refreshes image/name/price for all products in localStorage cart
+- [x] "New" badge: refined pulse animation (single slow ring, infinite, align-self: flex-start so width = text width only)
+- [x] Dashboard product table: sortable by Name / Price / Stock (click header toggles asc/desc, chevron indicator)
+- [x] Dashboard settings section: collapsible accordion (starts closed, chevron rotates on open)
+- [x] Dashboard section headings: 1.15rem (compact, distinct from body text)
+- [x] Dashboard product rows: subtle hover state (bg: --color-bg on white card)
+- [x] Store page: `dir="auto"` on product names, descriptions, store tagline/description — Hebrew → RTL right-aligned, English → LTR left-aligned
+- [x] Store about section: `text-align: center` — aligned with the platform footer note
+- [x] Store page: client-side product search (by name) + custom styled sort dropdown (Default / Name A→Z / Z→A / Price Low→High / High→Low / Newest first) — no page reload, "no results" empty state
+- [x] Scalability as hard rule in AI_INSTRUCTIONS: stateless API routes, JSON files = dev-only (swap-ready for DB), no shared write state
+- [x] Seller dashboard: `sellerMode` nav — hides platform nav links, hides cart, shows user icon dropdown (Dashboard + Log out)
+- [x] Dashboard encapsulation refactor: 1248 → 403 lines; `<script>` block 800 → 25 lines; logic extracted to 8 modules (`src/scripts/dashboard/` + `src/lib/gallery-widget.ts`)
+- [x] Vision & Mission + Physical Mall Model — documented in AI_INSTRUCTIONS.md as north star for all product decisions; includes store→platform mapping table and 6 behavioral rules
+- [x] Cart grand total — `getGrandTotal()` in cart.ts; CartDrawer shows per-store subtotals + grand total + "Pay all stores" button when 2+ stores in cart
+- [x] Cart icon alignment — qty buttons (−/+/trash) and close button centered with flex
 - [ ] Payments
 
 ## Workflow
@@ -165,3 +232,6 @@ public/                         favicon, robots.txt, product images
 - **S18** Adopted permanent modular architecture rules (encapsulation, layer separation, SRP, ≤200 lines). Progressive Tailwind migration: convert on contact. "New" badge pulse animation (CSS keyframe, store.css).
 - **S19** Full UI redesign: slate blue-gray palette (#2a3547 primary, #4870c0 accent, #f7f8fa bg), Plus Jakarta Sans font, compact buttons with scale(0.97) press, edge-to-edge cover images with zoom on hover, no border-darkening hovers anywhere, dashboard tabs square (radius) + active pointer-events:none, micro-interactions rule added to AI_INSTRUCTIONS.
 - **S20** Customer discovery homepage (search + store grid + seller CTA banner). Per-store cart architecture (store_cart_v2_{slug}), CartDrawer grouped by store with per-store checkout. Cart badge no-flash fix (is:inline). Seller name field added. Store-mode logo links back to store. Unified platform theme (per-store color overrides removed).
+- **S21** Cart image sync (syncCartImages on store page load). "New" badge refined (single slow pulse, text-width only). Dashboard: sortable product table (Name/Price/Stock), collapsible settings section, compact h2 headings, product row hover. Store page: dir="auto" bidi detection, about section centered.
+- **S22** Store page: client-side product search + custom sort dropdown (6 options, chevron, aria-selected, click-outside close). Scalability added as hard rule (stateless APIs, JSON = dev-only, no shared write state). Seller dashboard: sellerMode nav (no platform links, no cart, user icon dropdown). Dashboard encapsulation refactor: 1248 → 403 lines, script 800 → 25 lines, extracted to 8 modules in src/scripts/dashboard/ + src/lib/gallery-widget.ts.
+- **S23** Vision & Mission + Physical Mall Model added to AI_INSTRUCTIONS.md (mapping table + 6 behavioral rules, hybrid checkout model). Cart: icon alignment fixed (flex center on qty buttons + close button), grand total section added (shows when 2+ stores — per-store subtotals + "Pay all stores" CTA). `getGrandTotal()` added to cart.ts.

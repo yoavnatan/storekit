@@ -101,3 +101,25 @@ export function getCount(): number {
 export function getSubtotal(storeSlug: string): number {
   return getStoreItems(storeSlug).reduce((sum, i) => sum + i.price * i.qty, 0);
 }
+
+export function getGrandTotal(): number {
+  return getActiveStoreCarts().reduce((sum, c) => sum + getSubtotal(c.storeSlug), 0);
+}
+
+export function syncCartImages(
+  storeSlug: string,
+  products: Pick<CartItem, 'slug' | 'name' | 'price' | 'image'>[]
+): void {
+  const cart = readStoreCart(storeSlug);
+  if (!cart) return;
+  let changed = false;
+  for (const p of products) {
+    const item = cart.items[p.slug];
+    if (!item) continue;
+    if (item.image !== p.image || item.name !== p.name || item.price !== p.price) {
+      cart.items[p.slug] = { ...item, image: p.image, name: p.name, price: p.price };
+      changed = true;
+    }
+  }
+  if (changed) writeStoreCart(cart);
+}

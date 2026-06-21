@@ -63,6 +63,7 @@ a.store-tab:hover { color: var(--color-text); background: var(--color-bg); }
 }
 
 .dash-card { padding: 1.5rem; }
+.dash-card h2 { font-size: 1.15rem; font-weight: 600; letter-spacing: 0.01em; }
 .dash-form { margin-top: 1rem; }
 
 .color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -148,6 +149,8 @@ textarea.input { resize: vertical; }
 }
 
 .products-table tr:last-child td { border-bottom: none; }
+.products-table tbody tr[data-product-display] td { transition: background 0.15s; }
+.products-table tbody tr[data-product-display]:hover td { background: var(--color-bg); }
 
 .product-name { display: block; font-weight: 500; }
 
@@ -438,3 +441,52 @@ textarea.input { resize: vertical; }
 }
 
 .crop-actions { display: flex; gap: 0.5rem; }
+
+/* Settings collapsible */
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  gap: 0.5rem;
+}
+
+.settings-header h2 { margin: 0; }
+
+.settings-chevron {
+  color: var(--color-muted);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.settings-header[aria-expanded="true"] .settings-chevron { transform: rotate(180deg); }
+
+#settings-body { padding-top: 0; }
+
+/* Sort buttons */
+.sort-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: 600 0.8rem/1 inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: color 0.1s;
+}
+
+.sort-btn:hover { color: var(--color-text); }
+.sort-btn[data-active="true"] { color: var(--color-primary); }
+
+.sort-icon {
+  opacity: 0.2;
+  transition: opacity 0.1s, transform 0.15s;
+}
+
+.sort-btn[data-active="true"] .sort-icon { opacity: 1; }
+.sort-btn[data-active="true"][data-dir="desc"] .sort-icon { transform: rotate(180deg); }
