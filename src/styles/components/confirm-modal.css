@@ -5,10 +5,10 @@
   width: min(420px, 90vw);
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.22);
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  margin: 0;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  max-height: calc(100dvh - 2rem);
 }
 
 .confirm-dialog::backdrop {

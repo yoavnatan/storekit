@@ -1,20 +1,23 @@
 import { esc } from '../../lib/gallery-widget.js';
 import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery } from './gallery.js';
 import { showStatus } from './status.js';
+import { formatPrice } from '../../config/store.config.js';
 
 export interface ProductData {
   id: string; storeId: string; name: string;
   description: string; price: number; stock: number; images?: string[];
 }
 
-function fmtPrice(n: number) { return `$${n.toFixed(2)}`; }
+function fmtPrice(n: number) { return formatPrice(n); }
 
 function warnIcon(label: string): string {
-  return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="${esc(label)}" style="color:var(--color-danger,#dc2626);vertical-align:-2px;margin-inline-start:4px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+  return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="${esc(label)}" style="color:var(--color-danger,#dc2626);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
 }
 
 function stockHtml(stock: number, outOfStockLabel: string): string {
-  return stock <= 0 ? `0${warnIcon(outOfStockLabel)}` : String(stock);
+  return stock <= 0
+    ? `<span style="display:inline-flex;align-items:center;gap:0.3rem"><span>0</span>${warnIcon(outOfStockLabel)}</span>`
+    : String(stock);
 }
 
 function getRawI18n() {
@@ -32,6 +35,7 @@ export function buildRows(p: ProductData, cloud: string, preset: string): [HTMLT
   display.dataset.sortName = p.name.toLowerCase();
   display.dataset.sortPrice = String(p.price);
   display.dataset.sortStock = String(p.stock);
+  display.dataset.sortWishlist = '0';
   display.innerHTML = `
     <td class="num row-num"></td>
     <td>
@@ -45,6 +49,7 @@ export function buildRows(p: ProductData, cloud: string, preset: string): [HTMLT
     </td>
     <td class="num product-price">${fmtPrice(p.price)}</td>
     <td class="num product-stock">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}</td>
+    <td class="num" style="color:var(--color-muted);font-size:0.82rem">—</td>
     <td class="actions">
       <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle="${p.id}">${i.edit ?? 'Edit'}</button>
       <button class="btn btn--danger btn--sm" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}">${i.delete ?? 'Delete'}</button>
@@ -55,7 +60,7 @@ export function buildRows(p: ProductData, cloud: string, preset: string): [HTMLT
   edit.dataset.productEdit = p.id;
   edit.hidden = true;
   edit.innerHTML = `
-    <td colspan="5">
+    <td colspan="6">
       <form method="POST" action="/api/product" class="dash-form inline-edit-form">
         <input type="hidden" name="_action" value="edit-product">
         <input type="hidden" name="productId" value="${p.id}">
@@ -287,7 +292,8 @@ export function initTableSort(): void {
   let sortDir = 'asc';
 
   function sortTable(col: string) {
-    sortDir = sortCol === col ? (sortDir === 'asc' ? 'desc' : 'asc') : 'asc';
+    const defaultDir = col === 'wishlist' ? 'desc' : 'asc';
+    sortDir = sortCol === col ? (sortDir === 'asc' ? 'desc' : 'asc') : defaultDir;
     sortCol = col;
 
     const tbody = document.getElementById('products-tbody');
@@ -297,9 +303,10 @@ export function initTableSort(): void {
     rows.sort((a, b) => {
       let va: string | number = '';
       let vb: string | number = '';
-      if (col === 'name')  { va = a.dataset.sortName  ?? ''; vb = b.dataset.sortName  ?? ''; }
-      if (col === 'price') { va = parseFloat(a.dataset.sortPrice ?? '0'); vb = parseFloat(b.dataset.sortPrice ?? '0'); }
-      if (col === 'stock') { va = parseInt(a.dataset.sortStock  ?? '0', 10); vb = parseInt(b.dataset.sortStock  ?? '0', 10); }
+      if (col === 'name')     { va = a.dataset.sortName     ?? ''; vb = b.dataset.sortName     ?? ''; }
+      if (col === 'price')    { va = parseFloat(a.dataset.sortPrice    ?? '0'); vb = parseFloat(b.dataset.sortPrice    ?? '0'); }
+      if (col === 'stock')    { va = parseInt(a.dataset.sortStock   ?? '0', 10); vb = parseInt(b.dataset.sortStock   ?? '0', 10); }
+      if (col === 'wishlist') { va = parseInt(a.dataset.sortWishlist ?? '0', 10); vb = parseInt(b.dataset.sortWishlist ?? '0', 10); }
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });

@@ -289,3 +289,5 @@
   .lightbox__arrow--prev { left: 0.5rem; }
   .lightbox__arrow--next { right: 0.5rem; }
 }
+
+/* ripple-wave keyframe lives in utils.css (global) */

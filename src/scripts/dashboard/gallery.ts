@@ -180,11 +180,23 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
     updatePanelButtons();
   });
 
-  cropBtn?.addEventListener('click', () => {
+  cropBtn?.addEventListener('click', async () => {
     if (!activeSlot) return;
     const st = wState.get(activeSlot)!;
-    const blob = st.useProcessed && st.processed ? st.processed : st.original;
-    if (!blob) return;
+    let blob = st.useProcessed && st.processed ? st.processed : st.original;
+    if (!blob) {
+      const urlInput = activeSlot.querySelector<HTMLInputElement>('.gallery-slot__url');
+      const url = urlInput?.value;
+      if (!url) return;
+      setLoading(true);
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('fetch failed');
+        st.original = await resp.blob();
+        blob = st.original;
+      } catch { setLoading(false); return; }
+      setLoading(false);
+    }
     const isProcessed = !!(st.useProcessed && st.processed);
     const slotRef = activeSlot;
     openCropModal(blob, isProcessed, (croppedBlob, wasProcessed) => {

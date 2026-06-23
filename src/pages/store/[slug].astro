@@ -117,22 +117,54 @@ const jsonLd = {
                         </div>
                     }
                     {isNew && <span class="badge badge--new">{t.store.badgeNew}</span>}
+                  <button
+                    type="button"
+                    class="wishlist-btn"
+                    data-wishlist-slug={p.slug}
+                    data-wishlist-name={p.name}
+                    data-wishlist-price={String(p.price)}
+                    data-wishlist-image={p.images?.[0] ?? ''}
+                    data-wishlist-store-slug={shopStore.slug}
+                    data-wishlist-store-name={shopStore.name}
+                    data-wishlisted="false"
+                    aria-pressed="false"
+                    aria-label={t.wishlist.addLabel}
+                    style="position:absolute;top:0.45rem;inset-inline-end:0.45rem;z-index:2;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.9);color:var(--color-muted);transition:color 0.15s,background 0.15s,transform 0.15s"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                  </button>
                   </div>
                   <div class="product-card__body">
                     <h3 class="product-card__name" dir="auto">{p.name}</h3>
                     {p.description && <p class="product-card__desc" dir="auto">{p.description}</p>}
-                    <div class="product-card__footer">
-                      <span class="product-card__price">{formatPrice(p.price)}</span>
-                      {p.stock <= 0
-                        ? <span class="badge badge--muted">{t.store.outOfStock}</span>
-                        : <button
-                            class="btn btn--sm add-to-cart-btn"
-                            data-slug={p.slug}
-                            data-name={p.name}
-                            data-price={String(p.price)}
-                            data-image={p.images?.[0] ?? ''}
-                            data-label-added={t.store.addedToCart}
-                          >{t.store.addToCart}</button>}
+                    <div class="product-card__footer" style="flex-direction:column;align-items:stretch;gap:0.4rem">
+                      {p.stock > 0 && (
+                        <div dir="ltr" class="flex items-center flex-shrink-0" style="align-self:flex-end;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden">
+                          <button type="button" class="qty-dec flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30" style="width:1.75rem;height:1.75rem" aria-label={t.cart.qtyDecrease} disabled>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                          </button>
+                          <span class="qty-val text-sm font-semibold select-none" style="min-width:1.75rem;text-align:center;color:var(--color-text)" aria-live="polite" aria-atomic="true">1</span>
+                          <button type="button" class="qty-inc flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100" style="width:1.75rem;height:1.75rem" aria-label={t.cart.qtyIncrease}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                          </button>
+                        </div>
+                      )}
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
+                        <span class="product-card__price">{formatPrice(p.price)}</span>
+                        {p.stock <= 0
+                          ? <span class="badge badge--muted">{t.store.outOfStock}</span>
+                          : <button
+                              type="button"
+                              class="btn btn--sm add-to-cart-btn whitespace-nowrap"
+                              data-slug={p.slug}
+                              data-name={p.name}
+                              data-price={String(p.price)}
+                              data-image={p.images?.[0] ?? ''}
+                              data-stock={String(p.stock)}
+                              data-label-added={t.store.addedToCart}
+                            ><span class="btn-label">{t.store.addToCart}</span></button>
+                        }
+                      </div>
                     </div>
                   </div>
                 </li>
@@ -176,8 +208,15 @@ const jsonLd = {
 
 <script>
   import { addItem, syncCartImages } from '../../lib/cart.js';
+  import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
+  import { spawnRipple } from '../../lib/ripple.js';
 
-  const storePage = document.querySelector<HTMLElement>('.store-page[data-store-slug]');
+  document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn), li[role="option"]');
+    if (btn) spawnRipple(btn, e.clientX, e.clientY);
+  });
+
+const storePage = document.querySelector<HTMLElement>('.store-page[data-store-slug]');
   const storeSlug = storePage?.dataset.storeSlug ?? '';
   const storeName = storePage?.dataset.storeName ?? '';
 
@@ -192,38 +231,111 @@ const jsonLd = {
   })).filter((p) => p.slug);
   if (storeSlug) syncCartImages(storeSlug, currentProducts);
 
-  // ── Add to cart ───────────────────────────────────────────────────
-  const checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-inline-end:4px"><polyline points="20 6 9 17 4 12"/></svg>';
+  // ── Wishlist hearts ───────────────────────────────────────────────
+  function setHeartStyle(btn: HTMLElement, active: boolean) {
+    const svg = btn.querySelector<SVGElement>('svg');
+    if (!svg) return;
+    if (active) {
+      svg.style.fill = '#e53e3e';
+      svg.style.stroke = '#e53e3e';
+      btn.style.color = '#e53e3e';
+      btn.style.background = 'rgba(255,255,255,0.95)';
+    } else {
+      svg.style.fill = 'none';
+      svg.style.stroke = 'currentColor';
+      btn.style.color = '';
+      btn.style.background = 'rgba(255,255,255,0.85)';
+    }
+  }
 
-  document.querySelectorAll<HTMLButtonElement>('.add-to-cart-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (btn.disabled) return;
-      const { slug = '', name = '', price = '0', image = '' } = btn.dataset;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image });
+  function getI18nWishlist() {
+    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}')?.wishlist ?? {}; } catch { return {}; }
+  }
 
-      const originalText = btn.textContent?.trim() ?? '';
-      const addedLabel   = btn.dataset.labelAdded ?? originalText;
+  document.querySelectorAll<HTMLButtonElement>('.wishlist-btn').forEach((btn) => {
+    const slug = btn.dataset.wishlistSlug ?? '';
+    const active = isWishlisted(slug);
+    btn.dataset.wishlisted = String(active);
+    btn.setAttribute('aria-pressed', String(active));
+    setHeartStyle(btn, active);
 
-      btn.innerHTML  = `${checkSvg}${addedLabel}`;
-      btn.disabled   = true;
-      btn.style.opacity = '0.72';
-
-      // spring pop on add
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wi = getI18nWishlist();
+      const item = {
+        slug,
+        name: btn.dataset.wishlistName ?? '',
+        price: Number(btn.dataset.wishlistPrice ?? 0),
+        image: btn.dataset.wishlistImage ?? '',
+        storeSlug: btn.dataset.wishlistStoreSlug ?? '',
+        storeName: btn.dataset.wishlistStoreName ?? '',
+      };
+      const nowActive = toggleWishlist(item);
+      btn.dataset.wishlisted = String(nowActive);
+      btn.setAttribute('aria-pressed', String(nowActive));
+      btn.setAttribute('aria-label', nowActive ? (wi.removeLabel ?? 'Remove from wishlist') : (wi.addLabel ?? 'Add to wishlist'));
+      setHeartStyle(btn, nowActive);
       btn.animate(
-        [{ transform: 'scale(1)' }, { transform: 'scale(1.1)' }, { transform: 'scale(1)' }],
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }],
+        { duration: 300, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+      );
+      fetch('/api/wishlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: nowActive ? 'add' : 'remove', productSlug: slug }),
+      });
+    });
+  });
+
+  // ── Qty stepper + Add to cart ─────────────────────────────────────
+  const checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
+
+  document.querySelectorAll<HTMLElement>('.product-card').forEach((card) => {
+    const addBtn = card.querySelector<HTMLButtonElement>('.add-to-cart-btn');
+    if (!addBtn) return;
+
+    const qtyDec = card.querySelector<HTMLButtonElement>('.qty-dec');
+    const qtyInc = card.querySelector<HTMLButtonElement>('.qty-inc');
+    const qtyVal = card.querySelector<HTMLElement>('.qty-val');
+    const maxStock = Math.max(1, parseInt(addBtn.dataset.stock ?? '99', 10) || 99);
+    let qty = 1;
+
+    function updateQty(n: number) {
+      qty = Math.max(1, Math.min(n, maxStock));
+      if (qtyVal) qtyVal.textContent = String(qty);
+      if (qtyDec) qtyDec.disabled = qty <= 1;
+      if (qtyInc) qtyInc.disabled = qty >= maxStock;
+    }
+
+    qtyDec?.addEventListener('click', () => updateQty(qty - 1));
+    qtyInc?.addEventListener('click', () => updateQty(qty + 1));
+
+    const labelSpan = addBtn.querySelector<HTMLElement>('.btn-label');
+    if (labelSpan) labelSpan.style.cssText = 'display:inline-flex;align-items:center;gap:4px';
+    const originalLabel = labelSpan?.innerHTML ?? '';
+
+    addBtn.addEventListener('pointerdown', (e) => spawnRipple(addBtn, e.clientX, e.clientY));
+
+    addBtn.addEventListener('click', () => {
+      if (addBtn.disabled) return;
+      const { slug = '', name = '', price = '0', image = '' } = addBtn.dataset;
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image }, qty);
+      updateQty(1);
+
+      addBtn.style.minWidth = `${addBtn.offsetWidth}px`;
+      if (labelSpan) labelSpan.innerHTML = `${checkSvg}${addBtn.dataset.labelAdded ?? ''}`;
+      addBtn.disabled = true;
+
+      addBtn.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
         { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
       );
 
       setTimeout(() => {
-        btn.textContent   = originalText;
-        btn.style.opacity = '';
-        btn.disabled      = false;
-        // gentle settle on revert
-        btn.animate(
-          [{ transform: 'scale(0.94)' }, { transform: 'scale(1)' }],
-          { duration: 160, easing: 'ease-out' }
-        );
-      }, 1500);
+        if (labelSpan) labelSpan.innerHTML = originalLabel;
+        addBtn.style.minWidth = '';
+        addBtn.disabled = false;
+      }, 1400);
     });
   });
 

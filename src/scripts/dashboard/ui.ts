@@ -20,10 +20,8 @@ export function initSettingsForm(): void {
     if (!data.ok) { showSettingsStatus(data.error ?? 'Error saving.', true); return; }
 
     const newName = data.name ?? String(fd.get('name'));
-    const heading = document.querySelector('.dash-head h1');
-    if (heading) heading.textContent = newName;
-    const activeTab = document.querySelector('.store-tab--active');
-    if (activeTab) activeTab.textContent = newName;
+    const storeNameEl = document.querySelector<HTMLElement>('.dash-store-name');
+    if (storeNameEl) storeNameEl.textContent = newName;
 
     showSettingsStatus('Settings saved.');
   });
@@ -44,27 +42,42 @@ export function initFormToggles(): void {
   });
 }
 
-export function initNewStoreForm(): void {
-  const toggleNew  = document.getElementById('toggle-new-store');
-  const newStoreForm = document.getElementById('new-store-form');
-  const cancelNew  = document.getElementById('cancel-new-store');
+export function initStoreSwitcher(): void {
+  const btn  = document.getElementById('store-switcher-btn') as HTMLButtonElement | null;
+  const menu = document.getElementById('store-switcher-menu') as HTMLElement | null;
+  if (!btn || !menu) return;
 
-  toggleNew?.addEventListener('click', () => newStoreForm?.removeAttribute('hidden'));
-  cancelNew?.addEventListener('click', () => newStoreForm?.setAttribute('hidden', ''));
-}
+  function open() {
+    menu!.hidden = false;
+    btn!.setAttribute('aria-expanded', 'true');
+    (menu!.querySelector<HTMLAnchorElement>('a'))?.focus();
+  }
 
-export function initSettingsCollapsible(): void {
-  const settingsHeader = document.getElementById('settings-header');
-  const settingsBodyEl = document.getElementById('settings-body');
+  function close(returnFocus = true) {
+    menu!.hidden = true;
+    btn!.setAttribute('aria-expanded', 'false');
+    if (returnFocus) btn?.focus();
+  }
 
-  settingsHeader?.addEventListener('click', () => {
-    const open = !!settingsBodyEl?.hidden;
-    if (settingsBodyEl) settingsBodyEl.hidden = !open;
-    settingsHeader.setAttribute('aria-expanded', String(open));
+  btn.addEventListener('click', () => menu.hidden ? open() : close(false));
+
+  document.addEventListener('click', (e) => {
+    if (!btn.contains(e.target as Node) && !menu.contains(e.target as Node)) {
+      if (!menu.hidden) close(false);
+    }
   });
 
-  settingsHeader?.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); settingsHeader.click(); }
+  btn.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  });
+
+  menu.addEventListener('keydown', (e: KeyboardEvent) => {
+    const items = [...menu.querySelectorAll<HTMLAnchorElement>('a')];
+    const idx   = items.indexOf(document.activeElement as HTMLAnchorElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
   });
 }
 
@@ -72,4 +85,42 @@ export function initAutoHideStatus(): void {
   document.querySelectorAll<HTMLElement>('.dash-success, .dash-error').forEach((el) => {
     setTimeout(() => el.remove(), 3000);
   });
+}
+
+export function initDashTabs(): void {
+  const tabs   = document.querySelectorAll<HTMLButtonElement>('[role="tab"][data-panel]');
+  const panels = document.querySelectorAll<HTMLElement>('.dash-panel');
+
+  function activateTab(tab: HTMLButtonElement) {
+    tabs.forEach(t => {
+      t.classList.remove('dash-tab--active');
+      t.setAttribute('aria-selected', 'false');
+      t.setAttribute('tabindex', '-1');
+    });
+    panels.forEach(p => { p.hidden = true; });
+    tab.classList.add('dash-tab--active');
+    tab.setAttribute('aria-selected', 'true');
+    tab.setAttribute('tabindex', '0');
+    const panel = document.getElementById(`dash-panel-${tab.dataset.panel}`);
+    if (panel) panel.hidden = false;
+  }
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => activateTab(tab));
+    tab.addEventListener('keydown', (e: KeyboardEvent) => {
+      const list = [...tabs];
+      const idx  = list.indexOf(tab);
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = list[(idx + 1) % list.length] as HTMLButtonElement;
+        next.focus(); activateTab(next);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = list[(idx - 1 + list.length) % list.length] as HTMLButtonElement;
+        prev.focus(); activateTab(prev);
+      }
+    });
+  });
+
+  tabs.forEach((tab, i) => tab.setAttribute('tabindex', i === 0 ? '0' : '-1'));
 }

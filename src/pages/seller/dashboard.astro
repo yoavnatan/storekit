@@ -12,6 +12,7 @@ import {
 import { formatPrice } from '../../config/store.config.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
 import { getLang, getT } from '../../i18n/index.js';
+import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
@@ -102,6 +103,7 @@ const store = allStores.find((s) => s.id === activeStoreId) ?? allStores[0]!;
 const settingsSuccess = Astro.url.searchParams.get('saved') === '1';
 const productSuccess = Astro.url.searchParams.get('added') === '1';
 const products = getProductsByStoreId(store.id);
+const wishlistCounts = getAllWishlistCounts();
 const productCount = products.length;
 const inStockCount = products.filter((p) => p.stock > 0).length;
 const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
@@ -111,261 +113,290 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 <BaseLayout title={d.title} noindex={true} isLoggedIn={true} hasStore={true} sellerMode={true}>
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} hidden></div>
   <section class="section container">
-    <div class="dash-head flex between">
-      <div>
-        <h1>{store.name}</h1>
-        <p class="muted" style="margin-top:0.2rem">{d.storeSubtitle} · <code>/store/{store.slug}</code></p>
-      </div>
-    </div>
+    <div class="card" style="margin-bottom:1.5rem">
 
-    {
-      allStores.length > 1 && (
-        <div class="store-tabs">
-          {allStores.map((s) => (
-            <a
-              href={`/seller/dashboard?store=${s.id}`}
-              class={`store-tab${s.id === store.id ? ' store-tab--active' : ''}`}
+      <!-- ── Store header ── -->
+      <div class="dash-head" style="padding:1.5rem 1.5rem 0">
+        {allStores.length === 1 ? (
+          <h1 class="dash-store-name">{store.name}</h1>
+        ) : (
+          <div class="store-switcher" id="store-switcher">
+            <button
+              class="store-switcher__btn"
+              id="store-switcher-btn"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-label={lang === 'he' ? 'החלף חנות' : 'Switch store'}
             >
-              {s.name}
-            </a>
-          ))}
-          <button class="store-tab store-tab--new" id="toggle-new-store">
-            {d.newStore}
-          </button>
+              <span class="dash-store-name">{store.name}</span>
+              <svg class="store-switcher__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            <ul class="store-switcher__menu" id="store-switcher-menu" role="listbox" hidden>
+              {allStores.map((s) => (
+                <li>
+                  <a
+                    href={`/seller/dashboard?store=${s.id}`}
+                    role="option"
+                    aria-selected={s.id === store.id}
+                    class={s.id === store.id ? 'store-option--current' : ''}
+                  >
+                    {s.name}
+                    {s.id === store.id && (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p class="muted" style="margin:0.25rem 0 0;font-size:0.82rem">{d.storeSubtitle} · <code style="font-size:0.78rem">/store/{store.slug}</code></p>
+
+        {settingsSuccess && <p class="dash-success" style="margin-top:1rem;margin-bottom:0">{d.settingsSaved}</p>}
+        {productSuccess && <p class="dash-success" style="margin-top:1rem;margin-bottom:0">{d.productAdded}</p>}
+        {error && <p class="dash-error" style="margin-top:1rem;margin-bottom:0">{error}</p>}
+      </div>
+
+      <!-- ── Section tabs ── -->
+      <div class="dash-tabs" role="tablist">
+        <button
+          class="dash-tab dash-tab--active"
+          role="tab"
+          id="tab-products"
+          data-panel="products"
+          aria-selected="true"
+          tabindex="0"
+        >{d.tabProducts}</button>
+        <button
+          class="dash-tab"
+          role="tab"
+          id="tab-settings"
+          data-panel="settings"
+          aria-selected="false"
+          tabindex="-1"
+        >{d.tabSettings}</button>
+      </div>
+
+      <!-- ── Panel: Store data + Products ── -->
+      <div id="dash-panel-products" class="dash-panel" role="tabpanel" aria-labelledby="tab-products">
+
+        <!-- Quick overview row -->
+        <div class="dash-overview-row">
+          <dl class="dash-stats">
+            <div>
+              <dt>{d.products}</dt>
+              <dd>{productCount}</dd>
+            </div>
+            <div>
+              <dt>{d.inStock}</dt>
+              <dd>{inStockCount}</dd>
+            </div>
+            <div>
+              <dt>{d.stockValue}</dt>
+              <dd>{formatPrice(totalStockValue)}</dd>
+            </div>
+          </dl>
+          <a href={`/store/${store.slug}`} class="btn btn--sm" target="_blank" rel="noopener">
+            {d.viewLive}
+          </a>
         </div>
-      )
-    }
-    {
-      allStores.length === 1 && (
-        <div class="store-tabs">
-          <span class="store-tab store-tab--active">{store.name}</span>
-          <button class="store-tab store-tab--new" id="toggle-new-store">
-            {d.newStore}
-          </button>
-        </div>
-      )
-    }
 
-    <div id="new-store-form" class="add-form" hidden>
-      <h3>{d.createStoreTitle}</h3>
-      <form method="POST" class="dash-form">
-        <input type="hidden" name="_action" value="create-store" />
-        <div class="field-row">
-          <label class="field">
-            <span>{d.storeNameReq}</span>
-            <input class="input" name="name" required placeholder={d.storeNamePlaceholder} />
-          </label>
-          <label class="field">
-            <span>{d.tagline}</span>
-            <input class="input" name="tagline" placeholder={d.taglinePlaceholder} />
-          </label>
-        </div>
-        <div class="form-actions">
-          <button class="btn" type="submit">{d.createStoreBtn}</button>
-          <button class="btn btn--ghost" type="button" id="cancel-new-store">{d.cancel}</button>
-        </div>
-      </form>
-    </div>
+        <!-- Products section -->
+        <div style="border-top:1px solid var(--color-border);padding-top:1.25rem">
+          <div class="products-header">
+            <h2>{d.productsTitle}</h2>
+            <button class="btn btn--sm" id="toggle-add-form">{d.addProduct}</button>
+          </div>
 
-    {settingsSuccess && <p class="dash-success">{d.settingsSaved}</p>}
-    {productSuccess && <p class="dash-success">{d.productAdded}</p>}
-    {error && <p class="dash-error">{error}</p>}
+          <div id="add-product-form" class="add-form" hidden>
+            <h3>{d.newProduct}</h3>
+            <form method="POST" class="dash-form">
+              <input type="hidden" name="_action" value="add-product" />
+              <input type="hidden" name="storeId" value={store.id} />
 
-    <div class="dash-grid">
-      <div class="card dash-card">
-        <div class="settings-header" id="settings-header" role="button" tabindex="0" aria-expanded="false" aria-controls="settings-body">
-          <h2>{d.storeSettings}</h2>
-          <svg class="settings-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div id="settings-body" hidden>
-          <form method="POST" action="/api/store" class="dash-form" id="settings-form">
-            <input type="hidden" name="_action" value="save-settings" />
-            <input type="hidden" name="storeId" value={store.id} />
+              <div class="field-row">
+                <label class="field">
+                  <span>{d.nameReq}</span>
+                  <input class="input" name="name" required placeholder={d.namePlaceholder} />
+                </label>
+                <label class="field">
+                  <span>{d.priceLabel}</span>
+                  <input
+                    class="input"
+                    name="price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                  />
+                </label>
+                <label class="field">
+                  <span>{d.colStock}</span>
+                  <input class="input" name="stock" type="number" min="0" step="1" placeholder="0" />
+                </label>
+              </div>
 
-            <label class="field">
-              <span>{d.storeName}</span>
-              <input class="input" name="name" value={store.name} required />
-            </label>
+              <label class="field">
+                <span>{d.descLabel}</span>
+                <textarea
+                  class="input"
+                  name="description"
+                  rows="2"
+                  placeholder={d.descPlaceholderProduct}></textarea>
+              </label>
 
-            <label class="field">
-              <span>{d.tagline}</span>
-              <input
-                class="input"
-                name="tagline"
-                value={store.tagline}
-                placeholder={d.descPlaceholder}
-              />
-            </label>
+              <div class="field">
+                <span class="field-label">{d.productImages}</span>
+                <div set:html={galleryWidgetHtml([], g)}></div>
+              </div>
 
-            <label class="field">
-              <span>{d.description}</span>
-              <textarea class="input" name="description" rows="3">{store.description}</textarea>
-            </label>
+              <div class="form-actions">
+                <button class="btn" type="submit">{d.addProductBtn}</button>
+                <button class="btn btn--ghost" type="button" id="cancel-add">{d.cancel}</button>
+              </div>
+            </form>
+          </div>
 
-            <p id="settings-status" hidden></p>
-            <button class="btn" type="submit">{d.saveChanges}</button>
-          </form>
+          <p id="empty-products" class="empty-products" hidden={products.length > 0}>{d.noProducts}</p>
+          <table id="products-table" class="products-table" hidden={products.length === 0}>
+            <thead>
+              <tr>
+                <th class="num" style="width:2rem">#</th>
+                <th>
+                  <button type="button" class="sort-btn" data-sort-col="name">{d.colName}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                </th>
+                <th>
+                  <button type="button" class="sort-btn" data-sort-col="price">{d.colPrice}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                </th>
+                <th>
+                  <button type="button" class="sort-btn" data-sort-col="stock">{d.colStock}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                </th>
+                <th class="num">
+                  <button type="button" class="sort-btn" data-sort-col="wishlist">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    <svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+                  </button>
+                </th>
+                <th />
+              </tr>
+            </thead>
+            <tbody id="products-tbody">
+              {products.map((p, idx) => (
+                <>
+                  <tr data-product-display={p.id} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)}>
+                    <td class="num row-num">{idx + 1}</td>
+                    <td>
+                      <div class="product-name-cell">
+                        {p.images?.[0] && <img src={p.images[0]} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" />}
+                        <div>
+                          <span class="product-name">{p.name}</span>
+                          {p.description && <span class="product-desc">{p.description}</span>}
+                        </div>
+                      </div>
+                    </td>
+                    <td class="num product-price">{formatPrice(p.price)}</td>
+                    <td class="num product-stock">
+                      <span style="display:inline-flex;align-items:center;gap:0.3rem">
+                        <span>{p.stock}</span>
+                        {p.stock <= 0 && (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        )}
+                      </span>
+                    </td>
+                    <td class="num" style="color:var(--color-muted);font-size:0.82rem">
+                      {(wishlistCounts[p.slug] ?? 0) > 0
+                        ? <span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                            {wishlistCounts[p.slug]}
+                          </span>
+                        : <span style="color:var(--color-border)">—</span>
+                      }
+                    </td>
+                    <td class="actions">
+                      <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle={p.id}>{d.edit}</button>
+                      <button class="btn btn--danger btn--sm" type="button" data-delete-product={p.id} data-store-id={store.id}>{d.delete}</button>
+                    </td>
+                  </tr>
+                  <tr class="edit-row" data-product-edit={p.id} hidden>
+                    <td colspan="6">
+                      <form method="POST" action="/api/product" class="dash-form inline-edit-form">
+                        <input type="hidden" name="_action" value="edit-product" />
+                        <input type="hidden" name="productId" value={p.id} />
+                        <div class="field-row">
+                          <label class="field">
+                            <span>{d.nameReq}</span>
+                            <input class="input" name="name" value={p.name} required />
+                          </label>
+                          <label class="field">
+                            <span>{d.priceLabel}</span>
+                            <input class="input" name="price" type="number" min="0" step="0.01" value={p.price} />
+                          </label>
+                          <label class="field">
+                            <span>{d.colStock}</span>
+                            <input class="input" name="stock" type="number" min="0" step="1" value={p.stock} />
+                          </label>
+                        </div>
+                        <label class="field">
+                          <span>{d.descLabel}</span>
+                          <textarea class="input" name="description" rows="2">{p.description}</textarea>
+                        </label>
+                        <div class="field">
+                          <span class="field-label">{d.productImages}</span>
+                          <div set:html={galleryWidgetHtml(p.images ?? [], g)}></div>
+                        </div>
+                        <div class="form-actions">
+                          <button class="btn btn--sm" type="submit">{d.save}</button>
+                          <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
+                        </div>
+                      </form>
+                    </td>
+                  </tr>
+                </>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <div class="card dash-card">
-        <h2>{d.storeOverview}</h2>
-        <dl style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem">
-          <div class="flex items-baseline justify-between">
-            <dt class="muted">{d.products}</dt>
-            <dd class="font-semibold">{productCount}</dd>
-          </div>
-          <div class="flex items-baseline justify-between">
-            <dt class="muted">{d.inStock}</dt>
-            <dd class="font-semibold">{inStockCount}</dd>
-          </div>
-          <div class="flex items-baseline justify-between">
-            <dt class="muted">{d.stockValue}</dt>
-            <dd class="font-semibold">{formatPrice(totalStockValue)}</dd>
-          </div>
-        </dl>
-        <a href={`/store/${store.slug}`} class="btn" style="display:block;text-align:center;margin-top:1.25rem" target="_blank" rel="noopener">
-          {d.viewLive}
-        </a>
-      </div>
-    </div>
-
-    <div class="card dash-card products-section">
-      <div class="products-header">
-        <h2>{d.productsTitle}</h2>
-        <button class="btn btn--sm" id="toggle-add-form">{d.addProduct}</button>
-      </div>
-
-      <div id="add-product-form" class="add-form" hidden>
-        <h3>{d.newProduct}</h3>
-        <form method="POST" class="dash-form">
-          <input type="hidden" name="_action" value="add-product" />
+      <!-- ── Panel: Settings ── -->
+      <div id="dash-panel-settings" class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
+        <form method="POST" action="/api/store" class="dash-form" id="settings-form" style="margin-top:0">
+          <input type="hidden" name="_action" value="save-settings" />
           <input type="hidden" name="storeId" value={store.id} />
 
-          <div class="field-row">
-            <label class="field">
-              <span>{d.nameReq}</span>
-              <input class="input" name="name" required placeholder={d.namePlaceholder} />
-            </label>
-            <label class="field">
-              <span>{d.priceLabel}</span>
-              <input
-                class="input"
-                name="price"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-              />
-            </label>
-            <label class="field">
-              <span>{d.colStock}</span>
-              <input class="input" name="stock" type="number" min="0" step="1" placeholder="0" />
-            </label>
-          </div>
-
           <label class="field">
-            <span>{d.descLabel}</span>
-            <textarea
-              class="input"
-              name="description"
-              rows="2"
-              placeholder={d.descPlaceholderProduct}></textarea>
+            <span>{d.storeName}</span>
+            <input class="input" name="name" value={store.name} required />
           </label>
 
-          <div class="field">
-            <span class="field-label">{d.productImages}</span>
-            <div set:html={galleryWidgetHtml([], g)}></div>
-          </div>
+          <label class="field">
+            <span>{d.tagline}</span>
+            <input
+              class="input"
+              name="tagline"
+              value={store.tagline}
+              placeholder={d.descPlaceholder}
+            />
+          </label>
 
+          <label class="field">
+            <span>{d.description}</span>
+            <textarea class="input" name="description" rows="3">{store.description}</textarea>
+          </label>
+
+          <p id="settings-status" hidden></p>
           <div class="form-actions">
-            <button class="btn" type="submit">{d.addProductBtn}</button>
-            <button class="btn btn--ghost" type="button" id="cancel-add">{d.cancel}</button>
+            <button class="btn" type="submit">{d.saveChanges}</button>
+            <a href={`/store/${store.slug}`} class="btn btn--ghost" target="_blank" rel="noopener">{d.viewLive}</a>
           </div>
         </form>
       </div>
 
-      <p id="empty-products" class="empty-products" hidden={products.length > 0}>{d.noProducts}</p>
-      <table id="products-table" class="products-table" hidden={products.length === 0}>
-        <thead>
-          <tr>
-            <th class="num" style="width:2rem">#</th>
-            <th>
-              <button type="button" class="sort-btn" data-sort-col="name">{d.colName}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
-            </th>
-            <th>
-              <button type="button" class="sort-btn" data-sort-col="price">{d.colPrice}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
-            </th>
-            <th>
-              <button type="button" class="sort-btn" data-sort-col="stock">{d.colStock}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
-            </th>
-            <th />
-          </tr>
-        </thead>
-        <tbody id="products-tbody">
-          {products.map((p, idx) => (
-            <>
-              <tr data-product-display={p.id} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)}>
-                <td class="num row-num">{idx + 1}</td>
-                <td>
-                  <div class="product-name-cell">
-                    {p.images?.[0] && <img src={p.images[0]} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" />}
-                    <div>
-                      <span class="product-name">{p.name}</span>
-                      {p.description && <span class="product-desc">{p.description}</span>}
-                    </div>
-                  </div>
-                </td>
-                <td class="num product-price">{formatPrice(p.price)}</td>
-                <td class="num product-stock">
-                  {p.stock}
-                  {p.stock <= 0 && (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);vertical-align:-2px;margin-inline-start:4px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                  )}
-                </td>
-                <td class="actions">
-                  <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle={p.id}>{d.edit}</button>
-                  <button class="btn btn--danger btn--sm" type="button" data-delete-product={p.id} data-store-id={store.id}>{d.delete}</button>
-                </td>
-              </tr>
-              <tr class="edit-row" data-product-edit={p.id} hidden>
-                <td colspan="5">
-                  <form method="POST" action="/api/product" class="dash-form inline-edit-form">
-                    <input type="hidden" name="_action" value="edit-product" />
-                    <input type="hidden" name="productId" value={p.id} />
-                    <div class="field-row">
-                      <label class="field">
-                        <span>{d.nameReq}</span>
-                        <input class="input" name="name" value={p.name} required />
-                      </label>
-                      <label class="field">
-                        <span>{d.priceLabel}</span>
-                        <input class="input" name="price" type="number" min="0" step="0.01" value={p.price} />
-                      </label>
-                      <label class="field">
-                        <span>{d.colStock}</span>
-                        <input class="input" name="stock" type="number" min="0" step="1" value={p.stock} />
-                      </label>
-                    </div>
-                    <label class="field">
-                      <span>{d.descLabel}</span>
-                      <textarea class="input" name="description" rows="2">{p.description}</textarea>
-                    </label>
-                    <div class="field">
-                      <span class="field-label">{d.productImages}</span>
-                      <div set:html={galleryWidgetHtml(p.images ?? [], g)}></div>
-                    </div>
-                    <div class="form-actions">
-                      <button class="btn btn--sm" type="submit">{d.save}</button>
-                      <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
-                    </div>
-                  </form>
-                </td>
-              </tr>
-            </>
-          ))}
-        </tbody>
-      </table>
     </div>
   </section>
 </BaseLayout>
@@ -375,6 +406,10 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
     <h3>{d.cropTitle}</h3>
     <div class="crop-viewport" id="crop-viewport">
       <img class="crop-img" id="crop-img" alt="" />
+      <div class="crop-hint" id="crop-hint" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
+        {lang === 'he' ? 'גרור למיקום · גלול לזום' : 'Drag to reposition · Scroll to zoom'}
+      </div>
     </div>
     <div class="crop-controls">
       <label class="crop-zoom-label">
@@ -393,7 +428,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
   import { bindExistingRows, initAddProduct, initDeleteProduct, initTableSort } from '../../scripts/dashboard/products.js';
-  import { initSettingsForm, initFormToggles, initNewStoreForm, initSettingsCollapsible, initAutoHideStatus } from '../../scripts/dashboard/ui.js';
+  import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
 
   const uploadCfg = document.getElementById('upload-config');
   const CLOUD  = uploadCfg?.dataset.cloud  ?? '';
@@ -402,6 +437,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
   // clean status params from URL
   { const u = new URL(window.location.href); if (u.searchParams.has('saved') || u.searchParams.has('added')) { u.searchParams.delete('saved'); u.searchParams.delete('added'); history.replaceState(null, '', u.toString()); } }
 
+  initDashTabs();
   initCropModal();
   document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g, CLOUD, PRESET));
   bindExistingRows(CLOUD, PRESET);
@@ -409,8 +445,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
   initDeleteProduct();
   initSettingsForm();
   initFormToggles();
-  initNewStoreForm();
-  initSettingsCollapsible();
+  initStoreSwitcher();
   initAutoHideStatus();
   initTableSort();
 </script>

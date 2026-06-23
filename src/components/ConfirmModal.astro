@@ -24,6 +24,10 @@
 
   let pending: (() => void) | null = null;
 
+  function centerDialog() {
+    if (dialog) dialog.style.transform = '';
+  }
+
   window.addEventListener('confirm:open', (e: Event) => {
     const i18n = getI18n().confirm ?? {};
     const detail = (e as CustomEvent<{ title?: string; message?: string; okLabel?: string; onConfirm?: () => void }>).detail;
@@ -32,6 +36,7 @@
     if (okBtn) okBtn.textContent = detail.okLabel ?? i18n.confirm ?? 'Confirm';
     if (cancelBtn) cancelBtn.textContent = i18n.cancel ?? 'Cancel';
     pending = detail.onConfirm ?? null;
+    centerDialog();
     dialog?.showModal();
   });
 

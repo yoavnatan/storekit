@@ -38,6 +38,8 @@ function updateCropDisplay() {
   cropImgEl.style.top = `${(VP_SIZE - h) / 2 + cropPanY}px`;
 }
 
+const cropHint = document.getElementById('crop-hint');
+
 export function openCropModal(blob: Blob, isProcessed: boolean, onApply?: (blob: Blob, isProcessed: boolean) => void): void {
   if (!cropModal || !cropImgEl || !cropZoomEl) return;
   cropIsProcessed = isProcessed;
@@ -50,6 +52,7 @@ export function openCropModal(blob: Blob, isProcessed: boolean, onApply?: (blob:
   };
   cropImgEl.src = URL.createObjectURL(blob);
   cropModal.hidden = false;
+  cropHint?.classList.remove('hidden');
 }
 
 function closeCropModal() {
@@ -87,6 +90,7 @@ export function initCropModal(): void {
   document.addEventListener('mousemove', (e: MouseEvent) => {
     if (!isDragging) return;
     hadDragMotion = true;
+    cropHint?.classList.add('hidden');
     cropPanX = dragStartPanX + (e.clientX - dragStartX);
     cropPanY = dragStartPanY + (e.clientY - dragStartY);
     clampCropPan(); updateCropDisplay();

@@ -1,20 +1,25 @@
 ---
 export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { store as platform } from '../config/store.config.js';
+import { store as platform, formatPrice } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getAllStores } from '../lib/stores.js';
+import { getProductsByStoreId } from '../lib/store-products.js';
 import { getLang, getT } from '../i18n/index.js';
 
-const sellerId = getSellerSession(Astro.cookies);
-const seller = sellerId ? getSellerById(sellerId) : null;
+const sellerId    = getSellerSession(Astro.cookies);
+const seller      = sellerId ? getSellerById(sellerId) : null;
 const sellerStore = sellerId ? getStoreBySellerId(sellerId) : null;
-const isLoggedIn = !!sellerId;
-const hasStore = !!sellerStore;
+const isLoggedIn  = !!sellerId;
+const hasStore    = !!sellerStore;
 
 const stores = getAllStores();
-const lang = getLang(Astro.cookies);
-const t    = getT(lang);
+const lang   = getLang(Astro.cookies);
+const t      = getT(lang);
+
+const storesWithProducts = stores
+  .map((s) => ({ store: s, products: getProductsByStoreId(s.id) }))
+  .filter(({ products }) => products.length > 0);
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -27,117 +32,208 @@ const jsonLd = {
 
 <BaseLayout
   title={t.home.discoverStores}
-  description={`${t.home.browseDesc}`}
+  description={t.home.browseDesc}
   jsonLd={jsonLd}
   isLoggedIn={isLoggedIn}
   hasStore={hasStore}
   storeMode={true}
 >
 
-  {isLoggedIn && seller && (
-    <div class="bg-[var(--color-surface)] border-b border-[var(--color-border)]">
-      <div class="container flex items-center gap-2 py-3 text-sm">
-        <span class="text-[var(--color-muted)] font-medium">{t.home.welcomeBack}</span>
-        <span class="text-[var(--color-border)]" aria-hidden="true">·</span>
-        <span class="font-semibold text-[var(--color-primary)]">{seller.name}</span>
+  <!-- ── Hero ──────────────────────────────────────────────────────── -->
+  <section class="home-hero">
+    <div class="home-hero__glow" aria-hidden="true"></div>
+    <div class="container home-hero__inner">
+      <div class="home-hero__brand">
+        <span class="home-hero__brand-name">{platform.name}</span>
       </div>
-    </div>
-  )}
-
-  <div id="active-carts-bar" hidden class="bg-[var(--color-surface)] border-b border-[var(--color-border)] px-4 py-3">
-    <div class="container flex flex-wrap items-center gap-3">
-      <span class="text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wide shrink-0">{t.home.yourCarts}</span>
-      <div id="active-carts-list" class="flex flex-wrap gap-2"></div>
-    </div>
-  </div>
-
-  <section class="bg-[var(--color-surface)] border-b border-[var(--color-border)] py-10 px-4">
-    <div class="container flex flex-col items-center gap-5 text-center max-w-xl mx-auto">
-      <h1 class="text-3xl font-bold leading-tight">{t.home.discoverStores}</h1>
-      <p class="text-[var(--color-muted)] text-base max-w-sm">{t.home.browseDesc}</p>
-      <div class="w-full max-w-sm relative">
+      {isLoggedIn && seller && (
+        <p class="home-hero__welcome">
+          {t.home.welcomeBack},&nbsp;<strong>{seller.name}</strong>
+        </p>
+      )}
+      <h1 class="home-hero__heading">{t.home.discoverStores}</h1>
+      <p class="home-hero__sub">{t.home.browseDesc}</p>
+      <div class="home-hero__search-wrap">
         <label for="store-search" class="sr-only">{t.home.searchPlaceholder}</label>
-        <svg class={`absolute ${lang === 'he' ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-[var(--color-muted)] pointer-events-none`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <svg
+          class="home-hero__search-icon"
+          style={lang === 'he' ? 'inset-inline-start:auto;inset-inline-end:1rem' : ''}
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2.5" aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
         <input
           id="store-search"
           type="search"
           placeholder={t.home.searchPlaceholder}
           autocomplete="off"
-          class={`w-full ${lang === 'he' ? 'pr-9 pl-4' : 'pl-9 pr-4'} py-2.5 rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-primary)] text-sm placeholder:text-[var(--color-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] transition duration-150`}
+          style={lang === 'he' ? 'padding-inline-start:1rem;padding-inline-end:2.8rem' : ''}
+          class="home-hero__search-input"
         />
       </div>
     </div>
   </section>
 
-  <section class="section container" aria-label="Store listing">
-    {stores.length === 0 ? (
-      <div class="flex flex-col items-center gap-4 py-16 text-center">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-[var(--color-muted)]" aria-hidden="true">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-          <polyline points="9 22 9 12 15 12 15 22"/>
-        </svg>
-        <p class="text-[var(--color-muted)]">{t.home.noStores}</p>
-        <a href="/seller/register" class="btn">{t.home.openStoreFree}</a>
-      </div>
-    ) : (
-      <>
-        <ul id="store-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" role="list">
-          {stores.map((s) => (
-            <li
-              class="card"
-              data-name={s.name.toLowerCase()}
-              data-tagline={(s.tagline || s.description || '').toLowerCase()}
-            >
-              <div class="flex flex-col gap-3 p-5 flex-1">
-                <div class="flex-1">
-                  <h2 class="text-base font-semibold leading-snug">{s.name}</h2>
+  <!-- ── Active Carts (client-rendered) ───────────────────────────── -->
+  <section
+    id="carts-section"
+    hidden
+    aria-labelledby="carts-heading"
+    class="section container"
+    data-label-items={t.home.cartItems}
+    data-label-open={t.home.cartOpenBtn}
+  >
+    <div class="home-section-header">
+      <h2 id="carts-heading" class="home-section-title">
+        {t.home.yourCarts}
+        <span id="carts-badge" class="home-badge" hidden aria-live="polite" aria-atomic="true"></span>
+      </h2>
+    </div>
+    <div id="carts-list" class="home-carts-grid" role="list"></div>
+  </section>
+
+  <!-- ── Per-store product carousels ───────────────────────────────── -->
+  {storesWithProducts.length === 0 ? (
+    <div class="section container flex flex-col items-center gap-4 py-16 text-center">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+           class="opacity-25 text-[var(--color-muted)]" aria-hidden="true">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      <p class="text-[var(--color-muted)] text-sm">{t.home.noStores}</p>
+      <a href="/seller/register" class="btn">{t.home.openStoreFree}</a>
+    </div>
+  ) : (
+    <div id="stores-container">
+      {storesWithProducts.map(({ store: s, products }) => {
+        return (
+          <section
+            class="home-store-section"
+            data-store-name={s.name.toLowerCase()}
+            data-tagline={(s.tagline || s.description || '').toLowerCase()}
+            aria-labelledby={`sh-${s.slug}`}
+          >
+            <div class="container">
+              <div class="home-section-header">
+                <div class="home-store-section__title-group">
+                  <h2 id={`sh-${s.slug}`} class="home-section-title">{s.name}</h2>
                   {(s.tagline || s.description) && (
-                    <p class="text-sm text-[var(--color-muted)] mt-1 line-clamp-2">{s.tagline || s.description}</p>
+                    <p class="home-store-section__tagline" dir="auto">{s.tagline || s.description}</p>
                   )}
                 </div>
                 <a
                   href={`/store/${s.slug}`}
-                  class="btn btn--sm self-end inline-flex items-center gap-1"
+                  class="btn btn--sm btn--ghost inline-flex items-center gap-1.5 shrink-0"
                 >
                   {t.home.visitStore}
-                  <svg class="rtl:-scale-x-100" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                  <svg class="rtl:-scale-x-100" width="11" height="11" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                  </svg>
                 </a>
               </div>
-            </li>
-          ))}
-        </ul>
-        <p id="no-results" class="hidden text-center text-[var(--color-muted)] py-12">{t.home.noResults}</p>
-      </>
-    )}
-  </section>
 
+              <div class="home-carousel-wrap">
+                {products.length > 2 && (
+                  <>
+                    <button type="button" class="home-carousel-btn home-carousel-btn--prev"
+                            aria-label={lang === 'he' ? 'הקודם' : 'Previous'}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="2.5" aria-hidden="true"
+                           style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                        <polyline points="15 18 9 12 15 6"/>
+                      </svg>
+                    </button>
+                    <button type="button" class="home-carousel-btn home-carousel-btn--next"
+                            aria-label={lang === 'he' ? 'הבא' : 'Next'}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="2.5" aria-hidden="true"
+                           style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </button>
+                  </>
+                )}
+                <div class="home-carousel" role="list" aria-label={s.name}>
+                  {products.map((p) => (
+                    <a
+                      href={`/store/${s.slug}`}
+                      class="home-product-card card"
+                      role="listitem"
+                      aria-label={`${p.name} — ${formatPrice(p.price)}`}
+                    >
+                      <div class="home-product-card__img-wrap">
+                        {p.images?.[0]
+                          ? <img
+                              src={p.images[0]}
+                              alt={p.name}
+                              width="300"
+                              height="300"
+                              loading="lazy"
+                              decoding="async"
+                              class="home-product-card__img"
+                            />
+                          : <span class="home-product-card__initial" aria-hidden="true">
+                              {p.name[0]?.toUpperCase() ?? '?'}
+                            </span>
+                        }
+                      </div>
+                      <div class="home-product-card__body">
+                        <span class="home-product-card__name" dir="auto">{p.name}</span>
+                        <span class="home-product-card__price">{formatPrice(p.price)}</span>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      })}
+
+      <p id="no-results" hidden class="text-center text-[var(--color-muted)] text-sm py-10 container">
+        {t.home.noResults}
+      </p>
+    </div>
+  )}
+
+  <!-- ── Seller CTA ─────────────────────────────────────────────────── -->
   {!hasStore && (
-    <section class="bg-[var(--color-primary)] py-16 px-4">
-      <div class="container flex flex-col items-center gap-6 text-center max-w-lg mx-auto">
-        <div class="flex flex-col gap-3">
-          <h2 class="text-2xl sm:text-3xl font-bold text-white leading-tight">{t.home.startSelling}</h2>
-          <p class="text-white/70 text-base">{t.home.startSellingDesc}</p>
+    <section class="home-cta" aria-labelledby="cta-heading">
+      <div class="home-cta__glow" aria-hidden="true"></div>
+      <div class="container home-cta__inner">
+        <div class="flex flex-col gap-3 text-center">
+          <h2 id="cta-heading" class="text-2xl sm:text-3xl font-bold text-white leading-tight">
+            {t.home.startSelling}
+          </h2>
+          <p class="text-white/65 text-base max-w-sm mx-auto">{t.home.startSellingDesc}</p>
         </div>
-        <ul class="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm font-medium text-white/60" role="list">
+        <ul class="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm font-medium text-white/55" role="list">
           <li class="flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
             {t.home.freeToStart}
           </li>
           <li class="flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
             {t.home.ownStorefront}
           </li>
           <li class="flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
             {t.home.builtInSeo}
           </li>
         </ul>
         <a
           href="/seller/register"
-          class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white font-semibold text-sm text-[var(--color-primary)] transition duration-150 hover:bg-white/90 active:scale-[0.97]"
+          class="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white font-semibold text-sm
+                 text-[var(--color-primary)] transition-all duration-150 hover:bg-white/90 active:scale-[0.97]
+                 shadow-lg shadow-black/20"
         >
           {t.home.openStoreFree}
-          <svg class="rtl:-scale-x-100" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          <svg class="rtl:-scale-x-100" width="13" height="13" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+          </svg>
         </a>
       </div>
     </section>
@@ -146,42 +242,86 @@ const jsonLd = {
 </BaseLayout>
 
 <script>
-  import { getActiveStoreCarts } from '../lib/cart.js';
+  import { getActiveStoreCarts, getSubtotal } from '../lib/cart.js';
+  import { formatPrice } from '../config/store.config.js';
 
-  // ── Active carts bar ──────────────────────────────────────────────
-  const cartsBar  = document.getElementById('active-carts-bar');
-  const cartsList = document.getElementById('active-carts-list');
+  // ── Active Carts ───────────────────────────────────────────────────
+  const cartsSection = document.getElementById('carts-section') as HTMLElement | null;
+  const cartsList    = document.getElementById('carts-list')    as HTMLElement | null;
+  const cartsBadge   = document.getElementById('carts-badge')   as HTMLElement | null;
 
-  function renderActiveCarts() {
+  const labelItems = cartsSection?.dataset.labelItems ?? 'items';
+  const labelOpen  = cartsSection?.dataset.labelOpen  ?? 'Open cart';
+
+  function renderCarts(): void {
     const carts = getActiveStoreCarts();
-    if (!cartsList || !cartsBar) return;
-    if (!carts.length) { cartsBar.setAttribute('hidden', ''); return; }
-    cartsBar.removeAttribute('hidden');
-    cartsList.innerHTML = carts.map((c) => `
-      <a href="/store/${encodeURIComponent(c.storeSlug)}" class="active-cart-chip">
-        ${c.storeName}
-        <span class="active-cart-chip__count">${c.count}</span>
-      </a>`).join('');
+    if (!cartsList || !cartsSection) return;
+    if (!carts.length) { cartsSection.setAttribute('hidden', ''); return; }
+
+    cartsSection.removeAttribute('hidden');
+    if (cartsBadge) {
+      cartsBadge.textContent = String(carts.length);
+      cartsBadge.removeAttribute('hidden');
+    }
+
+    cartsList.innerHTML = carts.map((c) => {
+      const subtotal = getSubtotal(c.storeSlug);
+      const initial  = (c.storeName[0] ?? '?').toUpperCase();
+      return `
+        <div class="home-cart-card" role="listitem">
+          <div class="home-cart-card__icon" aria-hidden="true">${initial}</div>
+          <div class="home-cart-card__info">
+            <span class="home-cart-card__name">${c.storeName}</span>
+            <span class="home-cart-card__meta">${c.count} ${labelItems} · ${formatPrice(subtotal)}</span>
+          </div>
+          <button
+            type="button"
+            class="btn btn--sm btn--ghost home-cart-card__btn"
+            data-open-cart="${encodeURIComponent(c.storeSlug)}"
+            aria-label="${labelOpen} — ${c.storeName}"
+          >${labelOpen}</button>
+        </div>`;
+    }).join('');
   }
 
-  renderActiveCarts();
-  window.addEventListener('cart:change', renderActiveCarts);
+  cartsList?.addEventListener('click', (e) => {
+    const btn = (e.target as Element).closest<HTMLElement>('[data-open-cart]');
+    if (btn) window.dispatchEvent(new CustomEvent('cart:open'));
+  });
 
-  // ── Store search ──────────────────────────────────────────────────
-  const search = document.getElementById('store-search') as HTMLInputElement | null;
-  const list = document.getElementById('store-list');
-  const noResults = document.getElementById('no-results');
+  renderCarts();
+  window.addEventListener('cart:change', renderCarts);
 
-  if (search && list) {
-    search.addEventListener('input', () => {
-      const q = search.value.toLowerCase().trim();
-      let visible = 0;
-      list.querySelectorAll<HTMLLIElement>('li[data-name]').forEach((li) => {
-        const match = q === '' || (li.dataset.name ?? '').includes(q) || (li.dataset.tagline ?? '').includes(q);
-        li.hidden = !match;
-        if (match) visible++;
-      });
-      if (noResults) noResults.classList.toggle('hidden', visible > 0 || q === '');
+  // ── Carousel arrows (per store section) ───────────────────────────
+  const isRtl = document.documentElement.dir === 'rtl';
+  const STEP  = 210;
+
+  document.querySelectorAll<HTMLElement>('.home-store-section').forEach((section) => {
+    const carousel = section.querySelector<HTMLElement>('.home-carousel');
+    if (!carousel) return;
+    section.querySelector<HTMLButtonElement>('.home-carousel-btn--prev')
+      ?.addEventListener('click', () => carousel.scrollBy({ left: isRtl ? STEP : -STEP, behavior: 'smooth' }));
+    section.querySelector<HTMLButtonElement>('.home-carousel-btn--next')
+      ?.addEventListener('click', () => carousel.scrollBy({ left: isRtl ? -STEP : STEP, behavior: 'smooth' }));
+  });
+
+  // ── Store search (filters entire store sections) ───────────────────
+  const searchInput  = document.getElementById('store-search') as HTMLInputElement | null;
+  const noResults    = document.getElementById('no-results')   as HTMLElement | null;
+  const storeSections = Array.from(
+    document.querySelectorAll<HTMLElement>('.home-store-section[data-store-name]')
+  );
+
+  searchInput?.addEventListener('input', () => {
+    const q = searchInput.value.toLowerCase().trim();
+    let visible = 0;
+    storeSections.forEach((sec) => {
+      const match = !q
+        || (sec.dataset.storeName ?? '').includes(q)
+        || (sec.dataset.tagline   ?? '').includes(q);
+      sec.style.display = match ? '' : 'none';
+      if (match) visible++;
     });
-  }
+    if (noResults) noResults.hidden = visible > 0 || !q;
+  });
 </script>

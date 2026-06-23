@@ -15,8 +15,9 @@
 
 
 <script>
-  import { getActiveStoreCarts, getSubtotal, getGrandTotal, setQty, removeItem } from '../lib/cart.js';
+  import { getActiveStoreCarts, getSubtotal, getGrandTotal, setQtyQuiet, removeItem } from '../lib/cart.js';
   import { formatPrice } from '../config/store.config.js';
+  import { spawnRipple } from '../lib/ripple.js';
 
   function getI18n() {
     try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}'); } catch { return {}; }
@@ -31,6 +32,7 @@
     String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   let prevFocus: HTMLElement | null = null;
+  let suppressNextRender = false;
 
   function getFocusable(): HTMLElement[] {
     if (!drawer) return [];
@@ -59,6 +61,7 @@
     drawer?.classList.add('is-open');
     overlay?.classList.add('is-open');
     drawer?.removeAttribute('aria-hidden');
+    document.getElementById('cart-toggle')?.setAttribute('aria-expanded', 'true');
     render();
     requestAnimationFrame(() => {
       (document.getElementById('cart-close') as HTMLButtonElement | null)?.focus();
@@ -69,6 +72,7 @@
     drawer?.classList.remove('is-open');
     overlay?.classList.remove('is-open');
     drawer?.setAttribute('aria-hidden', 'true');
+    document.getElementById('cart-toggle')?.setAttribute('aria-expanded', 'false');
     prevFocus?.focus();
     prevFocus = null;
   }
@@ -153,11 +157,41 @@
     if (!slug || !store) return;
 
     const i18n = getI18n().cart ?? {};
-    const storeCart = getActiveStoreCarts().find((c) => c.storeSlug === store);
-    const item = storeCart?.items.find((i) => i.slug === slug);
 
-    if (btn.dataset.act === 'inc' && item) setQty(store, slug, item.qty + 1);
-    if (btn.dataset.act === 'dec' && item) setQty(store, slug, item.qty - 1);
+    if (btn.dataset.act === 'inc' || btn.dataset.act === 'dec') {
+      const storeCart = getActiveStoreCarts().find((c) => c.storeSlug === store);
+      const item = storeCart?.items.find((i) => i.slug === slug);
+      if (!item) return;
+
+      const newQty = btn.dataset.act === 'inc' ? item.qty + 1 : item.qty - 1;
+      if (newQty <= 0) {
+        removeItem(store, slug); // triggers cart:change → full render
+        return;
+      }
+
+      setQtyQuiet(store, slug, newQty);
+
+      // Update DOM in-place so the ripple can finish animating on the button
+      const qtySpan = btn.closest('.cart-line__qty')?.querySelector<HTMLElement>('[aria-live]');
+      if (qtySpan) qtySpan.textContent = String(newQty);
+
+      const storeGroup = btn.closest<HTMLElement>('.cart-store-group');
+      const countEl = storeGroup?.querySelector<HTMLElement>('.cart-store-group__count');
+      if (countEl) {
+        const freshCart = getActiveStoreCarts().find((c) => c.storeSlug === store);
+        if (freshCart) countEl.textContent = `${freshCart.count} ${freshCart.count !== 1 ? (i18n.items ?? 'items') : (i18n.item ?? 'item')}`;
+      }
+      const subtotalEl = storeGroup?.querySelector<HTMLElement>('.cart-store-group__foot .flex.between strong');
+      if (subtotalEl) subtotalEl.textContent = formatPrice(getSubtotal(store));
+      const grandEl = lines?.querySelector<HTMLElement>('.cart-grand-total__row strong');
+      if (grandEl) grandEl.textContent = formatPrice(getGrandTotal());
+
+      // Dispatch cart:change only for the header badge — suppress re-render
+      suppressNextRender = true;
+      window.dispatchEvent(new CustomEvent('cart:change'));
+      return;
+    }
+
     if (btn.dataset.act === 'rm') {
       window.dispatchEvent(new CustomEvent('confirm:open', {
         detail: {
@@ -173,5 +207,14 @@
   document.getElementById('cart-close')?.addEventListener('click', close);
   overlay?.addEventListener('click', close);
   window.addEventListener('cart:open', open);
-  window.addEventListener('cart:change', render);
+  window.addEventListener('cart:change', () => {
+    if (suppressNextRender) { suppressNextRender = false; return; }
+    render();
+  });
+
+  drawer?.addEventListener('pointerdown', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]), a.btn');
+    if (btn) spawnRipple(btn, e.clientX, e.clientY);
+  });
+
 </script>

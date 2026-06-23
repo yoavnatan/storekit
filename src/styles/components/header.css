@@ -22,7 +22,8 @@ nav a:hover { color: var(--color-text); }
   color: var(--color-muted);
   transition: color 0.1s;
 }
-.cart-btn:hover { color: var(--color-text); }
+.cart-btn:hover,
+.cart-btn[aria-expanded="true"] { color: var(--color-text); }
 
 .cart-count {
   min-width: 1.2rem;
@@ -60,7 +61,8 @@ nav a:hover { color: var(--color-text); }
   transition: border-color 0.1s, color 0.1s, background 0.1s;
 }
 
-.user-btn:hover { color: var(--color-text); background: var(--color-bg); }
+.user-btn:hover,
+.user-btn[aria-expanded="true"] { color: var(--color-text); background: var(--color-bg); }
 
 .user-dropdown {
   position: absolute;

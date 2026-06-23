@@ -3,6 +3,7 @@ import Seo from '../components/Seo.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import CartDrawer from '../components/CartDrawer.astro';
+import WishlistDrawer from '../components/WishlistDrawer.astro';
 import ConfirmModal from '../components/ConfirmModal.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
 
@@ -13,7 +14,7 @@ const { title, description, image, type, noindex, jsonLd, isLoggedIn, hasStore, 
 const lang = getLang(Astro.cookies);
 const dir  = getDir(lang);
 const t    = getT(lang);
-const i18nJson = JSON.stringify({ cart: t.cart, confirm: t.confirm, dashboard: t.dashboard, gallery: t.gallery });
+const i18nJson = JSON.stringify({ cart: t.cart, confirm: t.confirm, dashboard: t.dashboard, gallery: t.gallery, wishlist: t.wishlist });
 ---
 
 <!doctype html>
@@ -38,6 +39,7 @@ const i18nJson = JSON.stringify({ cart: t.cart, confirm: t.confirm, dashboard: t
     </main>
     <Footer />
     <CartDrawer />
+    <WishlistDrawer />
     <ConfirmModal />
   </body>
 </html>

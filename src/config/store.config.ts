@@ -66,8 +66,8 @@ export const store: PlatformConfig = {
     email: 'hello@example.com',
     phone: '',
     address: '',
-    currency: 'USD',
-    currencySymbol: '$',
+    currency: 'ILS',
+    currencySymbol: '₪',
   },
 
   logo: {

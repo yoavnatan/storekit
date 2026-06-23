@@ -112,8 +112,12 @@ src/components/Header.astro     ← nav changes based on isLoggedIn/hasStore pro
 src/components/Footer.astro
 src/components/ProductCard.astro ← platform plan cards (demo products)
 src/components/CartDrawer.astro  ← slide-in from right, confirm modal on item remove
+src/components/WishlistDrawer.astro ← slide-in wishlist panel; qty stepper, two-step remove, add-to-cart
 src/components/ConfirmModal.astro ← global <dialog> confirm modal, event-driven (confirm:open)
 src/lib/cart.ts                 ← CartItem interface + localStorage cart + events
+src/lib/wishlist.ts             ← WishlistItem interface + localStorage wishlist + events
+src/lib/wishlist-counts.ts      ← wishlist count sync helper (reads localStorage → updates badge)
+src/lib/ripple.ts               ← spawnRipple() — shared ripple animation for buttons
 src/lib/auth.ts                 ← original admin HMAC-cookie auth
 src/lib/seller-auth.ts          ← Seller interface + registerSeller, loginSeller, set/get/clearSellerSession
 src/lib/stores.ts               ← Store/StoreColors interfaces + createStore, getStoreBySellerId, getStoresBySellerId, getStoreBySlug, getAllStores, updateStore
@@ -135,6 +139,7 @@ src/pages/seller/               ← register, login, dashboard (SSR, all pass is
 src/pages/seller/dashboard.astro ← multi-store tabs, store settings, product management (add/edit/delete)
 src/pages/api/product.ts        ← JSON API: add-product, edit-product, delete-product (used by dashboard AJAX)
 src/pages/api/store.ts          ← JSON API: save-settings (used by dashboard AJAX)
+src/pages/api/wishlist.ts       ← JSON API: wishlist read/write
 src/pages/api/lang.ts           ← POST: set lang cookie (he/he) + redirect back (referer)
 src/pages/admin/                ← original admin dashboard
 src/pages/checkout.astro        ← placeholder
@@ -223,6 +228,15 @@ public/                         favicon, robots.txt, product images
 - [x] Add-to-cart feedback: button shows ✓ + "נוסף לעגלה" with spring pop animation (Web Animations API) instead of opening cart drawer; reverts after 1.5s with settle animation. Micro-interactions rule strengthened in AI_INSTRUCTIONS.
 - [x] Dashboard product table: row number column (`#`) — renumbers after add/delete/sort. Stock cell shows red warning triangle SVG when stock ≤ 0. `--color-danger` token added to tokens.css. Price/stock cells use class selectors (not td index) for robust DOM updates.
 - [x] BG removal speed: image resized to max 1024px (OffscreenCanvas in Worker) + switched to `isnet_quint8` model — significantly faster. Gallery: crop+change buttons disabled when BG is shown/processing (only Restore available). Post-save thumbnail uses gallery slot's blob URL for immediate update without network fetch.
+- [x] Dashboard top section unified into one card: store name + subtitle + store tabs + collapsible settings + store overview — internal horizontal divider + vertical divider between columns (`.dash-overview-col`); responsive (single column on mobile with top border instead of side border). No dead space.
+- [x] Store product cards: qty stepper `[−][qty][+]` above price/button row, aligned to button side (`align-self:flex-end`). Add-to-cart button keeps original narrow width. Button shows ✓ + "נוסף לעגלה" spring animation for 1.4s then reverts; qty resets to 1 after add.
+- [x] Wishlist dropdown: i18n fix (addToCart/addedToCart keys added to wishlist translations, he+en); quantity controls [🗑][−][qty][+][הוסף לעגלה] in controls row; trash icon (Lucide bin with dots) before minus; cover images in wishlist + cart drawer.
+- [x] Dashboard crop button: fixed for existing Cloudinary images (fetches URL to blob before opening modal, same pattern as removeBg). UX hint "גרור למיקום · גלול לזום" shown on open, fades after first drag.
+- [x] Dashboard section tabs: "נתוני חנות" (stats + products) + "הגדרות" (settings form); store switcher dropdown from heading (2+ stores), replaces pill tabs.
+- [x] Cart +/- ripple fixed: `setQtyQuiet` in cart.ts (writes localStorage, no `cart:change`); CartDrawer does in-place DOM update (qty/count/subtotal/grand total) + `suppressNextRender` flag so button stays in DOM during animation; all buttons use standard `spawnRipple` (clipped to bounds).
+- [x] Confirm modal: full-viewport centering via CSS `position:fixed; inset:0; margin:auto; height:fit-content` — reliable across all browsers and always centers on full screen (not just visible area).
+- [x] Wishlist remove: inline two-step confirmation on the button itself — first click turns button red with ✓ icon, second click confirms deletion, auto-revert after 3 s; `composedPath()` fix for click-outside listener so panel stays open post-deletion.
+- [x] Homepage product card placeholder: neutral `var(--color-surface)` background instead of hue-based gradient (was producing random pink depending on store slug); `storeHue` function removed.
 - [ ] Payments
 
 ## Workflow
@@ -251,3 +265,7 @@ public/                         favicon, robots.txt, product images
 - **S24** Hebrew-first i18n: font switched to Heebo (supports Hebrew + Latin), `src/i18n/` module created (translations.ts with he/en dictionaries, index.ts with getLang/getDir/getT), `/api/lang` cookie-based language switch with referer redirect, language toggle button (EN↔עב) in header on all pages, all public UI translated (homepage, store page, auth pages, footer, cart drawer, confirm modal), RTL/LTR auto-applied via `dir` on `<html>`, RTL-aware search icon placement with Tailwind `ltr:/rtl:` variants.
 - **S25** Dashboard i18n complete: all strings via t.dashboard.*/t.gallery.*, products.ts + gallery.ts read i18n from DOM, CSS RTL fixes (margin-inline-end, text-align: start/end). Dashboard product thumbnails enlarged (42×42, cover, margin-block). Homepage store cards: CTA always at bottom (flex-1 on text div, self-end), single flippable arrow. Search bars RTL fix (server-side lang conditional; inline style to override .input CSS). "New" badge moved to image overlay (position: absolute, inset-inline-start) — card text alignment now consistent across all products.
 - **S26** Accessibility audit + WCAG 2.1 AA fixes across all components (skip link, focus traps, ARIA roles, keyboard nav, aria-live). Add-to-cart UX: spring pop animation on button, no drawer auto-open. Dashboard: row numbers in product table, out-of-stock warning icon, BG removal speed improvement (resize + isnet_quint8), crop/change disabled after BG removal, thumbnail immediate update from blob URL post-save.
+- **S27** Dashboard top section redesigned into one unified card (header + tabs + settings + overview, internal dividers, no dead space). Store product cards: qty stepper [−][qty][+] above the price/button row; add-to-cart shows ✓ animation then reverts; qty resets after add.
+- **S28** Wishlist dropdown polish: i18n fix for add-to-cart button (addToCart/addedToCart moved to wishlist translations); quantity controls [🗑][−][qty][+][הוסף לעגלה] all in one controls row; trash = Lucide bin icon with dots; images cover in wishlist + cart drawer. Dashboard crop button fixed: now fetches Cloudinary URL to blob when no local blob exists; UX hint overlay on viewport fades after first drag.
+- **S29** Dashboard section tabs ("נתוני חנות" / "הגדרות") + store-switcher dropdown from heading. Cart +/- ripple fixed (setQtyQuiet + in-place DOM update, button stays alive during animation). Confirm modal full-viewport centering (CSS inset:0 + margin:auto). Wishlist remove: inline two-step button confirmation (first click → red ✓ icon, second → delete; composedPath fix keeps panel open).
+- **S30** Homepage product card placeholder background fixed (neutral `var(--color-surface)` replacing hue-based gradient that was producing random pink). LED fountain logo attempted (5-layer SVG animation) → task failed → removed cleanly.

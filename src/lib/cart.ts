@@ -77,6 +77,14 @@ export function setQty(storeSlug: string, slug: string, qty: number): void {
   writeStoreCart(cart);
 }
 
+export function setQtyQuiet(storeSlug: string, slug: string, qty: number): void {
+  if (qty <= 0) { removeItem(storeSlug, slug); return; }
+  const cart = readStoreCart(storeSlug);
+  if (!cart?.items[slug]) return;
+  cart.items[slug]!.qty = qty;
+  localStorage.setItem(storeKey(cart.storeSlug), JSON.stringify(cart));
+}
+
 export function getActiveStoreCarts(): ActiveStoreCart[] {
   if (typeof localStorage === 'undefined') return [];
   const result: ActiveStoreCart[] = [];
