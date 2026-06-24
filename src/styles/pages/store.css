@@ -1,35 +1,60 @@
 .store-page { min-height: 60vh; }
 
 .store-banner {
-  background: var(--color-primary);
-  color: #fff;
-  padding: 2rem 0 1.75rem;
+  background: var(--color-surface);
+  padding: 2.5rem 0 2.25rem;
 }
 
 .store-name {
-  font-size: clamp(1.5rem, 4vw, 2.25rem);
-  font-weight: 700;
-  color: #fff;
+  font-size: clamp(1.75rem, 5vw, 2.75rem);
+  font-weight: 800;
+  color: var(--color-text);
   margin: 0;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 
 .store-tagline {
-  margin: 0.35rem 0 0;
+  margin: 0.4rem 0 0;
   font-size: 0.95rem;
-  opacity: 0.7;
-}
-
-.store-about {
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 1.25rem;
-  text-align: center;
+  color: var(--color-muted);
+  line-height: 1.5;
 }
 
 .store-desc {
+  margin: 0.75rem 0 0;
   font-size: 0.9rem;
   line-height: 1.65;
   color: var(--color-muted);
+}
+
+.store-strip {
+  height: 0.5cm;
+  background: #07101e;
+  position: relative;
+  overflow: hidden;
+}
+
+.store-strip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    500px circle at 85% 200%,
+    rgba(20, 184, 166, 0.55) 0%,
+    rgba(20, 184, 166, 0.15) 50%,
+    transparent 75%
+  );
+  pointer-events: none;
+}
+
+html[dir="ltr"] .store-strip::after {
+  background: radial-gradient(
+    500px circle at 15% 200%,
+    rgba(20, 184, 166, 0.55) 0%,
+    rgba(20, 184, 166, 0.15) 50%,
+    transparent 75%
+  );
 }
 
 .products-heading {

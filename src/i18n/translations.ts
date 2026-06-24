@@ -170,6 +170,12 @@ export const translations = {
       done: 'סיים',
       removingBg: 'מסיר רקע...',
     },
+    product: {
+      backToStore: 'חזרה לחנות',
+      imageGallery: 'גלריית תמונות',
+      moreFrom: 'עוד מ-',
+      clickToZoom: 'לחץ להגדלה',
+    },
     wishlist: {
       title: 'פריטים שאהבתי',
       empty: 'עדיין לא אהבת פריטים',
@@ -357,6 +363,12 @@ export const translations = {
       changeImage: 'Change image',
       done: 'Done',
       removingBg: 'Removing background…',
+    },
+    product: {
+      backToStore: 'Back to store',
+      imageGallery: 'Image gallery',
+      moreFrom: 'More from ',
+      clickToZoom: 'Click to zoom',
     },
     wishlist: {
       title: 'My Wishlist',

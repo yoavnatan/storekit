@@ -78,6 +78,10 @@ export function updateProduct(id: string, updates: Partial<Omit<StoreProduct, 'i
   return products[idx]!;
 }
 
+export function getProductBySlug(storeId: string, slug: string): StoreProduct | null {
+  return readProducts().find((p) => p.storeId === storeId && p.slug === slug) ?? null;
+}
+
 export function deleteProduct(id: string): boolean {
   const products = readProducts();
   const filtered = products.filter((p) => p.id !== id);

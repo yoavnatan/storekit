@@ -5,267 +5,127 @@ Read this + `CURRENT_TASK.md` at the start of every session. Nothing else unless
 ---
 
 ## What we're building
-A **multi-vendor internet mall** — a platform where sellers open and manage their own online stores, and shoppers can discover and move between them.
+A **multi-vendor internet mall** — sellers open their own stores, shoppers discover and move between them. Two independent SEO surfaces: the platform (discovery, cross-store links) and each store (its own title, description, JSON-LD, sitemap — feels like a standalone site).
 
-Two SEO surfaces:
-1. **The platform itself** — discoverable, links between stores, drives traffic across sellers.
-2. **Each store** — its own SEO identity (title, description, JSON-LD, sitemap), as if it were a standalone site.
-
-The cross-store experience is the core product differentiator: recommend related stores, surface similar products, keep shoppers inside the mall.
-
-## Vision & Mission
-
-**Vision:** Enable anyone to open an online store easily and efficiently — one that generates profit, is fair, and is fully transparent.
-
-**Mission:** Build a Hebrew-language digital shopping mall that removes the technological and financial barriers for small businesses through built-in automation, a clean minimalist management interface, and a fair success-based payment model (no fixed monthly fees; success fee only; each seller has their own separate checkout).
+**Vision:** Anyone can open an online store easily — profitable, fair, fully transparent.
+**Mission:** Hebrew-language digital mall. No fixed fees; success-based only. Each seller has a separate checkout.
 
 ---
 
-## The Physical Mall Model — our north star
+## The Physical Mall Model — north star
 
-Every product decision must be tested against one question: **does this match how a real, physical mall works?**
+Every product decision: **does this match how a real, physical mall works?**
 
-### The mapping
-
-| Physical mall | This platform |
+| Physical mall | Platform |
 |---|---|
-| Mall entrance & corridors | Homepage (`/`) — discovery, trending stores, search |
-| Store storefront & window display | `/store/[slug]` — each store's own page, branding, products |
-| Walking past a store and getting curious | Cross-store recommendations, related stores surfaced on the homepage and between stores |
-| Picking items up as you walk | Unified cart — items from any store collected together, grouped visually by store |
-| Each store's own cash register | Hybrid checkout — pay per store OR pay everything at once (system splits to each seller behind the scenes) |
-| Mall directory / map | Browse page, category filters, store search |
-| The mall's reputation = trust for small stores | Platform brand gives legitimacy to sellers who couldn't build it alone |
-| Rent + % of sales → here: success-fee only | No fixed monthly cost; platform earns only when the seller earns |
-| Store hours | Store active/inactive status |
-| Foot traffic from the mall's location | SEO — platform discoverability drives traffic to individual stores |
-| Store pulls you IN (window, smell, music) | Store page UX must create immersion: the customer should feel "in" the store, not "on a product listing" |
+| Entrance & corridors | `/` — discovery, trending, search |
+| Store storefront | `/store/[slug]` — branding, products |
+| Walking past, getting curious | Cross-store recommendations |
+| One bag for all stores | Unified cart, items grouped by store |
+| Each store's own cash register | Hybrid checkout: per-store OR consolidated (Stripe Connect) |
+| Mall directory | Browse page, category filters |
+| Mall reputation = trust | Platform brand gives legitimacy to small sellers |
+| Foot traffic | SEO drives traffic to individual stores |
+| Store pulls you in | Store page = immersion; customer feels "in" the store |
 
-### Key behavioral rules derived from this model
-
-1. **Each store is sovereign.** Its page, brand, and voice must feel like an independent business — not a template inside a directory.
-2. **The mall is infrastructure, not the star.** Platform chrome (header, nav, footer) fades when you're inside a store. The store takes over.
-3. **Discovery is serendipitous, not deliberate.** Cross-store signals (related stores, trending) appear naturally — not as popups or aggressive upsells. Like a window display you notice while walking by.
-4. **One bag, grouped by store.** The cart is unified — a customer can add products from multiple stores into one bag. But inside the cart, items are clearly grouped under their store, like carrying separate store bags inside a single mall shopping bag. The customer always knows what came from where.
-5. **Hybrid checkout — flexibility without friction.** Two payment paths exist side by side:
-   - **Per-store payment:** pay only for one store's items (quick checkout from a single store, leaves others in the cart).
-   - **Consolidated payment (Split Payment):** pay for everything in one transaction. Behind the scenes, the platform splits the payment — each seller receives their share directly, and the platform takes its commission. This is a marketplace model (Stripe Connect or equivalent).
-   The default UX should surface per-store checkout first (keeps each store feeling like its own register), with consolidated checkout as a convenience option.
-6. **The mall benefits when stores succeed.** Every platform feature that helps a seller sell more is also good for the platform. Never build features that extract value from sellers at the buyer's expense, or vice versa.
+**Key rules:** (1) Each store is sovereign — independent business, not a template. (2) Mall is infrastructure, not the star — platform chrome fades inside a store. (3) Discovery is serendipitous — cross-store signals appear naturally, never as aggressive upsells. (4) One bag, grouped by store — customer always knows what came from where. (5) Hybrid checkout — per-store first (default), consolidated as convenience; platform splits payment behind the scenes. (6) Mall benefits when stores succeed — never extract value at buyers' or sellers' expense.
 
 ---
 
-## Core priorities (in order)
-1. **SEO-first** — every decision must support discoverability. Static pages, structured data, semantic HTML, fast load, no orphan pages. Both platform-level and per-store SEO must be strong independently.
-2. **Automation-ready** — config-driven content, clean data shapes, separation of data and UI. Every feature should be triggerable programmatically (for future AI/API automation).
+## Core priorities
+1. **SEO-first** — static pages, structured data, semantic HTML, fast load, no orphan pages. Platform-level and per-store SEO independently strong.
+2. **Automation-ready** — config-driven content, clean serializable data shapes, every feature triggerable programmatically.
 3. **Simplicity** — no abstractions beyond what the task requires.
 
-## Architecture (current & target)
-- **Current state:** multi-vendor foundation — TypeScript throughout, seller auth (HMAC cookie), store CRUD (JSON files), public store pages with per-store color theming, seller dashboard with product management.
-- **Target state:** full marketplace. Discovery layer (browse stores, search, cross-store recommendations), payments, cart per-store.
+## Architecture
+- **Stack:** Astro SSR + Node adapter, TypeScript throughout, Tailwind v4, Heebo font, `tokens.css` color system, static/SSR split (content pages = static, seller/admin/api = SSR)
+- **Data:** `data/*.json` dev-only; every lib function is a pure DB adapter, swap-ready for SQLite/Postgres
+- **Multi-vendor model:** Seller → one or more stores (isolated config: name, logo, products). Platform pages = discovery layer.
+- **Target state:** payments, browse/search, cross-store recommendations
 
-### Multi-vendor concepts to keep in mind
-- Seller account → one or more stores
-- Store = isolated config (name, colors, logo, products)
-- Platform pages = discovery layer (homepage, category browse, store listing)
-- Cross-store signals = related stores, trending products, category links
+---
 
 ## Hard rules
-- **TypeScript everywhere** (no plain `.js` files in `src/`). Astro frontmatter + lib + config + API routes all in `.ts`. No `any` — use proper interfaces or `unknown`.
-- **Tailwind CSS v4 for all new styling.** No React/Vue. Keep components as Astro server components (`.astro`) wherever possible. Existing CSS files are kept until touched; new code uses Tailwind utility classes only — do not add new CSS files or `<style>` blocks.
-- **`<Image />` from `astro:assets` for all platform images** (product cards, store pages, public-facing content). External Cloudinary URLs are whitelisted in `astro.config.mjs`. The dashboard upload widget keeps `<img>` for live previews (blob URLs — Image component requires static src).
-- **Colors in Tailwind theme via CSS variables from `tokens.css`**. Never hardcode hex values. In Tailwind classes, reference CSS vars with `[color:var(--color-primary)]` syntax or extend the theme.
-- **No emoji in UI.** Use inline SVG icons (`aria-hidden="true"`, `currentColor`). Emoji are not indexable.
-- **Lighthouse 100 target:** static pages where possible (`prerender` default), semantic HTML, proper `alt`/`width`/`height` on all images, lazy loading, no render-blocking resources, minimal JS.
-- **Mobile-first:** design for 375px viewport first, scale up with `sm:` / `md:` / `lg:` breakpoints.
-- **Modular Architecture (Encapsulation):** All new features must be self-contained modules. UI components handle display only; all DB/API/Cloudinary logic must live strictly in `/src/services/` or `/pages/api/`. No file should exceed 200 lines without being split. Progressive Tailwind migration: when touching an existing CSS file, convert it to Tailwind at that point.
-- **Micro-interactions (non-negotiable on every UI element):** Every interactive element must feel alive and responsive — light, pleasant animations are a core part of the product quality. Required patterns: `scale(0.97)` on button `:active` press; image `scale(1.06)` on card hover; shadow growth on card hover; smooth opacity shifts on state changes; spring-easing (`cubic-bezier(0.34, 1.56, 0.64, 1)`) for confirmations and "pop" moments (e.g. add-to-cart success). Transition duration: 100–180ms for hover/focus, 220–320ms for spring pops. Prefer `transition` CSS for hover states; prefer Web Animations API for JS-triggered sequences. Never use border-darkening on hover — use shadow or background shift instead. Every animation must have a clear reason: feedback (action confirmed), affordance (element is clickable), or delight (reward for interaction). No decoration for its own sake.
-- **Scalability (design for many sellers + buyers):** The platform must remain stable under concurrent load. Three non-negotiable rules: (1) **API routes must be stateless** — no module-level mutable variables, no in-process caches that accumulate across requests; (2) **JSON file storage is dev-only** — `data/*.json` is acceptable now, but every lib function must be written as a pure DB adapter (read/write, no side effects), ready to swap for SQLite/Postgres with no API change; (3) **No shared write state** — writes must be safe if two Node processes run simultaneously (no file-lock assumptions, no singleton patterns). Before adding any feature, ask: would this break if 1000 sellers and 10,000 buyers used it at the same time?
-- **Accessibility (WCAG 2.1 AA — non-negotiable on every change):** Every new UI element and every touched file must meet these requirements: (1) **Skip link** — `BaseLayout` always includes `<a href="#main-content" class="skip-link">` before the header; `<main>` always has `id="main-content"`. (2) **Focus management** — modals, drawers, and dialogs trap focus while open and restore focus to the trigger on close; opening a dialog moves focus inside it immediately. (3) **Keyboard nav** — all interactive elements reachable and operable by keyboard alone; custom widgets (dropdowns, listboxes) implement arrow-key navigation; Escape always closes overlays and returns focus. (4) **ARIA** — icon-only buttons have `aria-label`; dialogs have `role="dialog" aria-modal="true" aria-labelledby`; menus have `role="menu"` with `role="menuitem"` on items; `aria-expanded` is kept in sync on toggles; dynamic counts use `aria-live="polite" aria-atomic="true"`. (5) **Labels** — every form input has a visible `<label>` or `aria-label`; placeholder alone is not a label. (6) **Semantics** — all SVG icons decorative → `aria-hidden="true"`; no `div`/`span` used as buttons when a real `<button>` would work. (7) **Color contrast** — text on background must meet 4.5:1 (normal text) or 3:1 (large text/UI components). Never communicate state by color alone.
-- File content always in English. Chat can be Hebrew.
+- **TypeScript everywhere** — no `.js` in `src/`. No `any` — use proper interfaces or `unknown`.
+- **Tailwind v4 for all new styling** — Astro server components only. No new CSS files or `<style>` blocks. Convert existing CSS on contact (progressive migration).
+- **`<Image />` from `astro:assets`** for all platform images. Dashboard upload widget uses `<img>` for blob previews only.
+- **Colors via `tokens.css` CSS variables** — never hardcode hex. Use `[color:var(--color-primary)]` in Tailwind arbitrary values.
+- **No emoji** — inline SVG icons (`aria-hidden="true"`, `currentColor`). Emoji are not indexable.
+- **Lighthouse 100 target** — `prerender` default for content pages, semantic HTML, proper `alt`/`width`/`height`, lazy loading, no render-blocking resources.
+- **Mobile-first** — design for 375px viewport, scale up with `sm:` / `md:` / `lg:`.
+- **Modular architecture** — UI = display only; all DB/API/Cloudinary logic strictly in `/src/services/` or `/pages/api/`. No file > 200 lines without splitting. SRP always.
+- **Micro-interactions (non-negotiable)** — every interactive element must feel alive. Required: `scale(0.97)` on button `:active`; image `scale(1.06)` on card hover; shadow growth on hover; spring easing `cubic-bezier(0.34, 1.56, 0.64, 1)` for pop moments. Duration: 100–180ms hover, 220–320ms spring pops. No border-darkening — use shadow or background shift. Every animation needs a reason: feedback, affordance, or delight.
+- **Scalability** — (1) stateless API routes (no module-level mutable vars, no in-process caches); (2) JSON = dev-only, pure swap-ready DB adapters; (3) no shared write state. Ask: breaks at 1000 sellers + 10,000 buyers?
+- **Accessibility (WCAG 2.1 AA)** — skip link in BaseLayout (`#main-content`); focus trap + restore on all modals/drawers; all interactive elements keyboard-reachable (Escape closes overlays); ARIA labels/roles/`aria-expanded`/`aria-live` throughout; every input has a visible label; SVG icons `aria-hidden`; no `div`/`span` as buttons; 4.5:1 contrast minimum; never communicate state by color alone.
+- **SEO** — all public pages via `BaseLayout → Seo.astro` (never `<head>` directly). JSON-LD `Product` on product pages, `Store`/`LocalBusiness` on store pages. Unique `title` + `description` per page. All images: `alt`, `width`, `height`, `loading="lazy"`, `decoding="async"`.
+- **i18n** — all UI strings via `getT(lang)`. Hebrew-first. RTL/LTR via `dir` on `<html>`. Use server-side `lang` conditionals for icon placement — Tailwind `ltr:/rtl:` variants unreliable.
+- **Content from config** — all copy, nav, footer from data/config files, never hardcoded in components.
+- File content in English. Chat in Hebrew.
 
-## SEO rules
-- All public-facing pages use `BaseLayout` → `Seo.astro`. Never add `<head>` tags directly.
-- Content pages = static (`prerender` default). Server pages (checkout, admin, seller, api) = `prerender = false`.
-- Every product page: `JSON-LD` type `Product`. Every store page: `JSON-LD` type `Store` or `LocalBusiness`.
-- Every page: unique `title` + `description`. No duplicate meta.
-- Semantic HTML always: `<article>`, `<section>`, `<nav>`, `<main>`, `<header>`, `<footer>`.
-- All images: `alt`, `width`, `height`, `loading="lazy"`, `decoding="async"`.
+---
 
-## Automation rules
-- All content (copy, products, nav, footer) from config or data files — never hardcoded in components.
-- Data shapes must be clean and serializable — no DOM logic at the data layer.
-- Think ahead: could this be populated by an AI agent or external API? Design the interface to allow it.
+## Current feature inventory
+- **Platform:** Astro SSR + Node, TypeScript, Tailwind v4, Heebo font, `tokens.css` palette, Cloudinary (whitelisted in astro.config)
+- **Auth:** Seller register/login (HMAC cookie), seller `name` field; store-mode nav hides platform links; "כניסה" login button in header for non-logged-in users on all pages
+- **Dashboard:** Multi-store tabs + store-switcher dropdown; AJAX product CRUD; sortable table (row #, stock warning icon); collapsible settings; store overview card; 8 script modules in `src/scripts/dashboard/`
+- **Images:** Cloudinary upload; BG removal Web Worker (`@imgly`, `isnet_quint8`, resize to 1024px); crop/zoom modal (OffscreenCanvas); up to 5 images per product (`images?: string[]`); gallery widget
+- **Store page `/store/[slug]`:** Product grid (no "מוצרים" heading); **product detail modal** (click image/name → modal; `history.pushState` syncs URL to `/store/slug/product`, `document.title` updates, `popstate` closes modal on browser back; ESC/backdrop close; image gallery with lightbox-from-modal; qty + add-to-cart + wishlist; direct URL → full SSR product page for SEO/sharing); lightbox (arrows/keyboard/swipe/touch); search + sort dropdown; add to cart (spring animation + qty stepper); wishlist hearts; "New" badge; `dir="auto"` bidi; **light banner** (white bg, store name + tagline + description) + **thin dark strip** (0.5cm, teal glow, RTL/LTR aware) that sticks below header on scroll (JS scroll listener + placeholder). Backup pre-modal at `_backup/store-slug.astro`
+- **Product page `/store/[storeSlug]/[productSlug]`:** Main image + thumbnail switcher; lightbox on image click; qty stepper; add to cart; wishlist; related products row ("עוד מ-", horizontal scroll, qty+add-to-cart per card); back-link (← store name); BreadcrumbList JSON-LD + Product JSON-LD; SEO meta; low-stock indicator
+- **Cart:** Per-store localStorage (`store_cart_v2_{slug}`); CartDrawer (grouped by store, per-store subtotals, grand total, "Pay all stores"); qty ripple; confirm modal on remove; `syncCartImages()`
+- **Wishlist:** localStorage; WishlistDrawer (qty controls, two-step remove, cover images)
+- **Homepage `/`:** Compact dark hero (search only); greeting bar below hero (logged-in only); per-store product carousels with scroll arrows (store title links to store); active carts section; seller CTA banner
+- **i18n:** `he`/`en` dictionaries; `getLang`/`getT`; lang cookie; language toggle in header; RTL-aware throughout
+- **SEO / A11y:** `Seo.astro`, JSON-LD (Store/Product/Organization), sitemap; skip link, focus traps, ARIA roles, keyboard nav, aria-live regions
 
-## Project structure (current)
+---
+
+## Project structure
 ```
-src/i18n/translations.ts        ← Hebrew + English string dictionaries (nav, home, store, cart, confirm, auth, footer)
-src/i18n/index.ts               ← getLang(cookies), getDir(lang), getT(lang) — read lang cookie server-side
-src/config/store.config.ts      ← platform config + PlatformConfig interface + formatPrice
-src/data/products.ts            ← demo platform product catalog (plans) — separate from store products
-data/sellers.json               ← seller accounts (email, password hash)
-data/stores.json                ← store records (slug, name, colors, tagline…)
+src/i18n/translations.ts        ← he + en string dictionaries (all UI namespaces)
+src/i18n/index.ts               ← getLang, getDir, getT
+src/config/store.config.ts      ← platform config + formatPrice
+data/sellers.json               ← seller accounts
+data/stores.json                ← store records
 data/store-products.json        ← per-store products (storeId field)
-src/layouts/BaseLayout.astro    ← page shell — accepts isLoggedIn, hasStore props → passed to Header
+src/layouts/BaseLayout.astro    ← page shell (isLoggedIn, hasStore, storeMode props)
 src/components/Seo.astro        ← all meta/OG/JSON-LD
-src/components/Header.astro     ← nav changes based on isLoggedIn/hasStore props
+src/components/Header.astro     ← nav (session-aware, storeMode-aware)
 src/components/Footer.astro
-src/components/ProductCard.astro ← platform plan cards (demo products)
-src/components/CartDrawer.astro  ← slide-in from right, confirm modal on item remove
-src/components/WishlistDrawer.astro ← slide-in wishlist panel; qty stepper, two-step remove, add-to-cart
-src/components/ConfirmModal.astro ← global <dialog> confirm modal, event-driven (confirm:open)
-src/lib/cart.ts                 ← CartItem interface + localStorage cart + events
-src/lib/wishlist.ts             ← WishlistItem interface + localStorage wishlist + events
-src/lib/wishlist-counts.ts      ← wishlist count sync helper (reads localStorage → updates badge)
-src/lib/ripple.ts               ← spawnRipple() — shared ripple animation for buttons
-src/lib/auth.ts                 ← original admin HMAC-cookie auth
-src/lib/seller-auth.ts          ← Seller interface + registerSeller, loginSeller, set/get/clearSellerSession
-src/lib/stores.ts               ← Store/StoreColors interfaces + createStore, getStoreBySellerId, getStoresBySellerId, getStoreBySlug, getAllStores, updateStore
-src/lib/store-products.ts       ← StoreProduct interface (uses images?: string[] array, up to 5) + createProduct, getProductsByStoreId, getProductById, updateProduct, deleteProduct
-src/lib/gallery-widget.ts       ← esc + galleryWidgetHtml — shared between server (dashboard frontmatter) and client scripts
-src/workers/bg-removal.ts       ← Web Worker: BG removal via @imgly/background-removal (runs off main thread)
-src/scripts/dashboard/
-  bg-worker.ts                  ← BG Worker singleton + removeBackgroundInWorker + cancelBgWorker
-  cloudinary.ts                 ← cloudinaryUpload(blob, cloud, preset)
-  status.ts                     ← showStatus (AJAX flash messages)
-  crop-modal.ts                 ← crop modal state + initCropModal + openCropModal
-  gallery.ts                    ← initGalleryWidget, resolveGalleryUrls, resetGallery
-  products.ts                   ← buildRows, attachListeners, bindExistingRows, initAddProduct, initDeleteProduct, initTableSort
-  ui.ts                         ← initSettingsForm, initFormToggles, initNewStoreForm, initSettingsCollapsible, initAutoHideStatus
-src/pages/index.astro           ← SSR; shows welcome-back if hasStore, marketing landing if not
-src/pages/products/[slug].astro ← static demo product pages
-src/pages/store/[slug].astro    ← SSR; public store page with per-store products grid
-src/pages/seller/               ← register, login, dashboard (SSR, all pass isLoggedIn/hasStore to BaseLayout)
-src/pages/seller/dashboard.astro ← multi-store tabs, store settings, product management (add/edit/delete)
-src/pages/api/product.ts        ← JSON API: add-product, edit-product, delete-product (used by dashboard AJAX)
-src/pages/api/store.ts          ← JSON API: save-settings (used by dashboard AJAX)
-src/pages/api/wishlist.ts       ← JSON API: wishlist read/write
-src/pages/api/lang.ts           ← POST: set lang cookie (he/he) + redirect back (referer)
-src/pages/admin/                ← original admin dashboard
-src/pages/checkout.astro        ← placeholder
-src/styles/
-  main.css                      ← single CSS entry point — imports everything in order
-  base/tokens.css               ← CSS variables — edit here to change colors/spacing
-  base/reset.css
-  layout/container.css          ← .container, .grid, .flex, .section
-  components/buttons.css        ← .btn (accent color), .btn--ghost, .btn--sm, .btn--danger
-  components/cards.css          ← .card
-  components/forms.css          ← .field, .input
-  components/header.css
-  components/footer.css
-  components/cart-drawer.css
-  components/product-card.css
-  components/confirm-modal.css  ← <dialog> confirm modal styles
-  pages/home.css                ← hero, steps, welcome-back
-  pages/auth.css                ← login/register
-  pages/dashboard.css           ← seller dashboard
-  pages/store.css               ← public store page + store product cards + lightbox
-  pages/checkout.css
-  pages/product.css             ← demo product page
-  pages/admin.css
-  utilities/utils.css           ← .muted, .badge, .center, .visually-hidden
-public/                         favicon, robots.txt, product images
+src/components/CartDrawer.astro
+src/components/WishlistDrawer.astro
+src/components/ConfirmModal.astro ← global <dialog>, event-driven (confirm:open)
+src/lib/cart.ts                 ← CartItem, localStorage cart, events, syncCartImages
+src/lib/wishlist.ts             ← WishlistItem, localStorage wishlist
+src/lib/wishlist-counts.ts      ← wishlist count badge sync
+src/lib/ripple.ts               ← spawnRipple()
+src/lib/seller-auth.ts          ← Seller interface, register/login/session
+src/lib/stores.ts               ← Store interface, CRUD
+src/lib/store-products.ts       ← StoreProduct interface, CRUD (images?: string[])
+src/lib/gallery-widget.ts       ← shared gallery HTML/escape helper
+src/workers/bg-removal.ts       ← BG removal Web Worker (@imgly)
+src/scripts/dashboard/          ← bg-worker, cloudinary, status, crop-modal, gallery, products, ui
+src/pages/index.astro           ← SSR homepage
+src/pages/store/[slug].astro    ← SSR public store page (product modal experiment active)
+src/pages/store/[storeSlug]/[productSlug].astro ← SSR product page (full UX: lightbox, related products, JSON-LD)
+_backup/store-slug.astro        ← store page snapshot pre-modal (revert if needed)
+src/pages/seller/               ← register, login, dashboard (SSR)
+src/pages/api/                  ← product, store, wishlist, lang
+src/styles/main.css             ← single CSS entry point
+src/styles/base/tokens.css      ← CSS variables (colors, spacing, radius)
+src/styles/base/reset.css
+src/styles/layout/container.css ← .container, .section
+src/styles/components/          ← buttons, cards, forms, header, footer, cart-drawer, confirm-modal, product-card
+src/styles/pages/               ← home, auth, dashboard, store, product, checkout
+src/styles/utilities/utils.css  ← .muted, .badge, .visually-hidden
 ```
 
-## Build status
-- [x] Astro + Node SSR adapter, static/SSR split
-- [x] Single CSS entry + tokens.css color system — all styles in src/styles/, never in Astro files
-- [x] SEO: Seo.astro, sitemap, JSON-LD, semantic HTML
-- [x] Cart (localStorage) + CartDrawer + checkout placeholder
-- [x] SVG icons everywhere (no emoji)
-- [x] Homepage — customer discovery page: search bar + store grid; seller CTA banner at bottom; "Your carts" chips bar (active store carts, client-side)
-- [x] Seller auth: register / login / session (HMAC cookie)
-- [x] Seller dashboard: edit store settings (name, tagline, description) — color picker removed (not relevant yet)
-- [x] Multi-store: seller can create multiple stores, switch between them in dashboard
-- [x] Store data persisted in data/stores.json
-- [x] Seller product management: add / edit / delete products per store (data/store-products.json)
-- [x] Public store page /store/[slug] — shows store's own products in a card grid
-- [x] Nav is session-aware: shows Dashboard when logged in, hides Log in
-- [x] Footer always at bottom (flex sticky footer pattern)
-- [x] Store page (`/store/[slug]`) has store-mode header: no platform nav, user icon dropdown (Dashboard + Log out) for logged-in sellers
-- [x] All store links from seller interface open in new tab (`target="_blank"`)
-- [x] Full UI redesign: neutral slate blue-gray palette, Plus Jakarta Sans font, compact buttons, edge-to-edge cover images on product cards, micro-interactions (image zoom, button scale), no border-darkening hovers, dashboard tabs square + active has pointer-events:none
-- [x] Dashboard mutations (add/edit product, save settings) via AJAX — no page reload, DOM updated in place
-- [x] All dashboard status messages auto-hide after 3 seconds
-- [x] Add to cart button on store product cards — opens cart drawer via cart:open event
-- [x] "New" badge on products added today (createdAt compared to today)
-- [x] Store page hides stock count (shows "Out of stock" only when stock = 0)
-- [x] Cart drawer slides in from right with CSS transform animation
-- [x] Modern confirm modal (global <dialog>, ConfirmModal.astro) for delete product and cart item remove
-- [x] Delete product via AJAX with confirm modal — DOM updated in place, no page reload
-- [x] Product image upload: Cloudinary unsigned upload, placeholder SVG if no image, image shown in store cards + cart drawer
-- [x] Image widget in dashboard: BG removal via Web Worker (@imgly), manual trigger, cached toggle (Keep original ↔ Restore removed BG), crop/zoom modal (cover mode, drag + scroll-wheel zoom, canvas render), Remove image with confirm modal
-- [x] Multi-image support: up to 5 images per product (`StoreProduct.images: string[]`); gallery widget with 5 slots in dashboard; BG removal + crop available per slot via shared edit panel
-- [x] Store page lightbox: click product image → full-screen viewer with prev/next arrows, keyboard nav (← → Esc), touch swipe
-- [x] Tailwind CSS v4 installed + configured via `@tailwindcss/vite`; Cloudinary domain whitelisted for Astro `<Image />` component; hard rules updated (Tailwind-first, mobile-first, Lighthouse 100)
-- [x] Dashboard right column: replace Store URL card with store summary card (product count, in-stock count, stock value, live link button)
-- [x] Browse stores discovery page (`/`) — search + store grid + seller CTA banner
-- [x] Per-store cart: `store_cart_v2_{slug}` in localStorage; CartDrawer grouped by store with per-store checkout button; global count in header badge (no flash via is:inline script)
-- [x] Seller `name` field: added to Seller interface + registration form; welcome banner shows user name not store name
-- [x] Store logo in store-mode header: shows store name, links back to `/store/[slug]` (keeps customer in store)
-- [x] Unified UI theme: per-store color overrides removed; platform uses single tokens.css palette; store branding = logo + banner + product images only
-- [x] Cart image sync: `syncCartImages()` in cart.ts — on store page load, refreshes image/name/price for all products in localStorage cart
-- [x] "New" badge: absolute overlay on product image (top-inline-start corner), doesn't affect card text alignment
-- [x] Dashboard product table: sortable by Name / Price / Stock (click header toggles asc/desc, chevron indicator)
-- [x] Dashboard settings section: collapsible accordion (starts closed, chevron rotates on open)
-- [x] Dashboard section headings: 1.15rem (compact, distinct from body text)
-- [x] Dashboard product rows: subtle hover state (bg: --color-bg on white card)
-- [x] Store page: `dir="auto"` on product names, descriptions, store tagline/description — Hebrew → RTL right-aligned, English → LTR left-aligned
-- [x] Store about section: `text-align: center` — aligned with the platform footer note
-- [x] Store page: client-side product search (by name) + custom styled sort dropdown (Default / Name A→Z / Z→A / Price Low→High / High→Low / Newest first) — no page reload, "no results" empty state
-- [x] Scalability as hard rule in AI_INSTRUCTIONS: stateless API routes, JSON files = dev-only (swap-ready for DB), no shared write state
-- [x] Seller dashboard: `sellerMode` nav — hides platform nav links, hides cart, shows user icon dropdown (Dashboard + Log out)
-- [x] Dashboard encapsulation refactor: 1248 → 403 lines; `<script>` block 800 → 25 lines; logic extracted to 8 modules (`src/scripts/dashboard/` + `src/lib/gallery-widget.ts`)
-- [x] Vision & Mission + Physical Mall Model — documented in AI_INSTRUCTIONS.md as north star for all product decisions; includes store→platform mapping table and 6 behavioral rules
-- [x] Cart grand total — `getGrandTotal()` in cart.ts; CartDrawer shows per-store subtotals + grand total + "Pay all stores" button when 2+ stores in cart
-- [x] Cart icon alignment — qty buttons (−/+/trash) and close button centered with flex
-- [x] Hebrew-first i18n: Heebo font (replaces Plus Jakarta Sans), `src/i18n/` module (translations.ts + index.ts), `lang` cookie → server-side `dir`/`lang` on `<html>`, language toggle button (HE↔EN) in header, all public pages translated (homepage, store, auth, footer, cart, confirm modal), RTL-aware search icon placement via server-side `lang` conditional (Tailwind `ltr:/rtl:` variants unreliable — use inline styles or server-side conditionals instead).
-- [x] Seller dashboard fully translated to Hebrew: all strings via `t.dashboard.*`/`t.gallery.*`, `products.ts` reads i18n from DOM, `gallery.ts` reads `removingBg` from i18n-data; dashboard CSS fixed for RTL (`margin-inline-end`, `text-align: start/end`).
-- [x] Dashboard product thumbnails: 30×30 → 42×42, `object-fit: cover`, `margin-block: -6px` (larger image, same row height).
-- [x] Homepage store cards: CTA button `self-end` + `flex-1` on text div (button always at bottom, correct side per language). Single RTL-flippable arrow SVG (`rtl:-scale-x-100`).
-- [x] Search bars RTL fix: server-side `lang` conditional for icon position + input padding (inline style on store page to override `.input` CSS shorthand padding).
-- [x] Accessibility (WCAG 2.1 AA): skip link in BaseLayout, focus trap + aria-modal on CartDrawer, aria-labelledby/describedby on ConfirmModal, role=menu + aria-controls + Escape on Header user dropdown, aria-live on cart count, search aria-label on store page, sort listbox keyboard nav (arrow keys), lightbox focus trap + focus restore. Accessibility added as permanent hard rule in AI_INSTRUCTIONS.
-- [x] Add-to-cart feedback: button shows ✓ + "נוסף לעגלה" with spring pop animation (Web Animations API) instead of opening cart drawer; reverts after 1.5s with settle animation. Micro-interactions rule strengthened in AI_INSTRUCTIONS.
-- [x] Dashboard product table: row number column (`#`) — renumbers after add/delete/sort. Stock cell shows red warning triangle SVG when stock ≤ 0. `--color-danger` token added to tokens.css. Price/stock cells use class selectors (not td index) for robust DOM updates.
-- [x] BG removal speed: image resized to max 1024px (OffscreenCanvas in Worker) + switched to `isnet_quint8` model — significantly faster. Gallery: crop+change buttons disabled when BG is shown/processing (only Restore available). Post-save thumbnail uses gallery slot's blob URL for immediate update without network fetch.
-- [x] Dashboard top section unified into one card: store name + subtitle + store tabs + collapsible settings + store overview — internal horizontal divider + vertical divider between columns (`.dash-overview-col`); responsive (single column on mobile with top border instead of side border). No dead space.
-- [x] Store product cards: qty stepper `[−][qty][+]` above price/button row, aligned to button side (`align-self:flex-end`). Add-to-cart button keeps original narrow width. Button shows ✓ + "נוסף לעגלה" spring animation for 1.4s then reverts; qty resets to 1 after add.
-- [x] Wishlist dropdown: i18n fix (addToCart/addedToCart keys added to wishlist translations, he+en); quantity controls [🗑][−][qty][+][הוסף לעגלה] in controls row; trash icon (Lucide bin with dots) before minus; cover images in wishlist + cart drawer.
-- [x] Dashboard crop button: fixed for existing Cloudinary images (fetches URL to blob before opening modal, same pattern as removeBg). UX hint "גרור למיקום · גלול לזום" shown on open, fades after first drag.
-- [x] Dashboard section tabs: "נתוני חנות" (stats + products) + "הגדרות" (settings form); store switcher dropdown from heading (2+ stores), replaces pill tabs.
-- [x] Cart +/- ripple fixed: `setQtyQuiet` in cart.ts (writes localStorage, no `cart:change`); CartDrawer does in-place DOM update (qty/count/subtotal/grand total) + `suppressNextRender` flag so button stays in DOM during animation; all buttons use standard `spawnRipple` (clipped to bounds).
-- [x] Confirm modal: full-viewport centering via CSS `position:fixed; inset:0; margin:auto; height:fit-content` — reliable across all browsers and always centers on full screen (not just visible area).
-- [x] Wishlist remove: inline two-step confirmation on the button itself — first click turns button red with ✓ icon, second click confirms deletion, auto-revert after 3 s; `composedPath()` fix for click-outside listener so panel stays open post-deletion.
-- [x] Homepage product card placeholder: neutral `var(--color-surface)` background instead of hue-based gradient (was producing random pink depending on store slug); `storeHue` function removed.
-- [ ] Payments
+---
 
 ## Workflow
 1. Read this file + `CURRENT_TASK.md`.
-2. Do only what is listed in `CURRENT_TASK.md → Your instruction`.
-3. **At the end of every session** — when the user says something like "next session", "we're done", "end of session", or asks to wrap up — do ALL of the following without being asked:
-   - Update **Build status** above (check completed items, add new ones if needed).
-   - Update `CURRENT_TASK.md → Next` and `Recommended next step` with what's logical next.
-   - Update **Project structure** above if any files were added or changed.
-   - Append a line to **Session log** below summarizing what was built this session.
+2. Do only what is in `CURRENT_TASK.md → Your instruction`.
+3. **End of session** (trigger: "next session" / "we're done" / "end of session" / "סגור את הסשן") — do ALL of:
+   - Update **Current feature inventory** with anything new.
+   - Update `CURRENT_TASK.md → Next` and `Recommended next step`.
+   - Update **Project structure** if files were added or changed.
    - **Never change `Your instruction`** — only the user changes that.
-
----
-
-## Session log
-- **S1–S14** Foundation built: scaffold, TypeScript migration, seller auth, multi-store, seller dashboard (AJAX), store product management, public store page, cart + drawer, confirm modal, SVG icons, CSS architecture, SEO/JSON-LD.
-- **S15** Product image upload: Cloudinary unsigned upload, BG removal Web Worker (@imgly), crop/zoom modal (canvas 512×512), Remove image confirm.
-- **S16** Multi-image gallery (up to 5/product, images[] model), store page lightbox (arrows, keyboard, swipe). Tailwind v4 installed + Cloudinary whitelisted in astro.config.
-- **S17** Dashboard right column: store summary card (product count, in-stock, stock value, live link).
-- **S18** Adopted permanent modular architecture rules (encapsulation, layer separation, SRP, ≤200 lines). Progressive Tailwind migration: convert on contact. "New" badge pulse animation (CSS keyframe, store.css).
-- **S19** Full UI redesign: slate blue-gray palette (#2a3547 primary, #4870c0 accent, #f7f8fa bg), Plus Jakarta Sans font, compact buttons with scale(0.97) press, edge-to-edge cover images with zoom on hover, no border-darkening hovers anywhere, dashboard tabs square (radius) + active pointer-events:none, micro-interactions rule added to AI_INSTRUCTIONS.
-- **S20** Customer discovery homepage (search + store grid + seller CTA banner). Per-store cart architecture (store_cart_v2_{slug}), CartDrawer grouped by store with per-store checkout. Cart badge no-flash fix (is:inline). Seller name field added. Store-mode logo links back to store. Unified platform theme (per-store color overrides removed).
-- **S21** Cart image sync (syncCartImages on store page load). "New" badge refined (single slow pulse, text-width only). Dashboard: sortable product table (Name/Price/Stock), collapsible settings section, compact h2 headings, product row hover. Store page: dir="auto" bidi detection, about section centered.
-- **S22** Store page: client-side product search + custom sort dropdown (6 options, chevron, aria-selected, click-outside close). Scalability added as hard rule (stateless APIs, JSON = dev-only, no shared write state). Seller dashboard: sellerMode nav (no platform links, no cart, user icon dropdown). Dashboard encapsulation refactor: 1248 → 403 lines, script 800 → 25 lines, extracted to 8 modules in src/scripts/dashboard/ + src/lib/gallery-widget.ts.
-- **S23** Vision & Mission + Physical Mall Model added to AI_INSTRUCTIONS.md (mapping table + 6 behavioral rules, hybrid checkout model). Cart: icon alignment fixed (flex center on qty buttons + close button), grand total section added (shows when 2+ stores — per-store subtotals + "Pay all stores" CTA). `getGrandTotal()` added to cart.ts.
-- **S24** Hebrew-first i18n: font switched to Heebo (supports Hebrew + Latin), `src/i18n/` module created (translations.ts with he/en dictionaries, index.ts with getLang/getDir/getT), `/api/lang` cookie-based language switch with referer redirect, language toggle button (EN↔עב) in header on all pages, all public UI translated (homepage, store page, auth pages, footer, cart drawer, confirm modal), RTL/LTR auto-applied via `dir` on `<html>`, RTL-aware search icon placement with Tailwind `ltr:/rtl:` variants.
-- **S25** Dashboard i18n complete: all strings via t.dashboard.*/t.gallery.*, products.ts + gallery.ts read i18n from DOM, CSS RTL fixes (margin-inline-end, text-align: start/end). Dashboard product thumbnails enlarged (42×42, cover, margin-block). Homepage store cards: CTA always at bottom (flex-1 on text div, self-end), single flippable arrow. Search bars RTL fix (server-side lang conditional; inline style to override .input CSS). "New" badge moved to image overlay (position: absolute, inset-inline-start) — card text alignment now consistent across all products.
-- **S26** Accessibility audit + WCAG 2.1 AA fixes across all components (skip link, focus traps, ARIA roles, keyboard nav, aria-live). Add-to-cart UX: spring pop animation on button, no drawer auto-open. Dashboard: row numbers in product table, out-of-stock warning icon, BG removal speed improvement (resize + isnet_quint8), crop/change disabled after BG removal, thumbnail immediate update from blob URL post-save.
-- **S27** Dashboard top section redesigned into one unified card (header + tabs + settings + overview, internal dividers, no dead space). Store product cards: qty stepper [−][qty][+] above the price/button row; add-to-cart shows ✓ animation then reverts; qty resets after add.
-- **S28** Wishlist dropdown polish: i18n fix for add-to-cart button (addToCart/addedToCart moved to wishlist translations); quantity controls [🗑][−][qty][+][הוסף לעגלה] all in one controls row; trash = Lucide bin icon with dots; images cover in wishlist + cart drawer. Dashboard crop button fixed: now fetches Cloudinary URL to blob when no local blob exists; UX hint overlay on viewport fades after first drag.
-- **S29** Dashboard section tabs ("נתוני חנות" / "הגדרות") + store-switcher dropdown from heading. Cart +/- ripple fixed (setQtyQuiet + in-place DOM update, button stays alive during animation). Confirm modal full-viewport centering (CSS inset:0 + margin:auto). Wishlist remove: inline two-step button confirmation (first click → red ✓ icon, second → delete; composedPath fix keeps panel open).
-- **S30** Homepage product card placeholder background fixed (neutral `var(--color-surface)` replacing hue-based gradient that was producing random pink). LED fountain logo attempted (5-layer SVG animation) → task failed → removed cleanly.

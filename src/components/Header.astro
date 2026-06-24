@@ -66,6 +66,12 @@ if (!storeMode && !sellerMode) {
     )}
 
     <div class="header-actions">
+      {!isLoggedIn && !sellerMode && (
+        <a href="/seller/login" class="lang-toggle-btn" style="text-decoration:none">
+          {t.nav.login}
+        </a>
+      )}
+
       {(storeMode || sellerMode) && isLoggedIn && (
         <div class="user-menu">
           <button class="user-btn" id="user-menu-toggle" aria-label="User menu" aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">

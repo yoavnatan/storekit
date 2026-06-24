@@ -1,0 +1,617 @@
+---
+export const prerender = false;
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getStoreBySlug } from '../../../lib/stores.js';
+import { getProductBySlug, getProductsByStoreId } from '../../../lib/store-products.js';
+import { store as platform, formatPrice } from '../../../config/store.config.js';
+import { getSellerSession } from '../../../lib/seller-auth.js';
+import { getLang, getT } from '../../../i18n/index.js';
+
+const { storeSlug, productSlug } = Astro.params;
+if (!storeSlug || !productSlug) return Astro.redirect('/404');
+
+const shopStore = getStoreBySlug(storeSlug);
+if (!shopStore) return Astro.redirect('/404');
+
+const product = getProductBySlug(shopStore.id, productSlug);
+if (!product) return Astro.redirect(`/store/${storeSlug}`);
+
+const isLoggedIn = !!getSellerSession(Astro.cookies);
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+
+const isNew = new Date(product.createdAt).toDateString() === new Date().toDateString();
+const images = product.images ?? [];
+const productUrl = new URL(`/store/${storeSlug}/${productSlug}`, Astro.url).href;
+
+const relatedProducts = getProductsByStoreId(shopStore.id)
+  .filter((p) => p.slug !== product.slug)
+  .slice(0, 4);
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: product.name,
+  ...(product.description ? { description: product.description } : {}),
+  ...(images.length ? { image: images } : {}),
+  url: productUrl,
+  offers: {
+    '@type': 'Offer',
+    price: String(product.price),
+    priceCurrency: 'ILS',
+    availability: product.stock > 0
+      ? 'https://schema.org/InStock'
+      : 'https://schema.org/OutOfStock',
+    url: productUrl,
+    seller: { '@type': 'Organization', name: shopStore.name },
+  },
+};
+
+const breadcrumbLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    {
+      '@type': 'ListItem',
+      position: 1,
+      name: shopStore.name,
+      item: new URL(`/store/${storeSlug}`, Astro.url).href,
+    },
+    {
+      '@type': 'ListItem',
+      position: 2,
+      name: product.name,
+      item: productUrl,
+    },
+  ],
+};
+---
+
+<BaseLayout
+  title={`${product.name} — ${shopStore.name}`}
+  description={product.description || shopStore.tagline || `${product.name} at ${shopStore.name}`}
+  jsonLd={jsonLd}
+  isLoggedIn={isLoggedIn}
+  storeMode={true}
+  storeName={shopStore.name}
+  storeSlug={shopStore.slug}
+>
+  <script is:inline type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
+
+  <div class="product-detail-page"
+       data-store-slug={shopStore.slug}
+       data-store-name={shopStore.name}
+       data-images={JSON.stringify(images)}
+       data-lang={lang}>
+
+    <!-- Back link -->
+    <nav class="container pt-4 pb-2" aria-label="breadcrumb">
+      <a href={`/store/${shopStore.slug}`}
+         class="inline-flex items-center gap-1.5 text-sm transition-colors duration-150 hover:[color:var(--color-text)]"
+         style="color:var(--color-muted);text-decoration:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"
+             class={lang === 'he' ? 'rotate-180' : ''}>
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        {shopStore.name}
+      </a>
+    </nav>
+
+    <main id="main-content" class="container pt-6 pb-16">
+
+      <!-- Product grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-14">
+
+        <!-- Images column -->
+        <div>
+          <div id="main-img-wrap"
+               class="relative overflow-hidden cursor-zoom-in"
+               style="aspect-ratio:1/1;max-height:min(65vw,420px);border-radius:var(--radius);background:var(--color-surface)"
+               role={images.length > 0 ? 'button' : undefined}
+               tabindex={images.length > 0 ? '0' : undefined}
+               aria-label={images.length > 0 ? t.product.clickToZoom : undefined}>
+            {images[0]
+              ? <img id="main-img" src={images[0]} alt={product.name}
+                     width="800" height="800"
+                     style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease"
+                     loading="eager" decoding="async" />
+              : <div class="absolute inset-0 flex items-center justify-center" style="color:var(--color-border)" aria-hidden="true">
+                  <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                  </svg>
+                </div>
+            }
+            {isNew && <span class="badge badge--new" style="position:absolute;top:0.75rem;inset-inline-start:0.75rem">{t.store.badgeNew}</span>}
+          </div>
+
+          {images.length > 1 && (
+            <div class="flex gap-2 mt-3 overflow-x-auto pb-1" style="scrollbar-width:none" role="list" aria-label={t.product.imageGallery}>
+              {images.map((img, i) => (
+                <button
+                  type="button"
+                  role="listitem"
+                  data-img-src={img}
+                  data-img-index={String(i)}
+                  class="thumb-btn flex-shrink-0 w-16 h-16 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
+                  style={`border-radius:var(--radius);background:none;border-color:${i === 0 ? 'var(--color-accent)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
+                  aria-pressed={i === 0 ? 'true' : 'false'}
+                  aria-label={`${product.name} ${i + 1}`}
+                >
+                  <img src={img} alt="" width="64" height="64"
+                       style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy" decoding="async" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <!-- Info column -->
+        <div class="flex flex-col gap-5 pt-1">
+
+          <!-- Name + price -->
+          <div class="flex flex-col gap-2">
+            <h1 dir="auto" class="text-2xl font-bold leading-snug" style="color:var(--color-text)">{product.name}</h1>
+            <p class="font-bold leading-none" style="font-size:1.75rem;color:var(--color-accent)">{formatPrice(product.price)}</p>
+          </div>
+
+          <hr style="border:none;border-top:1px solid var(--color-border);margin:0" />
+
+          {product.description && (
+            <p dir="auto" class="text-base leading-relaxed" style="color:var(--color-muted)">{product.description}</p>
+          )}
+
+          {product.stock > 0 && product.stock <= 5 && (
+            <p class="flex items-center gap-1.5 text-sm font-semibold" style="color:#d97706">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              {lang === 'he' ? `נותרו ${product.stock} בלבד` : `Only ${product.stock} left`}
+            </p>
+          )}
+
+          {product.stock <= 0
+            ? <span class="badge badge--muted self-start">{t.store.outOfStock}</span>
+            : (
+              <div class="flex flex-col gap-3 mt-1">
+                <!-- Qty + Add to cart -->
+                <div class="flex items-center gap-3">
+                  <div dir="ltr" class="flex items-center flex-shrink-0 overflow-hidden"
+                       style="border:1px solid var(--color-border);border-radius:var(--radius)">
+                    <button type="button" class="qty-dec flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-bg)] active:scale-95 disabled:opacity-30"
+                            style="width:2.25rem;height:2.25rem;color:var(--color-muted);background:none;border:none;cursor:pointer"
+                            aria-label={t.cart.qtyDecrease} disabled>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                    </button>
+                    <span class="qty-val text-sm font-semibold text-center select-none"
+                          style="min-width:2.5rem;color:var(--color-text)"
+                          aria-live="polite" aria-atomic="true">1</span>
+                    <button type="button" class="qty-inc flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-bg)] active:scale-95"
+                            style="width:2.25rem;height:2.25rem;color:var(--color-muted);background:none;border:none;cursor:pointer"
+                            aria-label={t.cart.qtyIncrease}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                    </button>
+                  </div>
+                  <button type="button" id="add-to-cart-btn"
+                          class="btn flex-1"
+                          data-slug={product.slug}
+                          data-name={product.name}
+                          data-price={String(product.price)}
+                          data-image={images[0] ?? ''}
+                          data-stock={String(product.stock)}
+                          data-label-added={t.store.addedToCart}>
+                    <span class="btn-label">{t.store.addToCart}</span>
+                  </button>
+                </div>
+
+                <!-- Wishlist -->
+                <button type="button" id="wishlist-btn"
+                        class="flex items-center gap-2 text-sm font-medium transition-all duration-150 self-start"
+                        style="color:var(--color-muted);background:none;border:none;cursor:pointer;padding:0.25rem 0"
+                        data-wishlist-slug={product.slug}
+                        data-wishlist-name={product.name}
+                        data-wishlist-price={String(product.price)}
+                        data-wishlist-image={images[0] ?? ''}
+                        data-wishlist-store-slug={shopStore.slug}
+                        data-wishlist-store-name={shopStore.name}
+                        data-wishlisted="false"
+                        aria-pressed="false"
+                        aria-label={t.wishlist.addLabel}>
+                  <svg id="wishlist-heart" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                  </svg>
+                  <span id="wishlist-label">{t.wishlist.addLabel}</span>
+                </button>
+              </div>
+            )
+          }
+        </div>
+      </div>
+
+      <!-- Related products -->
+      {relatedProducts.length > 0 && (
+        <section style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--color-border)" aria-labelledby="related-heading">
+          <p id="related-heading" style="font-size:0.875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.875rem">
+            {t.product.moreFrom}{shopStore.name}
+          </p>
+          <div style="display:flex;gap:0.625rem;overflow-x:auto;padding-bottom:0.25rem;scrollbar-width:none">
+            {relatedProducts.map((p) => {
+              const pImgs = p.images ?? [];
+              return (
+                <div class="related-card group"
+                     style="flex:0 0 auto;width:170px;border-radius:var(--radius);overflow:hidden;background:var(--color-surface);transition:box-shadow 0.15s">
+                  <a href={`/store/${shopStore.slug}/${p.slug}`} style="display:block;text-decoration:none;color:inherit">
+                    <div style="width:170px;height:150px;position:relative;overflow:hidden;background:var(--color-bg)">
+                      {pImgs[0]
+                        ? <img src={pImgs[0]} alt={p.name} width="170" height="150"
+                               style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease"
+                               class="group-hover:scale-[1.06]"
+                               loading="lazy" decoding="async" />
+                        : <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--color-border)" aria-hidden="true">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+                              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                              <line x1="12" y1="22.08" x2="12" y2="12"/>
+                            </svg>
+                          </div>
+                      }
+                    </div>
+                    <div style="padding:0.4rem 0.5rem 0.25rem">
+                      <p style="font-size:0.75rem;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text)" dir="auto">{p.name}</p>
+                      <p style="font-size:0.75rem;font-weight:700;margin:0.1rem 0 0;color:var(--color-accent)">{formatPrice(p.price)}</p>
+                    </div>
+                  </a>
+                  <div style="padding:0.25rem 0.5rem 0.5rem">
+                    {p.stock > 0 && (
+                        <div style="display:flex;flex-direction:column;gap:0.3rem">
+                          <div dir="ltr" style="display:flex;align-items:center;align-self:flex-end;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden">
+                            <button type="button" class="qty-dec" aria-label={t.cart.qtyDecrease} disabled
+                                    style="width:1.6rem;height:1.6rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
+                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
+                            <span class="qty-val" aria-live="polite" aria-atomic="true"
+                                  style="min-width:1.6rem;text-align:center;font-size:0.72rem;font-weight:600;color:var(--color-text);user-select:none">1</span>
+                            <button type="button" class="qty-inc" aria-label={t.cart.qtyIncrease}
+                                    style="width:1.6rem;height:1.6rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
+                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
+                          </div>
+                          <button type="button" class="btn btn--sm add-to-cart-btn"
+                                  style="width:100%;font-size:0.7rem"
+                                  data-slug={p.slug}
+                                  data-name={p.name}
+                                  data-price={String(p.price)}
+                                  data-image={pImgs[0] ?? ''}
+                                  data-stock={String(p.stock)}
+                                  data-label-added={t.store.addedToCart}>
+                            <span class="btn-label">{t.store.addToCart}</span>
+                          </button>
+                        </div>
+                      )
+                    }
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+    </main>
+
+    <footer class="store-platform-note">
+      <p>
+        <a href="/" class="platform-link">{platform.name}</a> — {t.store.platformNote}
+      </p>
+    </footer>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox" hidden aria-modal="true" role="dialog" aria-label={t.product.imageGallery}>
+      <div class="lightbox__backdrop" id="lightbox-backdrop"></div>
+      <div class="lightbox__panel">
+        <button class="lightbox__close" id="lightbox-close" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <button class="lightbox__arrow lightbox__arrow--prev" id="lightbox-prev" aria-label="Previous image">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <img class="lightbox__img" id="lightbox-img" src="" alt={product.name} width="1200" height="1200" />
+        <button class="lightbox__arrow lightbox__arrow--next" id="lightbox-next" aria-label="Next image">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
+        <div class="lightbox__counter" id="lightbox-counter"></div>
+      </div>
+    </div>
+
+  </div>
+</BaseLayout>
+
+<script>
+  import { addItem } from '../../../lib/cart.js';
+  import { isWishlisted, toggleWishlist } from '../../../lib/wishlist.js';
+  import { spawnRipple } from '../../../lib/ripple.js';
+
+  const page = document.querySelector<HTMLElement>('.product-detail-page');
+  const storeSlug = page?.dataset.storeSlug ?? '';
+  const storeName = page?.dataset.storeName ?? '';
+  const images: string[] = JSON.parse(page?.dataset.images ?? '[]');
+  const pageLang = page?.dataset.lang ?? 'he';
+
+  // ── Thumbnail switcher ─────────────────────────────────────────────
+  const mainImg = document.getElementById('main-img') as HTMLImageElement | null;
+  const thumbBtns = document.querySelectorAll<HTMLButtonElement>('.thumb-btn');
+  let activeIndex = 0;
+
+  function setThumbActive(idx: number) {
+    thumbBtns.forEach((b) => {
+      const isActive = Number(b.dataset.imgIndex) === idx;
+      b.setAttribute('aria-pressed', String(isActive));
+      b.style.opacity = isActive ? '1' : '0.55';
+      b.style.borderColor = isActive ? 'var(--color-accent)' : 'transparent';
+    });
+  }
+
+  // ── Main image hover zoom ──────────────────────────────────────────
+  if (mainImg) {
+    mainImg.closest<HTMLElement>('#main-img-wrap')?.addEventListener('mouseenter', () => {
+      mainImg.style.transform = 'scale(1.04)';
+    });
+    mainImg.closest<HTMLElement>('#main-img-wrap')?.addEventListener('mouseleave', () => {
+      mainImg.style.transform = 'scale(1)';
+    });
+  }
+
+  thumbBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.imgIndex ?? 0);
+      if (idx === activeIndex) return;
+      activeIndex = idx;
+      if (mainImg) {
+        mainImg.style.opacity = '0';
+        setTimeout(() => {
+          mainImg.src = btn.dataset.imgSrc ?? '';
+          mainImg.style.opacity = '1';
+        }, 120);
+      }
+      setThumbActive(idx);
+    });
+  });
+
+  // ── Lightbox ───────────────────────────────────────────────────────
+  const lightbox = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lightbox-img') as HTMLImageElement | null;
+  const lbPrev = document.getElementById('lightbox-prev') as HTMLButtonElement | null;
+  const lbNext = document.getElementById('lightbox-next') as HTMLButtonElement | null;
+  const lbClose = document.getElementById('lightbox-close') as HTMLButtonElement | null;
+  const lbBackdrop = document.getElementById('lightbox-backdrop');
+  const lbCounter = document.getElementById('lightbox-counter');
+  let lbIndex = 0;
+
+  function updateLbCounter() {
+    if (!lbCounter) return;
+    if (images.length <= 1) { lbCounter.hidden = true; return; }
+    lbCounter.textContent = `${lbIndex + 1} / ${images.length}`;
+    lbCounter.hidden = false;
+  }
+
+  function openLightbox(idx: number) {
+    if (!lightbox || images.length === 0) return;
+    lbIndex = Math.max(0, Math.min(idx, images.length - 1));
+    if (lbImg) lbImg.src = images[lbIndex] ?? '';
+    if (lbPrev) lbPrev.hidden = images.length <= 1;
+    if (lbNext) lbNext.hidden = images.length <= 1;
+    updateLbCounter();
+    lightbox.hidden = false;
+    document.body.style.overflow = 'hidden';
+    lbClose?.focus();
+  }
+
+  function closeLightbox() {
+    if (!lightbox) return;
+    lightbox.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  function goLightbox(dir: 1 | -1) {
+    lbIndex = (lbIndex + dir + images.length) % images.length;
+    if (lbImg) {
+      lbImg.style.opacity = '0';
+      setTimeout(() => {
+        if (lbImg) { lbImg.src = images[lbIndex] ?? ''; lbImg.style.opacity = '1'; }
+        updateLbCounter();
+        activeIndex = lbIndex;
+        setThumbActive(lbIndex);
+        if (mainImg) mainImg.src = images[lbIndex] ?? '';
+      }, 100);
+    }
+  }
+
+  const mainWrap = document.getElementById('main-img-wrap');
+  mainWrap?.addEventListener('click', () => openLightbox(activeIndex));
+  mainWrap?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLightbox(activeIndex); }
+  });
+  lbClose?.addEventListener('click', closeLightbox);
+  lbPrev?.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(-1); });
+  lbNext?.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(1); });
+  lightbox?.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (!t.closest('.lightbox__arrow') && !t.closest('.lightbox__close')) closeLightbox();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (!lightbox || lightbox.hidden) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') goLightbox(pageLang === 'he' ? 1 : -1);
+    if (e.key === 'ArrowRight') goLightbox(pageLang === 'he' ? -1 : 1);
+  });
+
+  // ── Qty stepper ────────────────────────────────────────────────────
+  const qtyDec = document.querySelector<HTMLButtonElement>('.qty-dec');
+  const qtyInc = document.querySelector<HTMLButtonElement>('.qty-inc');
+  const qtyVal = document.querySelector<HTMLElement>('.qty-val');
+  const addBtn = document.getElementById('add-to-cart-btn') as HTMLButtonElement | null;
+  const maxStock = addBtn ? Math.max(1, parseInt(addBtn.dataset.stock ?? '99', 10) || 99) : 99;
+  let qty = 1;
+
+  function updateQty(n: number) {
+    qty = Math.max(1, Math.min(n, maxStock));
+    if (qtyVal) qtyVal.textContent = String(qty);
+    if (qtyDec) qtyDec.disabled = qty <= 1;
+    if (qtyInc) qtyInc.disabled = qty >= maxStock;
+  }
+
+  qtyDec?.addEventListener('click', (e) => { spawnRipple(qtyDec, e.clientX, e.clientY); updateQty(qty - 1); });
+  qtyInc?.addEventListener('click', (e) => { spawnRipple(qtyInc, e.clientX, e.clientY); updateQty(qty + 1); });
+
+  // ── Add to cart ────────────────────────────────────────────────────
+  if (addBtn) {
+    const checkSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
+    const labelSpan = addBtn.querySelector<HTMLElement>('.btn-label');
+    if (labelSpan) labelSpan.style.cssText = 'display:inline-flex;align-items:center;gap:4px';
+    const originalLabel = labelSpan?.innerHTML ?? '';
+
+    addBtn.addEventListener('pointerdown', (e) => spawnRipple(addBtn, e.clientX, e.clientY));
+    addBtn.addEventListener('click', () => {
+      if (addBtn.disabled) return;
+      const { slug = '', name = '', price = '0', image = '' } = addBtn.dataset;
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image }, qty);
+      updateQty(1);
+
+      addBtn.style.minWidth = `${addBtn.offsetWidth}px`;
+      if (labelSpan) labelSpan.innerHTML = `${checkSvg}${addBtn.dataset.labelAdded ?? ''}`;
+      addBtn.disabled = true;
+
+      addBtn.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
+        { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+      );
+
+      setTimeout(() => {
+        if (labelSpan) labelSpan.innerHTML = originalLabel;
+        addBtn.style.minWidth = '';
+        addBtn.disabled = false;
+      }, 1400);
+    });
+  }
+
+  // ── Wishlist ───────────────────────────────────────────────────────
+  const wishlistBtn = document.getElementById('wishlist-btn') as HTMLButtonElement | null;
+  const wishlistHeart = document.getElementById('wishlist-heart') as SVGElement | null;
+  const wishlistLabel = document.getElementById('wishlist-label');
+
+  function setWishlistStyle(active: boolean) {
+    if (!wishlistBtn || !wishlistHeart) return;
+    if (active) {
+      (wishlistHeart as unknown as HTMLElement).style.fill = '#e53e3e';
+      (wishlistHeart as unknown as HTMLElement).style.stroke = '#e53e3e';
+      wishlistBtn.style.color = '#e53e3e';
+    } else {
+      (wishlistHeart as unknown as HTMLElement).style.fill = 'none';
+      (wishlistHeart as unknown as HTMLElement).style.stroke = 'currentColor';
+      wishlistBtn.style.color = '';
+    }
+  }
+
+  function getI18nWishlist(): Record<string, string> {
+    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}')?.wishlist ?? {}; } catch { return {}; }
+  }
+
+  if (wishlistBtn) {
+    const slug = wishlistBtn.dataset.wishlistSlug ?? '';
+    const active = isWishlisted(slug);
+    wishlistBtn.dataset.wishlisted = String(active);
+    wishlistBtn.setAttribute('aria-pressed', String(active));
+    setWishlistStyle(active);
+
+    const wi = getI18nWishlist();
+    if (active && wishlistLabel) wishlistLabel.textContent = wi['removeLabel'] ?? wishlistLabel.textContent;
+
+    wishlistBtn.addEventListener('click', () => {
+      const item = {
+        slug,
+        name: wishlistBtn.dataset.wishlistName ?? '',
+        price: Number(wishlistBtn.dataset.wishlistPrice ?? 0),
+        image: wishlistBtn.dataset.wishlistImage ?? '',
+        storeSlug: wishlistBtn.dataset.wishlistStoreSlug ?? '',
+        storeName: wishlistBtn.dataset.wishlistStoreName ?? '',
+      };
+      const nowActive = toggleWishlist(item);
+      wishlistBtn.dataset.wishlisted = String(nowActive);
+      wishlistBtn.setAttribute('aria-pressed', String(nowActive));
+      wishlistBtn.setAttribute('aria-label', nowActive ? (wi['removeLabel'] ?? '') : (wi['addLabel'] ?? ''));
+      if (wishlistLabel) wishlistLabel.textContent = nowActive ? (wi['removeLabel'] ?? '') : (wi['addLabel'] ?? '');
+      setWishlistStyle(nowActive);
+      wishlistBtn.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }],
+        { duration: 300, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+      );
+      fetch('/api/wishlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: nowActive ? 'add' : 'remove', productSlug: slug }),
+      });
+    });
+  }
+
+  // ── Related product cards: qty + add-to-cart ───────────────────────
+  const checkSvgSm = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
+
+  document.querySelectorAll<HTMLElement>('.related-card').forEach((card) => {
+    const btn = card.querySelector<HTMLButtonElement>('.add-to-cart-btn');
+    if (!btn) return;
+    const dec = card.querySelector<HTMLButtonElement>('.qty-dec');
+    const inc = card.querySelector<HTMLButtonElement>('.qty-inc');
+    const val = card.querySelector<HTMLElement>('.qty-val');
+    const max = Math.max(1, parseInt(btn.dataset.stock ?? '99', 10) || 99);
+    let q = 1;
+
+    function setQ(n: number) {
+      q = Math.max(1, Math.min(n, max));
+      if (val) val.textContent = String(q);
+      if (dec) dec.disabled = q <= 1;
+      if (inc) inc.disabled = q >= max;
+    }
+
+    dec?.addEventListener('click', () => setQ(q - 1));
+    inc?.addEventListener('click', () => setQ(q + 1));
+
+    const lbl = btn.querySelector<HTMLElement>('.btn-label');
+    if (lbl) lbl.style.cssText = 'display:inline-flex;align-items:center;gap:3px';
+    const origLbl = lbl?.innerHTML ?? '';
+
+    btn.addEventListener('pointerdown', (e) => spawnRipple(btn, e.clientX, e.clientY));
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      const { slug = '', name = '', price = '0', image = '' } = btn.dataset;
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image }, q);
+      setQ(1);
+      btn.style.minWidth = `${btn.offsetWidth}px`;
+      if (lbl) lbl.innerHTML = `${checkSvgSm}${btn.dataset.labelAdded ?? ''}`;
+      btn.disabled = true;
+      btn.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
+        { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+      );
+      setTimeout(() => {
+        if (lbl) lbl.innerHTML = origLbl;
+        btn.style.minWidth = '';
+        btn.disabled = false;
+      }, 1400);
+    });
+  });
+</script>
