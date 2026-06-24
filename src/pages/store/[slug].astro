@@ -5,7 +5,7 @@ import { getStoreBySlug } from '../../lib/stores.js';
 import { getProductsByStoreId } from '../../lib/store-products.js';
 import { store as platform, formatPrice } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getLang, getT } from '../../i18n/index.js';
+import { getLang, getT, getDir } from '../../i18n/index.js';
 
 const { slug } = Astro.params;
 if (!slug) return Astro.redirect('/404');
@@ -20,6 +20,7 @@ const storeUrl = new URL(`/store/${shopStore.slug}`, Astro.url).href;
 const today = new Date().toDateString();
 
 const lang = getLang(Astro.cookies);
+const dir  = getDir(lang);
 const t    = getT(lang);
 
 const jsonLd = {
@@ -56,8 +57,8 @@ const pmI18n = {
 
     <section class="store-banner" aria-labelledby="store-heading">
       <div class="container">
-        <h1 id="store-heading" class="store-name">{shopStore.name}</h1>
-        {shopStore.tagline && <p class="store-tagline">{shopStore.tagline}</p>}
+        <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
+        {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
         {shopStore.description && shopStore.description !== shopStore.tagline && (
           <p class="store-desc" dir="auto">{shopStore.description}</p>
         )}
@@ -487,36 +488,6 @@ const pmI18n = {
   });
 
   searchInput?.addEventListener('input', filterAndSort);
-
-  // ── Sticky strip ──────────────────────────────────────────────
-  const siteHeader  = document.querySelector<HTMLElement>('.site-header');
-  const storeBanner = document.querySelector<HTMLElement>('.store-banner');
-  const storeStrip  = document.querySelector<HTMLElement>('.store-strip');
-
-  if (siteHeader && storeBanner && storeStrip) {
-    const headerH = siteHeader.offsetHeight;
-    const stripH  = storeStrip.offsetHeight;
-
-    const placeholder = document.createElement('div');
-    placeholder.setAttribute('aria-hidden', 'true');
-    placeholder.style.height = `${stripH}px`;
-    placeholder.hidden = true;
-    storeStrip.after(placeholder);
-
-    function updateStrip(): void {
-      const threshold = storeBanner.offsetTop + storeBanner.offsetHeight - headerH;
-      if (window.scrollY >= threshold) {
-        storeStrip!.style.cssText = `position:fixed;top:${headerH}px;left:0;right:0;z-index:40`;
-        placeholder.hidden = false;
-      } else {
-        storeStrip!.style.cssText = '';
-        placeholder.hidden = true;
-      }
-    }
-
-    window.addEventListener('scroll', updateStrip, { passive: true });
-    updateStrip();
-  }
 
   // ── Lightbox (available for revert) ──────────────────────────
   const lightbox   = document.getElementById('lightbox') as HTMLDivElement | null;
