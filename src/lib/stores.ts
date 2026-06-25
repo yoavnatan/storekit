@@ -17,6 +17,7 @@ export interface Store {
   tagline: string;
   description: string;
   colors: StoreColors;
+  categories?: string[];
   createdAt: string;
 }
 

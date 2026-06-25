@@ -15,6 +15,31 @@ function parseImages(form: FormData): string[] {
   return form.getAll('images').map(v => String(v).trim()).filter(Boolean);
 }
 
+function parseCategory(form: FormData): string {
+  return String(form.get('category') ?? '').trim();
+}
+
+function parseTags(form: FormData): string[] {
+  return String(form.get('tags') ?? '').split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+}
+
+function parseSpecs(form: FormData): Array<{ label: string; value: string }> {
+  const labels = form.getAll('specs_label').map(v => String(v).trim());
+  const values = form.getAll('specs_value').map(v => String(v).trim());
+  return labels.map((label, i) => ({ label, value: values[i] ?? '' })).filter(s => s.label);
+}
+
+function parseVariants(form: FormData): Array<{ name: string; options: string[] }> {
+  const names = form.getAll('variant_name').map(v => String(v).trim());
+  const optionsRaw = form.getAll('variant_options').map(v => String(v).trim());
+  return names
+    .map((name, i) => ({
+      name,
+      options: (optionsRaw[i] ?? '').split(',').map(o => o.trim()).filter(Boolean),
+    }))
+    .filter(v => v.name && v.options.length);
+}
+
 export const POST: APIRoute = async ({ request, cookies }) => {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
@@ -32,11 +57,22 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const price = parseFloat(String(form.get('price') || '0'));
     const stock = parseInt(String(form.get('stock') || '0'), 10);
     const images = parseImages(form);
+    const category = parseCategory(form);
+    const tags = parseTags(form);
+    const specs = parseSpecs(form);
+    const variants = parseVariants(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
 
-    const product = createProduct(storeId, { name, description, price, stock: isNaN(stock) ? 0 : stock, images: images.length ? images : undefined });
+    const product = createProduct(storeId, {
+      name, description, price, stock: isNaN(stock) ? 0 : stock,
+      images: images.length ? images : undefined,
+      category: category || undefined,
+      tags: tags.length ? tags : undefined,
+      specs: specs.length ? specs : undefined,
+      variants: variants.length ? variants : undefined,
+    });
     return json({ ok: true, product });
   }
 
@@ -47,6 +83,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const price = parseFloat(String(form.get('price') || '0'));
     const stock = parseInt(String(form.get('stock') || '0'), 10);
     const images = parseImages(form);
+    const category = parseCategory(form);
+    const tags = parseTags(form);
+    const specs = parseSpecs(form);
+    const variants = parseVariants(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
@@ -54,6 +94,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const updates: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {
       name, description, price, stock: isNaN(stock) ? 0 : stock,
       images,
+      category: category || undefined,
+      tags: tags.length ? tags : [],
+      specs: specs.length ? specs : [],
+      variants: variants.length ? variants : [],
     };
 
     const updated = updateProduct(productId, updates);

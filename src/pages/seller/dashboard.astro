@@ -250,6 +250,30 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
                   placeholder={d.descPlaceholderProduct}></textarea>
               </label>
 
+              <label class="field">
+                <span>{d.categoryLabel}</span>
+                <input class="input" name="category" placeholder={d.categoryPlaceholder} list="store-categories-list" />
+              </label>
+
+              <label class="field">
+                <span>{d.tagsLabel}</span>
+                <input class="input" name="tags" placeholder={d.tagsPlaceholder} />
+              </label>
+
+              <div class="field">
+                <span class="field-label">{d.variantsLabel}</span>
+                <div class="variants-list"></div>
+                <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.5rem">{d.variantAddBtn}</button>
+              </div>
+
+              <div class="field">
+                <span class="field-label">{d.specsLabel}</span>
+                <div class="specs-rows"
+                     data-label-placeholder={d.specsLabelPlaceholder}
+                     data-value-placeholder={d.specsValuePlaceholder}></div>
+                <button type="button" class="btn btn--ghost btn--sm specs-add-row" style="margin-top:0.5rem">{d.specsAddRow}</button>
+              </div>
+
               <div class="field">
                 <span class="field-label">{d.productImages}</span>
                 <div set:html={galleryWidgetHtml([], g)}></div>
@@ -345,6 +369,55 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
                           <span>{d.descLabel}</span>
                           <textarea class="input" name="description" rows="2">{p.description}</textarea>
                         </label>
+
+                        <label class="field">
+                          <span>{d.categoryLabel}</span>
+                          <input class="input" name="category" value={p.category ?? ''} placeholder={d.categoryPlaceholder} list="store-categories-list" />
+                        </label>
+
+                        <label class="field">
+                          <span>{d.tagsLabel}</span>
+                          <input class="input" name="tags" value={p.tags?.join(', ') ?? ''} placeholder={d.tagsPlaceholder} />
+                        </label>
+
+                        <div class="field">
+                          <span class="field-label">{d.variantsLabel}</span>
+                          <div class="variants-list">
+                            {(p.variants ?? []).map((v) => (
+                              <div class="variant-block" style="border:1px solid var(--color-border);border-radius:var(--radius);padding:0.65rem;margin-bottom:0.5rem">
+                                <div style="display:flex;gap:0.5rem;align-items:flex-end">
+                                  <label class="field" style="flex:1;margin:0">
+                                    <span>{d.variantNameLabel}</span>
+                                    <input class="input" name="variant_name" value={v.name} placeholder={d.variantNamePlaceholder} />
+                                  </label>
+                                  <label class="field" style="flex:2;margin:0">
+                                    <span>{d.variantOptionsLabel}</span>
+                                    <input class="input" name="variant_options" value={v.options.join(', ')} placeholder={d.variantOptionsPlaceholder} />
+                                  </label>
+                                  <button type="button" class="variant-remove-btn btn btn--ghost btn--sm" aria-label={d.variantRemove} style="flex-shrink:0;margin-bottom:0.1rem">×</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.5rem">{d.variantAddBtn}</button>
+                        </div>
+
+                        <div class="field">
+                          <span class="field-label">{d.specsLabel}</span>
+                          <div class="specs-rows"
+                               data-label-placeholder={d.specsLabelPlaceholder}
+                               data-value-placeholder={d.specsValuePlaceholder}>
+                            {(p.specs ?? []).map((s) => (
+                              <div class="specs-row" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
+                                <input class="input" name="specs_label" value={s.label} placeholder={d.specsLabelPlaceholder} style="flex:1" />
+                                <input class="input" name="specs_value" value={s.value} placeholder={d.specsValuePlaceholder} style="flex:1" />
+                                <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label={d.specsRemoveRow}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                          <button type="button" class="specs-add-row btn btn--ghost btn--sm" style="margin-top:0.5rem">{d.specsAddRow}</button>
+                        </div>
+
                         <div class="field">
                           <span class="field-label">{d.productImages}</span>
                           <div set:html={galleryWidgetHtml(p.images ?? [], g)}></div>
@@ -389,6 +462,11 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
             <textarea class="input" name="description" rows="3">{store.description}</textarea>
           </label>
 
+          <label class="field">
+            <span>{d.storeCategories}</span>
+            <input class="input" name="categories" value={store.categories?.join(', ') ?? ''} placeholder={d.storeCategoriesPlaceholder} />
+          </label>
+
           <p id="settings-status" hidden></p>
           <div class="form-actions">
             <button class="btn" type="submit">{d.saveChanges}</button>
@@ -424,10 +502,14 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
   </div>
 </div>
 
+<datalist id="store-categories-list">
+  {(store.categories ?? []).map((cat) => <option value={cat} />)}
+</datalist>
+
 <script>
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
-  import { bindExistingRows, initAddProduct, initDeleteProduct, initTableSort } from '../../scripts/dashboard/products.js';
+  import { bindExistingRows, initAddProduct, initDeleteProduct, initTableSort, initSpecsEditors, initVariantEditors } from '../../scripts/dashboard/products.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
 
   const uploadCfg = document.getElementById('upload-config');
@@ -439,6 +521,8 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 
   initDashTabs();
   initCropModal();
+  initSpecsEditors();
+  initVariantEditors();
   document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g, CLOUD, PRESET));
   bindExistingRows(CLOUD, PRESET);
   initAddProduct(CLOUD, PRESET);

@@ -1,9 +1,11 @@
 export interface CartItem {
+  cartKey: string;
   slug: string;
   name: string;
   price: number;
   image: string;
   qty: number;
+  selectedVariants?: Record<string, string>;
 }
 
 interface StoreCart {
@@ -23,6 +25,15 @@ const KEY_PREFIX = 'store_cart_v2_';
 
 function storeKey(storeSlug: string): string {
   return `${KEY_PREFIX}${storeSlug}`;
+}
+
+function makeCartKey(slug: string, selectedVariants?: Record<string, string>): string {
+  if (!selectedVariants || !Object.keys(selectedVariants).length) return slug;
+  const combo = Object.entries(selectedVariants)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join(',');
+  return `${slug}__${combo}`;
 }
 
 function readStoreCart(storeSlug: string): StoreCart | null {
@@ -48,19 +59,26 @@ export function addItem(
   storeSlug: string,
   storeName: string,
   product: Pick<CartItem, 'slug' | 'name' | 'price' | 'image'>,
-  qty = 1
+  qty = 1,
+  selectedVariants?: Record<string, string>
 ): void {
   const cart = readStoreCart(storeSlug) ?? { storeName, storeSlug, items: {} };
   cart.storeName = storeName;
-  const prev = cart.items[product.slug];
-  cart.items[product.slug] = { ...product, qty: (prev?.qty ?? 0) + qty };
+  const key = makeCartKey(product.slug, selectedVariants);
+  const prev = cart.items[key];
+  cart.items[key] = {
+    cartKey: key,
+    ...product,
+    qty: (prev?.qty ?? 0) + qty,
+    ...(selectedVariants && Object.keys(selectedVariants).length ? { selectedVariants } : {}),
+  };
   writeStoreCart(cart);
 }
 
-export function removeItem(storeSlug: string, slug: string): void {
+export function removeItem(storeSlug: string, key: string): void {
   const cart = readStoreCart(storeSlug);
   if (!cart) return;
-  delete cart.items[slug];
+  delete cart.items[key];
   if (Object.keys(cart.items).length === 0) {
     localStorage.removeItem(storeKey(storeSlug));
     window.dispatchEvent(new CustomEvent('cart:change'));
@@ -69,19 +87,19 @@ export function removeItem(storeSlug: string, slug: string): void {
   }
 }
 
-export function setQty(storeSlug: string, slug: string, qty: number): void {
-  if (qty <= 0) { removeItem(storeSlug, slug); return; }
+export function setQty(storeSlug: string, key: string, qty: number): void {
+  if (qty <= 0) { removeItem(storeSlug, key); return; }
   const cart = readStoreCart(storeSlug);
-  if (!cart?.items[slug]) return;
-  cart.items[slug]!.qty = qty;
+  if (!cart?.items[key]) return;
+  cart.items[key]!.qty = qty;
   writeStoreCart(cart);
 }
 
-export function setQtyQuiet(storeSlug: string, slug: string, qty: number): void {
-  if (qty <= 0) { removeItem(storeSlug, slug); return; }
+export function setQtyQuiet(storeSlug: string, key: string, qty: number): void {
+  if (qty <= 0) { removeItem(storeSlug, key); return; }
   const cart = readStoreCart(storeSlug);
-  if (!cart?.items[slug]) return;
-  cart.items[slug]!.qty = qty;
+  if (!cart?.items[key]) return;
+  cart.items[key]!.qty = qty;
   localStorage.setItem(storeKey(cart.storeSlug), JSON.stringify(cart));
 }
 
@@ -121,11 +139,12 @@ export function syncCartImages(
   const cart = readStoreCart(storeSlug);
   if (!cart) return;
   let changed = false;
-  for (const p of products) {
-    const item = cart.items[p.slug];
-    if (!item) continue;
+  const productMap = new Map(products.map((p) => [p.slug, p]));
+  for (const [key, item] of Object.entries(cart.items)) {
+    const p = productMap.get(item.slug);
+    if (!p) continue;
     if (item.image !== p.image || item.name !== p.name || item.price !== p.price) {
-      cart.items[p.slug] = { ...item, image: p.image, name: p.name, price: p.price };
+      cart.items[key] = { ...item, image: p.image, name: p.name, price: p.price };
       changed = true;
     }
   }

@@ -106,24 +106,31 @@
           <span class="cart-store-group__count">${c.count} ${c.count !== 1 ? (i18n.items ?? 'items') : (i18n.item ?? 'item')}</span>
         </div>
         <div class="cart-store-group__items">
-          ${c.items.map((i) => `
-            <div class="cart-line" data-item-slug="${esc(i.slug)}" data-store-slug="${esc(c.storeSlug)}">
+          ${c.items.map((i) => {
+              const key = i.cartKey ?? i.slug;
+              const variantLine = i.selectedVariants && Object.keys(i.selectedVariants).length
+                ? `<div style="font-size:0.72rem;color:var(--color-muted);margin-top:0.1rem">${Object.entries(i.selectedVariants).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(' · ')}</div>`
+                : '';
+              return `
+            <div class="cart-line" data-item-slug="${esc(key)}" data-store-slug="${esc(c.storeSlug)}">
               ${i.image
                 ? `<img src="${esc(i.image)}" alt="${esc(i.name)}" width="56" height="56" loading="lazy" decoding="async">`
                 : placeholderSvg()}
               <div class="cart-line__info">
                 <strong>${esc(i.name)}</strong>
+                ${variantLine}
                 <div>${formatPrice(i.price)}</div>
                 <div class="cart-line__qty">
-                  <button data-act="dec" data-slug="${esc(i.slug)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyDecrease ?? 'Decrease quantity')} ${esc(i.name)}">−</button>
+                  <button data-act="dec" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyDecrease ?? 'Decrease quantity')} ${esc(i.name)}">−</button>
                   <span aria-live="polite" aria-atomic="true">${i.qty}</span>
-                  <button data-act="inc" data-slug="${esc(i.slug)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyIncrease ?? 'Increase quantity')} ${esc(i.name)}">+</button>
-                  <button data-act="rm" data-slug="${esc(i.slug)}" data-store="${esc(c.storeSlug)}" data-name="${esc(i.name)}" aria-label="${esc(i18n.removeOk ?? 'Remove')} ${esc(i.name)}" style="margin-inline-start:auto">
+                  <button data-act="inc" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyIncrease ?? 'Increase quantity')} ${esc(i.name)}">+</button>
+                  <button data-act="rm" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" data-name="${esc(i.name)}" aria-label="${esc(i18n.removeOk ?? 'Remove')} ${esc(i.name)}" style="margin-inline-start:auto">
                     <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                   </button>
                 </div>
               </div>
-            </div>`).join('')}
+            </div>`;
+            }).join('')}
         </div>
         <div class="cart-store-group__foot">
           <div class="flex between" style="font-size:0.88rem">
@@ -151,27 +158,26 @@
     if (!(e.target instanceof Element)) return;
     const btn = e.target.closest<HTMLButtonElement>('button[data-act]');
     if (!btn) return;
-    const slug  = btn.dataset.slug ?? '';
+    const key   = btn.dataset.slug ?? '';
     const store = btn.dataset.store ?? '';
-    const name  = btn.dataset.name ?? slug;
-    if (!slug || !store) return;
+    const name  = btn.dataset.name ?? key;
+    if (!key || !store) return;
 
     const i18n = getI18n().cart ?? {};
 
     if (btn.dataset.act === 'inc' || btn.dataset.act === 'dec') {
       const storeCart = getActiveStoreCarts().find((c) => c.storeSlug === store);
-      const item = storeCart?.items.find((i) => i.slug === slug);
+      const item = storeCart?.items.find((i) => (i.cartKey ?? i.slug) === key);
       if (!item) return;
 
       const newQty = btn.dataset.act === 'inc' ? item.qty + 1 : item.qty - 1;
       if (newQty <= 0) {
-        removeItem(store, slug); // triggers cart:change → full render
+        removeItem(store, key);
         return;
       }
 
-      setQtyQuiet(store, slug, newQty);
+      setQtyQuiet(store, key, newQty);
 
-      // Update DOM in-place so the ripple can finish animating on the button
       const qtySpan = btn.closest('.cart-line__qty')?.querySelector<HTMLElement>('[aria-live]');
       if (qtySpan) qtySpan.textContent = String(newQty);
 
@@ -186,7 +192,6 @@
       const grandEl = lines?.querySelector<HTMLElement>('.cart-grand-total__row strong');
       if (grandEl) grandEl.textContent = formatPrice(getGrandTotal());
 
-      // Dispatch cart:change only for the header badge — suppress re-render
       suppressNextRender = true;
       window.dispatchEvent(new CustomEvent('cart:change'));
       return;
@@ -198,7 +203,7 @@
           title: i18n.removeTitle ?? 'Remove item?',
           message: `${i18n.removeMsg ?? 'Remove from your cart?'} "${name}"`,
           okLabel: i18n.removeOk ?? 'Remove',
-          onConfirm: () => removeItem(store, slug),
+          onConfirm: () => removeItem(store, key),
         },
       }));
     }

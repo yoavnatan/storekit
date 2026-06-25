@@ -4,6 +4,16 @@ import crypto from 'node:crypto';
 
 const PRODUCTS_PATH = path.join(process.cwd(), 'data/store-products.json');
 
+export interface ProductSpec {
+  label: string;
+  value: string;
+}
+
+export interface ProductVariant {
+  name: string;
+  options: string[];
+}
+
 export interface StoreProduct {
   id: string;
   storeId: string;
@@ -13,6 +23,10 @@ export interface StoreProduct {
   price: number;
   stock: number;
   images?: string[];
+  category?: string;
+  tags?: string[];
+  specs?: ProductSpec[];
+  variants?: ProductVariant[];
   createdAt: string;
 }
 
@@ -35,9 +49,13 @@ interface CreateProductInput {
   price: number;
   stock?: number;
   images?: string[];
+  category?: string;
+  tags?: string[];
+  specs?: ProductSpec[];
+  variants?: ProductVariant[];
 }
 
-export function createProduct(storeId: string, { name, description = '', price, stock = 0, images }: CreateProductInput): StoreProduct {
+export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, category, tags, specs, variants }: CreateProductInput): StoreProduct {
   const products = readProducts();
   const storeProducts = products.filter((p) => p.storeId === storeId);
   const base = slugify(name) || 'product';
@@ -54,6 +72,10 @@ export function createProduct(storeId: string, { name, description = '', price, 
     price,
     stock,
     ...(images?.length ? { images } : {}),
+    ...(category ? { category } : {}),
+    ...(tags?.length ? { tags } : {}),
+    ...(specs?.length ? { specs } : {}),
+    ...(variants?.length ? { variants } : {}),
     createdAt: new Date().toISOString(),
   };
   products.push(product);

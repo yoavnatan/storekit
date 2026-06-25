@@ -6,6 +6,9 @@ import { formatPrice } from '../../config/store.config.js';
 export interface ProductData {
   id: string; storeId: string; name: string;
   description: string; price: number; stock: number; images?: string[];
+  category?: string; tags?: string[];
+  specs?: Array<{ label: string; value: string }>;
+  variants?: Array<{ name: string; options: string[] }>;
 }
 
 function fmtPrice(n: number) { return formatPrice(n); }
@@ -25,6 +28,114 @@ function getRawI18n() {
 }
 function getDashI18n() { return getRawI18n().dashboard ?? {}; }
 function getGalleryI18n() { return getRawI18n().gallery ?? {}; }
+
+function categoryFieldHtml(category: string, i18n: Record<string, string>): string {
+  return `<label class="field">
+    <span>${esc(i18n.categoryLabel ?? 'Category')}</span>
+    <input class="input" name="category" value="${esc(category)}" placeholder="${esc(i18n.categoryPlaceholder ?? '')}" list="store-categories-list">
+  </label>`;
+}
+
+function tagsFieldHtml(tags: string[], i18n: Record<string, string>): string {
+  return `<label class="field">
+    <span>${esc(i18n.tagsLabel ?? 'Tags')}</span>
+    <input class="input" name="tags" value="${esc(tags.join(', '))}" placeholder="${esc(i18n.tagsPlaceholder ?? '')}">
+  </label>`;
+}
+
+function specsEditorHtml(specs: Array<{ label: string; value: string }>, i18n: Record<string, string>): string {
+  const lp = esc(i18n.specsLabelPlaceholder ?? '');
+  const vp = esc(i18n.specsValuePlaceholder ?? '');
+  const rowsHtml = specs.map(s => `
+    <div class="specs-row" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
+      <input class="input" name="specs_label" value="${esc(s.label)}" placeholder="${lp}" style="flex:1">
+      <input class="input" name="specs_value" value="${esc(s.value)}" placeholder="${vp}" style="flex:1">
+      <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label="${esc(i18n.specsRemoveRow ?? 'Remove')}">×</button>
+    </div>`).join('');
+  return `<div class="field">
+    <span class="field-label">${esc(i18n.specsLabel ?? 'Specifications')}</span>
+    <div class="specs-rows" data-label-placeholder="${lp}" data-value-placeholder="${vp}">${rowsHtml}</div>
+    <button type="button" class="specs-add-row btn btn--ghost btn--sm" style="margin-top:0.5rem">${esc(i18n.specsAddRow ?? '+ Add row')}</button>
+  </div>`;
+}
+
+function variantEditorHtml(variants: Array<{ name: string; options: string[] }>, i18n: Record<string, string>): string {
+  const blocksHtml = variants.map(v => `
+    <div class="variant-block" style="border:1px solid var(--color-border);border-radius:var(--radius);padding:0.65rem;margin-bottom:0.5rem">
+      <div style="display:flex;gap:0.5rem;align-items:flex-end">
+        <label class="field" style="flex:1;margin:0">
+          <span>${esc(i18n.variantNameLabel ?? 'Name')}</span>
+          <input class="input" name="variant_name" value="${esc(v.name)}" placeholder="${esc(i18n.variantNamePlaceholder ?? '')}">
+        </label>
+        <label class="field" style="flex:2;margin:0">
+          <span>${esc(i18n.variantOptionsLabel ?? 'Options')}</span>
+          <input class="input" name="variant_options" value="${esc(v.options.join(', '))}" placeholder="${esc(i18n.variantOptionsPlaceholder ?? '')}">
+        </label>
+        <button type="button" class="variant-remove-btn btn btn--ghost btn--sm" aria-label="${esc(i18n.variantRemove ?? 'Remove')}" style="flex-shrink:0;margin-bottom:0.1rem">×</button>
+      </div>
+    </div>`).join('');
+  return `<div class="field">
+    <span class="field-label">${esc(i18n.variantsLabel ?? 'Variants')}</span>
+    <div class="variants-list">${blocksHtml}</div>
+    <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.5rem">${esc(i18n.variantAddBtn ?? '+ Add variant')}</button>
+  </div>`;
+}
+
+export function initVariantEditors(): void {
+  document.addEventListener('click', (e) => {
+    const addBtn = (e.target as Element).closest<HTMLButtonElement>('.variants-add-btn');
+    if (addBtn) {
+      const list = addBtn.closest('.field')?.querySelector<HTMLElement>('.variants-list');
+      if (!list) return;
+      const i18n = getDashI18n();
+      const block = document.createElement('div');
+      block.className = 'variant-block';
+      block.style.cssText = 'border:1px solid var(--color-border);border-radius:var(--radius);padding:0.65rem;margin-bottom:0.5rem';
+      block.innerHTML = `
+        <div style="display:flex;gap:0.5rem;align-items:flex-end">
+          <label class="field" style="flex:1;margin:0">
+            <span>${esc(i18n.variantNameLabel ?? 'Name')}</span>
+            <input class="input" name="variant_name" placeholder="${esc(i18n.variantNamePlaceholder ?? '')}">
+          </label>
+          <label class="field" style="flex:2;margin:0">
+            <span>${esc(i18n.variantOptionsLabel ?? 'Options')}</span>
+            <input class="input" name="variant_options" placeholder="${esc(i18n.variantOptionsPlaceholder ?? '')}">
+          </label>
+          <button type="button" class="variant-remove-btn btn btn--ghost btn--sm" aria-label="${esc(i18n.variantRemove ?? 'Remove')}" style="flex-shrink:0;margin-bottom:0.1rem">×</button>
+        </div>`;
+      list.appendChild(block);
+      block.querySelector<HTMLInputElement>('input')?.focus();
+      return;
+    }
+    const removeBtn = (e.target as Element).closest<HTMLButtonElement>('.variant-remove-btn');
+    if (removeBtn) removeBtn.closest('.variant-block')?.remove();
+  });
+}
+
+export function initSpecsEditors(): void {
+  document.addEventListener('click', (e) => {
+    const addBtn = (e.target as Element).closest<HTMLButtonElement>('.specs-add-row');
+    if (addBtn) {
+      const container = addBtn.closest('.field')?.querySelector<HTMLElement>('.specs-rows');
+      if (!container) return;
+      const lp = container.dataset.labelPlaceholder ?? '';
+      const vp = container.dataset.valuePlaceholder ?? '';
+      const i18n = getDashI18n();
+      const row = document.createElement('div');
+      row.className = 'specs-row';
+      row.style.cssText = 'display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem';
+      row.innerHTML = `
+        <input class="input" name="specs_label" placeholder="${esc(lp)}" style="flex:1">
+        <input class="input" name="specs_value" placeholder="${esc(vp)}" style="flex:1">
+        <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label="${esc(i18n.specsRemoveRow ?? 'Remove')}">×</button>`;
+      container.appendChild(row);
+      row.querySelector<HTMLInputElement>('input')?.focus();
+      return;
+    }
+    const removeBtn = (e.target as Element).closest<HTMLButtonElement>('.specs-remove-row');
+    if (removeBtn) removeBtn.closest('.specs-row')?.remove();
+  });
+}
 
 export function buildRows(p: ProductData, cloud: string, preset: string): [HTMLTableRowElement, HTMLTableRowElement] {
   const i = getDashI18n();
@@ -70,6 +181,10 @@ export function buildRows(p: ProductData, cloud: string, preset: string): [HTMLT
           <label class="field"><span>${i.colStock ?? 'Stock'}</span><input class="input" name="stock" type="number" min="0" step="1" value="${p.stock}"></label>
         </div>
         <label class="field"><span>${i.descLabel ?? 'Description'}</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
+        ${categoryFieldHtml(p.category ?? '', i)}
+        ${tagsFieldHtml(p.tags ?? [], i)}
+        ${variantEditorHtml(p.variants ?? [], i)}
+        ${specsEditorHtml(p.specs ?? [], i)}
         <div class="field">
           <span class="field-label">${i.productImages ?? 'Product images'}</span>
           ${galleryWidgetHtml(p.images ?? [], g)}

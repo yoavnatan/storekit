@@ -6,6 +6,7 @@ import { getProductBySlug, getProductsByStoreId } from '../../../lib/store-produ
 import { store as platform, formatPrice } from '../../../config/store.config.js';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getLang, getT } from '../../../i18n/index.js';
+import { resolveVariantColor, isColorVariant } from '../../../lib/color-variants.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
@@ -34,6 +35,15 @@ const jsonLd = {
   name: product.name,
   ...(product.description ? { description: product.description } : {}),
   ...(images.length ? { image: images } : {}),
+  ...(product.category ? { category: product.category } : {}),
+  ...(product.tags?.length ? { keywords: product.tags.join(', ') } : {}),
+  ...(product.specs?.length ? {
+    additionalProperty: product.specs.map((s) => ({
+      '@type': 'PropertyValue',
+      name: s.label,
+      value: s.value,
+    })),
+  } : {}),
   url: productUrl,
   offers: {
     '@type': 'Offer',
@@ -65,6 +75,15 @@ const breadcrumbLd = {
     },
   ],
 };
+
+const pmI18n = {
+  addToCart: t.store.addToCart,
+  addedToCart: t.store.addedToCart,
+  outOfStock: t.store.outOfStock,
+  addToWishlist: t.wishlist.addLabel,
+  removeFromWishlist: t.wishlist.removeLabel,
+  fullPage: lang === 'he' ? 'לדף המוצר המלא' : 'View full product page',
+};
 ---
 
 <BaseLayout
@@ -77,12 +96,14 @@ const breadcrumbLd = {
   storeSlug={shopStore.slug}
 >
   <script is:inline type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
+  <script is:inline type="application/json" id="pm-i18n" set:html={JSON.stringify(pmI18n)} />
 
   <div class="product-detail-page"
        data-store-slug={shopStore.slug}
        data-store-name={shopStore.name}
        data-images={JSON.stringify(images)}
-       data-lang={lang}>
+       data-lang={lang}
+       data-variants={product.variants?.length ? JSON.stringify(product.variants) : undefined}>
 
     <!-- Back link -->
     <nav class="container pt-4 pb-2" aria-label="breadcrumb">
@@ -100,13 +121,13 @@ const breadcrumbLd = {
     <main id="main-content" class="container pt-6 pb-16">
 
       <!-- Product grid -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-14">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 mt-2">
 
         <!-- Images column -->
         <div>
           <div id="main-img-wrap"
                class="relative overflow-hidden cursor-zoom-in"
-               style="aspect-ratio:1/1;max-height:min(65vw,420px);border-radius:var(--radius);background:var(--color-surface)"
+               style="aspect-ratio:1/1;border-radius:var(--radius);background:var(--color-surface)"
                role={images.length > 0 ? 'button' : undefined}
                tabindex={images.length > 0 ? '0' : undefined}
                aria-label={images.length > 0 ? t.product.clickToZoom : undefined}>
@@ -134,8 +155,8 @@ const breadcrumbLd = {
                   role="listitem"
                   data-img-src={img}
                   data-img-index={String(i)}
-                  class="thumb-btn flex-shrink-0 w-16 h-16 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
-                  style={`border-radius:var(--radius);background:none;border-color:${i === 0 ? 'var(--color-accent)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
+                  class="thumb-btn flex-shrink-0 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
+                  style={`width:4rem;height:4rem;border-radius:var(--radius);background:none;border-color:${i === 0 ? 'var(--color-accent)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
                   aria-pressed={i === 0 ? 'true' : 'false'}
                   aria-label={`${product.name} ${i + 1}`}
                 >
@@ -148,22 +169,69 @@ const breadcrumbLd = {
         </div>
 
         <!-- Info column -->
-        <div class="flex flex-col gap-5 pt-1">
+        <div class="flex flex-col gap-6">
 
           <!-- Name + price -->
           <div class="flex flex-col gap-2">
-            <h1 dir="auto" class="text-2xl font-bold leading-snug" style="color:var(--color-text)">{product.name}</h1>
-            <p class="font-bold leading-none" style="font-size:1.75rem;color:var(--color-accent)">{formatPrice(product.price)}</p>
+            <h1 dir="auto" style="font-size:1.625rem;font-weight:700;line-height:1.25;color:var(--color-text);margin:0">{product.name}</h1>
+            <p style="font-size:2rem;font-weight:800;line-height:1;color:var(--color-accent);margin:0">{formatPrice(product.price)}</p>
           </div>
 
           <hr style="border:none;border-top:1px solid var(--color-border);margin:0" />
 
-          {product.description && (
-            <p dir="auto" class="text-base leading-relaxed" style="color:var(--color-muted)">{product.description}</p>
+          <!-- Variants -->
+          {(product.variants?.length ?? 0) > 0 && (
+            <div class="flex flex-col gap-5" id="variant-selectors">
+              {product.variants!.map((v) => {
+                const isColor = isColorVariant(v.name);
+                return (
+                  <div class="flex flex-col gap-2">
+                    <p style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-muted);margin:0">
+                      {v.name}
+                    </p>
+                    <div class="flex flex-wrap gap-2" role="group" aria-label={v.name}>
+                      {v.options.map((opt, i) => {
+                        const { display, hex } = resolveVariantColor(opt);
+                        const isFirst = i === 0;
+                        const activeBorder = hex ?? 'var(--color-primary)';
+                        const activeBg = hex ? hex + '18' : 'var(--color-primary)';
+                        const activeColor = hex ? 'var(--color-text)' : '#fff';
+                        return (
+                          <button type="button"
+                                  class="variant-opt"
+                                  data-variant-name={v.name}
+                                  data-variant-value={opt}
+                                  data-color-hex={hex ?? undefined}
+                                  aria-pressed={isFirst ? 'true' : 'false'}
+                                  style={[
+                                    'display:inline-flex;align-items:center;gap:0.4rem',
+                                    `border:1.5px solid ${isFirst ? activeBorder : 'var(--color-border)'}`,
+                                    'border-radius:var(--radius)',
+                                    'padding:0.45rem 0.9rem',
+                                    'font-size:0.875rem;font-weight:500;cursor:pointer',
+                                    `background:${isFirst ? activeBg : 'transparent'}`,
+                                    `color:${isFirst ? activeColor : 'var(--color-text)'}`,
+                                    'transition:all 0.15s',
+                                    'white-space:nowrap',
+                                  ].join(';')}>
+                            {isColor && hex && (
+                              <span aria-hidden="true"
+                                    style={`width:14px;height:14px;border-radius:50%;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block`}></span>
+                            )}
+                            {display}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
 
+          <!-- Low stock -->
           {product.stock > 0 && product.stock <= 5 && (
-            <p class="flex items-center gap-1.5 text-sm font-semibold" style="color:#d97706">
+            <p class="flex items-center gap-1.5 text-sm font-semibold" style="color:#d97706;margin:0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                 <line x1="12" y1="9" x2="12" y2="13"/>
@@ -173,35 +241,38 @@ const breadcrumbLd = {
             </p>
           )}
 
+          <!-- Cart actions -->
           {product.stock <= 0
             ? <span class="badge badge--muted self-start">{t.store.outOfStock}</span>
             : (
-              <div class="flex flex-col gap-3 mt-1">
-                <!-- Qty + Add to cart -->
-                <div class="flex items-center gap-3">
+              <div class="flex flex-col gap-3 mt-auto">
+                <div class="flex items-center gap-3" style="max-width:360px">
+                  <!-- Qty stepper -->
                   <div dir="ltr" class="flex items-center flex-shrink-0 overflow-hidden"
-                       style="border:1px solid var(--color-border);border-radius:var(--radius)">
-                    <button type="button" class="qty-dec flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-bg)] active:scale-95 disabled:opacity-30"
-                            style="width:2.25rem;height:2.25rem;color:var(--color-muted);background:none;border:none;cursor:pointer"
+                       style="border:1px solid var(--color-border);border-radius:var(--radius);height:48px">
+                    <button type="button" class="qty-dec flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-surface)] active:scale-90 disabled:opacity-30"
+                            style="width:2.75rem;height:100%;color:var(--color-muted);background:none;border:none;cursor:pointer"
                             aria-label={t.cart.qtyDecrease} disabled>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                         <line x1="5" y1="12" x2="19" y2="12"/>
                       </svg>
                     </button>
                     <span class="qty-val text-sm font-semibold text-center select-none"
-                          style="min-width:2.5rem;color:var(--color-text)"
+                          style="min-width:2.25rem;color:var(--color-text)"
                           aria-live="polite" aria-atomic="true">1</span>
-                    <button type="button" class="qty-inc flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-bg)] active:scale-95"
-                            style="width:2.25rem;height:2.25rem;color:var(--color-muted);background:none;border:none;cursor:pointer"
+                    <button type="button" class="qty-inc flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-surface)] active:scale-90"
+                            style="width:2.75rem;height:100%;color:var(--color-muted);background:none;border:none;cursor:pointer"
                             aria-label={t.cart.qtyIncrease}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                         <line x1="12" y1="5" x2="12" y2="19"/>
                         <line x1="5" y1="12" x2="19" y2="12"/>
                       </svg>
                     </button>
                   </div>
+                  <!-- Add to cart -->
                   <button type="button" id="add-to-cart-btn"
-                          class="btn flex-1"
+                          class="btn"
+                          style="flex:1;height:48px;font-size:0.9375rem;font-weight:600"
                           data-slug={product.slug}
                           data-name={product.name}
                           data-price={String(product.price)}
@@ -236,6 +307,69 @@ const breadcrumbLd = {
         </div>
       </div>
 
+      <!-- Details zone: full-width description / specs / category / tags -->
+      {(product.description || (product.specs?.length ?? 0) > 0 || product.category || (product.tags?.length ?? 0) > 0) && (
+        <div style="margin-top:2.5rem;padding-top:2rem;border-top:1px solid var(--color-border);display:flex;flex-direction:column;gap:1.5rem">
+
+          {product.description && (
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
+                {lang === 'he' ? 'תיאור המוצר' : 'Description'}
+              </p>
+              <p dir="auto" class="text-base leading-relaxed" style="color:var(--color-muted)">{product.description}</p>
+            </div>
+          )}
+
+          {(product.specs?.length ?? 0) > 0 && (
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
+                {t.product.specsTitle}
+              </p>
+              <table style="width:100%;max-width:420px;border-collapse:collapse;font-size:0.85rem" aria-label={t.product.specsTitle}>
+                <tbody>
+                  {product.specs!.map((s) => (
+                    <tr style="border-bottom:1px solid var(--color-border)">
+                      <td style="padding:0.4rem 0;padding-inline-start:0.75rem;padding-inline-end:3rem;color:var(--color-muted);white-space:nowrap;font-weight:500">{s.label}</td>
+                      <td dir="auto" style="padding:0.4rem 0;color:var(--color-text);font-weight:400;text-align:end">{s.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {product.category && (
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
+                {t.product.categoryLabel ?? (lang === 'he' ? 'קטגוריה' : 'Category')}
+              </p>
+              <a href={`/store/${storeSlug}?category=${encodeURIComponent(product.category)}`}
+                 class="hover:bg-[var(--color-bg)] transition-colors duration-150"
+                 style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:9999px;padding:0.25rem 0.75rem;font-size:0.8rem;color:var(--color-text);text-decoration:none">
+                {product.category}
+              </a>
+            </div>
+          )}
+
+          {(product.tags?.length ?? 0) > 0 && (
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
+                {t.product.tagsLabel ?? (lang === 'he' ? 'תגיות' : 'Tags')}
+              </p>
+              <div class="flex flex-wrap gap-1.5" role="list" aria-label={t.product.tagsLabel}>
+                {product.tags!.map((tag) => (
+                  <span role="listitem"
+                        style="border:1px solid var(--color-border);border-radius:9999px;padding:0.18rem 0.65rem;font-size:0.75rem;color:var(--color-muted);line-height:1.5">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
       <!-- Related products -->
       {relatedProducts.length > 0 && (
         <section style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--color-border)" aria-labelledby="related-heading">
@@ -246,14 +380,22 @@ const breadcrumbLd = {
             {relatedProducts.map((p) => {
               const pImgs = p.images ?? [];
               return (
-                <div class="related-card group"
-                     style="flex:0 0 auto;width:170px;border-radius:var(--radius);overflow:hidden;background:var(--color-surface);transition:box-shadow 0.15s">
-                  <a href={`/store/${shopStore.slug}/${p.slug}`} style="display:block;text-decoration:none;color:inherit">
+                <div class="related-card"
+                     data-images={pImgs.length ? JSON.stringify(pImgs) : undefined}
+                     data-product-name={p.name}
+                     data-price={String(p.price)}
+                     data-description={p.description ?? ''}
+                     data-stock={String(p.stock)}
+                     data-slug={p.slug}
+                     data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
+                     style="flex:0 0 auto;width:170px;border-radius:var(--radius);overflow:hidden;background:var(--color-surface);cursor:pointer;transition:box-shadow 0.15s">
+                  <a href={`/store/${shopStore.slug}/${p.slug}`}
+                     class="related-card-trigger"
+                     style="display:block;text-decoration:none;color:inherit">
                     <div style="width:170px;height:150px;position:relative;overflow:hidden;background:var(--color-bg)">
                       {pImgs[0]
                         ? <img src={pImgs[0]} alt={p.name} width="170" height="150"
                                style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease"
-                               class="group-hover:scale-[1.06]"
                                loading="lazy" decoding="async" />
                         : <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--color-border)" aria-hidden="true">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
@@ -264,45 +406,31 @@ const breadcrumbLd = {
                           </div>
                       }
                     </div>
-                    <div style="padding:0.4rem 0.5rem 0.25rem">
+                    <div style="padding:0.5rem 0.6rem 0.6rem">
                       <p style="font-size:0.75rem;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text)" dir="auto">{p.name}</p>
-                      <p style="font-size:0.75rem;font-weight:700;margin:0.1rem 0 0;color:var(--color-accent)">{formatPrice(p.price)}</p>
+                      <p style="font-size:0.75rem;font-weight:700;margin:0.2rem 0 0;color:var(--color-accent)">{formatPrice(p.price)}</p>
                     </div>
                   </a>
-                  <div style="padding:0.25rem 0.5rem 0.5rem">
-                    {p.stock > 0 && (
-                        <div style="display:flex;flex-direction:column;gap:0.3rem">
-                          <div dir="ltr" style="display:flex;align-items:center;align-self:flex-end;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden">
-                            <button type="button" class="qty-dec" aria-label={t.cart.qtyDecrease} disabled
-                                    style="width:1.6rem;height:1.6rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
-                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            </button>
-                            <span class="qty-val" aria-live="polite" aria-atomic="true"
-                                  style="min-width:1.6rem;text-align:center;font-size:0.72rem;font-weight:600;color:var(--color-text);user-select:none">1</span>
-                            <button type="button" class="qty-inc" aria-label={t.cart.qtyIncrease}
-                                    style="width:1.6rem;height:1.6rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
-                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            </button>
-                          </div>
-                          <button type="button" class="btn btn--sm add-to-cart-btn"
-                                  style="width:100%;font-size:0.7rem"
-                                  data-slug={p.slug}
-                                  data-name={p.name}
-                                  data-price={String(p.price)}
-                                  data-image={pImgs[0] ?? ''}
-                                  data-stock={String(p.stock)}
-                                  data-label-added={t.store.addedToCart}>
-                            <span class="btn-label">{t.store.addToCart}</span>
-                          </button>
-                        </div>
-                      )
-                    }
-                  </div>
                 </div>
               );
             })}
           </div>
         </section>
+
+      <!-- Product modal (for related cards) -->
+      <div id="product-modal" hidden role="dialog" aria-modal="true" aria-labelledby="pm-name"
+           style="position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:0.75rem">
+        <div id="pm-backdrop"
+             style="position:absolute;inset:0;background:rgba(0,0,0,0.58);cursor:pointer"></div>
+        <div id="pm-panel"
+             style="position:relative;z-index:1;background:white;border-radius:16px;width:min(100%,680px);max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
+          <button id="pm-close" aria-label={lang === 'he' ? 'סגור' : 'Close'}
+                  style="position:absolute;top:0.65rem;inset-inline-end:0.65rem;z-index:10;width:2rem;height:2rem;border-radius:50%;background:rgba(255,255,255,0.95);color:var(--color-muted);border:1px solid var(--color-border);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <div id="pm-body"></div>
+        </div>
+      </div>
       )}
     </main>
 
@@ -350,6 +478,27 @@ const breadcrumbLd = {
   const storeName = page?.dataset.storeName ?? '';
   const images: string[] = JSON.parse(page?.dataset.images ?? '[]');
   const pageLang = page?.dataset.lang ?? 'he';
+  const pageVariants: Array<{ name: string; options: string[] }> = JSON.parse(page?.dataset.variants ?? '[]');
+
+  // ── Variant selector ───────────────────────────────────────────
+  const selectedVariants: Record<string, string> = {};
+  pageVariants.forEach((v) => { selectedVariants[v.name] = v.options[0] ?? ''; });
+
+  document.querySelectorAll<HTMLButtonElement>('.variant-opt').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const vName = btn.dataset.variantName ?? '';
+      const vValue = btn.dataset.variantValue ?? '';
+      selectedVariants[vName] = vValue;
+      document.querySelectorAll<HTMLButtonElement>(`.variant-opt[data-variant-name="${CSS.escape(vName)}"]`).forEach((b) => {
+        const active = b === btn;
+        const hex = b.dataset.colorHex ?? null;
+        b.setAttribute('aria-pressed', String(active));
+        b.style.borderColor = active ? (hex ?? 'var(--color-primary)') : 'var(--color-border)';
+        b.style.background = active ? (hex ? hex + '18' : 'var(--color-primary)') : 'none';
+        b.style.color = active ? (hex ? 'var(--color-text)' : '#fff') : 'var(--color-text)';
+      });
+    });
+  });
 
   // ── Thumbnail switcher ─────────────────────────────────────────────
   const mainImg = document.getElementById('main-img') as HTMLImageElement | null;
@@ -397,7 +546,6 @@ const breadcrumbLd = {
   const lbPrev = document.getElementById('lightbox-prev') as HTMLButtonElement | null;
   const lbNext = document.getElementById('lightbox-next') as HTMLButtonElement | null;
   const lbClose = document.getElementById('lightbox-close') as HTMLButtonElement | null;
-  const lbBackdrop = document.getElementById('lightbox-backdrop');
   const lbCounter = document.getElementById('lightbox-counter');
   let lbIndex = 0;
 
@@ -489,7 +637,8 @@ const breadcrumbLd = {
     addBtn.addEventListener('click', () => {
       if (addBtn.disabled) return;
       const { slug = '', name = '', price = '0', image = '' } = addBtn.dataset;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image }, qty);
+      const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image }, qty, variantsCopy);
       updateQty(1);
 
       addBtn.style.minWidth = `${addBtn.offsetWidth}px`;
@@ -568,50 +717,312 @@ const breadcrumbLd = {
     });
   }
 
-  // ── Related product cards: qty + add-to-cart ───────────────────────
-  const checkSvgSm = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
+  // ── Related cards: product modal ──────────────────────────────────
+  const productModal = document.getElementById('product-modal') as HTMLDivElement | null;
+  const pmBackdrop   = document.getElementById('pm-backdrop')   as HTMLDivElement | null;
+  const pmClose      = document.getElementById('pm-close')      as HTMLButtonElement | null;
+  const pmBody       = document.getElementById('pm-body')       as HTMLDivElement | null;
+  const pmPanel      = document.getElementById('pm-panel')      as HTMLDivElement | null;
 
-  document.querySelectorAll<HTMLElement>('.related-card').forEach((card) => {
-    const btn = card.querySelector<HTMLButtonElement>('.add-to-cart-btn');
-    if (!btn) return;
-    const dec = card.querySelector<HTMLButtonElement>('.qty-dec');
-    const inc = card.querySelector<HTMLButtonElement>('.qty-inc');
-    const val = card.querySelector<HTMLElement>('.qty-val');
-    const max = Math.max(1, parseInt(btn.dataset.stock ?? '99', 10) || 99);
-    let q = 1;
+  let pmPrevFocus: HTMLElement | null = null;
+  let pmSavedTitle = '';
 
-    function setQ(n: number) {
-      q = Math.max(1, Math.min(n, max));
-      if (val) val.textContent = String(q);
-      if (dec) dec.disabled = q <= 1;
-      if (inc) inc.disabled = q >= max;
+  function escHtml(s: string): string {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function getPMI18n(): Record<string, string> {
+    try { return JSON.parse(document.getElementById('pm-i18n')?.textContent ?? '{}') as Record<string, string>; }
+    catch { return {}; }
+  }
+
+  const PM_COLOR_MAP: Record<string, string> = {
+    'אדום':'#e53e3e','כחול':'#3b82f6','ירוק':'#22c55e','שחור':'#1f2937','לבן':'#f1f5f9',
+    'צהוב':'#eab308','כתום':'#f97316','סגול':'#8b5cf6','ורוד':'#ec4899','חום':'#92400e',
+    'אפור':'#6b7280',"בז'":'#d4b89a','בז':'#d4b89a','זהב':'#d4a017','כסף':'#9ca3af',
+    'טורקיז':'#06b6d4','נייבי':'#1e40af','מנטה':'#6ee7b7','לבנדר':'#c4b5fd','קורל':'#fb7185',
+    'חרדל':'#ca8a04','כחול כהה':'#1e40af','כחול בהיר':'#bfdbfe','ירוק כהה':'#166534',
+    'ירוק בהיר':'#bbf7d0','אדום כהה':'#991b1b','ורוד בהיר':'#fce7f3',
+    'red':'#e53e3e','blue':'#3b82f6','green':'#22c55e','black':'#1f2937','white':'#f1f5f9',
+    'yellow':'#eab308','orange':'#f97316','purple':'#8b5cf6','pink':'#ec4899','brown':'#92400e',
+    'gray':'#6b7280','grey':'#6b7280','beige':'#d4b89a','gold':'#d4a017','silver':'#9ca3af',
+    'turquoise':'#06b6d4','teal':'#0d9488','navy':'#1e40af','mint':'#6ee7b7','lavender':'#c4b5fd',
+    'coral':'#fb7185','mustard':'#ca8a04','cream':'#fef9c3','olive':'#65a30d','maroon':'#9f1239',
+    'indigo':'#4f46e5','cyan':'#06b6d4','magenta':'#d946ef',
+  };
+
+  function pmResolveColor(opt: string): { display: string; hex: string | null } {
+    const m = opt.match(/#([0-9a-fA-F]{3,6})\b/);
+    if (m) return { display: opt.replace(/#([0-9a-fA-F]{3,6})\b/, '').trim() || opt, hex: '#' + m[1] };
+    return { display: opt, hex: PM_COLOR_MAP[opt.trim().toLowerCase()] ?? null };
+  }
+
+  function pmIsColorVariant(name: string): boolean {
+    const l = name.trim().toLowerCase();
+    return l === 'צבע' || l === 'color' || l === 'colour';
+  }
+
+  function fmtPrice(price: number): string {
+    return new Intl.NumberFormat('he-IL', { style:'currency', currency:'ILS', minimumFractionDigits:0 }).format(price);
+  }
+
+  function getPMFocusable(): HTMLElement[] {
+    return Array.from(
+      pmPanel?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input,[tabindex="0"]') ?? []
+    ).filter(el => el.offsetParent !== null);
+  }
+
+  function openProductModal(card: HTMLElement) {
+    const cardImages: string[] = card.dataset.images ? (JSON.parse(card.dataset.images) as string[]) : [];
+    const name        = card.dataset.productName ?? '';
+    const price       = Number(card.dataset.price ?? 0);
+    const description = card.dataset.description ?? '';
+    const stock       = Number(card.dataset.stock ?? 0);
+    const slug        = card.dataset.slug ?? '';
+    const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
+      ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
+      : [];
+    const pmSelectedVariants: Record<string, string> = {};
+    pmVariants.forEach((v) => { pmSelectedVariants[v.name] = v.options[0] ?? ''; });
+
+    const i18n       = getPMI18n();
+    const mainImgUrl = cardImages[0] ?? '';
+    const wishlisted = isWishlisted(slug);
+    const heartPath  = `<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>`;
+
+    pmPrevFocus  = document.activeElement as HTMLElement;
+    pmSavedTitle = document.title;
+    history.pushState({ productModal: true, slug }, '', `/store/${storeSlug}/${slug}`);
+    document.title = `${name} — ${storeName}`;
+
+    const thumbsHtml = cardImages.length > 1
+      ? `<div style="display:flex;gap:0.375rem;padding:0.5rem 1.25rem;overflow-x:auto;scrollbar-width:none;background:var(--color-bg)">
+          ${cardImages.map((img, i) => `
+            <button type="button" class="pm-thumb" data-idx="${i}"
+                    style="flex:0 0 52px;width:52px;height:52px;padding:0;border:2px solid ${i === 0 ? 'var(--color-accent)' : 'var(--color-border)'};border-radius:6px;overflow:hidden;cursor:pointer;background:none;transition:border-color 0.15s">
+              <img src="${escHtml(img)}" alt="" width="52" height="52" style="width:100%;height:100%;object-fit:cover" loading="lazy" decoding="async" />
+            </button>`).join('')}
+        </div>`
+      : '';
+
+    const noImgSvg = `<svg style="color:var(--color-border)" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
+
+    const mainImgHtml = mainImgUrl
+      ? `<div id="pm-img-wrap" style="position:relative;padding-top:62%;background:var(--color-bg)">
+           <img id="pm-main-img" src="${escHtml(mainImgUrl)}" alt="${escHtml(name)}" width="680" height="421"
+                style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" loading="eager" decoding="async" />
+         </div>`
+      : `<div style="padding-top:62%;background:var(--color-bg);position:relative">
+           <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${noImgSvg}</div>
+         </div>`;
+
+    const cartSection = stock > 0
+      ? `<div>
+          <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.6rem">
+            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
+              <button type="button" class="pm-qty-dec" disabled aria-label="${pageLang === 'he' ? 'הפחת' : 'Decrease'}"
+                      style="width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <span class="pm-qty-val" aria-live="polite"
+                    style="min-width:2.25rem;text-align:center;font-weight:600;font-size:0.875rem;color:var(--color-text)">1</span>
+              <button type="button" class="pm-qty-inc" aria-label="${pageLang === 'he' ? 'הוסף' : 'Increase'}"
+                      style="width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+            </div>
+            <button type="button" class="btn pm-add-to-cart"
+                    data-slug="${escHtml(slug)}" data-name="${escHtml(name)}" data-price="${price}" data-image="${escHtml(mainImgUrl)}" data-stock="${stock}"
+                    style="flex:1;height:2.25rem;display:flex;align-items:center;justify-content:center;gap:4px">
+              <span class="pm-btn-label">${i18n.addToCart ?? (pageLang === 'he' ? 'הוסף לעגלה' : 'Add to cart')}</span>
+            </button>
+          </div>
+          <button type="button" class="pm-wishlist-btn"
+                  style="display:flex;align-items:center;justify-content:center;gap:0.4rem;width:100%;background:none;border:1px solid var(--color-border);border-radius:var(--radius);padding:0.4rem 0.85rem;cursor:pointer;font-size:0.8rem;color:${wishlisted ? '#e53e3e' : 'var(--color-muted)'};transition:all 0.15s">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="${wishlisted ? '#e53e3e' : 'none'}" stroke="${wishlisted ? '#e53e3e' : 'currentColor'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${heartPath}</svg>
+            <span class="pm-wish-label">${wishlisted ? (i18n.removeFromWishlist ?? '') : (i18n.addToWishlist ?? '')}</span>
+          </button>
+        </div>`
+      : `<span class="badge badge--muted">${i18n.outOfStock ?? (pageLang === 'he' ? 'אזל מהמלאי' : 'Out of stock')}</span>`;
+
+    const variantsHtml = pmVariants.length
+      ? `<div style="display:flex;flex-direction:column;gap:0.75rem">
+          ${pmVariants.map(v => {
+            const isCv = pmIsColorVariant(v.name);
+            return `<div>
+              <p style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
+              <div style="display:flex;flex-wrap:wrap;gap:0.4rem" role="group" aria-label="${escHtml(v.name)}">
+                ${v.options.map((opt, i) => {
+                  const { display, hex } = pmResolveColor(opt);
+                  const isFirst = i === 0;
+                  const aBorder = hex ?? 'var(--color-primary)';
+                  const aBg = hex ? hex + '18' : 'var(--color-primary)';
+                  const aColor = hex ? 'var(--color-text)' : '#fff';
+                  const swatch = isCv && hex
+                    ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:50%;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
+                    : '';
+                  return `<button type="button" class="pm-variant-opt"
+                    data-pv-name="${escHtml(v.name)}" data-pv-value="${escHtml(opt)}" data-pv-hex="${escHtml(hex ?? '')}"
+                    aria-pressed="${isFirst}"
+                    style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isFirst ? aBorder : 'var(--color-border)'};border-radius:var(--radius);padding:0.3rem 0.7rem;font-size:0.82rem;cursor:pointer;background:${isFirst ? aBg : 'none'};color:${isFirst ? aColor : 'var(--color-text)'};transition:all 0.15s;white-space:nowrap">
+                    ${swatch}${escHtml(display)}
+                  </button>`;
+                }).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`
+      : '';
+
+    if (pmBody) {
+      pmBody.innerHTML = `
+        ${mainImgHtml}
+        ${thumbsHtml}
+        <div style="padding:1.25rem;display:flex;flex-direction:column;gap:0.875rem">
+          <div style="padding-inline-end:1.75rem">
+            <h2 id="pm-name" dir="auto" style="font-size:1.2rem;font-weight:700;color:var(--color-text);margin:0 0 0.4rem;line-height:1.35">${escHtml(name)}</h2>
+            <p style="font-size:1.45rem;font-weight:700;color:var(--color-accent);margin:0">${fmtPrice(price)}</p>
+          </div>
+          ${description ? `<p dir="auto" style="font-size:0.875rem;color:var(--color-muted);line-height:1.65;margin:0">${escHtml(description)}</p>` : ''}
+          ${variantsHtml}
+          <hr style="border:none;border-top:1px solid var(--color-border);margin:0" />
+          ${cartSection}
+          <a href="/store/${escHtml(storeSlug)}/${escHtml(slug)}"
+             style="font-size:0.75rem;color:var(--color-muted);text-decoration:none;text-align:center;display:block;padding-top:0.125rem">
+            ${i18n.fullPage ?? (pageLang === 'he' ? 'לדף המוצר המלא' : 'View full product page')}
+          </a>
+        </div>`;
     }
 
-    dec?.addEventListener('click', () => setQ(q - 1));
-    inc?.addEventListener('click', () => setQ(q + 1));
+    productModal?.removeAttribute('hidden');
+    document.body.style.overflow = 'hidden';
+    pmPanel?.animate(
+      [{ opacity: 0, transform: 'scale(0.95) translateY(12px)' }, { opacity: 1, transform: 'scale(1) translateY(0)' }],
+      { duration: 240, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' }
+    );
+    pmClose?.focus();
 
-    const lbl = btn.querySelector<HTMLElement>('.btn-label');
-    if (lbl) lbl.style.cssText = 'display:inline-flex;align-items:center;gap:3px';
-    const origLbl = lbl?.innerHTML ?? '';
+    // Variant clicks
+    pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const vName = btn.dataset.pvName ?? '';
+        pmSelectedVariants[vName] = btn.dataset.pvValue ?? '';
+        pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
+          const active = b === btn;
+          const hex = b.dataset.pvHex || null;
+          b.setAttribute('aria-pressed', String(active));
+          b.style.borderColor = active ? (hex ?? 'var(--color-primary)') : 'var(--color-border)';
+          b.style.background  = active ? (hex ? hex + '18' : 'var(--color-primary)') : 'none';
+          b.style.color       = active ? (hex ? 'var(--color-text)' : '#fff') : 'var(--color-text)';
+        });
+      });
+    });
 
-    btn.addEventListener('pointerdown', (e) => spawnRipple(btn, e.clientX, e.clientY));
-    btn.addEventListener('click', () => {
-      if (btn.disabled) return;
-      const { slug = '', name = '', price = '0', image = '' } = btn.dataset;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image }, q);
-      setQ(1);
-      btn.style.minWidth = `${btn.offsetWidth}px`;
-      if (lbl) lbl.innerHTML = `${checkSvgSm}${btn.dataset.labelAdded ?? ''}`;
-      btn.disabled = true;
-      btn.animate(
+    // Thumbnails
+    pmBody?.querySelectorAll<HTMLButtonElement>('.pm-thumb').forEach((thumb) => {
+      thumb.addEventListener('click', () => {
+        const idx = Number(thumb.dataset.idx ?? 0);
+        const mainEl = document.getElementById('pm-main-img') as HTMLImageElement | null;
+        if (mainEl) mainEl.src = cardImages[idx] ?? '';
+        pmBody?.querySelectorAll<HTMLButtonElement>('.pm-thumb').forEach((t2) => {
+          t2.style.borderColor = t2 === thumb ? 'var(--color-accent)' : 'var(--color-border)';
+        });
+      });
+    });
+
+    // Qty stepper
+    const pmQtyDec = pmBody?.querySelector<HTMLButtonElement>('.pm-qty-dec');
+    const pmQtyInc = pmBody?.querySelector<HTMLButtonElement>('.pm-qty-inc');
+    const pmQtyVal = pmBody?.querySelector<HTMLElement>('.pm-qty-val');
+    let pmQty = 1;
+    function updatePmQty(n: number) {
+      pmQty = Math.max(1, Math.min(n, stock));
+      if (pmQtyVal) pmQtyVal.textContent = String(pmQty);
+      if (pmQtyDec) pmQtyDec.disabled = pmQty <= 1;
+      if (pmQtyInc) pmQtyInc.disabled = pmQty >= stock;
+    }
+    pmQtyDec?.addEventListener('click', () => updatePmQty(pmQty - 1));
+    pmQtyInc?.addEventListener('click', () => updatePmQty(pmQty + 1));
+
+    // Add to cart
+    const pmAddBtn = pmBody?.querySelector<HTMLButtonElement>('.pm-add-to-cart');
+    const pmBtnLbl = pmBody?.querySelector<HTMLElement>('.pm-btn-label');
+    const origLabel = pmBtnLbl?.textContent ?? '';
+    const checkSvgSm = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
+    pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
+    pmAddBtn?.addEventListener('click', () => {
+      if (pmAddBtn.disabled) return;
+      const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
+      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl }, pmQty, pmVariantsCopy);
+      updatePmQty(1);
+      pmAddBtn.disabled = true;
+      if (pmBtnLbl) pmBtnLbl.innerHTML = `${checkSvgSm}${i18n.addedToCart ?? ''}`;
+      pmAddBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
         { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
       );
-      setTimeout(() => {
-        if (lbl) lbl.innerHTML = origLbl;
-        btn.style.minWidth = '';
-        btn.disabled = false;
-      }, 1400);
+      setTimeout(() => { if (pmBtnLbl) pmBtnLbl.textContent = origLabel; pmAddBtn.disabled = false; }, 1400);
     });
+
+    // Wishlist
+    const pmWishBtn = pmBody?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
+    const pmWishLbl = pmBody?.querySelector<HTMLElement>('.pm-wish-label');
+    pmWishBtn?.addEventListener('click', () => {
+      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl, storeSlug, storeName });
+      const svg = pmWishBtn.querySelector<SVGElement>('svg');
+      if (svg) { svg.style.fill = nowActive ? '#e53e3e' : 'none'; svg.style.stroke = nowActive ? '#e53e3e' : 'currentColor'; }
+      pmWishBtn.style.color = nowActive ? '#e53e3e' : 'var(--color-muted)';
+      if (pmWishLbl) pmWishLbl.textContent = nowActive ? (i18n.removeFromWishlist ?? '') : (i18n.addToWishlist ?? '');
+      fetch('/api/wishlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: nowActive ? 'add' : 'remove', productSlug: slug }),
+      });
+    });
+  }
+
+  function closeProductModal(updateHistory = true) {
+    productModal?.setAttribute('hidden', '');
+    document.body.style.overflow = '';
+    if (pmBody) pmBody.innerHTML = '';
+    if (pmSavedTitle) { document.title = pmSavedTitle; pmSavedTitle = ''; }
+    pmPrevFocus?.focus();
+    pmPrevFocus = null;
+    if (updateHistory) history.back();
+  }
+
+  pmClose?.addEventListener('click', () => closeProductModal());
+  pmBackdrop?.addEventListener('click', () => closeProductModal());
+
+  window.addEventListener('popstate', () => {
+    if (productModal && !productModal.hidden) closeProductModal(false);
+  });
+
+  // Related card clicks → open modal
+  document.querySelectorAll<HTMLAnchorElement>('.related-card-trigger').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const card = link.closest<HTMLElement>('.related-card');
+      if (card) openProductModal(card);
+    });
+  });
+
+  // Keyboard: Escape closes modal, Tab traps focus
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && productModal && !productModal.hidden) {
+      closeProductModal();
+      return;
+    }
+    if (e.key === 'Tab' && productModal && !productModal.hidden) {
+      const focusable = getPMFocusable();
+      if (!focusable.length) return;
+      const first = focusable[0]!;
+      const last  = focusable[focusable.length - 1]!;
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+      }
+    }
   });
 </script>

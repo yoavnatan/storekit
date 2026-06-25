@@ -16,6 +16,7 @@ if (!shopStore) return Astro.redirect('/404');
 const isLoggedIn = !!getSellerSession(Astro.cookies);
 
 const products = getProductsByStoreId(shopStore.id);
+const allCategories = [...new Set(products.map(p => p.category).filter(Boolean))] as string[];
 const storeUrl = new URL(`/store/${shopStore.slug}`, Astro.url).href;
 const today = new Date().toDateString();
 
@@ -79,6 +80,22 @@ const pmI18n = {
         </div>
       ) : (
         <Fragment>
+          {allCategories.length > 0 && (
+            <div id="category-filters" role="group" aria-label={t.store.filterByCategory}
+                 style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1.25rem">
+              <button type="button" class="category-chip" data-category="" aria-pressed="true"
+                      style="border:1px solid var(--color-primary);border-radius:9999px;padding:0.22rem 0.8rem;font-size:0.78rem;cursor:pointer;background:var(--color-primary);color:#fff;font-weight:500;transition:all 0.15s;line-height:1.5">
+                {t.store.filterAll}
+              </button>
+              {allCategories.map((cat) => (
+                <button type="button" class="category-chip" data-category={cat} aria-pressed="false"
+                        style="border:1px solid var(--color-border);border-radius:9999px;padding:0.22rem 0.8rem;font-size:0.78rem;cursor:pointer;background:none;color:var(--color-muted);font-weight:400;transition:all 0.15s;line-height:1.5">
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div class="flex flex-col sm:flex-row gap-2" style="margin-bottom:2rem">
             <div class="relative flex-1">
               <svg class={`absolute ${lang === 'he' ? 'right-[0.65rem]' : 'left-[0.65rem]'} top-1/2 -translate-y-1/2 pointer-events-none`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -123,7 +140,10 @@ const pmI18n = {
                     data-created-at={p.createdAt}
                     data-slug={p.slug}
                     data-description={p.description || ''}
-                    data-stock={String(p.stock)}>
+                    data-stock={String(p.stock)}
+                    data-category={p.category ?? ''}
+                    data-tags={p.tags?.length ? p.tags.join(',') : ''}
+                    data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}>
                   <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}`}
                        role={hasImages ? 'button' : undefined}
                        aria-label={hasImages ? p.name : undefined}
@@ -391,10 +411,36 @@ const pmI18n = {
   const noResults   = document.getElementById('no-results');
 
   let currentSort = 'default';
+  let activeTag = '';
 
   const originalOrder = productGrid
     ? Array.from(productGrid.querySelectorAll<HTMLElement>('li[data-product-name]'))
     : [];
+
+  // ── Category filter chips ─────────────────────────────────────
+  const categoryChips = Array.from(document.querySelectorAll<HTMLButtonElement>('.category-chip'));
+
+  function setActiveChip(chip: HTMLButtonElement) {
+    activeTag = chip.dataset.category ?? '';
+    categoryChips.forEach((c) => {
+      const isActive = c === chip;
+      c.setAttribute('aria-pressed', String(isActive));
+      if (isActive) {
+        c.style.background = 'var(--color-primary)';
+        c.style.color = '#fff';
+        c.style.borderColor = 'var(--color-primary)';
+        c.style.fontWeight = '500';
+      } else {
+        c.style.background = 'none';
+        c.style.color = 'var(--color-muted)';
+        c.style.borderColor = 'var(--color-border)';
+        c.style.fontWeight = '400';
+      }
+    });
+    filterAndSort();
+  }
+
+  categoryChips.forEach((chip) => chip.addEventListener('click', () => setActiveChip(chip)));
 
   function filterAndSort() {
     if (!productGrid) return;
@@ -422,12 +468,27 @@ const pmI18n = {
     let visible = 0;
     cards.forEach(card => {
       const name = (card.dataset.productName ?? '').toLowerCase();
-      const show = !query || name.includes(query);
+      const category = card.dataset.category ?? '';
+      const tags = (card.dataset.tags ?? '').toLowerCase();
+      const matchesQuery = !query || name.includes(query) || tags.split(',').some(t => t.trim().includes(query));
+      const matchesTag = !activeTag || category === activeTag;
+      const show = matchesQuery && matchesTag;
       card.style.display = show ? '' : 'none';
       if (show) visible++;
     });
 
     if (noResults) noResults.hidden = visible > 0;
+    syncUrl();
+  }
+
+  function syncUrl() {
+    const params = new URLSearchParams();
+    const q = searchInput?.value.trim() ?? '';
+    if (q) params.set('q', q);
+    if (activeTag) params.set('category', activeTag);
+    if (currentSort !== 'default') params.set('sort', currentSort);
+    const qs = params.toString();
+    history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
   }
 
   function openSort() {
@@ -488,6 +549,50 @@ const pmI18n = {
   });
 
   searchInput?.addEventListener('input', filterAndSort);
+
+  // ── Init from URL params (q / sort / category) ────────────────
+  {
+    const urlParams   = new URLSearchParams(window.location.search);
+    const initQ       = urlParams.get('q') ?? '';
+    const initSortVal = urlParams.get('sort') ?? '';
+    const initCat     = urlParams.get('category') ?? '';
+
+    if (initQ && searchInput) searchInput.value = initQ;
+
+    if (initSortVal) {
+      const matchingOpt = sortOptions.find(o => o.dataset.value === initSortVal);
+      if (matchingOpt) {
+        sortOptions.forEach(o => o.setAttribute('aria-selected', 'false'));
+        matchingOpt.setAttribute('aria-selected', 'true');
+        currentSort = initSortVal;
+        if (sortLabel) sortLabel.textContent = matchingOpt.textContent?.trim() ?? '';
+      }
+    }
+
+    if (initCat) {
+      const matchingChip = categoryChips.find(c => c.dataset.category === initCat);
+      if (matchingChip) {
+        activeTag = initCat;
+        categoryChips.forEach(c => {
+          const isActive = c === matchingChip;
+          c.setAttribute('aria-pressed', String(isActive));
+          if (isActive) {
+            c.style.background = 'var(--color-primary)';
+            c.style.color = '#fff';
+            c.style.borderColor = 'var(--color-primary)';
+            c.style.fontWeight = '500';
+          } else {
+            c.style.background = 'none';
+            c.style.color = 'var(--color-muted)';
+            c.style.borderColor = 'var(--color-border)';
+            c.style.fontWeight = '400';
+          }
+        });
+      }
+    }
+
+    if (initQ || initSortVal || initCat) filterAndSort();
+  }
 
   // ── Lightbox (available for revert) ──────────────────────────
   const lightbox   = document.getElementById('lightbox') as HTMLDivElement | null;
@@ -577,6 +682,33 @@ const pmI18n = {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  // ── Color variant resolution ──────────────────────────────────
+  const PM_COLOR_MAP: Record<string, string> = {
+    'אדום':'#e53e3e','כחול':'#3b82f6','ירוק':'#22c55e','שחור':'#1f2937','לבן':'#f1f5f9',
+    'צהוב':'#eab308','כתום':'#f97316','סגול':'#8b5cf6','ורוד':'#ec4899','חום':'#92400e',
+    'אפור':'#6b7280',"בז'":'#d4b89a','בז':'#d4b89a','זהב':'#d4a017','כסף':'#9ca3af',
+    'טורקיז':'#06b6d4','נייבי':'#1e40af','מנטה':'#6ee7b7','לבנדר':'#c4b5fd','קורל':'#fb7185',
+    'חרדל':'#ca8a04','כחול כהה':'#1e40af','כחול בהיר':'#bfdbfe','ירוק כהה':'#166534',
+    'ירוק בהיר':'#bbf7d0','אדום כהה':'#991b1b','ורוד בהיר':'#fce7f3',
+    'red':'#e53e3e','blue':'#3b82f6','green':'#22c55e','black':'#1f2937','white':'#f1f5f9',
+    'yellow':'#eab308','orange':'#f97316','purple':'#8b5cf6','pink':'#ec4899','brown':'#92400e',
+    'gray':'#6b7280','grey':'#6b7280','beige':'#d4b89a','gold':'#d4a017','silver':'#9ca3af',
+    'turquoise':'#06b6d4','teal':'#0d9488','navy':'#1e40af','mint':'#6ee7b7','lavender':'#c4b5fd',
+    'coral':'#fb7185','mustard':'#ca8a04','cream':'#fef9c3','olive':'#65a30d','maroon':'#9f1239',
+    'indigo':'#4f46e5','cyan':'#06b6d4','magenta':'#d946ef',
+  };
+
+  function resolveColor(opt: string): { display: string; hex: string | null } {
+    const m = opt.match(/#([0-9a-fA-F]{3,6})\b/);
+    if (m) return { display: opt.replace(/#([0-9a-fA-F]{3,6})\b/, '').trim() || opt, hex: '#' + m[1] };
+    return { display: opt, hex: PM_COLOR_MAP[opt.trim().toLowerCase()] ?? null };
+  }
+
+  function isColorVariantName(name: string): boolean {
+    const l = name.trim().toLowerCase();
+    return l === 'צבע' || l === 'color' || l === 'colour';
+  }
+
   function fmtPrice(price: number): string {
     return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 0 }).format(price);
   }
@@ -594,6 +726,11 @@ const pmI18n = {
     const description = card.dataset.description ?? '';
     const stock       = Number(card.dataset.stock ?? 0);
     const slug        = card.dataset.slug ?? '';
+    const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
+      ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
+      : [];
+    const pmSelectedVariants: Record<string, string> = {};
+    pmVariants.forEach((v) => { pmSelectedVariants[v.name] = v.options[0] ?? ''; });
     const i18n        = getPMI18n();
     const mainImgUrl  = images[0] ?? '';
     const hasImages   = images.length > 0;
@@ -667,6 +804,33 @@ const pmI18n = {
             <p style="font-size:1.45rem;font-weight:700;color:var(--color-accent);margin:0">${fmtPrice(price)}</p>
           </div>
           ${description ? `<p dir="auto" style="font-size:0.875rem;color:var(--color-muted);line-height:1.65;margin:0">${escHtml(description)}</p>` : ''}
+          ${pmVariants.length ? `<div class="pm-variants" style="display:flex;flex-direction:column;gap:0.75rem">
+            ${pmVariants.map(v => {
+              const isCv = isColorVariantName(v.name);
+              return `<div>
+                <p style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
+                <div style="display:flex;flex-wrap:wrap;gap:0.4rem" role="group" aria-label="${escHtml(v.name)}">
+                  ${v.options.map((opt, i) => {
+                    const { display, hex } = resolveColor(opt);
+                    const isFirst = i === 0;
+                    const activeBorder = hex ?? 'var(--color-primary)';
+                    const activeBg = hex ? hex + '18' : 'var(--color-primary)';
+                    const activeColor = hex ? 'var(--color-text)' : '#fff';
+                    const swatch = isCv && hex
+                      ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:50%;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
+                      : '';
+                    return `<button type="button" class="pm-variant-opt"
+                            data-pv-name="${escHtml(v.name)}" data-pv-value="${escHtml(opt)}"
+                            data-pv-hex="${escHtml(hex ?? '')}"
+                            aria-pressed="${isFirst}"
+                            style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isFirst ? activeBorder : 'var(--color-border)'};border-radius:var(--radius);padding:${isCv && hex ? '0.26rem 0.6rem' : '0.26rem 0.7rem'};font-size:0.8rem;cursor:pointer;background:${isFirst ? activeBg : 'none'};color:${isFirst ? activeColor : 'var(--color-text)'};transition:all 0.15s;white-space:nowrap">
+                      ${swatch}${escHtml(display)}
+                    </button>`;
+                  }).join('')}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>` : ''}
           <hr style="border:none;border-top:1px solid var(--color-border);margin:0" />
           ${cartSection}
           <a href="/store/${escHtml(storeSlug)}/${escHtml(slug)}"
@@ -685,6 +849,23 @@ const pmI18n = {
     );
 
     pmClose?.focus();
+
+    // ── Modal variant selector ─────────────────────────────────────
+    pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const vName = btn.dataset.pvName ?? '';
+        const vValue = btn.dataset.pvValue ?? '';
+        pmSelectedVariants[vName] = vValue;
+        pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
+          const active = b === btn;
+          const hex = b.dataset.pvHex || null;
+          b.setAttribute('aria-pressed', String(active));
+          b.style.borderColor = active ? (hex ?? 'var(--color-primary)') : 'var(--color-border)';
+          b.style.background = active ? (hex ? hex + '18' : 'var(--color-primary)') : 'none';
+          b.style.color = active ? (hex ? 'var(--color-text)' : '#fff') : 'var(--color-text)';
+        });
+      });
+    });
 
     // Track current image index (for lightbox)
     let pmCurrentIdx = 0;
@@ -736,7 +917,8 @@ const pmI18n = {
     pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
     pmAddBtn?.addEventListener('click', () => {
       if (pmAddBtn.disabled) return;
-      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl }, pmQty);
+      const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
+      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl }, pmQty, pmVariantsCopy);
       updatePmQty(1);
       pmAddBtn.disabled = true;
       if (pmBtnLbl) pmBtnLbl.innerHTML = `${checkSvg}${i18n.addedToCart ?? 'נוסף!'}`;
