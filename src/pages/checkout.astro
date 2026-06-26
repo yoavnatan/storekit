@@ -1,87 +1,1234 @@
 ---
-/**
- * Checkout — collects details and starts payment.
- * SSR only (prerender = false) because it will create a payment session.
- * noindex — checkout pages should not appear in search results.
- */
 export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { store } from '../config/store.config.js';
+import { getLang, getT } from '../i18n/index.js';
+import { getAllStores } from '../lib/stores.js';
+import { getSellerSession } from '../lib/seller-auth.js';
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const c = t.checkout;
+
+const isLoggedIn = !!getSellerSession(Astro.cookies);
+
+const storeShipping: Record<string, { flatRate: number; freeAbove: number | null }> = {};
+for (const s of getAllStores()) {
+  storeShipping[s.slug] = {
+    flatRate: s.shipping?.flatRate ?? 0,
+    freeAbove: s.shipping?.freeAbove ?? null,
+  };
+}
 ---
 
-<BaseLayout title="Checkout" noindex={true}>
-  <section class="section container checkout">
-    <h1>Checkout</h1>
+<BaseLayout title={c.title} description={c.description} noindex={true} isLoggedIn={isLoggedIn} storeMode={true}>
+  <script type="application/json" id="checkout-shipping-cfg" is:inline set:html={JSON.stringify(storeShipping)}></script>
+  <script type="application/json" id="checkout-i18n" is:inline set:html={JSON.stringify({
+    freeShipping: c.freeShipping,
+    shipping: c.shipping,
+    storeTotal: c.storeTotal,
+    total: c.total,
+    item: c.item,
+    items: c.items,
+    changeShipping: c.changeShipping,
+    removeItem: c.removeItem,
+    removeTitle: c.removeTitle,
+    removeMsg: c.removeMsg,
+    removeOk: c.removeOk,
+    viewProduct: c.viewProduct,
+    requiredField: c.requiredField,
+    invalidEmail: c.invalidEmail,
+    orderError: c.orderError,
+  })}></script>
 
-    <div class="checkout__grid">
-      <form id="checkout-form" class="checkout__form">
-        <label class="field"
-          ><span>Full name</span>
-          <input class="input" name="name" required /></label
-        >
-        <label class="field"
-          ><span>Email</span>
-          <input class="input" type="email" name="email" required /></label
-        >
-        <label class="field"
-          ><span>Shipping address</span>
-          <input class="input" name="address" required /></label
-        >
+  <main id="main-content" class="co-page">
 
-        <button type="submit" class="btn" id="pay-btn"> Secure checkout </button>
-        <p class="muted" style="font-size:.85rem;margin-top:.5rem">
-          Payment provider: {store.checkout.provider}
-        </p>
-      </form>
-
-      <aside class="checkout__summary card">
-        <h2>Order summary</h2>
-        <div id="summary-lines"></div>
-        <hr />
-        <div class="flex between"><span>Shipping</span><span id="ship">—</span></div>
-        <div class="flex between total"><strong>Total</strong><strong id="total">—</strong></div>
-      </aside>
+    <!-- Empty state -->
+    <div id="checkout-empty" class="hidden co-empty">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" class="co-empty__icon"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+      <p class="co-empty__title">{c.emptyCart}</p>
+      <p class="co-empty__desc">{c.emptyCartDesc}</p>
+      <a href="/" class="btn btn--accent">{c.backToShopping}</a>
     </div>
-  </section>
-</BaseLayout>
 
-<script>
-  import { getItems, getSubtotal } from '../lib/cart.js';
-  import { store, formatPrice } from '../config/store.config.js';
+    <div id="checkout-main">
 
-  function render() {
-    const items = getItems();
-    const subtotal = getSubtotal();
-    const ship = subtotal >= store.checkout.freeShippingOver ? 0 : store.checkout.shippingFlat;
-    const linesEl = document.getElementById('summary-lines');
-    const shipEl  = document.getElementById('ship');
-    const totalEl = document.getElementById('total');
-    if (linesEl) linesEl.innerHTML = items.length
-      ? items.map((i) =>
-          `<div class="flex between"><span>${i.name} × ${i.qty}</span><span>${formatPrice(i.price * i.qty)}</span></div>`
-        ).join('')
-      : '<p class="muted">Your cart is empty</p>';
-    if (shipEl)  shipEl.textContent  = ship === 0 ? 'Free' : formatPrice(ship);
-    if (totalEl) totalEl.textContent = formatPrice(subtotal + ship);
-  }
+      <!-- ── Cart section ── -->
+      <section aria-labelledby="cart-heading">
+        <h1 id="cart-heading" class="co-heading">{c.yourCart}</h1>
 
-  document.getElementById('checkout-form')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const payload = {
-      customer: Object.fromEntries(new FormData(e.target as HTMLFormElement)),
-      items: getItems(),
-    };
-    const res = await fetch('/api/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+        <!-- Skeleton -->
+        <div id="cart-content" aria-live="polite">
+          <div class="co-skel-card">
+            <div class="skel-bar" style="width:80px;height:80px;border-radius:10px;flex-shrink:0"></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:.5rem;padding-top:.25rem">
+              <div class="skel-bar" style="height:15px;width:55%"></div>
+              <div class="skel-bar" style="height:13px;width:35%"></div>
+              <div class="skel-bar" style="height:30px;width:96px;border-radius:6px;margin-top:.25rem"></div>
+            </div>
+            <div class="skel-bar" style="width:56px;height:22px;border-radius:4px;flex-shrink:0;align-self:center"></div>
+          </div>
+          <div class="co-skel-card" style="opacity:.55">
+            <div class="skel-bar" style="width:80px;height:80px;border-radius:10px;flex-shrink:0"></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:.5rem;padding-top:.25rem">
+              <div class="skel-bar" style="height:15px;width:70%"></div>
+              <div class="skel-bar" style="height:13px;width:40%"></div>
+            </div>
+            <div class="skel-bar" style="width:56px;height:22px;border-radius:4px;flex-shrink:0;align-self:center"></div>
+          </div>
+        </div>
+
+        <!-- Grand total + CTA (revealed after render) -->
+        <div id="co-footer" class="hidden">
+          <div class="co-total-row">
+            <span class="co-total-label">{c.total}</span>
+            <strong class="co-total-amount" id="grand-total-amount"></strong>
+          </div>
+          <button id="to-payment-btn" class="btn btn--accent co-cta-btn" type="button"
+            aria-expanded="false" aria-controls="payment-section">
+            <span>{c.toPayment}</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+              aria-hidden="true" class="co-cta-arrow"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- ── Payment accordion ── -->
+      <section id="payment-section" class="co-payment" aria-hidden="true">
+        <h2 class="co-heading" style="font-size:1.25rem;margin-top:.25rem">{c.paymentDetails}</h2>
+
+        <form id="checkout-form" novalidate aria-label={c.buyerDetails}>
+          <div class="co-form-card" style="margin-bottom:.875rem">
+            <h3 class="co-form-card__title">{c.buyerDetails}</h3>
+            <div class="co-fields">
+              <div>
+                <label for="buyerName" class="co-label">{c.fullName} *</label>
+                <input type="text" id="buyerName" name="buyerName" required autocomplete="name" class="co-input" />
+                <p class="co-err hidden" data-err="buyerName" role="alert">{c.requiredField}</p>
+              </div>
+              <div>
+                <label for="buyerEmail" class="co-label">{c.email} *</label>
+                <input type="email" id="buyerEmail" name="buyerEmail" required autocomplete="email" class="co-input" />
+                <p class="co-err hidden" data-err="buyerEmail" role="alert">{c.invalidEmail}</p>
+              </div>
+              <div>
+                <label for="buyerPhone" class="co-label">{c.phone} *</label>
+                <input type="tel" id="buyerPhone" name="buyerPhone" required autocomplete="tel" inputmode="tel" class="co-input" />
+                <p class="co-err hidden" data-err="buyerPhone" role="alert">{c.requiredField}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="co-form-card" style="margin-bottom:1.25rem">
+            <h3 class="co-form-card__title">{c.shippingAddress}</h3>
+            <div class="co-fields">
+              <div>
+                <label for="city" class="co-label">{c.city} *</label>
+                <input type="text" id="city" name="city" required autocomplete="address-level2" class="co-input" />
+                <p class="co-err hidden" data-err="city" role="alert">{c.requiredField}</p>
+              </div>
+              <div>
+                <label for="street" class="co-label">{c.street} *</label>
+                <input type="text" id="street" name="street" required autocomplete="street-address" class="co-input" />
+                <p class="co-err hidden" data-err="street" role="alert">{c.requiredField}</p>
+              </div>
+              <div>
+                <label for="zip" class="co-label">{c.zip}</label>
+                <input type="text" id="zip" name="zip" autocomplete="postal-code" inputmode="numeric" class="co-input" />
+              </div>
+            </div>
+          </div>
+
+          <p id="form-global-error" class="hidden co-global-err" role="alert"></p>
+
+          <button type="submit" id="submit-btn" class="btn btn--accent co-cta-btn">
+            <span id="submit-label">{c.placeOrder}</span>
+            <span id="submit-loading" class="hidden" aria-live="polite">{c.processing}</span>
+          </button>
+        </form>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ── Product quick-view dialog ── -->
+  <!-- Lightbox (native dialog so it enters the top-layer above pqv-dialog) -->
+  <dialog id="co-lightbox" class="co-lb" aria-label="תמונה מוגדלת">
+    <div class="co-lb__panel">
+      <button class="co-lb__close" id="co-lb-close" aria-label="סגור">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <button class="co-lb__arrow co-lb__arrow--prev" id="co-lb-prev" aria-label="הקודמת">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <img class="co-lb__img" id="co-lb-img" src="" alt="" width="1200" height="1200" />
+      <button class="co-lb__arrow co-lb__arrow--next" id="co-lb-next" aria-label="הבאה">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+      <div class="co-lb__counter" id="co-lb-counter" hidden></div>
+    </div>
+  </dialog>
+
+  <dialog id="pqv-dialog" aria-labelledby="pqv-name" aria-modal="true">
+    <div class="pqv-inner">
+      <button class="pqv-close" id="pqv-close" aria-label="סגור" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div id="pqv-body" class="pqv-body">
+        <div class="pqv-loading">
+          <div class="skel-bar" style="height:220px;border-radius:12px;margin-bottom:1rem"></div>
+          <div class="skel-bar" style="height:22px;width:60%;margin-bottom:.5rem"></div>
+          <div class="skel-bar" style="height:18px;width:35%"></div>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <style is:global>
+    .co-page {
+      max-width: 640px;
+      margin-inline: auto;
+      padding: 1.75rem 1rem 4rem;
+    }
+
+    /* heading */
+    .co-heading {
+      font-size: clamp(1.3rem,3vw,1.6rem);
+      font-weight: 700;
+      color: var(--color-text);
+      margin-bottom: 1.25rem;
+    }
+
+    /* empty */
+    .co-empty { text-align:center; padding-block:4rem; }
+    .co-empty__icon { color:var(--color-muted); margin-inline:auto; display:block; margin-bottom:1rem; }
+    .co-empty__title { font-size:1.1rem; font-weight:600; color:var(--color-text); margin-bottom:.5rem; }
+    .co-empty__desc { color:var(--color-muted); margin-bottom:1.5rem; }
+
+    /* ── skeleton ── */
+    .co-skel-card {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      background: #fff;
+      border-radius: 14px;
+      padding: 1rem;
+      margin-bottom: .75rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+    }
+
+    /* ── store label ── */
+    .co-store-label {
+      display: inline-block;
+      font-size: .75rem;
+      font-weight: 700;
+      color: var(--color-muted);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      margin: 1.25rem 0 .625rem;
+      text-decoration: none;
+      transition: color 140ms;
+    }
+    .co-store-label:first-child { margin-top: 0; }
+    .co-store-label:hover { text-decoration: underline; }
+
+    /* ── item card ── */
+    .co-card {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: #fff;
+      border-radius: 14px;
+      padding: 1rem;
+      margin-bottom: .75rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+      transition: box-shadow 150ms;
+    }
+    .co-card:hover {
+      box-shadow: 0 3px 10px rgba(0,0,0,.1), 0 0 0 1px var(--color-border);
+    }
+
+    /* image */
+    .co-card__img-link {
+      flex-shrink: 0;
+      display: block;
+      width: 80px;
+      height: 80px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--color-border);
+      transition: opacity 140ms;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+    }
+    .co-card__img-link:hover { opacity: .85; }
+    .co-card__img {
+      width: 80px; height: 80px;
+      object-fit: cover; display: block;
+    }
+    .co-card__img-placeholder {
+      width: 80px; height: 80px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--color-muted);
+    }
+
+    /* body */
+    .co-card__body {
+      flex: 1;
+      min-width: 0;
+    }
+    .co-card__name {
+      font-size: .9375rem;
+      font-weight: 600;
+      color: var(--color-text);
+      text-decoration: none;
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: color 140ms;
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      font-family: inherit;
+      text-align: inherit;
+      width: 100%;
+    }
+    .co-card__name:hover { color: var(--color-muted); }
+    .co-card__variants {
+      font-size: .775rem;
+      color: var(--color-muted);
+      margin-top: .2rem;
+    }
+
+    /* bottom row inside body: qty + delete */
+    .co-card__row {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      margin-top: .625rem;
+    }
+
+    /* qty stepper */
+    .co-qty {
+      display: inline-flex;
+      align-items: center;
+      border: 1.5px solid var(--color-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .co-qty__btn {
+      width: 32px; height: 32px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: var(--color-text);
+      font-size: 1.0625rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 100ms;
+      flex-shrink: 0;
+    }
+    .co-qty__btn:hover { background: #f0f1f3; }
+    .co-qty__btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .co-qty__num {
+      min-width: 30px;
+      text-align: center;
+      font-size: .875rem;
+      font-weight: 700;
+      color: var(--color-text);
+      border-inline: 1.5px solid var(--color-border);
+      line-height: 32px;
+      user-select: none;
+    }
+
+    /* delete button */
+    .co-delete-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: .8rem;
+      color: var(--color-muted);
+      padding: .3rem .4rem;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      gap: .25rem;
+      font-family: inherit;
+      transition: color 130ms, background 130ms;
+    }
+    .co-delete-btn:hover {
+      color: var(--color-danger);
+      background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+    }
+
+    /* price column */
+    .co-card__price-col {
+      flex-shrink: 0;
+      text-align: end;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: .15rem;
+    }
+    .co-card__total {
+      font-size: 1.0625rem;
+      font-weight: 800;
+      color: var(--color-text);
+    }
+    .co-card__unit {
+      font-size: .72rem;
+      color: var(--color-muted);
+    }
+
+    /* ── shipping card ── */
+    .co-shipping-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff;
+      border-radius: 14px;
+      padding: .875rem 1rem;
+      margin-bottom: .75rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+    }
+    .co-shipping-card__left {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+      font-size: .9rem;
+      font-weight: 500;
+      color: var(--color-text);
+    }
+    .co-shipping-card__icon { color: var(--color-accent); }
+    .co-shipping-card__store {
+      font-size: .75rem;
+      color: var(--color-muted);
+      font-weight: 400;
+    }
+    .co-shipping-change {
+      font-size: .75rem;
+      color: var(--color-muted);
+      background: transparent;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: .2rem .55rem;
+      cursor: pointer;
+      font-family: inherit;
+      transition: color 140ms, border-color 140ms;
+    }
+    .co-shipping-change:hover { color: var(--color-text); border-color: var(--color-muted); }
+    .co-shipping-card__amount {
+      font-size: .9375rem;
+      font-weight: 700;
+      color: var(--color-text);
+    }
+    .co-shipping-free { color: #16a34a !important; }
+
+    /* ── total row ── */
+    .co-total-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 0 1.125rem;
+      border-top: 2px solid var(--color-border);
+      margin-top: .25rem;
+    }
+    .co-total-label { font-size: 1rem; font-weight: 500; color: var(--color-text); }
+    .co-total-amount { font-size: 1.35rem; font-weight: 800; color: var(--color-text); }
+
+    /* ── CTA button ── */
+    .co-cta-btn {
+      width: 100%;
+      padding: .9rem 1.5rem;
+      font-size: 1.0625rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+      margin-bottom: .5rem;
+    }
+    .co-cta-arrow {
+      transition: transform 220ms cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .co-cta-btn[aria-expanded="true"] .co-cta-arrow { transform: rotate(90deg); }
+    [dir="rtl"] .co-cta-arrow { transform: scaleX(-1); }
+    [dir="rtl"] .co-cta-btn[aria-expanded="true"] .co-cta-arrow { transform: scaleX(-1) rotate(90deg); }
+
+    /* ── payment accordion ── */
+    .co-payment {
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 420ms cubic-bezier(.4,0,.2,1), opacity 280ms ease;
+    }
+    .co-payment.is-open { max-height: 1300px; opacity: 1; }
+
+    /* ── form cards ── */
+    .co-form-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+    }
+    .co-form-card__title {
+      font-size: .9375rem;
+      font-weight: 600;
+      color: var(--color-text);
+      margin-bottom: 1rem;
+    }
+    .co-fields { display: grid; gap: .875rem; }
+    .co-label {
+      display: block;
+      font-size: .875rem;
+      font-weight: 500;
+      margin-bottom: .375rem;
+      color: var(--color-text);
+    }
+    .co-input {
+      width: 100%;
+      padding: .625rem .75rem;
+      border: 1.5px solid var(--color-border);
+      border-radius: 8px;
+      background: #fafbfc;
+      color: var(--color-text);
+      font-size: .9375rem;
+      font-family: inherit;
+      transition: border-color 150ms, background 150ms;
+      box-sizing: border-box;
+    }
+    .co-input:focus { outline: none; border-color: var(--color-accent); background: #fff; }
+    .co-input[aria-invalid="true"] { border-color: var(--color-danger); }
+    .co-err { font-size: .75rem; color: var(--color-danger); margin-top: .25rem; }
+    .co-global-err { font-size: .875rem; color: var(--color-danger); margin-bottom: 1rem; }
+
+    /* ── Product quick-view dialog ─────────────── */
+    #pqv-dialog {
+      border: none;
+      border-radius: 16px;
+      padding: 0;
+      width: min(540px, 94vw);
+      max-height: 90dvh;
+      overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,.22);
+      overscroll-behavior: contain;
+      /* center in viewport */
+      position: fixed;
+      inset: 0;
+      margin: auto;
+    }
+    #pqv-dialog::backdrop {
+      background: rgba(0,0,0,.5);
+    }
+    #pqv-dialog { will-change: transform, opacity; contain: layout style; }
+    #pqv-dialog[open] { animation: pqv-in 120ms ease-out both; }
+    @keyframes pqv-in {
+      from { opacity:0; transform:translateY(8px) scale(.99); }
+      to   { opacity:1; transform:none; }
+    }
+    .pqv-content-in { animation: pqv-content-in 100ms ease-out both; }
+    @keyframes pqv-content-in {
+      from { opacity:0; }
+      to   { opacity:1; }
+    }
+    .pqv-inner {
+      position: relative;
+      overflow-y: auto;
+      max-height: 90dvh;
+    }
+    .pqv-close {
+      position: absolute;
+      inset-block-start: .75rem;
+      inset-inline-end: .75rem;
+      z-index: 10;
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: rgba(0,0,0,.35);
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 140ms;
+    }
+    .pqv-close:hover { background: rgba(0,0,0,.6); }
+
+    .pqv-body { display: flex; flex-direction: column; }
+    .pqv-loading { padding: 1.25rem; }
+
+    /* Image */
+    .pqv-img-area {
+      position: relative;
+      background: var(--color-bg);
+    }
+    .pqv-main-img {
+      width: 100%; aspect-ratio: 4/3;
+      object-fit: cover; display: block;
+    }
+    .pqv-no-img {
+      aspect-ratio: 4/3;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--color-muted);
+    }
+    /* Thumbnails */
+    .pqv-thumbs {
+      display: flex; gap: .375rem;
+      padding: .5rem .875rem;
+      overflow-x: auto; scrollbar-width: none;
+      background: var(--color-bg);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .pqv-thumb {
+      flex: 0 0 52px; width: 52px; height: 52px;
+      border-radius: 6px; overflow: hidden;
+      border: 2px solid var(--color-border);
+      cursor: pointer; background: none; padding: 0;
+      transition: border-color 130ms;
+    }
+    .pqv-thumb.is-active,
+    .pqv-thumb:hover { border-color: var(--color-accent); }
+    .pqv-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    /* Content */
+    .pqv-content { padding: 1.125rem 1.25rem 1.5rem; }
+    .pqv-store-link {
+      font-size: .75rem; font-weight: 700;
+      color: var(--color-muted); text-decoration: none;
+      letter-spacing: .05em; text-transform: uppercase;
+      display: inline-block; margin-bottom: .5rem;
+      transition: color 140ms;
+    }
+    .pqv-store-link:hover { color: var(--color-text); }
+    .pqv-name {
+      font-size: 1.2rem; font-weight: 700;
+      color: var(--color-text); margin-bottom: .375rem;
+    }
+    .pqv-price {
+      font-size: 1.125rem; font-weight: 800;
+      color: var(--color-accent); margin-bottom: .875rem;
+    }
+    .pqv-desc {
+      font-size: .875rem; color: var(--color-muted);
+      line-height: 1.65; margin-bottom: 1rem;
+      white-space: pre-line;
+    }
+    /* Variants */
+    .pqv-variant-group { margin-bottom: .875rem; }
+    .pqv-variant-label {
+      font-size: .8rem; font-weight: 600;
+      color: var(--color-text); margin-bottom: .375rem;
+    }
+    .pqv-variant-opts { display: flex; flex-wrap: wrap; gap: .375rem; }
+    .pqv-variant-opt {
+      padding: .3rem .75rem;
+      border: 1.5px solid var(--color-border);
+      border-radius: 6px;
+      font-size: .8rem; font-family: inherit;
+      background: transparent; cursor: pointer;
+      color: var(--color-text);
+      transition: border-color 130ms, background 130ms;
+    }
+    .pqv-variant-opt.is-selected {
+      border-color: var(--color-accent);
+      background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+      color: var(--color-accent); font-weight: 600;
+    }
+    /* Add to cart row */
+    .pqv-cart-row {
+      display: flex; gap: .75rem; align-items: center; margin-top: .25rem;
+    }
+    .pqv-qty {
+      display: inline-flex; align-items: center;
+      border: 1.5px solid var(--color-border); border-radius: 8px; overflow: hidden;
+    }
+    .pqv-qty-btn {
+      width: 32px; height: 32px;
+      background: transparent; border: none; cursor: pointer;
+      color: var(--color-text); font-size: 1.0625rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 100ms; flex-shrink: 0;
+    }
+    .pqv-qty-btn:hover { background: #f0f1f3; }
+    .pqv-qty-btn:disabled { opacity: .35; cursor: default; }
+    .pqv-qty-val {
+      min-width: 30px; text-align: center; font-weight: 700;
+      font-size: .875rem; color: var(--color-text);
+      border-inline: 1.5px solid var(--color-border);
+      line-height: 32px; user-select: none;
+    }
+    .pqv-cart-row {
+      display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem;
+    }
+    .pqv-qty-label {
+      font-size: .875rem; color: var(--color-muted);
+    }
+    .pqv-to-payment {
+      width: 100%; height: 44px;
+      display: flex; align-items: center; justify-content: center; gap: .4rem;
+      font-size: .9375rem;
+    }
+    .pqv-arrow { display: inline-flex; flex-shrink: 0; transition: transform 150ms; }
+    [dir="rtl"] .pqv-arrow { transform: scaleX(-1); }
+    .pqv-product-link {
+      display: block; text-align: center; margin-top: .5rem;
+      font-size: .75rem; color: var(--color-muted);
+      text-decoration: none;
+    }
+    .pqv-product-link:hover { text-decoration: underline; }
+    /* Lightbox (native <dialog> → top-layer) */
+    #co-lightbox { border:none;padding:0;margin:0;width:100vw;height:100vh;max-width:100vw;max-height:100vh;background:transparent;overflow:hidden; }
+    #co-lightbox::backdrop { background:rgba(0,0,0,.9);cursor:zoom-out; }
+    .co-lb__panel { position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:3rem 5rem;box-sizing:border-box;pointer-events:none; }
+    .co-lb__img { max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--radius);display:block;box-shadow:0 8px 48px rgba(0,0,0,.5);user-select:none;-webkit-user-drag:none;pointer-events:none; }
+    .co-lb__close { position:absolute;top:1rem;right:1.25rem;z-index:2;width:36px;height:36px;border-radius:var(--radius);border:none;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s;pointer-events:all; }
+    .co-lb__close:hover { background:rgba(255,255,255,.2); }
+    .co-lb__arrow { position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:40px;height:40px;border-radius:var(--radius);border:none;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s;pointer-events:all; }
+    .co-lb__arrow:hover { background:rgba(255,255,255,.2); }
+    .co-lb__arrow--prev { left:1.25rem; }
+    .co-lb__arrow--next { right:1.25rem; }
+    .co-lb__counter { position:absolute;bottom:1.25rem;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.6);font-size:.78rem;font-weight:500;letter-spacing:.04em;pointer-events:none; }
+    .pqv-main-img { cursor:zoom-in; }
+    @media(max-width:600px){.co-lb__panel{padding:3.5rem 2.5rem;}.co-lb__arrow--prev{left:.5rem;}.co-lb__arrow--next{right:.5rem;}}
+  </style>
+
+  <script>
+    import { getActiveStoreCarts, setQty, removeItem } from '../lib/cart.js';
+    import { formatPrice } from '../config/store.config.js';
+    import { spawnRipple } from '../lib/ripple.js';
+
+    const shippingCfg: Record<string, { flatRate: number; freeAbove: number | null }> =
+      JSON.parse((document.getElementById('checkout-shipping-cfg') as HTMLElement | null)?.textContent ?? '{}');
+    const i18n: Record<string, string> =
+      JSON.parse((document.getElementById('checkout-i18n') as HTMLElement | null)?.textContent ?? '{}');
+
+    const esc = (s: unknown) =>
+      String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    function calcShipping(slug: string, subtotal: number): number {
+      const cfg = shippingCfg[slug] ?? { flatRate: 0, freeAbove: null };
+      return (cfg.freeAbove !== null && subtotal >= cfg.freeAbove) ? 0 : cfg.flatRate;
+    }
+
+    function renderCart(): void {
+      const carts = getActiveStoreCarts();
+      const contentEl = document.getElementById('cart-content');
+      const footerEl  = document.getElementById('co-footer');
+      const totalEl   = document.getElementById('grand-total-amount');
+      if (!contentEl) return;
+
+      if (!carts.length) {
+        document.getElementById('checkout-main')?.classList.add('hidden');
+        document.getElementById('checkout-empty')?.classList.remove('hidden');
+        return;
+      }
+
+      let grandTotal = 0;
+      let html = '';
+
+      carts.forEach(cart => {
+        const subtotal = cart.items.reduce((s, i) => s + i.price * i.qty, 0);
+        const shipping = calcShipping(cart.storeSlug, subtotal);
+        grandTotal += subtotal + shipping;
+
+        // Store label
+        html += `<a href="/store/${esc(cart.storeSlug)}" class="co-store-label">${esc(cart.storeName)}</a>`;
+
+        // One card per item
+        cart.items.forEach(item => {
+          const imgHtml = item.image
+            ? `<img src="${esc(item.image)}" alt="${esc(item.name)}" class="co-card__img" width="80" height="80" loading="lazy" decoding="async" />`
+            : `<div class="co-card__img-placeholder" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                </svg>
+               </div>`;
+          const variantsHtml = item.selectedVariants && Object.keys(item.selectedVariants).length
+            ? `<p class="co-card__variants">${esc(Object.entries(item.selectedVariants).map(([k,v]) => `${k}: ${v}`).join(' · '))}</p>`
+            : '';
+
+          html += `<div class="co-card" data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" data-item-name="${esc(item.name)}">
+            <button type="button" class="co-card__img-link pqv-trigger"
+              data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}"
+              aria-label="${esc(i18n['viewProduct'] ?? '')} ${esc(item.name)}">
+              ${imgHtml}
+            </button>
+            <div class="co-card__body">
+              <button type="button" class="co-card__name pqv-trigger"
+                data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}">${esc(item.name)}</button>
+              ${variantsHtml}
+              <div class="co-card__row">
+                <div class="co-qty" role="group" aria-label="כמות">
+                  <button class="co-qty__btn" data-action="dec" aria-label="הפחת כמות" type="button" ${item.qty <= 1 ? 'disabled' : ''}>−</button>
+                  <span class="co-qty__num" aria-live="polite">${item.qty}</span>
+                  <button class="co-qty__btn" data-action="inc" aria-label="הגדל כמות" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>
+                </div>
+                <button class="co-delete-btn" data-action="remove" aria-label="${esc(i18n['removeItem'] ?? 'הסר')}" type="button">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                  ${esc(i18n['removeItem'] ?? 'הסר')}
+                </button>
+              </div>
+            </div>
+            <div class="co-card__price-col">
+              <span class="co-card__total">${formatPrice(item.price * item.qty)}</span>
+              ${item.qty > 1 ? `<span class="co-card__unit">${formatPrice(item.price)} ליח׳</span>` : ''}
+            </div>
+          </div>`;
+        });
+
+        // Shipping card for this store
+        const isFree = shipping === 0;
+        html += `<div class="co-shipping-card">
+          <div class="co-shipping-card__left">
+            <svg class="co-shipping-card__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            <div>
+              <span>${esc(i18n['shipping'] ?? 'משלוח')}</span>
+              <span class="co-shipping-card__store"> · ${esc(cart.storeName)}</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:.625rem">
+            <button class="co-shipping-change" type="button" disabled title="בקרוב">${esc(i18n['changeShipping'] ?? 'שנה')}</button>
+            <span class="co-shipping-card__amount ${isFree ? 'co-shipping-free' : ''}">${isFree ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(shipping)}</span>
+          </div>
+        </div>`;
+      });
+
+      contentEl.innerHTML = html;
+
+      if (totalEl) totalEl.textContent = formatPrice(grandTotal);
+      footerEl?.classList.remove('hidden');
+
+      attachEvents();
+    }
+
+    function patchQty(card: HTMLElement, storeSlug: string, cartKey: string): void {
+      const carts   = getActiveStoreCarts();
+      const item    = carts.find(c => c.storeSlug === storeSlug)?.items.find(i => i.cartKey === cartKey);
+      if (!item) { renderCart(); return; }
+
+      const qtyEl    = card.querySelector<HTMLElement>('.co-qty__num');
+      const decBtn   = card.querySelector<HTMLButtonElement>('[data-action="dec"]');
+      const incBtn   = card.querySelector<HTMLButtonElement>('[data-action="inc"]');
+      const totalEl  = card.querySelector<HTMLElement>('.co-card__total');
+      const priceCol = card.querySelector<HTMLElement>('.co-card__price-col');
+
+      if (qtyEl)   qtyEl.textContent   = String(item.qty);
+      if (decBtn)  decBtn.disabled      = item.qty <= 1;
+      if (incBtn)  incBtn.disabled      = item.stock != null && item.qty >= item.stock;
+      if (totalEl) totalEl.textContent  = formatPrice(item.price * item.qty);
+
+      const unitEl = priceCol?.querySelector<HTMLElement>('.co-card__unit');
+      if (item.qty > 1) {
+        const txt = `${formatPrice(item.price)} ליח׳`;
+        if (unitEl) { unitEl.textContent = txt; }
+        else {
+          const span = document.createElement('span');
+          span.className = 'co-card__unit';
+          span.textContent = txt;
+          priceCol?.appendChild(span);
+        }
+      } else {
+        unitEl?.remove();
+      }
+
+      // Update grand total
+      let grandTotal = 0;
+      carts.forEach(c => {
+        const sub = c.items.reduce((s, it) => s + it.price * it.qty, 0);
+        grandTotal += sub + calcShipping(c.storeSlug, sub);
+      });
+      const grandEl = document.getElementById('grand-total-amount');
+      if (grandEl) grandEl.textContent = formatPrice(grandTotal);
+    }
+
+    function attachEvents(): void {
+      document.querySelectorAll<HTMLElement>('.co-card[data-cart-key]').forEach(card => {
+        const storeSlug = card.dataset['storeSlug'] ?? '';
+        const cartKey   = card.dataset['cartKey'] ?? '';
+        const itemName  = card.dataset['itemName'] ?? '';
+        const qtyEl     = card.querySelector<HTMLElement>('.co-qty__num');
+
+        card.querySelector<HTMLButtonElement>('[data-action="inc"]')?.addEventListener('click', (e) => {
+          const btn = e.currentTarget as HTMLButtonElement;
+          const current = parseInt(qtyEl?.textContent ?? '1', 10);
+          const stockLimit = btn.dataset['stock'] ? parseInt(btn.dataset['stock'], 10) : Infinity;
+          if (current < stockLimit) {
+            setQty(storeSlug, cartKey, current + 1);
+            patchQty(card, storeSlug, cartKey);
+          }
+        });
+
+        card.querySelector<HTMLButtonElement>('[data-action="dec"]')?.addEventListener('click', () => {
+          const current = parseInt(qtyEl?.textContent ?? '1', 10);
+          if (current <= 1) {
+            confirmRemove(storeSlug, cartKey, itemName);
+          } else {
+            setQty(storeSlug, cartKey, current - 1);
+            patchQty(card, storeSlug, cartKey);
+          }
+        });
+
+        card.querySelector<HTMLButtonElement>('[data-action="remove"]')?.addEventListener('click', () => {
+          confirmRemove(storeSlug, cartKey, itemName);
+        });
+      });
+    }
+
+    function confirmRemove(storeSlug: string, cartKey: string, name: string): void {
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: i18n['removeTitle'] ?? 'הסר מהעגלה?',
+          message: `${i18n['removeMsg'] ?? 'הפריט יוסר מהעגלה שלך'}: "${name}"`,
+          okLabel: i18n['removeOk'] ?? 'הסר',
+          onConfirm: () => { removeItem(storeSlug, cartKey); renderCart(); },
+        },
+      }));
+    }
+
+    // ── Payment accordion ──────────────────────────────────
+    const toPaymentBtn   = document.getElementById('to-payment-btn');
+    const paymentSection = document.getElementById('payment-section');
+
+    toPaymentBtn?.addEventListener('click', () => {
+      const isOpen = paymentSection?.classList.contains('is-open');
+      if (isOpen) {
+        paymentSection?.classList.remove('is-open');
+        paymentSection?.setAttribute('aria-hidden', 'true');
+        toPaymentBtn.setAttribute('aria-expanded', 'false');
+      } else {
+        paymentSection?.classList.add('is-open');
+        paymentSection?.setAttribute('aria-hidden', 'false');
+        toPaymentBtn.setAttribute('aria-expanded', 'true');
+        setTimeout(() => paymentSection?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+      }
     });
-    const data = await res.json();
-    if (data.url) window.location.href = data.url;
-    else alert(data.message || 'Payment not configured yet. See AI_INSTRUCTIONS.md → Payments.');
-  });
 
-  window.addEventListener('cart:change', render);
-  render();
-</script>
+    // ── Validation ─────────────────────────────────────────
+    function setFieldErr(field: string, show: boolean): void {
+      document.querySelector<HTMLElement>(`[data-err="${field}"]`)?.classList.toggle('hidden', !show);
+      (document.getElementById(field) as HTMLInputElement | null)?.setAttribute('aria-invalid', show ? 'true' : 'false');
+    }
 
+    function validate(): boolean {
+      const name   = (document.getElementById('buyerName')  as HTMLInputElement | null)?.value.trim() ?? '';
+      const email  = (document.getElementById('buyerEmail') as HTMLInputElement | null)?.value.trim() ?? '';
+      const phone  = (document.getElementById('buyerPhone') as HTMLInputElement | null)?.value.trim() ?? '';
+      const city   = (document.getElementById('city')       as HTMLInputElement | null)?.value.trim() ?? '';
+      const street = (document.getElementById('street')     as HTMLInputElement | null)?.value.trim() ?? '';
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      setFieldErr('buyerName',  !name);
+      setFieldErr('buyerEmail', !email || !emailOk);
+      setFieldErr('buyerPhone', !phone);
+      setFieldErr('city',       !city);
+      setFieldErr('street',     !street);
+      return !!(name && email && emailOk && phone && city && street);
+    }
+
+    // ── Submit ─────────────────────────────────────────────
+    document.getElementById('checkout-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!validate()) return;
+
+      const labelEl   = document.getElementById('submit-label');
+      const loadingEl = document.getElementById('submit-loading');
+      const errEl     = document.getElementById('form-global-error');
+      const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement | null;
+
+      labelEl?.classList.add('hidden');
+      loadingEl?.classList.remove('hidden');
+      if (submitBtn) submitBtn.disabled = true;
+      errEl?.classList.add('hidden');
+
+      const carts = getActiveStoreCarts();
+      const items = carts.flatMap(cart =>
+        cart.items.map(item => ({
+          storeSlug: cart.storeSlug,
+          productSlug: item.slug,
+          qty: item.qty,
+          ...(item.selectedVariants && Object.keys(item.selectedVariants).length ? { selectedVariants: item.selectedVariants } : {}),
+        }))
+      );
+
+      const body = {
+        buyerName:    (document.getElementById('buyerName')  as HTMLInputElement).value.trim(),
+        buyerEmail:   (document.getElementById('buyerEmail') as HTMLInputElement).value.trim(),
+        buyerPhone:   (document.getElementById('buyerPhone') as HTMLInputElement).value.trim(),
+        buyerAddress: {
+          city:   (document.getElementById('city')   as HTMLInputElement).value.trim(),
+          street: (document.getElementById('street') as HTMLInputElement).value.trim(),
+          zip:    (document.getElementById('zip')    as HTMLInputElement).value.trim() || undefined,
+        },
+        items,
+      };
+
+      try {
+        const res  = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const data = await res.json() as { orderId?: string; error?: string };
+        if (!res.ok || !data.orderId) throw new Error(data.error ?? 'Unknown error');
+        window.location.href = `/checkout/success?order=${encodeURIComponent(data.orderId)}`;
+      } catch {
+        if (errEl) { errEl.textContent = i18n['orderError'] ?? 'שגיאה. נסה שוב.'; errEl.classList.remove('hidden'); }
+        labelEl?.classList.remove('hidden');
+        loadingEl?.classList.add('hidden');
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+
+    // ── Product quick-view ─────────────────────────────────
+    interface PQVProduct {
+      slug: string; name: string; price: number; description: string;
+      stock: number; images: string[];
+      variants: Array<{ name: string; options: string[] }>;
+    }
+
+    const pqvDialog   = document.getElementById('pqv-dialog')   as HTMLDialogElement | null;
+    const pqvBody     = document.getElementById('pqv-body');
+    const pqvClose    = document.getElementById('pqv-close');
+    let   pqvPrevFocus: HTMLElement | null = null;
+
+    function pqvEsc(s: unknown): string {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    const pqvCache = new Map<string, PQVProduct>();
+
+    async function openProductQuickView(storeSlug: string, productSlug: string, storeName: string): Promise<void> {
+      if (!pqvDialog || !pqvBody) return;
+      pqvPrevFocus = document.activeElement as HTMLElement;
+
+      const cacheKey = `${storeSlug}:${productSlug}`;
+      let product: PQVProduct | undefined = pqvCache.get(cacheKey);
+
+      if (!product) {
+        // Show skeleton + open modal together so animation starts immediately
+        pqvBody.innerHTML = `<div class="pqv-loading">
+          <div class="skel-bar" style="height:220px;border-radius:12px;margin-bottom:1rem"></div>
+          <div class="skel-bar" style="height:22px;width:60%;margin-bottom:.5rem"></div>
+          <div class="skel-bar" style="height:18px;width:35%"></div>
+        </div>`;
+        pqvDialog.showModal();
+        try {
+          const res = await fetch(`/api/store-product?store=${encodeURIComponent(storeSlug)}&product=${encodeURIComponent(productSlug)}`);
+          if (!res.ok) throw new Error('not found');
+          product = await res.json() as PQVProduct;
+          pqvCache.set(cacheKey, product);
+        } catch {
+          pqvBody.innerHTML = `<div class="pqv-loading" style="text-align:center;padding:2rem;color:var(--color-muted)">שגיאה בטעינת המוצר</div>`;
+          return;
+        }
+      } else {
+        pqvDialog.showModal();
+      }
+
+      if (!product) return; // narrowing: catch above returns early, so this is unreachable
+
+      const p = product; // stable non-undefined reference for nested functions
+      const selectedVariants: Record<string, string> = {};
+      p.variants.forEach(v => { selectedVariants[v.name] = v.options[0] ?? ''; });
+
+      function renderDialog(): void {
+        const mainImg = p.images[0] ?? '';
+        const hasImages = p.images.length > 0;
+        const hasMultiple = p.images.length > 1;
+
+        const imgAreaHtml = hasImages
+          ? `<div class="pqv-img-area">
+               <img id="pqv-main-img" src="${pqvEsc(mainImg)}" alt="${pqvEsc(p.name)}" class="pqv-main-img" />
+             </div>`
+          : `<div class="pqv-img-area pqv-no-img">
+               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+             </div>`;
+
+        const thumbsHtml = hasMultiple
+          ? `<div class="pqv-thumbs">
+               ${p.images.map((img, i) => `
+                 <button type="button" class="pqv-thumb ${i === 0 ? 'is-active' : ''}" data-idx="${i}" data-src="${pqvEsc(img)}">
+                   <img src="${pqvEsc(img)}" alt="" width="52" height="52" loading="lazy" />
+                 </button>`).join('')}
+             </div>`
+          : '';
+
+        const variantsHtml = p.variants.map(v => `
+          <div class="pqv-variant-group">
+            <p class="pqv-variant-label">${pqvEsc(v.name)}</p>
+            <div class="pqv-variant-opts">
+              ${v.options.map(opt => `
+                <button type="button" class="pqv-variant-opt ${selectedVariants[v.name] === opt ? 'is-selected' : ''}"
+                  data-variant-name="${pqvEsc(v.name)}" data-variant-opt="${pqvEsc(opt)}">${pqvEsc(opt)}</button>
+              `).join('')}
+            </div>
+          </div>`).join('');
+
+        const cartHtml = `
+          <div class="pqv-cart-row">
+            <span class="pqv-qty-label">כמות</span>
+            <div class="pqv-qty" dir="ltr" role="group" aria-label="כמות">
+              <button type="button" class="pqv-qty-btn" id="pqv-dec" aria-label="הפחת" disabled>−</button>
+              <span class="pqv-qty-val" id="pqv-qty-val" aria-live="polite">1</span>
+              <button type="button" class="pqv-qty-btn" id="pqv-inc" aria-label="הגדל">+</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn--accent pqv-to-payment" id="pqv-to-payment">
+            לתשלום <svg class="pqv-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <a href="/store/${pqvEsc(storeSlug)}/${pqvEsc(p.slug)}" class="pqv-product-link">לדף המוצר המלא</a>`;
+
+        pqvBody!.innerHTML = `<div class="pqv-content-in">
+          ${imgAreaHtml}
+          ${thumbsHtml}
+          <div class="pqv-content">
+            <a href="/store/${pqvEsc(storeSlug)}" class="pqv-store-link">${pqvEsc(storeName)}</a>
+            <h2 class="pqv-name" id="pqv-name">${pqvEsc(p.name)}</h2>
+            <p class="pqv-price">${formatPrice(p.price)}</p>
+            ${p.description ? `<p class="pqv-desc">${pqvEsc(p.description)}</p>` : ''}
+            ${variantsHtml}
+            ${cartHtml}
+          </div>
+        </div>`;
+
+        // Track current image index for lightbox
+        let pqvImgIdx = 0;
+
+        // Thumbnail switcher
+        pqvBody!.querySelectorAll<HTMLButtonElement>('.pqv-thumb').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const src = btn.dataset['src'] ?? '';
+            pqvImgIdx = parseInt(btn.dataset['idx'] ?? '0', 10);
+            const mainImgEl = document.getElementById('pqv-main-img') as HTMLImageElement | null;
+            if (mainImgEl) mainImgEl.src = src;
+            pqvBody!.querySelectorAll('.pqv-thumb').forEach(b => b.classList.remove('is-active'));
+            btn.classList.add('is-active');
+          });
+        });
+
+        // Main image → open lightbox
+        document.getElementById('pqv-main-img')?.addEventListener('click', () => {
+          if (p.images.length > 0) openLightbox(p.images, pqvImgIdx, p.name);
+        });
+
+        // Variant selection
+        pqvBody!.querySelectorAll<HTMLButtonElement>('.pqv-variant-opt').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const vName = btn.dataset['variantName'] ?? '';
+            const vOpt  = btn.dataset['variantOpt']  ?? '';
+            selectedVariants[vName] = vOpt;
+            pqvBody!.querySelectorAll<HTMLButtonElement>(`.pqv-variant-opt[data-variant-name="${CSS.escape(vName)}"]`)
+              .forEach(b => b.classList.toggle('is-selected', b.dataset['variantOpt'] === vOpt));
+          });
+        });
+
+        // Qty stepper
+        let pqvQty = 1;
+        const decBtn = document.getElementById('pqv-dec') as HTMLButtonElement | null;
+        const incBtn = document.getElementById('pqv-inc') as HTMLButtonElement | null;
+        const qtyVal = document.getElementById('pqv-qty-val');
+        decBtn?.addEventListener('click', () => {
+          if (pqvQty > 1) { pqvQty--; if (qtyVal) qtyVal.textContent = String(pqvQty); if (decBtn) decBtn.disabled = pqvQty <= 1; if (incBtn) incBtn.disabled = false; }
+        });
+        incBtn?.addEventListener('click', () => {
+          if (pqvQty < (p.stock ?? Infinity)) { pqvQty++; if (qtyVal) qtyVal.textContent = String(pqvQty); if (decBtn) decBtn.disabled = false; if (incBtn) incBtn.disabled = pqvQty >= (p.stock ?? Infinity); }
+        });
+
+        // To payment
+        document.getElementById('pqv-to-payment')?.addEventListener('click', () => {
+          pqvDialog!.close();
+          const paymentSection = document.getElementById('payment-section');
+          const toPaymentBtn   = document.getElementById('to-payment-btn') as HTMLButtonElement | null;
+          if (paymentSection && !paymentSection.classList.contains('is-open')) {
+            paymentSection.classList.add('is-open');
+            toPaymentBtn?.setAttribute('aria-expanded', 'true');
+          }
+          // Wait for dialog to close + accordion to start expanding, then scroll
+          setTimeout(() => {
+            toPaymentBtn?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 120);
+        });
+
+      }
+
+      renderDialog();
+    }
+
+    // ── Lightbox ──────────────────────────────────────────────────
+    const colb       = document.getElementById('co-lightbox') as HTMLDialogElement | null;
+    const colbImg    = document.getElementById('co-lb-img')   as HTMLImageElement | null;
+    const colbPrev   = document.getElementById('co-lb-prev')  as HTMLButtonElement | null;
+    const colbNext   = document.getElementById('co-lb-next')  as HTMLButtonElement | null;
+    const colbClose  = document.getElementById('co-lb-close') as HTMLButtonElement | null;
+    const colbCounter= document.getElementById('co-lb-counter')as HTMLDivElement | null;
+    let lbImages: string[] = [];
+    let lbName = '';
+    let lbIdx = 0;
+    let lbTouchX = 0;
+    let lbPrevFocus: HTMLElement | null = null;
+
+    function showLbImg() {
+      const url = lbImages[lbIdx] ?? '';
+      if (colbImg) { colbImg.src = url; colbImg.alt = lbName ? `${lbName} — ${lbIdx + 1}` : `תמונה ${lbIdx + 1}`; }
+      const multi = lbImages.length > 1;
+      if (colbPrev) colbPrev.hidden = !multi;
+      if (colbNext) colbNext.hidden = !multi;
+      if (colbCounter) { colbCounter.hidden = !multi; colbCounter.textContent = `${lbIdx + 1} / ${lbImages.length}`; }
+    }
+
+    function openLightbox(images: string[], startIdx = 0, name = '') {
+      lbImages = images; lbIdx = startIdx; lbName = name;
+      lbPrevFocus = document.activeElement as HTMLElement;
+      showLbImg();
+      colb?.showModal();
+      colbClose?.focus();
+    }
+
+    function closeLightbox() {
+      colb?.close();
+      lbImages = [];
+      lbPrevFocus?.focus();
+      lbPrevFocus = null;
+    }
+
+    // panel has pointer-events:none, so clicks on backdrop/padding area hit the dialog directly
+    colb?.addEventListener('click', closeLightbox);
+    colbClose?.addEventListener('click', (e) => { e.stopPropagation(); closeLightbox(); });
+    colbPrev?.addEventListener('click', (e) => { e.stopPropagation(); lbIdx = (lbIdx - 1 + lbImages.length) % lbImages.length; showLbImg(); });
+    colbNext?.addEventListener('click', (e) => { e.stopPropagation(); lbIdx = (lbIdx + 1) % lbImages.length; showLbImg(); });
+    colb?.addEventListener('touchstart', (e: TouchEvent) => { lbTouchX = e.touches[0].clientX; }, { passive: true });
+    colb?.addEventListener('touchend', (e: TouchEvent) => {
+      const dx = e.changedTouches[0].clientX - lbTouchX;
+      if (Math.abs(dx) > 50) { lbIdx = dx < 0 ? (lbIdx + 1) % lbImages.length : (lbIdx - 1 + lbImages.length) % lbImages.length; showLbImg(); }
+    }, { passive: true });
+    document.addEventListener('keydown', (e) => {
+      if (!colb?.open) return;
+      if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
+      if (e.key === 'ArrowLeft')  { lbIdx = (lbIdx - 1 + lbImages.length) % lbImages.length; showLbImg(); }
+      if (e.key === 'ArrowRight') { lbIdx = (lbIdx + 1) % lbImages.length; showLbImg(); }
+    });
+
+    // Close handlers
+    pqvClose?.addEventListener('click', () => pqvDialog?.close());
+    pqvDialog?.addEventListener('click', (e) => {
+      if (e.target === pqvDialog) pqvDialog.close();
+    });
+    pqvDialog?.addEventListener('close', () => {
+      pqvPrevFocus?.focus();
+    });
+
+    // Delegate clicks on product image/name in cart cards
+    document.addEventListener('click', (e) => {
+      const trigger = (e.target as HTMLElement).closest<HTMLElement>('.pqv-trigger');
+      if (!trigger) return;
+      e.preventDefault();
+      const storeSlug   = trigger.dataset['storeSlug']   ?? '';
+      const productSlug = trigger.dataset['productSlug'] ?? '';
+      const storeName   = trigger.dataset['storeName']   ?? '';
+      if (storeSlug && productSlug) openProductQuickView(storeSlug, productSlug, storeName);
+    });
+
+    // Global ripple — covers all buttons in checkout + modal (qty steppers excluded)
+    document.addEventListener('pointerdown', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('button, [role="button"]');
+      if (btn && !btn.classList.contains('co-qty__btn') && !btn.classList.contains('pqv-qty-btn') && !btn.classList.contains('pqv-trigger') && !btn.classList.contains('co-card__name')) {
+        spawnRipple(btn, e.clientX, e.clientY);
+      }
+    });
+
+    renderCart();
+  </script>
+</BaseLayout>

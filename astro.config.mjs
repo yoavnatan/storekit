@@ -1,5 +1,5 @@
 // @ts-check
-import { defineConfig } from 'astro/config';
+import { defineConfig, passthroughImageService } from 'astro/config';
 import node from '@astrojs/node';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
@@ -20,10 +20,11 @@ export default defineConfig({
     sitemap(),
   ],
 
-  // Built-in image optimization helps Core Web Vitals (LCP).
+  // Passthrough: Cloudinary handles optimization via URL transforms (f_auto,q_auto,w_N).
+  // Astro <Image /> enforces alt/width/height and adds loading/decoding attrs.
   image: {
+    service: passthroughImageService(),
     responsiveStyles: true,
-    // Allow Cloudinary as an external image service for Astro <Image />
     domains: ['res.cloudinary.com'],
   },
 

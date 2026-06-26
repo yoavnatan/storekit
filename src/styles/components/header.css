@@ -114,3 +114,18 @@ nav a:hover { color: var(--color-text); }
 }
 
 .lang-toggle-btn:hover { color: var(--color-text); border-color: var(--color-muted); }
+
+/* Back-link inside store mode header */
+.store-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  color: var(--color-muted);
+  transition: color 0.1s;
+}
+.store-back-link:hover { color: var(--color-text); }
+

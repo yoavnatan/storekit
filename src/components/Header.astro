@@ -14,6 +14,9 @@ interface Props {
 const { isLoggedIn = false, storeMode = false, sellerMode = false, storeName, storeSlug } = Astro.props;
 const logo = store.logo;
 
+const currentPath = Astro.url.pathname + (Astro.url.search ? Astro.url.search : '');
+const loginUrl = `/seller/login?next=${encodeURIComponent(currentPath)}`;
+
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
 const nextLang = lang === 'he' ? 'en' : 'he';
@@ -30,11 +33,12 @@ if (!storeMode && !sellerMode) {
   } else {
     navItems = [
       { label: t.nav.home, href: '/' },
-      { label: t.nav.openStore, href: '/seller/register' },
-      { label: t.nav.login, href: '/seller/login' },
+      { label: t.nav.openStore, href: `/seller/register?next=${encodeURIComponent(currentPath)}` },
+      { label: t.nav.login, href: loginUrl },
     ];
   }
 }
+
 ---
 
 <header class="site-header">
@@ -43,7 +47,7 @@ if (!storeMode && !sellerMode) {
       ? <div class="flex flex-col gap-[2px]">
           <a
             href="/"
-            class="flex items-center gap-[0.3rem] text-[0.7rem] font-medium leading-none no-underline transition-colors duration-100 text-[var(--color-muted)] hover:text-[var(--color-text)]"
+            class="store-back-link"
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={`flex-shrink:0${lang === 'he' ? ';transform:scaleX(-1)' : ''}`}><polyline points="15 18 9 12 15 6"/></svg>
             <span>{store.name}</span>
@@ -67,19 +71,20 @@ if (!storeMode && !sellerMode) {
 
     <div class="header-actions">
       {!isLoggedIn && !sellerMode && (
-        <a href="/seller/login" class="lang-toggle-btn" style="text-decoration:none">
+        <a href={loginUrl} class="lang-toggle-btn" style="text-decoration:none">
           {t.nav.login}
         </a>
       )}
 
       {(storeMode || sellerMode) && isLoggedIn && (
         <div class="user-menu">
-          <button class="user-btn" id="user-menu-toggle" aria-label="User menu" aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">
+          <button class="user-btn" id="user-menu-toggle" aria-label={t.nav.userMenu} aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
           </button>
           <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
             <a href="/seller/dashboard" class="user-dropdown__item" role="menuitem">{t.nav.sellersDashboard}</a>
             <form method="POST" action="/seller/logout">
+              <input type="hidden" name="_next" value={currentPath} />
               <button class="user-dropdown__item user-dropdown__item--btn" type="submit" role="menuitem">{t.nav.logout}</button>
             </form>
           </div>
@@ -99,16 +104,22 @@ if (!storeMode && !sellerMode) {
           <script is:inline>
             (function () {
               try {
-                var count = 0;
+                // Cart count
+                var cartCount = 0;
                 for (var i = 0; i < localStorage.length; i++) {
                   var k = localStorage.key(i);
                   if (!k || k.indexOf('store_cart_v2_') !== 0) continue;
                   var c = JSON.parse(localStorage.getItem(k) || 'null') || {};
-                  var items = c.items ? Object.values(c.items) : [];
-                  count += items.reduce(function (s, item) { return s + ((item && item.qty) || 0); }, 0);
+                  var cartItems = c.items ? Object.values(c.items) : [];
+                  cartCount += cartItems.reduce(function (s, item) { return s + ((item && item.qty) || 0); }, 0);
                 }
-                var el = document.getElementById('cart-count');
-                if (el && count > 0) { el.textContent = String(count); el.removeAttribute('hidden'); }
+                var cartEl = document.getElementById('cart-count');
+                if (cartEl && cartCount > 0) { cartEl.textContent = String(cartCount); cartEl.removeAttribute('hidden'); }
+                // Wishlist count
+                var wItems = JSON.parse(localStorage.getItem('wishlist_v1') || '[]');
+                var wCount = Array.isArray(wItems) ? wItems.length : 0;
+                var wEl = document.getElementById('wishlist-count');
+                if (wEl && wCount > 0) { wEl.textContent = String(wCount); wEl.removeAttribute('hidden'); }
               } catch (_) {}
             })();
           </script>

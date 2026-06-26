@@ -1,7 +1,8 @@
 ---
 export const prerender = false;
+import { Image } from 'astro:assets';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { store as platform, formatPrice } from '../config/store.config.js';
+import { store as platform, formatPrice, cdnSrc } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getAllStores } from '../lib/stores.js';
 import { getProductsByStoreId } from '../lib/store-products.js';
@@ -37,6 +38,7 @@ const jsonLd = {
   isLoggedIn={isLoggedIn}
   hasStore={hasStore}
   storeMode={true}
+  dataLayer={{ event: 'page_view', page_type: 'platform', currency: 'ILS' }}
 >
 
   <!-- ── Hero ──────────────────────────────────────────────────────── -->
@@ -66,6 +68,8 @@ const jsonLd = {
     </div>
   </section>
 
+  <div class="home-body">
+
   {isLoggedIn && seller && (
     <div class="home-greeting-bar container">
       <p class="home-greeting">{t.home.welcomeBack},&nbsp;<strong>{seller.name}</strong></p>
@@ -73,14 +77,15 @@ const jsonLd = {
   )}
 
   <!-- ── Active Carts (client-rendered) ───────────────────────────── -->
+  <!-- Section is visible by default with skeleton — renderCarts() replaces content or hides it -->
   <section
     id="carts-section"
-    hidden
     aria-labelledby="carts-heading"
     class="section container"
     data-label-items={t.home.cartItems}
     data-label-open={t.home.cartOpenBtn}
     data-label-visit={t.home.visitStore}
+    data-label-empty={t.home.noActiveCarts}
   >
     <div class="home-section-header">
       <h2 id="carts-heading" class="home-section-title">
@@ -88,7 +93,24 @@ const jsonLd = {
         <span id="carts-badge" class="home-badge" hidden aria-live="polite" aria-atomic="true"></span>
       </h2>
     </div>
-    <div id="carts-list" class="home-carts-grid" role="list"></div>
+    <div id="carts-list" class="home-carts-grid" role="list">
+      <div class="home-cart-card" aria-hidden="true">
+        <div class="home-cart-card__icon" style="background:var(--color-border)"></div>
+        <div class="home-cart-card__meta" style="gap:0.35rem;display:flex;flex-direction:column">
+          <div class="skel-bar" style="height:0.875rem;width:60%"></div>
+          <div class="skel-bar" style="height:0.75rem;width:40%"></div>
+        </div>
+        <div class="skel-bar" style="height:2rem;width:5rem;border-radius:var(--radius)"></div>
+      </div>
+      <div class="home-cart-card" aria-hidden="true">
+        <div class="home-cart-card__icon" style="background:var(--color-border)"></div>
+        <div class="home-cart-card__meta" style="gap:0.35rem;display:flex;flex-direction:column">
+          <div class="skel-bar" style="height:0.875rem;width:50%"></div>
+          <div class="skel-bar" style="height:0.75rem;width:35%"></div>
+        </div>
+        <div class="skel-bar" style="height:2rem;width:5rem;border-radius:var(--radius)"></div>
+      </div>
+    </div>
   </section>
 
   <!-- ── Per-store product carousels ───────────────────────────────── -->
@@ -104,7 +126,7 @@ const jsonLd = {
     </div>
   ) : (
     <div id="stores-container">
-      {storesWithProducts.map(({ store: s, products }) => {
+      {storesWithProducts.map(({ store: s, products }, storeIdx) => {
         return (
           <section
             class="home-store-section"
@@ -156,7 +178,7 @@ const jsonLd = {
                   </>
                 )}
                 <div class="home-carousel" role="list" aria-label={s.name}>
-                  {products.map((p) => (
+                  {products.map((p, prodIdx) => (
                     <a
                       href={`/store/${s.slug}`}
                       class="home-product-card card"
@@ -165,15 +187,24 @@ const jsonLd = {
                     >
                       <div class="home-product-card__img-wrap">
                         {p.images?.[0]
-                          ? <img
-                              src={p.images[0]}
-                              alt={p.name}
-                              width="300"
-                              height="300"
-                              loading="lazy"
-                              decoding="async"
-                              class="home-product-card__img"
-                            />
+                          ? (storeIdx === 0 && prodIdx < 3
+                              ? <Image
+                                  src={cdnSrc(p.images[0])}
+                                  alt={p.name}
+                                  width={300}
+                                  height={300}
+                                  class="home-product-card__img"
+                                  loading="eager"
+                                  fetchpriority={prodIdx === 0 ? 'high' : undefined}
+                                />
+                              : <img
+                                  data-lazy-src={cdnSrc(p.images[0])}
+                                  alt={p.name}
+                                  width="300"
+                                  height="300"
+                                  class="home-product-card__img"
+                                />
+                            )
                           : <span class="home-product-card__initial" aria-hidden="true">
                               {p.name[0]?.toUpperCase() ?? '?'}
                             </span>
@@ -241,11 +272,21 @@ const jsonLd = {
     </section>
   )}
 
+  </div>{/* .home-body */}
+
 </BaseLayout>
 
 <script>
   import { getActiveStoreCarts, getSubtotal } from '../lib/cart.js';
   import { formatPrice } from '../config/store.config.js';
+  import { spawnRipple } from '../lib/ripple.js';
+
+  document.addEventListener('pointerdown', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>(
+      'button, a.btn, a.home-product-card'
+    );
+    if (btn) spawnRipple(btn, e.clientX, e.clientY);
+  });
 
   // ── Active Carts ───────────────────────────────────────────────────
   const cartsSection = document.getElementById('carts-section') as HTMLElement | null;
@@ -255,11 +296,16 @@ const jsonLd = {
   const labelItems = cartsSection?.dataset.labelItems ?? 'items';
   const labelOpen  = cartsSection?.dataset.labelOpen  ?? 'Open cart';
   const labelVisit = cartsSection?.dataset.labelVisit ?? 'Visit store';
+  const labelEmpty = cartsSection?.dataset.labelEmpty ?? 'No active carts yet';
 
   function renderCarts(): void {
     const carts = getActiveStoreCarts();
     if (!cartsList || !cartsSection) return;
-    if (!carts.length) { cartsSection.setAttribute('hidden', ''); return; }
+    cartsSection.removeAttribute('hidden');
+    if (!carts.length) {
+      cartsList.innerHTML = `<p class="muted" style="font-size:0.9rem;padding:0.25rem 0">${labelEmpty}</p>`;
+      return;
+    }
 
     cartsSection.removeAttribute('hidden');
     if (cartsBadge) {
@@ -328,6 +374,25 @@ const jsonLd = {
     btnPrev?.addEventListener('click', () => carousel.scrollBy({ left: isRtl ? STEP : -STEP, behavior: 'smooth' }));
     btnNext?.addEventListener('click', () => carousel.scrollBy({ left: isRtl ? -STEP : STEP, behavior: 'smooth' }));
   });
+
+  // ── Carousel lazy loading (IntersectionObserver) ─────────────────
+  {
+    const lazyObs = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target as HTMLImageElement;
+        const src = img.dataset.lazySrc ?? '';
+        if (src) {
+          img.src = src;
+          img.removeAttribute('data-lazy-src');
+        }
+        lazyObs.unobserve(img);
+      });
+    }, { rootMargin: '200px 400px 200px 400px', threshold: 0 });
+
+    document.querySelectorAll<HTMLImageElement>('img[data-lazy-src]')
+      .forEach((img) => lazyObs.observe(img));
+  }
 
   // ── Store search (filters entire store sections) ───────────────────
   const searchInput  = document.getElementById('store-search') as HTMLInputElement | null;

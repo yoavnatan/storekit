@@ -48,9 +48,16 @@
 .cart-line { display: flex; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--color-border); }
 .cart-line img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
 .cart-line__img-placeholder { width: 56px; height: 56px; border-radius: 8px; background: var(--color-surface); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-border); }
-.cart-line__info { flex: 1; }
-.cart-line__qty { display: inline-flex; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
-.cart-line__qty button { width: 26px; height: 26px; border: 1px solid var(--color-border); border-radius: 6px; display: flex; align-items: center; justify-content: center; line-height: 1; }
+.cart-line__info { flex: 1; min-width: 0; }
+.cart-line__footer { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.3rem; }
+.cart-line__price { flex: 1; font-size: 0.82rem; font-weight: 600; color: var(--color-text); }
+.cart-line__qty { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--color-border); border-radius: 6px; overflow: hidden; }
+.cart-line__qty button { width: 24px; height: 24px; border: none; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background 0.1s; }
+.cart-line__qty button:hover { background: var(--color-surface); }
+.cart-line__qty button:disabled { opacity: 0.35; cursor: not-allowed; }
+.cart-line__qty span { min-width: 1.5rem; text-align: center; font-size: 0.82rem; font-weight: 600; }
+.cart-line__rm { width: 26px; height: 26px; border: 1px solid var(--color-border); border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-muted); transition: background 0.1s, color 0.1s; }
+.cart-line__rm:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
 .cart-empty { color: var(--color-muted); text-align: center; padding: 2rem 0; }
 
 .cart-store-divider { border: none; border-top: 2px solid var(--color-border); margin: 0.5rem 0; }

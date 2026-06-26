@@ -9,6 +9,12 @@ export interface StoreColors {
   accent: string;
 }
 
+export interface StoreShipping {
+  flatRate: number;
+  freeAbove: number | null;
+  processingDays: number;
+}
+
 export interface Store {
   id: string;
   sellerId: string;
@@ -18,6 +24,7 @@ export interface Store {
   description: string;
   colors: StoreColors;
   categories?: string[];
+  shipping?: StoreShipping;
   createdAt: string;
 }
 

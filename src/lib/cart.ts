@@ -5,6 +5,7 @@ export interface CartItem {
   price: number;
   image: string;
   qty: number;
+  stock?: number;
   selectedVariants?: Record<string, string>;
 }
 
@@ -58,7 +59,7 @@ export function getStoreItems(storeSlug: string): CartItem[] {
 export function addItem(
   storeSlug: string,
   storeName: string,
-  product: Pick<CartItem, 'slug' | 'name' | 'price' | 'image'>,
+  product: Pick<CartItem, 'slug' | 'name' | 'price' | 'image'> & { stock?: number },
   qty = 1,
   selectedVariants?: Record<string, string>
 ): void {

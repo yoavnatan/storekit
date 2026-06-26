@@ -6,15 +6,42 @@ import CartDrawer from '../components/CartDrawer.astro';
 import WishlistDrawer from '../components/WishlistDrawer.astro';
 import ConfirmModal from '../components/ConfirmModal.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
+import { store as platform } from '../config/store.config.js';
+import { getSellerSession } from '../lib/seller-auth.js';
 
 import '../styles/main.css';
 
-const { title, description, image, type, noindex, jsonLd, isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode } = Astro.props;
+const {
+  title, description, image, type, noindex, jsonLd,
+  isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode,
+  dataLayer, productPrice, productCurrency,
+} = Astro.props;
 
 const lang = getLang(Astro.cookies);
 const dir  = getDir(lang);
 const t    = getT(lang);
 const i18nJson = JSON.stringify({ cart: t.cart, confirm: t.confirm, dashboard: t.dashboard, gallery: t.gallery, wishlist: t.wishlist });
+
+function sanitizeTagId(id?: string): string {
+  const clean = (id ?? '').replace(/[^A-Za-z0-9\-]/g, '');
+  return clean.length > 0 && clean.length <= 32 ? clean : '';
+}
+function sanitizePixelId(id?: string): string {
+  return /^\d{1,20}$/.test(id ?? '') ? (id ?? '') : '';
+}
+
+const platformGtm   = sanitizeTagId(platform.ads?.googleTagId);
+const platformPixel = sanitizePixelId(platform.ads?.metaPixelId);
+
+function gtmHeadScript(id: string): string {
+  return `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${id}');`;
+}
+function metaPixelScript(id: string): string {
+  return `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${id}');fbq('track','PageView');`;
+}
+
+const dlJson = dataLayer ? JSON.stringify(dataLayer) : null;
+const sessionUserId = getSellerSession(Astro.cookies) ?? '';
 ---
 
 <!doctype html>
@@ -28,9 +55,42 @@ const i18nJson = JSON.stringify({ cart: t.cart, confirm: t.confirm, dashboard: t
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" />
-    <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} />
+    <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} productPrice={productPrice} productCurrency={productCurrency} />
+    {dlJson && <script is:inline set:html={`window.dataLayer=window.dataLayer||[];window.dataLayer.push(${dlJson});`} />}
+    {platformGtm && <script is:inline set:html={gtmHeadScript(platformGtm)} />}
+    {platformPixel && <script is:inline set:html={metaPixelScript(platformPixel)} />}
   </head>
   <body>
+    <script is:inline set:html={`
+(function(){
+  var uid=${JSON.stringify(sessionUserId)};
+  var stored=localStorage.getItem('__cu')||'';
+  window.__sessionUserId=uid;
+  window.__pendingCartSync='';
+  if(stored===uid)return;
+  function clearLocal(){
+    var keys=Object.keys(localStorage);
+    for(var i=0;i<keys.length;i++){
+      var k=keys[i];
+      if(k.indexOf('store_cart_v2_')===0||k==='wishlist_v1')localStorage.removeItem(k);
+    }
+  }
+  if(uid===''){
+    // logout: server already has the latest cart; clear local
+    clearLocal();
+  }else if(stored===''){
+    // guest → login: keep local, merge with server
+    window.__pendingCartSync='merge';
+  }else{
+    // different logged-in user: clear local, then load their cart
+    clearLocal();
+    window.__pendingCartSync='replace';
+  }
+  localStorage.setItem('__cu',uid);
+})();
+`} />
+    {platformGtm && <noscript set:html={`<iframe src="https://www.googletagmanager.com/ns.html?id=${platformGtm}" height="0" width="0" style="display:none;visibility:hidden"></iframe>`} />}
+    {platformPixel && <noscript set:html={`<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${platformPixel}&ev=PageView&noscript=1" alt="" />`} />}
     <a href="#main-content" class="skip-link">{t.nav.skipToMain}</a>
     <script type="application/json" id="i18n-data" is:inline set:html={i18nJson}></script>
     <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} />
@@ -41,5 +101,6 @@ const i18nJson = JSON.stringify({ cart: t.cart, confirm: t.confirm, dashboard: t
     <CartDrawer />
     <WishlistDrawer />
     <ConfirmModal />
+    <script>import '../lib/cart-sync.js';</script>
   </body>
 </html>

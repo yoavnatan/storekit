@@ -1,24 +1,40 @@
 /* ── Hero ──────────────────────────────────────────────────────────── */
 
 .home-hero {
-  background: var(--color-primary);
+  background: #07101e;
   position: relative;
   overflow: hidden;
+  padding-bottom: 2rem;
+}
+
+.home-body {
+  background: var(--color-bg);
+  border-radius: 2rem 2rem 0 0;
+  margin-top: -2rem;
+  padding-top: 0.5rem;
+  position: relative;
+  z-index: 1;
 }
 
 .home-hero__glow {
   position: absolute;
-  top: -80%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 700px;
-  height: 380px;
+  inset: 0;
   background: radial-gradient(
-    circle at center,
-    color-mix(in srgb, var(--color-accent) 32%, transparent) 0%,
-    transparent 65%
+    500px circle at 50% 200%,
+    rgba(40, 165, 200, 0.55) 0%,
+    rgba(40, 165, 200, 0.15) 50%,
+    transparent 75%
   );
   pointer-events: none;
+}
+
+html[dir="ltr"] .home-hero__glow {
+  background: radial-gradient(
+    500px circle at 50% 200%,
+    rgba(40, 165, 200, 0.55) 0%,
+    rgba(40, 165, 200, 0.15) 50%,
+    transparent 75%
+  );
 }
 
 .home-hero__inner {
@@ -242,7 +258,8 @@
 
 .home-carousel-btn {
   position: absolute;
-  top: 50%;
+  /* 18px = carousel padding-top; clamp = half of card image height (aspect-ratio:1, width=clamp(165px,44vw,220px)) */
+  top: calc(18px + clamp(82px, 22vw, 110px));
   transform: translateY(-50%);
   z-index: 5;
   width: 32px;
@@ -278,10 +295,11 @@
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
-  /* padding-top + negative margin-top: room for card lift + shadow without clipping */
+  /* padding + negative margin: room for card lift + shadow without clipping on all sides */
   padding-top: 18px;
   margin-top: -18px;
-  padding-bottom: 0.75rem;
+  padding-bottom: 2.5rem;
+  margin-bottom: -2rem;
 }
 
 .home-carousel { scrollbar-width: none; }

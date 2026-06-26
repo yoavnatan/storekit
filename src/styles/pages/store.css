@@ -5,6 +5,7 @@
   padding: 2.5rem 0 2.25rem;
 }
 
+
 .store-name {
   font-size: clamp(1.75rem, 5vw, 2.75rem);
   font-weight: 800;
@@ -26,35 +27,6 @@
   font-size: 0.9rem;
   line-height: 1.65;
   color: var(--color-muted);
-}
-
-.store-strip {
-  height: 0.5cm;
-  background: #07101e;
-  position: relative;
-  overflow: hidden;
-}
-
-.store-strip::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    500px circle at 85% 200%,
-    rgba(20, 184, 166, 0.55) 0%,
-    rgba(20, 184, 166, 0.15) 50%,
-    transparent 75%
-  );
-  pointer-events: none;
-}
-
-html[dir="ltr"] .store-strip::after {
-  background: radial-gradient(
-    500px circle at 15% 200%,
-    rgba(20, 184, 166, 0.55) 0%,
-    rgba(20, 184, 166, 0.15) 50%,
-    transparent 75%
-  );
 }
 
 .products-heading {
@@ -103,7 +75,28 @@ html[dir="ltr"] .store-strip::after {
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, opacity 0.25s ease;
+}
+
+/* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css */
+.product-card__img-wrap.is-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+    var(--color-surface) 75%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+  border-radius: inherit;
+}
+
+.product-card__img-wrap.is-loading .product-card__img {
+  opacity: 0;
 }
 
 .product-card__img-wrap:hover .product-card__img { transform: scale(1.04); }

@@ -3,6 +3,11 @@ interface NavLink {
   href: string;
 }
 
+interface AdsConfig {
+  googleTagId?: string;
+  metaPixelId?: string;
+}
+
 interface PlatformConfig {
   name: string;
   url: string;
@@ -50,6 +55,7 @@ interface PlatformConfig {
     facebook: string;
     instagram: string;
   };
+  ads?: AdsConfig;
 }
 
 export const store: PlatformConfig = {
@@ -113,9 +119,21 @@ export const store: PlatformConfig = {
     facebook: '',
     instagram: '',
   },
+
+  ads: {
+    googleTagId: '',
+    metaPixelId: '',
+  },
 };
 
 export function formatPrice(amount: number | string): string {
   const n = Number(amount || 0);
   return `${store.business.currencySymbol}${n.toLocaleString('en-US')}`;
+}
+
+export function cdnSrc(url: string, w = 400): string {
+  const m = url.match(/^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)$/);
+  if (!m || !m[2]) return url;
+  if (m[2].startsWith('f_') || m[2].startsWith('q_') || m[2].startsWith('c_') || m[2].startsWith('w_')) return url;
+  return `${m[1]}f_auto,q_auto,w_${w}/${m[2]}`;
 }

@@ -1,9 +1,10 @@
 ---
 export const prerender = false;
+import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getStoreBySlug } from '../../lib/stores.js';
 import { getProductsByStoreId } from '../../lib/store-products.js';
-import { store as platform, formatPrice } from '../../config/store.config.js';
+import { store as platform, formatPrice, cdnSrc } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 
@@ -35,6 +36,7 @@ const jsonLd = {
 const pmI18n = {
   addToCart: t.store.addToCart,
   addedToCart: t.store.addedToCart,
+  toCheckout: t.store.toCheckout,
   outOfStock: t.store.outOfStock,
   addToWishlist: t.wishlist.addLabel,
   removeFromWishlist: t.wishlist.removeLabel,
@@ -51,6 +53,7 @@ const pmI18n = {
   storeMode={true}
   storeName={shopStore.name}
   storeSlug={shopStore.slug}
+  dataLayer={{ event: 'page_view', page_type: 'store', store_id: shopStore.id, store_name: shopStore.name, store_slug: shopStore.slug, currency: 'ILS' }}
 >
   <script is:inline type="application/json" id="pm-i18n" set:html={JSON.stringify(pmI18n)} />
 
@@ -65,8 +68,6 @@ const pmI18n = {
         )}
       </div>
     </section>
-
-    <div class="store-strip" aria-hidden="true"></div>
 
     <section class="section container">
 {products.length === 0 ? (
@@ -129,7 +130,7 @@ const pmI18n = {
             </div>
           </div>
           <ul class="product-grid" role="list">
-            {products.map((p) => {
+            {products.map((p, idx) => {
               const isNew = new Date(p.createdAt).toDateString() === today;
               const hasImages = !!(p.images?.length);
               return (
@@ -144,12 +145,12 @@ const pmI18n = {
                     data-category={p.category ?? ''}
                     data-tags={p.tags?.length ? p.tags.join(',') : ''}
                     data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}>
-                  <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}`}
+                  <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable is-loading' : ''}`}
                        role={hasImages ? 'button' : undefined}
                        aria-label={hasImages ? p.name : undefined}
                        tabindex={hasImages ? 0 : undefined}>
                     {p.images?.[0]
-                      ? <img src={p.images[0]} alt={p.name} class="product-card__img" width="400" height="400" loading="lazy" decoding="async" />
+                      ? <Image src={cdnSrc(p.images[0])} alt={p.name} class="product-card__img" width={400} height={400} loading={idx < 4 ? 'eager' : 'lazy'} fetchpriority={idx < 2 ? 'high' : undefined} />
                       : <div class="product-card__img-placeholder" aria-hidden="true">
                           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
                             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
@@ -190,7 +191,7 @@ const pmI18n = {
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
                           <span class="qty-val text-sm font-semibold select-none" style="min-width:1.75rem;text-align:center;color:var(--color-text)" aria-live="polite" aria-atomic="true">1</span>
-                          <button type="button" class="qty-inc flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100" style="width:1.75rem;height:1.75rem" aria-label={t.cart.qtyIncrease}>
+                          <button type="button" class="qty-inc flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30 disabled:cursor-not-allowed" style="width:1.75rem;height:1.75rem" aria-label={t.cart.qtyIncrease}>
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
                         </div>
@@ -205,7 +206,7 @@ const pmI18n = {
                               data-slug={p.slug}
                               data-name={p.name}
                               data-price={String(p.price)}
-                              data-image={p.images?.[0] ?? ''}
+                              data-image={p.images?.[0] ? cdnSrc(p.images[0]) : ''}
                               data-stock={String(p.stock)}
                               data-label-added={t.store.addedToCart}
                             ><span class="btn-label">{t.store.addToCart}</span></button>
@@ -271,6 +272,7 @@ const pmI18n = {
   import { addItem, syncCartImages } from '../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
   import { spawnRipple } from '../../lib/ripple.js';
+  import { trackAddToCart } from '../../lib/tracking.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart), li[role="option"]');
@@ -335,8 +337,10 @@ const pmI18n = {
       const nowActive = toggleWishlist(item);
       btn.dataset.wishlisted = String(nowActive);
       btn.setAttribute('aria-pressed', String(nowActive));
-      btn.setAttribute('aria-label', nowActive ? (wi.removeLabel ?? 'Remove from wishlist') : (wi.addLabel ?? 'Add to wishlist'));
+      const newLabel = nowActive ? (wi.removeLabel ?? 'Remove from wishlist') : (wi.addLabel ?? 'Add to wishlist');
+      btn.setAttribute('aria-label', newLabel);
       setHeartStyle(btn, nowActive);
+
       btn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }],
         { duration: 300, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
@@ -360,6 +364,7 @@ const pmI18n = {
     const qtyInc = card.querySelector<HTMLButtonElement>('.qty-inc');
     const qtyVal = card.querySelector<HTMLElement>('.qty-val');
     const maxStock = Math.max(1, parseInt(addBtn.dataset.stock ?? '99', 10) || 99);
+    const cardCategory = card.dataset.category ?? '';
     let qty = 1;
 
     function updateQty(n: number) {
@@ -381,7 +386,8 @@ const pmI18n = {
     addBtn.addEventListener('click', () => {
       if (addBtn.disabled) return;
       const { slug = '', name = '', price = '0', image = '' } = addBtn.dataset;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image }, qty);
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty);
+      trackAddToCart({ id: slug, name, price: Number(price), category: cardCategory }, qty);
       updateQty(1);
 
       addBtn.style.minWidth = `${addBtn.offsetWidth}px`;
@@ -594,6 +600,19 @@ const pmI18n = {
     if (initQ || initSortVal || initCat) filterAndSort();
   }
 
+  // ── Skeleton: remove shimmer when image loads ─────────────────
+  document.querySelectorAll<HTMLImageElement>('.product-card__img').forEach((img) => {
+    const wrap = img.closest<HTMLElement>('.product-card__img-wrap');
+    if (!wrap) return;
+    const done = () => wrap.classList.remove('is-loading');
+    if (img.complete && img.naturalWidth > 0) {
+      done();
+    } else {
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+    }
+  });
+
   // ── Lightbox (available for revert) ──────────────────────────
   const lightbox   = document.getElementById('lightbox') as HTMLDivElement | null;
   const lbImg      = document.getElementById('lightbox-img') as HTMLImageElement | null;
@@ -726,6 +745,7 @@ const pmI18n = {
     const description = card.dataset.description ?? '';
     const stock       = Number(card.dataset.stock ?? 0);
     const slug        = card.dataset.slug ?? '';
+    const category    = card.dataset.category ?? '';
     const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
       ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
       : [];
@@ -785,6 +805,10 @@ const pmI18n = {
                     style="flex:1;height:2.25rem;display:flex;align-items:center;justify-content:center;gap:4px">
               <span class="pm-btn-label">${i18n.addToCart ?? 'הוסף לעגלה'}</span>
             </button>
+            <a href="/checkout" class="pm-to-checkout btn btn--ghost btn--sm"
+               style="display:none;height:2.25rem;white-space:nowrap;align-items:center;gap:0.3rem">
+              ${i18n.toCheckout ?? 'לתשלום'}
+            </a>
           </div>
           <button type="button" class="pm-wishlist-btn"
                   style="display:flex;align-items:center;justify-content:center;gap:0.4rem;width:100%;background:none;border:1px solid var(--color-border);border-radius:var(--radius);padding:0.4rem 0.85rem;cursor:pointer;font-size:0.8rem;color:${wishlisted ? '#e53e3e' : 'var(--color-muted)'};transition:all 0.15s">
@@ -913,15 +937,20 @@ const pmI18n = {
     const pmAddBtn  = pmBody?.querySelector<HTMLButtonElement>('.pm-add-to-cart');
     const pmBtnLbl  = pmBody?.querySelector<HTMLElement>('.pm-btn-label');
     const origLabel = pmBtnLbl?.textContent ?? '';
+    if (pmBtnLbl) pmBtnLbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px';
 
     pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
+    const pmToCheckout = pmBody?.querySelector<HTMLAnchorElement>('.pm-to-checkout');
+
     pmAddBtn?.addEventListener('click', () => {
       if (pmAddBtn.disabled) return;
       const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl }, pmQty, pmVariantsCopy);
+      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock }, pmQty, pmVariantsCopy);
+      trackAddToCart({ id: slug, name, price, category }, pmQty);
       updatePmQty(1);
       pmAddBtn.disabled = true;
       if (pmBtnLbl) pmBtnLbl.innerHTML = `${checkSvg}${i18n.addedToCart ?? 'נוסף!'}`;
+      if (pmToCheckout) pmToCheckout.style.display = 'inline-flex';
       pmAddBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
         { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }

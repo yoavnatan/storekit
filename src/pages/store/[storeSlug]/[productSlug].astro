@@ -1,9 +1,10 @@
 ---
 export const prerender = false;
+import { Image } from 'astro:assets';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getStoreBySlug } from '../../../lib/stores.js';
 import { getProductBySlug, getProductsByStoreId } from '../../../lib/store-products.js';
-import { store as platform, formatPrice } from '../../../config/store.config.js';
+import { store as platform, formatPrice, cdnSrc } from '../../../config/store.config.js';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getLang, getT } from '../../../i18n/index.js';
 import { resolveVariantColor, isColorVariant } from '../../../lib/color-variants.js';
@@ -89,11 +90,16 @@ const pmI18n = {
 <BaseLayout
   title={`${product.name} — ${shopStore.name}`}
   description={product.description || shopStore.tagline || `${product.name} at ${shopStore.name}`}
+  image={images[0]}
+  type="product"
   jsonLd={jsonLd}
   isLoggedIn={isLoggedIn}
   storeMode={true}
   storeName={shopStore.name}
   storeSlug={shopStore.slug}
+  dataLayer={{ event: 'page_view', page_type: 'product', store_id: shopStore.id, store_name: shopStore.name, store_slug: storeSlug, currency: 'ILS', ecommerce: { currency: 'ILS', items: [{ item_id: product.id, item_name: product.name, price: product.price, item_category: product.category ?? '' }] } }}
+  productPrice={product.price}
+  productCurrency="ILS"
 >
   <script is:inline type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
   <script is:inline type="application/json" id="pm-i18n" set:html={JSON.stringify(pmI18n)} />
@@ -105,8 +111,8 @@ const pmI18n = {
        data-lang={lang}
        data-variants={product.variants?.length ? JSON.stringify(product.variants) : undefined}>
 
-    <!-- Back link -->
-    <nav class="container pt-4 pb-2" aria-label="breadcrumb">
+    <!-- Back link + checkout link -->
+    <nav class="container pt-4 pb-2 flex items-center justify-between" aria-label="breadcrumb">
       <a href={`/store/${shopStore.slug}`}
          class="inline-flex items-center gap-1.5 text-sm transition-colors duration-150 hover:[color:var(--color-text)]"
          style="color:var(--color-muted);text-decoration:none">
@@ -115,6 +121,15 @@ const pmI18n = {
           <polyline points="15 18 9 12 15 6"/>
         </svg>
         {lang === 'he' ? 'לחנות' : 'To store'}
+      </a>
+      <a href="/checkout"
+         class="inline-flex items-center gap-1.5 text-sm transition-colors duration-150 hover:[color:var(--color-text)]"
+         style="color:var(--color-muted);text-decoration:none">
+        {lang === 'he' ? 'לתשלום' : 'Checkout'}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"
+             class={lang === 'he' ? 'rotate-180' : ''}>
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
       </a>
     </nav>
 
@@ -132,10 +147,10 @@ const pmI18n = {
                tabindex={images.length > 0 ? '0' : undefined}
                aria-label={images.length > 0 ? t.product.clickToZoom : undefined}>
             {images[0]
-              ? <img id="main-img" src={images[0]} alt={product.name}
-                     width="800" height="800"
-                     style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease"
-                     loading="eager" decoding="async" />
+              ? <Image id="main-img" src={cdnSrc(images[0], 800)} alt={product.name}
+                       width={800} height={800}
+                       style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease"
+                       loading="eager" fetchpriority="high" />
               : <div class="absolute inset-0 flex items-center justify-center" style="color:var(--color-border)" aria-hidden="true">
                   <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
@@ -160,8 +175,8 @@ const pmI18n = {
                   aria-pressed={i === 0 ? 'true' : 'false'}
                   aria-label={`${product.name} ${i + 1}`}
                 >
-                  <img src={img} alt="" width="64" height="64"
-                       style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy" decoding="async" />
+                  <Image src={cdnSrc(img, 128)} alt="" width={64} height={64}
+                         style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy" />
                 </button>
               ))}
             </div>
@@ -278,6 +293,7 @@ const pmI18n = {
                           data-price={String(product.price)}
                           data-image={images[0] ?? ''}
                           data-stock={String(product.stock)}
+                          data-category={product.category ?? ''}
                           data-label-added={t.store.addedToCart}>
                     <span class="btn-label">{t.store.addToCart}</span>
                   </button>
@@ -387,6 +403,7 @@ const pmI18n = {
                      data-description={p.description ?? ''}
                      data-stock={String(p.stock)}
                      data-slug={p.slug}
+                     data-category={p.category ?? ''}
                      data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
                      style="flex:0 0 auto;width:170px;border-radius:var(--radius);overflow:hidden;background:var(--color-surface);cursor:pointer;transition:box-shadow 0.15s">
                   <a href={`/store/${shopStore.slug}/${p.slug}`}
@@ -394,9 +411,9 @@ const pmI18n = {
                      style="display:block;text-decoration:none;color:inherit">
                     <div style="width:170px;height:150px;position:relative;overflow:hidden;background:var(--color-bg)">
                       {pImgs[0]
-                        ? <img src={pImgs[0]} alt={p.name} width="170" height="150"
-                               style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease"
-                               loading="lazy" decoding="async" />
+                        ? <Image src={cdnSrc(pImgs[0], 340)} alt={p.name} width={170} height={150}
+                                 style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease"
+                                 loading="lazy" />
                         : <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--color-border)" aria-hidden="true">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
                               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
@@ -472,6 +489,7 @@ const pmI18n = {
   import { addItem } from '../../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../../lib/wishlist.js';
   import { spawnRipple } from '../../../lib/ripple.js';
+  import { trackViewContent, trackAddToCart } from '../../../lib/tracking.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
@@ -479,6 +497,19 @@ const pmI18n = {
   const images: string[] = JSON.parse(page?.dataset.images ?? '[]');
   const pageLang = page?.dataset.lang ?? 'he';
   const pageVariants: Array<{ name: string; options: string[] }> = JSON.parse(page?.dataset.variants ?? '[]');
+
+  // ── ViewContent — fire once on product page load ───────────────
+  {
+    const addBtnEl = document.getElementById('add-to-cart-btn') as HTMLButtonElement | null;
+    if (addBtnEl?.dataset.slug) {
+      trackViewContent({
+        id: addBtnEl.dataset.slug,
+        name: addBtnEl.dataset.name ?? '',
+        price: Number(addBtnEl.dataset.price ?? 0),
+        category: addBtnEl.dataset.category,
+      });
+    }
+  }
 
   // ── Variant selector ───────────────────────────────────────────
   const selectedVariants: Record<string, string> = {};
@@ -636,9 +667,10 @@ const pmI18n = {
     addBtn.addEventListener('pointerdown', (e) => spawnRipple(addBtn, e.clientX, e.clientY));
     addBtn.addEventListener('click', () => {
       if (addBtn.disabled) return;
-      const { slug = '', name = '', price = '0', image = '' } = addBtn.dataset;
+      const { slug = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
       const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image }, qty, variantsCopy);
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy);
+      trackAddToCart({ id: slug, name, price: Number(price), category }, qty);
       updateQty(1);
 
       addBtn.style.minWidth = `${addBtn.offsetWidth}px`;
@@ -779,6 +811,7 @@ const pmI18n = {
     const description = card.dataset.description ?? '';
     const stock       = Number(card.dataset.stock ?? 0);
     const slug        = card.dataset.slug ?? '';
+    const category    = card.dataset.category ?? '';
     const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
       ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
       : [];
@@ -953,7 +986,8 @@ const pmI18n = {
     pmAddBtn?.addEventListener('click', () => {
       if (pmAddBtn.disabled) return;
       const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl }, pmQty, pmVariantsCopy);
+      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock }, pmQty, pmVariantsCopy);
+      trackAddToCart({ id: slug, name, price, category }, pmQty);
       updatePmQty(1);
       pmAddBtn.disabled = true;
       if (pmBtnLbl) pmBtnLbl.innerHTML = `${checkSvgSm}${i18n.addedToCart ?? ''}`;

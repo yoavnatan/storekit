@@ -2,7 +2,6 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { registerSeller, setSellerSession, getSellerSession } from '../../lib/seller-auth.js';
-import { createStore } from '../../lib/stores.js';
 import { getLang, getT } from '../../i18n/index.js';
 
 if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
@@ -10,16 +9,22 @@ if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
 
+const rawNext = Astro.url.searchParams.get('next') ?? '';
+const safeNext =
+  rawNext.startsWith('/') && !rawNext.startsWith('//') && rawNext !== '/seller/register'
+    ? rawNext
+    : '/';
+
 let error = '';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const name      = String(form.get('name')        || '').trim();
-  const email     = String(form.get('email')       || '').trim();
-  const password  = String(form.get('password')    || '');
-  const storeName = String(form.get('store_name')  || '').trim();
+  const name     = String(form.get('name')     || '').trim();
+  const email    = String(form.get('email')    || '').trim();
+  const password = String(form.get('password') || '');
+  const next     = String(form.get('_next')    || safeNext);
 
-  if (!name || !email || !password || !storeName) {
+  if (!name || !email || !password) {
     error = t.auth.allRequired;
   } else if (password.length < 6) {
     error = t.auth.passwordTooShort;
@@ -28,15 +33,14 @@ if (Astro.request.method === 'POST') {
     if (!seller) {
       error = t.auth.emailExists;
     } else {
-      createStore(seller.id, { name: storeName });
       setSellerSession(Astro.cookies, seller.id);
-      return Astro.redirect('/seller/dashboard');
+      return Astro.redirect(next);
     }
   }
 }
 ---
 
-<BaseLayout title={t.auth.openStore} noindex={true} isLoggedIn={false} hasStore={false}>
+<BaseLayout title={t.auth.openStore} noindex={true} isLoggedIn={false} hasStore={false} sellerMode={true}>
   <section class="section container auth-wrap">
     <h1>{t.auth.openStore}</h1>
     <p class="muted">{t.auth.createFree}</p>
@@ -44,6 +48,7 @@ if (Astro.request.method === 'POST') {
     {error && <p class="auth-error">{error}</p>}
 
     <form method="POST" class="auth-form">
+      <input type="hidden" name="_next" value={safeNext} />
       <label class="field">
         <span>{t.auth.yourName}</span>
         <input class="input" type="text" name="name" required autocomplete="name" placeholder={t.auth.namePlaceholder} />
@@ -55,10 +60,6 @@ if (Astro.request.method === 'POST') {
       <label class="field">
         <span>{t.auth.password}</span>
         <input class="input" type="password" name="password" required minlength="6" autocomplete="new-password" />
-      </label>
-      <label class="field">
-        <span>{t.auth.storeName}</span>
-        <input class="input" type="text" name="store_name" required placeholder={t.auth.storeNamePlaceholder} />
       </label>
       <button class="btn btn--accent" type="submit">{t.auth.createStore}</button>
       <p class="muted auth-switch">{t.auth.alreadyHaveStore} <a href="/seller/login">{t.auth.loginLink}</a></p>

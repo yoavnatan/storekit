@@ -18,6 +18,8 @@ const {
   type = 'website',
   noindex = false,
   jsonLd = null,
+  productPrice,
+  productCurrency = 'ILS',
 } = Astro.props;
 
 const fullTitle = title ? `${title} | ${store.name}` : `${store.name} — ${store.tagline}`;
@@ -47,5 +49,9 @@ const ogImage = image ? new URL(image, store.url).href : '';
 <meta name="twitter:description" content={description} />
 {ogImage && <meta name="twitter:image" content={ogImage} />}
 
+<!-- Product pricing (Meta/Facebook product catalog) -->
+{productPrice !== undefined && <meta property="product:price:amount" content={String(productPrice)} />}
+{productPrice !== undefined && <meta property="product:price:currency" content={productCurrency} />}
+
 <!-- Structured data -->
-{jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
+{jsonLd && <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />}

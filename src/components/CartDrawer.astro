@@ -119,13 +119,15 @@
               <div class="cart-line__info">
                 <strong>${esc(i.name)}</strong>
                 ${variantLine}
-                <div>${formatPrice(i.price)}</div>
-                <div class="cart-line__qty">
-                  <button data-act="dec" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyDecrease ?? 'Decrease quantity')} ${esc(i.name)}">−</button>
-                  <span aria-live="polite" aria-atomic="true">${i.qty}</span>
-                  <button data-act="inc" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyIncrease ?? 'Increase quantity')} ${esc(i.name)}">+</button>
-                  <button data-act="rm" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" data-name="${esc(i.name)}" aria-label="${esc(i18n.removeOk ?? 'Remove')} ${esc(i.name)}" style="margin-inline-start:auto">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                <div class="cart-line__footer">
+                  <span class="cart-line__price">${formatPrice(i.price)}</span>
+                  <div class="cart-line__qty">
+                    <button data-act="dec" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyDecrease ?? 'Decrease quantity')} ${esc(i.name)}" ${i.qty <= 1 ? 'disabled' : ''}>−</button>
+                    <span aria-live="polite" aria-atomic="true">${i.qty}</span>
+                    <button data-act="inc" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" data-stock="${i.stock ?? ''}" aria-label="${esc(i18n.qtyIncrease ?? 'Increase quantity')} ${esc(i.name)}" ${i.stock != null && i.qty >= i.stock ? 'disabled' : ''}>+</button>
+                  </div>
+                  <button data-act="rm" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" data-name="${esc(i.name)}" aria-label="${esc(i18n.removeOk ?? 'Remove')} ${esc(i.name)}" class="cart-line__rm">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                   </button>
                 </div>
               </div>
@@ -137,7 +139,7 @@
             <span>${i18n.subtotal ?? 'Subtotal'}</span>
             <strong>${formatPrice(getSubtotal(c.storeSlug))}</strong>
           </div>
-          <a href="/checkout?store=${esc(c.storeSlug)}" class="btn cart-checkout">
+          <a href="/checkout" class="btn cart-checkout">
             ${i18n.checkout ?? 'Checkout'} — ${esc(c.storeName)}
           </a>
         </div>
@@ -148,7 +150,7 @@
             <span>${i18n.total ?? 'Total'} (${carts.length} ${i18n.stores ?? 'stores'})</span>
             <strong>${formatPrice(grandTotal)}</strong>
           </div>
-          <a href="/checkout?stores=all" class="btn cart-checkout">
+          <a href="/checkout" class="btn cart-checkout">
             ${i18n.payAll ?? 'Pay all stores'}
           </a>
         </div>` : '');
@@ -170,16 +172,26 @@
       const item = storeCart?.items.find((i) => (i.cartKey ?? i.slug) === key);
       if (!item) return;
 
+      const stockLimit = btn.dataset.act === 'inc' && btn.dataset.stock
+        ? parseInt(btn.dataset.stock, 10)
+        : Infinity;
       const newQty = btn.dataset.act === 'inc' ? item.qty + 1 : item.qty - 1;
       if (newQty <= 0) {
         removeItem(store, key);
         return;
       }
+      if (btn.dataset.act === 'inc' && newQty > stockLimit) return;
 
       setQtyQuiet(store, key, newQty);
 
-      const qtySpan = btn.closest('.cart-line__qty')?.querySelector<HTMLElement>('[aria-live]');
+      const qtyRow = btn.closest('.cart-line__qty');
+      const qtySpan = qtyRow?.querySelector<HTMLElement>('[aria-live]');
       if (qtySpan) qtySpan.textContent = String(newQty);
+
+      const decBtn = qtyRow?.querySelector<HTMLButtonElement>('[data-act="dec"]');
+      const incBtn = qtyRow?.querySelector<HTMLButtonElement>('[data-act="inc"]');
+      if (decBtn) decBtn.disabled = newQty <= 1;
+      if (incBtn) incBtn.disabled = isFinite(stockLimit) && newQty >= stockLimit;
 
       const storeGroup = btn.closest<HTMLElement>('.cart-store-group');
       const countEl = storeGroup?.querySelector<HTMLElement>('.cart-store-group__count');
