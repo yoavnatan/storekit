@@ -162,8 +162,15 @@ export function buildRows(p: ProductData, cloud: string, preset: string): [HTMLT
     <td class="num product-stock">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}</td>
     <td class="num" style="color:var(--color-muted);font-size:0.82rem">—</td>
     <td class="actions">
-      <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle="${p.id}">${i.edit ?? 'Edit'}</button>
-      <button class="btn btn--danger btn--sm" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}">${i.delete ?? 'Delete'}</button>
+      <div class="product-menu">
+        <button class="product-menu__btn" type="button" aria-label="${esc(i.menuLabel ?? 'אפשרויות')}" aria-expanded="false" aria-haspopup="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        </button>
+        <ul class="product-menu__dropdown" hidden role="menu">
+          <li role="none"><button class="product-menu__item" type="button" data-edit-toggle="${p.id}" role="menuitem">${esc(i.edit ?? 'Edit')}</button></li>
+          <li role="none"><button class="product-menu__item product-menu__item--danger" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}" role="menuitem">${esc(i.delete ?? 'Delete')}</button></li>
+        </ul>
+      </div>
     </td>`;
 
   const edit = document.createElement('tr');
@@ -352,6 +359,56 @@ export function initAddProduct(cloud: string, preset: string): void {
       showStatus(i18n.productAdded ?? 'Product added.');
     } finally {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
+    }
+  });
+}
+
+export function initProductMenus(): void {
+  function closeAll(exceptMenu?: HTMLElement) {
+    document.querySelectorAll<HTMLButtonElement>('.product-menu__btn[aria-expanded="true"]').forEach(btn => {
+      const pm = btn.closest<HTMLElement>('.product-menu');
+      if (pm && pm === exceptMenu) return;
+      btn.setAttribute('aria-expanded', 'false');
+      pm?.querySelector<HTMLElement>('.product-menu__dropdown')?.setAttribute('hidden', '');
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const target = e.target as Element;
+
+    const triggerBtn = target.closest<HTMLButtonElement>('.product-menu__btn');
+    if (triggerBtn) {
+      const pm = triggerBtn.closest<HTMLElement>('.product-menu');
+      const dropdown = pm?.querySelector<HTMLElement>('.product-menu__dropdown');
+      if (!pm || !dropdown) return;
+      const isOpen = triggerBtn.getAttribute('aria-expanded') === 'true';
+      closeAll(isOpen ? undefined : pm);
+      triggerBtn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      if (isOpen) { dropdown.setAttribute('hidden', ''); } else {
+        dropdown.removeAttribute('hidden');
+        (dropdown.querySelector<HTMLButtonElement>('[role="menuitem"]'))?.focus();
+      }
+      return;
+    }
+
+    if (target.closest('.product-menu__item')) { closeAll(); return; }
+    if (!target.closest('.product-menu')) closeAll();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const openBtn = document.querySelector<HTMLButtonElement>('.product-menu__btn[aria-expanded="true"]');
+      if (openBtn) { closeAll(); openBtn.focus(); }
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const active = document.activeElement as HTMLElement;
+      const dropdown = active.closest<HTMLElement>('.product-menu__dropdown');
+      if (!dropdown) return;
+      e.preventDefault();
+      const items = [...dropdown.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+      const idx = items.indexOf(active as HTMLButtonElement);
+      if (e.key === 'ArrowDown') items[(idx + 1) % items.length]?.focus();
+      else items[(idx - 1 + items.length) % items.length]?.focus();
     }
   });
 }

@@ -2,9 +2,10 @@
 import { store } from '../config/store.config.js';
 import { getLang, getT } from '../i18n/index.js';
 
-const year = new Date().getFullYear();
-const lang = getLang(Astro.cookies);
-const t    = getT(lang);
+const year     = new Date().getFullYear();
+const lang     = getLang(Astro.cookies);
+const t        = getT(lang);
+const nextLang = lang === 'he' ? 'en' : 'he';
 ---
 
 <footer class="site-footer">
@@ -15,6 +16,13 @@ const t    = getT(lang);
         <ul role="list" class="flex gap">
           <li><a href="/terms" class="muted">{t.footer.terms}</a></li>
           <li><a href="/contact" class="muted">{t.footer.contact}</a></li>
+          <li>
+            <form method="POST" action={`/api/lang?l=${nextLang}`} class="lang-toggle-form">
+              <button type="submit" class="lang-toggle-btn" aria-label={t.nav.switchLangLabel}>
+                {t.nav.switchLang}
+              </button>
+            </form>
+          </li>
         </ul>
       </nav>
     </div>

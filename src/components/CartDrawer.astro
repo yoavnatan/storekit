@@ -112,9 +112,9 @@
                 ? `<div style="font-size:0.72rem;color:var(--color-muted);margin-top:0.1rem">${Object.entries(i.selectedVariants).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(' · ')}</div>`
                 : '';
               return `
-            <div class="cart-line" data-item-slug="${esc(key)}" data-store-slug="${esc(c.storeSlug)}">
+            <div class="cart-line cart-line--link" data-item-slug="${esc(key)}" data-product-slug="${esc(i.slug)}" data-store-slug="${esc(c.storeSlug)}" data-store-name="${esc(c.storeName)}">
               ${i.image
-                ? `<img src="${esc(i.image)}" alt="${esc(i.name)}" width="56" height="56" loading="lazy" decoding="async">`
+                ? `<img src="${esc(i.image)}" alt="${esc(i.name)}" width="56" height="56" loading="eager">`
                 : placeholderSvg()}
               <div class="cart-line__info">
                 <strong>${esc(i.name)}</strong>
@@ -159,7 +159,18 @@
   lines?.addEventListener('click', (e) => {
     if (!(e.target instanceof Element)) return;
     const btn = e.target.closest<HTMLButtonElement>('button[data-act]');
-    if (!btn) return;
+    if (!btn) {
+      const line = e.target.closest<HTMLElement>('.cart-line--link');
+      if (line) {
+        const productSlug = line.dataset.productSlug ?? '';
+        const storeSlug   = line.dataset.storeSlug   ?? '';
+        const storeName   = line.dataset.storeName    ?? '';
+        if (productSlug && storeSlug) {
+          window.dispatchEvent(new CustomEvent('pqv:open', { detail: { storeSlug, productSlug, storeName } }));
+        }
+      }
+      return;
+    }
     const key   = btn.dataset.slug ?? '';
     const store = btn.dataset.store ?? '';
     const name  = btn.dataset.name ?? key;

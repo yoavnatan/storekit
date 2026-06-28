@@ -5,6 +5,7 @@ import Footer from '../components/Footer.astro';
 import CartDrawer from '../components/CartDrawer.astro';
 import WishlistDrawer from '../components/WishlistDrawer.astro';
 import ConfirmModal from '../components/ConfirmModal.astro';
+import ProductQuickView from '../components/ProductQuickView.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
@@ -101,6 +102,7 @@ const sessionUserId = getSellerSession(Astro.cookies) ?? '';
     <CartDrawer />
     <WishlistDrawer />
     <ConfirmModal />
+    <ProductQuickView />
     <script>import '../lib/cart-sync.js';</script>
   </body>
 </html>

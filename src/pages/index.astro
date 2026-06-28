@@ -230,7 +230,7 @@ const jsonLd = {
   )}
 
   <!-- ── Seller CTA ─────────────────────────────────────────────────── -->
-  {!hasStore && (
+  {isLoggedIn && !hasStore && (
     <section class="home-cta" aria-labelledby="cta-heading">
       <div class="home-cta__glow" aria-hidden="true"></div>
       <div class="container home-cta__inner">

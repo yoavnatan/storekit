@@ -13,6 +13,7 @@ import { formatPrice } from '../../config/store.config.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
+import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
@@ -104,6 +105,7 @@ const settingsSuccess = !hasNoStore && Astro.url.searchParams.get('saved') === '
 const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1';
 const products = store ? getProductsByStoreId(store.id) : [];
 const wishlistCounts = store ? getAllWishlistCounts() : ({} as Record<string, number>);
+const storeFavoriteCount = store ? getFavoriteStoreCount(store.slug) : 0;
 const productCount = products.length;
 const inStockCount = products.filter((p) => p.stock > 0).length;
 const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
@@ -221,6 +223,10 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
             <div>
               <dt>{d.stockValue}</dt>
               <dd>{formatPrice(totalStockValue)}</dd>
+            </div>
+            <div>
+              <dt>{d.favoritedBy}</dt>
+              <dd>{storeFavoriteCount}</dd>
             </div>
           </dl>
           <a href={`/store/${store.slug}`} class="btn btn--sm" target="_blank" rel="noopener">
@@ -364,8 +370,15 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
                       }
                     </td>
                     <td class="actions">
-                      <button class="btn btn--ghost btn--sm" type="button" data-edit-toggle={p.id}>{d.edit}</button>
-                      <button class="btn btn--danger btn--sm" type="button" data-delete-product={p.id} data-store-id={store.id}>{d.delete}</button>
+                      <div class="product-menu">
+                        <button class="product-menu__btn" type="button" aria-label={d.menuLabel ?? 'אפשרויות'} aria-expanded="false" aria-haspopup="true">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                        </button>
+                        <ul class="product-menu__dropdown" hidden role="menu">
+                          <li role="none"><button class="product-menu__item" type="button" data-edit-toggle={p.id} role="menuitem">{d.edit}</button></li>
+                          <li role="none"><button class="product-menu__item product-menu__item--danger" type="button" data-delete-product={p.id} data-store-id={store.id} role="menuitem">{d.delete}</button></li>
+                        </ul>
+                      </div>
                     </td>
                   </tr>
                   <tr class="edit-row" data-product-edit={p.id} hidden>
@@ -533,7 +546,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 <script>
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
-  import { bindExistingRows, initAddProduct, initDeleteProduct, initTableSort, initSpecsEditors, initVariantEditors } from '../../scripts/dashboard/products.js';
+  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initTableSort, initSpecsEditors, initVariantEditors } from '../../scripts/dashboard/products.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
 
   const uploadCfg = document.getElementById('upload-config');
@@ -550,6 +563,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
   document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g, CLOUD, PRESET));
   bindExistingRows(CLOUD, PRESET);
   initAddProduct(CLOUD, PRESET);
+  initProductMenus();
   initDeleteProduct();
   initSettingsForm();
   initFormToggles();

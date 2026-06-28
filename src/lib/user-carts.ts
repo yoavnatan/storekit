@@ -14,6 +14,7 @@ export interface UserStoreCart {
 export interface UserCartData {
   cart: Record<string, UserStoreCart>;
   wishlist: WishlistItem[];
+  favoriteStores?: string[];
 }
 
 type UserCartsFile = Record<string, UserCartData>;
@@ -28,7 +29,12 @@ function write(data: UserCartsFile): void {
 }
 
 export function getUserCart(sellerId: string): UserCartData {
-  return read()[sellerId] ?? { cart: {}, wishlist: [] };
+  const data = read()[sellerId];
+  return data ?? { cart: {}, wishlist: [], favoriteStores: [] };
+}
+
+export function getFavoriteStoresForUser(userId: string): string[] {
+  return read()[userId]?.favoriteStores ?? [];
 }
 
 export function saveUserCart(sellerId: string, data: UserCartData): void {

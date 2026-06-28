@@ -19,7 +19,6 @@ const loginUrl = `/seller/login?next=${encodeURIComponent(currentPath)}`;
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
-const nextLang = lang === 'he' ? 'en' : 'he';
 
 type NavItem = { label: string; href: string };
 
@@ -39,26 +38,76 @@ if (!storeMode && !sellerMode) {
   }
 }
 
+const searchIconPos = lang === 'he' ? 'right:0.55rem' : 'left:0.55rem';
+const searchInputPad = lang === 'he' ? 'padding-right:2rem;padding-left:0.75rem' : 'padding-left:2rem;padding-right:0.75rem';
+const strRecents = lang === 'he' ? 'חיפושים אחרונים' : 'Recent searches';
+const strEmpty   = t.store.noProductsFound;
 ---
 
 <header class="site-header">
-  <div class="container between flex">
-    {storeMode && storeName && storeSlug
-      ? <div class="flex flex-col gap-[2px]">
-          <a
-            href="/"
-            class="store-back-link"
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={`flex-shrink:0${lang === 'he' ? ';transform:scaleX(-1)' : ''}`}><polyline points="15 18 9 12 15 6"/></svg>
-            <span>{store.name}</span>
-          </a>
-          <a href={`/store/${storeSlug}`} class="logo" aria-label={storeName}><span>{storeName}</span></a>
-        </div>
-      : <a href="/" class="logo" aria-label={store.name}>
-          <span>{logo.text}</span>
-        </a>
-    }
+  <div class={storeMode ? 'container' : 'container between flex'} style={storeMode ? 'display:flex;align-items:center;gap:0.75rem' : undefined}>
 
+    <!-- Logo / store back-link -->
+    <div style={storeMode ? 'flex:1' : 'flex-shrink:0'}>
+      {storeMode && storeName && storeSlug
+        ? <div class="flex flex-col gap-[2px]">
+            <a href="/" class="store-back-link">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={`flex-shrink:0${lang === 'he' ? ';transform:scaleX(-1)' : ''}`}><polyline points="15 18 9 12 15 6"/></svg>
+              <span>{store.name}</span>
+            </a>
+            <a href={`/store/${storeSlug}`} class="logo" aria-label={storeName}><span>{storeName}</span></a>
+          </div>
+        : <a href="/" class="logo" aria-label={store.name}>
+            <span>{logo.text}</span>
+          </a>
+      }
+    </div>
+
+    <!-- Store search (storeMode only) -->
+    {storeMode && storeSlug && (
+      <div
+        class="header-search"
+        id="header-search"
+        data-store-slug={storeSlug}
+        data-lang={lang}
+        data-str-recents={strRecents}
+        data-str-empty={strEmpty}
+        style="flex:1"
+      >
+        <svg
+          class="header-search__icon"
+          width="13" height="13"
+          viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2.5"
+          aria-hidden="true"
+          style={`top:50%;${searchIconPos}`}
+        >
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <label for="header-search-input" class="visually-hidden">{t.store.searchLabel}</label>
+        <input
+          type="search"
+          id="header-search-input"
+          class="header-search__input"
+          placeholder={t.store.searchPlaceholder}
+          autocomplete="off"
+          aria-label={t.store.searchLabel}
+          aria-autocomplete="list"
+          aria-controls="header-search-dropdown"
+          aria-expanded="false"
+          style={searchInputPad}
+        />
+        <div
+          id="header-search-dropdown"
+          class="header-search__dropdown"
+          hidden
+          role="listbox"
+          aria-label={t.store.searchLabel}
+        ></div>
+      </div>
+    )}
+
+    <!-- Nav (non-store/seller mode) -->
     {!storeMode && !sellerMode && (
       <nav aria-label="Main navigation">
         <ul role="list" class="flex gap">
@@ -69,11 +118,45 @@ if (!storeMode && !sellerMode) {
       </nav>
     )}
 
-    <div class="header-actions">
+    <!-- Actions -->
+    <div class="header-actions" style={storeMode ? 'flex:1;display:flex;justify-content:flex-end' : undefined}>
       {!isLoggedIn && !sellerMode && (
         <a href={loginUrl} class="lang-toggle-btn" style="text-decoration:none">
           {t.nav.login}
         </a>
+      )}
+
+      {!sellerMode && (
+        <Fragment>
+          <button id="wishlist-toggle" class="cart-btn" aria-label={t.nav.openWishlist} aria-expanded="false" aria-controls="wishlist-panel" style="position:relative">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            <span id="wishlist-count" class="cart-count" hidden aria-live="polite" aria-atomic="true"></span>
+          </button>
+          <button id="cart-toggle" class="cart-btn" aria-label={t.nav.openCart}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            <span id="cart-count" class="cart-count" hidden aria-live="polite" aria-atomic="true"></span>
+          </button>
+          <script is:inline>
+            (function () {
+              try {
+                var cartCount = 0;
+                for (var i = 0; i < localStorage.length; i++) {
+                  var k = localStorage.key(i);
+                  if (!k || k.indexOf('store_cart_v2_') !== 0) continue;
+                  var c = JSON.parse(localStorage.getItem(k) || 'null') || {};
+                  var cartItems = c.items ? Object.values(c.items) : [];
+                  cartCount += cartItems.reduce(function (s, item) { return s + ((item && item.qty) || 0); }, 0);
+                }
+                var cartEl = document.getElementById('cart-count');
+                if (cartEl && cartCount > 0) { cartEl.textContent = String(cartCount); cartEl.removeAttribute('hidden'); }
+                var wItems = JSON.parse(localStorage.getItem('wishlist_v1') || '[]');
+                var wCount = Array.isArray(wItems) ? wItems.length : 0;
+                var wEl = document.getElementById('wishlist-count');
+                if (wEl && wCount > 0) { wEl.textContent = String(wCount); wEl.removeAttribute('hidden'); }
+              } catch (_) {}
+            })();
+          </script>
+        </Fragment>
       )}
 
       {(storeMode || sellerMode) && isLoggedIn && (
@@ -90,48 +173,8 @@ if (!storeMode && !sellerMode) {
           </div>
         </div>
       )}
-
-      {!sellerMode && (
-        <Fragment>
-          <button id="wishlist-toggle" class="cart-btn" aria-label={t.nav.openWishlist} aria-expanded="false" aria-controls="wishlist-panel" style="position:relative">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            <span id="wishlist-count" class="cart-count" hidden aria-live="polite" aria-atomic="true"></span>
-          </button>
-          <button id="cart-toggle" class="cart-btn" aria-label={t.nav.openCart}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-            <span id="cart-count" class="cart-count" hidden aria-live="polite" aria-atomic="true"></span>
-          </button>
-          <script is:inline>
-            (function () {
-              try {
-                // Cart count
-                var cartCount = 0;
-                for (var i = 0; i < localStorage.length; i++) {
-                  var k = localStorage.key(i);
-                  if (!k || k.indexOf('store_cart_v2_') !== 0) continue;
-                  var c = JSON.parse(localStorage.getItem(k) || 'null') || {};
-                  var cartItems = c.items ? Object.values(c.items) : [];
-                  cartCount += cartItems.reduce(function (s, item) { return s + ((item && item.qty) || 0); }, 0);
-                }
-                var cartEl = document.getElementById('cart-count');
-                if (cartEl && cartCount > 0) { cartEl.textContent = String(cartCount); cartEl.removeAttribute('hidden'); }
-                // Wishlist count
-                var wItems = JSON.parse(localStorage.getItem('wishlist_v1') || '[]');
-                var wCount = Array.isArray(wItems) ? wItems.length : 0;
-                var wEl = document.getElementById('wishlist-count');
-                if (wEl && wCount > 0) { wEl.textContent = String(wCount); wEl.removeAttribute('hidden'); }
-              } catch (_) {}
-            })();
-          </script>
-        </Fragment>
-      )}
-
-      <form method="POST" action={`/api/lang?l=${nextLang}`} class="lang-toggle-form">
-        <button type="submit" class="lang-toggle-btn" aria-label={t.nav.switchLangLabel}>
-          {t.nav.switchLang}
-        </button>
-      </form>
     </div>
+
   </div>
 </header>
 
@@ -159,6 +202,7 @@ if (!storeMode && !sellerMode) {
   window.addEventListener('cart:change', refresh);
   refresh();
 
+  // ── User dropdown ─────────────────────────────────────────────
   const userToggle = document.getElementById('user-menu-toggle') as HTMLButtonElement | null;
   const userDropdown = document.getElementById('user-dropdown');
 
@@ -188,4 +232,152 @@ if (!storeMode && !sellerMode) {
       userToggle?.focus();
     }
   });
+
+  // ── Store header search ───────────────────────────────────────
+  const headerSearch = document.getElementById('header-search') as HTMLElement | null;
+  if (headerSearch) {
+    const storeSlug    = headerSearch.dataset.storeSlug ?? '';
+    const strRecents   = headerSearch.dataset.strRecents ?? 'חיפושים אחרונים';
+    const strEmpty     = headerSearch.dataset.strEmpty ?? 'לא נמצאו מוצרים';
+    const input        = document.getElementById('header-search-input') as HTMLInputElement;
+    const dropdown     = document.getElementById('header-search-dropdown') as HTMLElement;
+
+    const RECENTS_KEY  = `store_recent_searches_${storeSlug}`;
+    const MAX_RECENTS  = 5;
+    const PLACEHOLDER_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+
+    type SearchProduct = { slug: string; name: string; price: number; image: string };
+    let products: SearchProduct[] = [];
+    try {
+      const el = document.getElementById('header-search-products');
+      if (el) products = JSON.parse(el.textContent ?? '[]') as SearchProduct[];
+    } catch { /* no products data embedded */ }
+
+    function formatPrice(n: number) {
+      return `₪${n.toLocaleString('he-IL')}`;
+    }
+
+    function getRecents(): string[] {
+      try { return JSON.parse(localStorage.getItem(RECENTS_KEY) ?? '[]') as string[]; }
+      catch { return []; }
+    }
+
+    function saveRecent(q: string) {
+      if (!q.trim()) return;
+      const list = [q.trim(), ...getRecents().filter((r) => r !== q.trim())].slice(0, MAX_RECENTS);
+      try { localStorage.setItem(RECENTS_KEY, JSON.stringify(list)); } catch { /* quota */ }
+    }
+
+    function showDropdown() {
+      dropdown.removeAttribute('hidden');
+      input.setAttribute('aria-expanded', 'true');
+    }
+
+    function hideDropdown() {
+      dropdown.setAttribute('hidden', '');
+      input.setAttribute('aria-expanded', 'false');
+    }
+
+    function navigateToProduct(slug: string, query: string) {
+      saveRecent(query);
+      window.location.href = `/store/${storeSlug}/${slug}`;
+    }
+
+    function applySearch(q: string) {
+      saveRecent(q);
+      const gridSearch = document.getElementById('product-search') as HTMLInputElement | null;
+      if (gridSearch) {
+        gridSearch.value = q;
+        gridSearch.dispatchEvent(new Event('input', { bubbles: true }));
+        hideDropdown();
+      } else {
+        window.location.href = `/store/${storeSlug}?q=${encodeURIComponent(q)}`;
+      }
+    }
+
+    function renderRecents() {
+      const recents = getRecents();
+      if (!recents.length) { hideDropdown(); return; }
+      dropdown.innerHTML = `
+        <div class="hsd-section-label">${strRecents}</div>
+        <div class="hsd-recents-list">
+          ${recents.map((r) => `<button class="hsd-recent-chip" type="button" data-q="${r.replace(/"/g, '&quot;')}">${r}</button>`).join('')}
+        </div>`;
+      dropdown.querySelectorAll<HTMLButtonElement>('.hsd-recent-chip').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const q = btn.dataset.q ?? '';
+          input.value = q;
+          applySearch(q);
+        });
+      });
+      showDropdown();
+    }
+
+    function renderResults(q: string) {
+      const term = q.toLowerCase();
+      const hits = products.filter((p) => p.name.toLowerCase().includes(term)).slice(0, 5);
+      if (!hits.length) {
+        dropdown.innerHTML = `<div class="hsd-empty">${strEmpty}</div>`;
+      } else {
+        dropdown.innerHTML = `<ul class="hsd-results" role="listbox">
+          ${hits.map((p) => `
+            <li role="option">
+              <a class="hsd-result-item" href="/store/${storeSlug}/${p.slug}" data-slug="${p.slug}">
+                ${p.image
+                  ? `<img class="hsd-result-img" src="${p.image}" alt="${p.name.replace(/"/g, '&quot;')}" width="36" height="36" loading="lazy">`
+                  : `<div class="hsd-result-img-placeholder" aria-hidden="true">${PLACEHOLDER_SVG}</div>`
+                }
+                <span class="hsd-result-name">${p.name}</span>
+                <span class="hsd-result-price">${formatPrice(p.price)}</span>
+              </a>
+            </li>`).join('')}
+        </ul>`;
+        dropdown.querySelectorAll<HTMLAnchorElement>('.hsd-result-item').forEach((a) => {
+          a.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigateToProduct(a.dataset.slug ?? '', q);
+          });
+        });
+      }
+      showDropdown();
+    }
+
+    input.addEventListener('focus', () => {
+      if (!input.value.trim()) renderRecents();
+      else renderResults(input.value.trim());
+    });
+
+    let debounceTimer = 0;
+    input.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      const q = input.value.trim();
+      if (!q) {
+        const gridSearch = document.getElementById('product-search') as HTMLInputElement | null;
+        if (gridSearch) {
+          gridSearch.value = '';
+          gridSearch.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+          window.location.href = `/store/${storeSlug}`;
+          return;
+        }
+        renderRecents();
+        return;
+      }
+      debounceTimer = window.setTimeout(() => renderResults(q), 150);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const q = input.value.trim();
+        if (q) applySearch(q);
+        else hideDropdown();
+      }
+      if (e.key === 'Escape') { hideDropdown(); input.blur(); }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!headerSearch.contains(e.target as Node)) hideDropdown();
+    });
+  }
 </script>

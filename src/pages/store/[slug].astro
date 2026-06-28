@@ -7,6 +7,7 @@ import { getProductsByStoreId } from '../../lib/store-products.js';
 import { store as platform, formatPrice, cdnSrc } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
+import { getFavoriteStoresForUser } from '../../lib/user-carts.js';
 
 const { slug } = Astro.params;
 if (!slug) return Astro.redirect('/404');
@@ -14,7 +15,9 @@ if (!slug) return Astro.redirect('/404');
 const shopStore = getStoreBySlug(slug);
 if (!shopStore) return Astro.redirect('/404');
 
-const isLoggedIn = !!getSellerSession(Astro.cookies);
+const userId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!userId;
+const isFavorited = userId ? getFavoriteStoresForUser(userId).includes(shopStore.slug) : false;
 
 const products = getProductsByStoreId(shopStore.id);
 const allCategories = [...new Set(products.map(p => p.category).filter(Boolean))] as string[];
@@ -66,6 +69,24 @@ const pmI18n = {
         {shopStore.description && shopStore.description !== shopStore.tagline && (
           <p class="store-desc" dir="auto">{shopStore.description}</p>
         )}
+        <div style="margin-top:1rem">
+          <button
+            id="fav-store-btn"
+            type="button"
+            data-slug={shopStore.slug}
+            data-favorited={String(isFavorited)}
+            data-login-url={`/seller/login?next=/store/${shopStore.slug}`}
+            data-is-logged-in={String(isLoggedIn)}
+            aria-label={isFavorited ? t.store.savedStore : t.store.saveStore}
+            aria-pressed={String(isFavorited)}
+            style="display:inline-flex;align-items:center;gap:0.4rem;border:1px solid var(--color-border);background:none;border-radius:9999px;padding:0.3rem 0.85rem 0.3rem 0.7rem;cursor:pointer;font-size:0.82rem;font-weight:500;color:var(--color-text);transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);line-height:1"
+          >
+            <svg id="fav-store-icon" width="15" height="15" viewBox="0 0 24 24" fill={isFavorited ? 'var(--color-accent)' : 'none'} stroke={isFavorited ? 'var(--color-accent)' : 'currentColor'} stroke-width="2" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;transition:fill 0.18s,stroke 0.18s">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            <span id="fav-store-label">{isFavorited ? t.store.savedStore : t.store.saveStore}</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -97,13 +118,10 @@ const pmI18n = {
             </div>
           )}
 
-          <div class="flex flex-col sm:flex-row gap-2" style="margin-bottom:2rem">
-            <div class="relative flex-1">
-              <svg class={`absolute ${lang === 'he' ? 'right-[0.65rem]' : 'left-[0.65rem]'} top-1/2 -translate-y-1/2 pointer-events-none`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <label for="product-search" class="visually-hidden">{t.store.searchLabel}</label>
-              <input type="search" id="product-search" placeholder={t.store.searchPlaceholder} class="input py-2 text-sm" style={lang === 'he' ? 'padding-right:2.15rem;padding-left:0.75rem' : 'padding-left:2.15rem;padding-right:0.75rem'} autocomplete="off" />
-            </div>
-            <div class="relative w-full sm:w-44" id="sort-dropdown">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:2rem">
+            {/* Hidden search input — driven by header search bar */}
+            <input type="search" id="product-search" style="display:none" tabindex="-1" aria-hidden="true" autocomplete="off" />
+            <div class="relative w-44" id="sort-dropdown">
               <button
                 type="button"
                 id="sort-trigger"
@@ -118,14 +136,14 @@ const pmI18n = {
                 role="listbox"
                 aria-labelledby="sort-trigger"
                 hidden
-                class="absolute ltr:right-0 rtl:left-0 top-full z-20 mt-1 bg-white overflow-hidden w-full"
-                style="border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.1)">
-                <li role="option" data-value="default" aria-selected="true" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortDefault}</li>
-                <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNameAsc}</li>
-                <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNameDesc}</li>
-                <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortPriceAsc}</li>
-                <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortPriceDesc}</li>
-                <li role="option" data-value="newest" aria-selected="false" class="px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNewest}</li>
+                class="absolute ltr:right-0 rtl:left-0 top-full z-20 mt-1 w-full"
+                style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:0.3rem;animation:sort-menu-open 0.13s cubic-bezier(0.34,1.56,0.64,1)">
+                <li role="option" data-value="default" aria-selected="true" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortDefault}</li>
+                <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNameAsc}</li>
+                <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNameDesc}</li>
+                <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortPriceAsc}</li>
+                <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortPriceDesc}</li>
+                <li role="option" data-value="newest" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNewest}</li>
               </ul>
             </div>
           </div>
@@ -268,6 +286,15 @@ const pmI18n = {
   </div>
 </BaseLayout>
 
+<script is:inline type="application/json" id="header-search-products" set:html={JSON.stringify(
+  products.map((p) => ({
+    slug: p.slug,
+    name: p.name,
+    price: p.price,
+    image: p.images?.[0] ? cdnSrc(p.images[0], 72) : '',
+  }))
+)} />
+
 <script>
   import { addItem, syncCartImages } from '../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
@@ -282,7 +309,6 @@ const pmI18n = {
   const storePage = document.querySelector<HTMLElement>('.store-page[data-store-slug]');
   const storeSlug = storePage?.dataset.storeSlug ?? '';
   const storeName = storePage?.dataset.storeName ?? '';
-  const pageLang  = storePage?.dataset.lang ?? 'he';
 
   // ── Sync cart images ──────────────────────────────────────────
   const currentProducts = Array.from(
@@ -352,6 +378,51 @@ const pmI18n = {
       });
     });
   });
+
+  // ── Favorite store button ─────────────────────────────────────
+  const favBtn = document.getElementById('fav-store-btn') as HTMLButtonElement | null;
+  if (favBtn) {
+    const isLoggedIn = favBtn.dataset.isLoggedIn === 'true';
+    const loginUrl = favBtn.dataset.loginUrl ?? '/seller/login';
+    const favSlug = favBtn.dataset.slug ?? '';
+    const favIcon = document.getElementById('fav-store-icon') as SVGElement | null;
+    const favLabel = document.getElementById('fav-store-label');
+
+    function setFavStyle(active: boolean) {
+      if (!favIcon) return;
+      favIcon.style.fill = active ? 'var(--color-accent)' : 'none';
+      favIcon.style.stroke = active ? 'var(--color-accent)' : 'currentColor';
+    }
+
+    favBtn.addEventListener('click', () => {
+      if (!isLoggedIn) { window.location.href = loginUrl; return; }
+      const nowFav = favBtn.dataset.favorited !== 'true';
+      favBtn.dataset.favorited = String(nowFav);
+      favBtn.setAttribute('aria-pressed', String(nowFav));
+      if (favLabel) favLabel.textContent = nowFav ? 'חנות שמורה' : 'שמור חנות';
+      favBtn.setAttribute('aria-label', nowFav ? 'חנות שמורה' : 'שמור חנות');
+      setFavStyle(nowFav);
+      favBtn.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.28)' }, { transform: 'scale(1)' }],
+        { duration: 280, easing: 'cubic-bezier(0.34,1.56,0.64,1)' }
+      );
+      fetch('/api/favorite-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeSlug: favSlug }),
+      })
+        .then((r) => r.json() as Promise<{ favorited: boolean; count: number }>)
+        .then(({ favorited }) => {
+          favBtn.dataset.favorited = String(favorited);
+          favBtn.setAttribute('aria-pressed', String(favorited));
+          setFavStyle(favorited);
+        })
+        .catch(() => {
+          favBtn.dataset.favorited = String(!nowFav);
+          setFavStyle(!nowFav);
+        });
+    });
+  }
 
   // ── Qty stepper + Add to cart (product grid) ──────────────────
   const checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -484,6 +555,10 @@ const pmI18n = {
     });
 
     if (noResults) noResults.hidden = visible > 0;
+    const sortEl = document.getElementById('sort-dropdown') as HTMLElement | null;
+    const catFilters = document.getElementById('category-filters') as HTMLElement | null;
+    if (sortEl) sortEl.style.display = visible > 0 ? '' : 'none';
+    if (catFilters) catFilters.style.display = visible > 0 ? '' : 'none';
     syncUrl();
   }
 
@@ -564,6 +639,10 @@ const pmI18n = {
     const initCat     = urlParams.get('category') ?? '';
 
     if (initQ && searchInput) searchInput.value = initQ;
+    if (initQ) {
+      const hInput = document.getElementById('header-search-input') as HTMLInputElement | null;
+      if (hInput) hInput.value = initQ;
+    }
 
     if (initSortVal) {
       const matchingOpt = sortOptions.find(o => o.dataset.value === initSortVal);

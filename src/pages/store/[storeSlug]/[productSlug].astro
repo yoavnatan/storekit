@@ -26,7 +26,8 @@ const isNew = new Date(product.createdAt).toDateString() === new Date().toDateSt
 const images = product.images ?? [];
 const productUrl = new URL(`/store/${storeSlug}/${productSlug}`, Astro.url).href;
 
-const relatedProducts = getProductsByStoreId(shopStore.id)
+const allStoreProducts = getProductsByStoreId(shopStore.id);
+const relatedProducts = allStoreProducts
   .filter((p) => p.slug !== product.slug)
   .slice(0, 4);
 
@@ -301,8 +302,8 @@ const pmI18n = {
 
                 <!-- Wishlist -->
                 <button type="button" id="wishlist-btn"
-                        class="flex items-center gap-2 text-sm font-medium transition-all duration-150 self-start"
-                        style="color:var(--color-muted);background:none;border:none;cursor:pointer;padding:0.25rem 0"
+                        class="flex items-center gap-2 text-sm font-medium self-start"
+                        style="color:var(--color-muted);background:none;border:none;cursor:pointer;padding:0.25rem 0;visibility:hidden"
                         data-wishlist-slug={product.slug}
                         data-wishlist-name={product.name}
                         data-wishlist-price={String(product.price)}
@@ -317,6 +318,27 @@ const pmI18n = {
                   </svg>
                   <span id="wishlist-label">{t.wishlist.addLabel}</span>
                 </button>
+                <script is:inline>
+                  (function () {
+                    var btn = document.getElementById('wishlist-btn');
+                    if (!btn) return;
+                    try {
+                      var slug = btn.dataset.wishlistSlug;
+                      if (slug) {
+                        var list = JSON.parse(localStorage.getItem('wishlist_v1') || '[]');
+                        if (Array.isArray(list) && list.some(function (i) { return i && i.slug === slug; })) {
+                          btn.dataset.wishlisted = 'true';
+                          btn.setAttribute('aria-pressed', 'true');
+                          var heart = document.getElementById('wishlist-heart');
+                          if (heart) { heart.style.fill = '#e53e3e'; heart.style.stroke = '#e53e3e'; }
+                          btn.style.color = '#e53e3e';
+                        }
+                      }
+                    } catch (_) {}
+                    btn.style.transition = 'color 0.15s, opacity 0.15s';
+                    btn.style.visibility = 'visible';
+                  })();
+                </script>
               </div>
             )
           }
@@ -484,6 +506,15 @@ const pmI18n = {
 
   </div>
 </BaseLayout>
+
+<script is:inline type="application/json" id="header-search-products" set:html={JSON.stringify(
+  allStoreProducts.map((p) => ({
+    slug: p.slug,
+    name: p.name,
+    price: p.price,
+    image: p.images?.[0] ? cdnSrc(p.images[0], 72) : '',
+  }))
+)} />
 
 <script>
   import { addItem } from '../../../lib/cart.js';

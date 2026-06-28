@@ -309,3 +309,8 @@
 }
 
 /* ripple-wave keyframe lives in utils.css (global) */
+
+@keyframes sort-menu-open {
+  from { opacity: 0; transform: translateY(-5px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}

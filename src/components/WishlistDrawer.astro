@@ -6,7 +6,7 @@
   id="wishlist-panel"
   aria-labelledby="wishlist-panel-title"
   aria-hidden="true"
-  style="display:none;position:fixed;z-index:200;background:var(--color-bg);border:1px solid var(--color-border);flex-direction:column;overflow:hidden"
+  style="display:none;position:fixed;z-index:200;background:var(--color-surface);border:1px solid var(--color-border);flex-direction:column;overflow:hidden"
 >
   <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;border-bottom:1px solid var(--color-border);flex-shrink:0">
     <h2 id="wishlist-panel-title" style="font-size:0.92rem;font-weight:700;margin:0">Wishlist</h2>
@@ -18,7 +18,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div id="wishlist-lines" style="flex:1;overflow-y:auto;padding:0.75rem 1rem"></div>
+  <div id="wishlist-lines" style="flex:1;overflow-y:auto;padding:0.5rem 0.4rem"></div>
 </div>
 
 <script>
@@ -68,9 +68,20 @@
     }
   }
 
+  function skeletonHtml(): string {
+    return `<div style="padding:0.5rem 0.4rem">${[1,2,3].map(() => `
+      <div style="display:flex;gap:0.55rem;padding:0.45rem 0.6rem;align-items:center;margin-bottom:0.1rem">
+        <div class="skel-bar" style="width:40px;height:40px;border-radius:6px;flex-shrink:0"></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:0.35rem">
+          <div class="skel-bar" style="height:12px;width:68%;border-radius:4px"></div>
+          <div class="skel-bar" style="height:11px;width:38%;border-radius:4px"></div>
+        </div>
+      </div>`).join('')}</div>`;
+  }
+
   function open() {
     if (!panel) return;
-    render();
+    if (lines) lines.innerHTML = skeletonHtml();
     position();
     panel.style.display = 'flex';
     panel.removeAttribute('aria-hidden');
@@ -83,7 +94,24 @@
     );
     isOpen = true;
     document.getElementById('wishlist-toggle')?.setAttribute('aria-expanded', 'true');
-    requestAnimationFrame(() => { (document.getElementById('wishlist-close') as HTMLButtonElement | null)?.focus(); });
+
+    const byStore = getWishlistByStore();
+    const urls = [...byStore.values()].flatMap(s => s.items.map(i => i.image).filter(Boolean)) as string[];
+
+    const doRender = () => {
+      render();
+      (document.getElementById('wishlist-close') as HTMLButtonElement | null)?.focus();
+    };
+
+    if (!urls.length) { requestAnimationFrame(doRender); return; }
+
+    let pending = urls.length;
+    const timer = setTimeout(doRender, 500);
+    urls.forEach(url => {
+      const img = new Image();
+      img.onload = img.onerror = () => { if (--pending === 0) { clearTimeout(timer); doRender(); } };
+      img.src = url;
+    });
   }
 
   function close() {
@@ -139,15 +167,19 @@
           <a href="/store/${esc(storeSlug)}" style="font-weight:700;font-size:0.82rem;color:var(--color-primary);text-decoration:none;flex:1">${esc(storeName)}</a>
           <span style="font-size:0.72rem;color:var(--color-muted)">${items.length}</span>
         </div>
-        ${items.map((item) => `
-          <div style="display:flex;gap:0.55rem;padding:0.5rem 0;border-bottom:1px solid var(--color-border);align-items:center">
-            ${item.image
-              ? `<img src="${esc(item.image)}" alt="" width="40" height="40" loading="lazy" decoding="async" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">`
-              : `<div style="width:40px;height:40px;border-radius:6px;background:var(--color-surface);border:1px solid var(--color-border);flex-shrink:0"></div>`}
-            <div style="flex:1;min-width:0">
-              <span style="display:block;font-weight:600;font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</span>
-              <div style="display:flex;align-items:center;gap:0.28rem;margin-top:0.2rem">
-                <span style="font-size:0.8rem;color:var(--color-muted);flex:1">${formatPrice(item.price)}</span>
+        ${items.map((item, idx) => `
+          ${idx > 0 ? '<div style="height:1px;background:var(--color-border);margin:0 0.4rem"></div>' : ''}
+          <div class="wl-item" style="display:flex;gap:0.55rem;padding:0.45rem 0.6rem;align-items:center">
+            <a href="/store/${esc(storeSlug)}/${esc(item.slug)}" style="display:flex;align-items:center;gap:0.55rem;flex:1;min-width:0;text-decoration:none;color:inherit">
+              ${item.image
+                ? `<img src="${esc(item.image)}" alt="${esc(item.name)}" width="40" height="40" loading="eager" style="width:40px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">`
+                : `<div style="width:40px;height:40px;border-radius:6px;background:var(--color-surface);border:1px solid var(--color-border);flex-shrink:0"></div>`}
+              <div style="flex:1;min-width:0">
+                <span style="display:block;font-weight:600;font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</span>
+                <span style="font-size:0.8rem;color:var(--color-muted)">${formatPrice(item.price)}</span>
+              </div>
+            </a>
+            <div style="display:flex;align-items:center;gap:0.28rem;flex-shrink:0">
                 <button data-wl-rm="${esc(item.slug)}" aria-label="${esc(i18n.remove ?? 'Remove')}" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--color-border);background:var(--color-surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:var(--color-muted);transition:background 0.1s,color 0.1s"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><circle cx="10" cy="13" r="1.1" fill="currentColor" stroke="none"/><circle cx="14" cy="13" r="1.1" fill="currentColor" stroke="none"/><path d="M9 6V4h6v2"/></svg></button>
                 <button data-wl-minus="${esc(item.slug)}" aria-label="−" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--color-border);background:var(--color-surface);font-size:1rem;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">−</button>
                 <span data-wl-qty="${esc(item.slug)}" style="min-width:1.1rem;text-align:center;font-size:0.82rem;font-weight:600">1</span>
@@ -163,7 +195,6 @@
                   data-label-added="${esc(i18n.addedToCart ?? 'Added ✓')}"
                   style="font-size:0.72rem;white-space:nowrap;flex-shrink:0"
                 >${esc(i18n.addToCart ?? 'Add to cart')}</button>
-              </div>
             </div>
           </div>`).join('')}
       </div>`).join('');
