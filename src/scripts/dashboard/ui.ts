@@ -1,3 +1,5 @@
+const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
+
 export function initSettingsForm(): void {
   const settingsForm   = document.getElementById('settings-form') as HTMLFormElement | null;
   const settingsStatus = document.getElementById('settings-status') as HTMLElement | null;
@@ -14,16 +16,32 @@ export function initSettingsForm(): void {
 
   settingsForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const submitBtn = settingsForm.querySelector<HTMLButtonElement>('[type="submit"]');
+    const origText = submitBtn?.textContent ?? '';
+
     const fd = new FormData(settingsForm);
     const res = await fetch('/api/store', { method: 'POST', body: fd });
     const data = await res.json() as { ok: boolean; name?: string; error?: string };
-    if (!data.ok) { showSettingsStatus(data.error ?? 'Error saving.', true); return; }
+    if (!data.ok) { showSettingsStatus(data.error ?? 'שגיאה בשמירה.', true); return; }
 
     const newName = data.name ?? String(fd.get('name'));
     const storeNameEl = document.querySelector<HTMLElement>('.dash-store-name');
     if (storeNameEl) storeNameEl.textContent = newName;
 
-    showSettingsStatus('Settings saved.');
+    if (submitBtn) {
+      submitBtn.style.minWidth = `${submitBtn.offsetWidth}px`;
+      submitBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px">${checkSvg}נשמר</span>`;
+      submitBtn.disabled = true;
+      submitBtn.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
+        { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+      );
+      setTimeout(() => {
+        submitBtn.disabled = false;
+        submitBtn.style.minWidth = '';
+        submitBtn.textContent = origText;
+      }, 1500);
+    }
   });
 }
 

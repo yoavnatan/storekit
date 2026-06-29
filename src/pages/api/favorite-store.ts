@@ -2,7 +2,7 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getUserCart, saveUserCart } from '../../lib/user-carts.js';
-import { adjustFavoriteStoreCount, getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
+import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
 import { getStoreBySlug } from '../../lib/stores.js';
 
 export async function POST({ cookies, request }: APIContext): Promise<Response> {
@@ -31,10 +31,8 @@ export async function POST({ cookies, request }: APIContext): Promise<Response> 
 
   if (favorited) {
     favorites.push(storeSlug);
-    adjustFavoriteStoreCount(storeSlug, 1);
   } else {
     favorites.splice(idx, 1);
-    adjustFavoriteStoreCount(storeSlug, -1);
   }
 
   saveUserCart(userId, { ...userData, favoriteStores: favorites });

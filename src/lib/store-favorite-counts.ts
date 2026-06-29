@@ -1,30 +1,31 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DATA_PATH = join(process.cwd(), 'data', 'store-favorite-counts.json');
+const USER_CARTS_PATH = join(process.cwd(), 'data', 'user-carts.json');
 
-function readCounts(): Record<string, number> {
+function readAllUserCarts(): Record<string, { favoriteStores?: string[] }> {
   try {
-    return JSON.parse(readFileSync(DATA_PATH, 'utf-8')) as Record<string, number>;
+    return JSON.parse(readFileSync(USER_CARTS_PATH, 'utf-8')) as Record<string, { favoriteStores?: string[] }>;
   } catch {
     return {};
   }
 }
 
-function writeCounts(counts: Record<string, number>): void {
-  writeFileSync(DATA_PATH, JSON.stringify(counts, null, 2));
-}
-
 export function getFavoriteStoreCount(slug: string): number {
-  return readCounts()[slug] ?? 0;
+  const all = readAllUserCarts();
+  return Object.values(all).filter((u) => u.favoriteStores?.includes(slug)).length;
 }
 
 export function getAllFavoriteStoreCounts(): Record<string, number> {
-  return readCounts();
+  const all = readAllUserCarts();
+  const counts: Record<string, number> = {};
+  for (const userData of Object.values(all)) {
+    for (const slug of (userData.favoriteStores ?? [])) {
+      counts[slug] = (counts[slug] ?? 0) + 1;
+    }
+  }
+  return counts;
 }
 
-export function adjustFavoriteStoreCount(slug: string, delta: 1 | -1): void {
-  const counts = readCounts();
-  counts[slug] = Math.max(0, (counts[slug] ?? 0) + delta);
-  writeCounts(counts);
-}
+// No-op: counts are now derived from user-carts.json on every read, no separate file to update
+export function adjustFavoriteStoreCount(_slug: string, _delta: 1 | -1): void {}

@@ -19,7 +19,9 @@ export async function POST({ cookies, request }: APIContext): Promise<Response> 
     if (typeof body.cart !== 'object' || !Array.isArray(body.wishlist)) {
       return new Response('Bad request', { status: 400 });
     }
-    saveUserCart(sellerId, body);
+    // Preserve favoriteStores — they're managed by /api/favorite-store, never by cart-sync
+    const existing = getUserCart(sellerId);
+    saveUserCart(sellerId, { ...body, favoriteStores: existing.favoriteStores ?? [] });
     return new Response('ok');
   } catch {
     return new Response('Bad request', { status: 400 });

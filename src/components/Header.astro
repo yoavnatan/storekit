@@ -41,6 +41,7 @@ if (!storeMode && !sellerMode) {
 const searchIconPos = lang === 'he' ? 'right:0.55rem' : 'left:0.55rem';
 const searchInputPad = lang === 'he' ? 'padding-right:2rem;padding-left:0.75rem' : 'padding-left:2rem;padding-right:0.75rem';
 const strRecents = lang === 'he' ? 'חיפושים אחרונים' : 'Recent searches';
+const strClear   = lang === 'he' ? 'נקה' : 'Clear';
 const strEmpty   = t.store.noProductsFound;
 ---
 
@@ -71,6 +72,7 @@ const strEmpty   = t.store.noProductsFound;
         data-store-slug={storeSlug}
         data-lang={lang}
         data-str-recents={strRecents}
+        data-str-clear={strClear}
         data-str-empty={strEmpty}
         style="flex:1"
       >
@@ -158,6 +160,7 @@ const strEmpty   = t.store.noProductsFound;
           </script>
         </Fragment>
       )}
+
 
       {(storeMode || sellerMode) && isLoggedIn && (
         <div class="user-menu">
@@ -268,6 +271,10 @@ const strEmpty   = t.store.noProductsFound;
       try { localStorage.setItem(RECENTS_KEY, JSON.stringify(list)); } catch { /* quota */ }
     }
 
+    function clearRecents() {
+      try { localStorage.removeItem(RECENTS_KEY); } catch { /* quota */ }
+    }
+
     function showDropdown() {
       dropdown.removeAttribute('hidden');
       input.setAttribute('aria-expanded', 'true');
@@ -298,11 +305,19 @@ const strEmpty   = t.store.noProductsFound;
     function renderRecents() {
       const recents = getRecents();
       if (!recents.length) { hideDropdown(); return; }
+      const strClear = headerSearch?.dataset.strClear ?? 'נקה';
       dropdown.innerHTML = `
-        <div class="hsd-section-label">${strRecents}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0.3rem 0.5rem 0.1rem">
+          <span class="hsd-section-label" style="padding:0">${strRecents}</span>
+          <button class="hsd-clear-recents" type="button">${strClear}</button>
+        </div>
         <div class="hsd-recents-list">
           ${recents.map((r) => `<button class="hsd-recent-chip" type="button" data-q="${r.replace(/"/g, '&quot;')}">${r}</button>`).join('')}
         </div>`;
+      dropdown.querySelector<HTMLButtonElement>('.hsd-clear-recents')?.addEventListener('click', () => {
+        clearRecents();
+        hideDropdown();
+      });
       dropdown.querySelectorAll<HTMLButtonElement>('.hsd-recent-chip').forEach((btn) => {
         btn.addEventListener('click', () => {
           const q = btn.dataset.q ?? '';
@@ -313,9 +328,26 @@ const strEmpty   = t.store.noProductsFound;
       showDropdown();
     }
 
+    function normalizeHe(str: string): string {
+      return str
+        .toLowerCase()
+        .replace(/[ְ-ׇֽֿׁׂׅׄ]/g, '')
+        .replace(/[ן]/g, 'נ').replace(/[ף]/g, 'פ').replace(/[ך]/g, 'כ')
+        .replace(/[ם]/g, 'מ').replace(/[ץ]/g, 'צ')
+        .replace(/[׳״'""]/g, '')
+        .replace(/[-_.,!?;:()\[\]{}/\\]/g, ' ')
+        .replace(/\s+/g, ' ').trim();
+    }
+
+    function matchesSearch(query: string, name: string): boolean {
+      if (!query) return true;
+      const nQuery = normalizeHe(query);
+      const nName = normalizeHe(name);
+      return nQuery.split(' ').every((word) => word && nName.includes(word));
+    }
+
     function renderResults(q: string) {
-      const term = q.toLowerCase();
-      const hits = products.filter((p) => p.name.toLowerCase().includes(term)).slice(0, 5);
+      const hits = products.filter((p) => matchesSearch(q, p.name)).slice(0, 5);
       if (!hits.length) {
         dropdown.innerHTML = `<div class="hsd-empty">${strEmpty}</div>`;
       } else {
@@ -377,7 +409,7 @@ const strEmpty   = t.store.noProductsFound;
     });
 
     document.addEventListener('click', (e) => {
-      if (!headerSearch.contains(e.target as Node)) hideDropdown();
+      if (!headerSearch?.contains(e.target as Node)) hideDropdown();
     });
   }
 </script>

@@ -221,7 +221,7 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
 
   const pqvCache = new Map<string, PQVProduct>();
 
-  async function openProductQuickView(storeSlug: string, productSlug: string, storeName: string): Promise<void> {
+  async function openProductQuickView(storeSlug: string, productSlug: string, storeName: string, newTab = false): Promise<void> {
     if (!pqvDialog || !pqvBody) return;
     pqvPrevFocus = document.activeElement as HTMLElement;
 
@@ -294,7 +294,7 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
           <button type="button" class="btn btn--accent pqv-to-payment" id="pqv-to-payment">
             ${pqvEsc(strings.toPayment)} <svg class="pqv-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
-          <a href="/store/${pqvEsc(storeSlug)}/${pqvEsc(p.slug)}" class="pqv-product-link">${pqvEsc(strings.viewFull)}</a>
+          <a href="/store/${pqvEsc(storeSlug)}/${pqvEsc(p.slug)}" class="pqv-product-link"${newTab ? ' target="_blank" rel="noopener"' : ''}>${pqvEsc(strings.viewFull)}</a>
         </div>
       </div>`;
 
@@ -416,9 +416,9 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
 
   // Listen for pqv:open events (dispatched by CartDrawer and others)
   window.addEventListener('pqv:open', (e: Event) => {
-    const detail = (e as CustomEvent<{ storeSlug: string; productSlug: string; storeName: string }>).detail;
+    const detail = (e as CustomEvent<{ storeSlug: string; productSlug: string; storeName: string; newTab?: boolean }>).detail;
     if (detail?.storeSlug && detail?.productSlug) {
-      openProductQuickView(detail.storeSlug, detail.productSlug, detail.storeName ?? '');
+      openProductQuickView(detail.storeSlug, detail.productSlug, detail.storeName ?? '', detail.newTab ?? false);
     }
   });
 

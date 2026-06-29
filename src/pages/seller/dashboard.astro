@@ -14,6 +14,7 @@ import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
 import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
+import { thumbUrl } from '../../lib/cloudinary.js';
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
@@ -135,50 +136,55 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
     </section>
   ) : store ? (
   <Fragment>
-  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} hidden></div>
+  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-name={store.name} hidden></div>
   <section class="section container">
     <div class="card" style="margin-bottom:1.5rem">
 
       <!-- ── Store header ── -->
       <div class="dash-head" style="padding:1.5rem 1.5rem 0">
-        {allStores.length === 1 ? (
-          <h1 class="dash-store-name">{store.name}</h1>
-        ) : (
-          <div class="store-switcher" id="store-switcher">
-            <button
-              class="store-switcher__btn"
-              id="store-switcher-btn"
-              type="button"
-              aria-haspopup="listbox"
-              aria-expanded="false"
-              aria-label={lang === 'he' ? 'החלף חנות' : 'Switch store'}
-            >
-              <span class="dash-store-name">{store.name}</span>
-              <svg class="store-switcher__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </button>
-            <ul class="store-switcher__menu" id="store-switcher-menu" role="listbox" hidden>
-              {allStores.map((s) => (
-                <li>
-                  <a
-                    href={`/seller/dashboard?store=${s.id}`}
-                    role="option"
-                    aria-selected={s.id === store.id}
-                    class={s.id === store.id ? 'store-option--current' : ''}
-                  >
-                    {s.name}
-                    {s.id === store.id && (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                        <polyline points="20 6 9 17 4 12"/>
-                      </svg>
-                    )}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <div class="dash-head__top">
+          {allStores.length === 1 ? (
+            <h1 class="dash-store-name">{store.name}</h1>
+          ) : (
+            <div class="store-switcher" id="store-switcher">
+              <button
+                class="store-switcher__btn"
+                id="store-switcher-btn"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-label={lang === 'he' ? 'החלף חנות' : 'Switch store'}
+              >
+                <span class="dash-store-name">{store.name}</span>
+                <svg class="store-switcher__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+              <ul class="store-switcher__menu" id="store-switcher-menu" role="listbox" hidden>
+                {allStores.map((s) => (
+                  <li>
+                    <a
+                      href={`/seller/dashboard?store=${s.id}`}
+                      role="option"
+                      aria-selected={s.id === store.id}
+                      class={s.id === store.id ? 'store-option--current' : ''}
+                    >
+                      {s.name}
+                      {s.id === store.id && (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      )}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <a href={`/store/${store.slug}`} class="btn btn--sm" target="_blank" rel="noopener">
+            {d.viewLive}
+          </a>
+        </div>
         <p class="muted" style="margin:0.25rem 0 0;font-size:0.82rem">{d.storeSubtitle} · <code style="font-size:0.78rem">/store/{store.slug}</code></p>
 
         {settingsSuccess && <p class="dash-success" style="margin-top:1rem;margin-bottom:0">{d.settingsSaved}</p>}
@@ -229,16 +235,33 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
               <dd>{storeFavoriteCount}</dd>
             </div>
           </dl>
-          <a href={`/store/${store.slug}`} class="btn btn--sm" target="_blank" rel="noopener">
-            {d.viewLive}
-          </a>
         </div>
 
         <!-- Products section -->
         <div style="border-top:1px solid var(--color-border);padding-top:1.25rem">
           <div class="products-header">
-            <h2>{d.productsTitle}</h2>
-            <button class="btn btn--sm" id="toggle-add-form">{d.addProduct}</button>
+            <div class="products-header__title">
+              <h2>{d.productsTitle}</h2>
+              <span class="bulk-count-badge" id="bulk-count-badge" hidden>
+                <strong id="bulk-count">0</strong> {d.bulkSelected}
+              </span>
+            </div>
+            <div class="products-header__actions">
+              <button id="bulk-edit-btn" type="button" class="btn btn--sm" hidden>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                <span id="bulk-edit-label">{d.bulkEdit}</span>
+              </button>
+              <button id="bulk-upload-btn" type="button" class="btn btn--sm" hidden>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                {d.bulkUploadImages}
+              </button>
+              <button id="bulk-delete-btn" type="button" class="btn btn--sm btn--danger" hidden>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                {d.bulkDelete}
+              </button>
+              <span class="products-header__sep" id="bulk-sep" aria-hidden="true" hidden></span>
+              <button class="btn btn--sm" id="toggle-add-form">{d.addProduct}</button>
+            </div>
           </div>
 
           <div id="add-product-form" class="add-form" hidden>
@@ -315,10 +338,19 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
           </div>
 
           <p id="empty-products" class="empty-products" hidden={products.length > 0}>{d.noProducts}</p>
+
+          {/* Bulk image upload panel */}
+          <div id="bulk-upload-panel" class="bulk-upload-panel" hidden></div>
+
+          {/* Category filter bar — rendered by JS when products have categories */}
+          <div class="cat-filter-bar" id="cat-filter-bar" hidden></div>
+
           <table id="products-table" class="products-table" hidden={products.length === 0}>
             <thead>
               <tr>
+                <th class="check-col"><input type="checkbox" id="bulk-select-all" aria-label={d.bulkCancel} style="cursor:pointer;width:15px;height:15px"></th>
                 <th class="num" style="width:2rem">#</th>
+                <th class="thumb-col"></th>
                 <th>
                   <button type="button" class="sort-btn" data-sort-col="name">{d.colName}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
@@ -340,16 +372,16 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
             <tbody id="products-tbody">
               {products.map((p, idx) => (
                 <>
-                  <tr data-product-display={p.id} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)}>
+                  <tr data-product-display={p.id} data-store-id={store.id} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-category={p.category ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name}>
+                    <td class="check-col"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
                     <td class="num row-num">{idx + 1}</td>
-                    <td>
-                      <div class="product-name-cell">
-                        {p.images?.[0] && <img src={p.images[0]} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" />}
-                        <div>
-                          <span class="product-name">{p.name}</span>
-                          {p.description && <span class="product-desc">{p.description}</span>}
-                        </div>
-                      </div>
+                    <td class="thumb-col">
+                      {p.images?.[0] && <span class="thumb-wrap"><img src={thumbUrl(p.images[0])} alt="" class="product-thumb" width="42" height="42" loading="lazy" /></span>}
+                    </td>
+                    <td class="name-col">
+                      <span class="product-name">{p.name}</span>
+                      {p.description && <span class="product-desc">{p.description}</span>}
+                      {p.category && <span class="product-cat-chip">{p.category}</span>}
                     </td>
                     <td class="num product-price">{formatPrice(p.price)}</td>
                     <td class="num product-stock">
@@ -375,17 +407,23 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                         </button>
                         <ul class="product-menu__dropdown" hidden role="menu">
-                          <li role="none"><button class="product-menu__item" type="button" data-edit-toggle={p.id} role="menuitem">{d.edit}</button></li>
-                          <li role="none"><button class="product-menu__item product-menu__item--danger" type="button" data-delete-product={p.id} data-store-id={store.id} role="menuitem">{d.delete}</button></li>
+                          <li role="none"><button class="product-menu__item" type="button" data-view-product={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>{d.viewProduct}</button></li>
+                          <li role="none"><button class="product-menu__item" type="button" data-edit-toggle={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{d.edit}</button></li>
+                          <li role="none"><button class="product-menu__item product-menu__item--danger" type="button" data-delete-product={p.id} data-store-id={store.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>{d.delete}</button></li>
                         </ul>
                       </div>
                     </td>
                   </tr>
                   <tr class="edit-row" data-product-edit={p.id} hidden>
-                    <td colspan="6">
+                    <td class="num row-num">{idx + 1}</td>
+                    <td colspan="7">
                       <form method="POST" action="/api/product" class="dash-form inline-edit-form">
                         <input type="hidden" name="_action" value="edit-product" />
                         <input type="hidden" name="productId" value={p.id} />
+                        <div class="edit-row-header">
+                          {p.images?.[0] && <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0">}
+                          <span class="edit-row-title">{p.name}</span>
+                        </div>
                         <div class="field-row">
                           <label class="field">
                             <span>{d.nameReq}</span>
@@ -458,7 +496,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
                           <div set:html={galleryWidgetHtml(p.images ?? [], g)}></div>
                         </div>
                         <div class="form-actions">
-                          <button class="btn btn--sm" type="submit">{d.save}</button>
+                          <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
                           <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
                         </div>
                       </form>
@@ -505,7 +543,6 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
           <p id="settings-status" hidden></p>
           <div class="form-actions">
             <button class="btn" type="submit">{d.saveChanges}</button>
-            <a href={`/store/${store.slug}`} class="btn btn--ghost" target="_blank" rel="noopener">{d.viewLive}</a>
           </div>
         </form>
       </div>
@@ -546,7 +583,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 <script>
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
-  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initTableSort, initSpecsEditors, initVariantEditors } from '../../scripts/dashboard/products.js';
+  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initTableSort, initSpecsEditors, initVariantEditors, initBulkSelect, initThumbs, initInlineEdit, initCategoryFilter, initViewProduct } from '../../scripts/dashboard/products.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
 
   const uploadCfg = document.getElementById('upload-config');
@@ -570,4 +607,9 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
   initStoreSwitcher();
   initAutoHideStatus();
   initTableSort();
+  initBulkSelect(CLOUD, PRESET);
+  initThumbs();
+  initInlineEdit();
+  initCategoryFilter();
+  initViewProduct();
 </script>

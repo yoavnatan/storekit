@@ -105,6 +105,46 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return json({ ok: true, images: updated.images ?? [] });
   }
 
+  if (action === 'patch-product-fields') {
+    const productId = String(form.get('productId') || '');
+    const product = getProductById(productId);
+    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
+    const stores = getStoresBySellerId(sellerId);
+    if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+
+    const patch: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {};
+    if (form.has('name')) {
+      const name = String(form.get('name') || '').trim();
+      if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
+      patch.name = name;
+    }
+    if (form.has('price')) {
+      const price = parseFloat(String(form.get('price')));
+      if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
+      patch.price = price;
+    }
+    if (form.has('stock')) {
+      const stock = parseInt(String(form.get('stock')), 10);
+      patch.stock = isNaN(stock) ? 0 : Math.max(0, stock);
+    }
+
+    const updated = updateProduct(productId, patch);
+    if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
+    return json({ ok: true, product: { name: updated.name, price: updated.price, stock: updated.stock } });
+  }
+
+  if (action === 'patch-product-images') {
+    const productId = String(form.get('productId') || '');
+    const images = parseImages(form);
+    if (!productId) return json({ ok: false, error: 'Missing productId.' }, 400);
+    const product = getProductById(productId);
+    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
+    const stores = getStoresBySellerId(sellerId);
+    if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const updated = updateProduct(productId, { images });
+    return json({ ok: true, images: updated?.images ?? [] });
+  }
+
   if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
     const product = getProductById(productId);
