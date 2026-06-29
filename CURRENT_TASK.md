@@ -3,11 +3,13 @@
 ## Your instruction
 
 
+
+
 ## Next
 
 
 - התחברות עם גוגל
-- **יצירת קשר עם המוכר + מערכת הודעות** — יבנה מחדש מאפס בסשן ייעודי. ארכיטקטורה: (1) כפתור "צור קשר" בעמוד חנות/מוצר; (2) מוכר מגיב מהדשבורד (tab הודעות); (3) קונה רואה unread badge על אייקון ב-header + עמוד `/messages` ייעודי; (4) התראות (notifications) — מערכת נפרדת לחלוטין מהודעות.
+- ✅ **מערכת הודעות + התראות** — הושלמה. MessageCompose → seller dashboard "הודעות מקונים" + buyer dashboard "הודעות ממוכרים"; live polling 15s; loadThread pattern (תמיד re-fetch בפתיחה); notifications bell; URL sync (?panel=messages / ?tab=messages).
 - טרקינג של הזמנות
 - המוכר צריך לנהל הזמנות מלאי
 - המוכר צריך לנהל את ההזמנות עצמן
@@ -47,4 +49,4 @@
 - **קידום חנות (Ads flow)** — מוכר בוחר פלטפורמה + תקציב + משך → חיוב דרך ספק הסליקה הישראלי → קמפיין ב-API (Google Ads / Meta). נדרש: `adCampaigns` על Store, UI בדשבורד, API routes.
 
 ## Recommended next step
-דשבורד מוכרים הושלם במלואו. מערכת הודעות/התראות נוקתה לחלוטין (תיבנה מחדש). הצעד הבא: (א) **מערכת הודעות** — בסשן ייעודי, מאפס, לפי הארכיטקטורה שמפורטת ב-Next; או (ב) **חיבור תשלום אמיתי** — אינטגרציה Cardcom/Payme, `/api/payment/confirm` webhook, יצירת Order, שליחת מייל לקונה ולמוכר, עדכון SellerBalance.
+מערכת הודעות + התראות הושלמה במלואה. הצעד הבא: (א) **התחברות עם גוגל** — OAuth flow, session creation, merge with existing account if email matches; או (ב) **חיבור תשלום אמיתי** — אינטגרציה Cardcom/Payme, `/api/payment/confirm` webhook, יצירת Order, שליחת מייל לקונה ולמוכר, עדכון SellerBalance.

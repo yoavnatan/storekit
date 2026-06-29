@@ -121,6 +121,9 @@ export function initDashTabs(): void {
     tab.setAttribute('tabindex', '0');
     const panel = document.getElementById(`dash-panel-${tab.dataset.panel}`);
     if (panel) panel.hidden = false;
+    const u = new URL(window.location.href);
+    u.searchParams.set('panel', tab.dataset.panel ?? '');
+    history.replaceState(null, '', u.toString());
   }
 
   tabs.forEach(tab => {

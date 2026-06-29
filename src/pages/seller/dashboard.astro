@@ -15,6 +15,7 @@ import { getLang, getT } from '../../i18n/index.js';
 import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
 import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
 import { thumbUrl } from '../../lib/cloudinary.js';
+import { getMessagesBySeller, getMessageReplies } from '../../lib/messages.js';
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
@@ -110,6 +111,15 @@ const storeFavoriteCount = store ? getFavoriteStoreCount(store.slug) : 0;
 const productCount = products.length;
 const inStockCount = products.filter((p) => p.stock > 0).length;
 const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
+const initialPanel = Astro.url.searchParams.get('panel') ?? 'products';
+const storeMessages = store
+  ? getMessagesBySeller(sellerId)
+      .filter((m) => !m.replyToId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  : [];
+const unreadMessagesCount = storeMessages.filter((m) => !m.readBySeller).length;
+const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
+  Object.fromEntries(storeMessages.map((m) => [m.id, getMessageReplies(m.id)]));
 
 ---
 
@@ -136,7 +146,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
     </section>
   ) : store ? (
   <Fragment>
-  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-name={store.name} hidden></div>
+  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-name={store.name} data-seller-id={sellerId} hidden></div>
   <section class="section container">
     <div class="card" style="margin-bottom:1.5rem">
 
@@ -195,25 +205,39 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
       <!-- ── Section tabs ── -->
       <div class="dash-tabs" role="tablist">
         <button
-          class="dash-tab dash-tab--active"
+          class={`dash-tab${initialPanel === 'products' ? ' dash-tab--active' : ''}`}
           role="tab"
           id="tab-products"
           data-panel="products"
-          aria-selected="true"
-          tabindex="0"
+          aria-selected={initialPanel === 'products'}
+          tabindex={initialPanel === 'products' ? 0 : -1}
         >{d.tabProducts}</button>
         <button
-          class="dash-tab"
+          class={`dash-tab${initialPanel === 'messages' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-messages"
+          data-panel="messages"
+          aria-selected={initialPanel === 'messages'}
+          tabindex={initialPanel === 'messages' ? 0 : -1}
+          style="position:relative"
+        >
+          הודעות
+          {unreadMessagesCount > 0 && (
+            <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:#ef4444;border-radius:50%" aria-label={`${unreadMessagesCount} הודעות שלא נקראו`}></span>
+          )}
+        </button>
+        <button
+          class={`dash-tab${initialPanel === 'settings' ? ' dash-tab--active' : ''}`}
           role="tab"
           id="tab-settings"
           data-panel="settings"
-          aria-selected="false"
-          tabindex="-1"
+          aria-selected={initialPanel === 'settings'}
+          tabindex={initialPanel === 'settings' ? 0 : -1}
         >{d.tabSettings}</button>
       </div>
 
       <!-- ── Panel: Store data + Products ── -->
-      <div id="dash-panel-products" class="dash-panel" role="tabpanel" aria-labelledby="tab-products">
+      <div id="dash-panel-products" class="dash-panel" role="tabpanel" aria-labelledby="tab-products" hidden={initialPanel !== 'products'}>
 
         <!-- Quick overview row -->
         <div class="dash-overview-row">
@@ -509,8 +533,102 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
         </div>
       </div>
 
+      <!-- ── Panel: Messages ── -->
+      <div id="dash-panel-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
+        <h2 style="font-size:1rem;font-weight:600;margin:0 0 1rem">הודעות מקונים</h2>
+        {storeMessages.length === 0 ? (
+          <p class="seller-msg-empty">אין הודעות עדיין.</p>
+        ) : (
+          <div class="msg-table-wrap">
+            <table class="msg-table">
+              <thead>
+                <tr>
+                  <th class="msg-table__th msg-table__th--status"></th>
+                  <th class="msg-table__th">שולח</th>
+                  <th class="msg-table__th">נושא</th>
+                  <th class="msg-table__th">תוכן</th>
+                  <th class="msg-table__th">מוצר</th>
+                  <th class="msg-table__th">תאריך</th>
+                  <th class="msg-table__th msg-table__th--actions"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {storeMessages.map((msg) => {
+                  const replies = messageReplies[msg.id] ?? [];
+                  const fmtDate = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+                  const hasUnread = !msg.readBySeller || replies.some((r) => r.toSellerId === sellerId && !r.readBySeller);
+                  const lastMsg = replies.length > 0 ? replies[replies.length - 1]! : msg;
+                  return (
+                    <Fragment>
+                      <tr
+                        class={`msg-table__row${hasUnread ? ' msg-table__row--unread' : ''}`}
+                        data-msg-id={msg.id}
+                        tabindex="0"
+                        role="button"
+                        aria-expanded="false"
+                      >
+                        <td class="msg-table__td msg-table__td--status">
+                          {hasUnread && <span class="msg-table__unread-dot" aria-label="לא נקרא"></span>}
+                        </td>
+                        <td class="msg-table__td msg-table__td--from">{msg.fromName}</td>
+                        <td class="msg-table__td msg-table__td--subject">{msg.subject}</td>
+                        <td class="msg-table__td msg-table__td--preview">{lastMsg.content}</td>
+                        <td class="msg-table__td msg-table__td--product">
+                          {msg.productRef
+                            ? <a href={`/store/${msg.productRef.storeSlug}/${msg.productRef.productSlug}`} target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onClick={(e) => e.stopPropagation()}>{msg.productRef.productName}</a>
+                            : <span style="color:var(--color-muted)">—</span>
+                          }
+                        </td>
+                        <td class="msg-table__td msg-table__td--date">{fmtDate(msg.createdAt)}</td>
+                        <td class="msg-table__td msg-table__td--actions">
+                          <button class="seller-msg-delete" data-delete-msg-id={msg.id} type="button" aria-label="מחק שיחה" title="מחק שיחה">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                          </button>
+                        </td>
+                      </tr>
+                      <tr class="msg-thread-row" id={`msg-detail-${msg.id}`} hidden>
+                        <td colspan="7">
+                          <div class="msg-thread msg-thread--seller-pov" id={`replies-${msg.id}`}>
+                            <div class="msg-thread-entry msg-thread-entry--buyer">
+                              <div class="msg-thread-entry__header">
+                                <span class="msg-thread-entry__who">{msg.fromName}</span>
+                                {!msg.readBySeller && <span class="msg-thread-unread-dot" aria-label="לא נקרא"></span>}
+                                <span class="msg-thread-entry__date">{fmtDate(msg.createdAt)}</span>
+                              </div>
+                              <div class="msg-thread-entry__body">{msg.content}</div>
+                            </div>
+                            {replies.map((r) => {
+                              const isSellerReply = r.fromUserId === sellerId;
+                              const isUnreadBuyerMsg = !isSellerReply && !r.readBySeller;
+                              return (
+                                <div class={`msg-thread-entry ${isSellerReply ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`}>
+                                  <div class="msg-thread-entry__header">
+                                    <span class="msg-thread-entry__who">{isSellerReply ? 'אתה' : r.fromName}</span>
+                                    {isUnreadBuyerMsg && <span class="msg-thread-unread-dot" aria-label="לא נקרא"></span>}
+                                    <span class="msg-thread-entry__date">{fmtDate(r.createdAt)}</span>
+                                  </div>
+                                  <div class="msg-thread-entry__body">{r.content}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div class="seller-msg-reply-form" data-reply-for={msg.id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
+                            <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
+                            <button class="seller-msg-reply-send" type="button">שלח תשובה</button>
+                          </div>
+                        </td>
+                      </tr>
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <!-- ── Panel: Settings ── -->
-      <div id="dash-panel-settings" class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <div id="dash-panel-settings" class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden={initialPanel !== 'settings'}>
         <form method="POST" action="/api/store" class="dash-form" id="settings-form" style="margin-top:0">
           <input type="hidden" name="_action" value="save-settings" />
           <input type="hidden" name="storeId" value={store.id} />
@@ -590,10 +708,37 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
   const CLOUD  = uploadCfg?.dataset.cloud  ?? '';
   const PRESET = uploadCfg?.dataset.preset ?? '';
 
-  // clean status params from URL
-  { const u = new URL(window.location.href); if (u.searchParams.has('saved') || u.searchParams.has('added')) { u.searchParams.delete('saved'); u.searchParams.delete('added'); history.replaceState(null, '', u.toString()); } }
+  // clean status params from URL + handle deep-link params
+  {
+    const u = new URL(window.location.href);
+    if (u.searchParams.has('saved') || u.searchParams.has('added')) {
+      u.searchParams.delete('saved'); u.searchParams.delete('added'); history.replaceState(null, '', u.toString());
+    }
+  }
 
   initDashTabs();
+
+  // Deep-link: ?panel=messages&msg=<id>
+  {
+    const params = new URLSearchParams(window.location.search);
+    const panel  = params.get('panel');
+    const msgId  = params.get('msg');
+    if (panel) {
+      const tabBtn = document.querySelector<HTMLButtonElement>(`[role="tab"][data-panel="${panel}"]`);
+      if (tabBtn) tabBtn.click();
+      if (msgId && panel === 'messages') {
+        requestAnimationFrame(() => {
+          const card = document.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(msgId)}"]`);
+          if (card) { card.click(); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+        });
+      }
+    }
+    if (msgId) {
+      const u = new URL(window.location.href);
+      u.searchParams.delete('msg');
+      history.replaceState(null, '', u.toString());
+    }
+  }
   initCropModal();
   initSpecsEditors();
   initVariantEditors();
@@ -612,4 +757,159 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
   initInlineEdit();
   initCategoryFilter();
   initViewProduct();
+
+  // ── Seller messages: expand / mark read / reply ──────────────
+  function fmtDateJs(iso: string) {
+    return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+  function escMsg(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  const currentSellerId = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.sellerId ?? '';
+  const sellerThreadLoaders = new Map<string, (markRead: boolean) => void>();
+
+  document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
+    const id        = row.dataset.msgId ?? '';
+    const threadRow = document.getElementById(`msg-detail-${id}`) as HTMLTableRowElement | null;
+    const repliesEl = document.getElementById(`replies-${id}`);
+    let isOpen = false;
+
+    function loadThread(markRead: boolean) {
+      fetch(`/api/messages?repliesFor=${id}`)
+        .then((r) => r.json())
+        .then(({ replies }: { replies: { fromUserId: string; fromName: string; content: string; createdAt: string }[] }) => {
+          if (!repliesEl) return;
+          [...repliesEl.children].slice(1).forEach((c) => c.remove());
+          replies.forEach((r) => {
+            const isSelf = r.fromUserId === currentSellerId;
+            const div = document.createElement('div');
+            div.className = `msg-thread-entry ${isSelf ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`;
+            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escMsg(isSelf ? 'אתה' : r.fromName)}</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(r.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(r.content)}</div>`;
+            repliesEl.appendChild(div);
+          });
+          const previewTd = row.querySelector('.msg-table__td--preview');
+          if (previewTd && replies.length > 0) previewTd.textContent = replies[replies.length - 1]!.content;
+          if (markRead) {
+            row.classList.remove('msg-table__row--unread');
+            row.querySelector('.msg-table__unread-dot')?.remove();
+            repliesEl.querySelectorAll('.msg-thread-unread-dot').forEach((el) => el.remove());
+            document.querySelector('#tab-messages span[aria-label]')?.remove();
+            fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read', id }) })
+              .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
+          }
+        }).catch(() => {});
+    }
+
+    sellerThreadLoaders.set(id, loadThread);
+
+    function open() {
+      if (!threadRow) return;
+      threadRow.hidden = false;
+      row.setAttribute('aria-expanded', 'true');
+      row.classList.add('msg-table__row--open');
+      isOpen = true;
+      loadThread(row.classList.contains('msg-table__row--unread'));
+    }
+    function close() {
+      if (!threadRow) return;
+      threadRow.hidden = true;
+      row.setAttribute('aria-expanded', 'false');
+      row.classList.remove('msg-table__row--open');
+      isOpen = false;
+    }
+
+    row.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('button, a')) return;
+      isOpen ? close() : open();
+    });
+    row.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); isOpen ? close() : open(); }
+    });
+
+    const replyForm = threadRow?.querySelector<HTMLElement>('[data-reply-for]');
+    if (replyForm) {
+      const textarea = replyForm.querySelector<HTMLTextAreaElement>('textarea')!;
+      const sendBtn  = replyForm.querySelector<HTMLButtonElement>('button')!;
+      sendBtn.addEventListener('click', async () => {
+        const content = textarea.value.trim();
+        if (!content) return;
+        sendBtn.disabled = true;
+        try {
+          const res = await fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ replyToId: id, content }),
+          });
+          const data = await res.json() as { ok?: boolean; message?: { content: string; createdAt: string } };
+          if (res.ok && data.ok && data.message && repliesEl) {
+            const div = document.createElement('div');
+            div.className = 'msg-thread-entry msg-thread-entry--seller';
+            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">אתה</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(data.message.content)}</div>`;
+            repliesEl.appendChild(div);
+            const previewTd = row.querySelector('.msg-table__td--preview');
+            if (previewTd) previewTd.textContent = data.message.content;
+            textarea.value = '';
+          }
+        } catch { /* ignore */ } finally {
+          sendBtn.disabled = false;
+        }
+      });
+    }
+  });
+
+  /* ── Delete message thread ── */
+  document.querySelectorAll<HTMLButtonElement>('[data-delete-msg-id]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('למחוק את השיחה הזו לצמיתות?')) return;
+      const id = btn.dataset.deleteMsgId ?? '';
+      try {
+        const res = await fetch('/api/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', id }),
+        });
+        if (res.ok) {
+          const row = btn.closest('tr');
+          const nextRow = row?.nextElementSibling;
+          row?.remove();
+          if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
+        }
+      } catch { /* ignore */ }
+    });
+  });
+
+  // Live unread polling
+  function pollSellerUnread() {
+    fetch('/api/messages?role=seller&unread=1')
+      .then((r) => r.json())
+      .then(({ unreadIds }: { unreadIds: string[] }) => {
+        const tabBtn = document.getElementById('tab-messages');
+        const tabDot = tabBtn?.querySelector<HTMLElement>('span[aria-label]');
+        if (unreadIds.length > 0 && !tabDot && tabBtn) {
+          const dot = document.createElement('span');
+          dot.setAttribute('aria-label', 'הודעות שלא נקראו');
+          dot.style.cssText = 'position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:#ef4444;border-radius:50%';
+          tabBtn.appendChild(dot);
+        } else if (unreadIds.length === 0) {
+          tabDot?.remove();
+        }
+        document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
+          const id = row.dataset.msgId!;
+          if (!unreadIds.includes(id)) return;
+          if (row.classList.contains('msg-table__row--open')) {
+            sellerThreadLoaders.get(id)?.(true);
+          } else if (!row.classList.contains('msg-table__row--unread')) {
+            row.classList.add('msg-table__row--unread');
+            const statusTd = row.querySelector('.msg-table__td--status');
+            if (statusTd && !statusTd.querySelector('.msg-table__unread-dot')) {
+              const dot = document.createElement('span');
+              dot.className = 'msg-table__unread-dot';
+              dot.setAttribute('aria-label', 'לא נקרא');
+              statusTd.appendChild(dot);
+            }
+          }
+        });
+      }).catch(() => {});
+  }
+  setInterval(pollSellerUnread, 15000);
 </script>

@@ -62,3 +62,250 @@
   border-radius: 4px;
 }
 
+/* ── Shared dialog (BuyerDashboard + MessageCompose) ─────── */
+.bd-dialog {
+  border: none;
+  border-radius: 1rem;
+  padding: 0;
+  width: min(720px, 95vw);
+  max-height: 88vh;
+  margin: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+  overflow: hidden;
+}
+.bd-dialog::backdrop {
+  background: rgba(0,0,0,0.48);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+/* ── BuyerDashboard tabs ─────────────────────────────────── */
+.bd-tab {
+  flex: 1;
+  padding: 0.75rem 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  border: none;
+  background: none;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+.bd-tab:hover { color: rgba(255,255,255,0.85); }
+.bd-tab--active { color: white !important; border-bottom-color: white !important; }
+
+/* ── BuyerDashboard content ──────────────────────────────── */
+.bd-loading { color: var(--color-muted); font-size: 0.88rem; text-align: center; padding: 2rem 0; }
+.bd-empty { color: var(--color-muted); font-size: 0.9rem; text-align: center; padding: 2.5rem 0; margin: 0; }
+.bd-orders-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.bd-order-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.6rem; padding: 0.85rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.bd-order-card__head { display: flex; justify-content: space-between; align-items: center; }
+.bd-order-card__id { font-weight: 700; font-size: 0.88rem; color: var(--color-text); font-family: monospace; }
+.bd-order-card__date { font-size: 0.8rem; color: var(--color-muted); }
+.bd-order-card__items { font-size: 0.82rem; color: var(--color-muted); line-height: 1.4; }
+.bd-order-card__foot { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.bd-status { font-size: 0.74rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 999px; }
+.bd-status--pending { background: #fef3c7; color: #92400e; }
+.bd-status--paid { background: #dcfce7; color: #166534; }
+.bd-status--failed { background: #fee2e2; color: #991b1b; }
+.bd-status--ship { background: var(--color-bg); color: var(--color-muted); }
+
+.bd-messages-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.bd-msg-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.6rem; padding: 0.85rem 1rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.bd-msg-card__head { display: flex; justify-content: space-between; align-items: center; }
+.bd-msg-card__to { font-size: 0.8rem; color: var(--color-muted); }
+.bd-msg-card__date { font-size: 0.78rem; color: var(--color-muted); }
+.bd-msg-card__ref { font-size: 0.78rem; color: var(--color-accent); }
+.bd-msg-card__subject { font-size: 0.9rem; font-weight: 600; color: var(--color-text); margin: 0; }
+.bd-msg-card__body { font-size: 0.85rem; color: var(--color-muted); margin: 0; line-height: 1.5; }
+.bd-msg-card__unread { font-size: 0.72rem; font-weight: 700; color: #dc2626; background: #fee2e2; border-radius: 999px; padding: 0.15rem 0.5rem; align-self: flex-start; }
+
+/* ── BuyerDashboard notifications tab ───────────────────── */
+.bd-notifs-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.bd-notif-item { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.55rem; padding: 0.75rem 1rem; }
+.bd-notif-item--unread { border-inline-start: 3px solid var(--color-accent); }
+.bd-notif-item__title { font-size: 0.85rem; font-weight: 600; color: var(--color-text); margin-bottom: 2px; }
+.bd-notif-item__body  { font-size: 0.82rem; color: var(--color-muted); line-height: 1.4; }
+.bd-notif-item__time  { font-size: 0.74rem; color: var(--color-muted); margin-top: 4px; }
+
+/* ── Notification bell ───────────────────────────────────── */
+.notif-bell-wrap { display: flex; align-items: center; }
+.notif-dot {
+  position: absolute;
+  top: 1px;
+  inset-inline-end: 1px;
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  border-radius: 50%;
+}
+
+/* ── Task center dropdown ── */
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  inset-inline-end: 0;
+  z-index: 200;
+  width: min(340px, 92vw);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.14);
+  overflow: hidden;
+  animation: notif-drop-in 0.18s cubic-bezier(0.34,1.56,0.64,1) forwards;
+}
+@keyframes notif-drop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Notification panel header */
+.notif-panel-head {
+  padding: 0.6rem 1rem;
+  font-size: 0.78rem; font-weight: 600; color: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+  letter-spacing: 0.01em;
+}
+
+/* Seller unread dot on dashboard link */
+.seller-msg-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px;
+  font-size: 0.65rem; font-weight: 700;
+  background: #ef4444; color: #fff;
+  border-radius: 999px; padding: 0 0.3rem;
+  margin-inline-start: auto;
+  line-height: 1;
+}
+.notif-list { max-height: 300px; overflow-y: auto; }
+.notif-footer {
+  padding: 0.45rem 1rem;
+  border-top: 1px solid var(--color-border);
+  text-align: center;
+}
+.notif-footer-btn {
+  font-size: 0.75rem; color: var(--color-accent);
+  background: none; border: none; cursor: pointer; font-family: inherit; padding: 0;
+}
+.notif-footer-btn:hover { text-decoration: underline; }
+
+.notif-empty { color: var(--color-muted); font-size: 0.85rem; text-align: center; padding: 1.5rem 1rem; margin: 0; }
+.notif-item {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: var(--color-bg); }
+.notif-item--unread { background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)); }
+.notif-item__tag { font-size: 0.67rem; font-weight: 700; color: var(--color-accent); margin-bottom: 2px; letter-spacing: 0.01em; }
+.notif-item__title { font-size: 0.84rem; font-weight: 600; color: var(--color-text); margin-bottom: 2px; }
+.notif-item__body { font-size: 0.79rem; color: var(--color-muted); line-height: 1.4; }
+.notif-item__time { font-size: 0.72rem; color: var(--color-muted); margin-top: 3px; }
+
+/* ── Seller dashboard messages tab ──────────────────────── */
+/* ── Seller messages ── */
+/* ── Message inbox table ── */
+.msg-table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: 8px; }
+.msg-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.msg-table thead { border-bottom: 2px solid var(--color-border); background: var(--color-bg); }
+.msg-table__th { padding: 0.5rem 0.75rem; text-align: start; font-size: 0.68rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+.msg-table__th--status { width: 28px; padding-inline-end: 0; }
+.msg-table__th--actions { width: 36px; }
+.msg-table__row { cursor: pointer; transition: background 0.1s; }
+.msg-table__row:hover .msg-table__td { background: var(--color-bg); }
+.msg-table__row--unread .msg-table__td { background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)); }
+.msg-table__row--unread .msg-table__td--status { border-inline-start: 3px solid var(--color-accent); }
+.msg-table__row--unread .msg-table__td--from,
+.msg-table__row--unread .msg-table__td--subject { font-weight: 700; color: var(--color-text); }
+.msg-table__td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--color-border); vertical-align: middle; color: var(--color-text); }
+.msg-table__td--status { width: 28px; padding-inline-end: 0; }
+.msg-table__td--from { font-weight: 500; white-space: nowrap; }
+.msg-table__td--subject { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-table__td--preview { color: var(--color-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
+.msg-table__td--product { white-space: nowrap; font-size: 0.78rem; color: var(--color-accent); }
+.msg-table__td--date { white-space: nowrap; font-size: 0.78rem; color: var(--color-muted); }
+.msg-table__td--actions { width: 36px; padding: 0.2rem 0.4rem; }
+.msg-table__unread-dot { display: block; width: 7px; height: 7px; background: #ef4444; border-radius: 50%; margin: auto; }
+.msg-thread-row td { padding: 0; border-bottom: 2px solid var(--color-border); }
+
+/* Thread view */
+.msg-thread { display: flex; flex-direction: column; }
+.msg-thread-entry { padding: 0.85rem 1rem; }
+.msg-thread-entry + .msg-thread-entry { border-top: 1px solid var(--color-border); }
+/* Buyer POV: buyer=self=darker bg, seller=other=lighter */
+.msg-thread-entry--buyer { background: var(--color-bg); }
+.msg-thread-entry--seller { background: var(--color-surface); }
+/* Seller POV: flip so seller=self=darker, buyer=other=lighter */
+.msg-thread--seller-pov .msg-thread-entry--seller { background: var(--color-bg); }
+.msg-thread--seller-pov .msg-thread-entry--buyer  { background: var(--color-surface); }
+/* Active/open row */
+.msg-table__row--open .msg-table__td { background: var(--color-bg); }
+.msg-thread-entry__header { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem; }
+.msg-thread-entry__who { font-size: 0.8rem; font-weight: 600; color: var(--color-text); }
+.msg-thread-entry__date { font-size: 0.72rem; color: var(--color-muted); margin-inline-start: auto; }
+.msg-thread-entry__body { font-size: 0.875rem; line-height: 1.65; color: var(--color-text); white-space: pre-wrap; }
+.msg-thread-unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); flex-shrink: 0; align-self: center; }
+
+/* Reply form */
+.seller-msg-reply-form { display: flex; flex-direction: column; gap: 0.5rem; }
+.seller-msg-reply-textarea {
+  width: 100%; min-height: 72px; resize: vertical;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.83rem; font-family: inherit; color: var(--color-text);
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: 8px; outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.seller-msg-reply-textarea:focus { border-color: var(--color-accent); }
+.seller-msg-reply-send {
+  align-self: flex-end;
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem; font-weight: 600; font-family: inherit;
+  background: var(--color-text); color: var(--color-surface);
+  border: none; border-radius: 7px; cursor: pointer;
+  transition: opacity 0.15s;
+}
+.seller-msg-reply-send:hover { opacity: 0.85; }
+.seller-msg-reply-send:disabled { opacity: 0.5; cursor: default; }
+
+.seller-msg-empty { color: var(--color-muted); font-size: 0.9rem; text-align: center; padding: 2rem 0; }
+.seller-msg-delete {
+  flex-shrink: 0; align-self: start; padding: 0.3rem;
+  background: none; border: none; cursor: pointer;
+  color: var(--color-muted); border-radius: 5px;
+  transition: color 0.1s, background 0.1s;
+  margin-inline-start: 0.25rem;
+}
+.seller-msg-delete:hover { color: #dc2626; background: #fee2e2; }
+
+/* ── Contact/message buttons on store/product pages ──────── */
+.contact-store-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--color-border);
+  background: none;
+  border-radius: 9999px;
+  padding: 0.3rem 0.85rem 0.3rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-text);
+  transition: all 0.15s cubic-bezier(0.34,1.56,0.64,1);
+  line-height: 1;
+}
+.contact-store-btn:hover {
+  background: var(--color-surface);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+  transform: scale(1.02);
+}
+.contact-store-btn:active { transform: scale(0.97); }
+

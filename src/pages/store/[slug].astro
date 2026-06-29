@@ -18,6 +18,7 @@ if (!shopStore) return Astro.redirect('/404');
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
 const isFavorited = userId ? getFavoriteStoresForUser(userId).includes(shopStore.slug) : false;
+const isOwner = userId === shopStore.sellerId;
 
 const products = getProductsByStoreId(shopStore.id);
 const allCategories = [...new Set(products.map(p => p.category).filter(Boolean))] as string[];
@@ -69,7 +70,27 @@ const pmI18n = {
         {shopStore.description && shopStore.description !== shopStore.tagline && (
           <p class="store-desc" dir="auto">{shopStore.description}</p>
         )}
-        <div style="margin-top:1rem;position:relative;display:inline-block">
+        <div style="margin-top:1rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+          {/* Contact store button — always visible (not for store owner) */}
+          {userId !== shopStore.sellerId && (
+            <div style="position:relative;display:inline-block">
+              <button
+                type="button"
+                class="contact-store-btn"
+                id="contact-store-btn"
+                data-store-id={shopStore.id}
+                data-seller-id={shopStore.sellerId}
+                data-store-name={shopStore.name}
+                data-is-logged-in={String(isLoggedIn)}
+                data-login-url={`/seller/login?next=/store/${shopStore.slug}`}
+                aria-label={`צור קשר עם ${shopStore.name}`}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                צור קשר
+              </button>
+            </div>
+          )}
+          <div style="position:relative;display:inline-block">
           <button
             id="fav-store-btn"
             type="button"
@@ -93,6 +114,7 @@ const pmI18n = {
             style="position:absolute;top:calc(100% + 0.45rem);inset-inline-start:0;z-index:30;background:var(--color-surface);border:1px solid var(--color-border);border-radius:0.55rem;padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text);opacity:0;pointer-events:none;transform:translateY(-6px) scale(0.97);transition:opacity 0.17s,transform 0.22s cubic-bezier(0.34,1.56,0.64,1)"
           >
             {t.store.loginToSave} <a id="fav-store-tooltip-link" href={`/seller/login?next=/store/${shopStore.slug}`} style="color:var(--color-accent);font-weight:600">{t.store.loginToSaveLink}</a>
+          </div>
           </div>
         </div>
       </div>
@@ -1186,5 +1208,40 @@ const pmI18n = {
         }
       }
     }
+  });
+
+  // ── Login hint tooltip (for non-logged-in contact/ask buttons) ──
+  function showLoginHint(btn: HTMLElement) {
+    const existing = btn.parentElement?.querySelector('.login-hint-popup');
+    if (existing) { existing.remove(); return; }
+    const loginUrl = btn.dataset.loginUrl ?? '/seller/login';
+    const hint = document.createElement('div');
+    hint.className = 'login-hint-popup';
+    hint.setAttribute('role', 'status');
+    hint.innerHTML = `<span>כדי לשלוח הודעה יש <a href="${loginUrl}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">להתחבר</a></span>`;
+    hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:0.55rem;padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text)';
+    hint.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease', fill: 'forwards' });
+    const container = btn.parentElement ?? btn;
+    container.appendChild(hint);
+    const dismiss = () => { hint.remove(); document.removeEventListener('click', outsideClick); };
+    const outsideClick = (e: MouseEvent) => { if (!hint.contains(e.target as Node) && e.target !== btn) dismiss(); };
+    setTimeout(() => document.addEventListener('click', outsideClick), 10);
+    setTimeout(dismiss, 5000);
+  }
+
+  // ── Contact store button ──────────────────────────────────────
+  const contactBtn = document.getElementById('contact-store-btn') as HTMLButtonElement | null;
+  contactBtn?.addEventListener('click', () => {
+    if (contactBtn.dataset.isLoggedIn !== 'true') {
+      showLoginHint(contactBtn);
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('message:compose', {
+      detail: {
+        storeId: contactBtn.dataset.storeId ?? '',
+        sellerId: contactBtn.dataset.sellerId ?? '',
+        storeName: contactBtn.dataset.storeName ?? '',
+      },
+    }));
   });
 </script>

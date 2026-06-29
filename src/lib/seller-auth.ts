@@ -68,6 +68,37 @@ export function loginSeller(email: string, password: string): Seller | null {
   return seller;
 }
 
+export function updateSeller(
+  id: string,
+  fields: { name?: string; email?: string; currentPassword?: string; newPassword?: string }
+): { ok: true; seller: Seller } | { ok: false; error: string } {
+  const sellers = readSellers();
+  const idx = sellers.findIndex((s) => s.id === id);
+  if (idx === -1) return { ok: false, error: 'משתמש לא נמצא' };
+  const seller = { ...sellers[idx]! };
+
+  if (fields.email && fields.email !== seller.email) {
+    if (sellers.some((s) => s.id !== id && s.email === fields.email)) {
+      return { ok: false, error: 'כתובת המייל כבר בשימוש' };
+    }
+  }
+
+  if (fields.newPassword) {
+    if (!fields.currentPassword) return { ok: false, error: 'נדרשת סיסמה נוכחית' };
+    if (!verifyPassword(fields.currentPassword, seller.passwordHash)) {
+      return { ok: false, error: 'הסיסמה הנוכחית שגויה' };
+    }
+    seller.passwordHash = hashPassword(fields.newPassword);
+  }
+
+  if (fields.name)  seller.name  = fields.name;
+  if (fields.email) seller.email = fields.email;
+
+  sellers[idx] = seller;
+  writeSellers(sellers);
+  return { ok: true, seller };
+}
+
 function makeToken(sellerId: string): string {
   const exp = Math.floor(Date.now() / 1000) + ONE_DAY;
   const payload = `${sellerId}|${exp}`;

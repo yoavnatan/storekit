@@ -1,6 +1,7 @@
 ---
 import { store } from '../config/store.config.js';
 import { getLang, getT } from '../i18n/index.js';
+import { getSellerSession } from '../lib/seller-auth.js';
 
 interface Props {
   isLoggedIn?: boolean;
@@ -9,10 +10,13 @@ interface Props {
   storeName?: string;
   storeSlug?: string;
   sellerMode?: boolean;
+  hideNav?: boolean;
 }
 
-const { isLoggedIn = false, storeMode = false, sellerMode = false, storeName, storeSlug } = Astro.props;
+const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, storeName, storeSlug } = Astro.props;
 const logo = store.logo;
+
+const _hUserId = isLoggedIn ? getSellerSession(Astro.cookies) : null;
 
 const currentPath = Astro.url.pathname + (Astro.url.search ? Astro.url.search : '');
 const loginUrl = `/seller/login?next=${encodeURIComponent(currentPath)}`;
@@ -110,7 +114,7 @@ const strEmpty   = t.store.noProductsFound;
     )}
 
     <!-- Nav (non-store/seller mode) -->
-    {!storeMode && !sellerMode && (
+    {!storeMode && !sellerMode && !hideNav && (
       <nav aria-label="Main navigation">
         <ul role="list" class="flex gap">
           {navItems.map((item) => (
@@ -126,6 +130,33 @@ const strEmpty   = t.store.noProductsFound;
         <a href={loginUrl} class="lang-toggle-btn" style="text-decoration:none">
           {t.nav.login}
         </a>
+      )}
+
+      {/* Notifications bell — shows seller replies to buyer */}
+      {isLoggedIn && (
+        <div class="notif-bell-wrap" style="position:relative">
+          <button
+            id="notif-bell-btn"
+            class="cart-btn"
+            aria-label="התראות"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="notif-dropdown"
+            style="position:relative"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span id="notif-dot" class="notif-dot" hidden aria-live="polite" aria-atomic="true" aria-label="התראות חדשות"></span>
+          </button>
+          <div id="notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות">
+            <div class="notif-panel-head">התראות</div>
+            <div id="notif-list" class="notif-list">
+              <p class="notif-empty">אין התראות חדשות</p>
+            </div>
+            <div class="notif-footer">
+              <button id="notif-mark-all" class="notif-footer-btn" type="button">סמן הכל כנקרא</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {!sellerMode && (
@@ -161,17 +192,29 @@ const strEmpty   = t.store.noProductsFound;
         </Fragment>
       )}
 
-
-      {(storeMode || sellerMode) && isLoggedIn && (
+      {/* User avatar dropdown — all logged-in users */}
+      {isLoggedIn && (
         <div class="user-menu">
           <button class="user-btn" id="user-menu-toggle" aria-label={t.nav.userMenu} aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
           </button>
           <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
-            <a href="/seller/dashboard" class="user-dropdown__item" role="menuitem">{t.nav.sellersDashboard}</a>
+            <a href="/buyer/dashboard" class="user-dropdown__item" role="menuitem">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              האזור שלי
+            </a>
+            {(Astro.props.hasStore || storeMode || sellerMode) && (
+              <a href="/seller/dashboard" class="user-dropdown__item" role="menuitem">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                {t.nav.sellersDashboard}
+              </a>
+            )}
             <form method="POST" action="/seller/logout">
               <input type="hidden" name="_next" value={currentPath} />
-              <button class="user-dropdown__item user-dropdown__item--btn" type="submit" role="menuitem">{t.nav.logout}</button>
+              <button class="user-dropdown__item user-dropdown__item--btn" type="submit" role="menuitem">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                {t.nav.logout}
+              </button>
             </form>
           </div>
         </div>
@@ -206,7 +249,7 @@ const strEmpty   = t.store.noProductsFound;
   refresh();
 
   // ── User dropdown ─────────────────────────────────────────────
-  const userToggle = document.getElementById('user-menu-toggle') as HTMLButtonElement | null;
+  const userToggle   = document.getElementById('user-menu-toggle') as HTMLButtonElement | null;
   const userDropdown = document.getElementById('user-dropdown');
 
   function openUserMenu() {
@@ -214,27 +257,107 @@ const strEmpty   = t.store.noProductsFound;
     userToggle?.setAttribute('aria-expanded', 'true');
     (userDropdown?.querySelector<HTMLElement>('[role="menuitem"]'))?.focus();
   }
-
   function closeUserMenu() {
     userDropdown?.setAttribute('hidden', '');
     userToggle?.setAttribute('aria-expanded', 'false');
   }
-
   userToggle?.addEventListener('click', (e) => {
     e.stopPropagation();
     userDropdown?.hasAttribute('hidden') ? openUserMenu() : closeUserMenu();
   });
-
   document.addEventListener('click', () => {
     if (userDropdown && !userDropdown.hasAttribute('hidden')) closeUserMenu();
   });
-
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && userDropdown && !userDropdown.hasAttribute('hidden')) {
-      closeUserMenu();
-      userToggle?.focus();
+      closeUserMenu(); userToggle?.focus();
     }
   });
+
+  // ── Notifications bell ────────────────────────────────────────
+  const bellBtn    = document.getElementById('notif-bell-btn') as HTMLButtonElement | null;
+  const notifDot   = document.getElementById('notif-dot') as HTMLElement | null;
+  const notifDrop  = document.getElementById('notif-dropdown') as HTMLElement | null;
+  const notifList  = document.getElementById('notif-list') as HTMLElement | null;
+  const markAllBtn = document.getElementById('notif-mark-all') as HTMLButtonElement | null;
+
+  interface NotifItem { id: string; type?: string; title: string; body: string; read: boolean; createdAt: string; }
+
+  function timeAgo(iso: string): string {
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60)    return 'עכשיו';
+    if (diff < 3600)  return `לפני ${Math.floor(diff / 60)} ד'`;
+    if (diff < 86400) return `לפני ${Math.floor(diff / 3600)} ש'`;
+    return `לפני ${Math.floor(diff / 86400)} ימים`;
+  }
+  function escH(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function renderNotifs(items: NotifItem[]) {
+    if (!notifList) return;
+    if (notifDot) { items.some(n => !n.read) ? notifDot.removeAttribute('hidden') : notifDot.setAttribute('hidden', ''); }
+    if (!items.length) { notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>'; return; }
+    notifList.innerHTML = items.slice(0, 10).map((n) => `
+      <div class="notif-item${n.read ? '' : ' notif-item--unread'}" data-id="${escH(n.id)}" data-type="${escH(n.type ?? '')}" role="button" tabindex="0">
+        <div class="notif-item__title">${escH(n.title)}</div>
+        <div class="notif-item__body">${escH(n.body)}</div>
+        <div class="notif-item__time">${timeAgo(n.createdAt)}</div>
+      </div>`).join('');
+    notifList.querySelectorAll<HTMLElement>('[data-id]').forEach((el) => {
+      el.addEventListener('click', () => {
+        closeNotifDrop();
+        const href = el.dataset.type === 'new_message'
+          ? '/seller/dashboard?panel=messages'
+          : '/buyer/dashboard?tab=messages';
+        window.location.href = href;
+      });
+    });
+  }
+
+  function openNotifDrop()  { if (!notifDrop || !bellBtn) return; notifDrop.hidden = false; bellBtn.setAttribute('aria-expanded','true'); }
+  function closeNotifDrop() { if (!notifDrop || !bellBtn) return; notifDrop.hidden = true;  bellBtn.setAttribute('aria-expanded','false'); }
+
+  bellBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (notifDrop?.hidden) { openNotifDrop(); loadNotifs(); } else closeNotifDrop();
+  });
+  document.addEventListener('click', (e) => {
+    if (bellBtn && notifDrop && !bellBtn.contains(e.target as Node) && !notifDrop.contains(e.target as Node)) closeNotifDrop();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && notifDrop && !notifDrop.hidden) { closeNotifDrop(); bellBtn?.focus(); }
+  });
+
+  markAllBtn?.addEventListener('click', async () => {
+    await fetch('/api/notifications', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'mark-all-read'}) });
+    if (notifDot) notifDot.setAttribute('hidden', '');
+    await loadNotifs();
+  });
+
+  async function loadNotifs() {
+    try {
+      const res = await fetch('/api/notifications');
+      if (!res.ok) return;
+      const { notifications } = await res.json() as { notifications: NotifItem[]; unreadCount: number };
+      renderNotifs(notifications ?? []);
+      const sellerReplyCount = (notifications ?? []).filter((n: NotifItem) => n.type === 'seller_reply' && !n.read).length;
+      window.dispatchEvent(new CustomEvent('msg-badge-update', { detail: sellerReplyCount }));
+    } catch { /* ignore */ }
+  }
+
+  setInterval(loadNotifs, 30000);
+
+  window.addEventListener('notifications:update', (e: Event) => {
+    const { notifications } = (e as CustomEvent<{ unreadCount: number; notifications: NotifItem[] }>).detail;
+    if (notifications) renderNotifs(notifications);
+  });
+
+  window.addEventListener('notif-refreshed', () => { loadNotifs(); });
+
+  if (bellBtn) {
+    fetch('/api/notifications').then(r => r.json()).then((d: { notifications: NotifItem[]; unreadCount: number }) => {
+      renderNotifs(d.notifications ?? []);
+    }).catch(() => {});
+  }
 
   // ── Store header search ───────────────────────────────────────
   const headerSearch = document.getElementById('header-search') as HTMLElement | null;

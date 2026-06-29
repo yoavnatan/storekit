@@ -146,6 +146,7 @@ Every product decision: **does this match how a real, physical mall works?**
 - **SEO / A11y:** `Seo.astro`, JSON-LD (Store/Product/Organization), sitemap; skip link, focus traps, ARIA roles, keyboard nav, aria-live regions
 - **Ads architecture (tracking layer):** Single platform-owned GTM + Meta Pixel — fires on every page across all stores. `store.config.ts` has `ads: { googleTagId, metaPixelId }` (set once by platform admin). `BaseLayout` injects GTM head snippet + noscript iframe + Meta Pixel conditionally (IDs sanitized against injection). Data layer fires before GTM: `{ event:'page_view', page_type:'platform'|'store'|'product', store_id, store_name, store_slug, currency:'ILS' }`. Product pages add GA4 ecommerce: `{ ecommerce: { currency, items: [{ item_id, item_name, price, item_category }] } }`. Product OG: `og:type="product"`, `product:price:amount`, `product:price:currency`, `og:image={images[0]}`. Sellers never touch ad config — platform manages all campaigns centrally.
 - **Tracking events — `src/lib/tracking.ts`:** `trackViewContent(item)` + `trackAddToCart(item, qty)` — push to `window.dataLayer` (GA4/GTM) AND call `window.fbq` (Meta Pixel) simultaneously. Fired on: product page load (ViewContent), add-to-cart from grid/modal/product page (AddToCart). Global Window types (`dataLayer`, `fbq`) declared in `src/env.d.ts`.
+- **Messaging & Notifications:** `MessageCompose.astro` on store/product pages — buyer sends message to seller (POST `/api/messages`), toast navigates to `/buyer/dashboard?tab=messages`. Seller sees "הודעות מקונים" tab in dashboard; buyer sees "הודעות ממוכרים" tab. Thread rows expand in-place (`loadThread(markRead)` always re-fetches live content on open, preventing stale SSR data). Live polling every 15s via `/api/messages?role=seller|buyer&unread=1` — adds per-row red dot + tab dot; refreshes open thread content live. URL sync: seller `?panel=messages`, buyer `?tab=messages` — SSR-based initial tab (no flash). Notifications stored in `data/notifications.json`; bell in Header polls every 30s; click routes to correct dashboard tab; deleted on read (`deleteNotificationsByRelatedIds`). Message threading: `replyToId?` on Message; `readBySeller`/`readByBuyer?` per message; `markThreadReadBySeller(originalId, sellerId)` marks original + all buyer replies; `markThreadReadByBuyer(originalId)` marks all.
 - **Israeli market:** Payments via Israeli processors only (Cardcom default, Tranzila, PayPlus — never Stripe). Shipping via Israeli carriers (Sendit aggregator, Israel Post, iPost). Currency ILS always. See "Israeli market — hard constraints" section above.
 
 ---
@@ -159,14 +160,18 @@ data/sellers.json               ← seller accounts
 data/stores.json                ← store records
 data/store-products.json        ← per-store products (storeId field)
 data/user-carts.json            ← server-side cart + wishlist per user (keyed by sellerId)
+data/messages.json              ← message threads (Message interface: id, fromUserId, toSellerId, replyToId?, readBySeller, readByBuyer?)
+data/notifications.json         ← notifications (Notification: userId, type, relatedId?; deleted on read)
+data/orders.json                ← orders store (flat array, keyed by id)
 src/layouts/BaseLayout.astro    ← page shell (isLoggedIn, hasStore, storeMode, dataLayer, productPrice props; GTM+Pixel injection)
 src/components/Seo.astro        ← all meta/OG/JSON-LD
-src/components/Header.astro     ← nav (session-aware, storeMode-aware)
+src/components/Header.astro     ← nav (session-aware, storeMode-aware); notifications bell + polling every 30s
 src/components/Footer.astro
 src/components/CartDrawer.astro
 src/components/WishlistDrawer.astro
 src/components/ConfirmModal.astro ← global <dialog>, event-driven (confirm:open)
 src/components/ProductQuickView.astro ← global PQV + lightbox dialogs; listens for pqv:open event (detail: {storeSlug, productSlug, storeName, newTab?}); `newTab:true` → product link gets `target="_blank"`; .pqv-trigger clicks; "לתשלום" opens accordion on checkout or navigates to /checkout?pay=1
+src/components/MessageCompose.astro ← buyer contact form (store/product pages); dispatches toast with href to /buyer/dashboard?tab=messages
 src/lib/cart.ts                 ← CartItem, localStorage cart, events, syncCartImages
 src/lib/wishlist.ts             ← WishlistItem, localStorage wishlist
 src/lib/wishlist-counts.ts      ← wishlist count badge sync
@@ -179,18 +184,22 @@ src/lib/tracking.ts             ← trackViewContent, trackAddToCart (dataLayer 
 src/lib/user-carts.ts          ← UserCartData interface + getUserCart / saveUserCart (server adapter)
 src/lib/cart-sync.ts           ← client module: merge guest→user cart on login, debounced save, load on return
 src/lib/orders.ts              ← Order + OrderItem + StoreSubtotal interfaces; createOrder / getOrderById / updateOrder / getAllOrders
+src/lib/messages.ts            ← Message interface + CRUD; markThreadReadBySeller / markThreadReadByBuyer; getMessageReplies (asc)
+src/lib/notifications.ts       ← Notification interface; createNotification / getNotificationsForUser / deleteNotificationsByRelatedIds
 src/env.d.ts                   ← global Window type augmentation (dataLayer, fbq, __sessionUserId, __pendingCartSync)
 src/workers/bg-removal.ts       ← BG removal Web Worker (@imgly)
 src/lib/cloudinary.ts           ← thumbUrl(src, w?, h?) — server-side Cloudinary URL transformer
 src/scripts/dashboard/          ← bg-worker, cloudinary (upload + thumbUrl), status, crop-modal, gallery, products, ui
-data/orders.json               ← orders store (flat array, keyed by id)
 src/pages/index.astro           ← SSR homepage
 src/pages/store/[slug].astro    ← SSR public store page (product modal experiment active)
 src/pages/store/[storeSlug]/[productSlug].astro ← SSR product page (full UX: lightbox, related products, JSON-LD)
 _backup/store-slug.astro        ← store page snapshot pre-modal (revert if needed)
-src/pages/seller/               ← register, login, dashboard (SSR)
+src/pages/seller/               ← register, login, dashboard (SSR; ?panel=X URL sync; messages tab with live polling)
+src/pages/buyer/dashboard.astro ← SSR buyer area; orders + messages (?tab=X URL sync; live polling every 15s) + profile
 src/pages/checkout.astro        ← SSR checkout page (buyer details + address + client-side order summary)
 src/pages/checkout/success.astro ← order confirmation page (clears cart, shows order ID)
+src/pages/api/messages.ts      ← GET (list, repliesFor, unread=1); POST (send, reply, mark-read, mark-read-buyer, delete)
+src/pages/api/notifications.ts ← GET (list + unread count); POST (mark-read, mark-all-read)
 src/pages/api/                  ← product (actions: add-product, update-product, delete-product, bulk-delete-products, patch-product-fields), store, wishlist, lang, user-cart, checkout (POST → creates order)
 src/styles/main.css             ← single CSS entry point
 src/styles/base/tokens.css      ← CSS variables (colors, spacing, radius)
@@ -198,7 +207,7 @@ src/styles/base/reset.css
 src/styles/layout/container.css ← .container, .section
 src/styles/components/          ← buttons, cards, forms, header, footer, cart-drawer, confirm-modal, product-card
 src/styles/pages/               ← home, auth, dashboard, store, product, checkout
-src/styles/utilities/utils.css  ← .muted, .badge, .visually-hidden, .skel-bar, @keyframes skeleton-shimmer
+src/styles/utilities/utils.css  ← .muted, .badge, .visually-hidden, .skel-bar, @keyframes skeleton-shimmer; msg-thread, notif-dot styles
 ```
 
 ---

@@ -84,9 +84,11 @@ nav a:hover { color: var(--color-text); }
 }
 
 .user-dropdown__item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   width: 100%;
-  padding: 0.45rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   font-weight: 500;
   text-align: start;
@@ -99,6 +101,7 @@ nav a:hover { color: var(--color-text); }
   transition: background 0.1s;
   font-family: inherit;
 }
+.user-dropdown__item svg { flex-shrink: 0; color: var(--color-muted); }
 
 .user-dropdown__item:hover { background: var(--color-bg); }
 

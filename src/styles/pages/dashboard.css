@@ -130,7 +130,7 @@ textarea.input { resize: vertical; }
   flex-wrap: wrap;
 }
 
-.products-header h2 { margin: 0; }
+.products-header h2 { margin: 0; font-size: 1rem; font-weight: 600; }
 
 .products-header__title {
   display: flex;

@@ -18,7 +18,8 @@ if (!shopStore) return Astro.redirect('/404');
 const product = getProductBySlug(shopStore.id, productSlug);
 if (!product) return Astro.redirect(`/store/${storeSlug}`);
 
-const isLoggedIn = !!getSellerSession(Astro.cookies);
+const userId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!userId;
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
 
@@ -405,6 +406,33 @@ const pmI18n = {
             </div>
           )}
 
+        </div>
+      )}
+
+      <!-- Ask seller about product — subtle link, not shown to store owner -->
+      {userId !== shopStore.sellerId && (
+        <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--color-border);display:flex;align-items:center;gap:0.5rem">
+          <div style="position:relative;display:inline-block">
+            <button
+              type="button"
+              id="ask-product-btn"
+              data-store-id={shopStore.id}
+              data-seller-id={shopStore.sellerId}
+              data-store-name={shopStore.name}
+              data-product-id={product.id}
+              data-product-name={product.name}
+              data-product-slug={product.slug}
+              data-store-slug={storeSlug}
+              data-is-logged-in={String(isLoggedIn)}
+              data-login-url={`/seller/login?next=/store/${storeSlug}/${productSlug}`}
+              style="background:none;border:none;cursor:pointer;font-size:0.82rem;color:var(--color-muted);display:inline-flex;align-items:center;gap:0.35rem;padding:0.2rem 0;text-decoration:underline;text-underline-offset:3px;transition:color 0.15s"
+              onmouseover="this.style.color='var(--color-text)'"
+              onmouseout="this.style.color='var(--color-muted)'"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+              שאלה על המוצר
+            </button>
+          </div>
         </div>
       )}
 
@@ -1070,6 +1098,47 @@ const pmI18n = {
       const card = link.closest<HTMLElement>('.related-card');
       if (card) openProductModal(card);
     });
+  });
+
+  // ── Login hint (shared helper) ────────────────────────────────
+  function showLoginHint(btn: HTMLElement) {
+    const existing = btn.parentElement?.querySelector('.login-hint-popup');
+    if (existing) { existing.remove(); return; }
+    const loginUrl = btn.dataset.loginUrl ?? '/seller/login';
+    const hint = document.createElement('div');
+    hint.className = 'login-hint-popup';
+    hint.setAttribute('role', 'status');
+    hint.innerHTML = `<span>כדי לשלוח הודעה יש <a href="${loginUrl}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">להתחבר</a></span>`;
+    hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:0.55rem;padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text)';
+    hint.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease', fill: 'forwards' });
+    const container = btn.parentElement ?? btn;
+    container.appendChild(hint);
+    const dismiss = () => { hint.remove(); document.removeEventListener('click', outsideClick); };
+    const outsideClick = (e: MouseEvent) => { if (!hint.contains(e.target as Node) && e.target !== btn) dismiss(); };
+    setTimeout(() => document.addEventListener('click', outsideClick), 10);
+    setTimeout(dismiss, 5000);
+  }
+
+  // ── Ask about product button ──────────────────────────────────
+  const askBtn = document.getElementById('ask-product-btn') as HTMLButtonElement | null;
+  askBtn?.addEventListener('click', () => {
+    if (askBtn.dataset.isLoggedIn !== 'true') {
+      showLoginHint(askBtn);
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('message:compose', {
+      detail: {
+        storeId: askBtn.dataset.storeId ?? '',
+        sellerId: askBtn.dataset.sellerId ?? '',
+        storeName: askBtn.dataset.storeName ?? '',
+        productRef: {
+          productId: askBtn.dataset.productId ?? '',
+          productName: askBtn.dataset.productName ?? '',
+          productSlug: askBtn.dataset.productSlug ?? '',
+          storeSlug: askBtn.dataset.storeSlug ?? '',
+        },
+      },
+    }));
   });
 
   // Keyboard: Escape closes modal, Tab traps focus

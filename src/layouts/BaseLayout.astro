@@ -6,6 +6,8 @@ import CartDrawer from '../components/CartDrawer.astro';
 import WishlistDrawer from '../components/WishlistDrawer.astro';
 import ConfirmModal from '../components/ConfirmModal.astro';
 import ProductQuickView from '../components/ProductQuickView.astro';
+import ToastContainer from '../components/ToastContainer.astro';
+import MessageCompose from '../components/MessageCompose.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
@@ -14,7 +16,7 @@ import '../styles/main.css';
 
 const {
   title, description, image, type, noindex, jsonLd,
-  isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode,
+  isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode, hideNav,
   dataLayer, productPrice, productCurrency,
 } = Astro.props;
 
@@ -94,7 +96,7 @@ const sessionUserId = getSellerSession(Astro.cookies) ?? '';
     {platformPixel && <noscript set:html={`<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${platformPixel}&ev=PageView&noscript=1" alt="" />`} />}
     <a href="#main-content" class="skip-link">{t.nav.skipToMain}</a>
     <script type="application/json" id="i18n-data" is:inline set:html={i18nJson}></script>
-    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} />
+    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} hideNav={hideNav} />
     <main id="main-content">
       <slot />
     </main>
@@ -103,6 +105,36 @@ const sessionUserId = getSellerSession(Astro.cookies) ?? '';
     <WishlistDrawer />
     <ConfirmModal />
     <ProductQuickView />
+    <ToastContainer />
+    <MessageCompose />
     <script>import '../lib/cart-sync.js';</script>
+    {sessionUserId && (
+      <script is:inline set:html={`
+(function(){
+  if(!window.__sessionUserId)return;
+  var lastCheck=null;
+  var firstLoad=true;
+  function poll(){
+    var url='/api/notifications'+(lastCheck?'?since='+encodeURIComponent(lastCheck):'');
+    fetch(url).then(function(r){return r.json();}).then(function(d){
+      var notifs=d.notifications||[];
+      var unreadCount=d.unreadCount||0;
+      if(firstLoad){
+        firstLoad=false;
+        window.dispatchEvent(new CustomEvent('notifications:update',{detail:{unreadCount:unreadCount,notifications:notifs}}));
+      } else if(notifs.length>0){
+        window.dispatchEvent(new CustomEvent('notifications:update',{detail:{unreadCount:unreadCount,notifications:notifs}}));
+        notifs.slice(0,3).forEach(function(n){
+          window.dispatchEvent(new CustomEvent('toast:show',{detail:{title:n.title,body:n.body}}));
+        });
+      }
+      if(notifs.length>0) lastCheck=new Date().toISOString();
+    }).catch(function(){});
+  }
+  poll();
+  setInterval(poll,15000);
+})();
+`} />
+    )}
   </body>
 </html>

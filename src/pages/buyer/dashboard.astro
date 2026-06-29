@@ -1,0 +1,791 @@
+---
+export const prerender = false;
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
+import { getStoresBySellerId } from '../../lib/stores.js';
+import { getAllOrders } from '../../lib/orders.js';
+import { getMessagesByBuyer, getMessageReplies } from '../../lib/messages.js';
+import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
+import { getLang } from '../../i18n/index.js';
+
+const userId = getSellerSession(Astro.cookies);
+if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
+
+const seller = getSellerById(userId);
+if (!seller) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
+
+getLang(Astro.cookies);
+
+const hasStore = getStoresBySellerId(userId).length > 0;
+
+const orders = getAllOrders()
+  .filter((o) => o.buyerEmail === seller.email)
+  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+const messages = getMessagesByBuyer(userId)
+  .filter((m) => !m.replyToId)
+  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+const unreadMessages = getUnreadSellerReplyCount(userId);
+
+const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
+  Object.fromEntries(messages.map((m) => [m.id, getMessageReplies(m.id)]));
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+function fmtPrice(n: number) {
+  return `₪${n.toLocaleString('he-IL')}`;
+}
+
+const payLabel: Record<string, string>  = { pending: 'ממתין', paid: 'שולם', failed: 'נכשל' };
+const shipLabel: Record<string, string> = { pending: 'ממתין', processing: 'בטיפול', shipped: 'נשלח', delivered: 'נמסר' };
+---
+
+<BaseLayout
+  title="האזור שלי"
+  noindex={true}
+  isLoggedIn={true}
+  hasStore={hasStore}
+  hideNav={true}
+>
+  <style>
+    /* ── Desktop layout ── */
+    .my-page {
+      max-width: var(--max-width);
+      margin-inline: auto;
+      padding: 2rem 1.5rem 4rem;
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    /* ── Sidebar ── */
+    .my-sidebar { position: sticky; top: 5rem; }
+
+    .my-user-card {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      background: var(--color-surface);
+      border-radius: 14px;
+      padding: 0.9rem 1rem;
+      margin-bottom: 0.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+    }
+    .my-user-info { min-width: 0; }
+    .my-avatar {
+      width: 2rem; height: 2rem; border-radius: 50%;
+      background: var(--color-bg); border: 1px solid var(--color-border);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--color-muted); flex-shrink: 0;
+    }
+    .my-name  { font-size: 0.83rem; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .my-email { font-size: 0.72rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+
+    .my-nav {
+      background: var(--color-surface);
+      border-radius: 14px;
+      padding: 0.4rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .my-nav-btn {
+      display: flex; align-items: center; gap: 0.5rem;
+      width: 100%; padding: 0.5rem 0.65rem;
+      border-radius: 8px; border: none; background: none;
+      font-size: 0.855rem; font-weight: 500; color: var(--color-muted);
+      cursor: pointer; font-family: inherit; text-align: start;
+      transition: background 0.1s, color 0.1s;
+      position: relative;
+    }
+    .my-nav-btn:hover { background: var(--color-bg); color: var(--color-text); }
+    .my-nav-btn.is-active { background: var(--color-bg); color: var(--color-text); font-weight: 600; }
+    .my-nav-btn svg { flex-shrink: 0; }
+    .my-nav-label { flex: 1; }
+    .my-nav-badge {
+      font-size: 0.68rem; font-weight: 700;
+      background: #ef4444; color: #fff; border-radius: 999px; padding: 0.05rem 0.38rem;
+    }
+
+    /* ── Mobile drawer ── */
+    .my-drawer-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 98;
+      backdrop-filter: blur(1px);
+    }
+    .my-drawer-close { display: none; }
+    .my-topbar { display: none; }
+
+    @media (max-width: 640px) {
+      .my-page {
+        grid-template-columns: 1fr;
+        padding: 0 0 3rem;
+        gap: 0;
+      }
+
+      .my-topbar {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-surface);
+        margin-bottom: 1rem;
+      }
+      .my-topbar-title {
+        flex: 1;
+        font-size: 0.9rem; font-weight: 700; color: var(--color-text);
+      }
+      .my-topbar-tab { font-size: 0.8rem; color: var(--color-muted); font-weight: 500; }
+      .my-menu-btn {
+        display: flex; align-items: center; justify-content: center;
+        width: 2rem; height: 2rem;
+        border-radius: 8px; border: 1px solid var(--color-border);
+        background: var(--color-surface); cursor: pointer;
+        color: var(--color-muted); flex-shrink: 0;
+        transition: background 0.1s, color 0.1s;
+      }
+      .my-menu-btn:hover { background: var(--color-bg); color: var(--color-text); }
+
+      .my-sidebar {
+        position: fixed;
+        right: 0; top: 0; bottom: 0;
+        width: 230px;
+        background: var(--color-surface);
+        z-index: 99;
+        padding: 1.25rem 0.75rem 2rem;
+        box-shadow: -6px 0 32px rgba(0,0,0,0.14);
+        transform: translateX(100%);
+        transition: transform 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        overflow-y: auto;
+      }
+      .my-sidebar.is-open { transform: translateX(0); }
+
+      .my-drawer-backdrop.is-open { display: block; }
+
+      .my-drawer-close {
+        display: flex; align-items: center; justify-content: center;
+        width: 1.8rem; height: 1.8rem;
+        border-radius: 6px; border: 1px solid var(--color-border);
+        background: none; cursor: pointer; color: var(--color-muted);
+        margin-bottom: 1rem; margin-inline-start: auto;
+      }
+
+      .my-content-wrap { padding: 0 0.85rem; }
+    }
+
+    /* ── Panels ── */
+    .my-panel { display: none; }
+    .my-panel.is-active {
+      display: block;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 1rem;
+      padding: 1.25rem 1.5rem;
+    }
+
+    .panel-head {
+      font-size: 1rem; font-weight: 700; color: var(--color-text);
+      margin: 0 0 1.1rem; padding-bottom: 0.7rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    /* ── Order card ── */
+    .o-card {
+      background: var(--color-surface);
+      border-radius: 14px; padding: 1rem; margin-bottom: 0.75rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+    }
+    .o-card__top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; }
+    .o-id   { font-size: 0.8rem; font-weight: 700; font-family: monospace; color: var(--color-text); }
+    .o-date { font-size: 0.74rem; color: var(--color-muted); }
+    .o-items { font-size: 0.79rem; color: var(--color-muted); margin-bottom: 0.55rem; line-height: 1.45; }
+    .o-foot { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .o-badge { font-size: 0.7rem; font-weight: 600; padding: 0.13rem 0.5rem; border-radius: 999px; }
+    .o-badge--pending { background: #fef3c7; color: #92400e; }
+    .o-badge--paid    { background: #dcfce7; color: #166534; }
+    .o-badge--failed  { background: #fee2e2; color: #991b1b; }
+    .o-badge--ship    { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
+    .o-total { margin-inline-start: auto; font-size: 0.875rem; font-weight: 700; color: var(--color-text); }
+
+    /* ── Message card ── */
+    .m-card {
+      background: var(--color-surface);
+      border-radius: 14px; padding: 1rem; margin-bottom: 0.75rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+    }
+    .m-card--unread { box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border), inset 2px 0 0 var(--color-accent); }
+    .m-card__top  { display: flex; justify-content: space-between; margin-bottom: 0.25rem; }
+    .m-to   { font-size: 0.74rem; color: var(--color-muted); }
+    .m-date { font-size: 0.72rem; color: var(--color-muted); }
+    .m-ref  { font-size: 0.72rem; color: var(--color-accent); margin-bottom: 0.2rem; }
+    .m-subj { font-size: 0.875rem; font-weight: 600; color: var(--color-text); margin: 0 0 0.2rem; }
+    .m-body { font-size: 0.8rem; color: var(--color-muted); margin: 0; line-height: 1.5; }
+    .m-unread {
+      display: inline-block; margin-top: 0.35rem;
+      font-size: 0.68rem; font-weight: 700;
+      color: #dc2626; background: #fee2e2;
+      border-radius: 999px; padding: 0.08rem 0.38rem;
+    }
+
+    /* ── Profile panel ── */
+    .prof-card {
+      background: var(--color-surface);
+      border-radius: 14px; padding: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+      max-width: 480px;
+    }
+    .prof-section-title {
+      font-size: 0.8rem; font-weight: 700; color: var(--color-muted);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin: 0 0 1rem;
+    }
+    .prof-field { margin-bottom: 0.9rem; }
+    .prof-label {
+      display: block; font-size: 0.78rem; font-weight: 600;
+      color: var(--color-muted); margin-bottom: 0.28rem;
+    }
+    .prof-input {
+      width: 100%; padding: 0.5rem 0.7rem;
+      font-size: 0.875rem; font-family: inherit; color: var(--color-text);
+      background: var(--color-bg); border: 1px solid var(--color-border);
+      border-radius: 8px; outline: none;
+      transition: border-color 0.15s;
+      box-sizing: border-box;
+    }
+    .prof-input:focus { border-color: var(--color-accent); }
+    .prof-divider {
+      border: none; border-top: 1px solid var(--color-border);
+      margin: 1.25rem 0;
+    }
+    .prof-pw-toggle {
+      font-size: 0.8rem; color: var(--color-accent); cursor: pointer;
+      background: none; border: none; padding: 0; font-family: inherit;
+      margin-bottom: 1rem; display: block;
+    }
+    .prof-pw-toggle:hover { text-decoration: underline; }
+    .prof-actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
+    .prof-save {
+      padding: 0.5rem 1.25rem;
+      font-size: 0.875rem; font-weight: 600; font-family: inherit;
+      background: var(--color-text); color: var(--color-surface);
+      border: none; border-radius: 8px; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .prof-save:hover { opacity: 0.85; }
+    .prof-save:disabled { opacity: 0.5; cursor: default; }
+    .prof-error {
+      font-size: 0.8rem; color: #dc2626;
+      margin-top: 0.5rem; display: none;
+    }
+    .prof-success {
+      font-size: 0.8rem; color: #16a34a;
+      margin-top: 0.5rem; display: none;
+    }
+
+    .empty { text-align: center; color: var(--color-muted); padding: 3rem 0; font-size: 0.875rem; }
+
+  </style>
+
+  <!-- Mobile backdrop -->
+  <div class="my-drawer-backdrop" id="my-drawer-backdrop" aria-hidden="true"></div>
+
+  <!-- Mobile topbar -->
+  <div class="my-topbar">
+    <button class="my-menu-btn" id="my-menu-btn" type="button" aria-label="פתח תפריט" aria-expanded="false">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span class="my-topbar-title">האזור שלי</span>
+    <span class="my-topbar-tab" id="topbar-tab-label">הזמנות</span>
+  </div>
+
+  <div class="my-page">
+
+    <!-- Sidebar / Drawer -->
+    <aside class="my-sidebar" id="my-sidebar">
+      <button class="my-drawer-close" id="my-drawer-close" type="button" aria-label="סגור תפריט">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+
+      <div class="my-user-card">
+        <div class="my-avatar">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        </div>
+        <div class="my-user-info">
+          <div class="my-name" id="display-name">{seller.name}</div>
+          <div class="my-email" id="display-email">{seller.email}</div>
+        </div>
+      </div>
+
+      <nav class="my-nav" aria-label="ניווט אזור אישי">
+        <button class="my-nav-btn is-active" data-tab="orders" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          <span class="my-nav-label">הזמנות</span>
+          {orders.length > 0 && (
+            <span style="font-size:0.7rem;color:var(--color-muted)">{orders.length}</span>
+          )}
+        </button>
+        <button class="my-nav-btn" data-tab="messages" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="my-nav-label">הודעות</span>
+          {unreadMessages > 0 && <span class="my-nav-badge">{unreadMessages}</span>}
+        </button>
+        <button class="my-nav-btn" data-tab="profile" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+          <span class="my-nav-label">פרטים אישיים</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Content -->
+    <div class="my-content-wrap">
+
+      <!-- Orders -->
+      <div id="panel-orders" class="my-panel is-active">
+        <h1 class="panel-head">הזמנות</h1>
+        {orders.length === 0
+          ? <p class="empty">עדיין לא ביצעת הזמנות.</p>
+          : orders.map((o) => (
+            <div class="o-card">
+              <div class="o-card__top">
+                <span class="o-id">#{o.id.slice(0, 8)}</span>
+                <span class="o-date">{fmtDate(o.createdAt)}</span>
+              </div>
+              <div class="o-items">{o.items.map((i) => `${i.productName} × ${i.qty}`).join(' · ')}</div>
+              <div class="o-foot">
+                <span class={`o-badge o-badge--${o.paymentStatus}`}>{payLabel[o.paymentStatus] ?? o.paymentStatus}</span>
+                <span class="o-badge o-badge--ship">{shipLabel[o.shippingStatus] ?? o.shippingStatus}</span>
+                <span class="o-total">{fmtPrice(o.totalAmount)}</span>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+
+      <!-- Messages -->
+      <div id="panel-messages" class="my-panel" data-user-id={userId} hidden>
+        <h1 class="panel-head">הודעות ממוכרים</h1>
+        {messages.length === 0
+          ? <p class="empty">לא שלחת הודעות עדיין.</p>
+          : (
+            <div class="msg-table-wrap">
+              <table class="msg-table">
+                <thead>
+                  <tr>
+                    <th class="msg-table__th msg-table__th--status"></th>
+                    <th class="msg-table__th">חנות</th>
+                    <th class="msg-table__th">נושא</th>
+                    <th class="msg-table__th">תוכן</th>
+                    <th class="msg-table__th">מוצר</th>
+                    <th class="msg-table__th">תאריך</th>
+                    <th class="msg-table__th msg-table__th--actions"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {messages.map((m) => {
+                    const replies = messageReplies[m.id] ?? [];
+                    const hasUnreadReply = replies.some((r) => r.fromUserId !== userId && !r.readByBuyer);
+                    const lastMsg = replies.length > 0 ? replies[replies.length - 1]! : m;
+                    return (
+                      <Fragment>
+                        <tr
+                          class={`msg-table__row${hasUnreadReply ? ' msg-table__row--unread' : ''}`}
+                          data-bmsg-id={m.id}
+                          tabindex="0"
+                          role="button"
+                          aria-expanded="false"
+                        >
+                          <td class="msg-table__td msg-table__td--status">
+                            {hasUnreadReply && <span class="msg-table__unread-dot" aria-label="תגובה חדשה"></span>}
+                          </td>
+                          <td class="msg-table__td msg-table__td--from">{m.toStoreName}</td>
+                          <td class="msg-table__td msg-table__td--subject">{m.subject}</td>
+                          <td class="msg-table__td msg-table__td--preview">{lastMsg.content}</td>
+                          <td class="msg-table__td msg-table__td--product">
+                            {m.productRef
+                              ? <a href={`/store/${m.productRef.storeSlug}/${m.productRef.productSlug}`} target="_blank" rel="noopener" style="color:inherit;text-decoration:none">{m.productRef.productName}</a>
+                              : <span style="color:var(--color-muted)">—</span>
+                            }
+                          </td>
+                          <td class="msg-table__td msg-table__td--date">{fmtDate(m.createdAt)}</td>
+                          <td class="msg-table__td msg-table__td--actions">
+                            <button class="seller-msg-delete" data-delete-bmsg-id={m.id} type="button" aria-label="מחק שיחה" title="מחק שיחה">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                            </button>
+                          </td>
+                        </tr>
+                        <tr class="msg-thread-row" id={`bmsg-detail-${m.id}`} hidden>
+                          <td colspan="7">
+                            <div class="msg-thread" id={`breplies-${m.id}`}>
+                              <div class="msg-thread-entry msg-thread-entry--buyer">
+                                <div class="msg-thread-entry__header">
+                                  <span class="msg-thread-entry__who">אתה</span>
+                                  <span class="msg-thread-entry__date">{fmtDate(m.createdAt)}</span>
+                                </div>
+                                <div class="msg-thread-entry__body">{m.content}</div>
+                              </div>
+                              {replies.map((r) => {
+                                const isBuyerReply = r.fromUserId === userId;
+                                return (
+                                  <div class={`msg-thread-entry ${isBuyerReply ? 'msg-thread-entry--buyer' : 'msg-thread-entry--seller'}`}>
+                                    <div class="msg-thread-entry__header">
+                                      <span class="msg-thread-entry__who">{isBuyerReply ? 'אתה' : m.toStoreName}</span>
+                                      <span class="msg-thread-entry__date">{fmtDate(r.createdAt)}</span>
+                                    </div>
+                                    <div class="msg-thread-entry__body">{r.content}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div class="seller-msg-reply-form" data-breply-for={m.id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
+                              <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
+                              <button class="seller-msg-reply-send" type="button">שלח תשובה</button>
+                            </div>
+                          </td>
+                        </tr>
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+      </div>
+
+      <!-- Profile -->
+      <div id="panel-profile" class="my-panel" hidden>
+        <h1 class="panel-head">פרטים אישיים</h1>
+        <div class="prof-card">
+          <p class="prof-section-title">פרטי חשבון</p>
+          <div class="prof-field">
+            <label class="prof-label" for="edit-name">שם מלא</label>
+            <input class="prof-input" id="edit-name" type="text" value={seller.name} autocomplete="name" />
+          </div>
+          <div class="prof-field">
+            <label class="prof-label" for="edit-email">אימייל</label>
+            <input class="prof-input" id="edit-email" type="email" value={seller.email} autocomplete="email" />
+          </div>
+
+          <hr class="prof-divider" />
+
+          <p class="prof-section-title">שינוי סיסמה</p>
+          <button class="prof-pw-toggle" id="pw-toggle" type="button">+ הצג שדות שינוי סיסמה</button>
+          <div id="pw-fields" hidden>
+            <div class="prof-field">
+              <label class="prof-label" for="edit-cur-pw">סיסמה נוכחית</label>
+              <input class="prof-input" id="edit-cur-pw" type="password" autocomplete="current-password" />
+            </div>
+            <div class="prof-field">
+              <label class="prof-label" for="edit-new-pw">סיסמה חדשה</label>
+              <input class="prof-input" id="edit-new-pw" type="password" autocomplete="new-password" />
+            </div>
+          </div>
+
+          <p class="prof-error" id="edit-error"></p>
+          <p class="prof-success" id="edit-success">הפרטים עודכנו בהצלחה</p>
+          <div class="prof-actions">
+            <button class="prof-save" id="edit-save" type="button">שמור שינויים</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  const tabLabels: Record<string, string> = { orders: 'הזמנות', messages: 'הודעות', profile: 'פרטים אישיים' };
+
+  const navBtns = document.querySelectorAll<HTMLButtonElement>('.my-nav-btn[data-tab]');
+  const panels: Record<string, HTMLElement | null> = {
+    orders:   document.getElementById('panel-orders'),
+    messages: document.getElementById('panel-messages'),
+    profile:  document.getElementById('panel-profile'),
+  };
+  const sidebar   = document.getElementById('my-sidebar')!;
+  const backdrop  = document.getElementById('my-drawer-backdrop')!;
+  const menuBtn   = document.getElementById('my-menu-btn');
+  const closeBtn  = document.getElementById('my-drawer-close');
+  const topbarTab = document.getElementById('topbar-tab-label');
+
+  function openDrawer() {
+    sidebar.classList.add('is-open');
+    backdrop.classList.add('is-open');
+    menuBtn?.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeDrawer() {
+    sidebar.classList.remove('is-open');
+    backdrop.classList.remove('is-open');
+    menuBtn?.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+
+  menuBtn?.addEventListener('click', openDrawer);
+  closeBtn?.addEventListener('click', closeDrawer);
+  backdrop.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sidebar.classList.contains('is-open')) closeDrawer();
+  });
+
+  function activateBuyerTab(key: string) {
+    navBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.tab === key));
+    Object.entries(panels).forEach(([k, el]) => {
+      if (!el) return;
+      if (k === key) { el.classList.add('is-active'); el.removeAttribute('hidden'); }
+      else           { el.classList.remove('is-active'); el.setAttribute('hidden', ''); }
+    });
+    if (topbarTab) topbarTab.textContent = tabLabels[key] ?? key;
+    history.replaceState(null, '', `?tab=${key}`);
+  }
+
+  navBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activateBuyerTab(btn.dataset.tab!);
+      closeDrawer();
+    });
+  });
+
+  // Deep-link: ?tab=<tab> — must run after listeners are set up
+  {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab && panels[tab]) activateBuyerTab(tab);
+  }
+
+  /* ── Live messages badge ── */
+  window.addEventListener('msg-badge-update', (e: Event) => {
+    const count = (e as CustomEvent<number>).detail;
+    const btn = document.querySelector<HTMLElement>('.my-nav-btn[data-tab="messages"]');
+    if (!btn) return;
+    let badge = btn.querySelector<HTMLElement>('.my-nav-badge');
+    if (count > 0) {
+      if (!badge) { badge = document.createElement('span'); badge.className = 'my-nav-badge'; btn.appendChild(badge); }
+      badge.textContent = String(count);
+    } else {
+      badge?.remove();
+    }
+  });
+
+  /* ── Profile edit ── */
+  const editSave   = document.getElementById('edit-save') as HTMLButtonElement;
+  const editError  = document.getElementById('edit-error')!;
+  const editSuccess = document.getElementById('edit-success')!;
+  const pwToggle   = document.getElementById('pw-toggle')!;
+  const pwFields   = document.getElementById('pw-fields')!;
+  const nameInput  = document.getElementById('edit-name') as HTMLInputElement;
+  const emailInput = document.getElementById('edit-email') as HTMLInputElement;
+  const curPwInput = document.getElementById('edit-cur-pw') as HTMLInputElement;
+  const newPwInput = document.getElementById('edit-new-pw') as HTMLInputElement;
+  const displayName  = document.getElementById('display-name')!;
+  const displayEmail = document.getElementById('display-email')!;
+
+  pwToggle.addEventListener('click', () => {
+    const isHidden = pwFields.hasAttribute('hidden');
+    if (isHidden) {
+      pwFields.removeAttribute('hidden');
+      pwToggle.textContent = '− הסתר שדות שינוי סיסמה';
+      curPwInput.focus();
+    } else {
+      pwFields.setAttribute('hidden', '');
+      pwToggle.textContent = '+ הצג שדות שינוי סיסמה';
+      curPwInput.value = '';
+      newPwInput.value = '';
+    }
+  });
+
+  editSave.addEventListener('click', async () => {
+    editError.style.display = 'none';
+    editSuccess.style.display = 'none';
+    const body: Record<string, string> = {
+      name: nameInput.value.trim(),
+      email: emailInput.value.trim(),
+    };
+    if (!pwFields.hasAttribute('hidden') && newPwInput.value) {
+      body.currentPassword = curPwInput.value;
+      body.newPassword = newPwInput.value;
+    }
+
+    editSave.disabled = true;
+    try {
+      const res = await fetch('/api/user/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string; name?: string; email?: string };
+      if (!res.ok || !data.ok) {
+        editError.textContent = data.error ?? 'שגיאה בשמירה';
+        editError.style.display = 'block';
+        return;
+      }
+      displayName.textContent  = data.name  ?? body.name;
+      displayEmail.textContent = data.email ?? body.email;
+      editSuccess.style.display = 'block';
+      setTimeout(() => { editSuccess.style.display = 'none'; }, 3000);
+      if (!pwFields.hasAttribute('hidden')) {
+        pwFields.setAttribute('hidden', '');
+        pwToggle.textContent = '+ הצג שדות שינוי סיסמה';
+        curPwInput.value = '';
+        newPwInput.value = '';
+      }
+    } catch {
+      editError.textContent = 'שגיאת רשת, נסה שוב';
+      editError.style.display = 'block';
+    } finally {
+      editSave.disabled = false;
+    }
+  });
+
+  /* ── Buyer messages: expand / reply ── */
+  function fmtDateBuyer(iso: string) {
+    return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+  function escB(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  const currentBuyerId = (document.getElementById('panel-messages') as HTMLElement | null)?.dataset.userId ?? '';
+  const buyerThreadLoaders = new Map<string, (markRead: boolean) => void>();
+
+  document.querySelectorAll<HTMLElement>('[data-bmsg-id]').forEach((row) => {
+    const id        = row.dataset.bmsgId ?? '';
+    const threadRow = document.getElementById(`bmsg-detail-${id}`) as HTMLTableRowElement | null;
+    const repliesEl = document.getElementById(`breplies-${id}`);
+    let isOpen = false;
+
+    function loadThread(markRead: boolean) {
+      fetch(`/api/messages?repliesFor=${id}`)
+        .then((r) => r.json())
+        .then(({ replies }: { replies: { fromUserId: string; fromName: string; content: string; createdAt: string }[] }) => {
+          if (!repliesEl) return;
+          [...repliesEl.children].slice(1).forEach((c) => c.remove());
+          replies.forEach((r) => {
+            const isSelf = r.fromUserId === currentBuyerId;
+            const div = document.createElement('div');
+            div.className = `msg-thread-entry ${isSelf ? 'msg-thread-entry--buyer' : 'msg-thread-entry--seller'}`;
+            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escB(isSelf ? 'אתה' : r.fromName)}</span><span class="msg-thread-entry__date">${escB(fmtDateBuyer(r.createdAt))}</span></div><div class="msg-thread-entry__body">${escB(r.content)}</div>`;
+            repliesEl.appendChild(div);
+          });
+          const previewTd = row.querySelector('.msg-table__td--preview');
+          if (previewTd && replies.length > 0) previewTd.textContent = replies[replies.length - 1]!.content;
+          if (markRead) {
+            row.classList.remove('msg-table__row--unread');
+            row.querySelector('.msg-table__unread-dot')?.remove();
+            document.querySelector('.my-nav-btn[data-tab="messages"] .my-nav-badge')?.remove();
+            fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read-buyer', id }) })
+              .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
+          }
+        }).catch(() => {});
+    }
+
+    buyerThreadLoaders.set(id, loadThread);
+
+    row.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('button, a')) return;
+      if (!threadRow) return;
+      if (isOpen) {
+        threadRow.hidden = true;
+        row.setAttribute('aria-expanded', 'false');
+        row.classList.remove('msg-table__row--open');
+        isOpen = false;
+      } else {
+        threadRow.hidden = false;
+        row.setAttribute('aria-expanded', 'true');
+        row.classList.add('msg-table__row--open');
+        isOpen = true;
+        loadThread(row.classList.contains('msg-table__row--unread'));
+      }
+    });
+    row.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); }
+    });
+
+    const replyForm = threadRow?.querySelector<HTMLElement>('[data-breply-for]');
+    if (replyForm) {
+      const textarea  = replyForm.querySelector<HTMLTextAreaElement>('textarea')!;
+      const sendBtn   = replyForm.querySelector<HTMLButtonElement>('button')!;
+
+      sendBtn.addEventListener('click', async () => {
+        const content = textarea.value.trim();
+        if (!content) return;
+        sendBtn.disabled = true;
+        try {
+          const res = await fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ replyToId: id, content }),
+          });
+          const data = await res.json() as { ok?: boolean; message?: { content: string; createdAt: string } };
+          if (res.ok && data.ok && data.message && repliesEl) {
+            const div = document.createElement('div');
+            div.className = 'msg-thread-entry msg-thread-entry--buyer';
+            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">אתה</span><span class="msg-thread-entry__date">${escB(fmtDateBuyer(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escB(data.message.content)}</div>`;
+            repliesEl.appendChild(div);
+            const previewTd = row.querySelector('.msg-table__td--preview');
+            if (previewTd) previewTd.textContent = data.message.content;
+            textarea.value = '';
+          }
+        } catch { /* ignore */ } finally {
+          sendBtn.disabled = false;
+        }
+      });
+    }
+  });
+
+  /* ── Delete message thread ── */
+  document.querySelectorAll<HTMLButtonElement>('[data-delete-bmsg-id]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('למחוק את השיחה הזו לצמיתות?')) return;
+      const id = btn.dataset.deleteBmsgId ?? '';
+      try {
+        const res = await fetch('/api/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', id }),
+        });
+        if (res.ok) {
+          const row = btn.closest('tr');
+          const nextRow = row?.nextElementSibling;
+          row?.remove();
+          if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
+        }
+      } catch { /* ignore */ }
+    });
+  });
+
+  // Live unread polling
+  function pollBuyerUnread() {
+    fetch('/api/messages?role=buyer&unread=1')
+      .then((r) => r.json())
+      .then(({ unreadIds }: { unreadIds: string[] }) => {
+        const btn = document.querySelector<HTMLElement>('.my-nav-btn[data-tab="messages"]');
+        const badge = btn?.querySelector<HTMLElement>('.my-nav-badge');
+        if (unreadIds.length > 0) {
+          if (!badge && btn) { const nb = document.createElement('span'); nb.className = 'my-nav-badge'; nb.textContent = String(unreadIds.length); btn.appendChild(nb); }
+          else if (badge) badge.textContent = String(unreadIds.length);
+        } else {
+          badge?.remove();
+        }
+        document.querySelectorAll<HTMLElement>('[data-bmsg-id]').forEach((row) => {
+          const id = row.dataset.bmsgId!;
+          if (!unreadIds.includes(id)) return;
+          if (row.classList.contains('msg-table__row--open')) {
+            buyerThreadLoaders.get(id)?.(true);
+          } else if (!row.classList.contains('msg-table__row--unread')) {
+            row.classList.add('msg-table__row--unread');
+            const statusTd = row.querySelector('.msg-table__td--status');
+            if (statusTd && !statusTd.querySelector('.msg-table__unread-dot')) {
+              const dot = document.createElement('span'); dot.className = 'msg-table__unread-dot'; dot.setAttribute('aria-label', 'תגובה חדשה'); statusTd.appendChild(dot);
+            }
+          }
+        });
+      }).catch(() => {});
+  }
+  setInterval(pollBuyerUnread, 15000);
+</script>

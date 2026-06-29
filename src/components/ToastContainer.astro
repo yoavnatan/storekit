@@ -1,0 +1,74 @@
+---
+// ToastContainer — listens to `toast:show` CustomEvent
+// Event detail: { title: string, body: string, duration?: number }
+---
+
+<div
+  id="toast-container"
+  aria-live="polite"
+  aria-atomic="false"
+  style="position:fixed;bottom:1.5rem;inset-inline-end:1.5rem;z-index:9999;display:flex;flex-direction:column-reverse;gap:0.5rem;pointer-events:none;max-width:min(320px,calc(100vw - 2rem))"
+></div>
+
+<script>
+  const container = document.getElementById('toast-container')!;
+
+  function esc(s: string): string {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function showToast(title: string, body: string, duration = 4500, href?: string) {
+    const toast = document.createElement('div');
+    toast.setAttribute('role', 'status');
+    toast.style.cssText = [
+      'background:var(--color-surface)',
+      'border:1px solid var(--color-border)',
+      'border-radius:0.75rem',
+      'padding:0.7rem 0.9rem',
+      'box-shadow:0 8px 32px rgba(0,0,0,0.16)',
+      'pointer-events:auto',
+      'cursor:pointer',
+      'display:grid',
+      'grid-template-columns:auto 1fr auto',
+      'align-items:start',
+      'gap:0.6rem',
+    ].join(';');
+
+    toast.innerHTML = `
+      <div style="width:2rem;height:2rem;border-radius:50%;background:color-mix(in srgb,var(--color-accent) 12%,transparent);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div>
+        <div style="font-size:0.83rem;font-weight:600;color:var(--color-text);line-height:1.3">${esc(title)}</div>
+        ${body ? `<div style="font-size:0.77rem;color:var(--color-muted);margin-top:2px;line-height:1.4">${esc(body)}</div>` : ''}
+      </div>
+      <button aria-label="סגור" style="background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0;line-height:1;flex-shrink:0;font-size:1rem;opacity:0.6">&times;</button>`;
+
+    container.prepend(toast);
+
+    toast.animate(
+      [{ opacity: 0, transform: 'translateY(12px) scale(0.96)' },
+       { opacity: 1, transform: 'translateY(0) scale(1)' }],
+      { duration: 220, easing: 'cubic-bezier(0.22,1,0.36,1)', fill: 'forwards' }
+    );
+
+    const dismiss = () => {
+      toast.animate(
+        [{ opacity: 1, transform: 'scale(1)' },
+         { opacity: 0, transform: 'scale(0.94)' }],
+        { duration: 160, easing: 'ease-in', fill: 'forwards' }
+      ).onfinish = () => toast.remove();
+    };
+
+    toast.querySelector('button')!.addEventListener('click', (e) => { e.stopPropagation(); dismiss(); });
+    toast.addEventListener('click', () => { dismiss(); if (href) window.location.href = href; });
+    setTimeout(dismiss, duration);
+  }
+
+  window.addEventListener('toast:show', (e: Event) => {
+    const { title = '', body = '', duration, href } = (e as CustomEvent<{ title: string; body: string; duration?: number; href?: string }>).detail;
+    showToast(title, body, duration, href);
+  });
+
+  (window as unknown as { showToast: typeof showToast }).showToast = showToast;
+</script>
