@@ -275,6 +275,7 @@ const strEmpty   = t.store.noProductsFound;
   });
 
   // ── Notifications bell ────────────────────────────────────────
+  const originalTitle = document.title;
   const bellBtn    = document.getElementById('notif-bell-btn') as HTMLButtonElement | null;
   const notifDot   = document.getElementById('notif-dot') as HTMLElement | null;
   const notifDrop  = document.getElementById('notif-dropdown') as HTMLElement | null;
@@ -294,7 +295,9 @@ const strEmpty   = t.store.noProductsFound;
 
   function renderNotifs(items: NotifItem[]) {
     if (!notifList) return;
-    if (notifDot) { items.some(n => !n.read) ? notifDot.removeAttribute('hidden') : notifDot.setAttribute('hidden', ''); }
+    const unreadCount = items.filter(n => !n.read).length;
+    if (notifDot) { unreadCount > 0 ? notifDot.removeAttribute('hidden') : notifDot.setAttribute('hidden', ''); }
+    document.title = unreadCount > 0 ? `(${unreadCount}) ${originalTitle}` : originalTitle;
     if (!items.length) { notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>'; return; }
     notifList.innerHTML = items.slice(0, 10).map((n) => `
       <div class="notif-item${n.read ? '' : ' notif-item--unread'}" data-id="${escH(n.id)}" data-type="${escH(n.type ?? '')}" role="button" tabindex="0">
@@ -305,8 +308,11 @@ const strEmpty   = t.store.noProductsFound;
     notifList.querySelectorAll<HTMLElement>('[data-id]').forEach((el) => {
       el.addEventListener('click', () => {
         closeNotifDrop();
-        const href = el.dataset.type === 'new_message'
+        const type = el.dataset.type ?? '';
+        const href = type === 'new_message'
           ? '/seller/dashboard?panel=messages'
+          : type === 'new_order' || type === 'order_update'
+          ? '/seller/dashboard?panel=orders'
           : '/buyer/dashboard?tab=messages';
         window.location.href = href;
       });

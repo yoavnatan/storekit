@@ -4,6 +4,9 @@ import { getStoreBySlug } from '../../lib/stores.js';
 import { getProductBySlug } from '../../lib/store-products.js';
 import { createOrder } from '../../lib/orders.js';
 import type { OrderItem, StoreSubtotal } from '../../lib/orders.js';
+import { createNotification } from '../../lib/notifications.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
+import { getUserCart, saveUserCart } from '../../lib/user-carts.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -39,7 +42,7 @@ function isValidEmail(v: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
-export async function POST({ request }: APIContext): Promise<Response> {
+export async function POST({ request, cookies }: APIContext): Promise<Response> {
   let body: CheckoutBody;
   try {
     body = await request.json() as CheckoutBody;
@@ -117,7 +120,10 @@ export async function POST({ request }: APIContext): Promise<Response> {
   const itemsTotal  = Object.values(storeSubtotals).reduce((s, d) => s + d.subtotal, 0);
   const totalAmount = itemsTotal + totalShipping;
 
+  const userId = getSellerSession(cookies);
+
   const order = createOrder({
+    ...(userId ? { buyerId: userId } : {}),
     buyerName:   buyerName.trim(),
     buyerEmail:  buyerEmail.trim().toLowerCase(),
     buyerPhone:  buyerPhone.trim(),
@@ -131,6 +137,29 @@ export async function POST({ request }: APIContext): Promise<Response> {
     shippingAmount: totalShipping,
     totalAmount,
   });
+
+  // Clear server-side cart for logged-in users (preserves wishlist + favoriteStores)
+  if (userId) {
+    const existing = getUserCart(userId);
+    saveUserCart(userId, { cart: {}, wishlist: existing.wishlist, favoriteStores: existing.favoriteStores ?? [] });
+  }
+
+  // Notify each store's seller about the new order
+  const notifiedSellers = new Set<string>();
+  for (const [storeSlug] of Object.entries(storeSubtotals)) {
+    const store = getStoreBySlug(storeSlug);
+    if (store && !notifiedSellers.has(store.sellerId)) {
+      notifiedSellers.add(store.sellerId);
+      createNotification({
+        userId: store.sellerId,
+        role: 'seller',
+        type: 'new_order',
+        title: 'הזמנה חדשה!',
+        body: `הזמנה מ-${order.buyerName} על סך ${totalAmount.toFixed(2)}₪`,
+        relatedId: order.id,
+      });
+    }
+  }
 
   return json({ orderId: order.id }, 201);
 }

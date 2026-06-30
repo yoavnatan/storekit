@@ -3,13 +3,16 @@ export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getLang, getT } from '../i18n/index.js';
 import { getAllStores } from '../lib/stores.js';
-import { getSellerSession } from '../lib/seller-auth.js';
+import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
 const c = t.checkout;
 
-const isLoggedIn = !!getSellerSession(Astro.cookies);
+const sessionUserId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sessionUserId;
+const sessionSeller = sessionUserId ? getSellerById(sessionUserId) : null;
+const prefillEmail = sessionSeller?.email ?? '';
 
 const storeShipping: Record<string, { flatRate: number; freeAbove: number | null }> = {};
 for (const s of getAllStores()) {
@@ -107,7 +110,7 @@ for (const s of getAllStores()) {
               </div>
               <div>
                 <label for="buyerEmail" class="co-label">{c.email} *</label>
-                <input type="email" id="buyerEmail" name="buyerEmail" required autocomplete="email" class="co-input" />
+                <input type="email" id="buyerEmail" name="buyerEmail" required autocomplete="email" class="co-input" value={prefillEmail} />
                 <p class="co-err hidden" data-err="buyerEmail" role="alert">{c.invalidEmail}</p>
               </div>
               <div>

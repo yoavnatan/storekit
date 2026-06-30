@@ -11,7 +11,8 @@ export interface Seller {
   id: string;
   name: string;
   email: string;
-  passwordHash: string;
+  passwordHash: string; // empty string for OAuth-only accounts
+  googleId?: string;
   createdAt: string;
 }
 
@@ -60,6 +61,37 @@ export function registerSeller(email: string, password: string, name: string): S
 
 export function getSellerById(id: string): Seller | null {
   return readSellers().find((s) => s.id === id) ?? null;
+}
+
+export function getSellerByEmail(email: string): Seller | null {
+  return readSellers().find((s) => s.email === email) ?? null;
+}
+
+export function getSellerByGoogleId(googleId: string): Seller | null {
+  return readSellers().find((s) => s.googleId === googleId) ?? null;
+}
+
+export function createGoogleSeller(email: string, name: string, googleId: string): Seller {
+  const sellers = readSellers();
+  const seller: Seller = {
+    id: crypto.randomUUID(),
+    name,
+    email,
+    passwordHash: '',
+    googleId,
+    createdAt: new Date().toISOString(),
+  };
+  sellers.push(seller);
+  writeSellers(sellers);
+  return seller;
+}
+
+export function linkGoogleAccount(sellerId: string, googleId: string): void {
+  const sellers = readSellers();
+  const idx = sellers.findIndex((s) => s.id === sellerId);
+  if (idx === -1) return;
+  sellers[idx]!.googleId = googleId;
+  writeSellers(sellers);
 }
 
 export function loginSeller(email: string, password: string): Seller | null {

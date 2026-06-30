@@ -16,6 +16,8 @@ import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
 import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
 import { thumbUrl } from '../../lib/cloudinary.js';
 import { getMessagesBySeller, getMessageReplies } from '../../lib/messages.js';
+import { getOrdersByStoreSlug } from '../../lib/orders.js';
+import type { Order } from '../../lib/orders.js';
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
@@ -120,6 +122,24 @@ const storeMessages = store
 const unreadMessagesCount = storeMessages.filter((m) => !m.readBySeller).length;
 const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
   Object.fromEntries(storeMessages.map((m) => [m.id, getMessageReplies(m.id)]));
+const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
+const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
+
+const orderShippingLabels: Record<string, string> = {
+  pending: d.shippingPending,
+  processing: d.shippingProcessing,
+  ready: d.shippingReady,
+  shipped: d.shippingShipped,
+  delivered: d.shippingDelivered,
+};
+
+const orderStatusColors: Record<string, string> = {
+  pending: '#ef4444',
+  processing: '#3b82f6',
+  ready: '#f59e0b',
+  shipped: '#8b5cf6',
+  delivered: '#16a34a',
+};
 
 ---
 
@@ -212,6 +232,20 @@ const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
           aria-selected={initialPanel === 'products'}
           tabindex={initialPanel === 'products' ? 0 : -1}
         >{d.tabProducts}</button>
+        <button
+          class={`dash-tab${initialPanel === 'orders' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-orders"
+          data-panel="orders"
+          aria-selected={initialPanel === 'orders'}
+          tabindex={initialPanel === 'orders' ? 0 : -1}
+          style="position:relative"
+        >
+          {d.tabOrders}
+          {newOrdersCount > 0 && (
+            <span class="dash-tab-badge" aria-label={`${newOrdersCount} הזמנות חדשות`}>{newOrdersCount}</span>
+          )}
+        </button>
         <button
           class={`dash-tab${initialPanel === 'messages' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -533,6 +567,104 @@ const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
         </div>
       </div>
 
+      <!-- ── Panel: Orders ── -->
+      <div id="dash-panel-orders" class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
+        <div class="orders-panel-head">
+          <h2 style="font-size:1rem;font-weight:600;margin:0">{d.ordersTitle}</h2>
+          {storeOrders.length > 0 && (
+            <div class="order-filter-bar" id="order-filter-bar" role="group" aria-label="סנן הזמנות">
+              <button class="order-filter-btn order-filter-btn--sel" data-filter="active" type="button">פעילות</button>
+              <button class="order-filter-btn" data-filter="completed" type="button">הושלמו</button>
+              <button class="order-filter-btn" data-filter="all" type="button">הכל</button>
+            </div>
+          )}
+        </div>
+        {storeOrders.length === 0 ? (
+          <p class="seller-msg-empty">{d.noOrders}</p>
+        ) : (
+          <Fragment>
+          <p class="seller-msg-empty" id="orders-filter-empty" hidden>אין הזמנות בקטגוריה זו.</p>
+          <div class="orders-list" id="orders-list">
+            {storeOrders.map((order) => {
+              const storeItems = order.items.filter((i) => i.storeSlug === store!.slug);
+              const storeSub   = order.storeSubtotals[store!.slug];
+              const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+              const shortId    = order.id.slice(0, 8).toUpperCase();
+              return (
+                <div class="order-card" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus}>
+                  <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
+                    <div class="order-card__meta">
+                      <span class="order-card__id">
+                        #{shortId}
+                        {order.shippingStatus === 'pending' && (
+                          <span class="order-new-dot" aria-label="הזמנה חדשה"></span>
+                        )}
+                      </span>
+                      <span class="order-card__date">{fmtDate(order.createdAt)}</span>
+                    </div>
+                    <div class="order-card__summary">
+                      <span class="order-card__buyer">{order.buyerName}</span>
+                      <span class="order-card__amount">{formatPrice(storeSub ? storeSub.subtotal + storeSub.shipping : 0)}</span>
+                      <span class="order-card__status-badge" style={`background:${orderStatusColors[order.shippingStatus] ?? '#888'}1a;color:${orderStatusColors[order.shippingStatus] ?? '#888'};`}>
+                        {orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}
+                      </span>
+                    </div>
+                    <svg class="order-card__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                  </div>
+                  <div class="order-card__body" hidden>
+                    <div class="order-card__section">
+                      <h3 class="order-card__section-title">{d.orderBuyer}</h3>
+                      <p class="order-card__info-line"><strong>{order.buyerName}</strong></p>
+                      <p class="order-card__info-line">{order.buyerEmail}</p>
+                      <p class="order-card__info-line">{d.orderPhone}: {order.buyerPhone}</p>
+                      <p class="order-card__info-line">{d.orderAddress}: {order.buyerAddress.street}, {order.buyerAddress.city}{order.buyerAddress.zip ? ` ${order.buyerAddress.zip}` : ''}</p>
+                    </div>
+                    <div class="order-card__section">
+                      <h3 class="order-card__section-title">{d.orderItems}</h3>
+                      <ul class="order-card__items">
+                        {storeItems.map((item) => (
+                          <li class="order-card__item">
+                            {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="order-card__item-img" />}
+                            <span class="order-card__item-name">{item.productName}</span>
+                            <span class="order-card__item-qty">×{item.qty}</span>
+                            <span class="order-card__item-price">{formatPrice(item.price * item.qty)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {storeSub && (
+                        <div class="order-card__subtotals">
+                          <span>{d.orderShipping}: {storeSub.shipping === 0 ? 'חינם' : formatPrice(storeSub.shipping)}</span>
+                          <strong>{d.orderTotal}: {formatPrice(storeSub.subtotal + storeSub.shipping)}</strong>
+                        </div>
+                      )}
+                    </div>
+                    <div class="order-card__section order-card__section--controls">
+                      <h3 class="order-card__section-title">{d.orderShippingStatus}</h3>
+                      <div class="order-card__control-row">
+                        <select class="order-status-select input" data-field="shippingStatus" style="flex:1">
+                          <option value="pending"    selected={order.shippingStatus === 'pending'}>{d.shippingPending}</option>
+                          <option value="processing" selected={order.shippingStatus === 'processing'}>{d.shippingProcessing}</option>
+                          <option value="ready"      selected={order.shippingStatus === 'ready'}>{d.shippingReady}</option>
+                          <option value="shipped"    selected={order.shippingStatus === 'shipped'}>{d.shippingShipped}</option>
+                          <option value="delivered"  selected={order.shippingStatus === 'delivered'}>{d.shippingDelivered}</option>
+                        </select>
+                      </div>
+                      <h3 class="order-card__section-title" style="margin-top:0.75rem">{d.orderTracking}</h3>
+                      <div class="order-card__control-row">
+                        <input type="text" class="order-tracking-input input" data-field="trackingNumber" value={order.trackingNumber ?? ''} placeholder={d.orderTrackingPlaceholder} style="flex:1" />
+                        <button class="order-save-btn btn btn--sm btn--accent" type="button">{d.orderSave}</button>
+                      </div>
+                      <p class="order-save-status" hidden aria-live="polite">{d.orderSaved}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          </Fragment>
+        )}
+      </div>
+
       <!-- ── Panel: Messages ── -->
       <div id="dash-panel-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
         <h2 style="font-size:1rem;font-weight:600;margin:0 0 1rem">הודעות מקונים</h2>
@@ -575,7 +707,7 @@ const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
                         <td class="msg-table__td msg-table__td--preview">{lastMsg.content}</td>
                         <td class="msg-table__td msg-table__td--product">
                           {msg.productRef
-                            ? <a href={`/store/${msg.productRef.storeSlug}/${msg.productRef.productSlug}`} target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onClick={(e) => e.stopPropagation()}>{msg.productRef.productName}</a>
+                            ? <a href={`/store/${msg.productRef.storeSlug}/${msg.productRef.productSlug}`} target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">{msg.productRef.productName}</a>
                             : <span style="color:var(--color-muted)">—</span>
                           }
                         </td>
@@ -671,6 +803,165 @@ const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
   ) : null}
 </BaseLayout>
 
+<style is:global>
+  /* ── Orders panel ── */
+  .orders-panel-head {
+    display: flex; flex-direction: column; align-items: flex-start;
+    margin-bottom: 1rem; gap: 0.6rem;
+  }
+  .order-filter-bar { display: flex; gap: 0.25rem; }
+  .order-filter-btn {
+    font-size: 0.78rem; font-weight: 500;
+    padding: 0.25rem 0.75rem; border-radius: 20px;
+    border: 1.5px solid var(--color-border);
+    background: var(--color-surface); color: var(--color-muted);
+    cursor: pointer; font-family: inherit;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .order-filter-btn:not(.order-filter-btn--sel):hover { background: var(--color-bg); color: var(--color-text); }
+  .order-filter-btn--sel { background: var(--color-text); color: var(--color-surface); border-color: var(--color-text); cursor: default; }
+
+  .orders-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+  .order-card {
+    border: 1.5px solid var(--color-border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+    transition: box-shadow 150ms;
+  }
+  .order-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+
+  .order-card__header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .order-card__header:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+  .order-card__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 5rem;
+    flex-shrink: 0;
+  }
+  .order-card__id { font-size: 0.8rem; font-weight: 700; color: var(--color-text); font-family: monospace; }
+  .order-card__date { font-size: 0.72rem; color: var(--color-muted); }
+
+  .order-card__summary {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .order-card__buyer { font-size: 0.875rem; font-weight: 600; color: var(--color-text); }
+  .order-card__amount { font-size: 0.875rem; font-weight: 700; color: var(--color-text); margin-inline-start: auto; }
+  .order-card__status-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.2rem 0.55rem;
+    border-radius: 20px;
+  }
+  .order-card__chevron {
+    flex-shrink: 0;
+    color: var(--color-muted);
+    transition: transform 220ms cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .order-card--open .order-card__chevron { transform: rotate(180deg); }
+
+  .order-card__body {
+    border-top: 1px solid var(--color-border);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .order-card__section { }
+  .order-card__section-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.5rem;
+  }
+  .order-card__info-line { font-size: 0.875rem; color: var(--color-text); margin: 0.1rem 0; }
+
+  .order-card__items { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+  .order-card__item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 0.875rem;
+  }
+  .order-card__item-img {
+    width: 36px; height: 36px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .order-card__item-name { flex: 1; color: var(--color-text); }
+  .order-card__item-qty { color: var(--color-muted); font-size: 0.8rem; }
+  .order-card__item-price { font-weight: 700; color: var(--color-text); margin-inline-start: auto; }
+
+  .order-card__subtotals {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.625rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.875rem;
+    color: var(--color-muted);
+  }
+  .order-card__subtotals strong { color: var(--color-text); font-size: 0.9375rem; }
+
+  .order-card__section--controls { background: var(--color-bg); border-radius: 8px; padding: 0.875rem; }
+  .order-card__control-row { display: flex; gap: 0.5rem; align-items: center; }
+
+  .order-save-status {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #16a34a;
+    margin-top: 0.4rem;
+  }
+
+  .order-new-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: #ef4444;
+    border-radius: 50%;
+    margin-inline-start: 5px;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+
+  .dash-tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 20px;
+    padding: 0 4px;
+    margin-inline-start: 4px;
+    vertical-align: middle;
+  }
+</style>
+
 <div class="crop-modal" id="crop-modal" hidden aria-modal="true" role="dialog">
   <div class="crop-panel">
     <h3>{d.cropTitle}</h3>
@@ -757,6 +1048,246 @@ const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
   initInlineEdit();
   initCategoryFilter();
   initViewProduct();
+
+  // ── Order cards: accordion + save status/tracking ────────────
+  const colorMap = { pending:'#ef4444', processing:'#3b82f6', ready:'#f59e0b', shipped:'#8b5cf6', delivered:'#16a34a' } as Record<string, string>;
+  const labelMap = { pending:'חדשה', processing:'בטיפול', ready:'ממתין לאיסוף', shipped:'נשלח', delivered:'נמסר' } as Record<string, string>;
+  const storeSlugForOrders = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.storeSlug ?? '';
+
+  function updateOrderTabBadge(): void {
+    const remaining = document.querySelectorAll('.order-new-dot').length;
+    const tabBadge  = document.querySelector<HTMLElement>('#tab-orders .dash-tab-badge');
+    const tabBtn    = document.getElementById('tab-orders');
+    if (remaining === 0) {
+      tabBadge?.remove();
+    } else if (tabBadge) {
+      tabBadge.textContent = String(remaining);
+    } else if (tabBtn) {
+      const span = document.createElement('span');
+      span.className = 'dash-tab-badge';
+      span.setAttribute('aria-label', `${remaining} הזמנות חדשות`);
+      span.textContent = String(remaining);
+      tabBtn.appendChild(span);
+    }
+  }
+
+  function bindOrderCard(card: HTMLElement): void {
+    if (card.dataset.bound === '1') return;
+    card.dataset.bound = '1';
+
+    const header     = card.querySelector<HTMLElement>('.order-card__header');
+    const body       = card.querySelector<HTMLElement>('.order-card__body');
+    const saveBtn    = card.querySelector<HTMLButtonElement>('.order-save-btn');
+    const saveStatus = card.querySelector<HTMLElement>('.order-save-status');
+    const statusSel  = card.querySelector<HTMLSelectElement>('.order-status-select');
+    const trackInput = card.querySelector<HTMLInputElement>('.order-tracking-input');
+    const orderId    = card.dataset.orderId ?? '';
+    const storeSlug  = card.dataset.storeSlug ?? '';
+
+    header?.addEventListener('click', () => {
+      const isOpen = card.classList.contains('order-card--open');
+      if (isOpen) {
+        card.classList.remove('order-card--open');
+        if (body) body.hidden = true;
+        header.setAttribute('aria-expanded', 'false');
+      } else {
+        card.classList.add('order-card--open');
+        if (body) body.hidden = false;
+        header.setAttribute('aria-expanded', 'true');
+      }
+    });
+    header?.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); header.click(); }
+    });
+
+    saveBtn?.addEventListener('click', async () => {
+      if (!orderId) return;
+      saveBtn.disabled = true;
+      const hadDot   = !!card.querySelector('.order-new-dot');
+      const newStatus = statusSel?.value ?? '';
+      try {
+        const res = await fetch('/api/seller/orders', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, storeSlug, shippingStatus: newStatus, trackingNumber: trackInput?.value ?? '' }),
+        });
+        if (res.ok) {
+          if (saveStatus) { saveStatus.hidden = false; setTimeout(() => { saveStatus.hidden = true; }, 2500); }
+          // update status badge color
+          const badge = card.querySelector<HTMLElement>('.order-card__status-badge');
+          if (badge && newStatus) {
+            badge.style.background = `${colorMap[newStatus] ?? '#888'}1a`;
+            badge.style.color = colorMap[newStatus] ?? '#888';
+            badge.textContent = labelMap[newStatus] ?? newStatus;
+          }
+          // moving AWAY from pending → remove dot + delete notification
+          if (hadDot && newStatus !== 'pending') {
+            card.querySelector('.order-new-dot')?.remove();
+            fetch('/api/notifications', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'delete-by-related', relatedId: orderId }),
+            }).catch(() => {});
+            window.dispatchEvent(new CustomEvent('notif-refreshed'));
+          }
+          // update data attribute + re-apply filter (may hide delivered in active view)
+          card.dataset.shippingStatus = newStatus;
+          applyOrderFilter(currentOrderFilter);
+          // moving BACK to pending → re-add dot
+          if (!hadDot && newStatus === 'pending') {
+            const idSpan = card.querySelector('.order-card__id');
+            if (idSpan && !idSpan.querySelector('.order-new-dot')) {
+              const dot = document.createElement('span');
+              dot.className = 'order-new-dot';
+              dot.setAttribute('aria-label', 'הזמנה חדשה');
+              idSpan.appendChild(dot);
+            }
+          }
+          updateOrderTabBadge();
+        }
+      } catch { /* ignore */ } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  }
+
+  document.querySelectorAll<HTMLElement>('.order-card').forEach(bindOrderCard);
+
+  // ── Order filter ─────────────────────────────────────────────
+  const ACTIVE_STATUSES = new Set(['pending', 'processing', 'ready', 'shipped']);
+  let currentOrderFilter = 'active';
+
+  function applyOrderFilter(filter: string): void {
+    currentOrderFilter = filter;
+    let visible = 0;
+    document.querySelectorAll<HTMLElement>('.order-card').forEach((card) => {
+      const status = card.dataset.shippingStatus ?? '';
+      const show = filter === 'all' ? true
+        : filter === 'active' ? ACTIVE_STATUSES.has(status)
+        : status === 'delivered';
+      card.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    const emptyEl = document.getElementById('orders-filter-empty');
+    if (emptyEl) emptyEl.hidden = visible > 0;
+    document.querySelectorAll<HTMLElement>('.order-filter-btn').forEach((btn) => {
+      btn.classList.toggle('order-filter-btn--sel', btn.dataset.filter === filter);
+    });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.order-filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => applyOrderFilter(btn.dataset.filter ?? 'active'));
+  });
+
+  applyOrderFilter('active');
+
+  // ── Poll for new orders every 15s ────────────────────────────
+  const ordersList = document.getElementById('orders-list');
+  if (ordersList && storeSlugForOrders) {
+    const knownIds = new Set(
+      Array.from(document.querySelectorAll<HTMLElement>('.order-card')).map(c => c.dataset.orderId ?? '')
+    );
+
+    function fmtOrderDate(iso: string): string {
+      return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+    function esc(s: unknown): string { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function fmtPrice(n: number): string { return '₪' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+    function buildOrderCard(o: {
+      id: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
+      buyerAddress: { city: string; street: string; zip?: string };
+      shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; price: number; image?: string }[];
+      storeSubtotals: Record<string, { subtotal: number; shipping: number }>;
+    }): string {
+      const shortId  = o.id.slice(0, 8).toUpperCase();
+      const color    = colorMap[o.shippingStatus] ?? '#888';
+      const label    = labelMap[o.shippingStatus] ?? o.shippingStatus;
+      const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
+      const total    = storeSub.subtotal + storeSub.shipping;
+      const storeItems = o.items.filter(i => i.storeSlug === storeSlugForOrders);
+      const isNew    = o.shippingStatus === 'pending';
+
+      const itemsHtml = storeItems.map(item => `
+        <li class="order-card__item">
+          ${item.image ? `<img src="${esc(item.image)}" alt="" width="36" height="36" loading="lazy" class="order-card__item-img" />` : ''}
+          <span class="order-card__item-name">${esc(item.productName)}</span>
+          <span class="order-card__item-qty">×${item.qty}</span>
+          <span class="order-card__item-price">${fmtPrice(item.price * item.qty)}</span>
+        </li>`).join('');
+
+      const opts = [
+        ['pending','חדשה'],['processing','בטיפול'],['ready','ממתין לאיסוף'],['shipped','נשלח'],['delivered','נמסר']
+      ].map(([v, l]) => `<option value="${v}"${o.shippingStatus === v ? ' selected' : ''}>${esc(l)}</option>`).join('');
+
+      return `<div class="order-card" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}">
+        <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
+          <div class="order-card__meta">
+            <span class="order-card__id">#${esc(shortId)}${isNew ? '<span class="order-new-dot" aria-label="הזמנה חדשה"></span>' : ''}</span>
+            <span class="order-card__date">${esc(fmtOrderDate(o.createdAt))}</span>
+          </div>
+          <div class="order-card__summary">
+            <span class="order-card__buyer">${esc(o.buyerName)}</span>
+            <span class="order-card__amount">${fmtPrice(total)}</span>
+            <span class="order-card__status-badge" style="background:${esc(color)}1a;color:${esc(color)}">${esc(label)}</span>
+          </div>
+          <svg class="order-card__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="order-card__body" hidden>
+          <div class="order-card__section">
+            <h3 class="order-card__section-title">לקוח</h3>
+            <p class="order-card__info-line"><strong>${esc(o.buyerName)}</strong></p>
+            <p class="order-card__info-line">${esc(o.buyerEmail)}</p>
+            <p class="order-card__info-line">טלפון: ${esc(o.buyerPhone)}</p>
+            <p class="order-card__info-line">כתובת: ${esc(o.buyerAddress.street)}, ${esc(o.buyerAddress.city)}${o.buyerAddress.zip ? ' ' + esc(o.buyerAddress.zip) : ''}</p>
+          </div>
+          <div class="order-card__section">
+            <h3 class="order-card__section-title">פריטים</h3>
+            <ul class="order-card__items">${itemsHtml}</ul>
+            <div class="order-card__subtotals">
+              <span>משלוח: ${storeSub.shipping === 0 ? 'חינם' : fmtPrice(storeSub.shipping)}</span>
+              <strong>סה"כ: ${fmtPrice(total)}</strong>
+            </div>
+          </div>
+          <div class="order-card__section order-card__section--controls">
+            <h3 class="order-card__section-title">סטטוס משלוח</h3>
+            <div class="order-card__control-row">
+              <select class="order-status-select input" data-field="shippingStatus" style="flex:1">${opts}</select>
+            </div>
+            <h3 class="order-card__section-title" style="margin-top:0.75rem">מספר מעקב</h3>
+            <div class="order-card__control-row">
+              <input type="text" class="order-tracking-input input" data-field="trackingNumber" value="" placeholder="לדוגמה: IL1234567890" style="flex:1" />
+              <button class="order-save-btn btn btn--sm btn--accent" type="button">שמור</button>
+            </div>
+            <p class="order-save-status" hidden aria-live="polite">נשמר ✓</p>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    async function pollOrders(): Promise<void> {
+      try {
+        const res = await fetch(`/api/seller/orders?storeSlug=${encodeURIComponent(storeSlugForOrders)}`);
+        if (!res.ok) return;
+        const { orders } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][] };
+        const newOrders = orders.filter(o => !knownIds.has(o.id));
+        if (!newOrders.length) return;
+        newOrders.forEach(o => {
+          knownIds.add(o.id);
+          const tmp = document.createElement('div');
+          tmp.innerHTML = buildOrderCard(o);
+          const card = tmp.firstElementChild as HTMLElement | null;
+          if (!card) return;
+          ordersList.insertBefore(card, ordersList.firstChild);
+          bindOrderCard(card);
+        });
+        updateOrderTabBadge();
+        applyOrderFilter(currentOrderFilter);
+      } catch { /* ignore */ }
+    }
+
+    setInterval(pollOrders, 15000);
+  }
 
   // ── Seller messages: expand / mark read / reply ──────────────
   function fmtDateJs(iso: string) {

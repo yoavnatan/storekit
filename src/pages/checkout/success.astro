@@ -1,13 +1,16 @@
 ---
+export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getLang, getT } from '../../i18n/index.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
 
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
 const c = t.checkout;
+const isLoggedIn = !!getSellerSession(Astro.cookies);
 ---
 
-<BaseLayout title={c.successTitle} description={c.successDesc} noindex={true}>
+<BaseLayout title={c.successTitle} description={c.successDesc} noindex={true} isLoggedIn={isLoggedIn} hideNav={true}>
   <main id="main-content" class="container" style="padding-block: 3rem 4rem; text-align:center">
 
     <div style="max-width:480px; margin-inline:auto">

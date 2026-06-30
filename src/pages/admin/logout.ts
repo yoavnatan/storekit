@@ -1,8 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { logout } from '../../lib/auth.js';
 
-export async function POST({ cookies, redirect }: APIContext): Promise<Response> {
-  logout(cookies);
-  return redirect('/admin/login');
+export async function GET({ cookies, redirect }: APIContext): Promise<Response> {
+  cookies.delete('admin_token', { path: '/admin' });
+  return redirect('/admin');
 }

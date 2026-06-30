@@ -24,6 +24,7 @@ export interface StoreSubtotal {
 
 export interface Order {
   id: string;
+  buyerId?: string;
   buyerName: string;
   buyerEmail: string;
   buyerPhone: string;
@@ -38,7 +39,7 @@ export interface Order {
   totalAmount: number;
   paymentRef?: string;
   paymentStatus: 'pending' | 'paid' | 'failed';
-  shippingStatus: 'pending' | 'processing' | 'shipped' | 'delivered';
+  shippingStatus: 'pending' | 'processing' | 'ready' | 'shipped' | 'delivered';
   trackingNumber?: string;
   createdAt: string;
   updatedAt: string;
@@ -77,6 +78,19 @@ export function getOrderById(id: string): Order | null {
 
 export function getAllOrders(): Order[] {
   return readOrders();
+}
+
+export function getOrdersByStoreSlug(storeSlug: string): Order[] {
+  return readOrders()
+    .filter((o) => o.items.some((i) => i.storeSlug === storeSlug))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+export function getOrdersBySellerStores(storeSlugs: string[]): Order[] {
+  const slugSet = new Set(storeSlugs);
+  return readOrders()
+    .filter((o) => o.items.some((i) => slugSet.has(i.storeSlug)))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export function updateOrder(id: string, updates: Partial<Omit<Order, 'id' | 'createdAt'>>): Order | null {

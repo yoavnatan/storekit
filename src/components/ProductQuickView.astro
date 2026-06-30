@@ -104,8 +104,24 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
   .pqv-close:hover { background: rgba(0,0,0,.6); }
   .pqv-body { display: flex; flex-direction: column; }
   .pqv-loading { padding: 1.25rem; }
-  .pqv-img-area { position: relative; background: var(--color-bg); }
-  .pqv-main-img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; cursor: zoom-in; }
+  @keyframes pqv-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  .pqv-img-area {
+    position: relative; background: var(--color-bg);
+    aspect-ratio: 4/3; overflow: hidden;
+  }
+  .pqv-img-area.is-loading {
+    background: linear-gradient(90deg, var(--color-border) 25%, var(--color-bg) 50%, var(--color-border) 75%);
+    background-size: 200% 100%;
+    animation: pqv-shimmer 1.3s infinite linear;
+  }
+  .pqv-main-img {
+    width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; cursor: zoom-in;
+    transition: opacity 0.18s;
+  }
+  .pqv-img-area.is-loading .pqv-main-img { opacity: 0; }
   .pqv-no-img { aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; color: var(--color-muted); }
   .pqv-thumbs {
     display: flex; gap: .375rem;
@@ -259,7 +275,7 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
       const hasMultiple= p.images.length > 1;
 
       const imgAreaHtml = hasImages
-        ? `<div class="pqv-img-area"><img id="pqv-main-img" src="${pqvEsc(mainImg)}" alt="${pqvEsc(p.name)}" class="pqv-main-img" /></div>`
+        ? `<div class="pqv-img-area is-loading"><img id="pqv-main-img" data-src="${pqvEsc(mainImg)}" alt="${pqvEsc(p.name)}" class="pqv-main-img" /></div>`
         : `<div class="pqv-img-area pqv-no-img"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
 
       const thumbsHtml = hasMultiple
@@ -300,12 +316,29 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
 
       let pqvImgIdx = 0;
 
+      // skeleton for main image — set src after rendering so shimmer is always visible first
+      const pqvImgArea = pqvBody!.querySelector<HTMLElement>('.pqv-img-area');
+      const pqvMainImg = document.getElementById('pqv-main-img') as HTMLImageElement | null;
+      if (pqvImgArea && pqvMainImg && pqvMainImg.dataset['src']) {
+        pqvMainImg.src = pqvMainImg.dataset['src'];
+        pqvMainImg.decode()
+          .then(() => pqvImgArea.classList.remove('is-loading'))
+          .catch(() => pqvImgArea.classList.remove('is-loading'));
+      }
+
       pqvBody!.querySelectorAll<HTMLButtonElement>('.pqv-thumb').forEach(btn => {
         btn.addEventListener('click', () => {
           const src = btn.dataset['src'] ?? '';
           pqvImgIdx = parseInt(btn.dataset['idx'] ?? '0', 10);
           const mainImgEl = document.getElementById('pqv-main-img') as HTMLImageElement | null;
-          if (mainImgEl) mainImgEl.src = src;
+          const imgArea   = pqvBody!.querySelector<HTMLElement>('.pqv-img-area');
+          if (mainImgEl && imgArea) {
+            imgArea.classList.add('is-loading');
+            mainImgEl.src = src;
+            mainImgEl.decode()
+              .then(() => imgArea.classList.remove('is-loading'))
+              .catch(() => imgArea.classList.remove('is-loading'));
+          }
           pqvBody!.querySelectorAll('.pqv-thumb').forEach(b => b.classList.remove('is-active'));
           btn.classList.add('is-active');
         });

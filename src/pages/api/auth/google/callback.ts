@@ -1,0 +1,107 @@
+export const prerender = false;
+import type { APIRoute } from 'astro';
+import {
+  getSellerByGoogleId,
+  getSellerByEmail,
+  createGoogleSeller,
+  linkGoogleAccount,
+  setSellerSession,
+} from '../../../../lib/seller-auth.js';
+
+interface GoogleTokenResponse {
+  access_token: string;
+  error?: string;
+}
+
+interface GoogleUserInfo {
+  id: string;
+  email: string;
+  name: string;
+  verified_email?: boolean;
+}
+
+export const GET: APIRoute = async ({ url, cookies, redirect }) => {
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const errorParam = url.searchParams.get('error');
+
+  if (errorParam || !code || !state) {
+    return redirect('/seller/login?error=oauth_denied');
+  }
+
+  const storedState = cookies.get('oauth_state')?.value;
+  const nextPath = cookies.get('oauth_next')?.value ?? '/seller/dashboard';
+
+  cookies.delete('oauth_state', { path: '/' });
+  cookies.delete('oauth_next', { path: '/' });
+
+  if (!storedState || storedState !== state) {
+    return redirect('/seller/login?error=oauth_invalid_state');
+  }
+
+  const clientId = import.meta.env.GOOGLE_CLIENT_ID as string | undefined;
+  const clientSecret = import.meta.env.GOOGLE_CLIENT_SECRET as string | undefined;
+
+  if (!clientId || !clientSecret) {
+    return redirect('/seller/login?error=oauth_not_configured');
+  }
+
+  const redirectUri =
+    (import.meta.env.GOOGLE_REDIRECT_URI as string | undefined) ||
+    `${url.origin}/api/auth/google/callback`;
+
+  // Exchange code for access token
+  let accessToken: string;
+  try {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+    const tokenData = (await tokenRes.json()) as GoogleTokenResponse;
+    if (tokenData.error || !tokenData.access_token) {
+      return redirect('/seller/login?error=oauth_token_failed');
+    }
+    accessToken = tokenData.access_token;
+  } catch {
+    return redirect('/seller/login?error=oauth_token_failed');
+  }
+
+  // Fetch user info
+  let googleUser: GoogleUserInfo;
+  try {
+    const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    googleUser = (await userRes.json()) as GoogleUserInfo;
+    if (!googleUser.id || !googleUser.email) {
+      return redirect('/seller/login?error=oauth_user_failed');
+    }
+  } catch {
+    return redirect('/seller/login?error=oauth_user_failed');
+  }
+
+  // Find or create account
+  let seller = getSellerByGoogleId(googleUser.id);
+
+  if (!seller) {
+    const existing = getSellerByEmail(googleUser.email);
+    if (existing) {
+      // Email matches — link Google account to existing account
+      linkGoogleAccount(existing.id, googleUser.id);
+      seller = { ...existing, googleId: googleUser.id };
+    } else {
+      // New user — create account
+      seller = createGoogleSeller(googleUser.email, googleUser.name, googleUser.id);
+    }
+  }
+
+  setSellerSession(cookies, seller.id);
+  return redirect(nextPath);
+};

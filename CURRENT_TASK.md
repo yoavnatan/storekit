@@ -2,17 +2,23 @@
 
 ## Your instruction
 
+אני רוצה לפני שאני מחבר למערכות תשלום קודם להכין את התשתית, לייצר מסלול מלא של הזמנה. 
+צריך לזכור שאדם יכול להזמין מכמה חנויות בבת אחת.
+הזמנה צריכה לפתוח למוכר: 
+1. התראה
+2. ליצור בדשבורד מוכרים לשונית חדשה של ניהול הזמנות, ולייצר שם כרטיסים של הזמנה ושל הפרטים שלה, כל הזמנה היא כרטיס שנפתח ויש שם יכולת לראות את הפרטים, לשלוט ולשנות פרטים. ממש טרקינג של ההזמנות, זה צריך להיראות אינטואיטיבי ותואם את הui של המוכר.
 
+- ההזמנה צריכה להירשם גם בדשבורד חדש שנפתח עוד מעט, דשבורד admin שמיועד לי כמנהל האפליקציה, ואפשר לראות שם: מוכרים, קונים, הזמנות.
 
 
 ## Next
 
+- חיבור תשלום אמיתי — Cardcom/Payme, `/api/payment/confirm` webhook, עדכון SellerBalance
+- שליחת מייל לקונה ומוכר אחרי הזמנה (SendGrid/Brevo)
+- דשבורד אדמין — יתרות מוכרים (earned − paid out), סימון "שולם", תור תשלומים
+- ניהול מלאי: `decrementStock` אטומי עם mutex, אינטגרציית Sendit לציטוט משלוח דינמי
+- Checkout tracking: `fbq InitiateCheckout` בעמוד checkout, `fbq Purchase` ב-webhook
 
-- התחברות עם גוגל
-- ✅ **מערכת הודעות + התראות** — הושלמה. MessageCompose → seller dashboard "הודעות מקונים" + buyer dashboard "הודעות ממוכרים"; live polling 15s; loadThread pattern (תמיד re-fetch בפתיחה); notifications bell; URL sync (?panel=messages / ?tab=messages).
-- טרקינג של הזמנות
-- המוכר צריך לנהל הזמנות מלאי
-- המוכר צריך לנהל את ההזמנות עצמן
 
 
 
@@ -49,4 +55,4 @@
 - **קידום חנות (Ads flow)** — מוכר בוחר פלטפורמה + תקציב + משך → חיוב דרך ספק הסליקה הישראלי → קמפיין ב-API (Google Ads / Meta). נדרש: `adCampaigns` על Store, UI בדשבורד, API routes.
 
 ## Recommended next step
-מערכת הודעות + התראות הושלמה במלואה. הצעד הבא: (א) **התחברות עם גוגל** — OAuth flow, session creation, merge with existing account if email matches; או (ב) **חיבור תשלום אמיתי** — אינטגרציה Cardcom/Payme, `/api/payment/confirm` webhook, יצירת Order, שליחת מייל לקונה ולמוכר, עדכון SellerBalance.
+תשתית ההזמנות מלאה. הצעד הבא: **חיבור תשלום אמיתי** — אינטגרציה Cardcom/Payme, `/api/payment/confirm` webhook, יצירת Order, שליחת מייל לקונה ולמוכר, עדכון SellerBalance, דשבורד אדמין לניהול יתרות מוכרים.

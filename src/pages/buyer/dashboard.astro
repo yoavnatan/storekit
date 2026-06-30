@@ -19,7 +19,7 @@ getLang(Astro.cookies);
 const hasStore = getStoresBySellerId(userId).length > 0;
 
 const orders = getAllOrders()
-  .filter((o) => o.buyerEmail === seller.email)
+  .filter((o) => o.buyerId === userId || o.buyerEmail === seller.email)
   .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
 const messages = getMessagesByBuyer(userId)
@@ -39,7 +39,7 @@ function fmtPrice(n: number) {
 }
 
 const payLabel: Record<string, string>  = { pending: 'ממתין', paid: 'שולם', failed: 'נכשל' };
-const shipLabel: Record<string, string> = { pending: 'ממתין', processing: 'בטיפול', shipped: 'נשלח', delivered: 'נמסר' };
+const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר' };
 ---
 
 <BaseLayout
@@ -199,13 +199,25 @@ const shipLabel: Record<string, string> = { pending: 'ממתין', processing: '
     /* ── Order card ── */
     .o-card {
       background: var(--color-surface);
-      border-radius: 14px; padding: 1rem; margin-bottom: 0.75rem;
+      border-radius: 14px; margin-bottom: 0.75rem;
       box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
+      overflow: hidden;
     }
-    .o-card__top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; }
+    .o-card__hd {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.9rem 1rem; cursor: pointer; user-select: none;
+    }
+    .o-card__hd:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+    .o-card__hd-main { flex: 1; min-width: 0; }
+    .o-card__hd-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem; }
+    .o-card__chevron {
+      flex-shrink: 0; color: var(--color-muted);
+      transition: transform 220ms cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .o-card--open .o-card__chevron { transform: rotate(180deg); }
     .o-id   { font-size: 0.8rem; font-weight: 700; font-family: monospace; color: var(--color-text); }
     .o-date { font-size: 0.74rem; color: var(--color-muted); }
-    .o-items { font-size: 0.79rem; color: var(--color-muted); margin-bottom: 0.55rem; line-height: 1.45; }
+    .o-items { font-size: 0.79rem; color: var(--color-muted); margin-bottom: 0.45rem; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .o-foot { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
     .o-badge { font-size: 0.7rem; font-weight: 600; padding: 0.13rem 0.5rem; border-radius: 999px; }
     .o-badge--pending { background: #fef3c7; color: #92400e; }
@@ -213,6 +225,45 @@ const shipLabel: Record<string, string> = { pending: 'ממתין', processing: '
     .o-badge--failed  { background: #fee2e2; color: #991b1b; }
     .o-badge--ship    { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
     .o-total { margin-inline-start: auto; font-size: 0.875rem; font-weight: 700; color: var(--color-text); }
+
+    .o-card__body {
+      border-top: 1px solid var(--color-border);
+      padding: 0.875rem 1rem;
+      display: flex; flex-direction: column; gap: 0.875rem;
+    }
+    .o-store-group { }
+    .o-store-name { font-size: 0.75rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.5rem; }
+    .o-item-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+    .o-item { display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; }
+    @keyframes o-shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .o-item__img-wrap {
+      position: relative; width: 40px; height: 40px; flex-shrink: 0; border-radius: 6px; overflow: hidden;
+      background: linear-gradient(90deg, var(--color-border) 25%, var(--color-bg) 50%, var(--color-border) 75%);
+      background-size: 200% 100%;
+      animation: o-shimmer 1.3s infinite linear;
+    }
+    .o-item__img-wrap.loaded { background: none; animation: none; }
+    .o-item__img {
+      width: 40px; height: 40px; object-fit: cover; border-radius: 6px;
+      border: 1px solid var(--color-border); opacity: 0; transition: opacity 0.18s;
+      display: block;
+    }
+    .o-item__img-wrap.loaded .o-item__img { opacity: 1; }
+    .o-item__img-placeholder { width: 40px; height: 40px; border-radius: 6px; flex-shrink: 0; background: var(--color-bg); border: 1px solid var(--color-border); }
+    .o-item__name { flex: 1; color: var(--color-text); }
+    .o-item__qty  { color: var(--color-muted); font-size: 0.8rem; }
+    .o-item__price { font-weight: 700; color: var(--color-text); margin-inline-start: auto; }
+    .o-store-sub {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 0.5rem; padding-top: 0.5rem;
+      border-top: 1px solid var(--color-border);
+      font-size: 0.8rem; color: var(--color-muted);
+    }
+    .o-store-sub strong { color: var(--color-text); font-size: 0.875rem; }
+    .o-tracking { font-size: 0.8rem; color: var(--color-muted); margin: 0; padding-top: 0.5rem; border-top: 1px solid var(--color-border); }
 
     /* ── Message card ── */
     .m-card {
@@ -351,20 +402,63 @@ const shipLabel: Record<string, string> = { pending: 'ממתין', processing: '
         <h1 class="panel-head">הזמנות</h1>
         {orders.length === 0
           ? <p class="empty">עדיין לא ביצעת הזמנות.</p>
-          : orders.map((o) => (
-            <div class="o-card">
-              <div class="o-card__top">
-                <span class="o-id">#{o.id.slice(0, 8)}</span>
-                <span class="o-date">{fmtDate(o.createdAt)}</span>
+          : orders.map((o) => {
+            const stores = [...new Set(o.items.map((i) => i.storeSlug))];
+            return (
+              <div class="o-card">
+                <div class="o-card__hd" role="button" tabindex="0" aria-expanded="false">
+                  <div class="o-card__hd-main">
+                    <div class="o-card__hd-top">
+                      <span class="o-id">#{o.id.slice(0, 8)}</span>
+                      <span class="o-date">{fmtDate(o.createdAt)}</span>
+                    </div>
+                    <div class="o-items">{o.items.map((i) => `${i.productName} × ${i.qty}`).join(' · ')}</div>
+                    <div class="o-foot">
+                      <span class={`o-badge o-badge--${o.paymentStatus}`}>{payLabel[o.paymentStatus] ?? o.paymentStatus}</span>
+                      <span class="o-badge o-badge--ship">{shipLabel[o.shippingStatus] ?? o.shippingStatus}</span>
+                      <span class="o-total">{fmtPrice(o.totalAmount)}</span>
+                    </div>
+                  </div>
+                  <svg class="o-card__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+
+                <div class="o-card__body" hidden>
+                  {stores.map((slug) => {
+                    const storeItems = o.items.filter((i) => i.storeSlug === slug);
+                    const storeName  = storeItems[0]!.storeName;
+                    const sub        = o.storeSubtotals[slug];
+                    return (
+                      <div class="o-store-group">
+                        <p class="o-store-name">{storeName}</p>
+                        <ul class="o-item-list">
+                          {storeItems.map((item) => (
+                            <li class="o-item">
+                              {item.image
+                                ? <span class="o-item__img-wrap"><img src={item.image} alt={item.productName} width="40" height="40" loading="lazy" class="o-item__img" /></span>
+                                : <div class="o-item__img-placeholder" aria-hidden="true"></div>
+                              }
+                              <span class="o-item__name">{item.productName}</span>
+                              <span class="o-item__qty">×{item.qty}</span>
+                              <span class="o-item__price">{fmtPrice(item.price * item.qty)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {sub && (
+                          <div class="o-store-sub">
+                            <span>משלוח: {sub.shipping === 0 ? 'חינם' : fmtPrice(sub.shipping)}</span>
+                            <strong>{fmtPrice(sub.subtotal + sub.shipping)}</strong>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {o.trackingNumber && (
+                    <p class="o-tracking">מספר מעקב: <strong>{o.trackingNumber}</strong></p>
+                  )}
+                </div>
               </div>
-              <div class="o-items">{o.items.map((i) => `${i.productName} × ${i.qty}`).join(' · ')}</div>
-              <div class="o-foot">
-                <span class={`o-badge o-badge--${o.paymentStatus}`}>{payLabel[o.paymentStatus] ?? o.paymentStatus}</span>
-                <span class="o-badge o-badge--ship">{shipLabel[o.shippingStatus] ?? o.shippingStatus}</span>
-                <span class="o-total">{fmtPrice(o.totalAmount)}</span>
-              </div>
-            </div>
-          ))
+            );
+          })
         }
       </div>
 
@@ -756,6 +850,27 @@ const shipLabel: Record<string, string> = { pending: 'ממתין', processing: '
           if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
         }
       } catch { /* ignore */ }
+    });
+  });
+
+  /* ── Order card accordion ── */
+  document.querySelectorAll<HTMLElement>('.o-card__hd').forEach((hd) => {
+    const card = hd.closest<HTMLElement>('.o-card')!;
+    const body = card.querySelector<HTMLElement>('.o-card__body');
+    hd.addEventListener('click', () => {
+      const isOpen = card.classList.contains('o-card--open');
+      card.classList.toggle('o-card--open', !isOpen);
+      hd.setAttribute('aria-expanded', String(!isOpen));
+      if (body) body.hidden = isOpen;
+      if (!isOpen) {
+        card.querySelectorAll<HTMLElement>('.o-item__img-wrap:not(.loaded)').forEach((wrap) => {
+          const img = wrap.querySelector<HTMLImageElement>('img');
+          if (img) img.decode().then(() => wrap.classList.add('loaded')).catch(() => wrap.classList.add('loaded'));
+        });
+      }
+    });
+    hd.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hd.click(); }
     });
   });
 
