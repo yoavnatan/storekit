@@ -16,7 +16,7 @@ import '../styles/main.css';
 
 const {
   title, description, image, type, noindex, jsonLd,
-  isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode, hideNav,
+  isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode, hideNav, showSearch,
   dataLayer, productPrice, productCurrency,
 } = Astro.props;
 
@@ -96,7 +96,7 @@ const sessionUserId = getSellerSession(Astro.cookies) ?? '';
     {platformPixel && <noscript set:html={`<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${platformPixel}&ev=PageView&noscript=1" alt="" />`} />}
     <a href="#main-content" class="skip-link">{t.nav.skipToMain}</a>
     <script type="application/json" id="i18n-data" is:inline set:html={i18nJson}></script>
-    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} hideNav={hideNav} />
+    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} />
     <main id="main-content">
       <slot />
     </main>

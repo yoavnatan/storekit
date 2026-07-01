@@ -20,10 +20,12 @@ export interface StoreSubtotal {
   storeName: string;
   subtotal: number;
   shipping: number;
+  discount?: { type: 'percent' | 'amount'; value: number; applied: number };
 }
 
 export interface Order {
   id: string;
+  checkoutRef?: string;
   buyerId?: string;
   buyerName: string;
   buyerEmail: string;

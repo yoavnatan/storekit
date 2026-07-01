@@ -264,6 +264,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
     }
     .o-store-sub strong { color: var(--color-text); font-size: 0.875rem; }
     .o-tracking { font-size: 0.8rem; color: var(--color-muted); margin: 0; padding-top: 0.5rem; border-top: 1px solid var(--color-border); }
+    .o-section-title { font-size: 0.72rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 0; }
 
     /* ── Message card ── */
     .m-card {
@@ -409,7 +410,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
                 <div class="o-card__hd" role="button" tabindex="0" aria-expanded="false">
                   <div class="o-card__hd-main">
                     <div class="o-card__hd-top">
-                      <span class="o-id">#{o.id.slice(0, 8)}</span>
+                      <span class="o-id">#{o.checkoutRef ?? o.id.slice(0, 8).toUpperCase()}</span>
                       <span class="o-date">{fmtDate(o.createdAt)}</span>
                     </div>
                     <div class="o-items">{o.items.map((i) => `${i.productName} × ${i.qty}`).join(' · ')}</div>
@@ -423,6 +424,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
                 </div>
 
                 <div class="o-card__body" hidden>
+                  <p class="o-section-title">פריטים</p>
                   {stores.map((slug) => {
                     const storeItems = o.items.filter((i) => i.storeSlug === slug);
                     const storeName  = storeItems[0]!.storeName;
@@ -556,7 +558,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
       <!-- Profile -->
       <div id="panel-profile" class="my-panel" hidden>
         <h1 class="panel-head">פרטים אישיים</h1>
-        <div class="prof-card">
+        <div style="max-width:480px">
           <p class="prof-section-title">פרטי חשבון</p>
           <div class="prof-field">
             <label class="prof-label" for="edit-name">שם מלא</label>

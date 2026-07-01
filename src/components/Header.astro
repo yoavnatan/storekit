@@ -1,7 +1,6 @@
 ---
 import { store } from '../config/store.config.js';
 import { getLang, getT } from '../i18n/index.js';
-import { getSellerSession } from '../lib/seller-auth.js';
 
 interface Props {
   isLoggedIn?: boolean;
@@ -11,12 +10,12 @@ interface Props {
   storeSlug?: string;
   sellerMode?: boolean;
   hideNav?: boolean;
+  showSearch?: boolean;
 }
 
-const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, storeName, storeSlug } = Astro.props;
+const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, storeName, storeSlug } = Astro.props;
 const logo = store.logo;
 
-const _hUserId = isLoggedIn ? getSellerSession(Astro.cookies) : null;
 
 const currentPath = Astro.url.pathname + (Astro.url.search ? Astro.url.search : '');
 const loginUrl = `/seller/login?next=${encodeURIComponent(currentPath)}`;
@@ -55,11 +54,12 @@ const strEmpty   = t.store.noProductsFound;
     <!-- Logo / store back-link -->
     <div style={storeMode ? 'flex:1' : 'flex-shrink:0'}>
       {storeMode && storeName && storeSlug
-        ? <div class="flex flex-col gap-[2px]">
-            <a href="/" class="store-back-link">
+        ? <div class="flex items-center gap-2">
+            <a href="/" class="store-back-link" aria-label={store.name}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={`flex-shrink:0${lang === 'he' ? ';transform:scaleX(-1)' : ''}`}><polyline points="15 18 9 12 15 6"/></svg>
-              <span>{store.name}</span>
+              <span class="store-back-link__label" aria-hidden="true">{store.name}</span>
             </a>
+            <span aria-hidden="true" style="color:var(--color-border);font-size:0.85rem;line-height:1">|</span>
             <a href={`/store/${storeSlug}`} class="logo" aria-label={storeName}><span>{storeName}</span></a>
           </div>
         : <a href="/" class="logo" aria-label={store.name}>
@@ -67,6 +67,32 @@ const strEmpty   = t.store.noProductsFound;
           </a>
       }
     </div>
+
+    <!-- Homepage search (showSearch=true, no storeSlug) -->
+    {showSearch && !storeSlug && (
+      <div class="header-search" style="flex:1">
+        <svg
+          class="header-search__icon"
+          width="13" height="13"
+          viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2.5"
+          aria-hidden="true"
+          style={`top:50%;${searchIconPos}`}
+        >
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <label for="store-search" class="visually-hidden">{t.home.searchPlaceholder}</label>
+        <input
+          type="search"
+          id="store-search"
+          class="header-search__input"
+          placeholder={t.home.searchPlaceholder}
+          autocomplete="off"
+          aria-label={t.home.searchPlaceholder}
+          style={searchInputPad}
+        />
+      </div>
+    )}
 
     <!-- Store search (storeMode only) -->
     {storeMode && storeSlug && (
@@ -113,6 +139,7 @@ const strEmpty   = t.store.noProductsFound;
       </div>
     )}
 
+
     <!-- Nav (non-store/seller mode) -->
     {!storeMode && !sellerMode && !hideNav && (
       <nav aria-label="Main navigation">
@@ -148,12 +175,14 @@ const strEmpty   = t.store.noProductsFound;
             <span id="notif-dot" class="notif-dot" hidden aria-live="polite" aria-atomic="true" aria-label="התראות חדשות"></span>
           </button>
           <div id="notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות">
-            <div class="notif-panel-head">התראות</div>
+            <div class="notif-panel-head">
+              <span>התראות</span>
+              <button id="notif-close-btn" class="notif-close-btn" type="button" aria-label="סגור התראות">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
             <div id="notif-list" class="notif-list">
               <p class="notif-empty">אין התראות חדשות</p>
-            </div>
-            <div class="notif-footer">
-              <button id="notif-mark-all" class="notif-footer-btn" type="button">סמן הכל כנקרא</button>
             </div>
           </div>
         </div>
@@ -238,6 +267,11 @@ const strEmpty   = t.store.noProductsFound;
   }
 
   document.getElementById('wishlist-toggle')?.addEventListener('click', () => {
+    const nd = document.getElementById('notif-dropdown') as HTMLElement | null;
+    if (nd && !nd.hidden) {
+      nd.hidden = true;
+      document.getElementById('notif-bell-btn')?.setAttribute('aria-expanded', 'false');
+    }
     window.dispatchEvent(new CustomEvent('wishlist:open'));
   });
 
@@ -280,7 +314,6 @@ const strEmpty   = t.store.noProductsFound;
   const notifDot   = document.getElementById('notif-dot') as HTMLElement | null;
   const notifDrop  = document.getElementById('notif-dropdown') as HTMLElement | null;
   const notifList  = document.getElementById('notif-list') as HTMLElement | null;
-  const markAllBtn = document.getElementById('notif-mark-all') as HTMLButtonElement | null;
 
   interface NotifItem { id: string; type?: string; title: string; body: string; read: boolean; createdAt: string; }
 
@@ -321,9 +354,13 @@ const strEmpty   = t.store.noProductsFound;
 
   function openNotifDrop()  { if (!notifDrop || !bellBtn) return; notifDrop.hidden = false; bellBtn.setAttribute('aria-expanded','true'); }
   function closeNotifDrop() { if (!notifDrop || !bellBtn) return; notifDrop.hidden = true;  bellBtn.setAttribute('aria-expanded','false'); }
+  document.getElementById('notif-close-btn')?.addEventListener('click', (e) => { e.stopPropagation(); closeNotifDrop(); bellBtn?.focus(); });
 
   bellBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
+    if (document.getElementById('wishlist-toggle')?.getAttribute('aria-expanded') === 'true') {
+      window.dispatchEvent(new CustomEvent('wishlist:open'));
+    }
     if (notifDrop?.hidden) { openNotifDrop(); loadNotifs(); } else closeNotifDrop();
   });
   document.addEventListener('click', (e) => {
@@ -333,11 +370,6 @@ const strEmpty   = t.store.noProductsFound;
     if (e.key === 'Escape' && notifDrop && !notifDrop.hidden) { closeNotifDrop(); bellBtn?.focus(); }
   });
 
-  markAllBtn?.addEventListener('click', async () => {
-    await fetch('/api/notifications', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'mark-all-read'}) });
-    if (notifDot) notifDot.setAttribute('hidden', '');
-    await loadNotifs();
-  });
 
   async function loadNotifs() {
     try {

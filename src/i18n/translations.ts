@@ -70,7 +70,7 @@ export const translations = {
     cart: {
       title: 'העגלה שלך',
       empty: 'העגלה ריקה',
-      subtotal: 'סכום ביניים',
+      subtotal: 'סכום לחנות',
       checkout: 'לתשלום',
       payAll: 'תשלום לכל החנויות',
       removeTitle: 'הסר פריט?',

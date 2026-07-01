@@ -5,6 +5,48 @@
   padding: 2.5rem 0 2.25rem;
 }
 
+.store-banner__layout {
+  display: block;
+}
+
+.store-banner__info {
+  /* single column, full width */
+}
+
+.store-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+}
+
+.store-banner-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.65rem 0.28rem 0.5rem;
+  border: 0.75px solid var(--color-border);
+  border-radius: 9999px;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  line-height: 1;
+  transition: color 0.13s, border-color 0.13s, background 0.13s;
+  white-space: nowrap;
+}
+
+.store-banner-action-btn:hover {
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+.store-banner-action-btn:active {
+  transform: scale(0.97);
+}
+
 
 .store-name {
   font-size: clamp(1.75rem, 5vw, 2.75rem);
@@ -27,6 +69,54 @@
   font-size: 0.9rem;
   line-height: 1.65;
   color: var(--color-muted);
+}
+
+.category-chip {
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 0.22rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.5;
+  cursor: pointer;
+  background: none;
+  color: var(--color-muted);
+  font-family: inherit;
+  transition: background 0.13s, color 0.13s, border-color 0.13s;
+  white-space: nowrap;
+}
+
+.category-chip[aria-pressed="true"] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 500;
+}
+
+.category-chip:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+}
+
+.category-chip[aria-pressed="true"]:hover {
+  background: color-mix(in srgb, var(--color-primary) 87%, #000);
+  border-color: color-mix(in srgb, var(--color-primary) 87%, #000);
+  color: #fff;
+}
+
+#sort-trigger[aria-expanded="true"] {
+  border-color: transparent;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.11);
+}
+
+#sort-trigger:focus {
+  outline: none;
+}
+
+#sort-trigger:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
 }
 
 .products-heading {
@@ -53,7 +143,6 @@
   width: 100%;
   aspect-ratio: 1;
   overflow: hidden;
-  border-radius: var(--radius) var(--radius) 0 0;
   background: var(--color-bg);
   position: relative;
 }

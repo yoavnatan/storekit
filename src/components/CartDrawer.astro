@@ -139,7 +139,7 @@
             <span>${i18n.subtotal ?? 'Subtotal'}</span>
             <strong>${formatPrice(getSubtotal(c.storeSlug))}</strong>
           </div>
-          <a href="/checkout" class="btn cart-checkout">
+          <a href="/checkout?store=${esc(c.storeSlug)}" class="btn cart-checkout">
             ${i18n.checkout ?? 'Checkout'} — ${esc(c.storeName)}
           </a>
         </div>

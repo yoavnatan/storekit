@@ -481,6 +481,12 @@ for (const s of getAllStores()) {
     import { formatPrice } from '../config/store.config.js';
     import { spawnRipple } from '../lib/ripple.js';
 
+    const storeFilter = new URLSearchParams(window.location.search).get('store') ?? '';
+    function getFilteredCarts() {
+      const all = getActiveStoreCarts();
+      return storeFilter ? all.filter(c => c.storeSlug === storeFilter) : all;
+    }
+
     const shippingCfg: Record<string, { flatRate: number; freeAbove: number | null }> =
       JSON.parse((document.getElementById('checkout-shipping-cfg') as HTMLElement | null)?.textContent ?? '{}');
     const i18n: Record<string, string> =
@@ -495,7 +501,7 @@ for (const s of getAllStores()) {
     }
 
     function renderCart(): void {
-      const carts = getActiveStoreCarts();
+      const carts = getFilteredCarts();
       const contentEl = document.getElementById('cart-content');
       const footerEl  = document.getElementById('co-footer');
       const totalEl   = document.getElementById('grand-total-amount');
@@ -723,7 +729,7 @@ for (const s of getAllStores()) {
       if (submitBtn) submitBtn.disabled = true;
       errEl?.classList.add('hidden');
 
-      const carts = getActiveStoreCarts();
+      const carts = getFilteredCarts();
       const items = carts.flatMap(cart =>
         cart.items.map(item => ({
           storeSlug: cart.storeSlug,
@@ -747,9 +753,10 @@ for (const s of getAllStores()) {
 
       try {
         const res  = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-        const data = await res.json() as { orderId?: string; error?: string };
-        if (!res.ok || !data.orderId) throw new Error(data.error ?? 'Unknown error');
-        window.location.href = `/checkout/success?order=${encodeURIComponent(data.orderId)}`;
+        const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string };
+        if (!res.ok || !data.orderIds?.length) throw new Error(data.error ?? 'Unknown error');
+        const ref = data.checkoutRef ?? data.orderIds[0]!.slice(0, 8).toUpperCase();
+        window.location.href = `/checkout/success?order=${encodeURIComponent(ref)}`;
       } catch {
         if (errEl) { errEl.textContent = i18n['orderError'] ?? 'שגיאה. נסה שוב.'; errEl.classList.remove('hidden'); }
         labelEl?.classList.remove('hidden');

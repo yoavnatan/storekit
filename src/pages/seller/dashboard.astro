@@ -168,7 +168,7 @@ const orderStatusColors: Record<string, string> = {
   <Fragment>
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-name={store.name} data-seller-id={sellerId} hidden></div>
   <section class="section container">
-    <div class="card" style="margin-bottom:1.5rem">
+    <div id="dash-main-card" class="card" style="margin-bottom:1.5rem">
 
       <!-- ── Store header ── -->
       <div class="dash-head" style="padding:1.5rem 1.5rem 0">
@@ -589,7 +589,7 @@ const orderStatusColors: Record<string, string> = {
               const storeItems = order.items.filter((i) => i.storeSlug === store!.slug);
               const storeSub   = order.storeSubtotals[store!.slug];
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-              const shortId    = order.id.slice(0, 8).toUpperCase();
+              const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               return (
                 <div class="order-card" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus}>
                   <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
@@ -613,11 +613,33 @@ const orderStatusColors: Record<string, string> = {
                   </div>
                   <div class="order-card__body" hidden>
                     <div class="order-card__section">
-                      <h3 class="order-card__section-title">{d.orderBuyer}</h3>
-                      <p class="order-card__info-line"><strong>{order.buyerName}</strong></p>
-                      <p class="order-card__info-line">{order.buyerEmail}</p>
-                      <p class="order-card__info-line">{d.orderPhone}: {order.buyerPhone}</p>
-                      <p class="order-card__info-line">{d.orderAddress}: {order.buyerAddress.street}, {order.buyerAddress.city}{order.buyerAddress.zip ? ` ${order.buyerAddress.zip}` : ''}</p>
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+                        <h3 class="order-card__section-title" style="margin:0">{d.orderBuyer}</h3>
+                        <button
+                          class="btn btn--ghost btn--sm order-edit-buyer-btn"
+                          type="button"
+                          data-order-id={order.id}
+                          data-store-slug={store!.slug}
+                          data-buyer-name={order.buyerName}
+                          data-buyer-email={order.buyerEmail}
+                          data-buyer-phone={order.buyerPhone}
+                          data-buyer-city={order.buyerAddress.city}
+                          data-buyer-street={order.buyerAddress.street}
+                          data-buyer-zip={order.buyerAddress.zip ?? ''}
+                          data-items={JSON.stringify(storeItems)}
+                          data-shipping={String(storeSub?.shipping ?? 0)}
+                          data-discount-type={storeSub?.discount?.type ?? 'percent'}
+                          data-discount-value={String(storeSub?.discount?.value ?? 0)}
+                          style="font-size:0.75rem"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          ערוך פרטים
+                        </button>
+                      </div>
+                      <p class="order-card__info-line order-buyer-name"><strong>{order.buyerName}</strong></p>
+                      <p class="order-card__info-line order-buyer-email">{order.buyerEmail}</p>
+                      <p class="order-card__info-line order-buyer-phone">{d.orderPhone}: {order.buyerPhone}</p>
+                      <p class="order-card__info-line order-buyer-address">{d.orderAddress}: {order.buyerAddress.street}, {order.buyerAddress.city}{order.buyerAddress.zip ? ` ${order.buyerAddress.zip}` : ''}</p>
                     </div>
                     <div class="order-card__section">
                       <h3 class="order-card__section-title">{d.orderItems}</h3>
@@ -641,13 +663,24 @@ const orderStatusColors: Record<string, string> = {
                     <div class="order-card__section order-card__section--controls">
                       <h3 class="order-card__section-title">{d.orderShippingStatus}</h3>
                       <div class="order-card__control-row">
-                        <select class="order-status-select input" data-field="shippingStatus" style="flex:1">
-                          <option value="pending"    selected={order.shippingStatus === 'pending'}>{d.shippingPending}</option>
-                          <option value="processing" selected={order.shippingStatus === 'processing'}>{d.shippingProcessing}</option>
-                          <option value="ready"      selected={order.shippingStatus === 'ready'}>{d.shippingReady}</option>
-                          <option value="shipped"    selected={order.shippingStatus === 'shipped'}>{d.shippingShipped}</option>
-                          <option value="delivered"  selected={order.shippingStatus === 'delivered'}>{d.shippingDelivered}</option>
-                        </select>
+                        <div class="order-status-dropdown">
+                          <button class="order-status-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                            <span class="order-status-dot" style={`background:${orderStatusColors[order.shippingStatus] ?? '#888'}`}></span>
+                            <span class="order-status-label">{orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}</span>
+                            <svg class="order-status-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                          </button>
+                          <ul class="order-status-menu" role="listbox" hidden>
+                            {(['pending','processing','ready','shipped','delivered'] as const).map((v) => (
+                              <li role="none">
+                                <button class="order-status-option" type="button" role="option" data-value={v} aria-selected={order.shippingStatus === v}>
+                                  <span class="order-status-dot" style={`background:${orderStatusColors[v]}`}></span>
+                                  {orderShippingLabels[v]}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                          <input type="hidden" class="order-status-select" data-field="shippingStatus" value={order.shippingStatus} />
+                        </div>
                       </div>
                       <h3 class="order-card__section-title" style="margin-top:0.75rem">{d.orderTracking}</h3>
                       <div class="order-card__control-row">
@@ -765,6 +798,11 @@ const orderStatusColors: Record<string, string> = {
           <input type="hidden" name="_action" value="save-settings" />
           <input type="hidden" name="storeId" value={store.id} />
 
+          <div class="dash-panel-header">
+            <h2 class="dash-panel-header__title">{d.tabSettings}</h2>
+            <button class="btn btn--sm" type="submit" id="settings-save-btn">{d.saveChanges}</button>
+          </div>
+
           <label class="field">
             <span>{d.storeName}</span>
             <input class="input" name="name" value={store.name} required />
@@ -791,9 +829,6 @@ const orderStatusColors: Record<string, string> = {
           </label>
 
           <p id="settings-status" hidden></p>
-          <div class="form-actions">
-            <button class="btn" type="submit">{d.saveChanges}</button>
-          </div>
         </form>
       </div>
 
@@ -826,11 +861,13 @@ const orderStatusColors: Record<string, string> = {
   .order-card {
     border: 1.5px solid var(--color-border);
     border-radius: 12px;
-    overflow: hidden;
+    overflow: visible;
     background: #fff;
     transition: box-shadow 150ms;
   }
-  .order-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  /* clip header top corners + controls bottom corners to follow card border-radius */
+  .order-card__header { border-radius: 11px 11px 0 0; }
+  .order-card:not(.order-card--open) .order-card__header { border-radius: 11px; }
 
   .order-card__header {
     display: flex;
@@ -923,7 +960,7 @@ const orderStatusColors: Record<string, string> = {
   }
   .order-card__subtotals strong { color: var(--color-text); font-size: 0.9375rem; }
 
-  .order-card__section--controls { background: var(--color-bg); border-radius: 8px; padding: 0.875rem; }
+  .order-card__section--controls { background: var(--color-bg); border-radius: 0 0 11px 11px; padding: 0.875rem; overflow: visible; }
   .order-card__control-row { display: flex; gap: 0.5rem; align-items: center; }
 
   .order-save-status {
@@ -943,6 +980,115 @@ const orderStatusColors: Record<string, string> = {
     vertical-align: middle;
     flex-shrink: 0;
   }
+
+  /* no hover / no overflow clip on main dashboard wrapper */
+  #dash-main-card { transition: none; overflow: visible; }
+  #dash-main-card:hover { box-shadow: none; }
+  /* restore hover on individual order cards */
+  .order-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+
+  /* ── Order status custom dropdown ── */
+  .order-status-dropdown { position: relative; }
+  .order-status-trigger {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    padding: 0.35rem 0.75rem;
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-border);
+    border-radius: 9999px; cursor: pointer;
+    font-family: inherit; font-size: 0.83rem; font-weight: 500;
+    color: var(--color-text); white-space: nowrap;
+    transition: border-color 0.12s;
+  }
+  .order-status-trigger:hover { border-color: var(--color-muted); }
+  .order-status-trigger[aria-expanded="true"] { border-color: var(--color-accent); }
+  .order-status-chevron {
+    flex-shrink: 0; color: var(--color-muted);
+    transition: transform 150ms cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .order-status-trigger[aria-expanded="true"] .order-status-chevron { transform: rotate(180deg); }
+
+  .order-status-menu {
+    position: absolute;
+    inset-inline-start: 0;
+    top: calc(100% + 5px);
+    min-width: 11rem; white-space: nowrap;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 0.3rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    z-index: 60;
+    list-style: none; margin: 0;
+    animation: status-pop 0.13s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  }
+  @keyframes status-pop {
+    from { opacity: 0; transform: translateY(-5px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)   scale(1); }
+  }
+  .order-status-option {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.45rem 0.75rem; border-radius: 4px;
+    font-size: 0.84rem; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+    color: var(--color-text); background: none; border: none;
+    width: 100%; text-align: start;
+    transition: background 0.1s;
+  }
+  .order-status-option:hover { background: var(--color-bg); }
+  .order-status-option[aria-selected="true"] { font-weight: 700; }
+  .order-status-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  /* ── Edit order modal centering ── */
+  #edit-order-modal {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    max-height: 90vh;
+    overflow: visible;
+  }
+  #edit-order-modal::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+  }
+
+  /* ── Edit-order item rows ── */
+  .eom-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.42rem 0;
+    border-bottom: 1px solid var(--color-border);
+    transition: opacity 0.15s;
+  }
+  .eom-item:last-child { border-bottom: none; }
+  .eom-item--deleted { opacity: 0.4; }
+  .eom-item--deleted .eom-item__name { text-decoration: line-through; }
+  .eom-item__img {
+    width: 34px; height: 34px; object-fit: cover;
+    border-radius: 6px; flex-shrink: 0;
+    border: 1px solid var(--color-border);
+  }
+  .eom-item__img-ph {
+    width: 34px; height: 34px; border-radius: 6px; flex-shrink: 0;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+  }
+  .eom-item__name { flex: 1; font-size: 0.82rem; font-weight: 500; color: var(--color-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .eom-item__meta { font-size: 0.78rem; color: var(--color-muted); flex-shrink: 0; white-space: nowrap; }
+  .eom-item__del {
+    width: 24px; height: 24px; border-radius: 5px; flex-shrink: 0;
+    border: 1px solid var(--color-border); background: var(--color-surface);
+    color: var(--color-muted); cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+  }
+  .eom-item__del:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+  .eom-item--deleted .eom-item__del { background: var(--color-bg); color: var(--color-accent); border-color: var(--color-accent); }
+
+  /* Discount type toggle */
+  .eom-dtype-btn { background: var(--color-surface); color: var(--color-muted); }
+  .eom-dtype-btn--active { background: var(--color-text); color: var(--color-surface); }
 
   .dash-tab-badge {
     display: inline-flex;
@@ -984,6 +1130,95 @@ const orderStatusColors: Record<string, string> = {
     </div>
   </div>
 </div>
+
+<!-- ── Edit Order Details Modal ── -->
+<dialog id="edit-order-modal" aria-labelledby="eom-title" style="border:none;border-radius:14px;padding:0;width:min(520px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border);flex-shrink:0">
+    <h2 id="eom-title" style="font-size:0.95rem;font-weight:700;margin:0">ערוך פרטי הזמנה</h2>
+    <button id="edit-order-modal-close" type="button" aria-label="סגור" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:none;background:none;color:var(--color-muted);cursor:pointer;transition:background 0.1s">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <form id="edit-order-form" style="padding:1.25rem;display:flex;flex-direction:column;gap:0.75rem;overflow-y:auto;max-height:calc(85vh - 4rem)">
+    <input type="hidden" id="edit-order-id" value="" />
+    <input type="hidden" id="edit-order-store-slug" value="" />
+
+    <!-- Buyer details -->
+    <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0">פרטי לקוח</p>
+    <div class="field-row">
+      <label class="field" style="flex:1">
+        <span>שם מלא</span>
+        <input class="input" id="eob-name" name="buyerName" required placeholder="שם מלא" />
+      </label>
+      <label class="field" style="flex:1">
+        <span>טלפון</span>
+        <input class="input" id="eob-phone" name="buyerPhone" placeholder="טלפון" />
+      </label>
+    </div>
+    <label class="field">
+      <span>אימייל</span>
+      <input class="input" id="eob-email" name="buyerEmail" type="email" placeholder="אימייל" />
+    </label>
+    <div class="field-row">
+      <label class="field" style="flex:2">
+        <span>רחוב ומספר</span>
+        <input class="input" id="eob-street" name="buyerStreet" placeholder="רחוב ומספר" />
+      </label>
+      <label class="field" style="flex:1">
+        <span>עיר</span>
+        <input class="input" id="eob-city" name="buyerCity" placeholder="עיר" />
+      </label>
+      <label class="field" style="flex:1">
+        <span>מיקוד</span>
+        <input class="input" id="eob-zip" name="buyerZip" placeholder="מיקוד" />
+      </label>
+    </div>
+
+    <!-- Items (delete only) -->
+    <div style="border-top:1px solid var(--color-border);padding-top:0.75rem;margin-top:0.1rem">
+      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">פריטים</p>
+      <div id="eom-items-list"></div>
+    </div>
+
+    <!-- Shipping method (placeholder — wired later) -->
+    <div style="border-top:1px solid var(--color-border);padding-top:0.75rem">
+      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">שיטת משלוח</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--color-bg);border:1px solid var(--color-border);border-radius:10px;padding:0.6rem 0.85rem;gap:0.75rem">
+        <div style="display:flex;align-items:center;gap:0.55rem">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted);flex-shrink:0" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          <span id="eom-shipping-label" style="font-size:0.85rem;font-weight:500;color:var(--color-text)">משלוח רגיל</span>
+          <span id="eom-shipping-amount" style="font-size:0.82rem;color:var(--color-muted)"></span>
+        </div>
+        <button
+          type="button"
+          disabled
+          title="בקרוב"
+          style="font-size:0.75rem;font-weight:500;color:var(--color-muted);background:none;border:1px solid var(--color-border);border-radius:6px;padding:0.25rem 0.6rem;cursor:not-allowed;font-family:inherit;opacity:0.6;flex-shrink:0"
+        >שנה שיטת משלוח</button>
+      </div>
+    </div>
+
+    <!-- Discount -->
+    <div style="border-top:1px solid var(--color-border);padding-top:0.75rem">
+      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">הנחה</p>
+      <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+        <div style="display:flex;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;flex-shrink:0">
+          <button type="button" id="eom-dtype-pct" class="eom-dtype-btn eom-dtype-btn--active" style="padding:0.3rem 0.65rem;font-size:0.82rem;font-weight:600;border:none;cursor:pointer;font-family:inherit;transition:background 0.1s,color 0.1s">%</button>
+          <button type="button" id="eom-dtype-amt" class="eom-dtype-btn" style="padding:0.3rem 0.65rem;font-size:0.82rem;font-weight:600;border:none;border-right:1px solid var(--color-border);cursor:pointer;font-family:inherit;transition:background 0.1s,color 0.1s">₪</button>
+        </div>
+        <input class="input" id="eom-discount-val" type="number" min="0" step="1" placeholder="0" style="width:90px" />
+        <span id="eom-discount-preview" style="font-size:0.82rem;color:var(--color-muted)"></span>
+      </div>
+    </div>
+
+    <p id="edit-order-error" style="font-size:0.8rem;color:#dc2626;margin:0;display:none"></p>
+    <p id="edit-order-success" style="font-size:0.8rem;color:#16a34a;margin:0;text-align:center;display:none">ההזמנה עודכנה בהצלחה ✓</p>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end;padding-top:0.25rem;border-top:1px solid var(--color-border)">
+      <button class="btn btn--ghost btn--sm" type="button" id="edit-order-cancel">ביטול</button>
+      <button class="btn btn--accent btn--sm" type="submit" id="edit-order-save">שמור שינויים</button>
+    </div>
+  </form>
+</dialog>
 
 <datalist id="store-categories-list">
   {store && (store.categories ?? []).map((cat) => <option value={cat} />)}
@@ -1077,12 +1312,49 @@ const orderStatusColors: Record<string, string> = {
 
     const header     = card.querySelector<HTMLElement>('.order-card__header');
     const body       = card.querySelector<HTMLElement>('.order-card__body');
-    const saveBtn    = card.querySelector<HTMLButtonElement>('.order-save-btn');
-    const saveStatus = card.querySelector<HTMLElement>('.order-save-status');
-    const statusSel  = card.querySelector<HTMLSelectElement>('.order-status-select');
-    const trackInput = card.querySelector<HTMLInputElement>('.order-tracking-input');
-    const orderId    = card.dataset.orderId ?? '';
-    const storeSlug  = card.dataset.storeSlug ?? '';
+    const saveBtn       = card.querySelector<HTMLButtonElement>('.order-save-btn');
+    const saveStatus    = card.querySelector<HTMLElement>('.order-save-status');
+    const statusInput   = card.querySelector<HTMLInputElement>('.order-status-select');
+    const statusTrigger = card.querySelector<HTMLButtonElement>('.order-status-trigger');
+    const statusMenu    = card.querySelector<HTMLUListElement>('.order-status-menu');
+    const trackInput    = card.querySelector<HTMLInputElement>('.order-tracking-input');
+    const orderId       = card.dataset.orderId ?? '';
+    const storeSlug     = card.dataset.storeSlug ?? '';
+
+    // status dropdown toggle
+    statusTrigger?.addEventListener('click', (e: MouseEvent) => {
+      e.stopPropagation();
+      const isOpen = statusMenu && !statusMenu.hidden;
+      // close any other open status menus first
+      document.querySelectorAll<HTMLElement>('.order-status-menu:not([hidden])').forEach((m) => {
+        if (m !== statusMenu) {
+          m.hidden = true;
+          m.closest('.order-status-dropdown')?.querySelector<HTMLButtonElement>('.order-status-trigger')?.setAttribute('aria-expanded', 'false');
+        }
+      });
+      if (statusMenu) {
+        statusMenu.hidden = !!isOpen;
+        statusTrigger.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      }
+    });
+
+    // option selection
+    statusMenu?.querySelectorAll<HTMLButtonElement>('.order-status-option').forEach((opt) => {
+      opt.addEventListener('click', () => {
+        const val = opt.dataset.value ?? '';
+        if (statusInput) statusInput.value = val;
+        const col = colorMap[val] ?? '#888';
+        const lbl = labelMap[val] ?? val;
+        const dot = statusTrigger?.querySelector<HTMLElement>('.order-status-dot');
+        const lbl_el = statusTrigger?.querySelector<HTMLElement>('.order-status-label');
+        if (dot) dot.style.background = col;
+        if (lbl_el) lbl_el.textContent = lbl;
+        statusMenu.querySelectorAll<HTMLButtonElement>('[role="option"]').forEach((o) => o.setAttribute('aria-selected', 'false'));
+        opt.setAttribute('aria-selected', 'true');
+        statusMenu.hidden = true;
+        statusTrigger?.setAttribute('aria-expanded', 'false');
+      });
+    });
 
     header?.addEventListener('click', () => {
       const isOpen = card.classList.contains('order-card--open');
@@ -1104,7 +1376,7 @@ const orderStatusColors: Record<string, string> = {
       if (!orderId) return;
       saveBtn.disabled = true;
       const hadDot   = !!card.querySelector('.order-new-dot');
-      const newStatus = statusSel?.value ?? '';
+      const newStatus = statusInput?.value ?? '';
       try {
         const res = await fetch('/api/seller/orders', {
           method: 'PATCH',
@@ -1153,6 +1425,14 @@ const orderStatusColors: Record<string, string> = {
 
   document.querySelectorAll<HTMLElement>('.order-card').forEach(bindOrderCard);
 
+  // close open status menus when clicking outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll<HTMLElement>('.order-status-menu:not([hidden])').forEach((m) => {
+      m.hidden = true;
+      m.closest('.order-status-dropdown')?.querySelector<HTMLButtonElement>('.order-status-trigger')?.setAttribute('aria-expanded', 'false');
+    });
+  });
+
   // ── Order filter ─────────────────────────────────────────────
   const ACTIVE_STATUSES = new Set(['pending', 'processing', 'ready', 'shipped']);
   let currentOrderFilter = 'active';
@@ -1195,12 +1475,12 @@ const orderStatusColors: Record<string, string> = {
     function fmtPrice(n: number): string { return '₪' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 
     function buildOrderCard(o: {
-      id: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
+      id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
       buyerAddress: { city: string; street: string; zip?: string };
       shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; price: number; image?: string }[];
       storeSubtotals: Record<string, { subtotal: number; shipping: number }>;
     }): string {
-      const shortId  = o.id.slice(0, 8).toUpperCase();
+      const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
       const color    = colorMap[o.shippingStatus] ?? '#888';
       const label    = labelMap[o.shippingStatus] ?? o.shippingStatus;
       const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
@@ -1216,9 +1496,19 @@ const orderStatusColors: Record<string, string> = {
           <span class="order-card__item-price">${fmtPrice(item.price * item.qty)}</span>
         </li>`).join('');
 
-      const opts = [
+      const statusEntries: [string, string][] = [
         ['pending','חדשה'],['processing','בטיפול'],['ready','ממתין לאיסוף'],['shipped','נשלח'],['delivered','נמסר']
-      ].map(([v, l]) => `<option value="${v}"${o.shippingStatus === v ? ' selected' : ''}>${esc(l)}</option>`).join('');
+      ];
+      const statusDotHtml = (v: string) => `<span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>`;
+      const statusOpts = statusEntries.map(([v, l]) => `<li role="none"><button class="order-status-option" type="button" role="option" data-value="${esc(v)}" aria-selected="${o.shippingStatus === v}">${statusDotHtml(v)}${esc(l)}</button></li>`).join('');
+      const statusDropdown = `<div class="order-status-dropdown">
+        <button class="order-status-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+          ${statusDotHtml(o.shippingStatus)}<span class="order-status-label">${esc(label)}</span>
+          <svg class="order-status-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <ul class="order-status-menu" role="listbox" hidden>${statusOpts}</ul>
+        <input type="hidden" class="order-status-select" data-field="shippingStatus" value="${esc(o.shippingStatus)}" />
+      </div>`;
 
       return `<div class="order-card" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}">
         <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
@@ -1235,11 +1525,26 @@ const orderStatusColors: Record<string, string> = {
         </div>
         <div class="order-card__body" hidden>
           <div class="order-card__section">
-            <h3 class="order-card__section-title">לקוח</h3>
-            <p class="order-card__info-line"><strong>${esc(o.buyerName)}</strong></p>
-            <p class="order-card__info-line">${esc(o.buyerEmail)}</p>
-            <p class="order-card__info-line">טלפון: ${esc(o.buyerPhone)}</p>
-            <p class="order-card__info-line">כתובת: ${esc(o.buyerAddress.street)}, ${esc(o.buyerAddress.city)}${o.buyerAddress.zip ? ' ' + esc(o.buyerAddress.zip) : ''}</p>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+              <h3 class="order-card__section-title" style="margin:0">לקוח</h3>
+              <button class="btn btn--ghost btn--sm order-edit-buyer-btn" type="button"
+                data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"
+                data-buyer-name="${esc(o.buyerName)}" data-buyer-email="${esc(o.buyerEmail)}"
+                data-buyer-phone="${esc(o.buyerPhone)}" data-buyer-city="${esc(o.buyerAddress.city)}"
+                data-buyer-street="${esc(o.buyerAddress.street)}" data-buyer-zip="${esc(o.buyerAddress.zip ?? '')}"
+                data-items="${esc(JSON.stringify(storeItems))}"
+                data-shipping="${esc(String(storeSub.shipping))}"
+                data-discount-type="${esc(storeSub.discount?.type ?? 'percent')}"
+                data-discount-value="${esc(String(storeSub.discount?.value ?? 0))}"
+                style="font-size:0.75rem">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                ערוך פרטים
+              </button>
+            </div>
+            <p class="order-card__info-line order-buyer-name"><strong>${esc(o.buyerName)}</strong></p>
+            <p class="order-card__info-line order-buyer-email">${esc(o.buyerEmail)}</p>
+            <p class="order-card__info-line order-buyer-phone">טלפון: ${esc(o.buyerPhone)}</p>
+            <p class="order-card__info-line order-buyer-address">כתובת: ${esc(o.buyerAddress.street)}, ${esc(o.buyerAddress.city)}${o.buyerAddress.zip ? ' ' + esc(o.buyerAddress.zip) : ''}</p>
           </div>
           <div class="order-card__section">
             <h3 class="order-card__section-title">פריטים</h3>
@@ -1252,7 +1557,7 @@ const orderStatusColors: Record<string, string> = {
           <div class="order-card__section order-card__section--controls">
             <h3 class="order-card__section-title">סטטוס משלוח</h3>
             <div class="order-card__control-row">
-              <select class="order-status-select input" data-field="shippingStatus" style="flex:1">${opts}</select>
+              ${statusDropdown}
             </div>
             <h3 class="order-card__section-title" style="margin-top:0.75rem">מספר מעקב</h3>
             <div class="order-card__control-row">
@@ -1407,6 +1712,231 @@ const orderStatusColors: Record<string, string> = {
         }
       } catch { /* ignore */ }
     });
+  });
+
+  // ── Edit Order Details Modal ─────────────────────────────────
+  const editOrderModal    = document.getElementById('edit-order-modal') as HTMLDialogElement | null;
+  const editOrderForm     = document.getElementById('edit-order-form') as HTMLFormElement | null;
+  const editOrderError    = document.getElementById('edit-order-error') as HTMLElement | null;
+  const editOrderSuccess  = document.getElementById('edit-order-success') as HTMLElement | null;
+  const editOrderSaveBtn  = document.getElementById('edit-order-save') as HTMLButtonElement | null;
+
+  type EomItem = { productId: string; productName: string; price: number; qty: number; image?: string; storeSlug?: string };
+
+  function escEom(s: unknown) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function renderEomItems(items: EomItem[]) {
+    const list = document.getElementById('eom-items-list');
+    if (!list) return;
+    if (!items.length) { list.innerHTML = '<p style="color:var(--color-muted);font-size:0.82rem;margin:0">אין פריטים</p>'; return; }
+    list.innerHTML = items.map((item) => `
+      <div class="eom-item" data-pid="${escEom(item.productId)}">
+        ${item.image
+          ? `<img class="eom-item__img" src="${escEom(item.image)}" alt="" width="34" height="34" loading="lazy">`
+          : `<div class="eom-item__img-ph" aria-hidden="true"></div>`}
+        <span class="eom-item__name" title="${escEom(item.productName)}">${escEom(item.productName)}</span>
+        <span class="eom-item__meta">₪${item.price.toLocaleString('he-IL')} × ${item.qty}</span>
+        <button type="button" class="eom-item__del" aria-label="מחק פריט" title="מחק פריט">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>`).join('');
+
+    list.querySelectorAll<HTMLButtonElement>('.eom-item__del').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const row = btn.closest<HTMLElement>('.eom-item');
+        if (!row) return;
+        const wasDeleted = row.classList.contains('eom-item--deleted');
+        row.classList.toggle('eom-item--deleted', !wasDeleted);
+        btn.setAttribute('title', wasDeleted ? 'מחק פריט' : 'בטל מחיקה');
+        btn.setAttribute('aria-label', wasDeleted ? 'מחק פריט' : 'בטל מחיקה');
+        updateDiscountPreview();
+      });
+    });
+  }
+
+  // ── Discount type toggle ──────────────────────────────────
+  let eomDiscountType: 'percent' | 'amount' = 'percent';
+
+  const eomPctBtn = document.getElementById('eom-dtype-pct') as HTMLButtonElement | null;
+  const eomAmtBtn = document.getElementById('eom-dtype-amt') as HTMLButtonElement | null;
+  const eomDiscountInput   = document.getElementById('eom-discount-val') as HTMLInputElement | null;
+  const eomDiscountPreview = document.getElementById('eom-discount-preview') as HTMLElement | null;
+  const eomShippingAmountEl = document.getElementById('eom-shipping-amount') as HTMLElement | null;
+  let eomCurrentShipping = 0;
+
+  function setDiscountType(type: 'percent' | 'amount') {
+    eomDiscountType = type;
+    eomPctBtn?.classList.toggle('eom-dtype-btn--active', type === 'percent');
+    eomAmtBtn?.classList.toggle('eom-dtype-btn--active', type === 'amount');
+    updateDiscountPreview();
+  }
+  eomPctBtn?.addEventListener('click', () => setDiscountType('percent'));
+  eomAmtBtn?.addEventListener('click', () => setDiscountType('amount'));
+  eomDiscountInput?.addEventListener('input', updateDiscountPreview);
+
+  function calcEomBase(): number {
+    let subtotal = 0;
+    document.querySelectorAll<HTMLElement>('#eom-items-list .eom-item:not(.eom-item--deleted)').forEach((row) => {
+      const meta = row.querySelector('.eom-item__meta')?.textContent ?? '';
+      const m = meta.match(/₪([\d,]+)\s*×\s*(\d+)/);
+      if (m) subtotal += parseFloat(m[1]!.replace(/,/g,'')) * parseInt(m[2]!, 10);
+    });
+    return subtotal + eomCurrentShipping;
+  }
+
+  function updateDiscountPreview() {
+    if (!eomDiscountPreview) return;
+    const val = parseFloat(eomDiscountInput?.value ?? '0') || 0;
+    if (!val) { eomDiscountPreview.textContent = ''; return; }
+    const base = calcEomBase();
+    const applied = eomDiscountType === 'percent'
+      ? Math.min(base * val / 100, base)
+      : Math.min(val, base);
+    eomDiscountPreview.textContent = applied > 0 ? `= −₪${applied.toFixed(2).replace(/\.00$/, '')}` : '';
+  }
+
+  function openEditOrderModal(btn: HTMLElement) {
+    if (!editOrderModal) return;
+    (document.getElementById('edit-order-id') as HTMLInputElement).value = btn.dataset.orderId ?? '';
+    (document.getElementById('edit-order-store-slug') as HTMLInputElement).value = btn.dataset.storeSlug ?? '';
+    (document.getElementById('eob-name') as HTMLInputElement).value    = btn.dataset.buyerName   ?? '';
+    (document.getElementById('eob-email') as HTMLInputElement).value   = btn.dataset.buyerEmail  ?? '';
+    (document.getElementById('eob-phone') as HTMLInputElement).value   = btn.dataset.buyerPhone  ?? '';
+    (document.getElementById('eob-street') as HTMLInputElement).value  = btn.dataset.buyerStreet ?? '';
+    (document.getElementById('eob-city') as HTMLInputElement).value    = btn.dataset.buyerCity   ?? '';
+    (document.getElementById('eob-zip') as HTMLInputElement).value     = btn.dataset.buyerZip    ?? '';
+    eomCurrentShipping = parseFloat(btn.dataset.shipping ?? '0') || 0;
+    if (eomShippingAmountEl) eomShippingAmountEl.textContent = eomCurrentShipping > 0 ? `· ₪${eomCurrentShipping}` : '· חינם';
+    // Restore existing discount
+    const existingDtype = (btn.dataset.discountType ?? 'percent') as 'percent' | 'amount';
+    const existingDval  = btn.dataset.discountValue ?? '0';
+    setDiscountType(existingDtype);
+    if (eomDiscountInput) eomDiscountInput.value = existingDval === '0' ? '' : existingDval;
+    if (editOrderError)   { editOrderError.style.display   = 'none'; editOrderError.textContent   = ''; }
+    if (editOrderSuccess) { editOrderSuccess.style.display = 'none'; }
+    try { renderEomItems(JSON.parse(btn.dataset.items ?? '[]') as EomItem[]); } catch { renderEomItems([]); }
+    updateDiscountPreview();
+    editOrderModal.showModal();
+    (document.getElementById('eob-name') as HTMLInputElement | null)?.focus();
+  }
+
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('.order-edit-buyer-btn');
+    if (btn) { e.stopPropagation(); openEditOrderModal(btn); }
+  });
+
+  document.getElementById('edit-order-modal-close')?.addEventListener('click', () => editOrderModal?.close());
+  document.getElementById('edit-order-cancel')?.addEventListener('click', () => editOrderModal?.close());
+  editOrderModal?.addEventListener('click', (e) => { if (e.target === editOrderModal) editOrderModal.close(); });
+
+  editOrderForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!editOrderSaveBtn) return;
+    const orderId   = (document.getElementById('edit-order-id') as HTMLInputElement).value;
+    const storeSlug = (document.getElementById('edit-order-store-slug') as HTMLInputElement).value;
+    const name   = (document.getElementById('eob-name') as HTMLInputElement).value.trim();
+    const email  = (document.getElementById('eob-email') as HTMLInputElement).value.trim();
+    const phone  = (document.getElementById('eob-phone') as HTMLInputElement).value.trim();
+    const street = (document.getElementById('eob-street') as HTMLInputElement).value.trim();
+    const city   = (document.getElementById('eob-city') as HTMLInputElement).value.trim();
+    const zip    = (document.getElementById('eob-zip') as HTMLInputElement).value.trim();
+
+    if (!name || !city || !street) {
+      if (editOrderError) { editOrderError.textContent = 'שם, עיר ורחוב הם שדות חובה'; editOrderError.style.display = 'block'; }
+      return;
+    }
+
+    // Collect deleted item IDs
+    const itemDeletes: string[] = [];
+    document.querySelectorAll<HTMLElement>('#eom-items-list .eom-item--deleted').forEach((row) => {
+      if (row.dataset.pid) itemDeletes.push(row.dataset.pid);
+    });
+
+    // Discount
+    const discountVal = parseFloat(eomDiscountInput?.value ?? '') || 0;
+    const discount = discountVal > 0
+      ? { type: eomDiscountType, value: discountVal }
+      : null;
+
+    editOrderSaveBtn.disabled = true;
+    if (editOrderError) editOrderError.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/seller/orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, storeSlug, buyerName: name, buyerEmail: email, buyerPhone: phone, buyerAddress: { city, street, zip }, itemDeletes, discount }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        if (editOrderError) { editOrderError.textContent = err.error ?? 'שגיאה בשמירה'; editOrderError.style.display = 'block'; }
+        return;
+      }
+      const { order: savedOrder } = await res.json() as { order: { buyerName: string; buyerEmail: string; buyerPhone: string; buyerAddress: { city: string; street: string; zip?: string }; items: EomItem[]; storeSubtotals: Record<string, { subtotal: number; shipping: number }>; totalAmount: number } };
+
+      // Update the order card in DOM
+      const card = document.querySelector<HTMLElement>(`.order-card[data-order-id="${CSS.escape(orderId)}"]`);
+      if (card && savedOrder) {
+        const buyerNameEl = card.querySelector('.order-buyer-name strong');
+        const buyerEmailEl = card.querySelector('.order-buyer-email');
+        const buyerPhoneEl = card.querySelector('.order-buyer-phone');
+        const buyerAddrEl  = card.querySelector('.order-buyer-address');
+        if (buyerNameEl) buyerNameEl.textContent = savedOrder.buyerName;
+        if (buyerEmailEl) buyerEmailEl.textContent = savedOrder.buyerEmail;
+        if (buyerPhoneEl) buyerPhoneEl.textContent = `טלפון: ${savedOrder.buyerPhone}`;
+        if (buyerAddrEl) { const a = savedOrder.buyerAddress; buyerAddrEl.textContent = `כתובת: ${a.street}, ${a.city}${a.zip ? ` ${a.zip}` : ''}`; }
+
+        // Update items list in card
+        const cardItemsEl = card.querySelector('.order-card__items');
+        if (cardItemsEl && savedOrder.items) {
+          const storeItems = savedOrder.items.filter((i) => i.storeSlug === storeSlug);
+          cardItemsEl.innerHTML = storeItems.map((item) => `
+            <li class="order-card__item">
+              ${item.image ? `<img src="${escEom(item.image)}" alt="" width="36" height="36" loading="lazy" class="order-card__item-img">` : ''}
+              <span class="order-card__item-name">${escEom(item.productName)}</span>
+              <span class="order-card__item-qty">×${item.qty}</span>
+              <span class="order-card__item-price">₪${(item.price * item.qty).toFixed(2)}</span>
+            </li>`).join('');
+        }
+        // Update subtotal display
+        const storeSub = savedOrder.storeSubtotals?.[storeSlug] as { subtotal: number; shipping: number; discount?: { type: string; value: number; applied: number } } | undefined;
+        if (storeSub) {
+          const discApplied = storeSub.discount?.applied ?? 0;
+          const total = storeSub.subtotal + storeSub.shipping - discApplied;
+          const subtotalsEl = card.querySelector<HTMLElement>('.order-card__subtotals');
+          if (subtotalsEl) {
+            subtotalsEl.innerHTML = `
+              <span>משלוח: ${storeSub.shipping === 0 ? 'חינם' : `₪${storeSub.shipping.toFixed(2)}`}</span>
+              ${discApplied > 0 ? `<span style="color:#16a34a">הנחה: −₪${discApplied.toFixed(2)}</span>` : ''}
+              <strong>סה"כ: ₪${total.toFixed(2)}</strong>`;
+          }
+          const amountEl = card.querySelector('.order-card__amount');
+          if (amountEl) amountEl.textContent = `₪${total.toFixed(2)}`;
+        }
+
+        // Update edit button data attributes
+        const editBtn = card.querySelector<HTMLElement>('.order-edit-buyer-btn');
+        if (editBtn && savedOrder) {
+          editBtn.dataset.buyerName     = savedOrder.buyerName;
+          editBtn.dataset.buyerEmail    = savedOrder.buyerEmail;
+          editBtn.dataset.buyerPhone    = savedOrder.buyerPhone;
+          editBtn.dataset.buyerStreet   = savedOrder.buyerAddress.street;
+          editBtn.dataset.buyerCity     = savedOrder.buyerAddress.city;
+          editBtn.dataset.buyerZip      = savedOrder.buyerAddress.zip ?? '';
+          editBtn.dataset.shipping      = String(storeSub?.shipping ?? 0);
+          editBtn.dataset.discountType  = storeSub?.discount?.type ?? 'percent';
+          editBtn.dataset.discountValue = String(storeSub?.discount?.value ?? 0);
+          if (savedOrder.items) editBtn.dataset.items = JSON.stringify(savedOrder.items.filter((i: EomItem) => i.storeSlug === storeSlug));
+        }
+      }
+
+      if (editOrderSuccess) { editOrderSuccess.style.display = 'block'; }
+      setTimeout(() => { editOrderModal?.close(); if (editOrderSuccess) editOrderSuccess.style.display = 'none'; }, 1400);
+    } catch {
+      if (editOrderError) { editOrderError.textContent = 'שגיאת רשת, נסה שוב'; editOrderError.style.display = 'block'; }
+    } finally {
+      editOrderSaveBtn.disabled = false;
+    }
   });
 
   // Live unread polling

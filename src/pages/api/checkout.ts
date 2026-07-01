@@ -1,4 +1,5 @@
 export const prerender = false;
+import crypto from 'node:crypto';
 import type { APIContext } from 'astro';
 import { getStoreBySlug } from '../../lib/stores.js';
 import { getProductBySlug } from '../../lib/store-products.js';
@@ -117,12 +118,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     totalShipping += shipping;
   }
 
-  const itemsTotal  = Object.values(storeSubtotals).reduce((s, d) => s + d.subtotal, 0);
-  const totalAmount = itemsTotal + totalShipping;
-
   const userId = getSellerSession(cookies);
 
-  const order = createOrder({
+  const buyerData = {
     ...(userId ? { buyerId: userId } : {}),
     buyerName:   buyerName.trim(),
     buyerEmail:  buyerEmail.trim().toLowerCase(),
@@ -132,11 +130,38 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       street: String(buyerAddress!.street).trim(),
       zip:    buyerAddress?.zip ? String(buyerAddress.zip).trim() : undefined,
     },
-    items:          orderItems,
-    storeSubtotals,
-    shippingAmount: totalShipping,
-    totalAmount,
-  });
+  };
+
+  // Shared reference for the buyer to identify the full purchase across all stores
+  const checkoutRef = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+  // Create one order per store so each seller owns a separate, isolated order
+  const orderIds: string[] = [];
+  for (const [storeSlug, sub] of Object.entries(storeSubtotals)) {
+    const storeItems = orderItems.filter((i) => i.storeSlug === storeSlug);
+    const storeTotalAmount = sub.subtotal + sub.shipping;
+    const storeOrder = createOrder({
+      ...buyerData,
+      checkoutRef,
+      items: storeItems,
+      storeSubtotals: { [storeSlug]: sub },
+      shippingAmount: sub.shipping,
+      totalAmount:    storeTotalAmount,
+    });
+    orderIds.push(storeOrder.id);
+
+    const store = getStoreBySlug(storeSlug);
+    if (store) {
+      createNotification({
+        userId: store.sellerId,
+        role: 'seller',
+        type: 'new_order',
+        title: 'הזמנה חדשה!',
+        body: `הזמנה מ-${buyerData.buyerName} על סך ${storeTotalAmount.toFixed(2)}₪`,
+        relatedId: storeOrder.id,
+      });
+    }
+  }
 
   // Clear server-side cart for logged-in users (preserves wishlist + favoriteStores)
   if (userId) {
@@ -144,22 +169,5 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     saveUserCart(userId, { cart: {}, wishlist: existing.wishlist, favoriteStores: existing.favoriteStores ?? [] });
   }
 
-  // Notify each store's seller about the new order
-  const notifiedSellers = new Set<string>();
-  for (const [storeSlug] of Object.entries(storeSubtotals)) {
-    const store = getStoreBySlug(storeSlug);
-    if (store && !notifiedSellers.has(store.sellerId)) {
-      notifiedSellers.add(store.sellerId);
-      createNotification({
-        userId: store.sellerId,
-        role: 'seller',
-        type: 'new_order',
-        title: 'הזמנה חדשה!',
-        body: `הזמנה מ-${order.buyerName} על סך ${totalAmount.toFixed(2)}₪`,
-        relatedId: order.id,
-      });
-    }
-  }
-
-  return json({ orderId: order.id }, 201);
+  return json({ orderIds, checkoutRef }, 201);
 }

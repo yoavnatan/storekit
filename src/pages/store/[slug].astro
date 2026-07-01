@@ -64,19 +64,49 @@ const pmI18n = {
   <div class="store-page" data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang}>
 
     <section class="store-banner" aria-labelledby="store-heading">
-      <div class="container">
-        <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
-        {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
-        {shopStore.description && shopStore.description !== shopStore.tagline && (
-          <p class="store-desc" dir="auto">{shopStore.description}</p>
-        )}
-        <div style="margin-top:1rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
-          {/* Contact store button — always visible (not for store owner) */}
-          {userId !== shopStore.sellerId && (
-            <div style="position:relative;display:inline-block">
+      <div class="container store-banner__layout">
+
+        <!-- Store info -->
+        <div class="store-banner__info">
+          <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
+          {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
+          {shopStore.description && shopStore.description !== shopStore.tagline && (
+            <p class="store-desc" dir="auto">{shopStore.description}</p>
+          )}
+
+          <!-- Actions row -->
+          <div class="store-banner__actions">
+            <div style="position:relative;display:flex;align-items:center">
+              <button
+                id="fav-store-btn"
+                type="button"
+                class="store-banner-action-btn"
+                data-slug={shopStore.slug}
+                data-favorited={String(isFavorited)}
+                data-login-url={`/seller/login?next=/store/${shopStore.slug}`}
+                data-is-logged-in={String(isLoggedIn)}
+                aria-label={isFavorited ? t.store.savedStore : t.store.saveStore}
+                aria-pressed={isFavorited}
+              >
+                <svg id="fav-store-icon" width="13" height="13" viewBox="0 0 24 24" fill={isFavorited ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;transition:fill 0.18s">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+                <span id="fav-store-label">{isFavorited ? t.store.savedStore : t.store.saveStore}</span>
+              </button>
+              <div
+                id="fav-store-tooltip"
+                role="status"
+                aria-live="polite"
+                style="position:absolute;top:calc(100% + 0.45rem);inset-inline-start:0;z-index:30;background:var(--color-surface);border:1px solid var(--color-border);border-radius:0.55rem;padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text);opacity:0;pointer-events:none;transform:translateY(-6px) scale(0.97);transition:opacity 0.17s,transform 0.22s cubic-bezier(0.34,1.56,0.64,1)"
+              >
+                {t.store.loginToSave} <a id="fav-store-tooltip-link" href={`/seller/login?next=/store/${shopStore.slug}`} style="color:var(--color-accent);font-weight:600">{t.store.loginToSaveLink}</a>
+              </div>
+            </div>
+
+            {userId !== shopStore.sellerId && (
               <button
                 type="button"
-                class="contact-store-btn"
+                class="store-banner-action-btn"
                 id="contact-store-btn"
                 data-store-id={shopStore.id}
                 data-seller-id={shopStore.sellerId}
@@ -88,35 +118,10 @@ const pmI18n = {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 צור קשר
               </button>
-            </div>
-          )}
-          <div style="position:relative;display:inline-block">
-          <button
-            id="fav-store-btn"
-            type="button"
-            data-slug={shopStore.slug}
-            data-favorited={String(isFavorited)}
-            data-login-url={`/seller/login?next=/store/${shopStore.slug}`}
-            data-is-logged-in={String(isLoggedIn)}
-            aria-label={isFavorited ? t.store.savedStore : t.store.saveStore}
-            aria-pressed={isFavorited}
-            style="display:inline-flex;align-items:center;gap:0.4rem;border:1px solid var(--color-border);background:none;border-radius:9999px;padding:0.3rem 0.85rem 0.3rem 0.7rem;cursor:pointer;font-size:0.82rem;font-weight:500;color:var(--color-text);transition:all 0.15s cubic-bezier(0.34,1.56,0.64,1);line-height:1"
-          >
-            <svg id="fav-store-icon" width="15" height="15" viewBox="0 0 24 24" fill={isFavorited ? 'var(--color-accent)' : 'none'} stroke={isFavorited ? 'var(--color-accent)' : 'currentColor'} stroke-width="2" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;transition:fill 0.18s,stroke 0.18s">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-            </svg>
-            <span id="fav-store-label">{isFavorited ? t.store.savedStore : t.store.saveStore}</span>
-          </button>
-          <div
-            id="fav-store-tooltip"
-            role="status"
-            aria-live="polite"
-            style="position:absolute;top:calc(100% + 0.45rem);inset-inline-start:0;z-index:30;background:var(--color-surface);border:1px solid var(--color-border);border-radius:0.55rem;padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text);opacity:0;pointer-events:none;transform:translateY(-6px) scale(0.97);transition:opacity 0.17s,transform 0.22s cubic-bezier(0.34,1.56,0.64,1)"
-          >
-            {t.store.loginToSave} <a id="fav-store-tooltip-link" href={`/seller/login?next=/store/${shopStore.slug}`} style="color:var(--color-accent);font-weight:600">{t.store.loginToSaveLink}</a>
-          </div>
+            )}
           </div>
         </div>
+
       </div>
     </section>
 
@@ -132,48 +137,50 @@ const pmI18n = {
         </div>
       ) : (
         <Fragment>
-          {allCategories.length > 0 && (
-            <div id="category-filters" role="group" aria-label={t.store.filterByCategory}
-                 style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1.25rem">
-              <button type="button" class="category-chip" data-category="" aria-pressed="true"
-                      style="border:1px solid var(--color-primary);border-radius:9999px;padding:0.22rem 0.8rem;font-size:0.78rem;cursor:pointer;background:var(--color-primary);color:#fff;font-weight:500;transition:all 0.15s;line-height:1.5">
-                {t.store.filterAll}
-              </button>
-              {allCategories.map((cat) => (
-                <button type="button" class="category-chip" data-category={cat} aria-pressed="false"
-                        style="border:1px solid var(--color-border);border-radius:9999px;padding:0.22rem 0.8rem;font-size:0.78rem;cursor:pointer;background:none;color:var(--color-muted);font-weight:400;transition:all 0.15s;line-height:1.5">
-                  {cat}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div style="display:flex;justify-content:flex-end;margin-bottom:2rem">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1.5rem;flex-wrap:wrap">
             {/* Hidden search input — driven by header search bar */}
             <input type="search" id="product-search" style="display:none" tabindex="-1" aria-hidden="true" autocomplete="off" />
-            <div class="relative w-44" id="sort-dropdown">
+
+            {allCategories.length > 0 && (
+              <div id="category-filters" role="group" aria-label={t.store.filterByCategory}
+                   style="display:flex;flex-wrap:wrap;gap:0.5rem">
+                <button type="button" class="category-chip" data-category="" aria-pressed="true">
+                  {t.store.filterAll}
+                </button>
+                {allCategories.map((cat) => (
+                  <button type="button" class="category-chip" data-category={cat} aria-pressed="false">
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div style="flex-shrink:0;position:relative" id="sort-dropdown">
               <button
                 type="button"
                 id="sort-trigger"
                 aria-haspopup="listbox"
                 aria-expanded="false"
-                class="input flex items-center justify-between gap-3 select-none whitespace-nowrap w-full py-2 text-sm cursor-pointer">
-                <span id="sort-label">{t.store.sortDefault}</span>
-                <svg id="sort-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
+                class="input flex items-center gap-2 select-none whitespace-nowrap py-2 text-sm cursor-pointer"
+                style="border-radius:9999px;padding-inline:0.75rem"
+                aria-label={t.store.sortDefault}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+                <svg id="sort-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
+                <span id="sort-label" class="visually-hidden">{t.store.sortDefault}</span>
               </button>
               <ul
                 id="sort-menu"
                 role="listbox"
                 aria-labelledby="sort-trigger"
                 hidden
-                class="absolute ltr:right-0 rtl:left-0 top-full z-20 mt-1 w-full"
-                style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:0.3rem;animation:sort-menu-open 0.13s cubic-bezier(0.34,1.56,0.64,1)">
-                <li role="option" data-value="default" aria-selected="true" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortDefault}</li>
-                <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNameAsc}</li>
-                <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNameDesc}</li>
-                <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortPriceAsc}</li>
-                <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortPriceDesc}</li>
-                <li role="option" data-value="newest" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-semibold aria-selected:text-[var(--color-accent)]">{t.store.sortNewest}</li>
+                class="absolute ltr:right-0 rtl:right-0 top-full z-20 mt-1"
+                style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:0.3rem;animation:sort-menu-open 0.13s cubic-bezier(0.34,1.56,0.64,1);min-width:11rem;white-space:nowrap">
+                <li role="option" data-value="default" aria-selected="true" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortDefault}</li>
+                <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameAsc}</li>
+                <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameDesc}</li>
+                <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceAsc}</li>
+                <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceDesc}</li>
+                <li role="option" data-value="newest" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNewest}</li>
               </ul>
             </div>
           </div>
@@ -332,7 +339,7 @@ const pmI18n = {
   import { trackAddToCart } from '../../lib/tracking.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart), li[role="option"]');
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart)');
     if (btn) spawnRipple(btn, e.clientX, e.clientY);
   });
 
@@ -551,19 +558,8 @@ const pmI18n = {
   function setActiveChip(chip: HTMLButtonElement) {
     activeTag = chip.dataset.category ?? '';
     categoryChips.forEach((c) => {
-      const isActive = c === chip;
-      c.setAttribute('aria-pressed', String(isActive));
-      if (isActive) {
-        c.style.background = 'var(--color-primary)';
-        c.style.color = '#fff';
-        c.style.borderColor = 'var(--color-primary)';
-        c.style.fontWeight = '500';
-      } else {
-        c.style.background = 'none';
-        c.style.color = 'var(--color-muted)';
-        c.style.borderColor = 'var(--color-border)';
-        c.style.fontWeight = '400';
-      }
+      c.setAttribute('aria-pressed', String(c === chip));
+      c.style.cssText = '';
     });
     filterAndSort();
   }
@@ -663,7 +659,9 @@ const pmI18n = {
     sortOptions.forEach(o => o.setAttribute('aria-selected', 'false'));
     opt.setAttribute('aria-selected', 'true');
     currentSort = opt.dataset.value ?? 'default';
-    if (sortLabel) sortLabel.textContent = opt.textContent?.trim() ?? '';
+    const label = opt.textContent?.trim() ?? '';
+    if (sortLabel) sortLabel.textContent = label;
+    if (sortTrigger) sortTrigger.setAttribute('aria-label', label);
     closeSort();
     sortTrigger?.focus();
     filterAndSort();
@@ -730,19 +728,8 @@ const pmI18n = {
       if (matchingChip) {
         activeTag = initCat;
         categoryChips.forEach(c => {
-          const isActive = c === matchingChip;
-          c.setAttribute('aria-pressed', String(isActive));
-          if (isActive) {
-            c.style.background = 'var(--color-primary)';
-            c.style.color = '#fff';
-            c.style.borderColor = 'var(--color-primary)';
-            c.style.fontWeight = '500';
-          } else {
-            c.style.background = 'none';
-            c.style.color = 'var(--color-muted)';
-            c.style.borderColor = 'var(--color-border)';
-            c.style.fontWeight = '400';
-          }
+          c.setAttribute('aria-pressed', String(c === matchingChip));
+          c.style.cssText = '';
         });
       }
     }

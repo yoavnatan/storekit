@@ -81,6 +81,11 @@
 
   function open() {
     if (!panel) return;
+    // Update title & close label immediately — before skeleton — so it's never wrong
+    const i18nEarly = getI18n().wishlist ?? {};
+    if (titleEl) titleEl.textContent = i18nEarly.title ?? 'פריטים שאהבתי';
+    const closeBtnEl = document.getElementById('wishlist-close');
+    if (closeBtnEl) closeBtnEl.setAttribute('aria-label', i18nEarly.close ?? 'סגור');
     if (lines) lines.innerHTML = skeletonHtml();
     position();
     panel.style.display = 'flex';

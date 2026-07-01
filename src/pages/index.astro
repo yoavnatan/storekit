@@ -38,36 +38,11 @@ const jsonLd = {
   isLoggedIn={isLoggedIn}
   hasStore={hasStore}
   storeMode={true}
+  showSearch={true}
   dataLayer={{ event: 'page_view', page_type: 'platform', currency: 'ILS' }}
 >
 
-  <!-- ── Hero ──────────────────────────────────────────────────────── -->
-  <section class="home-hero" aria-label={t.home.searchPlaceholder}>
-    <div class="home-hero__glow" aria-hidden="true"></div>
-    <div class="container home-hero__inner">
-      <h1 class="visually-hidden">{t.home.discoverStores}</h1>
-      <div class="home-search-wrap">
-        <label for="store-search" class="visually-hidden">{t.home.searchPlaceholder}</label>
-        <svg
-          class="home-search-icon"
-          style={lang === 'he' ? 'inset-inline-start:auto;inset-inline-end:0.9rem' : ''}
-          width="15" height="15" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2.5" aria-hidden="true"
-        >
-          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-        </svg>
-        <input
-          id="store-search"
-          type="search"
-          placeholder={t.home.searchPlaceholder}
-          autocomplete="off"
-          style={lang === 'he' ? 'padding-inline-start:1rem;padding-inline-end:2.5rem' : ''}
-          class="home-search-input"
-        />
-      </div>
-    </div>
-  </section>
-
+  <h1 class="visually-hidden">{t.home.discoverStores}</h1>
   <div class="home-body">
 
   {isLoggedIn && seller && (
@@ -81,39 +56,29 @@ const jsonLd = {
   <section
     id="carts-section"
     aria-labelledby="carts-heading"
-    class="section container"
+    class="home-carts-section container"
     data-label-items={t.home.cartItems}
     data-label-open={t.home.cartOpenBtn}
     data-label-visit={t.home.visitStore}
     data-label-empty={t.home.noActiveCarts}
   >
     <div class="home-section-header">
-      <h2 id="carts-heading" class="home-section-title">
+      <h2 id="carts-heading" class="home-section-title home-carts-section__title">
         {t.home.yourCarts}
-        <span id="carts-badge" class="home-badge" hidden aria-live="polite" aria-atomic="true"></span>
       </h2>
     </div>
-    <div id="carts-list" class="home-carts-grid" role="list">
-      <div class="home-cart-card" aria-hidden="true">
-        <div class="home-cart-card__icon" style="background:var(--color-border)"></div>
-        <div class="home-cart-card__meta" style="gap:0.35rem;display:flex;flex-direction:column">
-          <div class="skel-bar" style="height:0.875rem;width:60%"></div>
-          <div class="skel-bar" style="height:0.75rem;width:40%"></div>
-        </div>
-        <div class="skel-bar" style="height:2rem;width:5rem;border-radius:var(--radius)"></div>
-      </div>
-      <div class="home-cart-card" aria-hidden="true">
-        <div class="home-cart-card__icon" style="background:var(--color-border)"></div>
-        <div class="home-cart-card__meta" style="gap:0.35rem;display:flex;flex-direction:column">
-          <div class="skel-bar" style="height:0.875rem;width:50%"></div>
-          <div class="skel-bar" style="height:0.75rem;width:35%"></div>
-        </div>
-        <div class="skel-bar" style="height:2rem;width:5rem;border-radius:var(--radius)"></div>
-      </div>
+    <div id="carts-list" class="home-carts-wrap" role="list">
+      <div class="home-cart-chip-skel" aria-hidden="true"></div>
+      <div class="home-cart-chip-skel" style="width:6rem" aria-hidden="true"></div>
     </div>
   </section>
 
   <!-- ── Per-store product carousels ───────────────────────────────── -->
+  {storesWithProducts.length > 0 && (
+    <div class="section container" style="padding-bottom:0">
+      <h2 class="home-section-title">{t.home.discoverStores}</h2>
+    </div>
+  )}
   {storesWithProducts.length === 0 ? (
     <div class="section container flex flex-col items-center gap-4 py-16 text-center">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
@@ -283,7 +248,7 @@ const jsonLd = {
 
   document.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>(
-      'button, a.btn, a.home-product-card'
+      'button, a.btn, a.home-product-card, a.home-cart-chip__store'
     );
     if (btn) spawnRipple(btn, e.clientX, e.clientY);
   });
@@ -291,12 +256,11 @@ const jsonLd = {
   // ── Active Carts ───────────────────────────────────────────────────
   const cartsSection = document.getElementById('carts-section') as HTMLElement | null;
   const cartsList    = document.getElementById('carts-list')    as HTMLElement | null;
-  const cartsBadge   = document.getElementById('carts-badge')   as HTMLElement | null;
 
-  const labelItems = cartsSection?.dataset.labelItems ?? 'items';
-  const labelOpen  = cartsSection?.dataset.labelOpen  ?? 'Open cart';
-  const labelVisit = cartsSection?.dataset.labelVisit ?? 'Visit store';
-  const labelEmpty = cartsSection?.dataset.labelEmpty ?? 'No active carts yet';
+  const labelItems = cartsSection?.dataset.labelItems ?? 'פריטים';
+  const labelOpen  = cartsSection?.dataset.labelOpen  ?? 'פתח עגלה';
+  const labelVisit = cartsSection?.dataset.labelVisit ?? 'בקר בחנות';
+  const labelEmpty = cartsSection?.dataset.labelEmpty ?? 'אין עגלות פעילות';
 
   function renderCarts(): void {
     const carts = getActiveStoreCarts();
@@ -308,32 +272,30 @@ const jsonLd = {
     }
 
     cartsSection.removeAttribute('hidden');
-    if (cartsBadge) {
-      cartsBadge.textContent = String(carts.length);
-      cartsBadge.removeAttribute('hidden');
-    }
 
     cartsList.innerHTML = carts.map((c) => {
       const subtotal = getSubtotal(c.storeSlug);
       const initial  = (c.storeName[0] ?? '?').toUpperCase();
       return `
-        <div class="home-cart-card" role="listitem">
-          <a href="/store/${encodeURIComponent(c.storeSlug)}" class="home-cart-card__store-link" aria-label="${labelVisit} — ${c.storeName}">
-            <div class="home-cart-card__icon" aria-hidden="true">${initial}</div>
-            <span class="home-cart-card__name">${c.storeName}</span>
+        <div class="home-cart-chip" role="listitem">
+          <a
+            href="/store/${encodeURIComponent(c.storeSlug)}"
+            class="home-cart-chip__store"
+            aria-label="${labelVisit} ${c.storeName}"
+          >
+            <div class="home-cart-chip__icon" aria-hidden="true">${initial}</div>
+            <span class="home-cart-chip__name">${c.storeName}</span>
           </a>
+          <span class="home-cart-chip__sep" aria-hidden="true"></span>
           <button
             type="button"
-            class="home-cart-card__meta"
+            class="home-cart-chip__cart"
             data-open-cart="${encodeURIComponent(c.storeSlug)}"
             aria-label="${labelOpen} — ${c.storeName}"
-          >${c.count} ${labelItems} · ${formatPrice(subtotal)}</button>
-          <button
-            type="button"
-            class="btn btn--sm btn--ghost home-cart-card__btn"
-            data-open-cart="${encodeURIComponent(c.storeSlug)}"
-            aria-label="${labelOpen} — ${c.storeName}"
-          >${labelOpen}</button>
+          >
+            <span class="home-cart-chip__meta">${c.count} ${labelItems} · ${formatPrice(subtotal)}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          </button>
         </div>`;
     }).join('');
   }
