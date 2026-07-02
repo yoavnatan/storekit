@@ -204,16 +204,24 @@ const pmI18n = {
                        role={hasImages ? 'button' : undefined}
                        aria-label={hasImages ? p.name : undefined}
                        tabindex={hasImages ? 0 : undefined}>
-                    {p.images?.[0]
-                      ? <Image src={cdnSrc(p.images[0])} alt={p.name} class="product-card__img" width={400} height={400} loading={idx < 4 ? 'eager' : 'lazy'} fetchpriority={idx < 2 ? 'high' : undefined} />
-                      : <div class="product-card__img-placeholder" aria-hidden="true">
-                          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-                            <line x1="12" y1="22.08" x2="12" y2="12"/>
-                          </svg>
-                        </div>
-                    }
+                    <div class="product-card__slides">
+                      {hasImages
+                        ? p.images!.map((img, imgIdx) => (
+                            <div class="product-card__slide">
+                              <Image src={cdnSrc(img)} alt={p.name} class="product-card__img" width={400} height={400} loading={idx < 4 && imgIdx === 0 ? 'eager' : 'lazy'} fetchpriority={idx < 2 && imgIdx === 0 ? 'high' : undefined} />
+                            </div>
+                          ))
+                        : <div class="product-card__slide">
+                            <div class="product-card__img-placeholder" aria-hidden="true">
+                              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                                <line x1="12" y1="22.08" x2="12" y2="12"/>
+                              </svg>
+                            </div>
+                          </div>
+                      }
+                    </div>
                     {isNew && <span class="badge badge--new">{t.store.badgeNew}</span>}
                   <button
                     type="button"
@@ -231,6 +239,11 @@ const pmI18n = {
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                   </button>
+                    {hasImages && (p.images?.length ?? 0) > 1 && (
+                      <div class="product-card__dots" aria-hidden="true">
+                        {p.images!.map((_, dotI) => <span class={`product-card__dot${dotI === 0 ? ' is-active' : ''}`}></span>)}
+                      </div>
+                    )}
                   </div>
                   <div class="product-card__body">
                     <a href={`/store/${shopStore.slug}/${p.slug}`}
@@ -1133,9 +1146,108 @@ const pmI18n = {
     if (productModal?.hidden === false) closeProductModal(false);
   });
 
+  // ── Carousel dots ─────────────────────────────────────────────
+  const BASE_W = 6, ACTIVE_W = 18;
+
+  document.querySelectorAll<HTMLElement>('.product-card').forEach((card) => {
+    const slides = card.querySelector<HTMLElement>('.product-card__slides');
+    const dotsEl = card.querySelector<HTMLElement>('.product-card__dots');
+    if (!slides || !dotsEl) return;
+
+    const dots = Array.from(dotsEl.querySelectorAll<HTMLElement>('.product-card__dot'));
+    if (dots.length < 2) return;
+
+    dotsEl.addEventListener('click', (e) => e.stopPropagation());
+
+    // Cache slide width — read once, never in scroll handler
+    let slideW = slides.offsetWidth || 1;
+    new ResizeObserver(() => { slideW = slides.offsetWidth || 1; }).observe(slides);
+
+    // Cache direction — doesn't change at runtime
+    const isRtl = getComputedStyle(slides).direction === 'rtl';
+
+    let rafId: number | undefined;
+    let snapTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function setDots(widths: number[], transition: boolean) {
+      const tr = transition ? 'width 220ms cubic-bezier(0.34,1.56,0.64,1)' : 'none';
+      dots.forEach((d, i) => {
+        d.style.transition = tr;
+        d.style.width = `${widths[i]}px`;
+        d.style.background = widths[i] > BASE_W ? '#fff' : 'rgba(255,255,255,0.7)';
+      });
+    }
+
+    slides.addEventListener('scroll', () => {
+      clearTimeout(snapTimer);
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+
+      rafId = requestAnimationFrame(() => {
+        rafId = undefined;
+        const frac = Math.abs(slides.scrollLeft) / slideW;
+        const src  = Math.min(Math.floor(frac), dots.length - 1);
+        const tgt  = Math.min(src + 1, dots.length - 1);
+        const t    = frac - Math.floor(frac);
+        const w    = dots.map((_, i) => {
+          if (src === tgt) return i === src ? ACTIVE_W : BASE_W;
+          if (i === src)   return ACTIVE_W - (ACTIVE_W - BASE_W) * t;
+          if (i === tgt)   return BASE_W   + (ACTIVE_W - BASE_W) * t;
+          return BASE_W;
+        });
+        setDots(w, false);
+      });
+
+      snapTimer = setTimeout(() => {
+        const idx = Math.min(Math.round(Math.abs(slides.scrollLeft) / slideW), dots.length - 1);
+        setDots(dots.map((_, i) => i === idx ? ACTIVE_W : BASE_W), true);
+      }, 80);
+    }, { passive: true });
+
+    dots.forEach((dot, i) => {
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        slides.scrollTo({ left: (isRtl ? -1 : 1) * i * slideW, behavior: 'smooth' });
+      });
+    });
+
+    // Touch — one slide at a time, no momentum skip
+    let tStartX = 0, tStartScroll = 0;
+
+    slides.addEventListener('touchstart', (e) => {
+      tStartX = e.touches[0].clientX;
+      tStartScroll = slides.scrollLeft;
+      slides.style.scrollSnapType = 'none';
+    }, { passive: true });
+
+    slides.addEventListener('touchend', (e) => {
+      const dx = e.changedTouches[0].clientX - tStartX;
+      const cur = Math.round(Math.abs(tStartScroll) / slideW);
+      let tgt = cur;
+      if (dx < -(slideW * 0.08)) tgt = Math.min(cur + 1, dots.length - 1);
+      if (dx >  (slideW * 0.08)) tgt = Math.max(cur - 1, 0);
+      const left = (isRtl ? -1 : 1) * tgt * slideW;
+      slides.style.overflow = 'hidden';
+      requestAnimationFrame(() => {
+        slides.style.overflow = '';
+        slides.scrollLeft = left;
+        slides.style.scrollSnapType = '';
+      });
+    }, { passive: true });
+  });
+
   // Image click → product modal (replaces lightbox)
   document.querySelectorAll<HTMLElement>('.product-card__img-wrap--clickable').forEach((wrap) => {
+    const slides = wrap.querySelector<HTMLElement>('.product-card__slides');
+    let scrollAtPress = 0;
+
+    if (slides) {
+      slides.addEventListener('pointerdown', () => {
+        scrollAtPress = Math.abs(slides.scrollLeft);
+      }, { passive: true });
+    }
+
     wrap.addEventListener('click', () => {
+      if (slides && Math.abs(Math.abs(slides.scrollLeft) - scrollAtPress) > 3) return;
       const card = wrap.closest<HTMLElement>('.product-card');
       if (card) openProductModal(card);
     });
@@ -1231,4 +1343,5 @@ const pmI18n = {
       },
     }));
   });
+
 </script>

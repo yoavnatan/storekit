@@ -412,6 +412,9 @@ const orderStatusColors: Record<string, string> = {
                 <th>
                   <button type="button" class="sort-btn" data-sort-col="name">{d.colName}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
+                <th class="cat-col">
+                  <button type="button" class="sort-btn" data-sort-col="category">{d.categoryLabel}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                </th>
                 <th>
                   <button type="button" class="sort-btn" data-sort-col="price">{d.colPrice}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
@@ -439,8 +442,8 @@ const orderStatusColors: Record<string, string> = {
                     <td class="name-col">
                       <span class="product-name">{p.name}</span>
                       {p.description && <span class="product-desc">{p.description}</span>}
-                      {p.category && <span class="product-cat-chip">{p.category}</span>}
                     </td>
+                    <td class="cat-col">{p.category ? <span class="product-cat-chip">{p.category}</span> : <span style="color:var(--color-border)">—</span>}</td>
                     <td class="num product-price">{formatPrice(p.price)}</td>
                     <td class="num product-stock">
                       <span style="display:inline-flex;align-items:center;gap:0.3rem">

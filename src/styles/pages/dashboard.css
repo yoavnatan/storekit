@@ -194,6 +194,9 @@ textarea.input { resize: vertical; }
   letter-spacing: 0.01em;
 }
 
+.cat-col { font-size: 0.82rem; white-space: nowrap; }
+@media (max-width: 600px) { .cat-col { display: none; } }
+
 /* ── Category filter bar ── */
 .cat-filter-bar {
   display: flex;

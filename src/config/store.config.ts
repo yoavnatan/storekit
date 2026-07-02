@@ -59,16 +59,16 @@ interface PlatformConfig {
 }
 
 export const store: PlatformConfig = {
-  name: 'ShopHub',
+  name: 'ShopNest',
   url: 'https://example.com',
   tagline: 'Your store, open today',
-  description: 'ShopHub is an online marketplace where anyone can open a store and start selling in minutes — no code, no complexity.',
+  description: 'ShopNest is an online marketplace where anyone can open a store and start selling in minutes — no code, no complexity.',
   language: 'en',
   direction: 'ltr',
   locale: 'en_US',
 
   business: {
-    legalName: 'ShopHub',
+    legalName: 'ShopNest',
     email: 'hello@example.com',
     phone: '',
     address: '',
@@ -78,7 +78,7 @@ export const store: PlatformConfig = {
 
   logo: {
     type: 'text',
-    text: 'ShopHub',
+    text: 'ShopNest',
     image: '/logo.svg',
   },
 
@@ -100,7 +100,7 @@ export const store: PlatformConfig = {
   ],
 
   footer: {
-    note: 'ShopHub — the online marketplace for independent sellers.',
+    note: 'ShopNest — the online marketplace for independent sellers.',
     links: [
       { label: 'Terms', href: '/terms' },
       { label: 'Contact', href: '/contact' },

@@ -48,11 +48,11 @@ const strClear   = lang === 'he' ? 'נקה' : 'Clear';
 const strEmpty   = t.store.noProductsFound;
 ---
 
-<header class="site-header">
+<header class={`site-header${storeMode ? ' site-header--store' : ''}`}>
   <div class={storeMode ? 'container' : 'container between flex'} style={storeMode ? 'display:flex;align-items:center;gap:0.75rem' : undefined}>
 
     <!-- Logo / store back-link -->
-    <div style={storeMode ? 'flex:1' : 'flex-shrink:0'}>
+    <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
       {storeMode && storeName && storeSlug
         ? <div class="flex items-center gap-2">
             <a href="/" class="store-back-link" aria-label={store.name}>
@@ -152,7 +152,14 @@ const strEmpty   = t.store.noProductsFound;
     )}
 
     <!-- Actions -->
-    <div class="header-actions" style={storeMode ? 'flex:1;display:flex;justify-content:flex-end' : undefined}>
+    <div class="header-actions" style={storeMode ? 'flex:1' : undefined}>
+      {/* Mobile search icon — store pages only, hidden on desktop via CSS */}
+      {storeMode && storeSlug && !sellerMode && (
+        <button id="mobile-search-btn" class="cart-btn mobile-search-btn" aria-label={lang === 'he' ? 'חיפוש' : 'Search'} aria-expanded="false" aria-controls="mobile-search-panel">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        </button>
+      )}
+
       {!isLoggedIn && !sellerMode && (
         <a href={loginUrl} class="lang-toggle-btn" style="text-decoration:none">
           {t.nav.login}
@@ -253,6 +260,15 @@ const strEmpty   = t.store.noProductsFound;
   </div>
 </header>
 
+{storeMode && storeSlug && (
+  <div
+    id="mobile-search-panel"
+    hidden
+    style="position:fixed;z-index:60;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 8px 32px rgba(0,0,0,0.13);padding:0.4rem 0.5rem"
+  >
+    <div id="mobile-search-slot"></div>
+  </div>
+)}
 
 <script>
   import { getCount } from '../lib/cart.js';
@@ -271,6 +287,12 @@ const strEmpty   = t.store.noProductsFound;
     if (nd && !nd.hidden) {
       nd.hidden = true;
       document.getElementById('notif-bell-btn')?.setAttribute('aria-expanded', 'false');
+    }
+    // Close mobile search if open
+    const msp = document.getElementById('mobile-search-panel') as HTMLElement | null;
+    if (msp && !msp.hasAttribute('hidden')) {
+      msp.setAttribute('hidden', '');
+      document.getElementById('mobile-search-btn')?.setAttribute('aria-expanded', 'false');
     }
     window.dispatchEvent(new CustomEvent('wishlist:open'));
   });
@@ -352,7 +374,15 @@ const strEmpty   = t.store.noProductsFound;
     });
   }
 
-  function openNotifDrop()  { if (!notifDrop || !bellBtn) return; notifDrop.hidden = false; bellBtn.setAttribute('aria-expanded','true'); }
+  function openNotifDrop() {
+    if (!notifDrop || !bellBtn) return;
+    if (window.innerWidth <= 640) {
+      const rect = bellBtn.getBoundingClientRect();
+      Object.assign(notifDrop.style, { top: `${rect.bottom + 8}px`, left: '8px', right: '8px', width: 'auto', maxHeight: '480px' });
+    }
+    notifDrop.hidden = false;
+    bellBtn.setAttribute('aria-expanded', 'true');
+  }
   function closeNotifDrop() { if (!notifDrop || !bellBtn) return; notifDrop.hidden = true;  bellBtn.setAttribute('aria-expanded','false'); }
   document.getElementById('notif-close-btn')?.addEventListener('click', (e) => { e.stopPropagation(); closeNotifDrop(); bellBtn?.focus(); });
 
@@ -360,6 +390,12 @@ const strEmpty   = t.store.noProductsFound;
     e.stopPropagation();
     if (document.getElementById('wishlist-toggle')?.getAttribute('aria-expanded') === 'true') {
       window.dispatchEvent(new CustomEvent('wishlist:open'));
+    }
+    // Close mobile search if open
+    const msp = document.getElementById('mobile-search-panel') as HTMLElement | null;
+    if (msp && !msp.hasAttribute('hidden')) {
+      msp.setAttribute('hidden', '');
+      document.getElementById('mobile-search-btn')?.setAttribute('aria-expanded', 'false');
     }
     if (notifDrop?.hidden) { openNotifDrop(); loadNotifs(); } else closeNotifDrop();
   });
@@ -572,5 +608,95 @@ const strEmpty   = t.store.noProductsFound;
     document.addEventListener('click', (e) => {
       if (!headerSearch?.contains(e.target as Node)) hideDropdown();
     });
+
+    // ── Mobile search panel (icon → dropdown like notifications/wishlist) ──
+    const mobileSearchBtn   = document.getElementById('mobile-search-btn') as HTMLButtonElement | null;
+    const mobileSearchPanel = document.getElementById('mobile-search-panel') as HTMLElement | null;
+
+    if (mobileSearchBtn && mobileSearchPanel) {
+      const mq = window.matchMedia('(max-width: 640px)');
+      // Save original position so we can restore on desktop
+      const origParent      = headerSearch.parentElement as HTMLElement;
+      const origNextSibling = headerSearch.nextElementSibling;
+
+      const searchSlot = document.getElementById('mobile-search-slot') as HTMLElement | null;
+
+      function setupMobile() {
+        if (mq.matches) {
+          if (searchSlot && !searchSlot.contains(headerSearch)) {
+            searchSlot.appendChild(headerSearch!);
+          }
+        } else {
+          closeMobileSearch();
+          if (!origParent.contains(headerSearch)) {
+            origParent.insertBefore(headerSearch!, origNextSibling);
+          }
+        }
+      }
+
+      function positionPanel() {
+        const rect = mobileSearchBtn!.getBoundingClientRect();
+        Object.assign(mobileSearchPanel!.style, {
+          top:   `${rect.bottom + 8}px`,
+          left:  '8px',
+          right: '8px',
+          width: 'auto',
+        });
+      }
+
+      function closeOthers() {
+        // Close notifications
+        const nd = document.getElementById('notif-dropdown') as HTMLElement | null;
+        if (nd && !nd.hidden) {
+          nd.hidden = true;
+          document.getElementById('notif-bell-btn')?.setAttribute('aria-expanded', 'false');
+        }
+        // Close wishlist — WishlistDrawer uses style.display, not hidden attribute
+        const wp = document.getElementById('wishlist-panel') as HTMLElement | null;
+        if (wp && wp.style.display !== 'none') {
+          window.dispatchEvent(new CustomEvent('wishlist:open')); // toggles it closed
+          document.getElementById('wishlist-toggle')?.setAttribute('aria-expanded', 'false');
+        }
+      }
+
+      function openMobileSearch(e: MouseEvent) {
+        e.stopPropagation();
+        closeOthers();
+        positionPanel();
+        mobileSearchPanel!.removeAttribute('hidden');
+        mobileSearchBtn!.setAttribute('aria-expanded', 'true');
+        setTimeout(() => (mobileSearchPanel!.querySelector('input') as HTMLInputElement | null)?.focus(), 50);
+      }
+
+      function closeMobileSearch() {
+        if (!mobileSearchPanel!.hasAttribute('hidden')) {
+          hideDropdown();
+          mobileSearchPanel!.setAttribute('hidden', '');
+          mobileSearchBtn!.setAttribute('aria-expanded', 'false');
+        }
+      }
+
+      setupMobile();
+      mq.addEventListener('change', setupMobile);
+
+      mobileSearchBtn.addEventListener('click', (e) => {
+        mobileSearchPanel!.hasAttribute('hidden') ? openMobileSearch(e) : closeMobileSearch();
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!mobileSearchPanel!.hasAttribute('hidden') &&
+            !mobileSearchPanel!.contains(e.target as Node) &&
+            !mobileSearchBtn!.contains(e.target as Node)) {
+          closeMobileSearch();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !mobileSearchPanel!.hasAttribute('hidden')) {
+          closeMobileSearch();
+          mobileSearchBtn?.focus();
+        }
+      });
+    }
   }
 </script>

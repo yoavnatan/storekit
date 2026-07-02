@@ -51,6 +51,7 @@ nav a:hover { color: var(--color-text); }
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-shrink: 0;
 }
 
 .user-menu { position: relative; }
@@ -88,6 +89,10 @@ nav a:hover { color: var(--color-text); }
 
 @keyframes user-dropdown-open {
   from { opacity: 0; transform: translateY(-5px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes user-dropdown-up {
+  from { opacity: 0; transform: translateY(5px) scale(0.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
@@ -290,6 +295,35 @@ nav a:hover { color: var(--color-text); }
 }
 
 
+/* Store mode header logo column */
+.store-header__logo-col {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Inner flex row — prevent expansion from escaping the column */
+.store-header__logo-col > div {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Store name truncates when long — never pushes siblings */
+.store-header__logo-col .logo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  display: block;
+}
+
+@media (max-width: 600px) {
+  /* No hover on touch — hide the label entirely to prevent tap-triggered reflow */
+  .store-back-link__label {
+    display: none;
+  }
+}
+
 /* Back-link inside store mode header */
 .store-back-link {
   display: inline-flex;
@@ -301,6 +335,7 @@ nav a:hover { color: var(--color-text); }
   text-decoration: none;
   color: var(--color-muted);
   transition: color 0.1s;
+  flex-shrink: 0;
 }
 .store-back-link:hover { color: var(--color-text); }
 
@@ -319,4 +354,49 @@ nav a:hover { color: var(--color-text); }
   opacity: 1;
   margin-inline-start: 0.3rem;
 }
+
+/* ── storeMode: actions alignment ── */
+.site-header--store .header-actions {
+  justify-content: flex-end;
+}
+
+/* ── Mobile storeMode: search icon button + dropdown panel ── */
+.mobile-search-btn { display: none; }
+
+@media (max-width: 640px) {
+  .mobile-search-btn { display: inline-flex; }
+  .site-header--store #header-search { display: none; }
+}
+
+/* Search inside mobile panel: full-width, results flow inside panel */
+#mobile-search-panel #header-search {
+  display: block;
+  max-width: none;
+  width: 100%;
+  flex: none;
+}
+/* Pin icon to center of input (not center of whole container incl. results) */
+#mobile-search-panel .header-search__icon {
+  top: 1rem !important;
+}
+/* Results flow inside the panel (not absolute) */
+#mobile-search-panel #header-search-dropdown {
+  position: static;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  box-shadow: none;
+  margin-top: 0.35rem;
+  animation: none;
+  padding: 0.2rem 0;
+}
+
+@keyframes mobile-search-panel-open {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+#mobile-search-panel:not([hidden]) {
+  animation: mobile-search-panel-open 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 

@@ -5,6 +5,7 @@
   padding: 2.5rem 0 2.25rem;
 }
 
+
 .store-banner__layout {
   display: block;
 }
@@ -147,7 +148,70 @@
   position: relative;
 }
 
-.product-card__img-wrap--clickable { cursor: zoom-in; }
+/* Carousel */
+.product-card__slides {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+}
+.product-card__slides::-webkit-scrollbar { display: none; }
+
+.product-card__slide {
+  flex: 0 0 100%;
+  width: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  height: 100%;
+  position: relative;
+  touch-action: pan-x;
+  overflow: hidden;
+}
+
+/* Pagination dots — overlaid at bottom of image */
+.product-card__dots {
+  position: absolute;
+  bottom: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 0.75px solid rgba(255, 255, 255, 0.2);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.product-card__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.product-card__dot.is-active {
+  width: 18px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.product-card__img-wrap--clickable { cursor: pointer; }
 
 .product-card__img-wrap--clickable::after {
   content: '';
@@ -155,6 +219,7 @@
   inset: 0;
   background: transparent;
   transition: background 0.12s;
+  pointer-events: none;
 }
 
 .product-card__img-wrap--clickable:hover::after { background: rgba(0, 0, 0, 0.04); }
@@ -188,7 +253,9 @@
   opacity: 0;
 }
 
-.product-card__img-wrap:hover .product-card__img { transform: scale(1.04); }
+@media (hover: hover) {
+  .product-card__img-wrap:hover .product-card__img { transform: scale(1.04); }
+}
 
 .product-card__img-placeholder {
   width: 100%;

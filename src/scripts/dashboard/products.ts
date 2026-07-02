@@ -547,6 +547,7 @@ export function initTableSort(): void {
       if (col === 'price')    { va = parseFloat(a.dataset.sortPrice    ?? '0'); vb = parseFloat(b.dataset.sortPrice    ?? '0'); }
       if (col === 'stock')    { va = parseInt(a.dataset.sortStock   ?? '0', 10); vb = parseInt(b.dataset.sortStock   ?? '0', 10); }
       if (col === 'wishlist') { va = parseInt(a.dataset.sortWishlist ?? '0', 10); vb = parseInt(b.dataset.sortWishlist ?? '0', 10); }
+      if (col === 'category') { va = (a.dataset.category ?? '').toLowerCase(); vb = (b.dataset.category ?? '').toLowerCase(); }
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });

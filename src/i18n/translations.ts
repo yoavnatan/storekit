@@ -37,7 +37,7 @@ export const translations = {
       builtInSeo: 'SEO מובנה',
     },
     footer: {
-      note: 'ShopHub — שוק אונליין למוכרים עצמאים.',
+      note: 'ShopNest — שוק אונליין למוכרים עצמאים.',
       terms: 'תנאי שימוש',
       contact: 'צור קשר',
     },
@@ -395,7 +395,7 @@ export const translations = {
       builtInSeo: 'Built-in SEO',
     },
     footer: {
-      note: 'ShopHub — the online marketplace for independent sellers.',
+      note: 'ShopNest — the online marketplace for independent sellers.',
       terms: 'Terms',
       contact: 'Contact',
     },

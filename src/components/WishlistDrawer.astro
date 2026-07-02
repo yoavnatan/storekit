@@ -44,23 +44,27 @@
   function position() {
     if (!panel) return;
     const btn = document.getElementById('wishlist-toggle');
-    const isMobile = window.innerWidth < 640;
-
-    if (isMobile) {
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    if (window.innerWidth <= 640) {
       Object.assign(panel.style, {
-        top: 'auto', bottom: '0', left: '0', right: '0',
-        width: '100%', maxHeight: '72vh',
-        borderRadius: '1rem 1rem 0 0',
-        boxShadow: '0 -8px 40px rgba(0,0,0,0.18)',
+        top: `${rect.bottom + 8}px`,
+        bottom: 'auto',
+        left: '8px',
+        right: '8px',
+        width: 'auto',
+        maxHeight: '480px',
+        borderRadius: 'var(--radius)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
       });
-    } else if (btn) {
-      const rect = btn.getBoundingClientRect();
+    } else {
+      const panelWidth = Math.min(340, window.innerWidth - 16);
       Object.assign(panel.style, {
         top: `${rect.bottom + 8}px`,
         bottom: 'auto',
         right: isRtl ? 'auto' : `${window.innerWidth - rect.right}px`,
         left: isRtl ? `${rect.left}px` : 'auto',
-        width: '340px',
+        width: `${panelWidth}px`,
         maxHeight: '480px',
         borderRadius: 'var(--radius)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.14)',

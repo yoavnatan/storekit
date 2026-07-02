@@ -203,6 +203,10 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
       box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
       overflow: hidden;
     }
+    .o-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.10), 0 0 0 1px var(--color-border); }
+    .o-thumbs { display: flex; flex-direction: row-reverse; margin-inline-end: 0.5rem; flex-shrink: 0; }
+    .o-thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; border: 2px solid var(--color-surface); margin-inline-start: -12px; }
+    .o-thumbs .o-thumb:last-child { margin-inline-start: 0; }
     .o-card__hd {
       display: flex; align-items: center; gap: 0.5rem;
       padding: 0.9rem 1rem; cursor: pointer; user-select: none;
@@ -402,6 +406,13 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
             return (
               <div class="o-card">
                 <div class="o-card__hd" role="button" tabindex="0" aria-expanded="false">
+                  {o.items.some((i) => i.image) && (
+                    <div class="o-thumbs">
+                      {o.items.filter((i) => i.image).slice(0, 3).map((i) => (
+                        <img src={i.image!} alt={i.productName} width="52" height="52" loading="lazy" class="o-thumb" />
+                      ))}
+                    </div>
+                  )}
                   <div class="o-card__hd-main">
                     <div class="o-card__hd-top">
                       <span class="o-id">#{o.checkoutRef ?? o.id.slice(0, 8).toUpperCase()}</span>
