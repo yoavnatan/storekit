@@ -33,7 +33,8 @@
   flex-direction: column;
   box-shadow: -4px 0 40px rgba(0, 0, 0, 0.18);
   transform: translateX(100%);
-  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  visibility: hidden;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0.28s;
   will-change: transform;
 }
 
@@ -46,6 +47,8 @@
 
 .cart-drawer.is-open {
   transform: translateX(0);
+  visibility: visible;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0s;
 }
 
 /* Mobile: slide up from bottom */

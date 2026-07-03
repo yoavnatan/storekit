@@ -157,6 +157,8 @@
   border-radius: 0.75rem;
   box-shadow: 0 8px 32px rgba(0,0,0,0.14);
   overflow: hidden;
+}
+.notif-dropdown:not([hidden]) {
   animation: notif-drop-in 0.18s cubic-bezier(0.34,1.56,0.64,1) forwards;
 }
 @keyframes notif-drop-in {
@@ -300,6 +302,67 @@
 }
 .seller-msg-reply-send:hover { opacity: 0.85; }
 .seller-msg-reply-send:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Mobile: message table → cards ───────────────────────────── */
+@media (max-width: 640px) {
+  .msg-table-wrap { border: none; overflow-x: visible; }
+
+  /* Turn table + body into block column */
+  .msg-table,
+  .msg-table tbody { display: flex; flex-direction: column; gap: 0.5rem; }
+  .msg-table thead { display: none; }
+
+  /* Each data row = card */
+  .msg-table__row {
+    display: grid;
+    grid-template-areas:
+      "status from    date actions"
+      "status subject subject actions";
+    grid-template-columns: auto 1fr auto auto;
+    grid-template-rows: auto auto;
+    column-gap: 0.55rem;
+    row-gap: 0.15rem;
+    align-items: center;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-surface);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .msg-table__row:hover { background: var(--color-bg); }
+  .msg-table__row--unread {
+    border-inline-start: 3px solid var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
+  }
+  .msg-table__row--unread .msg-table__td--from,
+  .msg-table__row--unread .msg-table__td--subject { font-weight: 700; color: var(--color-text); }
+  .msg-table__row--open { background: var(--color-bg); }
+
+  /* Reset table-cell display so grid works */
+  .msg-table__td {
+    display: block;
+    padding: 0;
+    border-bottom: none;
+    background: transparent !important;
+    vertical-align: middle;
+  }
+
+  /* Grid area assignments */
+  .msg-table__td--status  { grid-area: status; display: flex; align-items: center; }
+  .msg-table__td--from    { grid-area: from;   font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none; }
+  .msg-table__td--subject { grid-area: subject; font-size: 0.78rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none; font-weight: 400; }
+  .msg-table__td--date    { grid-area: date;    font-size: 0.7rem; color: var(--color-muted); white-space: nowrap; }
+  .msg-table__td--actions { grid-area: actions; display: flex; align-items: center; }
+
+  /* Hide on mobile */
+  .msg-table__td--preview,
+  .msg-table__td--product { display: none; }
+
+  /* Thread detail row */
+  .msg-thread-row { display: block; }
+  .msg-thread-row td { display: block; width: 100%; box-sizing: border-box; border-bottom: 1px solid var(--color-border); }
+}
 
 .seller-msg-empty { color: var(--color-muted); font-size: 0.9rem; text-align: center; padding: 2rem 0; }
 .seller-msg-delete {

@@ -30,3 +30,11 @@ data/*.json
 
 # local images / assets not for version control
 pics/
+
+# one-off debug/test scripts at root level
+check-*.cjs
+check-*.js
+test-*.cjs
+test-*.js
+debug-*.cjs
+debug-*.js

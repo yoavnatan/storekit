@@ -1,6 +1,8 @@
 node_modules/
 dist/
-.git/
+.output/
 .astro/
-package-lock.json
-public/images/
+pics/
+_backup/
+public/fonts/
+*.log
