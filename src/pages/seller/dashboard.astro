@@ -125,6 +125,21 @@ const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
 const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
 const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
 
+// Alerts per store for store-switcher dots (pending orders or unread messages)
+const storeAlerts: Record<string, boolean> = {};
+if (allStores.length > 1) {
+  const allSellerMsgs = getMessagesBySeller(sellerId);
+  for (const s of allStores) {
+    const sOrders = getOrdersByStoreSlug(s.slug);
+    const hasPending = sOrders.some(o => o.shippingStatus === 'pending');
+    const hasUnread = allSellerMsgs.some(m => !m.replyToId && m.toStoreId === s.id && !m.readBySeller);
+    storeAlerts[s.id] = hasPending || hasUnread;
+  }
+}
+const hasAnyNonCurrentAlert = store
+  ? Object.entries(storeAlerts).some(([id, v]) => v && id !== store.id)
+  : false;
+
 const orderShippingLabels: Record<string, string> = {
   pending: d.shippingPending,
   processing: d.shippingProcessing,
@@ -186,6 +201,9 @@ const orderStatusColors: Record<string, string> = {
                 aria-label={lang === 'he' ? 'החלף חנות' : 'Switch store'}
               >
                 <span class="dash-store-name">{store.name}</span>
+                {hasAnyNonCurrentAlert && (
+                  <span class="store-switcher__alert-dot" aria-label="יש התראות בחנויות אחרות"></span>
+                )}
                 <svg class="store-switcher__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
@@ -199,12 +217,17 @@ const orderStatusColors: Record<string, string> = {
                       aria-selected={s.id === store.id}
                       class={s.id === store.id ? 'store-option--current' : ''}
                     >
-                      {s.name}
-                      {s.id === store.id && (
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                      )}
+                      <span>{s.name}</span>
+                      <span style="display:flex;align-items:center;gap:0.35rem;flex-shrink:0">
+                        {storeAlerts[s.id] && (
+                          <span class="store-switcher__item-dot" aria-label="יש התראות"></span>
+                        )}
+                        {s.id === store.id && (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        )}
+                      </span>
                     </a>
                   </li>
                 ))}
@@ -407,7 +430,7 @@ const orderStatusColors: Record<string, string> = {
             <thead>
               <tr>
                 <th class="check-col"><input type="checkbox" id="bulk-select-all" aria-label={d.bulkCancel} style="cursor:pointer;width:15px;height:15px"></th>
-                <th class="num" style="width:2rem">#</th>
+                <th class="num row-num" style="width:2rem">#</th>
                 <th class="thumb-col"></th>
                 <th>
                   <button type="button" class="sort-btn" data-sort-col="name">{d.colName}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
@@ -421,7 +444,7 @@ const orderStatusColors: Record<string, string> = {
                 <th>
                   <button type="button" class="sort-btn" data-sort-col="stock">{d.colStock}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
-                <th class="num">
+                <th class="num wishlist-col">
                   <button type="button" class="sort-btn" data-sort-col="wishlist">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                     <svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
@@ -453,7 +476,7 @@ const orderStatusColors: Record<string, string> = {
                         )}
                       </span>
                     </td>
-                    <td class="num" style="color:var(--color-muted);font-size:0.82rem">
+                    <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">
                       {(wishlistCounts[p.slug] ?? 0) > 0
                         ? <span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
@@ -477,7 +500,7 @@ const orderStatusColors: Record<string, string> = {
                   </tr>
                   <tr class="edit-row" data-product-edit={p.id} hidden>
                     <td class="num row-num">{idx + 1}</td>
-                    <td colspan="7">
+                    <td colspan="20">
                       <form method="POST" action="/api/product" class="dash-form inline-edit-form">
                         <input type="hidden" name="_action" value="edit-product" />
                         <input type="hidden" name="productId" value={p.id} />
@@ -1107,6 +1130,25 @@ const orderStatusColors: Record<string, string> = {
     margin-inline-start: 4px;
     vertical-align: middle;
   }
+
+  /* ── Store-switcher alert dots ── */
+  .store-switcher__alert-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    background: #ef4444;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-inline-start: 0.3rem;
+    align-self: center;
+  }
+  .store-switcher__item-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    background: #ef4444;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
 </style>
 
 <div class="crop-modal" id="crop-modal" hidden aria-modal="true" role="dialog">

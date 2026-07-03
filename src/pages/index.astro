@@ -241,6 +241,8 @@ const jsonLd = {
 
 </BaseLayout>
 
+<script is:inline type="application/json" id="home-search-stores-data" set:html={JSON.stringify(stores.map(s => ({ name: s.name, slug: s.slug, tagline: s.tagline ?? '', description: s.description ?? '' })))} />
+
 <script>
   import { getActiveStoreCarts, getSubtotal } from '../lib/cart.js';
   import { formatPrice } from '../config/store.config.js';
@@ -356,23 +358,4 @@ const jsonLd = {
       .forEach((img) => lazyObs.observe(img));
   }
 
-  // ── Store search (filters entire store sections) ───────────────────
-  const searchInput  = document.getElementById('store-search') as HTMLInputElement | null;
-  const noResults    = document.getElementById('no-results')   as HTMLElement | null;
-  const storeSections = Array.from(
-    document.querySelectorAll<HTMLElement>('.home-store-section[data-store-name]')
-  );
-
-  searchInput?.addEventListener('input', () => {
-    const q = searchInput.value.toLowerCase().trim();
-    let visible = 0;
-    storeSections.forEach((sec) => {
-      const match = !q
-        || (sec.dataset.storeName ?? '').includes(q)
-        || (sec.dataset.tagline   ?? '').includes(q);
-      sec.style.display = match ? '' : 'none';
-      if (match) visible++;
-    });
-    if (noResults) noResults.hidden = visible > 0 || !q;
-  });
 </script>

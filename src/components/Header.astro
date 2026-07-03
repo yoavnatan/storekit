@@ -54,13 +54,16 @@ const strEmpty   = t.store.noProductsFound;
     <!-- Logo / store back-link -->
     <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
       {storeMode && storeName && storeSlug
-        ? <div class="flex items-center gap-2">
+        ? <div class="flex items-center" style="gap:0.35rem">
             <a href="/" class="store-back-link" aria-label={store.name}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={`flex-shrink:0${lang === 'he' ? ';transform:scaleX(-1)' : ''}`}><polyline points="15 18 9 12 15 6"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={`flex-shrink:0${lang === 'he' ? ';transform:scaleX(-1)' : ''}`}><polyline points="15 18 9 12 15 6"/></svg>
               <span class="store-back-link__label" aria-hidden="true">{store.name}</span>
             </a>
-            <span aria-hidden="true" style="color:var(--color-border);font-size:0.85rem;line-height:1">|</span>
-            <a href={`/store/${storeSlug}`} class="logo" aria-label={storeName}><span>{storeName}</span></a>
+            <span class="store-back-sep" aria-hidden="true" style="color:var(--color-border);font-size:0.85rem;line-height:1">|</span>
+            <a href={`/store/${storeSlug}`} class="logo store-name-link" aria-label={storeName}>
+              <svg class="store-home-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              <span class="store-name-text">{storeName}</span>
+            </a>
           </div>
         : <a href="/" class="logo" aria-label={store.name}>
             <span>{logo.text}</span>
@@ -70,7 +73,7 @@ const strEmpty   = t.store.noProductsFound;
 
     <!-- Homepage search (showSearch=true, no storeSlug) -->
     {showSearch && !storeSlug && (
-      <div class="header-search" style="flex:1">
+      <div class="header-search home-header-search" id="home-header-search" style="flex:1">
         <svg
           class="header-search__icon"
           width="13" height="13"
@@ -81,16 +84,30 @@ const strEmpty   = t.store.noProductsFound;
         >
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
-        <label for="store-search" class="visually-hidden">{t.home.searchPlaceholder}</label>
-        <input
-          type="search"
-          id="store-search"
-          class="header-search__input"
-          placeholder={t.home.searchPlaceholder}
-          autocomplete="off"
+        <form role="search" autocomplete="off" onsubmit="return false" style="display:contents">
+          <label for="store-search" class="visually-hidden">{t.home.searchPlaceholder}</label>
+          <input
+            type="search"
+            id="store-search"
+            class="header-search__input"
+            placeholder={t.home.searchPlaceholder}
+            autocomplete="off"
+            list="store-search-empty-list"
+            aria-label={t.home.searchPlaceholder}
+            aria-autocomplete="list"
+            aria-expanded="false"
+            aria-controls="home-search-dropdown"
+            style={searchInputPad}
+          />
+          <datalist id="store-search-empty-list"></datalist>
+        </form>
+        <div
+          id="home-search-dropdown"
+          class="header-search__dropdown"
+          hidden
+          role="listbox"
           aria-label={t.home.searchPlaceholder}
-          style={searchInputPad}
-        />
+        ></div>
       </div>
     )}
 
@@ -159,6 +176,12 @@ const strEmpty   = t.store.noProductsFound;
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         </button>
       )}
+      {/* Mobile search icon — homepage, hidden on desktop via CSS */}
+      {showSearch && !storeSlug && !sellerMode && (
+        <button id="home-mobile-search-btn" class="cart-btn home-mobile-search-btn" aria-label={lang === 'he' ? 'חיפוש' : 'Search'} aria-expanded="false" aria-controls="home-mobile-search-panel">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        </button>
+      )}
 
       {!isLoggedIn && !sellerMode && (
         <a href={loginUrl} class="lang-toggle-btn" style="text-decoration:none">
@@ -197,14 +220,18 @@ const strEmpty   = t.store.noProductsFound;
 
       {!sellerMode && (
         <Fragment>
-          <button id="wishlist-toggle" class="cart-btn" aria-label={t.nav.openWishlist} aria-expanded="false" aria-controls="wishlist-panel" style="position:relative">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          <div class="cart-btn-wrap">
+            <button id="wishlist-toggle" class="cart-btn" aria-label={t.nav.openWishlist} aria-expanded="false" aria-controls="wishlist-panel">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </button>
             <span id="wishlist-count" class="cart-count" hidden aria-live="polite" aria-atomic="true"></span>
-          </button>
-          <button id="cart-toggle" class="cart-btn" aria-label={t.nav.openCart}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          </div>
+          <div class="cart-btn-wrap">
+            <button id="cart-toggle" class="cart-btn" aria-label={t.nav.openCart}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            </button>
             <span id="cart-count" class="cart-count" hidden aria-live="polite" aria-atomic="true"></span>
-          </button>
+          </div>
           <script is:inline>
             (function () {
               try {
@@ -270,8 +297,32 @@ const strEmpty   = t.store.noProductsFound;
   </div>
 )}
 
+{showSearch && !storeSlug && (
+  <div
+    id="home-mobile-search-panel"
+    hidden
+    style="position:fixed;z-index:60;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 8px 32px rgba(0,0,0,0.13);padding:0.4rem 0.5rem"
+  >
+    <div id="home-mobile-search-slot"></div>
+  </div>
+)}
+
 <script>
   import { getCount } from '../lib/cart.js';
+
+  function fadeClose(el: HTMLElement, onDone: () => void): void {
+    if (el.classList.contains('dropdown--closing')) return;
+    el.classList.add('dropdown--closing');
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      el.classList.remove('dropdown--closing');
+      onDone();
+    };
+    el.addEventListener('animationend', finish, { once: true });
+    setTimeout(finish, 200);
+  }
 
   function refresh() {
     const el = document.getElementById('cart-count');
@@ -283,17 +334,13 @@ const strEmpty   = t.store.noProductsFound;
   }
 
   document.getElementById('wishlist-toggle')?.addEventListener('click', () => {
+    closeUserMenu();
     const nd = document.getElementById('notif-dropdown') as HTMLElement | null;
-    if (nd && !nd.hidden) {
-      nd.hidden = true;
-      document.getElementById('notif-bell-btn')?.setAttribute('aria-expanded', 'false');
-    }
-    // Close mobile search if open
+    if (nd && !nd.hidden) { document.getElementById('notif-bell-btn')?.setAttribute('aria-expanded', 'false'); fadeClose(nd, () => { nd!.hidden = true; }); }
     const msp = document.getElementById('mobile-search-panel') as HTMLElement | null;
-    if (msp && !msp.hasAttribute('hidden')) {
-      msp.setAttribute('hidden', '');
-      document.getElementById('mobile-search-btn')?.setAttribute('aria-expanded', 'false');
-    }
+    if (msp && !msp.hasAttribute('hidden')) { document.getElementById('mobile-search-btn')?.setAttribute('aria-expanded', 'false'); fadeClose(msp, () => { msp!.setAttribute('hidden', ''); }); }
+    const hmsp = document.getElementById('home-mobile-search-panel') as HTMLElement | null;
+    if (hmsp && !hmsp.hasAttribute('hidden')) { document.getElementById('home-mobile-search-btn')?.setAttribute('aria-expanded', 'false'); fadeClose(hmsp, () => { hmsp!.setAttribute('hidden', ''); }); }
     window.dispatchEvent(new CustomEvent('wishlist:open'));
   });
 
@@ -308,14 +355,29 @@ const strEmpty   = t.store.noProductsFound;
   const userToggle   = document.getElementById('user-menu-toggle') as HTMLButtonElement | null;
   const userDropdown = document.getElementById('user-dropdown');
 
+  function closeAllPanels() {
+    const nd = document.getElementById('notif-dropdown') as HTMLElement | null;
+    if (nd && !nd.hidden) { document.getElementById('notif-bell-btn')?.setAttribute('aria-expanded', 'false'); fadeClose(nd, () => { nd!.hidden = true; }); }
+    const wp = document.getElementById('wishlist-panel') as HTMLElement | null;
+    if (wp && wp.style.display !== 'none') { window.dispatchEvent(new CustomEvent('wishlist:open')); document.getElementById('wishlist-toggle')?.setAttribute('aria-expanded', 'false'); }
+    const msp = document.getElementById('mobile-search-panel') as HTMLElement | null;
+    if (msp && !msp.hasAttribute('hidden')) { document.getElementById('mobile-search-btn')?.setAttribute('aria-expanded', 'false'); fadeClose(msp, () => { msp!.setAttribute('hidden', ''); }); }
+    const hmsp = document.getElementById('home-mobile-search-panel') as HTMLElement | null;
+    if (hmsp && !hmsp.hasAttribute('hidden')) { document.getElementById('home-mobile-search-btn')?.setAttribute('aria-expanded', 'false'); fadeClose(hmsp, () => { hmsp!.setAttribute('hidden', ''); }); }
+    const hsd = document.getElementById('home-search-dropdown') as HTMLElement | null;
+    if (hsd && !hsd.hasAttribute('hidden')) { hsd.setAttribute('hidden', ''); document.getElementById('store-search')?.setAttribute('aria-expanded', 'false'); }
+  }
+
   function openUserMenu() {
+    closeAllPanels();
     userDropdown?.removeAttribute('hidden');
     userToggle?.setAttribute('aria-expanded', 'true');
     (userDropdown?.querySelector<HTMLElement>('[role="menuitem"]'))?.focus();
   }
   function closeUserMenu() {
-    userDropdown?.setAttribute('hidden', '');
+    if (!userDropdown || userDropdown.hasAttribute('hidden')) return;
     userToggle?.setAttribute('aria-expanded', 'false');
+    fadeClose(userDropdown, () => { userDropdown!.setAttribute('hidden', ''); });
   }
   userToggle?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -383,20 +445,23 @@ const strEmpty   = t.store.noProductsFound;
     notifDrop.hidden = false;
     bellBtn.setAttribute('aria-expanded', 'true');
   }
-  function closeNotifDrop() { if (!notifDrop || !bellBtn) return; notifDrop.hidden = true;  bellBtn.setAttribute('aria-expanded','false'); }
+  function closeNotifDrop() {
+    if (!notifDrop || !bellBtn || notifDrop.hidden) return;
+    bellBtn.setAttribute('aria-expanded', 'false');
+    fadeClose(notifDrop, () => { notifDrop!.hidden = true; });
+  }
   document.getElementById('notif-close-btn')?.addEventListener('click', (e) => { e.stopPropagation(); closeNotifDrop(); bellBtn?.focus(); });
 
   bellBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
+    closeUserMenu();
     if (document.getElementById('wishlist-toggle')?.getAttribute('aria-expanded') === 'true') {
       window.dispatchEvent(new CustomEvent('wishlist:open'));
     }
-    // Close mobile search if open
     const msp = document.getElementById('mobile-search-panel') as HTMLElement | null;
-    if (msp && !msp.hasAttribute('hidden')) {
-      msp.setAttribute('hidden', '');
-      document.getElementById('mobile-search-btn')?.setAttribute('aria-expanded', 'false');
-    }
+    if (msp && !msp.hasAttribute('hidden')) { msp.setAttribute('hidden', ''); document.getElementById('mobile-search-btn')?.setAttribute('aria-expanded', 'false'); }
+    const hmsp = document.getElementById('home-mobile-search-panel') as HTMLElement | null;
+    if (hmsp && !hmsp.hasAttribute('hidden')) { hmsp.setAttribute('hidden', ''); document.getElementById('home-mobile-search-btn')?.setAttribute('aria-expanded', 'false'); }
     if (notifDrop?.hidden) { openNotifDrop(); loadNotifs(); } else closeNotifDrop();
   });
   document.addEventListener('click', (e) => {
@@ -431,6 +496,192 @@ const strEmpty   = t.store.noProductsFound;
     fetch('/api/notifications').then(r => r.json()).then((d: { notifications: NotifItem[]; unreadCount: number }) => {
       renderNotifs(d.notifications ?? []);
     }).catch(() => {});
+  }
+
+  // ── Homepage mobile search ────────────────────────────────────
+  const homeSearchBtn   = document.getElementById('home-mobile-search-btn') as HTMLButtonElement | null;
+  const homeSearchPanel = document.getElementById('home-mobile-search-panel') as HTMLElement | null;
+  const homeSearchDiv   = document.getElementById('home-header-search') as HTMLElement | null;
+
+  if (homeSearchBtn && homeSearchPanel && homeSearchDiv) {
+    const homeMq = window.matchMedia('(max-width: 640px)');
+    const homeOrigParent      = homeSearchDiv.parentElement as HTMLElement;
+    const homeOrigNextSibling = homeSearchDiv.nextElementSibling;
+    const homeSearchSlot      = document.getElementById('home-mobile-search-slot') as HTMLElement | null;
+
+    function setupHomeMobile() {
+      if (homeMq.matches) {
+        if (homeSearchSlot && !homeSearchSlot.contains(homeSearchDiv)) homeSearchSlot.appendChild(homeSearchDiv!);
+      } else {
+        closeHomeMobileSearch();
+        if (!homeOrigParent.contains(homeSearchDiv)) homeOrigParent.insertBefore(homeSearchDiv!, homeOrigNextSibling);
+      }
+    }
+
+    function positionHomePanel() {
+      const rect = homeSearchBtn!.getBoundingClientRect();
+      Object.assign(homeSearchPanel!.style, { top: `${rect.bottom + 8}px`, left: '8px', right: '8px', width: 'auto' });
+    }
+
+    function openHomeMobileSearch(e: MouseEvent) {
+      e.stopPropagation();
+      closeUserMenu();
+      closeAllPanels();
+      positionHomePanel();
+      homeSearchPanel!.removeAttribute('hidden');
+      homeSearchBtn!.setAttribute('aria-expanded', 'true');
+      setTimeout(() => (homeSearchPanel!.querySelector('input') as HTMLInputElement | null)?.focus(), 50);
+    }
+
+    function closeHomeMobileSearch() {
+      if (homeSearchPanel!.hasAttribute('hidden')) return;
+      homeSearchBtn!.setAttribute('aria-expanded', 'false');
+      fadeClose(homeSearchPanel!, () => { homeSearchPanel!.setAttribute('hidden', ''); });
+    }
+
+    setupHomeMobile();
+    homeMq.addEventListener('change', setupHomeMobile);
+
+    homeSearchBtn.addEventListener('click', (e) => {
+      homeSearchPanel!.hasAttribute('hidden') ? openHomeMobileSearch(e) : closeHomeMobileSearch();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!homeSearchPanel!.hasAttribute('hidden') &&
+          !homeSearchPanel!.contains(e.target as Node) &&
+          !homeSearchBtn!.contains(e.target as Node)) {
+        closeHomeMobileSearch();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !homeSearchPanel!.hasAttribute('hidden')) {
+        closeHomeMobileSearch();
+        homeSearchBtn?.focus();
+      }
+    });
+  }
+
+  // ── Home / buyer-dashboard store search dropdown ─────────────
+  const homeSearchIn  = document.getElementById('store-search') as HTMLInputElement | null;
+  const homeSearchDdEl = document.getElementById('home-search-dropdown') as HTMLElement | null;
+
+  if (homeSearchIn && homeSearchDdEl) {
+    type HomeStore = { name: string; slug: string; tagline: string; description: string };
+    let homeStores: HomeStore[] = [];
+    try {
+      const dataEl = document.getElementById('home-search-stores-data');
+      if (dataEl) homeStores = JSON.parse(dataEl.textContent ?? '[]') as HomeStore[];
+    } catch { /* no data */ }
+
+    const HOME_RECENTS_KEY = 'home_search_recent_v1';
+    const MAX_HOME_RECENTS = 5;
+    function getHomeRecents(): string[] { try { return JSON.parse(localStorage.getItem(HOME_RECENTS_KEY) ?? '[]') as string[]; } catch { return []; } }
+    function saveHomeRecent(q: string) {
+      const list = [q, ...getHomeRecents().filter(r => r !== q)].slice(0, MAX_HOME_RECENTS);
+      try { localStorage.setItem(HOME_RECENTS_KEY, JSON.stringify(list)); } catch {}
+    }
+    function clearHomeRecents() { try { localStorage.removeItem(HOME_RECENTS_KEY); } catch {} }
+
+    function showHomeDd() { homeSearchDdEl!.removeAttribute('hidden'); homeSearchIn!.setAttribute('aria-expanded', 'true'); }
+    function hideHomeDd() { homeSearchDdEl!.setAttribute('hidden', ''); homeSearchIn!.setAttribute('aria-expanded', 'false'); }
+
+    function normHome(s: string): string {
+      return s.toLowerCase()
+        .replace(/[ן]/g,'נ').replace(/[ף]/g,'פ').replace(/[ך]/g,'כ').replace(/[ם]/g,'מ').replace(/[ץ]/g,'צ')
+        .replace(/\s+/g,' ').trim();
+    }
+
+    function filterHomeSections(q: string) {
+      const secs = document.querySelectorAll<HTMLElement>('.home-store-section[data-store-name]');
+      const noRes = document.getElementById('no-results');
+      if (!secs.length) return;
+      const nq = normHome(q);
+      let visible = 0;
+      secs.forEach(sec => {
+        const match = !nq || normHome(sec.dataset.storeName ?? '').includes(nq) || normHome(sec.dataset.tagline ?? '').includes(nq);
+        sec.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      if (noRes) noRes.hidden = visible > 0 || !nq;
+    }
+
+    function renderHomeRecents() {
+      const recents = getHomeRecents();
+      if (!recents.length) { hideHomeDd(); return; }
+      homeSearchDdEl!.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0.3rem 0.5rem 0.1rem">
+          <span class="hsd-section-label" style="padding:0">חיפושים אחרונים</span>
+          <button class="hsd-clear-recents" type="button" id="home-clear-recents">נקה</button>
+        </div>
+        <div class="hsd-recents-list">
+          ${recents.map(r => `<button class="hsd-recent-chip" type="button" data-q="${r.replace(/"/g,'&quot;')}">${r}</button>`).join('')}
+        </div>`;
+      homeSearchDdEl!.querySelector<HTMLButtonElement>('#home-clear-recents')?.addEventListener('click', () => { clearHomeRecents(); hideHomeDd(); });
+      homeSearchDdEl!.querySelectorAll<HTMLButtonElement>('.hsd-recent-chip').forEach(btn => {
+        btn.addEventListener('click', () => { homeSearchIn!.value = btn.dataset.q ?? ''; applyHomeSearch(btn.dataset.q ?? ''); });
+      });
+      showHomeDd();
+    }
+
+    const STORE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
+
+    function renderHomeResults(q: string) {
+      const nq = normHome(q);
+      const hits = homeStores.filter(s =>
+        normHome(s.name).includes(nq) || normHome(s.tagline).includes(nq) || normHome(s.description).includes(nq)
+      ).slice(0, 6);
+      if (!hits.length) {
+        homeSearchDdEl!.innerHTML = `<div class="hsd-empty">לא נמצאו חנויות</div>`;
+      } else {
+        homeSearchDdEl!.innerHTML = `<ul class="hsd-results" role="listbox">
+          ${hits.map(s => `
+            <li role="option">
+              <a class="hsd-result-item" href="/store/${s.slug}" data-slug="${s.slug}">
+                <div class="hsd-result-img-placeholder" aria-hidden="true">${STORE_ICON}</div>
+                <span class="hsd-result-name">${s.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+                ${s.tagline ? `<span class="hsd-result-price" style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tagline.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>` : ''}
+              </a>
+            </li>`).join('')}
+        </ul>`;
+        homeSearchDdEl!.querySelectorAll<HTMLAnchorElement>('.hsd-result-item').forEach(a => {
+          a.addEventListener('click', e => { e.preventDefault(); saveHomeRecent(q); window.location.href = `/store/${a.dataset.slug ?? ''}`; });
+        });
+      }
+      showHomeDd();
+      filterHomeSections(q);
+    }
+
+    function applyHomeSearch(q: string) {
+      if (!q.trim()) { filterHomeSections(''); renderHomeRecents(); return; }
+      renderHomeResults(q.trim());
+    }
+
+    homeSearchIn.addEventListener('focus', () => {
+      if (!homeSearchIn.value.trim()) renderHomeRecents(); else renderHomeResults(homeSearchIn.value.trim());
+    });
+
+    let homeDebounce = 0;
+    homeSearchIn.addEventListener('input', () => {
+      clearTimeout(homeDebounce);
+      const q = homeSearchIn.value.trim();
+      if (!q) { filterHomeSections(''); hideHomeDd(); renderHomeRecents(); return; }
+      homeDebounce = window.setTimeout(() => renderHomeResults(q), 150);
+    });
+
+    homeSearchIn.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { hideHomeDd(); homeSearchIn.blur(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const q = homeSearchIn.value.trim();
+        if (q) { saveHomeRecent(q); filterHomeSections(q); hideHomeDd(); }
+      }
+    });
+
+    document.addEventListener('click', (e: MouseEvent) => {
+      const wrap = document.getElementById('home-header-search') ?? document.getElementById('home-mobile-search-panel');
+      if (!wrap?.contains(e.target as Node)) hideHomeDd();
+    });
   }
 
   // ── Store header search ───────────────────────────────────────
@@ -669,11 +920,10 @@ const strEmpty   = t.store.noProductsFound;
       }
 
       function closeMobileSearch() {
-        if (!mobileSearchPanel!.hasAttribute('hidden')) {
-          hideDropdown();
-          mobileSearchPanel!.setAttribute('hidden', '');
-          mobileSearchBtn!.setAttribute('aria-expanded', 'false');
-        }
+        if (mobileSearchPanel!.hasAttribute('hidden')) return;
+        hideDropdown();
+        mobileSearchBtn!.setAttribute('aria-expanded', 'false');
+        fadeClose(mobileSearchPanel!, () => { mobileSearchPanel!.setAttribute('hidden', ''); });
       }
 
       setupMobile();

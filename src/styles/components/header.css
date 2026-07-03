@@ -21,12 +21,15 @@ nav ul { margin: 0; }
 nav a { font-weight: 500; font-size: 0.9rem; color: var(--color-muted); }
 nav a:hover { color: var(--color-text); }
 
-.cart-btn {
+.cart-btn-wrap {
   position: relative;
+  display: inline-flex;
+}
+
+.cart-btn {
   font-size: 1rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
   color: var(--color-muted);
   transition: color 0.1s;
 }
@@ -34,17 +37,24 @@ nav a:hover { color: var(--color-text); }
 .cart-btn[aria-expanded="true"] { color: var(--color-text); }
 
 .cart-count {
-  min-width: 1.2rem;
-  height: 1.2rem;
-  padding: 0 0.25rem;
-  border-radius: 999px;
+  position: absolute;
+  bottom: -3px;
+  inset-inline-end: -5px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 3px;
   background: var(--color-accent);
   color: #fff;
-  font-size: 0.7rem;
+  font-size: 9px;
   font-weight: 700;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
 }
 
 .header-actions {
@@ -84,6 +94,8 @@ nav a:hover { color: var(--color-text); }
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
   z-index: 60;
   padding: 0.3rem;
+}
+.user-dropdown:not([hidden]) {
   animation: user-dropdown-open 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -184,6 +196,8 @@ nav a:hover { color: var(--color-text); }
   border-radius: var(--radius);
   box-shadow: 0 8px 32px rgba(0,0,0,0.13);
   padding: 0.3rem;
+}
+.header-search__dropdown:not([hidden]) {
   animation: hsd-open 0.13s cubic-bezier(0.34,1.56,0.64,1);
 }
 
@@ -317,11 +331,30 @@ nav a:hover { color: var(--color-text); }
   display: block;
 }
 
-@media (max-width: 600px) {
-  /* No hover on touch — hide the label entirely to prevent tap-triggered reflow */
-  .store-back-link__label {
-    display: none;
-  }
+/* House icon — always visible, replaces the | separator */
+.store-home-icon { display: block; flex-shrink: 0; }
+
+/* Separator hidden everywhere — house icon takes its place */
+.store-back-sep { display: none; }
+
+/* Store name link: flex so house icon + name sit side by side */
+.store-header__logo-col .store-name-link {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Inner text span — ellipsis when name is too long */
+.store-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  /* No hover on touch — hide the ShopNest label to prevent tap-triggered reflow */
+  .store-back-link__label { display: none; }
 }
 
 /* Back-link inside store mode header */
@@ -355,6 +388,16 @@ nav a:hover { color: var(--color-text); }
   margin-inline-start: 0.3rem;
 }
 
+/* ── Dropdown fade-out (close animation) ── */
+.dropdown--closing {
+  pointer-events: none;
+  animation: dropdown-fade-out 0.13s ease-out forwards !important;
+}
+@keyframes dropdown-fade-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-4px) scale(0.97); }
+}
+
 /* ── storeMode: actions alignment ── */
 .site-header--store .header-actions {
   justify-content: flex-end;
@@ -362,10 +405,15 @@ nav a:hover { color: var(--color-text); }
 
 /* ── Mobile storeMode: search icon button + dropdown panel ── */
 .mobile-search-btn { display: none; }
+.home-mobile-search-btn { display: none; }
 
 @media (max-width: 640px) {
   .mobile-search-btn { display: inline-flex; }
   .site-header--store #header-search { display: none; }
+
+  /* Homepage mobile search */
+  .home-mobile-search-btn { display: inline-flex; }
+  .home-header-search { display: none; }
 }
 
 /* Search inside mobile panel: full-width, results flow inside panel */
@@ -395,8 +443,32 @@ nav a:hover { color: var(--color-text); }
   from { opacity: 0; transform: translateY(-6px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-#mobile-search-panel:not([hidden]) {
+#mobile-search-panel:not([hidden]),
+#home-mobile-search-panel:not([hidden]) {
   animation: mobile-search-panel-open 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Homepage search inside mobile panel */
+#home-mobile-search-panel .home-header-search {
+  display: block;
+  max-width: none;
+  width: 100%;
+  flex: none;
+}
+#home-mobile-search-panel .header-search__icon {
+  top: 1rem !important;
+}
+
+/* Home search dropdown inside mobile panel: flow as block */
+#home-mobile-search-panel #home-search-dropdown {
+  position: static;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  box-shadow: none;
+  margin-top: 0.35rem;
+  animation: none;
+  padding: 0.2rem 0;
 }
 
 

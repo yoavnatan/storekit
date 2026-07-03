@@ -624,6 +624,100 @@ textarea.input { resize: vertical; }
   }
 }
 
+/* ── Products tab: mobile card layout ─────────────────────────── */
+@media (max-width: 640px) {
+  .dash-panel { padding-inline: 0.65rem; }
+  .products-header__actions { flex-wrap: wrap; }
+
+  /* Table → block list */
+  .products-table          { display: block; }
+  .products-table thead    { display: none; }
+  .products-table tbody    { display: flex; flex-direction: column; }
+
+  /* Each product row → 2-row grid card */
+  .products-table tbody tr[data-product-display] {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "check thumb name    actions"
+      "check thumb price   stock";
+    column-gap: 0.5rem;
+    row-gap: 0.08rem;
+    padding: 0.6rem 0.4rem;
+    border-bottom: 1px solid var(--color-border);
+    align-items: center;
+    transition: background 0.1s;
+  }
+  .products-table tbody tr[data-product-display]:hover { background: var(--color-bg); }
+
+  /* Reset td inside grid rows */
+  .products-table tbody tr[data-product-display] td {
+    display: block;
+    padding: 0;
+    border-bottom: none;
+    background: transparent !important;
+    transition: none !important;
+  }
+
+  /* Grid area assignments */
+  .products-table tr[data-product-display] .check-col {
+    grid-area: check;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .products-table tr[data-product-display] .thumb-col {
+    grid-area: thumb;
+    display: flex; align-items: center;
+  }
+  .products-table tr[data-product-display] .name-col {
+    grid-area: name;
+    align-self: end;
+    padding-bottom: 0.05rem;
+  }
+  .products-table tr[data-product-display] .product-price {
+    grid-area: price;
+    align-self: start;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-accent);
+    padding-top: 0.08rem;
+  }
+  .products-table tr[data-product-display] .product-stock {
+    grid-area: stock;
+    align-self: start;
+    font-size: 0.76rem;
+    color: var(--color-muted);
+    padding-top: 0.08rem;
+    text-align: end;
+  }
+  .products-table tr[data-product-display] .actions {
+    grid-area: actions;
+    align-self: center;
+    text-align: end;
+  }
+
+  /* Hide non-essential columns */
+  .products-table tr[data-product-display] .row-num,
+  .products-table tr[data-product-display] .cat-col,
+  .products-table tr[data-product-display] .wishlist-col { display: none; }
+
+  /* Product name smaller, hide description */
+  .products-table .product-name { font-size: 0.85rem; }
+  .products-table .product-desc { display: none; }
+
+  /* Thumbnail */
+  .products-table .thumb-wrap   { width: 40px; height: 40px; }
+  .products-table .product-thumb { width: 40px !important; height: 40px !important; }
+
+  /* Kebab button — bigger tap target */
+  .products-table .product-menu__btn { width: 2.2rem; height: 2.2rem; opacity: 1; }
+
+  /* Edit row — full-width block */
+  .products-table tr.edit-row             { display: block; border-bottom: 1px solid var(--color-border); }
+  .products-table tr.edit-row td          { display: block; padding: 0.75rem 0.5rem; border-bottom: none; }
+  .products-table tr.edit-row .row-num    { display: none; }
+}
+
 /* Crop modal */
 .crop-modal {
   position: fixed;

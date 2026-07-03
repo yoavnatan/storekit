@@ -2,11 +2,11 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../lib/stores.js';
+import { getStoresBySellerId, getAllStores } from '../../lib/stores.js';
 import { getAllOrders } from '../../lib/orders.js';
 import { getMessagesByBuyer, getMessageReplies } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
-import { getLang } from '../../i18n/index.js';
+import { getLang, getT } from '../../i18n/index.js';
 
 const userId = getSellerSession(Astro.cookies);
 if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
@@ -14,7 +14,8 @@ if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
 const seller = getSellerById(userId);
 if (!seller) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
 
-getLang(Astro.cookies);
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
 
 const hasStore = getStoresBySellerId(userId).length > 0;
 
@@ -31,23 +32,35 @@ const unreadMessages = getUnreadSellerReplyCount(userId);
 const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
   Object.fromEntries(messages.map((m) => [m.id, getMessageReplies(m.id)]));
 
+const dateLocale = lang === 'he' ? 'he-IL' : 'en-US';
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleString(dateLocale, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 function fmtPrice(n: number) {
   return `₪${n.toLocaleString('he-IL')}`;
 }
 
-const payLabel: Record<string, string>  = { pending: 'ממתין', paid: 'שולם', failed: 'נכשל' };
-const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר' };
+const payLabel: Record<string, string> = {
+  pending: t.dashboard.paymentPending,
+  paid: t.dashboard.paymentPaid,
+  failed: t.dashboard.paymentFailed,
+};
+const shipLabel: Record<string, string> = {
+  pending: t.dashboard.shippingPending,
+  processing: t.dashboard.shippingProcessing,
+  ready: t.dashboard.shippingReady,
+  shipped: t.dashboard.shippingShipped,
+  delivered: t.dashboard.shippingDelivered,
+};
 ---
 
 <BaseLayout
-  title="האזור שלי"
+  title={t.buyerDashboard.pageTitle}
   noindex={true}
   isLoggedIn={true}
   hasStore={hasStore}
   hideNav={true}
+  showSearch={true}
 >
   <style>
     /* ── Desktop layout ── */
@@ -113,11 +126,13 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
 
     /* ── Mobile drawer ── */
     .my-drawer-backdrop {
-      display: none;
       position: fixed; inset: 0;
       background: rgba(0,0,0,0.35);
       z-index: 98;
       backdrop-filter: blur(1px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.26s ease;
     }
     .my-drawer-close { display: none; }
     .my-topbar { display: none; }
@@ -162,12 +177,17 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
         padding: 1.25rem 0.75rem 2rem;
         box-shadow: -6px 0 32px rgba(0,0,0,0.14);
         transform: translateX(100%);
-        transition: transform 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        visibility: hidden;
+        transition: transform 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94), visibility 0s 0.26s;
         overflow-y: auto;
       }
-      .my-sidebar.is-open { transform: translateX(0); }
+      .my-sidebar.is-open {
+        transform: translateX(0);
+        visibility: visible;
+        transition: transform 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94), visibility 0s 0s;
+      }
 
-      .my-drawer-backdrop.is-open { display: block; }
+      .my-drawer-backdrop.is-open { opacity: 1; pointer-events: auto; }
 
       .my-drawer-close {
         display: flex; align-items: center; justify-content: center;
@@ -236,7 +256,8 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
       display: flex; flex-direction: column; gap: 0.875rem;
     }
     .o-store-group { }
-    .o-store-name { font-size: 0.75rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.5rem; }
+    .o-store-name { font-size: 0.75rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.5rem; display: block; transition: color 0.12s; }
+    .o-store-name:hover { color: var(--color-accent); }
     .o-item-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
     .o-item { display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; }
     @keyframes o-shimmer {
@@ -348,18 +369,18 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
 
   <!-- Mobile topbar -->
   <div class="my-topbar">
-    <button class="my-menu-btn" id="my-menu-btn" type="button" aria-label="פתח תפריט" aria-expanded="false">
+    <button class="my-menu-btn" id="my-menu-btn" type="button" aria-label={t.buyerDashboard.menuBtn} aria-expanded="false">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
-    <span class="my-topbar-title">האזור שלי</span>
-    <span class="my-topbar-tab" id="topbar-tab-label">הזמנות</span>
+    <span class="my-topbar-title">{t.buyerDashboard.pageTitle}</span>
+    <span class="my-topbar-tab" id="topbar-tab-label">{t.buyerDashboard.tabOrders}</span>
   </div>
 
   <div class="my-page">
 
     <!-- Sidebar / Drawer -->
     <aside class="my-sidebar" id="my-sidebar">
-      <button class="my-drawer-close" id="my-drawer-close" type="button" aria-label="סגור תפריט">
+      <button class="my-drawer-close" id="my-drawer-close" type="button" aria-label={t.buyerDashboard.closeDrawer}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
 
@@ -373,22 +394,22 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
         </div>
       </div>
 
-      <nav class="my-nav" aria-label="ניווט אזור אישי">
+      <nav class="my-nav" aria-label={t.buyerDashboard.navAriaLabel}>
         <button class="my-nav-btn is-active" data-tab="orders" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-          <span class="my-nav-label">הזמנות</span>
+          <span class="my-nav-label">{t.buyerDashboard.tabOrders}</span>
           {orders.length > 0 && (
             <span style="font-size:0.7rem;color:var(--color-muted)">{orders.length}</span>
           )}
         </button>
         <button class="my-nav-btn" data-tab="messages" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span class="my-nav-label">הודעות</span>
+          <span class="my-nav-label">{t.buyerDashboard.tabMessages}</span>
           {unreadMessages > 0 && <span class="my-nav-badge">{unreadMessages}</span>}
         </button>
         <button class="my-nav-btn" data-tab="profile" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-          <span class="my-nav-label">פרטים אישיים</span>
+          <span class="my-nav-label">{t.buyerDashboard.tabProfile}</span>
         </button>
       </nav>
     </aside>
@@ -398,9 +419,9 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
 
       <!-- Orders -->
       <div id="panel-orders" class="my-panel is-active">
-        <h1 class="panel-head">הזמנות</h1>
+        <h1 class="panel-head">{t.buyerDashboard.ordersTitle}</h1>
         {orders.length === 0
-          ? <p class="empty">עדיין לא ביצעת הזמנות.</p>
+          ? <p class="empty">{t.buyerDashboard.noOrders}</p>
           : orders.map((o) => {
             const stores = [...new Set(o.items.map((i) => i.storeSlug))];
             return (
@@ -429,14 +450,14 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
                 </div>
 
                 <div class="o-card__body" hidden>
-                  <p class="o-section-title">פריטים</p>
+                  <p class="o-section-title">{t.buyerDashboard.orderItems}</p>
                   {stores.map((slug) => {
                     const storeItems = o.items.filter((i) => i.storeSlug === slug);
                     const storeName  = storeItems[0]!.storeName;
                     const sub        = o.storeSubtotals[slug];
                     return (
                       <div class="o-store-group">
-                        <p class="o-store-name">{storeName}</p>
+                        <a href={`/store/${slug}`} class="o-store-name" style="text-decoration:none;color:inherit;cursor:pointer">{storeName}</a>
                         <ul class="o-item-list">
                           {storeItems.map((item) => (
                             <li class="o-item">
@@ -452,7 +473,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
                         </ul>
                         {sub && (
                           <div class="o-store-sub">
-                            <span>משלוח: {sub.shipping === 0 ? 'חינם' : fmtPrice(sub.shipping)}</span>
+                            <span>{t.checkout.shipping}: {sub.shipping === 0 ? t.buyerDashboard.freeShipping : fmtPrice(sub.shipping)}</span>
                             <strong>{fmtPrice(sub.subtotal + sub.shipping)}</strong>
                           </div>
                         )}
@@ -460,7 +481,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
                     );
                   })}
                   {o.trackingNumber && (
-                    <p class="o-tracking">מספר מעקב: <strong>{o.trackingNumber}</strong></p>
+                    <p class="o-tracking">{t.buyerDashboard.trackingNumber}: <strong>{o.trackingNumber}</strong></p>
                   )}
                 </div>
               </div>
@@ -471,20 +492,20 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
 
       <!-- Messages -->
       <div id="panel-messages" class="my-panel" data-user-id={userId} hidden>
-        <h1 class="panel-head">הודעות ממוכרים</h1>
+        <h1 class="panel-head">{t.buyerDashboard.messagesTitle}</h1>
         {messages.length === 0
-          ? <p class="empty">לא שלחת הודעות עדיין.</p>
+          ? <p class="empty">{t.buyerDashboard.noMessages}</p>
           : (
             <div class="msg-table-wrap">
               <table class="msg-table">
                 <thead>
                   <tr>
                     <th class="msg-table__th msg-table__th--status"></th>
-                    <th class="msg-table__th">חנות</th>
-                    <th class="msg-table__th">נושא</th>
-                    <th class="msg-table__th">תוכן</th>
-                    <th class="msg-table__th">מוצר</th>
-                    <th class="msg-table__th">תאריך</th>
+                    <th class="msg-table__th">{t.buyerDashboard.msgColStore}</th>
+                    <th class="msg-table__th">{t.messages.subject}</th>
+                    <th class="msg-table__th">{t.messages.content}</th>
+                    <th class="msg-table__th">{t.buyerDashboard.msgColProduct}</th>
+                    <th class="msg-table__th">{t.dashboard.orderDate}</th>
                     <th class="msg-table__th msg-table__th--actions"></th>
                   </tr>
                 </thead>
@@ -516,7 +537,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
                           </td>
                           <td class="msg-table__td msg-table__td--date">{fmtDate(m.createdAt)}</td>
                           <td class="msg-table__td msg-table__td--actions">
-                            <button class="seller-msg-delete" data-delete-bmsg-id={m.id} type="button" aria-label="מחק שיחה" title="מחק שיחה">
+                            <button class="seller-msg-delete" data-delete-bmsg-id={m.id} type="button" aria-label={t.buyerDashboard.deleteConv} title={t.buyerDashboard.deleteConv}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                             </button>
                           </td>
@@ -526,7 +547,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
                             <div class="msg-thread" id={`breplies-${m.id}`}>
                               <div class="msg-thread-entry msg-thread-entry--buyer">
                                 <div class="msg-thread-entry__header">
-                                  <span class="msg-thread-entry__who">אתה</span>
+                                  <span class="msg-thread-entry__who">{t.buyerDashboard.msgYou}</span>
                                   <span class="msg-thread-entry__date">{fmtDate(m.createdAt)}</span>
                                 </div>
                                 <div class="msg-thread-entry__body">{m.content}</div>
@@ -536,7 +557,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
                                 return (
                                   <div class={`msg-thread-entry ${isBuyerReply ? 'msg-thread-entry--buyer' : 'msg-thread-entry--seller'}`}>
                                     <div class="msg-thread-entry__header">
-                                      <span class="msg-thread-entry__who">{isBuyerReply ? 'אתה' : m.toStoreName}</span>
+                                      <span class="msg-thread-entry__who">{isBuyerReply ? t.buyerDashboard.msgYou : m.toStoreName}</span>
                                       <span class="msg-thread-entry__date">{fmtDate(r.createdAt)}</span>
                                     </div>
                                     <div class="msg-thread-entry__body">{r.content}</div>
@@ -545,8 +566,8 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
                               })}
                             </div>
                             <div class="seller-msg-reply-form" data-breply-for={m.id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-                              <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
-                              <button class="seller-msg-reply-send" type="button">שלח תשובה</button>
+                              <textarea class="seller-msg-reply-textarea" placeholder={t.buyerDashboard.msgReplyPlaceholder} rows="3"></textarea>
+                              <button class="seller-msg-reply-send" type="button">{t.buyerDashboard.msgReplySend}</button>
                             </div>
                           </td>
                         </tr>
@@ -562,37 +583,37 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
 
       <!-- Profile -->
       <div id="panel-profile" class="my-panel" hidden>
-        <h1 class="panel-head">פרטים אישיים</h1>
+        <h1 class="panel-head">{t.buyerDashboard.profileTitle}</h1>
         <div style="max-width:480px">
-          <p class="prof-section-title">פרטי חשבון</p>
+          <p class="prof-section-title">{t.buyerDashboard.profSection}</p>
           <div class="prof-field">
-            <label class="prof-label" for="edit-name">שם מלא</label>
+            <label class="prof-label" for="edit-name">{t.checkout.fullName}</label>
             <input class="prof-input" id="edit-name" type="text" value={seller.name} autocomplete="name" />
           </div>
           <div class="prof-field">
-            <label class="prof-label" for="edit-email">אימייל</label>
+            <label class="prof-label" for="edit-email">{t.checkout.email}</label>
             <input class="prof-input" id="edit-email" type="email" value={seller.email} autocomplete="email" />
           </div>
 
           <hr class="prof-divider" />
 
-          <p class="prof-section-title">שינוי סיסמה</p>
-          <button class="prof-pw-toggle" id="pw-toggle" type="button">+ הצג שדות שינוי סיסמה</button>
+          <p class="prof-section-title">{t.buyerDashboard.profChangePassword}</p>
+          <button class="prof-pw-toggle" id="pw-toggle" type="button">{t.buyerDashboard.profShowPw}</button>
           <div id="pw-fields" hidden>
             <div class="prof-field">
-              <label class="prof-label" for="edit-cur-pw">סיסמה נוכחית</label>
+              <label class="prof-label" for="edit-cur-pw">{t.buyerDashboard.profCurPw}</label>
               <input class="prof-input" id="edit-cur-pw" type="password" autocomplete="current-password" />
             </div>
             <div class="prof-field">
-              <label class="prof-label" for="edit-new-pw">סיסמה חדשה</label>
+              <label class="prof-label" for="edit-new-pw">{t.buyerDashboard.profNewPw}</label>
               <input class="prof-input" id="edit-new-pw" type="password" autocomplete="new-password" />
             </div>
           </div>
 
           <p class="prof-error" id="edit-error"></p>
-          <p class="prof-success" id="edit-success">הפרטים עודכנו בהצלחה</p>
+          <p class="prof-success" id="edit-success">{t.buyerDashboard.profSaved}</p>
           <div class="prof-actions">
-            <button class="prof-save" id="edit-save" type="button">שמור שינויים</button>
+            <button class="prof-save" id="edit-save" type="button">{t.dashboard.saveChanges}</button>
           </div>
         </div>
       </div>
@@ -601,8 +622,37 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
   </div>
 </BaseLayout>
 
+<div id="buyer-i18n" hidden
+  data-tab-orders={t.buyerDashboard.tabOrders}
+  data-tab-messages={t.buyerDashboard.tabMessages}
+  data-tab-profile={t.buyerDashboard.tabProfile}
+  data-msg-you={t.buyerDashboard.msgYou}
+  data-msg-delete-confirm={t.buyerDashboard.msgDeleteConfirm}
+  data-prof-show-pw={t.buyerDashboard.profShowPw}
+  data-prof-hide-pw={t.buyerDashboard.profHidePw}
+  data-prof-saved={t.buyerDashboard.profSaved}
+  data-prof-error-default={t.buyerDashboard.profErrorDefault}
+  data-prof-error-network={t.buyerDashboard.profErrorNetwork}
+  data-date-locale={dateLocale}
+></div>
+
 <script>
-  const tabLabels: Record<string, string> = { orders: 'הזמנות', messages: 'הודעות', profile: 'פרטים אישיים' };
+  const _i18nEl = document.getElementById('buyer-i18n') as HTMLElement;
+  const I = {
+    tabOrders:       _i18nEl.dataset.tabOrders       ?? 'Orders',
+    tabMessages:     _i18nEl.dataset.tabMessages      ?? 'Messages',
+    tabProfile:      _i18nEl.dataset.tabProfile       ?? 'Profile',
+    msgYou:          _i18nEl.dataset.msgYou           ?? 'You',
+    msgDeleteConfirm:_i18nEl.dataset.msgDeleteConfirm ?? 'Delete this conversation permanently?',
+    profShowPw:      _i18nEl.dataset.profShowPw       ?? '+ Show password fields',
+    profHidePw:      _i18nEl.dataset.profHidePw       ?? '− Hide password fields',
+    profSaved:       _i18nEl.dataset.profSaved        ?? 'Details updated successfully',
+    profErrorDefault:_i18nEl.dataset.profErrorDefault ?? 'Error saving',
+    profErrorNetwork:_i18nEl.dataset.profErrorNetwork ?? 'Network error, try again',
+    dateLocale:      _i18nEl.dataset.dateLocale       ?? 'he-IL',
+  };
+
+  const tabLabels: Record<string, string> = { orders: I.tabOrders, messages: I.tabMessages, profile: I.tabProfile };
 
   const navBtns = document.querySelectorAll<HTMLButtonElement>('.my-nav-btn[data-tab]');
   const panels: Record<string, HTMLElement | null> = {
@@ -628,6 +678,14 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
     menuBtn?.setAttribute('aria-expanded', 'false');
     document.body.style.overflow = '';
   }
+
+  // Suppress sidebar transition when the breakpoint changes (resize/DevTools toggle)
+  const _mq = window.matchMedia('(max-width: 640px)');
+  _mq.addEventListener('change', () => {
+    sidebar.style.transition = 'none';
+    if (!_mq.matches) closeDrawer();
+    requestAnimationFrame(() => requestAnimationFrame(() => { sidebar.style.transition = ''; }));
+  });
 
   menuBtn?.addEventListener('click', openDrawer);
   closeBtn?.addEventListener('click', closeDrawer);
@@ -691,11 +749,11 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
     const isHidden = pwFields.hasAttribute('hidden');
     if (isHidden) {
       pwFields.removeAttribute('hidden');
-      pwToggle.textContent = '− הסתר שדות שינוי סיסמה';
+      pwToggle.textContent = I.profHidePw;
       curPwInput.focus();
     } else {
       pwFields.setAttribute('hidden', '');
-      pwToggle.textContent = '+ הצג שדות שינוי סיסמה';
+      pwToggle.textContent = I.profShowPw;
       curPwInput.value = '';
       newPwInput.value = '';
     }
@@ -722,7 +780,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
       });
       const data = await res.json() as { ok?: boolean; error?: string; name?: string; email?: string };
       if (!res.ok || !data.ok) {
-        editError.textContent = data.error ?? 'שגיאה בשמירה';
+        editError.textContent = data.error ?? I.profErrorDefault;
         editError.style.display = 'block';
         return;
       }
@@ -732,12 +790,12 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
       setTimeout(() => { editSuccess.style.display = 'none'; }, 3000);
       if (!pwFields.hasAttribute('hidden')) {
         pwFields.setAttribute('hidden', '');
-        pwToggle.textContent = '+ הצג שדות שינוי סיסמה';
+        pwToggle.textContent = I.profShowPw;
         curPwInput.value = '';
         newPwInput.value = '';
       }
     } catch {
-      editError.textContent = 'שגיאת רשת, נסה שוב';
+      editError.textContent = I.profErrorNetwork;
       editError.style.display = 'block';
     } finally {
       editSave.disabled = false;
@@ -746,7 +804,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
 
   /* ── Buyer messages: expand / reply ── */
   function fmtDateBuyer(iso: string) {
-    return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString(I.dateLocale, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
   function escB(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
@@ -769,7 +827,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
             const isSelf = r.fromUserId === currentBuyerId;
             const div = document.createElement('div');
             div.className = `msg-thread-entry ${isSelf ? 'msg-thread-entry--buyer' : 'msg-thread-entry--seller'}`;
-            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escB(isSelf ? 'אתה' : r.fromName)}</span><span class="msg-thread-entry__date">${escB(fmtDateBuyer(r.createdAt))}</span></div><div class="msg-thread-entry__body">${escB(r.content)}</div>`;
+            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escB(isSelf ? I.msgYou : r.fromName)}</span><span class="msg-thread-entry__date">${escB(fmtDateBuyer(r.createdAt))}</span></div><div class="msg-thread-entry__body">${escB(r.content)}</div>`;
             repliesEl.appendChild(div);
           });
           const previewTd = row.querySelector('.msg-table__td--preview');
@@ -825,7 +883,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
           if (res.ok && data.ok && data.message && repliesEl) {
             const div = document.createElement('div');
             div.className = 'msg-thread-entry msg-thread-entry--buyer';
-            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">אתה</span><span class="msg-thread-entry__date">${escB(fmtDateBuyer(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escB(data.message.content)}</div>`;
+            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escB(I.msgYou)}</span><span class="msg-thread-entry__date">${escB(fmtDateBuyer(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escB(data.message.content)}</div>`;
             repliesEl.appendChild(div);
             const previewTd = row.querySelector('.msg-table__td--preview');
             if (previewTd) previewTd.textContent = data.message.content;
@@ -842,7 +900,7 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
   document.querySelectorAll<HTMLButtonElement>('[data-delete-bmsg-id]').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!confirm('למחוק את השיחה הזו לצמיתות?')) return;
+      if (!confirm(I.msgDeleteConfirm)) return;
       const id = btn.dataset.deleteBmsgId ?? '';
       try {
         const res = await fetch('/api/messages', {
@@ -911,3 +969,5 @@ const shipLabel: Record<string, string> = { pending: 'חדשה', processing: 'ב
   }
   setInterval(pollBuyerUnread, 15000);
 </script>
+
+<script is:inline type="application/json" id="home-search-stores-data" set:html={JSON.stringify(getAllStores().map(s => ({ name: s.name, slug: s.slug, tagline: s.tagline ?? '', description: s.description ?? '' })))} />
