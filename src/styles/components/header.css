@@ -57,6 +57,8 @@ nav a:hover { color: var(--color-text); }
   z-index: 10;
 }
 
+.cart-count--alert { background: #ef4444; }
+
 .header-actions {
   display: flex;
   align-items: center;
@@ -64,7 +66,12 @@ nav a:hover { color: var(--color-text); }
   flex-shrink: 0;
 }
 
-.user-menu { position: relative; }
+/* The flex `gap` to its neighbor is numerically identical to every other
+   icon-to-icon gap, but reads wider: the avatar's circular border is drawn
+   flush to its own box edge, while the bare cart/heart/bell glyphs carry
+   built-in empty space inside their viewBox before the ink starts. Pull it
+   in a few px so the *visual* rhythm matches the *geometric* one. */
+.user-menu { position: relative; margin-inline-start: -4px; }
 
 .user-btn {
   display: inline-flex;

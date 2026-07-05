@@ -20,8 +20,27 @@ export function spawnRipple(el: HTMLElement, clientX: number, clientY: number) {
     animation: 'ripple-wave 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards',
   });
 
-  if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
-  el.style.overflow = 'hidden';
-  el.appendChild(ripple);
+  // The ripple needs to be clipped to el's shape, but el itself must stay
+  // overflow:visible at all times — some buttons (e.g. the avatar) position
+  // a corner badge outside their own box, and clipping el (even only while
+  // the ripple animates) would swallow it for that whole window. So the clip
+  // lives on a dedicated same-size layer that's a sibling of the badge, not
+  // an ancestor — it only ever clips its own ripple children.
+  let layer = el.querySelector<HTMLElement>(':scope > .ripple-layer');
+  if (!layer) {
+    layer = document.createElement('span');
+    layer.className = 'ripple-layer';
+    Object.assign(layer.style, {
+      position: 'absolute',
+      inset: '0',
+      overflow: 'hidden',
+      borderRadius: 'inherit',
+      pointerEvents: 'none',
+    });
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    el.appendChild(layer);
+  }
+
+  layer.appendChild(ripple);
   ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
 }

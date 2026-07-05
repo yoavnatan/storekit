@@ -15,6 +15,15 @@ export interface ProductData {
 
 function fmtPrice(n: number) { return formatPrice(n); }
 
+// ── Products pagination + category filter (shared state) ─────────────────────
+const PRODUCTS_PAGE_SIZE = 20;
+let productsActiveCategory = '';
+let productsCurrentPage = 1;
+
+function rowMatchesCategoryFilter(row: HTMLElement): boolean {
+  return !productsActiveCategory || row.dataset.category === productsActiveCategory;
+}
+
 function fmtDateAdded(iso?: string): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -400,9 +409,9 @@ export function initAddProduct(cloud: string, preset: string): void {
         const [display, edit] = buildRows(p, cloud, preset);
         attachListeners(display, edit, cloud, preset);
         tbody.append(display, edit);
-        renumberRows();
         initThumbs(display);
         refreshCategoryFilter();
+        applyPagination();
       }
 
       addForm.reset();
@@ -492,8 +501,8 @@ export function initDeleteProduct(): void {
 
           document.querySelector(`[data-product-display="${productId}"]`)?.remove();
           document.querySelector(`[data-product-edit="${productId}"]`)?.remove();
-          renumberRows();
           refreshCategoryFilter();
+          applyPagination();
 
           const tbody = document.getElementById('products-tbody');
           if (tbody && tbody.querySelectorAll('[data-product-display]').length === 0) {
@@ -524,17 +533,105 @@ export function initThumbs(root: ParentNode = document): void {
 }
 
 export function renumberRows(): void {
-  document
-    .querySelectorAll<HTMLElement>('#products-tbody [data-product-display] .row-num')
-    .forEach((cell, i) => {
-      const num = String(i + 1);
-      cell.textContent = num;
-      const productId = cell.closest<HTMLElement>('[data-product-display]')?.dataset.productDisplay;
-      if (productId) {
-        const editNum = document.querySelector<HTMLElement>(`[data-product-edit="${productId}"] .row-num`);
-        if (editNum) editNum.textContent = num;
-      }
-    });
+  let n = 0;
+  document.querySelectorAll<HTMLElement>('#products-tbody [data-product-display]').forEach((row) => {
+    if (!rowMatchesCategoryFilter(row)) return;
+    n++;
+    const cell = row.querySelector<HTMLElement>('.row-num');
+    if (cell) cell.textContent = String(n);
+    const productId = row.dataset.productDisplay;
+    if (productId) {
+      const editNum = document.querySelector<HTMLElement>(`[data-product-edit="${productId}"] .row-num`);
+      if (editNum) editNum.textContent = String(n);
+    }
+  });
+}
+
+function renderPaginationControls(totalPages: number): void {
+  const nav = document.getElementById('products-pagination') as HTMLElement | null;
+  if (!nav) return;
+  if (totalPages <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
+
+  const i = getDashI18n();
+  const pageInfo = (i.paginationPageInfo ?? 'עמוד {page} מתוך {total}')
+    .replace('{page}', String(productsCurrentPage))
+    .replace('{total}', String(totalPages));
+
+  nav.hidden = false;
+  nav.innerHTML = `
+    <button type="button" class="btn btn--ghost btn--sm" data-page-prev${productsCurrentPage <= 1 ? ' disabled' : ''}>${esc(i.paginationPrev ?? 'הקודם')}</button>
+    <span class="products-pagination__info">${esc(pageInfo)}</span>
+    <button type="button" class="btn btn--ghost btn--sm" data-page-next${productsCurrentPage >= totalPages ? ' disabled' : ''}>${esc(i.paginationNext ?? 'הבא')}</button>
+  `;
+}
+
+export function applyPagination(): void {
+  const tbody = document.getElementById('products-tbody');
+  if (!tbody) return;
+
+  const rows = Array.from(tbody.querySelectorAll<HTMLElement>('[data-product-display]'));
+  const matchedCount = rows.reduce((n, row) => n + (rowMatchesCategoryFilter(row) ? 1 : 0), 0);
+  const totalPages = Math.max(1, Math.ceil(matchedCount / PRODUCTS_PAGE_SIZE));
+  productsCurrentPage = Math.min(Math.max(productsCurrentPage, 1), totalPages);
+
+  const start = (productsCurrentPage - 1) * PRODUCTS_PAGE_SIZE;
+  const end = start + PRODUCTS_PAGE_SIZE;
+
+  let matchIdx = 0;
+  rows.forEach((row) => {
+    const editRow = document.querySelector<HTMLElement>(`[data-product-edit="${row.dataset.productDisplay}"]`);
+    if (!rowMatchesCategoryFilter(row)) {
+      row.hidden = true;
+      if (editRow) editRow.hidden = true;
+      return;
+    }
+    const onPage = matchIdx >= start && matchIdx < end;
+    row.hidden = !onPage;
+    if (editRow && !onPage) editRow.hidden = true;
+    matchIdx++;
+  });
+
+  renumberRows();
+  renderPaginationControls(totalPages);
+}
+
+export function initPagination(): void {
+  const nav = document.getElementById('products-pagination') as HTMLElement | null;
+  if (!nav) return;
+
+  nav.addEventListener('click', (e) => {
+    const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next]');
+    if (!btn || btn.disabled) return;
+    productsCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
+    applyPagination();
+    document.getElementById('products-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  applyPagination();
+}
+
+// Measures the real fixed-header + products-toolbar heights so the sticky
+// toolbar/table-header sit flush regardless of font-loading/wrap differences.
+export function initStickyOffsets(): void {
+  const root = document.documentElement;
+  const siteHeader = document.querySelector<HTMLElement>('.site-header');
+  const toolbar = document.querySelector<HTMLElement>('.products-header');
+  if (!siteHeader && !toolbar) return;
+
+  // getBoundingClientRect (fractional) instead of offsetHeight (rounds to the
+  // nearest integer px) — the rounding alone was enough to leave a 1-2px seam.
+  const updateHeaderH = () => { if (siteHeader) root.style.setProperty('--site-header-h', `${siteHeader.getBoundingClientRect().height}px`); };
+  const updateToolbarH = () => { if (toolbar) root.style.setProperty('--products-toolbar-h', `${toolbar.getBoundingClientRect().height}px`); };
+
+  updateHeaderH();
+  updateToolbarH();
+
+  if (typeof ResizeObserver !== 'undefined') {
+    if (siteHeader) new ResizeObserver(updateHeaderH).observe(siteHeader);
+    if (toolbar) new ResizeObserver(updateToolbarH).observe(toolbar);
+  } else {
+    window.addEventListener('resize', () => { updateHeaderH(); updateToolbarH(); });
+  }
 }
 
 export function initTableSort(): void {
@@ -568,7 +665,8 @@ export function initTableSort(): void {
       tbody.append(display);
       if (edit) tbody.append(edit);
     }
-    renumberRows();
+    productsCurrentPage = 1;
+    applyPagination();
 
     document.querySelectorAll<HTMLButtonElement>('.sort-btn').forEach((btn) => {
       if (btn.dataset.sortCol === col) {
@@ -761,7 +859,6 @@ export function initCategoryFilter(): void {
   if (!bar) return;
 
   const i = getDashI18n();
-  let activeCat = '';
 
   function getCategories(): string[] {
     const cats = new Set<string>();
@@ -772,32 +869,24 @@ export function initCategoryFilter(): void {
     return [...cats].sort();
   }
 
-  function applyFilter(): void {
-    document.querySelectorAll<HTMLElement>('[data-product-display]').forEach((row) => {
-      const show = !activeCat || row.dataset.category === activeCat;
-      row.hidden = !show;
-      const editRow = document.querySelector<HTMLElement>(`[data-product-edit="${row.dataset.productDisplay}"]`);
-      if (editRow && !show) editRow.hidden = true;
-    });
-  }
-
   function renderChips(): void {
     const cats = getCategories();
     if (cats.length === 0) { bar!.hidden = true; return; }
-    if (!cats.includes(activeCat)) activeCat = '';
+    if (!cats.includes(productsActiveCategory)) productsActiveCategory = '';
     bar!.hidden = false;
     bar!.innerHTML = [
-      `<button type="button" class="cat-chip${!activeCat ? ' cat-chip--active' : ''}" data-filter-cat="">${esc(i.filterAll ?? 'הכל')}</button>`,
-      ...cats.map((c) => `<button type="button" class="cat-chip${activeCat === c ? ' cat-chip--active' : ''}" data-filter-cat="${esc(c)}">${esc(c)}</button>`),
+      `<button type="button" class="cat-chip${!productsActiveCategory ? ' cat-chip--active' : ''}" data-filter-cat="">${esc(i.filterAll ?? 'הכל')}</button>`,
+      ...cats.map((c) => `<button type="button" class="cat-chip${productsActiveCategory === c ? ' cat-chip--active' : ''}" data-filter-cat="${esc(c)}">${esc(c)}</button>`),
     ].join('');
   }
 
   bar.addEventListener('click', (e) => {
     const chip = (e.target as Element).closest<HTMLButtonElement>('[data-filter-cat]');
     if (!chip) return;
-    activeCat = chip.dataset.filterCat ?? '';
+    productsActiveCategory = chip.dataset.filterCat ?? '';
     renderChips();
-    applyFilter();
+    productsCurrentPage = 1;
+    applyPagination();
   });
 
   renderChips();
@@ -806,9 +895,11 @@ export function initCategoryFilter(): void {
 
 export function initBulkSelect(cloud: string, preset: string): void {
   const uploadPanel    = document.getElementById('bulk-upload-panel') as HTMLElement | null;
+  const header         = document.querySelector<HTMLElement>('.products-header');
   const selectAllChk   = document.getElementById('bulk-select-all') as HTMLInputElement | null;
   const bulkCountEl    = document.getElementById('bulk-count') as HTMLElement | null;
   const bulkCountBadge = document.getElementById('bulk-count-badge') as HTMLElement | null;
+  const bulkCountParen = document.getElementById('bulk-count-paren') as HTMLElement | null;
   const bulkDeleteBtn  = document.getElementById('bulk-delete-btn') as HTMLButtonElement | null;
   const bulkUploadBtn  = document.getElementById('bulk-upload-btn') as HTMLButtonElement | null;
   const bulkEditBtn    = document.getElementById('bulk-edit-btn') as HTMLButtonElement | null;
@@ -827,12 +918,20 @@ export function initBulkSelect(cloud: string, preset: string): void {
     const empty = count === 0;
     if (bulkCountEl) bulkCountEl.textContent = String(count);
     if (bulkCountBadge) bulkCountBadge.hidden = empty;
+    if (bulkCountParen) bulkCountParen.textContent = empty ? '' : `(${count})`;
+    if (selectAllChk) {
+      selectAllChk.setAttribute('aria-label', empty
+        ? (i.bulkSelectAll ?? 'בחר הכל')
+        : `${i.bulkSelectAll ?? 'בחר הכל'} — ${count} ${i.bulkSelected ?? 'נבחרו'}`);
+    }
     if (bulkDeleteBtn) bulkDeleteBtn.hidden = empty;
     if (bulkUploadBtn) bulkUploadBtn.hidden = empty;
     if (bulkEditBtn) bulkEditBtn.hidden = empty;
     if (bulkSep) bulkSep.hidden = empty;
+    header?.classList.toggle('products-header--selecting', !empty);
     if (empty && uploadPanel) uploadPanel.hidden = true;
     if (empty && bulkEditLabel) bulkEditLabel.textContent = i.bulkEdit ?? 'ערוך';
+    if (empty && bulkEditBtn) bulkEditBtn.setAttribute('aria-label', i.bulkEdit ?? 'ערוך');
     if (empty && selectAllChk) selectAllChk.hidden = false;
 
     if (selectAllChk) {
@@ -848,6 +947,20 @@ export function initBulkSelect(cloud: string, preset: string): void {
     const id = chk.dataset.bulkCheck ?? '';
     if (chk.checked) selected.add(id); else selected.delete(id);
     updateBar();
+  });
+
+  // Click on thumbnail or serial number → toggle that row's checkbox too,
+  // so selecting more products doesn't require aiming for the small checkbox.
+  document.addEventListener('click', (e) => {
+    const cell = (e.target as Element).closest<HTMLElement>('.thumb-col, .row-num');
+    if (!cell) return;
+    const row = cell.closest<HTMLElement>('[data-product-display]');
+    const id  = row?.dataset.productDisplay;
+    if (!id) return;
+    const chk = document.querySelector<HTMLInputElement>(`[data-bulk-check="${id}"]`);
+    if (!chk) return;
+    chk.checked = !chk.checked;
+    chk.dispatchEvent(new Event('change', { bubbles: true }));
   });
 
   // Select all — if anything is selected, deselect all; else select all
@@ -889,13 +1002,13 @@ export function initBulkSelect(cloud: string, preset: string): void {
             }
           }));
           updateBar();
-          renumberRows();
           const tbody = document.getElementById('products-tbody');
           if (tbody && tbody.querySelectorAll('[data-product-display]').length === 0) {
             document.getElementById('products-table')?.setAttribute('hidden', '');
             document.getElementById('empty-products')?.removeAttribute('hidden');
           }
           refreshCategoryFilter();
+          applyPagination();
           showStatus(i.bulkDeleted ?? 'המוצרים נמחקו.');
         },
       },
@@ -935,6 +1048,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
     if (bulkEditLabel) {
       bulkEditLabel.textContent = anyOpen ? (i.bulkEdit ?? 'ערוך') : (i.bulkEditClose ?? 'סגור עריכה');
     }
+    bulkEditBtn?.setAttribute('aria-label', anyOpen ? (i.bulkEdit ?? 'ערוך') : (i.bulkEditClose ?? 'סגור עריכה'));
     if (selectAllChk) selectAllChk.hidden = !anyOpen;
     if (!anyOpen) firstRow?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });

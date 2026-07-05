@@ -202,7 +202,7 @@ const strEmpty   = t.store.noProductsFound;
             style="position:relative"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span id="notif-dot" class="notif-dot" hidden aria-live="polite" aria-atomic="true" aria-label="התראות חדשות"></span>
+            <span id="notif-count-badge" class="cart-count cart-count--alert" hidden aria-live="polite" aria-atomic="true" aria-label="התראות חדשות"></span>
           </button>
           <div id="notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות">
             <div class="notif-panel-head">
@@ -257,9 +257,10 @@ const strEmpty   = t.store.noProductsFound;
 
       {/* User avatar dropdown — all logged-in users */}
       {isLoggedIn && (
-        <div class="user-menu">
+        <div class="user-menu" data-has-store={(Astro.props.hasStore || storeMode || sellerMode) ? '1' : ''}>
           <button class="user-btn" id="user-menu-toggle" aria-label={t.nav.userMenu} aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            <span id="seller-alert-avatar-dot" class="notif-dot" hidden aria-hidden="true"></span>
           </button>
           <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
             <a href="/buyer/dashboard" class="user-dropdown__item" role="menuitem">
@@ -267,9 +268,10 @@ const strEmpty   = t.store.noProductsFound;
               האזור שלי
             </a>
             {(Astro.props.hasStore || storeMode || sellerMode) && (
-              <a href="/seller/dashboard" class="user-dropdown__item" role="menuitem">
+              <a href="/seller/dashboard" class="user-dropdown__item" role="menuitem" id="seller-dashboard-link">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                 {t.nav.sellersDashboard}
+                <span id="seller-alert-dropdown-dot" class="inline-alert-dot" hidden aria-hidden="true"></span>
               </a>
             )}
             <form method="POST" action="/seller/logout">
@@ -395,7 +397,7 @@ const strEmpty   = t.store.noProductsFound;
   // ── Notifications bell ────────────────────────────────────────
   const originalTitle = document.title;
   const bellBtn    = document.getElementById('notif-bell-btn') as HTMLButtonElement | null;
-  const notifDot   = document.getElementById('notif-dot') as HTMLElement | null;
+  const notifCountBadge = document.getElementById('notif-count-badge') as HTMLElement | null;
   const notifDrop  = document.getElementById('notif-dropdown') as HTMLElement | null;
   const notifList  = document.getElementById('notif-list') as HTMLElement | null;
 
@@ -413,7 +415,14 @@ const strEmpty   = t.store.noProductsFound;
   function renderNotifs(items: NotifItem[]) {
     if (!notifList) return;
     const unreadCount = items.filter(n => !n.read).length;
-    if (notifDot) { unreadCount > 0 ? notifDot.removeAttribute('hidden') : notifDot.setAttribute('hidden', ''); }
+    if (notifCountBadge) {
+      if (unreadCount > 0) {
+        notifCountBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+        notifCountBadge.removeAttribute('hidden');
+      } else {
+        notifCountBadge.setAttribute('hidden', '');
+      }
+    }
     document.title = unreadCount > 0 ? `(${unreadCount}) ${originalTitle}` : originalTitle;
     if (!items.length) { notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>'; return; }
     notifList.innerHTML = items.slice(0, 10).map((n) => `
@@ -485,6 +494,14 @@ const strEmpty   = t.store.noProductsFound;
 
   setInterval(loadNotifs, 30000);
 
+  // Background tabs get their timers throttled by the browser (battery/perf
+  // policy) — the 30s poll above still runs while hidden, just less often.
+  // This forces an immediate refresh the instant the tab regains focus, so
+  // the title badge is never stale by more than the throttled gap.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') loadNotifs();
+  });
+
   window.addEventListener('notifications:update', (e: Event) => {
     const { notifications } = (e as CustomEvent<{ unreadCount: number; notifications: NotifItem[] }>).detail;
     if (notifications) renderNotifs(notifications);
@@ -496,6 +513,33 @@ const strEmpty   = t.store.noProductsFound;
     fetch('/api/notifications').then(r => r.json()).then((d: { notifications: NotifItem[]; unreadCount: number }) => {
       renderNotifs(d.notifications ?? []);
     }).catch(() => {});
+  }
+
+  // ── Seller alert dot (avatar + "sellers dashboard" link) ──────
+  // Persistent "you have something unhandled" indicator, derived live from
+  // real order/message state — unlike the bell, it can't go stale if the
+  // seller flips an order back to "pending" after dismissing its notification.
+  const userMenuEl = document.querySelector<HTMLElement>('.user-menu');
+  if (userMenuEl && userMenuEl.dataset.hasStore === '1') {
+    const avatarDot   = document.getElementById('seller-alert-avatar-dot') as HTMLElement | null;
+    const dropdownDot = document.getElementById('seller-alert-dropdown-dot') as HTMLElement | null;
+
+    async function loadSellerAlert() {
+      try {
+        const res = await fetch('/api/seller/alerts');
+        if (!res.ok) return;
+        const { hasAlert } = await res.json() as { hasAlert: boolean };
+        avatarDot?.toggleAttribute('hidden', !hasAlert);
+        dropdownDot?.toggleAttribute('hidden', !hasAlert);
+      } catch { /* ignore */ }
+    }
+
+    loadSellerAlert();
+    setInterval(loadSellerAlert, 30000);
+    window.addEventListener('notif-refreshed', loadSellerAlert);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') loadSellerAlert();
+    });
   }
 
   // ── Homepage mobile search ────────────────────────────────────

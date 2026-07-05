@@ -1,4 +1,6 @@
-.dash-head { margin-bottom: 1rem; }
+.dash-section { padding-top: 1.25rem; }
+
+.dash-head { margin-bottom: 1rem; padding: 1.5rem 1.5rem 0; }
 
 .dash-panel-header {
   display: flex;
@@ -145,6 +147,12 @@ textarea.input { resize: vertical; }
   gap: 0.75rem;
   margin-bottom: 1rem;
   flex-wrap: wrap;
+  position: sticky;
+  top: var(--site-header-h, 3.3rem);
+  z-index: 6;
+  background: var(--color-surface);
+  padding-block: 0.6rem;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .products-header h2 { margin: 0; font-size: 1rem; font-weight: 600; }
@@ -163,6 +171,8 @@ textarea.input { resize: vertical; }
   flex-wrap: wrap;
 }
 
+.add-product-btn__icon { font-size: 1rem; line-height: 1; font-weight: 700; }
+
 .products-header__sep {
   width: 1px;
   height: 1.15rem;
@@ -179,6 +189,14 @@ textarea.input { resize: vertical; }
   padding: 0.15rem 0.5rem;
   border-radius: 2rem;
   white-space: nowrap;
+}
+
+.bulk-count-paren {
+  display: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-inline-start: -0.35rem;
 }
 
 /* ── Category chip in product row ── */
@@ -221,6 +239,27 @@ textarea.input { resize: vertical; }
 }
 .cat-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .cat-chip--active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.cat-chip--active:hover { color: #fff; }
+
+/* ── Products pagination ── */
+.products-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding-block: 1rem 0.25rem;
+}
+
+.products-pagination__info {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.products-pagination button[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
 
 /* ── Inline field edit input ── */
 .inline-input {
@@ -284,7 +323,8 @@ textarea.input { resize: vertical; }
 
 .products-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.93rem;
 }
 
@@ -297,6 +337,10 @@ textarea.input { resize: vertical; }
   letter-spacing: 0.04em;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: calc(var(--site-header-h, 3.3rem) + var(--products-toolbar-h, 3.4rem));
+  z-index: 5;
+  background: var(--color-surface);
 }
 
 .products-table td {
@@ -323,6 +367,7 @@ textarea.input { resize: vertical; }
 }
 
 .num { white-space: nowrap; }
+.row-num { cursor: pointer; }
 .actions { white-space: nowrap; text-align: end; vertical-align: middle; }
 
 /* ── Product row kebab menu ── */
@@ -596,6 +641,7 @@ textarea.input { resize: vertical; }
   padding-inline: 0.2rem;
   padding-block: 0.75rem;
   vertical-align: middle;
+  cursor: pointer;
 }
 .thumb-wrap {
   position: relative;
@@ -641,8 +687,45 @@ textarea.input { resize: vertical; }
 
 /* ── Products tab: mobile card layout ─────────────────────────── */
 @media (max-width: 640px) {
-  .dash-panel { padding-inline: 0.65rem; }
-  .products-header__actions { flex-wrap: wrap; }
+  /* Reclaim the wide side gutters: the outer container + dash-head/tabs
+     used desktop-sized padding (1rem container + 1.5rem each), leaving a
+     lot of dead space on narrow screens. Bring everything down to match
+     the already-tightened .dash-panel padding. */
+  .dash-section { padding-inline: 0.5rem; }
+
+  /* Selected-count: full "X נבחרו" badge is too wide for mobile — show a
+     compact "(N)" right next to the select-all checkbox instead. */
+  .bulk-count-badge { display: none; }
+  .bulk-count-paren { display: inline; }
+  .dash-head { padding-inline: 0.65rem; }
+  /* #dash-main-card prefix bumps specificity: .dash-tabs/.dash-panel have
+     unscoped base rules later in this file (same specificity) that would
+     otherwise win over this media query purely on source order. */
+  #dash-main-card .dash-tabs { padding-inline: 0.65rem; }
+  #dash-main-card .dash-panel { padding-inline: 0.65rem; }
+
+  /* Keep title + actions on one row; when the buttons don't all fit, the
+     actions strip scrolls horizontally instead of wrapping the whole
+     toolbar to a 2nd line (which caused a jarring layout jump on select). */
+  .products-header { flex-wrap: nowrap; }
+  .products-header__title { flex-shrink: 0; }
+  .products-header__actions {
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .products-header__actions::-webkit-scrollbar { display: none; }
+  .products-header__actions > * { flex-shrink: 0; }
+
+  /* Selecting products → icon-only buttons so the toolbar keeps its single
+     line; keep the same button height as the text version, just bigger,
+     easier-to-tap icons instead of squeezing the padding down. */
+  .products-header--selecting .add-product-btn__label,
+  .products-header--selecting .bulk-btn__label { display: none; }
+  .products-header--selecting .bulk-btn svg { width: 17px; height: 17px; }
+  .products-header--selecting .add-product-btn__icon { font-size: 1.3rem; }
 
   /* Table → block list */
   .products-table          { display: block; }
@@ -657,9 +740,9 @@ textarea.input { resize: vertical; }
     grid-template-areas:
       "check thumb name    actions"
       "check thumb price   stock";
-    column-gap: 0.5rem;
+    column-gap: 0.6rem;
     row-gap: 0.08rem;
-    padding: 0.6rem 0.4rem;
+    padding: 0.6rem 0.2rem;
     border-bottom: 1px solid var(--color-border);
     align-items: center;
     transition: background 0.1s;
@@ -679,6 +762,7 @@ textarea.input { resize: vertical; }
   .products-table tr[data-product-display] .check-col {
     grid-area: check;
     display: flex; align-items: center; justify-content: center;
+    width: auto; /* base .check-col sets width:2rem for the desktop table column — that left the checkbox centered in a wider box than needed here, floating it away from the true edge */
   }
   .products-table tr[data-product-display] .thumb-col {
     grid-area: thumb;
