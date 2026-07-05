@@ -138,7 +138,7 @@ const pmI18n = {
     <main id="main-content" class="container pt-6 pb-16">
 
       <!-- Product grid -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 mt-2">
+      <div class="grid grid-cols-1 md:grid-cols-[minmax(0,440px)_1fr] gap-1.5 md:gap-14 mt-2">
 
         <!-- Images column -->
         <div>
@@ -186,7 +186,7 @@ const pmI18n = {
         </div>
 
         <!-- Info column -->
-        <div class="flex flex-col gap-6">
+        <div class="flex flex-col gap-3 md:gap-6">
 
           <!-- Name + price -->
           <div class="flex flex-col gap-2">
@@ -198,7 +198,7 @@ const pmI18n = {
 
           <!-- Variants -->
           {(product.variants?.length ?? 0) > 0 && (
-            <div class="flex flex-col gap-5" id="variant-selectors">
+            <div class="flex flex-col gap-3 md:gap-5" id="variant-selectors">
               {product.variants!.map((v) => {
                 const isColor = isColorVariant(v.name);
                 return (
@@ -233,7 +233,7 @@ const pmI18n = {
                                   ].join(';')}>
                             {isColor && hex && (
                               <span aria-hidden="true"
-                                    style={`width:14px;height:14px;border-radius:50%;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block`}></span>
+                                    style={`width:14px;height:14px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block`}></span>
                             )}
                             {display}
                           </button>
@@ -263,22 +263,22 @@ const pmI18n = {
             ? <span class="badge badge--muted self-start">{t.store.outOfStock}</span>
             : (
               <div class="flex flex-col gap-3 mt-auto">
-                <div class="flex items-center gap-3" style="max-width:360px">
-                  <!-- Qty stepper -->
+                <!-- Qty + Add to cart — stays inline right below the color picker, on every screen size -->
+                <div id="product-cta-row" class="flex items-center gap-3">
                   <div dir="ltr" class="flex items-center flex-shrink-0 overflow-hidden"
                        style="border:1px solid var(--color-border);border-radius:var(--radius);height:48px">
-                    <button type="button" class="qty-dec flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-surface)] active:scale-90 disabled:opacity-30"
-                            style="width:2.75rem;height:100%;color:var(--color-muted);background:none;border:none;cursor:pointer"
+                    <button type="button" class="qty-dec flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-surface)] active:scale-90 disabled:opacity-30 w-10 max-[420px]:w-8 h-full flex-shrink-0"
+                            style="color:var(--color-muted);background:none;border:none;cursor:pointer"
                             aria-label={t.cart.qtyDecrease} disabled>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                         <line x1="5" y1="12" x2="19" y2="12"/>
                       </svg>
                     </button>
-                    <span class="qty-val text-sm font-semibold text-center select-none"
-                          style="min-width:2.25rem;color:var(--color-text)"
+                    <span class="qty-val text-sm font-semibold text-center select-none min-w-8 max-[420px]:min-w-6 flex-shrink-0"
+                          style="color:var(--color-text)"
                           aria-live="polite" aria-atomic="true">1</span>
-                    <button type="button" class="qty-inc flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-surface)] active:scale-90"
-                            style="width:2.75rem;height:100%;color:var(--color-muted);background:none;border:none;cursor:pointer"
+                    <button type="button" class="qty-inc flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-surface)] active:scale-90 w-10 max-[420px]:w-8 h-full flex-shrink-0"
+                            style="color:var(--color-muted);background:none;border:none;cursor:pointer"
                             aria-label={t.cart.qtyIncrease}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                         <line x1="12" y1="5" x2="12" y2="19"/>
@@ -286,10 +286,11 @@ const pmI18n = {
                       </svg>
                     </button>
                   </div>
-                  <!-- Add to cart -->
+
+                  <!-- Add to cart — rigid, sized to match the qty section's width -->
                   <button type="button" id="add-to-cart-btn"
-                          class="btn"
-                          style="flex:1;height:48px;font-size:0.9375rem;font-weight:600"
+                          class="btn flex-shrink-0"
+                          style="white-space:nowrap;height:48px;font-size:0.9375rem;font-weight:600"
                           data-slug={product.slug}
                           data-name={product.name}
                           data-price={String(product.price)}
@@ -499,6 +500,45 @@ const pmI18n = {
         </div>
       </div>
       )}
+
+      {product.stock > 0 && (
+        <!-- Mobile-only sticky duplicate of the cart actions — fades in once the
+             inline row above scrolls out of view, so "add to cart" stays reachable
+             without duplicating IDs or the add-to-cart logic itself. -->
+        <div id="sticky-cart-bar">
+          <div id="sticky-mini-summary">
+            {images[0] && <img id="sticky-mini-img" data-src={cdnSrc(images[0], 96)} alt="" width="44" height="44" decoding="async" />}
+            <span id="sticky-mini-name" dir="auto">{product.name}</span>
+            <span id="sticky-mini-price">{formatPrice(product.price)}</span>
+          </div>
+          <div class="flex items-center gap-3 flex-shrink-0">
+            <div dir="ltr" class="flex items-center flex-shrink-0 overflow-hidden"
+                 style="border:1px solid var(--color-border);border-radius:var(--radius);height:44px">
+              <button type="button" id="sticky-qty-dec" class="flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-surface)] active:scale-90 disabled:opacity-30 w-9 h-full flex-shrink-0"
+                      style="color:var(--color-muted);background:none;border:none;cursor:pointer"
+                      aria-label={t.cart.qtyDecrease} disabled>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+              <span id="sticky-qty-val" class="text-sm font-semibold text-center select-none min-w-6 flex-shrink-0"
+                    style="color:var(--color-text)" aria-live="polite" aria-atomic="true">1</span>
+              <button type="button" id="sticky-qty-inc" class="flex items-center justify-center transition-colors duration-100 hover:bg-[var(--color-surface)] active:scale-90 w-9 h-full flex-shrink-0"
+                      style="color:var(--color-muted);background:none;border:none;cursor:pointer"
+                      aria-label={t.cart.qtyIncrease}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+            </div>
+            <button type="button" id="sticky-add-to-cart-btn" class="btn flex-shrink-0"
+                    style="white-space:nowrap;height:44px;font-size:0.9375rem;font-weight:600">
+              <span class="btn-label">{t.store.addToCart}</span>
+            </button>
+          </div>
+        </div>
+      )}
     </main>
 
     <footer class="store-platform-note">
@@ -706,15 +746,42 @@ const pmI18n = {
   const maxStock = addBtn ? Math.max(1, parseInt(addBtn.dataset.stock ?? '99', 10) || 99) : 99;
   let qty = 1;
 
+  // Mobile sticky bar mirrors the same qty (kept in sync, never a second source of truth)
+  const stickyQtyDec = document.getElementById('sticky-qty-dec') as HTMLButtonElement | null;
+  const stickyQtyInc = document.getElementById('sticky-qty-inc') as HTMLButtonElement | null;
+  const stickyQtyVal = document.getElementById('sticky-qty-val');
+
   function updateQty(n: number) {
     qty = Math.max(1, Math.min(n, maxStock));
     if (qtyVal) qtyVal.textContent = String(qty);
     if (qtyDec) qtyDec.disabled = qty <= 1;
     if (qtyInc) qtyInc.disabled = qty >= maxStock;
+    if (stickyQtyVal) stickyQtyVal.textContent = String(qty);
+    if (stickyQtyDec) stickyQtyDec.disabled = qty <= 1;
+    if (stickyQtyInc) stickyQtyInc.disabled = qty >= maxStock;
   }
 
   qtyDec?.addEventListener('click', (e) => { spawnRipple(qtyDec, e.clientX, e.clientY); updateQty(qty - 1); });
   qtyInc?.addEventListener('click', (e) => { spawnRipple(qtyInc, e.clientX, e.clientY); updateQty(qty + 1); });
+  stickyQtyDec?.addEventListener('click', (e) => { spawnRipple(stickyQtyDec, e.clientX, e.clientY); updateQty(qty - 1); });
+  stickyQtyInc?.addEventListener('click', (e) => { spawnRipple(stickyQtyInc, e.clientX, e.clientY); updateQty(qty + 1); });
+
+  // ── Mobile sticky bar: appears once the real inline cart row scrolls out of view ──
+  const stickyCartBar = document.getElementById('sticky-cart-bar');
+  const productCtaRow = document.getElementById('product-cta-row');
+  const stickyMiniImg = document.getElementById('sticky-mini-img') as HTMLImageElement | null;
+  if (stickyCartBar && productCtaRow) {
+    new IntersectionObserver(([entry]) => {
+      const isHidden = !entry.isIntersecting;
+      stickyCartBar.classList.toggle('is-visible', isHidden);
+      // Defer the thumbnail fetch until the bar is first shown — it's fixed-position
+      // and always laid out, so native loading="lazy" can't tell it's off-screen.
+      if (isHidden && stickyMiniImg && stickyMiniImg.dataset.src) {
+        stickyMiniImg.src = stickyMiniImg.dataset.src;
+        stickyMiniImg.removeAttribute('data-src');
+      }
+    }, { rootMargin: '-56px 0px 0px 0px' }).observe(productCtaRow);
+  }
 
   // ── Add to cart ────────────────────────────────────────────────────
   if (addBtn) {
@@ -745,6 +812,41 @@ const pmI18n = {
         if (labelSpan) labelSpan.innerHTML = originalLabel;
         addBtn.style.minWidth = '';
         addBtn.disabled = false;
+      }, 1400);
+    });
+  }
+
+  // ── Mobile sticky bar: its own add-to-cart button, mirrors the same action
+  //    and shows its own success state (the inline button may be off-screen) ──
+  const stickyAddBtn = document.getElementById('sticky-add-to-cart-btn') as HTMLButtonElement | null;
+  if (addBtn && stickyAddBtn) {
+    const stickyCheckSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
+    const stickyLabelSpan = stickyAddBtn.querySelector<HTMLElement>('.btn-label');
+    if (stickyLabelSpan) stickyLabelSpan.style.cssText = 'display:inline-flex;align-items:center;gap:4px';
+    const stickyOriginalLabel = stickyLabelSpan?.innerHTML ?? '';
+
+    stickyAddBtn.addEventListener('pointerdown', (e) => spawnRipple(stickyAddBtn, e.clientX, e.clientY));
+    stickyAddBtn.addEventListener('click', () => {
+      if (addBtn.disabled || stickyAddBtn.disabled) return;
+      const { slug = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
+      const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy);
+      trackAddToCart({ id: slug, name, price: Number(price), category }, qty);
+      updateQty(1);
+
+      stickyAddBtn.style.minWidth = `${stickyAddBtn.offsetWidth}px`;
+      if (stickyLabelSpan) stickyLabelSpan.innerHTML = `${stickyCheckSvg}${addBtn.dataset.labelAdded ?? ''}`;
+      stickyAddBtn.disabled = true;
+
+      stickyAddBtn.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
+        { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+      );
+
+      setTimeout(() => {
+        if (stickyLabelSpan) stickyLabelSpan.innerHTML = stickyOriginalLabel;
+        stickyAddBtn.style.minWidth = '';
+        stickyAddBtn.disabled = false;
       }, 1400);
     });
   }
@@ -910,7 +1012,7 @@ const pmI18n = {
 
     const cartSection = stock > 0
       ? `<div>
-          <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.6rem">
+          <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:0.6rem;width:100%">
             <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
               <button type="button" class="pm-qty-dec" disabled aria-label="${pageLang === 'he' ? 'הפחת' : 'Decrease'}"
                       style="width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
@@ -925,7 +1027,7 @@ const pmI18n = {
             </div>
             <button type="button" class="btn pm-add-to-cart"
                     data-slug="${escHtml(slug)}" data-name="${escHtml(name)}" data-price="${price}" data-image="${escHtml(mainImgUrl)}" data-stock="${stock}"
-                    style="flex:1;height:2.25rem;display:flex;align-items:center;justify-content:center;gap:4px">
+                    style="flex:1 1 auto;height:2.25rem;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:4px">
               <span class="pm-btn-label">${i18n.addToCart ?? (pageLang === 'he' ? 'הוסף לעגלה' : 'Add to cart')}</span>
             </button>
           </div>
@@ -951,7 +1053,7 @@ const pmI18n = {
                   const aBg = hex ? hex + '18' : 'var(--color-primary)';
                   const aColor = hex ? 'var(--color-text)' : '#fff';
                   const swatch = isCv && hex
-                    ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:50%;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
+                    ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
                     : '';
                   return `<button type="button" class="pm-variant-opt"
                     data-pv-name="${escHtml(v.name)}" data-pv-value="${escHtml(opt)}" data-pv-hex="${escHtml(hex ?? '')}"

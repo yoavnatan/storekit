@@ -46,3 +46,78 @@
 @media (max-width: 720px) {
   .product-page { grid-template-columns: 1fr; }
 }
+
+/* Mobile: shorter aspect ratio so the hero image doesn't dominate the
+   whole first screen and push name/price/actions far down the page. */
+@media (max-width: 767px) {
+  .product-detail-page #main-img-wrap { aspect-ratio: 4 / 3; }
+}
+
+/* Sticky duplicate is a mobile-only concept — hidden everywhere by
+   default; the media query below is the only place that reveals it. */
+.product-detail-page #sticky-cart-bar { display: none; }
+
+/* ── Mobile: sticky duplicate of the cart actions ──────────────────
+   The real qty+add-to-cart row stays inline right below the color
+   picker (#product-cta-row, unstyled here — it's a normal flow element
+   on every screen size). This separate bar only exists so the action
+   stays reachable once that inline row scrolls out of view; it mirrors
+   the same slug/qty/price via its own #sticky-* ids, kept in sync by JS. */
+@media (max-width: 767px) {
+  .product-detail-page #main-content { padding-bottom: 5.5rem; }
+
+  .product-detail-page #sticky-cart-bar {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--color-bg);
+    border-top: 1px solid var(--color-border);
+    padding: 0.75rem 1rem;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
+    opacity: 0;
+    transform: translateY(12px);
+    pointer-events: none;
+    transition: opacity 240ms ease, transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .product-detail-page #sticky-cart-bar.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  .product-detail-page #sticky-mini-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .product-detail-page #sticky-mini-summary img {
+    width: 44px;
+    height: 44px;
+    border-radius: 7px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .product-detail-page #sticky-mini-name {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .product-detail-page #sticky-mini-price {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--color-accent);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}

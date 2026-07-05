@@ -69,7 +69,7 @@ Rules: (1) Each store is sovereign. (2) Platform chrome fades inside a store. (3
 3. **Simplicity** — no abstractions beyond task requirements.
 
 ## Architecture
-- **Stack:** Astro SSR + Node adapter, TypeScript, Tailwind v4, Heebo font, `tokens.css` color system
+- **Stack:** Astro SSR + Node adapter, TypeScript, Tailwind v4, Heebo font, `tokens.css` color system. Dev toolbar disabled (`devToolbar:{enabled:false}` in `astro.config.mjs`).
 - **Split:** content pages = static, seller/admin/api = SSR
 - **Header:** `position:fixed; top:0; left:0; right:0` + `body { padding-top:3.3rem }`. Never change to sticky.
 - **Data:** `data/*.json` dev-only; pure DB adapter functions, swap-ready for SQLite/Postgres
@@ -78,7 +78,7 @@ Rules: (1) Each store is sovereign. (2) Platform chrome fades inside a store. (3
 
 ## Hard rules
 - **TypeScript everywhere** — no `.js` in `src/`, no `any`.
-- **Tailwind v4 only** — no new CSS files or `<style>` blocks. Convert existing CSS on contact.
+- **Tailwind v4 only** — no new CSS files or `<style>` blocks. Convert existing CSS on contact. Never name a custom CSS class the same as a Tailwind utility (e.g. `.grid`, `.flex`) — unlayered legacy CSS beats Tailwind's `@layer utilities` regardless of source order, silently breaking it (bit us: `.grid` in `container.css` was overriding `grid-cols-*`/`gap-*`; renamed to `.auto-grid`).
 - **`<Image />` from `astro:assets`** for all platform images.
 - **Colors via `tokens.css`** — never hardcode hex. Use `[color:var(--color-X)]`.
 - **No emoji** — inline SVG icons (`aria-hidden="true"`, `currentColor`).
@@ -100,10 +100,10 @@ Rules: (1) Each store is sovereign. (2) Platform chrome fades inside a store. (3
 
 ## Features built
 - **Auth:** Unified seller+buyer accounts. register=name+email+password, `?next=` on all flows. Google OAuth (`/api/auth/google` + callback): find by googleId → email+link → create. `Seller.googleId?`, empty `passwordHash` for OAuth. Env: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
-- **Dashboard:** Multi-store tabs + switcher (alert dot on switcher btn + per-store in dropdown when pending orders or unread msgs); AJAX product CRUD; sortable table; inline cell editing (click name/price/stock → input → Enter commits, Escape cancels); category chip + filter bar; bulk actions (edit/upload/delete); kebab menu (view/edit/delete, PQV `newTab?`); store settings + save spring animation. 8 modules in `src/scripts/dashboard/`. Mobile: products table → CSS grid card layout (grid-template-areas: check/thumb/name/price/stock/actions; edit-row display:block).
-- **Images:** Cloudinary upload; BG removal Web Worker (`@imgly`); crop/zoom (OffscreenCanvas); up to 5 images/product. `passthroughImageService()`. `cdnSrc(url,w?)` → `f_auto,q_auto,w_N`. `thumbUrl(url,w?,h?)` → `c_fill,f_auto,q_auto` (server+client). Consistent widths: card=400, carousel=300, thumb=128, main=800.
+- **Dashboard:** Multi-store tabs + switcher (alert dot on switcher btn + per-store in dropdown when pending orders or unread msgs); AJAX product CRUD; sortable table; inline cell editing (click name/price/stock → input → Enter commits, Escape cancels); category chip + filter bar; bulk actions (edit/upload/delete); kebab menu (view/edit/delete, PQV `newTab?`); store settings + save spring animation; sortable date-added column (hidden on mobile). 8 modules in `src/scripts/dashboard/`. Mobile: products table → CSS grid card layout (grid-template-areas: check/thumb/name/price/stock/actions; edit-row display:block).
+- **Images:** Cloudinary upload; BG removal Web Worker (`@imgly` `segmentForeground`+`applySegmentationMask` — mask computed on a 1024px copy for speed, applied back onto the full-res original so quality isn't lost); crop output sized to the actual pixels selected (capped 2048, never a fixed size); manual cleanup modal (`cleanup-modal.ts`: erase/restore brush, independent zoom+pan — brush stays a fixed screen size so zooming in gives more precision, not a bigger brush); crop and bg-removal each keep a separate pristine snapshot + own undo so either can be redone after the other; saving a product resets+closes the image editor like a fresh reload (`finalizeGallery`/`closeGalleryPanel`). Up to 5 images/product. `passthroughImageService()`. `cdnSrc(url,w?)` → `f_auto,q_auto,w_N`. `thumbUrl(url,w?,h?)` → `c_fill,f_auto,q_auto` (server+client; thumb skeleton needs an ancestor of `.thumb-wrap` passed to `initThumbs`, never the wrap itself). Consistent widths: card=400, carousel=300, thumb=128, main=800.
 - **Store page `/store/[slug]`:** Product grid; product modal (pushState URL sync); lightbox; header search (dropdown, recent searches, X clear, `?q=` sync); filter+sort bar (category chips `[aria-pressed]`, sort button with `[aria-expanded]` styling); product card image carousel (scroll-snap, dots, RTL, touch); store banner (fav+contact); skeleton shimmer. Back-link: arrow (14px) → hover reveals "ShopNest" text; house icon replaces `|` separator (mobile+desktop); store name truncates with ellipsis.
-- **Product page `/store/[storeSlug]/[productSlug]`:** Image gallery + lightbox; qty stepper; add-to-cart; wishlist; related products row; BreadcrumbList+Product JSON-LD; SEO; specs table; category chip; tags.
+- **Product page `/store/[storeSlug]/[productSlug]`:** Image gallery + lightbox; qty stepper; add-to-cart; wishlist; related products row; BreadcrumbList+Product JSON-LD; SEO; specs table; category chip; tags. Grid `grid-cols-1 md:grid-cols-[minmax(0,440px)_1fr]` (image capped 440px). Mobile (<768px): image `aspect-ratio:4/3`; tight vertical gaps; qty+add-to-cart row (`#product-cta-row`) stays inline below the color picker AND mirrors into `#sticky-cart-bar` (fixed bottom, fades in via IntersectionObserver once the inline row scrolls away; own ids kept in sync via shared `qty`/`updateQty`; thumbnail deferred via `data-src`, only fetched on first reveal). Color-variant swatches: `border-radius:3px` (matches header badge, not circles).
 - **Cart:** Per-store localStorage (`store_cart_v2_{slug}`). CartDrawer (grouped by store, PQV on item click). Server-side: `data/user-carts.json` + `/api/user-cart` + `src/lib/cart-sync.ts` (merge guest→user on login, debounced save 1.2s).
 - **Wishlist:** localStorage + server sync. WishlistDrawer (skeleton, image preloading, no FOUC via inline script).
 - **Homepage `/`:** Search in sticky header (store-search dropdown: finds stores by name/tagline, recent searches `home_search_recent_v1`, works on buyer dashboard too; data via `#home-search-stores-data` JSON embed; `<form role="search">` + empty `<datalist>` to block browser credential/history suggestions); greeting bar; active carts (split `<a>`+`<button>` chip); per-store carousels (IntersectionObserver lazy); seller CTA banner. Mobile: cart chips stack full-width (flex-direction:column, width:100%).
@@ -114,7 +114,7 @@ Rules: (1) Each store is sovereign. (2) Platform chrome fades inside a store. (3
 - **Notifications:** Bell polls 30s; routes to correct tab; deleted on read. X close button. Tab title badge `(N)`.
 - **Mobile header:** ≤640px — store search + homepage search hidden → magnifying-glass opens fixed panel (DOM-teleport). Notif+wishlist panels: `position:fixed; left:8px; right:8px` at button rect. All dropdowns mutually close with fade-close animation (`.dropdown--closing`, opacity+scale 0.13s). Flash-on-resize fix: `visibility:hidden` on closed drawers + dropdown animations gated on `:not([hidden])` + `matchMedia` transition suppressor on buyer sidebar.
 - **Cart/wishlist count badge:** `position:absolute` in `.cart-btn-wrap` wrapper (outside `<button>`), square with rounded corners at bottom-corner of icon — never expands button width. Pixel-precise centering: `line-height:1` + fixed px (no rem) + flexbox `align-items/justify-content:center`.
-- **PQV (`ProductQuickView.astro`):** Native `<dialog>`; `pqv:open {storeSlug,productSlug,storeName,newTab?}`; lightbox inside; image skeleton (`data-src` + `img.decode()`). "לתשלום" → checkout accordion or `/checkout?pay=1`.
+- **PQV (`ProductQuickView.astro`):** Native `<dialog>`; `pqv:open {storeSlug,productSlug,storeName,newTab?}`; lightbox inside. Main image = scroll-snap carousel + dots (mirrors `.product-card__slides/__dots`); thumbnails centered, same shimmer skeleton (`data-src` + `img.decode()`) as main image. "לתשלום" → checkout accordion or `/checkout?pay=1`. Store page's own product-click modal (`openProductModal` in `[slug].astro`, `.pm-*` classes) is a separate duplicate implementation — same carousel/dots/skeleton pattern applied there too.
 - **Tracking:** `src/lib/tracking.ts` — `trackViewContent` + `trackAddToCart` → dataLayer + fbq. GTM+Pixel on every page. Product OG tags. Sellers never touch ad config.
 - **Categories & Tags:** `category?:string` (one/product, filter chips) + `tags?:string[]` (SEO/search). Category in JSON-LD. Dashboard: `<datalist>` suggestions.
 - **i18n:** `he`/`en` dictionaries; `getLang`/`getDir`/`getT`; lang cookie; RTL throughout. `buyerDashboard` section complete (all visible strings + JS strings via data attrs).
@@ -157,8 +157,8 @@ src/lib/orders.ts               ← Order interfaces + CRUD + buyerId
 src/lib/messages.ts             ← Message interface + CRUD + markRead
 src/lib/notifications.ts        ← Notification interface + CRUD
 src/lib/cloudinary.ts           ← thumbUrl server-side
-src/workers/bg-removal.ts       ← BG removal Web Worker (@imgly)
-src/scripts/dashboard/          ← 8 modules: bg-worker, cloudinary, status, crop-modal, gallery, products, ui
+src/workers/bg-removal.ts       ← BG removal Web Worker (@imgly, mask-on-small + apply-to-full-res)
+src/scripts/dashboard/          ← 8 modules: bg-worker, cleanup-modal, cloudinary, status, crop-modal, gallery, products, ui
 src/pages/index.astro           ← SSR homepage
 src/pages/store/[slug].astro    ← SSR store page
 src/pages/store/[storeSlug]/[productSlug].astro ← SSR product page

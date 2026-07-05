@@ -13,7 +13,7 @@ const products = getAllProducts();
       <h1>All products</h1>
       <p class="muted">{products.length} products</p>
     </div>
-    <div class="grid">
+    <div class="auto-grid">
       {products.map((p) => <ProductCard product={p} />)}
     </div>
   </section>

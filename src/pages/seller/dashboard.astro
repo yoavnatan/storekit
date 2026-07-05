@@ -450,13 +450,18 @@ const orderStatusColors: Record<string, string> = {
                     <svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
                   </button>
                 </th>
+                <th class="date-col">
+                  <button type="button" class="sort-btn" data-sort-col="createdAt">{d.colDateAdded}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                </th>
                 <th />
               </tr>
             </thead>
             <tbody id="products-tbody">
-              {products.map((p, idx) => (
+              {products.map((p, idx) => {
+                const fmtDateAdded = (iso: string) => new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+                return (
                 <>
-                  <tr data-product-display={p.id} data-store-id={store.id} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-category={p.category ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name}>
+                  <tr data-product-display={p.id} data-store-id={store.id} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={p.category ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name}>
                     <td class="check-col"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
                     <td class="num row-num">{idx + 1}</td>
                     <td class="thumb-col">
@@ -485,6 +490,7 @@ const orderStatusColors: Record<string, string> = {
                         : <span style="color:var(--color-border)">—</span>
                       }
                     </td>
+                    <td class="date-col">{fmtDateAdded(p.createdAt)}</td>
                     <td class="actions">
                       <div class="product-menu">
                         <button class="product-menu__btn" type="button" aria-label={d.menuLabel ?? 'אפשרויות'} aria-expanded="false" aria-haspopup="true">
@@ -587,7 +593,8 @@ const orderStatusColors: Record<string, string> = {
                     </td>
                   </tr>
                 </>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1168,8 +1175,62 @@ const orderStatusColors: Record<string, string> = {
       </label>
     </div>
     <div class="crop-actions">
-      <button class="btn btn--sm" id="crop-apply" type="button">{d.cropApply}</button>
-      <button class="btn btn--ghost btn--sm" id="crop-cancel" type="button">{d.cancel}</button>
+      <button class="btn btn--sm" id="crop-apply" type="button">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+        {d.cropApply}
+      </button>
+      <button class="btn btn--ghost btn--sm" id="crop-cancel" type="button">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        {d.cancel}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="cleanup-modal" id="cleanup-modal" hidden aria-modal="true" role="dialog">
+  <div class="cleanup-panel">
+    <h3>{d.cleanupTitle}</h3>
+    <div class="cleanup-viewport" id="cleanup-viewport">
+      <canvas id="cleanup-canvas"></canvas>
+      <div class="cleanup-brush-cursor" id="cleanup-brush-cursor" hidden aria-hidden="true"></div>
+    </div>
+    <div class="cleanup-controls">
+      <div class="cleanup-mode-toggle" role="group" aria-label={d.cleanupTitle}>
+        <button type="button" class="cleanup-mode-btn cleanup-mode-btn--active" id="cleanup-mode-erase" data-mode="erase">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+          {d.cleanupErase}
+        </button>
+        <button type="button" class="cleanup-mode-btn" id="cleanup-mode-restore" data-mode="restore">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>
+          {d.cleanupRestore}
+        </button>
+        <button type="button" class="cleanup-mode-btn" id="cleanup-mode-pan" data-mode="pan" disabled>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+          {d.cleanupPan}
+        </button>
+      </div>
+      <label class="cleanup-brush-label">
+        {d.cleanupZoom}
+        <input type="range" class="cleanup-brush-input" id="cleanup-zoom" min="1" max="4" step="0.1" value="1" />
+      </label>
+      <label class="cleanup-brush-label">
+        {d.cleanupBrushSize}
+        <input type="range" class="cleanup-brush-input" id="cleanup-brush-size" min="6" max="80" step="1" value="24" />
+      </label>
+    </div>
+    <div class="cleanup-actions">
+      <button class="btn btn--sm" id="cleanup-apply" type="button">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+        {d.cleanupApply}
+      </button>
+      <button class="btn btn--ghost btn--sm" id="cleanup-reset" type="button">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        {d.cleanupReset}
+      </button>
+      <button class="btn btn--ghost btn--sm" id="cleanup-cancel" type="button">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        {d.cancel}
+      </button>
     </div>
   </div>
 </div>
@@ -1269,6 +1330,7 @@ const orderStatusColors: Record<string, string> = {
 
 <script>
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
+  import { initCleanupModal } from '../../scripts/dashboard/cleanup-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
   import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initTableSort, initSpecsEditors, initVariantEditors, initBulkSelect, initThumbs, initInlineEdit, initCategoryFilter, initViewProduct } from '../../scripts/dashboard/products.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
@@ -1309,6 +1371,7 @@ const orderStatusColors: Record<string, string> = {
     }
   }
   initCropModal();
+  initCleanupModal();
   initSpecsEditors();
   initVariantEditors();
   document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g, CLOUD, PRESET));

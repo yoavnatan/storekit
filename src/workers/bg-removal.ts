@@ -1,4 +1,4 @@
-import { removeBackground } from '@imgly/background-removal';
+import { segmentForeground, applySegmentationMask } from '@imgly/background-removal';
 
 async function resizeBlob(blob: Blob, maxPx: number): Promise<Blob> {
   const bitmap = await createImageBitmap(blob);
@@ -16,8 +16,13 @@ async function resizeBlob(blob: Blob, maxPx: number): Promise<Blob> {
 self.addEventListener('message', async (e: MessageEvent<{ id: number; blob: Blob }>) => {
   const { id, blob } = e.data;
   try {
-    const resized = await resizeBlob(blob, 1024);
-    const result = await removeBackground(resized, { model: 'isnet_quint8' });
+    // Run the (expensive) ML segmentation on a downsized copy for speed, but apply the
+    // resulting mask back onto the original full-resolution blob — applySegmentationMask
+    // upscales the mask internally, so the final cutout keeps the source image's quality
+    // instead of being capped at the 1024px working resolution.
+    const small = await resizeBlob(blob, 1024);
+    const mask = await segmentForeground(small, { model: 'isnet_quint8' });
+    const result = await applySegmentationMask(blob, mask, { model: 'isnet_quint8' });
     self.postMessage({ id, success: true, blob: result });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'BG removal failed';

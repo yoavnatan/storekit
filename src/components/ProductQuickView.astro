@@ -112,19 +112,57 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
     position: relative; background: var(--color-bg);
     aspect-ratio: 4/3; overflow: hidden;
   }
-  .pqv-img-area.is-loading {
+  .pqv-slides {
+    display: flex; width: 100%; height: 100%;
+    overflow-x: scroll; overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+  }
+  .pqv-slides::-webkit-scrollbar { display: none; }
+  .pqv-slide {
+    flex: 0 0 100%; width: 100%; height: 100%;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    position: relative; overflow: hidden;
+  }
+  .pqv-slide.is-loading {
     background: linear-gradient(90deg, var(--color-border) 25%, var(--color-bg) 50%, var(--color-border) 75%);
     background-size: 200% 100%;
     animation: pqv-shimmer 1.3s infinite linear;
   }
   .pqv-main-img {
-    width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; cursor: zoom-in;
+    width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in;
     transition: opacity 0.18s;
   }
-  .pqv-img-area.is-loading .pqv-main-img { opacity: 0; }
+  .pqv-slide.is-loading .pqv-main-img { opacity: 0; }
   .pqv-no-img { aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; color: var(--color-muted); }
+  .pqv-dots {
+    position: absolute; bottom: 7px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; align-items: center; justify-content: center;
+    gap: 4px; padding: 4px 8px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border: 0.75px solid rgba(255, 255, 255, 0.2);
+    z-index: 3;
+    pointer-events: none;
+  }
+  .pqv-dot {
+    width: 6px; height: 6px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    flex-shrink: 0; cursor: pointer;
+    pointer-events: auto;
+  }
+  .pqv-dot.is-active { width: 18px; background: #fff; }
   .pqv-thumbs {
     display: flex; gap: .375rem;
+    justify-content: center;
     padding: .5rem .875rem;
     overflow-x: auto; scrollbar-width: none;
     background: var(--color-bg);
@@ -135,11 +173,18 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
     border-radius: 6px; overflow: hidden;
     border: 2px solid var(--color-border);
     cursor: pointer; background: none; padding: 0;
+    position: relative;
     transition: border-color 130ms;
+  }
+  .pqv-thumb.is-loading {
+    background: linear-gradient(90deg, var(--color-border) 25%, var(--color-bg) 50%, var(--color-border) 75%);
+    background-size: 200% 100%;
+    animation: pqv-shimmer 1.3s infinite linear;
   }
   .pqv-thumb.is-active,
   .pqv-thumb:hover { border-color: var(--color-accent); }
-  .pqv-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pqv-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.18s; }
+  .pqv-thumb.is-loading img { opacity: 0; }
   .pqv-content { padding: 1.125rem 1.25rem 1.5rem; }
   .pqv-store-link {
     font-size: .75rem; font-weight: 700;
@@ -270,16 +315,18 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
     p.variants.forEach(v => { selectedVariants[v.name] = v.options[0] ?? ''; });
 
     function renderDialog(): void {
-      const mainImg    = p.images[0] ?? '';
       const hasImages  = p.images.length > 0;
       const hasMultiple= p.images.length > 1;
 
       const imgAreaHtml = hasImages
-        ? `<div class="pqv-img-area is-loading"><img id="pqv-main-img" data-src="${pqvEsc(mainImg)}" alt="${pqvEsc(p.name)}" class="pqv-main-img" /></div>`
+        ? `<div class="pqv-img-area">
+             <div class="pqv-slides">${p.images.map((img) => `<div class="pqv-slide is-loading"><img data-src="${pqvEsc(img)}" alt="${pqvEsc(p.name)}" class="pqv-main-img" /></div>`).join('')}</div>
+             ${hasMultiple ? `<div class="pqv-dots" aria-hidden="true">${p.images.map((_, i) => `<span class="pqv-dot${i === 0 ? ' is-active' : ''}"></span>`).join('')}</div>` : ''}
+           </div>`
         : `<div class="pqv-img-area pqv-no-img"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
 
       const thumbsHtml = hasMultiple
-        ? `<div class="pqv-thumbs">${p.images.map((img, i) => `<button type="button" class="pqv-thumb ${i === 0 ? 'is-active' : ''}" data-idx="${i}" data-src="${pqvEsc(img)}"><img src="${pqvEsc(img)}" alt="" width="52" height="52" loading="lazy" /></button>`).join('')}</div>`
+        ? `<div class="pqv-thumbs">${p.images.map((img, i) => `<button type="button" class="pqv-thumb is-loading ${i === 0 ? 'is-active' : ''}" data-idx="${i}"><img data-src="${pqvEsc(img)}" alt="" width="52" height="52" loading="lazy" /></button>`).join('')}</div>`
         : '';
 
       const variantsHtml = p.variants.map(v => `
@@ -316,35 +363,94 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
 
       let pqvImgIdx = 0;
 
-      // skeleton for main image — set src after rendering so shimmer is always visible first
-      const pqvImgArea = pqvBody!.querySelector<HTMLElement>('.pqv-img-area');
-      const pqvMainImg = document.getElementById('pqv-main-img') as HTMLImageElement | null;
-      if (pqvImgArea && pqvMainImg && pqvMainImg.dataset['src']) {
-        pqvMainImg.src = pqvMainImg.dataset['src'];
-        pqvMainImg.decode()
-          .then(() => pqvImgArea.classList.remove('is-loading'))
-          .catch(() => pqvImgArea.classList.remove('is-loading'));
-      }
-
-      pqvBody!.querySelectorAll<HTMLButtonElement>('.pqv-thumb').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const src = btn.dataset['src'] ?? '';
-          pqvImgIdx = parseInt(btn.dataset['idx'] ?? '0', 10);
-          const mainImgEl = document.getElementById('pqv-main-img') as HTMLImageElement | null;
-          const imgArea   = pqvBody!.querySelector<HTMLElement>('.pqv-img-area');
-          if (mainImgEl && imgArea) {
-            imgArea.classList.add('is-loading');
-            mainImgEl.src = src;
-            mainImgEl.decode()
-              .then(() => imgArea.classList.remove('is-loading'))
-              .catch(() => imgArea.classList.remove('is-loading'));
-          }
-          pqvBody!.querySelectorAll('.pqv-thumb').forEach(b => b.classList.remove('is-active'));
-          btn.classList.add('is-active');
-        });
+      // skeleton for slide images — set src after rendering so shimmer is always visible first
+      const slidesEl = pqvBody!.querySelector<HTMLElement>('.pqv-slides');
+      const slideEls = slidesEl ? Array.from(slidesEl.querySelectorAll<HTMLElement>('.pqv-slide')) : [];
+      slideEls.forEach((slide) => {
+        const img = slide.querySelector<HTMLImageElement>('img[data-src]');
+        if (img && img.dataset['src']) {
+          img.src = img.dataset['src'];
+          img.decode()
+            .then(() => slide.classList.remove('is-loading'))
+            .catch(() => slide.classList.remove('is-loading'));
+        }
       });
 
-      document.getElementById('pqv-main-img')?.addEventListener('click', () => {
+      // skeleton for thumbnails — same shimmer/decode pattern as the main image
+      const thumbEls = Array.from(pqvBody!.querySelectorAll<HTMLElement>('.pqv-thumb'));
+      thumbEls.forEach((thumb) => {
+        const img = thumb.querySelector<HTMLImageElement>('img[data-src]');
+        if (img && img.dataset['src']) {
+          img.src = img.dataset['src'];
+          img.decode()
+            .then(() => thumb.classList.remove('is-loading'))
+            .catch(() => thumb.classList.remove('is-loading'));
+        }
+      });
+
+      const dotsEl = pqvBody!.querySelector<HTMLElement>('.pqv-dots');
+      const dots   = dotsEl ? Array.from(dotsEl.querySelectorAll<HTMLElement>('.pqv-dot')) : [];
+
+      if (slidesEl && slideEls.length > 1) {
+        const isRtl = getComputedStyle(slidesEl).direction === 'rtl';
+        const BASE_W = 6, ACTIVE_W = 18;
+        const getSlideW = () => slidesEl.offsetWidth || 1;
+
+        function setActive(idx: number): void {
+          pqvImgIdx = idx;
+          dots.forEach((d, i) => {
+            d.style.transition = 'width 220ms cubic-bezier(0.34,1.56,0.64,1)';
+            d.style.width = `${i === idx ? ACTIVE_W : BASE_W}px`;
+            d.style.background = i === idx ? '#fff' : 'rgba(255,255,255,0.7)';
+          });
+          thumbEls.forEach((th, i) => th.classList.toggle('is-active', i === idx));
+        }
+
+        function scrollToIdx(idx: number): void {
+          slidesEl!.scrollTo({ left: (isRtl ? -1 : 1) * idx * getSlideW(), behavior: 'smooth' });
+          setActive(idx);
+        }
+
+        let snapTimer: ReturnType<typeof setTimeout> | undefined;
+        slidesEl.addEventListener('scroll', () => {
+          clearTimeout(snapTimer);
+          snapTimer = setTimeout(() => {
+            const idx = Math.min(Math.round(Math.abs(slidesEl!.scrollLeft) / getSlideW()), slideEls.length - 1);
+            setActive(idx);
+          }, 80);
+        }, { passive: true });
+
+        dots.forEach((dot, i) => dot.addEventListener('click', () => scrollToIdx(i)));
+        thumbEls.forEach((thumb) => {
+          thumb.addEventListener('click', () => scrollToIdx(parseInt(thumb.dataset['idx'] ?? '0', 10)));
+        });
+
+        // Touch — one slide at a time, no momentum skip
+        let tStartX = 0, tStartScroll = 0;
+        slidesEl.addEventListener('touchstart', (e: TouchEvent) => {
+          tStartX = e.touches[0].clientX;
+          tStartScroll = slidesEl!.scrollLeft;
+          slidesEl!.style.scrollSnapType = 'none';
+        }, { passive: true });
+        slidesEl.addEventListener('touchend', (e: TouchEvent) => {
+          const slideW = getSlideW();
+          const dx = e.changedTouches[0].clientX - tStartX;
+          const cur = Math.round(Math.abs(tStartScroll) / slideW);
+          let tgt = cur;
+          if (dx < -(slideW * 0.08)) tgt = Math.min(cur + 1, slideEls.length - 1);
+          if (dx >  (slideW * 0.08)) tgt = Math.max(cur - 1, 0);
+          const left = (isRtl ? -1 : 1) * tgt * slideW;
+          slidesEl!.style.overflow = 'hidden';
+          requestAnimationFrame(() => {
+            slidesEl!.style.overflow = '';
+            slidesEl!.scrollLeft = left;
+            slidesEl!.style.scrollSnapType = '';
+            setActive(tgt);
+          });
+        }, { passive: true });
+      }
+
+      slidesEl?.addEventListener('click', () => {
         if (p.images.length > 0) openLightbox(p.images, pqvImgIdx, p.name);
       });
 

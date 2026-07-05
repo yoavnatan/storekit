@@ -6,7 +6,7 @@ const cropApplyBtn = document.getElementById('crop-apply') as HTMLButtonElement 
 const cropCancelEl = document.getElementById('crop-cancel') as HTMLButtonElement | null;
 
 const VP_SIZE = 280;
-const OUT_SIZE = 512;
+const OUT_SIZE_MAX = 2048; // ceiling only — real output size matches the source pixels selected
 
 let cropApplyCallback: ((blob: Blob, isProcessed: boolean) => void) | null = null;
 let cropIsProcessed = false;
@@ -64,14 +64,18 @@ function closeCropModal() {
 
 async function applyCrop() {
   if (!cropImgEl?.naturalWidth) return;
-  const canvas = document.createElement('canvas');
-  canvas.width = OUT_SIZE; canvas.height = OUT_SIZE;
-  const ctx = canvas.getContext('2d')!;
   const s = cropFitScale * cropZoomVal;
-  const srcSize = VP_SIZE / s;
+  const srcSize = VP_SIZE / s; // number of actual source pixels being cropped, at the current zoom
+  // Match the output to the real source resolution instead of a fixed size — a fixed size
+  // would either downscale (losing detail on a large/zoomed-out selection) or pointlessly
+  // upscale (a small/zoomed-in selection). Only cap for very large sources.
+  const outSize = Math.round(Math.min(srcSize, OUT_SIZE_MAX));
+  const canvas = document.createElement('canvas');
+  canvas.width = outSize; canvas.height = outSize;
+  const ctx = canvas.getContext('2d')!;
   const srcX = cropImgEl.naturalWidth / 2 - (VP_SIZE / 2 + cropPanX) / s;
   const srcY = cropImgEl.naturalHeight / 2 - (VP_SIZE / 2 + cropPanY) / s;
-  ctx.drawImage(cropImgEl, srcX, srcY, srcSize, srcSize, 0, 0, OUT_SIZE, OUT_SIZE);
+  ctx.drawImage(cropImgEl, srcX, srcY, srcSize, srcSize, 0, 0, outSize, outSize);
 
   const croppedBlob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'));
   if (!croppedBlob) { closeCropModal(); return; }

@@ -1,5 +1,5 @@
 import { esc } from '../../lib/gallery-widget.js';
-import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery } from './gallery.js';
+import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery, finalizeGallery, closeGalleryPanel } from './gallery.js';
 import { showStatus } from './status.js';
 import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
@@ -10,9 +10,15 @@ export interface ProductData {
   category?: string; tags?: string[];
   specs?: Array<{ label: string; value: string }>;
   variants?: Array<{ name: string; options: string[] }>;
+  createdAt?: string;
 }
 
 function fmtPrice(n: number) { return formatPrice(n); }
+
+function fmtDateAdded(iso?: string): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
 
 
 function warnIcon(label: string): string {
@@ -155,6 +161,7 @@ export function buildRows(p: ProductData, cloud: string, preset: string, storeSl
   display.dataset.sortPrice = String(p.price);
   display.dataset.sortStock = String(p.stock);
   display.dataset.sortWishlist = '0';
+  display.dataset.sortCreatedAt = p.createdAt ?? '';
   display.dataset.category = p.category ?? '';
   display.dataset.productSlug = p.slug ?? '';
   display.dataset.storeSlug = resolvedStoreSlug;
@@ -171,6 +178,7 @@ export function buildRows(p: ProductData, cloud: string, preset: string, storeSl
     <td class="num product-price">${fmtPrice(p.price)}</td>
     <td class="num product-stock">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}</td>
     <td class="num" style="color:var(--color-muted);font-size:0.82rem">—</td>
+    <td class="date-col">${esc(fmtDateAdded(p.createdAt))}</td>
     <td class="actions">
       <div class="product-menu">
         <button class="product-menu__btn" type="button" aria-label="${esc(i.menuLabel ?? 'אפשרויות')}" aria-expanded="false" aria-haspopup="true">
@@ -255,6 +263,8 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
     const savedImages = data.images ?? [];
     const savedImage = savedImages[0] ?? null;
 
+    if (gallery) { finalizeGallery(gallery); closeGalleryPanel(gallery); }
+
     const displayRow = document.querySelector<HTMLTableRowElement>(`[data-product-display="${productId}"]`);
     const editRow    = document.querySelector<HTMLTableRowElement>(`[data-product-edit="${productId}"]`);
 
@@ -288,7 +298,7 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
           }
           if (thumb) thumb.src = thumbUrl(thumbSrc);
           wrap.classList.remove('loaded');
-          initThumbs(wrap);
+          initThumbs(thumbCol);
         } else { wrap?.remove(); }
       }
 
@@ -532,7 +542,7 @@ export function initTableSort(): void {
   let sortDir = 'asc';
 
   function sortTable(col: string) {
-    const defaultDir = col === 'wishlist' ? 'desc' : 'asc';
+    const defaultDir = col === 'wishlist' || col === 'createdAt' ? 'desc' : 'asc';
     sortDir = sortCol === col ? (sortDir === 'asc' ? 'desc' : 'asc') : defaultDir;
     sortCol = col;
 
@@ -548,6 +558,7 @@ export function initTableSort(): void {
       if (col === 'stock')    { va = parseInt(a.dataset.sortStock   ?? '0', 10); vb = parseInt(b.dataset.sortStock   ?? '0', 10); }
       if (col === 'wishlist') { va = parseInt(a.dataset.sortWishlist ?? '0', 10); vb = parseInt(b.dataset.sortWishlist ?? '0', 10); }
       if (col === 'category') { va = (a.dataset.category ?? '').toLowerCase(); vb = (b.dataset.category ?? '').toLowerCase(); }
+      if (col === 'createdAt') { va = a.dataset.sortCreatedAt ?? ''; vb = b.dataset.sortCreatedAt ?? ''; }
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });

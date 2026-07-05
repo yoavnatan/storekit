@@ -2,10 +2,17 @@ import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
 import { removeBackgroundInWorker, cancelBgWorker } from './bg-worker.js';
 import { cloudinaryUpload } from './cloudinary.js';
 import { openCropModal } from './crop-modal.js';
+import { openCleanupModal } from './cleanup-modal.js';
 
 export { galleryWidgetHtml };
 
-export interface WidgetState { original?: Blob; processed?: Blob; useProcessed: boolean; processing: boolean }
+export interface WidgetState {
+  original?: Blob; processed?: Blob; useProcessed: boolean; processing: boolean;
+  pristineOriginal?: Blob;  // untouched upload, kept so a crop of the original can be undone
+  pristineProcessed?: Blob; // bg-removed/cleaned cutout before any crop was applied to it
+  croppedOriginal: boolean;  // true once a crop has been applied to `original`
+  croppedProcessed: boolean; // true once a crop has been applied to `processed`
+}
 const wState = new WeakMap<Element, WidgetState>();
 
 export function initGalleryWidget(gallery: Element, cloud: string, preset: string): void {
@@ -18,7 +25,9 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
   const removeBgBtn    = gallery.querySelector<HTMLButtonElement>('.gallery-remove-bg-btn');
   const restoreBgBtn   = gallery.querySelector<HTMLButtonElement>('.gallery-restore-bg-btn');
   const keepBgBtn      = gallery.querySelector<HTMLButtonElement>('.gallery-keep-bg-btn');
+  const cleanupBtn     = gallery.querySelector<HTMLButtonElement>('.gallery-cleanup-btn');
   const cropBtn        = gallery.querySelector<HTMLButtonElement>('.gallery-crop-btn');
+  const undoCropBtn    = gallery.querySelector<HTMLButtonElement>('.gallery-undo-crop-btn');
   const changeBtn      = gallery.querySelector<HTMLButtonElement>('.gallery-change-btn');
   const doneBtn        = gallery.querySelector<HTMLButtonElement>('.gallery-done-btn');
   const form           = gallery.closest<HTMLFormElement>('form');
@@ -52,9 +61,11 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
     removeBgBtn?.toggleAttribute('hidden', hasProcessed || isProcessing);
     restoreBgBtn?.toggleAttribute('hidden', !hasProcessed || showingProcessed || isProcessing);
     keepBgBtn?.toggleAttribute('hidden', !showingProcessed && !isProcessing);
-    const lockEdit = showingProcessed || isProcessing;
-    if (cropBtn)   cropBtn.disabled   = lockEdit;
-    if (changeBtn) changeBtn.disabled = lockEdit;
+    cleanupBtn?.toggleAttribute('hidden', !showingProcessed || isProcessing);
+    const isCropped = showingProcessed ? st.croppedProcessed : st.croppedOriginal;
+    undoCropBtn?.toggleAttribute('hidden', !isCropped || isProcessing);
+    if (cropBtn)   cropBtn.disabled   = isProcessing;
+    if (changeBtn) changeBtn.disabled = isProcessing;
   }
 
   function setSlotThumbnail(slot: Element, src: string) {
@@ -68,7 +79,11 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
 
   function clearSlot(slot: Element) {
     const st = wState.get(slot);
-    if (st) { st.original = undefined; st.processed = undefined; st.useProcessed = false; }
+    if (st) {
+      st.original = undefined; st.processed = undefined; st.useProcessed = false;
+      st.pristineOriginal = undefined; st.pristineProcessed = undefined;
+      st.croppedOriginal = false; st.croppedProcessed = false;
+    }
     const slotImg   = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
     const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
     const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
@@ -109,13 +124,15 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
     const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
     const editBtn   = slot.querySelector<HTMLButtonElement>('.gallery-slot__action--edit');
     const removeBtn = slot.querySelector<HTMLButtonElement>('.gallery-slot__action--remove');
-    const st: WidgetState = { useProcessed: false, processing: false };
+    const st: WidgetState = { useProcessed: false, processing: false, croppedOriginal: false, croppedProcessed: false };
     wState.set(slot, st);
 
     fileInput?.addEventListener('change', () => {
       const file = fileInput.files?.[0];
       if (!file) return;
-      st.original = file; st.processed = undefined; st.useProcessed = false;
+      st.original = file; st.pristineOriginal = file;
+      st.processed = undefined; st.pristineProcessed = undefined; st.useProcessed = false;
+      st.croppedOriginal = false; st.croppedProcessed = false;
       setSlotThumbnail(slot, URL.createObjectURL(file));
       activateSlot(slot);
     });
@@ -145,13 +162,14 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
         const resp = await fetch(url);
         if (!resp.ok) throw new Error('fetch failed');
         st.original = await resp.blob();
+        st.pristineOriginal = st.original;
       } catch { setLoading(false); updatePanelButtons(); return; }
     }
     setLoading(true);
     updatePanelButtons();
     try {
       const processed = await removeBackgroundInWorker(st.original!);
-      st.processed = processed; st.useProcessed = true;
+      st.processed = processed; st.pristineProcessed = processed; st.useProcessed = true; st.croppedProcessed = false;
       if (panelImg) panelImg.src = URL.createObjectURL(processed);
       if (activeSlot) setSlotThumbnail(activeSlot, URL.createObjectURL(processed));
     } catch (err) {
@@ -180,6 +198,41 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
     updatePanelButtons();
   });
 
+  cleanupBtn?.addEventListener('click', () => {
+    if (!activeSlot) return;
+    const st = wState.get(activeSlot)!;
+    if (!st.original || !st.processed) return;
+    const slotRef = activeSlot;
+    openCleanupModal(st.original, st.processed, (cleanedBlob) => {
+      const st2 = wState.get(slotRef)!;
+      st2.processed = cleanedBlob; st2.pristineProcessed = cleanedBlob; st2.useProcessed = true; st2.croppedProcessed = false;
+      if (panelImg) panelImg.src = URL.createObjectURL(cleanedBlob);
+      setSlotThumbnail(slotRef, URL.createObjectURL(cleanedBlob));
+      if (slotRef === activeSlot) updatePanelButtons();
+    });
+  });
+
+  undoCropBtn?.addEventListener('click', () => {
+    if (!activeSlot) return;
+    const st = wState.get(activeSlot)!;
+    const showingProcessed = !!(st.processed && st.useProcessed);
+    if (showingProcessed) {
+      if (!st.pristineProcessed) return;
+      st.processed = st.pristineProcessed;
+      st.croppedProcessed = false;
+      if (panelImg) panelImg.src = URL.createObjectURL(st.processed);
+      setSlotThumbnail(activeSlot, URL.createObjectURL(st.processed));
+    } else {
+      if (!st.pristineOriginal) return;
+      st.original = st.pristineOriginal;
+      st.processed = undefined; st.pristineProcessed = undefined;
+      st.useProcessed = false; st.croppedOriginal = false; st.croppedProcessed = false;
+      if (panelImg) panelImg.src = URL.createObjectURL(st.original);
+      setSlotThumbnail(activeSlot, URL.createObjectURL(st.original));
+    }
+    updatePanelButtons();
+  });
+
   cropBtn?.addEventListener('click', async () => {
     if (!activeSlot) return;
     const st = wState.get(activeSlot)!;
@@ -193,6 +246,7 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
         const resp = await fetch(url);
         if (!resp.ok) throw new Error('fetch failed');
         st.original = await resp.blob();
+        st.pristineOriginal = st.original;
         blob = st.original;
       } catch { setLoading(false); return; }
       setLoading(false);
@@ -201,9 +255,21 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
     const slotRef = activeSlot;
     openCropModal(blob, isProcessed, (croppedBlob, wasProcessed) => {
       const st2 = wState.get(slotRef)!;
-      if (wasProcessed) st2.processed = croppedBlob;
-      else st2.original = croppedBlob;
+      if (wasProcessed) {
+        st2.processed = croppedBlob;
+        st2.croppedProcessed = true;
+      } else {
+        st2.original = croppedBlob;
+        st2.croppedOriginal = true;
+        // The cached bg-removed cutout no longer matches the newly-cropped original — drop it
+        // so "Remove background" becomes available again instead of offering a stale "Restore".
+        st2.processed = undefined;
+        st2.pristineProcessed = undefined;
+        st2.useProcessed = false;
+        st2.croppedProcessed = false;
+      }
       if (panelImg) panelImg.src = URL.createObjectURL(croppedBlob);
+      if (slotRef === activeSlot) updatePanelButtons();
       setSlotThumbnail(slotRef, URL.createObjectURL(croppedBlob));
     });
   });
@@ -228,10 +294,40 @@ export async function resolveGalleryUrls(gallery: Element, cloud: string, preset
   }
 }
 
+// After a save, treat the just-uploaded image as the new starting point: drop every
+// in-memory blob (original/processed/crop history) so the next "edit" click behaves
+// like a fresh page load instead of resuming mid-edit from before this save.
+export function finalizeGallery(gallery: Element): void {
+  gallery.querySelectorAll<Element>('.gallery-slot').forEach((slot) => {
+    const st = wState.get(slot);
+    if (st) {
+      st.original = undefined; st.processed = undefined; st.useProcessed = false;
+      st.pristineOriginal = undefined; st.pristineProcessed = undefined;
+      st.croppedOriginal = false; st.croppedProcessed = false; st.processing = false;
+    }
+    const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
+    const slotImg  = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
+    if (slotImg && urlInput?.value) slotImg.src = urlInput.value;
+  });
+}
+
+// Same effect as clicking the gallery panel's own "Done" button — used when saving the
+// product should implicitly close the image editor too, without waiting for that click.
+export function closeGalleryPanel(gallery: Element): void {
+  gallery.querySelectorAll<Element>('.gallery-slot').forEach(s => s.classList.remove('gallery-slot--active'));
+  gallery.querySelector<HTMLElement>('.gallery-panel')?.setAttribute('hidden', '');
+  const panelImg = gallery.querySelector<HTMLImageElement>('.gallery-panel__img');
+  if (panelImg) panelImg.src = '';
+}
+
 export function resetGallery(gallery: Element): void {
   gallery.querySelectorAll<Element>('.gallery-slot').forEach((slot) => {
     const st = wState.get(slot);
-    if (st) { st.original = undefined; st.processed = undefined; st.useProcessed = false; }
+    if (st) {
+      st.original = undefined; st.processed = undefined; st.useProcessed = false;
+      st.pristineOriginal = undefined; st.pristineProcessed = undefined;
+      st.croppedOriginal = false; st.croppedProcessed = false;
+    }
     const slotImg   = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
     const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
     const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');

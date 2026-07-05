@@ -383,14 +383,11 @@
 
   .home-cart-chip {
     width: 100%;
-    border-radius: 12px;
   }
 
   .home-cart-chip__store {
     flex: 1;
     min-width: 0;
-    border-start-start-radius: 12px;
-    border-end-start-radius: 12px;
   }
 
   .home-cart-chip__name {
@@ -399,14 +396,8 @@
     white-space: nowrap;
   }
 
-  .home-cart-chip__cart {
-    border-start-end-radius: 12px;
-    border-end-end-radius: 12px;
-  }
-
   .home-cart-chip-skel {
     width: 100% !important;
-    border-radius: 12px;
   }
 }
 

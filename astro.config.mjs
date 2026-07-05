@@ -20,6 +20,8 @@ export default defineConfig({
     sitemap(),
   ],
 
+  devToolbar: { enabled: false },
+
   // Passthrough: Cloudinary handles optimization via URL transforms (f_auto,q_auto,w_N).
   // Astro <Image /> enforces alt/width/height and adds loading/decoding attrs.
   image: {
