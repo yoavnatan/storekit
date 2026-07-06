@@ -778,14 +778,17 @@ const orderStatusColors: Record<string, string> = {
                         </td>
                         <td class="msg-table__td msg-table__td--from">{msg.fromName}</td>
                         <td class="msg-table__td msg-table__td--subject">{msg.subject}</td>
-                        <td class="msg-table__td msg-table__td--preview">{lastMsg.content}</td>
+                        <td class="msg-table__td msg-table__td--preview">
+                          {lastMsg.content}
+                          {lastMsg.fromUserId === sellerId && <span class="msg-table__preview-you"> (אתה)</span>}
+                        </td>
                         <td class="msg-table__td msg-table__td--product">
                           {msg.productRef
                             ? <a href={`/store/${msg.productRef.storeSlug}/${msg.productRef.productSlug}`} target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">{msg.productRef.productName}</a>
                             : <span style="color:var(--color-muted)">—</span>
                           }
                         </td>
-                        <td class="msg-table__td msg-table__td--date">{fmtDate(msg.createdAt)}</td>
+                        <td class="msg-table__td msg-table__td--date">{fmtDate(lastMsg.createdAt)}</td>
                         <td class="msg-table__td msg-table__td--actions">
                           <button class="seller-msg-delete" data-delete-msg-id={msg.id} type="button" aria-label="מחק שיחה" title="מחק שיחה">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
@@ -820,7 +823,10 @@ const orderStatusColors: Record<string, string> = {
                           </div>
                           <div class="seller-msg-reply-form" data-reply-for={msg.id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
                             <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
-                            <button class="seller-msg-reply-send" type="button">שלח תשובה</button>
+                            <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+                              <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
+                              <button class="seller-msg-reply-send" type="button">שלח תשובה</button>
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -1772,7 +1778,7 @@ const orderStatusColors: Record<string, string> = {
     function loadThread(markRead: boolean) {
       fetch(`/api/messages?repliesFor=${id}`)
         .then((r) => r.json())
-        .then(({ replies }: { replies: { fromUserId: string; fromName: string; content: string; createdAt: string }[] }) => {
+        .then(({ replies }: { replies: { fromUserId: string; fromName: string; content: string; createdAt: string; toSellerId?: string; readBySeller?: boolean }[] }) => {
           if (!repliesEl) return;
           [...repliesEl.children].slice(1).forEach((c) => c.remove());
           replies.forEach((r) => {
@@ -1782,8 +1788,14 @@ const orderStatusColors: Record<string, string> = {
             div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escMsg(isSelf ? 'אתה' : r.fromName)}</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(r.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(r.content)}</div>`;
             repliesEl.appendChild(div);
           });
-          const previewTd = row.querySelector('.msg-table__td--preview');
-          if (previewTd && replies.length > 0) previewTd.textContent = replies[replies.length - 1]!.content;
+          if (replies.length > 0) {
+            const last = replies[replies.length - 1]!;
+            const isSelf = last.fromUserId === currentSellerId;
+            const previewTd = row.querySelector('.msg-table__td--preview');
+            if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
+            const dateTd = row.querySelector('.msg-table__td--date');
+            if (dateTd) dateTd.textContent = fmtDateJs(last.createdAt);
+          }
           if (markRead) {
             row.classList.remove('msg-table__row--unread');
             row.querySelector('.msg-table__unread-dot')?.remove();
@@ -1793,6 +1805,8 @@ const orderStatusColors: Record<string, string> = {
             fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read', id }) })
               .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
           }
+          threadRow?.querySelector<HTMLElement>('[data-reply-for]')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          threadRow?.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true });
         }).catch(() => {});
     }
 
@@ -1825,7 +1839,12 @@ const orderStatusColors: Record<string, string> = {
     const replyForm = threadRow?.querySelector<HTMLElement>('[data-reply-for]');
     if (replyForm) {
       const textarea = replyForm.querySelector<HTMLTextAreaElement>('textarea')!;
-      const sendBtn  = replyForm.querySelector<HTMLButtonElement>('button')!;
+      const sendBtn  = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-send')!;
+      const closeBtn = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-close')!;
+      closeBtn.addEventListener('click', () => {
+        close();
+        row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
       sendBtn.addEventListener('click', async () => {
         const content = textarea.value.trim();
         if (!content) return;
@@ -1843,7 +1862,9 @@ const orderStatusColors: Record<string, string> = {
             div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">אתה</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(data.message.content)}</div>`;
             repliesEl.appendChild(div);
             const previewTd = row.querySelector('.msg-table__td--preview');
-            if (previewTd) previewTd.textContent = data.message.content;
+            if (previewTd) previewTd.innerHTML = `${escMsg(data.message.content)} <span class="msg-table__preview-you">(אתה)</span>`;
+            const dateTd = row.querySelector('.msg-table__td--date');
+            if (dateTd) dateTd.textContent = fmtDateJs(data.message.createdAt);
             textarea.value = '';
           }
         } catch { /* ignore */ } finally {
@@ -2100,6 +2121,20 @@ const orderStatusColors: Record<string, string> = {
     }
   });
 
+  function refreshRowPreview(id: string, row: HTMLElement) {
+    fetch(`/api/messages?repliesFor=${id}`)
+      .then((r) => r.json())
+      .then(({ replies }: { replies: { fromUserId: string; content: string; createdAt: string }[] }) => {
+        if (replies.length === 0) return;
+        const last = replies[replies.length - 1]!;
+        const isSelf = last.fromUserId === currentSellerId;
+        const previewTd = row.querySelector('.msg-table__td--preview');
+        if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
+        const dateTd = row.querySelector('.msg-table__td--date');
+        if (dateTd) dateTd.textContent = fmtDateJs(last.createdAt);
+      }).catch(() => {});
+  }
+
   // Live unread polling
   function pollSellerUnread() {
     fetch('/api/messages?role=seller&unread=1')
@@ -2120,7 +2155,7 @@ const orderStatusColors: Record<string, string> = {
           if (!unreadIds.includes(id)) return;
           if (row.classList.contains('msg-table__row--open')) {
             sellerThreadLoaders.get(id)?.(true);
-          } else if (!row.classList.contains('msg-table__row--unread')) {
+          } else {
             row.classList.add('msg-table__row--unread');
             const statusTd = row.querySelector('.msg-table__td--status');
             if (statusTd && !statusTd.querySelector('.msg-table__unread-dot')) {
@@ -2129,6 +2164,7 @@ const orderStatusColors: Record<string, string> = {
               dot.setAttribute('aria-label', 'לא נקרא');
               statusTd.appendChild(dot);
             }
+            refreshRowPreview(id, row);
           }
         });
       }).catch(() => {});

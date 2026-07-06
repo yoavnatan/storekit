@@ -292,7 +292,7 @@
   transition: border-color 0.15s;
   box-sizing: border-box;
 }
-.seller-msg-reply-textarea:focus { border-color: var(--color-accent); }
+.seller-msg-reply-textarea:focus { border-color: var(--color-text); }
 .seller-msg-reply-send {
   align-self: flex-end;
   padding: 0.4rem 1rem;
@@ -303,6 +303,14 @@
 }
 .seller-msg-reply-send:hover { opacity: 0.85; }
 .seller-msg-reply-send:disabled { opacity: 0.5; cursor: default; }
+.seller-msg-reply-close {
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem; font-weight: 600; font-family: inherit;
+  background: none; color: var(--color-muted);
+  border: 1px solid var(--color-border); border-radius: 7px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.seller-msg-reply-close:hover { background: var(--color-bg); color: var(--color-text); }
 
 /* ── Mobile: message table → cards ───────────────────────────── */
 @media (max-width: 640px) {
@@ -315,16 +323,18 @@
 
   /* Each data row = card */
   .msg-table__row {
+    position: relative;
     display: grid;
     grid-template-areas:
-      "status from    date actions"
-      "status subject subject actions";
+      "status from    date    actions"
+      "status subject subject actions"
+      "status preview preview actions";
     grid-template-columns: auto 1fr auto auto;
-    grid-template-rows: auto auto;
-    column-gap: 0.55rem;
-    row-gap: 0.15rem;
+    grid-template-rows: auto auto auto;
+    column-gap: 0.4rem;
+    row-gap: 0.2rem;
     align-items: center;
-    padding: 0.75rem 0.9rem;
+    padding: 0.7rem 0.65rem;
     border: 1px solid var(--color-border);
     border-radius: 10px;
     background: var(--color-surface);
@@ -333,11 +343,22 @@
   }
   .msg-table__row:hover { background: var(--color-bg); }
   .msg-table__row--unread {
-    border-inline-start: 3px solid var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
   }
+  /* Straight accent bar — kept off the row's own border so the card's border-radius can't bend/taper it */
+  .msg-table__row--unread::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 4px;
+    border-radius: 0;
+    background: var(--color-accent);
+  }
   .msg-table__row--unread .msg-table__td--from,
-  .msg-table__row--unread .msg-table__td--subject { font-weight: 700; color: var(--color-text); }
+  .msg-table__row--unread .msg-table__td--subject,
+  .msg-table__row--unread .msg-table__td--preview { font-weight: 700; color: var(--color-text); }
   .msg-table__row--open { background: var(--color-bg); }
 
   /* Reset table-cell display so grid works */
@@ -353,11 +374,12 @@
   .msg-table__td--status  { grid-area: status; display: flex; align-items: center; }
   .msg-table__td--from    { grid-area: from;   font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none; }
   .msg-table__td--subject { grid-area: subject; font-size: 0.78rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none; font-weight: 400; }
+  .msg-table__td--preview { grid-area: preview; font-size: 0.76rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none; }
+  .msg-table__preview-you { color: var(--color-text); font-weight: 600; }
   .msg-table__td--date    { grid-area: date;    font-size: 0.7rem; color: var(--color-muted); white-space: nowrap; }
   .msg-table__td--actions { grid-area: actions; display: flex; align-items: center; }
 
   /* Hide on mobile */
-  .msg-table__td--preview,
   .msg-table__td--product { display: none; }
 
   /* Thread detail row */

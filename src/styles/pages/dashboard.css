@@ -691,7 +691,7 @@ textarea.input { resize: vertical; }
      used desktop-sized padding (1rem container + 1.5rem each), leaving a
      lot of dead space on narrow screens. Bring everything down to match
      the already-tightened .dash-panel padding. */
-  .dash-section { padding-inline: 0.5rem; }
+  .dash-section { padding-inline: 0.75rem; }
 
   /* Selected-count: full "X נבחרו" badge is too wide for mobile — show a
      compact "(N)" right next to the select-all checkbox instead. */

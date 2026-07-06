@@ -43,6 +43,34 @@
 .product-page__body { color: var(--color-muted); line-height: 1.7; }
 .add-to-cart { align-self: flex-start; }
 
+/* ── Tactile depth pass (product page only) ──────────────────────────
+   Crisper borders + soft layered shadows so key surfaces read as
+   raised/recessed, without going full neumorphism or brutalist. */
+.product-detail-page #main-img-wrap {
+  border: 1.5px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.25s ease;
+}
+.product-detail-page #main-img-wrap:hover { box-shadow: var(--shadow-card-hover); }
+
+.product-detail-page .thumb-btn { box-shadow: var(--shadow-xs); }
+
+.product-detail-page .qty-stepper { box-shadow: var(--shadow-inset); }
+
+.product-detail-page .variant-opt[aria-pressed="true"] { box-shadow: var(--shadow-xs); }
+
+.product-detail-page .details-card { box-shadow: var(--shadow-card); }
+
+.product-detail-page .related-card {
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.product-detail-page .related-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+
 @media (max-width: 720px) {
   .product-page { grid-template-columns: 1fr; }
 }
@@ -73,6 +101,7 @@
     z-index: 40;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.75rem;
     background: var(--color-bg);
     border-top: 1px solid var(--color-border);
@@ -96,6 +125,18 @@
     gap: 0.5rem;
     flex: 1 1 auto;
     min-width: 0;
+    overflow: hidden;
+    opacity: 1;
+    transition: opacity 200ms ease, flex-basis 260ms ease, margin-inline-end 260ms ease;
+  }
+  /* Collapsed: the real image/name are still visible up top, so the bar
+     shows buttons only — collapses to nothing rather than just fading,
+     otherwise it'd leave a dead gap next to the (centered) buttons. */
+  .product-detail-page #sticky-mini-summary.is-collapsed {
+    flex: 0 1 0%;
+    opacity: 0;
+    margin-inline-end: -0.75rem;
+    pointer-events: none;
   }
   .product-detail-page #sticky-mini-summary img {
     width: 44px;
