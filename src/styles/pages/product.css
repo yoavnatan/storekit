@@ -61,6 +61,7 @@
 
 .product-detail-page .details-card { box-shadow: var(--shadow-card); }
 
+
 .product-detail-page .related-card {
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-xs);

@@ -134,7 +134,7 @@
                 ${variantLine}
                 <div class="cart-line__footer">
                   <span class="cart-line__price">${formatPrice(i.price)}</span>
-                  <div class="cart-line__qty">
+                  <div class="cart-line__qty" dir="ltr">
                     <button data-act="dec" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyDecrease ?? 'Decrease quantity')} ${esc(i.name)}" ${i.qty <= 1 ? 'disabled' : ''}>−</button>
                     <span aria-live="polite" aria-atomic="true">${i.qty}</span>
                     <button data-act="inc" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" data-stock="${i.stock ?? ''}" aria-label="${esc(i18n.qtyIncrease ?? 'Increase quantity')} ${esc(i.name)}" ${i.stock != null && i.qty >= i.stock ? 'disabled' : ''}>+</button>

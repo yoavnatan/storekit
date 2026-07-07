@@ -46,6 +46,8 @@ const pmI18n = {
   removeFromWishlist: t.wishlist.removeLabel,
   fullPage: lang === 'he' ? 'לדף המוצר המלא' : 'View full product page',
   close: lang === 'he' ? 'סגור' : 'Close',
+  showMore: lang === 'he' ? 'עוד' : 'More',
+  showLess: lang === 'he' ? 'פחות' : 'Less',
 };
 ---
 
@@ -254,7 +256,7 @@ const pmI18n = {
                     {p.description && <p class="product-card__desc" dir="auto">{p.description}</p>}
                     <div class="product-card__footer" style="flex-direction:column;align-items:stretch;gap:0.4rem">
                       {p.stock > 0 && (
-                        <div dir="ltr" class="flex items-center flex-shrink-0" style="align-self:flex-end;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden">
+                        <div dir="ltr" class="flex items-center flex-shrink-0" style="align-self:flex-end;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-inset)">
                           <button type="button" class="qty-dec flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30" style="width:1.75rem;height:1.75rem" aria-label={t.cart.qtyDecrease} disabled>
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                           </button>
@@ -271,6 +273,7 @@ const pmI18n = {
                           : <button
                               type="button"
                               class="btn btn--sm add-to-cart-btn whitespace-nowrap"
+                              style="height:1.875rem"
                               data-slug={p.slug}
                               data-name={p.name}
                               data-price={String(p.price)}
@@ -318,12 +321,15 @@ const pmI18n = {
       <div id="pm-backdrop"
            style="position:absolute;inset:0;background:rgba(0,0,0,0.58);cursor:pointer"></div>
       <div id="pm-panel"
-           style="position:relative;z-index:1;background:white;border-radius:16px;width:min(100%,680px);max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
+           style="position:relative;z-index:1;background:white;border-radius:16px;width:min(100%,680px);max-height:90vh;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.35);display:flex;flex-direction:column">
         <button id="pm-close" aria-label={lang === 'he' ? 'סגור' : 'Close'}
                 style="position:absolute;top:0.65rem;inset-inline-end:0.65rem;z-index:10;width:2rem;height:2rem;border-radius:50%;background:rgba(255,255,255,0.95);color:var(--color-muted);border:1px solid var(--color-border);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
-        <div id="pm-body"></div>
+        <div id="pm-scroll" style="overflow-y:auto;flex:1 1 auto;min-height:0">
+          <div id="pm-body"></div>
+        </div>
+        <div id="pm-footer" style="flex-shrink:0;padding:0.875rem 1.25rem 1.125rem;border-top:1px solid var(--color-border);box-shadow:0 -4px 16px rgba(0,0,0,0.06)"></div>
       </div>
     </div>
 
@@ -351,6 +357,7 @@ const pmI18n = {
   import { spawnRipple } from '../../lib/ripple.js';
   import { trackAddToCart } from '../../lib/tracking.js';
   import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
+  import { initReadMore } from '../../lib/read-more.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart)');
@@ -838,6 +845,7 @@ const pmI18n = {
   const pmBackdrop   = document.getElementById('pm-backdrop')   as HTMLDivElement | null;
   const pmClose      = document.getElementById('pm-close')      as HTMLButtonElement | null;
   const pmBody       = document.getElementById('pm-body')       as HTMLDivElement | null;
+  const pmFooter     = document.getElementById('pm-footer')     as HTMLDivElement | null;
   const pmPanel      = document.getElementById('pm-panel')      as HTMLDivElement | null;
 
   let pmPrevFocus: HTMLElement | null = null;
@@ -892,33 +900,23 @@ const pmI18n = {
     history.pushState({ productModal: true, slug }, '', `/store/${storeSlug}/${slug}`);
     document.title = `${name} — ${storeName}`;
 
-    const thumbsHtml = hasMultiple
-      ? `<div class="pm-thumbs">
-          ${images.map((img, i) => `
-            <button type="button" class="pm-thumb is-loading" data-idx="${i}"
-                    style="flex:0 0 52px;width:52px;height:52px;padding:0;border:2px solid ${i === 0 ? 'var(--color-accent)' : 'var(--color-border)'};border-radius:6px;overflow:hidden;cursor:pointer;background:none;transition:border-color 0.15s">
-              <img data-src="${escHtml(img)}" alt="" width="52" height="52" style="width:100%;height:100%;object-fit:cover" loading="lazy" decoding="async" />
-            </button>`).join('')}
-        </div>`
-      : '';
-
-    const noImgSvg = `<svg style="color:var(--color-border)" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
+    const noImgSvg =`<svg style="color:var(--color-border)" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
 
     const mainImgHtml = hasImages
-      ? `<div id="pm-img-wrap" style="position:relative;padding-top:62%;background:var(--color-bg)">
+      ? `<div id="pm-img-wrap" style="position:relative;padding-top:62%;background:var(--color-surface);border-bottom:1px solid var(--color-border)">
            <div class="pm-slides" id="pm-slides" role="button" tabindex="0" style="cursor:zoom-in">
              ${images.map((img) => `<div class="pm-slide is-loading"><img data-src="${escHtml(img)}" alt="${escHtml(name)}" width="680" height="421" class="pm-main-img" decoding="async" /></div>`).join('')}
            </div>
            ${hasMultiple ? `<div class="pm-dots" aria-hidden="true">${images.map((_, i) => `<span class="pm-dot" style="width:${i === 0 ? 18 : 6}px;background:${i === 0 ? '#fff' : 'rgba(255,255,255,0.7)'}"></span>`).join('')}</div>` : ''}
          </div>`
-      : `<div style="padding-top:62%;background:var(--color-bg);position:relative">
+      : `<div style="padding-top:62%;background:var(--color-surface);position:relative">
            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${noImgSvg}</div>
          </div>`;
 
     const cartSection = stock > 0
       ? `<div>
           <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.6rem">
-            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
+            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0;box-shadow:var(--shadow-inset)">
               <button type="button" class="pm-qty-dec" disabled aria-label="הפחת"
                       style="width:2rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted);transition:background 0.1s">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -948,16 +946,19 @@ const pmI18n = {
         </div>`
       : `<span class="badge badge--muted">${i18n.outOfStock ?? 'אזל מהמלאי'}</span>`;
 
+    const descHtml = description
+      ? `<p dir="auto" class="pm-desc" id="pm-desc">${escHtml(description)}</p>`
+      : '';
+
     if (pmBody) {
       pmBody.innerHTML = `
         ${mainImgHtml}
-        ${thumbsHtml}
-        <div style="padding:1.25rem;display:flex;flex-direction:column;gap:0.875rem">
+        <div style="padding:0.875rem 1.25rem 1.25rem;display:flex;flex-direction:column;gap:0.5rem">
           <div style="padding-inline-end:1.75rem">
             <h2 id="pm-name" dir="auto" style="font-size:1.2rem;font-weight:700;color:var(--color-text);margin:0 0 0.4rem;line-height:1.35">${escHtml(name)}</h2>
             <p style="font-size:1.45rem;font-weight:700;color:var(--color-accent);margin:0">${fmtPrice(price)}</p>
           </div>
-          ${description ? `<p dir="auto" style="font-size:0.875rem;color:var(--color-muted);line-height:1.65;margin:0">${escHtml(description)}</p>` : ''}
+          ${descHtml}
           ${pmVariants.length ? `<div class="pm-variants" style="display:flex;flex-direction:column;gap:0.75rem">
             ${pmVariants.map(v => {
               const isCv = isColorVariantName(v.name);
@@ -968,8 +969,7 @@ const pmI18n = {
                     const { display, hex } = resolveColor(opt);
                     const isFirst = i === 0;
                     const activeBorder = hex ?? 'var(--color-primary)';
-                    const activeBg = hex ? hex + '18' : 'var(--color-primary)';
-                    const activeColor = hex ? 'var(--color-text)' : '#fff';
+                    const activeBg = hex ? hex + '18' : 'transparent';
                     const swatch = isCv && hex
                       ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
                       : '';
@@ -977,7 +977,7 @@ const pmI18n = {
                             data-pv-name="${escHtml(v.name)}" data-pv-value="${escHtml(opt)}"
                             data-pv-hex="${escHtml(hex ?? '')}"
                             aria-pressed="${isFirst}"
-                            style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isFirst ? activeBorder : 'var(--color-border)'};border-radius:var(--radius);padding:${isCv && hex ? '0.26rem 0.6rem' : '0.26rem 0.7rem'};font-size:0.8rem;cursor:pointer;background:${isFirst ? activeBg : 'none'};color:${isFirst ? activeColor : 'var(--color-text)'};transition:all 0.15s;white-space:nowrap">
+                            style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isFirst ? activeBorder : 'var(--color-border)'};border-radius:var(--radius);padding:${isCv && hex ? '0.26rem 0.6rem' : '0.26rem 0.7rem'};font-size:0.8rem;font-weight:${isFirst ? 600 : 500};cursor:pointer;background:${isFirst ? activeBg : 'none'};color:var(--color-text);transition:all 0.15s;white-space:nowrap">
                       ${swatch}${escHtml(display)}
                     </button>`;
                   }).join('')}
@@ -985,13 +985,16 @@ const pmI18n = {
               </div>`;
             }).join('')}
           </div>` : ''}
-          <hr style="border:none;border-top:1px solid var(--color-border);margin:0" />
-          ${cartSection}
-          <a href="/store/${escHtml(storeSlug)}/${escHtml(slug)}"
-             style="font-size:0.75rem;color:var(--color-muted);text-decoration:none;text-align:center;display:block;padding-top:0.125rem">
-            ${i18n.fullPage ?? 'לדף המוצר המלא'}
-          </a>
         </div>`;
+    }
+
+    if (pmFooter) {
+      pmFooter.innerHTML = `
+        ${cartSection}
+        <a href="/store/${escHtml(storeSlug)}/${escHtml(slug)}"
+           style="font-size:0.75rem;color:var(--color-muted);text-decoration:none;text-align:center;display:block;padding-top:0.5rem">
+          ${i18n.fullPage ?? 'לדף המוצר המלא'}
+        </a>`;
     }
 
     productModal?.removeAttribute('hidden');
@@ -1015,8 +1018,9 @@ const pmI18n = {
           const hex = b.dataset.pvHex || null;
           b.setAttribute('aria-pressed', String(active));
           b.style.borderColor = active ? (hex ?? 'var(--color-primary)') : 'var(--color-border)';
-          b.style.background = active ? (hex ? hex + '18' : 'var(--color-primary)') : 'none';
-          b.style.color = active ? (hex ? 'var(--color-text)' : '#fff') : 'var(--color-text)';
+          b.style.background = active ? (hex ? hex + '18' : 'transparent') : 'none';
+          b.style.color = 'var(--color-text)';
+          b.style.fontWeight = active ? '600' : '500';
         });
       });
     });
@@ -1035,16 +1039,6 @@ const pmI18n = {
       }
     });
 
-    // Skeleton: thumbnails — same shimmer/decode pattern as the main image
-    const pmThumbEls = pmBody ? Array.from(pmBody.querySelectorAll<HTMLElement>('.pm-thumb')) : [];
-    pmThumbEls.forEach((thumb) => {
-      const img = thumb.querySelector<HTMLImageElement>('img[data-src]');
-      if (img && img.dataset.src) {
-        img.src = img.dataset.src;
-        img.decode().then(() => thumb.classList.remove('is-loading')).catch(() => thumb.classList.remove('is-loading'));
-      }
-    });
-
     const pmDotsEl = pmBody?.querySelector<HTMLElement>('.pm-dots') ?? null;
     const pmDots   = pmDotsEl ? Array.from(pmDotsEl.querySelectorAll<HTMLElement>('.pm-dot')) : [];
 
@@ -1059,7 +1053,6 @@ const pmI18n = {
           d.style.width = `${i === idx ? ACTIVE_W : BASE_W}px`;
           d.style.background = i === idx ? '#fff' : 'rgba(255,255,255,0.7)';
         });
-        pmThumbEls.forEach((t, i) => { t.style.borderColor = i === idx ? 'var(--color-accent)' : 'var(--color-border)'; });
       };
 
       const scrollPmToIdx = (idx: number) => {
@@ -1077,9 +1070,6 @@ const pmI18n = {
       }, { passive: true });
 
       pmDots.forEach((dot, i) => dot.addEventListener('click', () => scrollPmToIdx(i)));
-      pmThumbEls.forEach((thumb) => {
-        thumb.addEventListener('click', () => scrollPmToIdx(Number(thumb.dataset.idx ?? 0)));
-      });
 
       // Touch — one slide at a time, no momentum skip
       let pmTStartX = 0, pmTStartScroll = 0;
@@ -1116,10 +1106,18 @@ const pmI18n = {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (pmSlidesEl as HTMLElement).click(); }
     });
 
+    const pmDescEl = pmBody?.querySelector<HTMLElement>('#pm-desc') ?? null;
+    if (pmDescEl) {
+      initReadMore(pmDescEl, 2, {
+        more: i18n.showMore ?? 'עוד',
+        less: i18n.showLess ?? 'פחות',
+      });
+    }
+
     // Qty stepper
-    const pmQtyDec = pmBody?.querySelector<HTMLButtonElement>('.pm-qty-dec');
-    const pmQtyInc = pmBody?.querySelector<HTMLButtonElement>('.pm-qty-inc');
-    const pmQtyVal = pmBody?.querySelector<HTMLElement>('.pm-qty-val');
+    const pmQtyDec = pmFooter?.querySelector<HTMLButtonElement>('.pm-qty-dec');
+    const pmQtyInc = pmFooter?.querySelector<HTMLButtonElement>('.pm-qty-inc');
+    const pmQtyVal = pmFooter?.querySelector<HTMLElement>('.pm-qty-val');
     let pmQty = 1;
 
     function updatePmQty(n: number) {
@@ -1132,13 +1130,13 @@ const pmI18n = {
     pmQtyInc?.addEventListener('click', () => updatePmQty(pmQty + 1));
 
     // Add to cart
-    const pmAddBtn  = pmBody?.querySelector<HTMLButtonElement>('.pm-add-to-cart');
-    const pmBtnLbl  = pmBody?.querySelector<HTMLElement>('.pm-btn-label');
+    const pmAddBtn  = pmFooter?.querySelector<HTMLButtonElement>('.pm-add-to-cart');
+    const pmBtnLbl  = pmFooter?.querySelector<HTMLElement>('.pm-btn-label');
     const origLabel = pmBtnLbl?.textContent ?? '';
     if (pmBtnLbl) pmBtnLbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px';
 
     pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
-    const pmToCheckout = pmBody?.querySelector<HTMLAnchorElement>('.pm-to-checkout');
+    const pmToCheckout = pmFooter?.querySelector<HTMLAnchorElement>('.pm-to-checkout');
 
     pmAddBtn?.addEventListener('click', () => {
       if (pmAddBtn.disabled) return;
@@ -1160,8 +1158,8 @@ const pmI18n = {
     });
 
     // Wishlist
-    const pmWishBtn  = pmBody?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
-    const pmWishLbl  = pmBody?.querySelector<HTMLElement>('.pm-wish-label');
+    const pmWishBtn  = pmFooter?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
+    const pmWishLbl  = pmFooter?.querySelector<HTMLElement>('.pm-wish-label');
     pmWishBtn?.addEventListener('click', () => {
       const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl, storeSlug, storeName });
       const svg = pmWishBtn.querySelector<SVGElement>('svg');
@@ -1180,6 +1178,7 @@ const pmI18n = {
     productModal?.setAttribute('hidden', '');
     document.body.style.overflow = '';
     if (pmBody) pmBody.innerHTML = '';
+    if (pmFooter) pmFooter.innerHTML = '';
     if (pmSavedTitle) { document.title = pmSavedTitle; pmSavedTitle = ''; }
     pmPrevFocus?.focus();
     pmPrevFocus = null;

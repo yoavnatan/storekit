@@ -420,3 +420,14 @@
 }
 .contact-store-btn:active { transform: scale(0.97); }
 
+/* Inline "…more/less" toggle appended by src/lib/read-more.ts — sits on the
+   same line as the truncated text's ellipsis, never a line of its own. */
+.read-more-toggle {
+  display: inline;
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; font-weight: 600; color: var(--color-muted);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.read-more-toggle:hover { color: var(--color-text); }
+

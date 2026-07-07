@@ -92,6 +92,8 @@
   border-color: var(--color-primary);
   color: #fff;
   font-weight: 500;
+  /* Tactile depth (see product page): pressed chips get a soft lift */
+  box-shadow: var(--shadow-xs);
 }
 
 .category-chip:hover {
@@ -138,13 +140,34 @@
   gap: 0.75rem;
 }
 
-.product-card { display: flex; flex-direction: column; }
+/* Tactile depth (see product page's related-card): secondary/list-item
+   card, so a 1px border + shadow-xs at rest (the stronger 1.5px/shadow-card
+   pairing is for lone hero surfaces — repeated across a whole grid it
+   reads as heavy) — deepens on hover. No translateY — the inner image
+   already zooms on hover, and lifting the whole card too doubles the
+   motion. */
+.product-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.product-card:hover {
+  box-shadow: var(--shadow-card-hover);
+}
 
 .product-card__img-wrap {
   width: 100%;
   aspect-ratio: 1;
   overflow: hidden;
-  background: var(--color-bg);
+  /* White, not the page's off-white --color-bg — a transparent (bg-removed)
+     product photo should always sit on a clean white, not a grayish tint. */
+  background: var(--color-surface);
+  /* Card and image-wrap are both white — this line separates the image
+     area from the body below instead. */
+  border-bottom: 1px solid var(--color-border);
   position: relative;
 }
 
@@ -211,18 +234,10 @@
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 
+/* No darken-on-hover overlay here — the card's own shadow (tactile depth,
+   above) already carries the hover feedback; stacking a second effect on
+   top just muddies the image. */
 .product-card__img-wrap--clickable { cursor: pointer; }
-
-.product-card__img-wrap--clickable::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: transparent;
-  transition: background 0.12s;
-  pointer-events: none;
-}
-
-.product-card__img-wrap--clickable:hover::after { background: rgba(0, 0, 0, 0.04); }
 
 .product-card__img {
   width: 100%;
@@ -310,30 +325,7 @@
   pointer-events: auto;
 }
 
-.pm-thumbs {
-  display: flex; gap: .375rem;
-  justify-content: center;
-  padding: 0.5rem 1.25rem;
-  overflow-x: auto; scrollbar-width: none;
-  background: var(--color-bg);
-}
-.pm-thumbs::-webkit-scrollbar { display: none; }
-.pm-thumb { position: relative; }
-.pm-thumb.is-loading::before {
-  content: '';
-  position: absolute; inset: 0; z-index: 2;
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 25%,
-    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
-    var(--color-surface) 75%
-  );
-  background-size: 400% 100%;
-  animation: skeleton-shimmer 1.4s ease infinite;
-  border-radius: inherit;
-}
-.pm-thumb.is-loading img { opacity: 0; }
-.pm-thumb img { transition: opacity 0.18s; }
+.pm-desc { font-size: .875rem; color: var(--color-muted); line-height: 1.65; margin: 0; }
 
 .product-card__img-placeholder {
   width: 100%;

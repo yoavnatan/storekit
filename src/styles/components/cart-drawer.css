@@ -90,7 +90,7 @@
 .cart-line__info { flex: 1; min-width: 0; }
 .cart-line__footer { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.3rem; }
 .cart-line__price { flex: 1; font-size: 0.82rem; font-weight: 600; color: var(--color-text); }
-.cart-line__qty { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--color-border); border-radius: 6px; overflow: hidden; }
+.cart-line__qty { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--color-border); border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-inset); }
 .cart-line__qty button { width: 24px; height: 24px; border: none; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background 0.1s; }
 .cart-line__qty button:hover { background: var(--color-surface); }
 .cart-line__qty button:disabled { opacity: 0.35; cursor: not-allowed; }

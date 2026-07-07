@@ -289,6 +289,7 @@ for (const s of getAllStores()) {
       border: 1.5px solid var(--color-border);
       border-radius: 8px;
       overflow: hidden;
+      box-shadow: var(--shadow-inset);
     }
     .co-qty__btn {
       width: 32px; height: 32px;
@@ -548,7 +549,7 @@ for (const s of getAllStores()) {
                 data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}">${esc(item.name)}</button>
               ${variantsHtml}
               <div class="co-card__row">
-                <div class="co-qty" role="group" aria-label="כמות">
+                <div class="co-qty" dir="ltr" role="group" aria-label="כמות">
                   <button class="co-qty__btn" data-action="dec" aria-label="הפחת כמות" type="button" ${item.qty <= 1 ? 'disabled' : ''}>−</button>
                   <span class="co-qty__num" aria-live="polite">${item.qty}</span>
                   <button class="co-qty__btn" data-action="inc" aria-label="הגדל כמות" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>

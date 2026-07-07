@@ -612,7 +612,7 @@ textarea.input { resize: vertical; }
   display: block;
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
-  background: var(--color-bg);
+  background: var(--color-surface);
 }
 
 .gallery-slot__overlay {

@@ -188,7 +188,7 @@ const pmI18n = {
                   data-img-src={cdnSrc(img, 800)}
                   data-img-index={String(i)}
                   class="thumb-btn flex-shrink-0 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
-                  style={`width:4rem;height:4rem;border-radius:var(--radius);background:none;border-color:${i === 0 ? 'var(--color-accent)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
+                  style={`width:4rem;height:4rem;border-radius:var(--radius);background:var(--color-surface);border-color:${i === 0 ? 'var(--color-accent)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
                   aria-pressed={i === 0 ? 'true' : 'false'}
                   aria-label={`${product.name} ${i + 1}`}
                 >
@@ -226,8 +226,17 @@ const pmI18n = {
                         const { display, hex } = resolveVariantColor(opt);
                         const isFirst = i === 0;
                         const activeBorder = hex ?? 'var(--color-primary)';
-                        const activeBg = hex ? hex + '18' : 'var(--color-primary)';
-                        const activeColor = hex ? 'var(--color-text)' : '#fff';
+                        const activeBg = hex ? hex + '18' : 'transparent';
+                        const activeColor = 'var(--color-text)';
+                        // Availability for this option combined with the default selection of
+                        // every other dimension — client JS recomputes this per-click as the
+                        // buyer changes other dimensions (e.g. picking a Size changes which
+                        // Colors are in stock).
+                        const optionCombo = { ...defaultVariantSelection, [v.name]: opt };
+                        const optionStock = (product.variants?.length && product.variantStock)
+                          ? (product.variantStock[comboKey(optionCombo)] ?? product.stock)
+                          : product.stock;
+                        const isAvailable = optionStock > 0;
                         return (
                           <button type="button"
                                   class="variant-opt"
@@ -235,14 +244,19 @@ const pmI18n = {
                                   data-variant-value={opt}
                                   data-color-hex={hex ?? undefined}
                                   aria-pressed={isFirst ? 'true' : 'false'}
+                                  disabled={!isAvailable}
+                                  aria-disabled={!isAvailable ? 'true' : undefined}
                                   style={[
                                     'display:inline-flex;align-items:center;gap:0.4rem',
                                     `border:1.5px solid ${isFirst ? activeBorder : 'var(--color-border)'}`,
                                     'border-radius:var(--radius)',
                                     'padding:0.45rem 0.9rem',
-                                    'font-size:0.875rem;font-weight:500;cursor:pointer',
+                                    `font-size:0.875rem;font-weight:${isFirst ? 600 : 500}`,
+                                    `cursor:${isAvailable ? 'pointer' : 'not-allowed'}`,
                                     `background:${isFirst ? activeBg : 'transparent'}`,
                                     `color:${isFirst ? activeColor : 'var(--color-text)'}`,
+                                    `opacity:${isAvailable ? '1' : '0.4'}`,
+                                    `text-decoration:${isAvailable ? 'none' : 'line-through'}`,
                                     'transition:all 0.15s',
                                     'white-space:nowrap',
                                   ].join(';')}>
@@ -378,7 +392,7 @@ const pmI18n = {
               <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
                 {lang === 'he' ? 'תיאור המוצר' : 'Description'}
               </p>
-              <p dir="auto" class="text-base leading-relaxed" style="color:var(--color-muted)">{product.description}</p>
+              <p dir="auto" id="product-desc" class="text-base leading-relaxed" style="color:var(--color-muted)">{product.description}</p>
             </div>
           )}
 
@@ -482,7 +496,7 @@ const pmI18n = {
                   <a href={`/store/${shopStore.slug}/${p.slug}`}
                      class="related-card-trigger"
                      style="display:block;text-decoration:none;color:inherit">
-                    <div style="width:170px;height:150px;position:relative;overflow:hidden;background:var(--color-bg)">
+                    <div style="width:170px;height:150px;position:relative;overflow:hidden;background:var(--color-surface);border-bottom:1px solid var(--color-border)">
                       {pImgs[0]
                         ? <Image src={cdnSrc(pImgs[0], 340)} alt={p.name} width={170} height={150}
                                  style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease"
@@ -596,6 +610,7 @@ const pmI18n = {
   import { trackViewContent, trackAddToCart } from '../../../lib/tracking.js';
   import { comboKey } from '../../../lib/variant-combo.js';
   import { resolveVariantColor, isColorVariant } from '../../../lib/color-variants.js';
+  import { initReadMore } from '../../../lib/read-more.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
@@ -632,6 +647,23 @@ const pmI18n = {
   const selectedVariants: Record<string, string> = {};
   pageVariants.forEach((v) => { selectedVariants[v.name] = v.options[0] ?? ''; });
 
+  // Disables (rather than hides) any option whose combo — combined with the buyer's
+  // current picks for every other dimension — is out of stock, so the set of choices
+  // stays visible and only recomputes as other dimensions change.
+  function updateVariantAvailability(): void {
+    document.querySelectorAll<HTMLButtonElement>('.variant-opt').forEach((b) => {
+      const bName = b.dataset.variantName ?? '';
+      const bValue = b.dataset.variantValue ?? '';
+      const available = effectiveStockFor({ ...selectedVariants, [bName]: bValue }) > 0;
+      b.disabled = !available;
+      b.setAttribute('aria-disabled', String(!available));
+      b.style.opacity = available ? '1' : '0.4';
+      b.style.cursor = available ? 'pointer' : 'not-allowed';
+      b.style.textDecoration = available ? 'none' : 'line-through';
+    });
+  }
+  updateVariantAvailability();
+
   document.querySelectorAll<HTMLButtonElement>('.variant-opt').forEach((btn) => {
     btn.addEventListener('click', () => {
       const vName = btn.dataset.variantName ?? '';
@@ -642,9 +674,11 @@ const pmI18n = {
         const hex = b.dataset.colorHex ?? null;
         b.setAttribute('aria-pressed', String(active));
         b.style.borderColor = active ? (hex ?? 'var(--color-primary)') : 'var(--color-border)';
-        b.style.background = active ? (hex ? hex + '18' : 'var(--color-primary)') : 'none';
-        b.style.color = active ? (hex ? 'var(--color-text)' : '#fff') : 'var(--color-text)';
+        b.style.background = active ? (hex ? hex + '18' : 'transparent') : 'none';
+        b.style.color = 'var(--color-text)';
+        b.style.fontWeight = active ? '600' : '500';
       });
+      updateVariantAvailability();
       applyStockState();
     });
   });
@@ -943,6 +977,16 @@ const pmI18n = {
   // product's overall stock (which gates whether this row renders at all) isn't.
   applyStockState();
 
+  {
+    const descEl = document.getElementById('product-desc');
+    if (descEl) {
+      initReadMore(descEl, 4, {
+        more: pageLang === 'he' ? 'עוד' : 'More',
+        less: pageLang === 'he' ? 'פחות' : 'Less',
+      });
+    }
+  }
+
   // ── Wishlist ───────────────────────────────────────────────────────
   const wishlistBtn = document.getElementById('wishlist-btn') as HTMLButtonElement | null;
   const wishlistHeart = document.getElementById('wishlist-heart') as SVGElement | null;
@@ -1082,7 +1126,7 @@ const pmI18n = {
     const cartSection = stock > 0
       ? `<div>
           <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:0.6rem;width:100%">
-            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
+            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0;box-shadow:var(--shadow-inset)">
               <button type="button" class="pm-qty-dec" disabled aria-label="${pageLang === 'he' ? 'הפחת' : 'Decrease'}"
                       style="width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1119,15 +1163,14 @@ const pmI18n = {
                   const { display, hex } = pmResolveColor(opt);
                   const isFirst = i === 0;
                   const aBorder = hex ?? 'var(--color-primary)';
-                  const aBg = hex ? hex + '18' : 'var(--color-primary)';
-                  const aColor = hex ? 'var(--color-text)' : '#fff';
+                  const aBg = hex ? hex + '18' : 'transparent';
                   const swatch = isCv && hex
                     ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
                     : '';
                   return `<button type="button" class="pm-variant-opt"
                     data-pv-name="${escHtml(v.name)}" data-pv-value="${escHtml(opt)}" data-pv-hex="${escHtml(hex ?? '')}"
                     aria-pressed="${isFirst}"
-                    style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isFirst ? aBorder : 'var(--color-border)'};border-radius:var(--radius);padding:0.3rem 0.7rem;font-size:0.82rem;cursor:pointer;background:${isFirst ? aBg : 'none'};color:${isFirst ? aColor : 'var(--color-text)'};transition:all 0.15s;white-space:nowrap">
+                    style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isFirst ? aBorder : 'var(--color-border)'};border-radius:var(--radius);padding:0.3rem 0.7rem;font-size:0.82rem;font-weight:${isFirst ? 600 : 500};cursor:pointer;background:${isFirst ? aBg : 'none'};color:var(--color-text);transition:all 0.15s;white-space:nowrap">
                     ${swatch}${escHtml(display)}
                   </button>`;
                 }).join('')}
@@ -1175,8 +1218,9 @@ const pmI18n = {
           const hex = b.dataset.pvHex || null;
           b.setAttribute('aria-pressed', String(active));
           b.style.borderColor = active ? (hex ?? 'var(--color-primary)') : 'var(--color-border)';
-          b.style.background  = active ? (hex ? hex + '18' : 'var(--color-primary)') : 'none';
-          b.style.color       = active ? (hex ? 'var(--color-text)' : '#fff') : 'var(--color-text)';
+          b.style.background  = active ? (hex ? hex + '18' : 'transparent') : 'none';
+          b.style.color       = 'var(--color-text)';
+          b.style.fontWeight  = active ? '600' : '500';
         });
       });
     });
