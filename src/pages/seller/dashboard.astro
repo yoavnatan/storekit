@@ -19,6 +19,47 @@ import { getMessagesBySeller, getMessageReplies } from '../../lib/messages.js';
 import { getOrdersByStoreSlug } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
+import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
+import { comboKey, generateCombos, type VariantDimension } from '../../lib/variant-combo.js';
+
+// Splits `total` across `count` rows as evenly as possible (remainder to the
+// first rows) so seeding legacy combos never silently changes the sum.
+function evenSplit(count: number, total: number): number[] {
+  if (count <= 0) return [];
+  const base = Math.floor(total / count);
+  const remainder = total - base * count;
+  return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
+}
+
+// Color dimensions must go through resolveVariantColor() before display — a
+// custom color assigned via the picker is stored as "name #hex", and without
+// stripping it the hex code leaks straight into the label. Each part also
+// carries its resolved hex (color dimensions only) so the template can render
+// a small swatch right next to the color name, easy to tell apart at a glance.
+interface ComboLabelPart { text: string; hex: string | null }
+
+function comboLabelParts(dims: VariantDimension[], combo: Record<string, string>): ComboLabelPart[] {
+  return dims.map((d) => {
+    const raw = combo[d.name] ?? '';
+    if (!isColorVariant(d.name)) return { text: raw, hex: null };
+    const { display, hex } = resolveVariantColor(raw);
+    return { text: display, hex };
+  });
+}
+
+function variantCombosData(variants: VariantDimension[], variantStock: Record<string, number> | undefined, totalStock: number) {
+  const stockMap = variantStock ?? {};
+  const hasAnyStock = Object.keys(stockMap).length > 0;
+  const rawCombos = variants.length ? generateCombos(variants) : [];
+  const splitDefaults = hasAnyStock ? [] : evenSplit(rawCombos.length, totalStock);
+  const combos = rawCombos.map((combo, idx) => {
+    const key = comboKey(combo);
+    const parts = comboLabelParts(variants, combo);
+    const value = key in stockMap ? stockMap[key] : (hasAnyStock ? 0 : (splitDefaults[idx] ?? 0));
+    return { key, parts, value };
+  });
+  return { hasAnyStock, combos };
+}
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
@@ -323,7 +364,7 @@ const orderStatusColors: Record<string, string> = {
         <div style="border-top:1px solid var(--color-border);padding-top:1.25rem">
           <div class="products-header">
             <div class="products-header__title">
-              <input type="checkbox" id="bulk-select-all" class="bulk-select-all" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0">
+              <input type="checkbox" id="bulk-select-all-mobile" class="bulk-select-all bulk-select-all--mobile" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0">
               <span class="bulk-count-paren" id="bulk-count-paren" aria-hidden="true"></span>
               <h2>{d.productsTitle}</h2>
               <span class="bulk-count-badge" id="bulk-count-badge" hidden>
@@ -388,20 +429,36 @@ const orderStatusColors: Record<string, string> = {
                   placeholder={d.descPlaceholderProduct}></textarea>
               </label>
 
-              <label class="field">
+              <label class="field field--narrow">
                 <span>{d.categoryLabel}</span>
                 <input class="input" name="category" placeholder={d.categoryPlaceholder} list="store-categories-list" />
               </label>
 
-              <label class="field">
+              <div class="field field--tags" data-tags-field>
                 <span>{d.tagsLabel}</span>
-                <input class="input" name="tags" placeholder={d.tagsPlaceholder} />
-              </label>
+                <div class="variant-chips" data-tag-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
+                  <span data-tag-adder>
+                    <button type="button" class="variant-chip-add-trigger btn btn--ghost btn--sm" data-tag-add-trigger style="border-radius:999px">{d.variantValueAddBtn}</button>
+                  </span>
+                </div>
+                <input type="hidden" name="tags" value="" />
+              </div>
 
-              <div class="field">
+              <div class="field variants-editor" data-variants-editor>
                 <span class="field-label">{d.variantsLabel}</span>
-                <div class="variants-list"></div>
-                <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.5rem">{d.variantAddBtn}</button>
+                <div class="variant-dims" data-variant-dims></div>
+                <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.25rem">{d.variantAddBtn}</button>
+                <div class="variant-combos" data-variant-combos style="margin-top:0.75rem" hidden>
+                  <p class="field-label" style="margin:0 0 0.3rem">{d.variantComboLabel}</p>
+                  <p class="muted" data-variant-combo-hint style="font-size:0.78rem;margin:0 0 0.5rem" hidden>{d.variantComboHint}</p>
+                  <div style="max-height:260px;overflow:auto;border:1px solid var(--color-border);border-radius:var(--radius)">
+                    <table style="width:100%;border-collapse:separate;border-spacing:0">
+                      <thead data-variant-combo-thead></thead>
+                      <tbody data-variant-combo-rows></tbody>
+                      <tfoot data-variant-combo-tfoot></tfoot>
+                    </table>
+                  </div>
+                </div>
               </div>
 
               <div class="field">
@@ -435,7 +492,7 @@ const orderStatusColors: Record<string, string> = {
           <table id="products-table" class="products-table" hidden={products.length === 0}>
             <thead>
               <tr>
-                <th class="check-col" aria-hidden="true"></th>
+                <th class="check-col"><input type="checkbox" id="bulk-select-all" class="bulk-select-all" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0"></th>
                 <th class="num row-num" style="width:2rem">#</th>
                 <th class="thumb-col"></th>
                 <th>
@@ -465,9 +522,13 @@ const orderStatusColors: Record<string, string> = {
             <tbody id="products-tbody">
               {products.map((p, idx) => {
                 const fmtDateAdded = (iso: string) => new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+                const { hasAnyStock: pHasVariantStock, combos: pVariantCombos } = variantCombosData(p.variants ?? [], p.variantStock, p.stock);
+                const pVariantColumns = (p.variants ?? []).map((v) => v.name);
+                const pHasVariants = (p.variants ?? []).length > 0;
+                const pStockFieldValue = pHasVariants ? pVariantCombos.reduce((s, c) => s + c.value, 0) : p.stock;
                 return (
                 <>
-                  <tr data-product-display={p.id} data-store-id={store.id} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={p.category ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name}>
+                  <tr data-product-display={p.id} data-store-id={store.id} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={p.category ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
                     <td class="check-col"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
                     <td class="num row-num">{idx + 1}</td>
                     <td class="thumb-col">
@@ -484,6 +545,36 @@ const orderStatusColors: Record<string, string> = {
                         <span>{p.stock}</span>
                         {p.stock <= 0 && (
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        )}
+                        {(p.variants ?? []).length > 0 && (
+                          <span class="stock-breakdown" data-stock-breakdown>
+                            <button type="button" class="stock-breakdown__btn" aria-expanded="false" aria-haspopup="true" aria-label={d.stockBreakdownLabel}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="stock-breakdown__dropdown" role="menu" hidden>
+                              {pVariantCombos.map((c) => (
+                                <div class="stock-breakdown__row">
+                                  <span style="display:inline-flex;align-items:center;gap:0.35rem">
+                                    {c.parts.map((part, i) => (
+                                      <>
+                                        {i > 0 && ' · '}
+                                        <span style="display:inline-flex;align-items:center;gap:0.3rem">
+                                          {part.hex && <span aria-hidden="true" style={`display:inline-block;width:10px;height:10px;border-radius:3px;background:${part.hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0`}></span>}
+                                          {part.text}
+                                        </span>
+                                      </>
+                                    ))}
+                                  </span>
+                                  <span style="display:inline-flex;align-items:center;gap:0.3rem">
+                                    {c.value}
+                                    {c.value <= 0 && (
+                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                    )}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </span>
                         )}
                       </span>
                     </td>
@@ -519,6 +610,10 @@ const orderStatusColors: Record<string, string> = {
                         <div class="edit-row-header">
                           {p.images?.[0] && <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0">}
                           <span class="edit-row-title">{p.name}</span>
+                          <div class="form-actions" style="margin-inline-start:auto;margin-top:0">
+                            <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
+                            <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
+                          </div>
                         </div>
                         <div class="field-row">
                           <label class="field">
@@ -531,7 +626,7 @@ const orderStatusColors: Record<string, string> = {
                           </label>
                           <label class="field">
                             <span>{d.colStock}</span>
-                            <input class="input" name="stock" type="number" min="0" step="1" value={p.stock} />
+                            <input class="input" name="stock" type="number" min="0" step="1" value={pStockFieldValue} readonly={pHasVariants} style={pHasVariants ? 'background:var(--color-bg)' : undefined} />
                           </label>
                         </div>
                         <label class="field">
@@ -539,36 +634,106 @@ const orderStatusColors: Record<string, string> = {
                           <textarea class="input" name="description" rows="2">{p.description}</textarea>
                         </label>
 
-                        <label class="field">
+                        <label class="field field--narrow">
                           <span>{d.categoryLabel}</span>
                           <input class="input" name="category" value={p.category ?? ''} placeholder={d.categoryPlaceholder} list="store-categories-list" />
                         </label>
 
-                        <label class="field">
+                        <div class="field field--tags" data-tags-field>
                           <span>{d.tagsLabel}</span>
-                          <input class="input" name="tags" value={p.tags?.join(', ') ?? ''} placeholder={d.tagsPlaceholder} />
-                        </label>
+                          <div class="variant-chips" data-tag-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
+                            {(p.tags ?? []).map((tag) => (
+                              <span class="variant-chip" data-tag-chip data-value={tag} style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:999px;padding:0.25rem 0.5rem 0.25rem 0.4rem;font-size:0.82rem">
+                                <span class="variant-chip-label">{tag}</span>
+                                <button type="button" class="variant-chip-remove" data-tag-chip-remove aria-label={d.variantChipRemove} style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:none;background:none;color:var(--color-muted);cursor:pointer;font-size:0.85rem;line-height:1;padding:0">×</button>
+                              </span>
+                            ))}
+                            <span data-tag-adder>
+                              <button type="button" class="variant-chip-add-trigger btn btn--ghost btn--sm" data-tag-add-trigger style="border-radius:999px">{d.variantValueAddBtn}</button>
+                            </span>
+                          </div>
+                          <input type="hidden" name="tags" value={p.tags?.join(',') ?? ''} />
+                        </div>
 
-                        <div class="field">
+                        <div class="field variants-editor" data-variants-editor>
                           <span class="field-label">{d.variantsLabel}</span>
-                          <div class="variants-list">
+                          <div class="variant-dims" data-variant-dims>
                             {(p.variants ?? []).map((v) => (
-                              <div class="variant-block" style="border:1px solid var(--color-border);border-radius:var(--radius);padding:0.65rem;margin-bottom:0.5rem">
-                                <div style="display:flex;gap:0.5rem;align-items:flex-end">
-                                  <label class="field" style="flex:1;margin:0">
-                                    <span>{d.variantNameLabel}</span>
-                                    <input class="input" name="variant_name" value={v.name} placeholder={d.variantNamePlaceholder} />
-                                  </label>
-                                  <label class="field" style="flex:2;margin:0">
-                                    <span>{d.variantOptionsLabel}</span>
-                                    <input class="input" name="variant_options" value={v.options.join(', ')} placeholder={d.variantOptionsPlaceholder} />
-                                  </label>
-                                  <button type="button" class="variant-remove-btn btn btn--ghost btn--sm" aria-label={d.variantRemove} style="flex-shrink:0;margin-bottom:0.1rem">×</button>
+                              <div class="variant-dim" data-variant-dim style="border:1px solid var(--color-border);border-radius:var(--radius);padding:0.65rem;margin-bottom:0.5rem">
+                                <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
+                                  <input class="input" data-dim-name value={v.name} placeholder={d.variantNamePlaceholder} style="width:130px;flex:0 0 auto" />
+                                  <button type="button" class="variant-dim-remove btn btn--ghost btn--sm" aria-label={d.variantRemove} style="flex-shrink:0">×</button>
+                                </div>
+                                <div class="variant-chips" data-variant-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
+                                  {v.options.map((opt) => {
+                                    const isColor = isColorVariant(v.name);
+                                    const resolved = isColor ? resolveVariantColor(opt) : { display: opt, hex: null as string | null };
+                                    return (
+                                      <span class="variant-chip" data-variant-chip data-value={opt} style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:999px;padding:0.25rem 0.5rem 0.25rem 0.4rem;font-size:0.82rem">
+                                        {isColor && (resolved.hex
+                                          ? <span class="variant-chip-swatch" aria-hidden="true" style={`width:14px;height:14px;border-radius:3px;background:${resolved.hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0;display:inline-block`}></span>
+                                          : <input type="color" class="variant-chip-color-input" value="#9ca3af" aria-label={d.variantColorPicker} style="width:16px;height:16px;padding:0;border:1px solid rgba(0,0,0,0.15);border-radius:3px;flex-shrink:0;cursor:pointer;background:none" />
+                                        )}
+                                        <span class="variant-chip-label">{resolved.display}</span>
+                                        <button type="button" class="variant-chip-remove" aria-label={d.variantChipRemove} style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:none;background:none;color:var(--color-muted);cursor:pointer;font-size:0.85rem;line-height:1;padding:0">×</button>
+                                      </span>
+                                    );
+                                  })}
+                                  <span data-dim-value-adder>
+                                    <button type="button" class="variant-chip-add-trigger btn btn--ghost btn--sm" data-dim-value-trigger style="border-radius:999px">{d.variantValueAddBtn}</button>
+                                  </span>
                                 </div>
                               </div>
                             ))}
                           </div>
-                          <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.5rem">{d.variantAddBtn}</button>
+                          <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.25rem">{d.variantAddBtn}</button>
+                          <div class="variant-combos" data-variant-combos style="margin-top:0.75rem" hidden={!(p.variants ?? []).length}>
+                            <p class="field-label" style="margin:0 0 0.3rem">{d.variantComboLabel}</p>
+                            <p class="muted" data-variant-combo-hint style="font-size:0.78rem;margin:0 0 0.5rem" hidden={pHasVariantStock}>{d.variantComboHint}</p>
+                            <div style="max-height:260px;overflow:auto;border:1px solid var(--color-border);border-radius:var(--radius)">
+                              <table style="width:100%;border-collapse:separate;border-spacing:0">
+                                <thead data-variant-combo-thead>
+                                  <tr data-variant-combo-header>
+                                    {pVariantColumns.map((col, i) => (
+                                      <th style="padding:0.4rem 0.6rem;text-align:start;border-bottom:1px solid var(--color-border);white-space:nowrap">
+                                        <div style="display:flex;align-items:center;gap:0.25rem">
+                                          <button type="button" class="combo-sort-btn" data-combo-sort-col={i}>{col}<svg class="combo-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                                          <span class="combo-filter" data-combo-filter data-filter-col={i} style="display:inline-flex">
+                                            <button type="button" class="combo-filter-btn" aria-expanded="false" aria-haspopup="true" aria-label={`${d.variantFilterAriaPrefix} ${col}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                                            </button>
+                                          </span>
+                                        </div>
+                                      </th>
+                                    ))}
+                                    <th style="padding:0.4rem 0.6rem;text-align:end;border-bottom:1px solid var(--color-border);white-space:nowrap;position:sticky;inset-inline-end:0;background:var(--color-surface);z-index:2">
+                                      <button type="button" class="combo-sort-btn" data-combo-sort-col="stock">{d.variantStockColLabel}<svg class="combo-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody data-variant-combo-rows>
+                                  {pVariantCombos.map((c) => (
+                                    <tr class="variant-combo-row" data-variant-combo-row data-combo-key={c.key}>
+                                      {c.parts.map((part) => (
+                                        <td style="padding:0.4rem 0.6rem;font-size:0.85rem;color:var(--color-text);white-space:nowrap;vertical-align:middle">
+                                          {part.hex
+                                            ? <span style="display:inline-flex;align-items:center;gap:0.3rem"><span aria-hidden="true" style={`display:inline-block;width:10px;height:10px;border-radius:3px;background:${part.hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0`}></span>{part.text}</span>
+                                            : part.text}
+                                        </td>
+                                      ))}
+                                      <td style="padding:0.4rem 0.6rem;text-align:end;vertical-align:middle;position:sticky;inset-inline-end:0;background:var(--color-surface);z-index:1"><input type="number" min="0" step="1" class="input" data-combo-stock value={c.value} style="width:80px;text-align:center;padding:0.3rem 0.4rem" /></td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot data-variant-combo-tfoot>
+                                  <tr data-variant-combo-total-row>
+                                    <td colspan={pVariantColumns.length} data-variant-combo-total-label style="padding:0.4rem 0.6rem;font-size:0.82rem;font-weight:600;color:var(--color-text);white-space:nowrap;border-top:1px solid var(--color-border);position:sticky;bottom:0;background:var(--color-surface)">{`${d.variantComboTotal} (${d.variantFilterAll})`}</td>
+                                    <td data-variant-combo-total-value style="padding:0.4rem 0.6rem;text-align:end;font-weight:600;color:var(--color-text);border-top:1px solid var(--color-border);position:sticky;inset-inline-end:0;bottom:0;background:var(--color-surface);z-index:1">{pVariantCombos.reduce((s, c) => s + c.value, 0)}</td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          </div>
                         </div>
 
                         <div class="field">
@@ -1346,7 +1511,7 @@ const orderStatusColors: Record<string, string> = {
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
   import { initCleanupModal } from '../../scripts/dashboard/cleanup-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
-  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initTableSort, initSpecsEditors, initVariantEditors, initBulkSelect, initThumbs, initInlineEdit, initCategoryFilter, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
+  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initTableSort, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initCategoryFilter, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
 
   const uploadCfg = document.getElementById('upload-config');
@@ -1387,7 +1552,15 @@ const orderStatusColors: Record<string, string> = {
   initCropModal();
   initCleanupModal();
   initSpecsEditors();
+  // Registered before the editors below: its document-level click listener
+  // must see the pre-click "is anything armed?" state before either editor's
+  // own listener arms a *new* confirm on this same click — otherwise the
+  // just-armed span looks like a stale one (its trigger element just got
+  // replaced) and gets cancelled in the same event that armed it.
+  initRemoveConfirm();
   initVariantEditors();
+  initTagsEditor();
+  initStockBreakdowns();
   document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g, CLOUD, PRESET));
   bindExistingRows(CLOUD, PRESET);
   initAddProduct(CLOUD, PRESET);

@@ -201,6 +201,7 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
   .pqv-variant-label { font-size: .8rem; font-weight: 600; color: var(--color-text); margin-bottom: .375rem; }
   .pqv-variant-opts { display: flex; flex-wrap: wrap; gap: .375rem; }
   .pqv-variant-opt {
+    display: inline-flex; align-items: center; gap: .35rem;
     padding: .3rem .75rem;
     border: 1.5px solid var(--color-border);
     border-radius: 6px;
@@ -255,6 +256,7 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
 
 <script>
   import { formatPrice } from '../config/store.config.js';
+  import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
 
   const pqvDialog = document.getElementById('pqv-dialog') as HTMLDialogElement | null;
   const pqvBody   = document.getElementById('pqv-body');
@@ -329,13 +331,22 @@ const strNext      = lang === 'he' ? 'הבאה' : 'Next';
         ? `<div class="pqv-thumbs">${p.images.map((img, i) => `<button type="button" class="pqv-thumb is-loading ${i === 0 ? 'is-active' : ''}" data-idx="${i}"><img data-src="${pqvEsc(img)}" alt="" width="52" height="52" loading="lazy" /></button>`).join('')}</div>`
         : '';
 
-      const variantsHtml = p.variants.map(v => `
+      const variantsHtml = p.variants.map(v => {
+        const isCv = isColorVariant(v.name);
+        return `
         <div class="pqv-variant-group">
           <p class="pqv-variant-label">${pqvEsc(v.name)}</p>
           <div class="pqv-variant-opts">
-            ${v.options.map(opt => `<button type="button" class="pqv-variant-opt ${selectedVariants[v.name] === opt ? 'is-selected' : ''}" data-variant-name="${pqvEsc(v.name)}" data-variant-opt="${pqvEsc(opt)}">${pqvEsc(opt)}</button>`).join('')}
+            ${v.options.map(opt => {
+              const { display, hex } = resolveVariantColor(opt);
+              const swatch = isCv && hex
+                ? `<span aria-hidden="true" style="width:12px;height:12px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0;display:inline-block"></span>`
+                : '';
+              return `<button type="button" class="pqv-variant-opt ${selectedVariants[v.name] === opt ? 'is-selected' : ''}" data-variant-name="${pqvEsc(v.name)}" data-variant-opt="${pqvEsc(opt)}">${swatch}${pqvEsc(display)}</button>`;
+            }).join('')}
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
 
       pqvBody!.innerHTML = `<div class="pqv-content-in">
         ${imgAreaHtml}

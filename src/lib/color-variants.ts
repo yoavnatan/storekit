@@ -74,7 +74,12 @@ export function resolveVariantColor(option: string): ResolvedColor {
   return { display: option, hex: COLOR_MAP[key] ?? null };
 }
 
+// Exported (not just a local Set) so other variant-name logic — e.g. dashboard
+// duplicate-title detection in variant-combo.ts — can treat these as one name
+// too, instead of re-declaring the same Hebrew/English synonym list.
+export const COLOR_VARIANT_NAME_GROUP = ['צבע', 'צבעים', 'color', 'colors', 'colour', 'colours'];
+const COLOR_VARIANT_NAMES = new Set(COLOR_VARIANT_NAME_GROUP);
+
 export function isColorVariant(variantName: string): boolean {
-  const lower = variantName.trim().toLowerCase();
-  return lower === 'צבע' || lower === 'color' || lower === 'colour';
+  return COLOR_VARIANT_NAMES.has(variantName.trim().toLowerCase());
 }

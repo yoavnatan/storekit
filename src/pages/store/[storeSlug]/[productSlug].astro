@@ -8,6 +8,7 @@ import { store as platform, formatPrice, cdnSrc } from '../../../config/store.co
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getLang, getT } from '../../../i18n/index.js';
 import { resolveVariantColor, isColorVariant } from '../../../lib/color-variants.js';
+import { comboKey } from '../../../lib/variant-combo.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
@@ -25,6 +26,19 @@ const t = getT(lang);
 
 const isNew = new Date(product.createdAt).toDateString() === new Date().toDateString();
 const images = product.images ?? [];
+
+// Stock for the combo selected by default (first option of each dimension) — falls
+// back to the product's overall stock when there are no variants, or the seller
+// hasn't set per-combination numbers yet.
+const defaultVariantSelection: Record<string, string> =
+  Object.fromEntries((product.variants ?? []).map((v) => [v.name, v.options[0] ?? '']));
+const initialComboStock = (product.variants?.length && product.variantStock)
+  ? (product.variantStock[comboKey(defaultVariantSelection)] ?? product.stock)
+  : product.stock;
+const initialStatusColor = initialComboStock <= 0 ? 'var(--color-danger,#dc2626)' : '#d97706';
+const initialStatusText = initialComboStock <= 0
+  ? t.store.outOfStock
+  : (lang === 'he' ? `נותרו ${initialComboStock} בלבד` : `Only ${initialComboStock} left`);
 const productUrl = new URL(`/store/${storeSlug}/${productSlug}`, Astro.url).href;
 
 const allStoreProducts = getProductsByStoreId(shopStore.id);
@@ -111,7 +125,8 @@ const pmI18n = {
        data-store-name={shopStore.name}
        data-images={JSON.stringify(images)}
        data-lang={lang}
-       data-variants={product.variants?.length ? JSON.stringify(product.variants) : undefined}>
+       data-variants={product.variants?.length ? JSON.stringify(product.variants) : undefined}
+       data-variant-stock={product.variantStock ? JSON.stringify(product.variantStock) : undefined}>
 
     <!-- Back link + checkout link -->
     <nav class="container pt-4 pb-2 flex items-center justify-between" aria-label="breadcrumb">
@@ -246,17 +261,17 @@ const pmI18n = {
             </div>
           )}
 
-          <!-- Low stock -->
-          {product.stock > 0 && product.stock <= 5 && (
-            <p class="flex items-center gap-1.5 text-sm font-semibold" style="color:#d97706;margin:0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-              {lang === 'he' ? `נותרו ${product.stock} בלבד` : `Only ${product.stock} left`}
-            </p>
-          )}
+          <!-- Stock status for the selected combination — updated live by variant-selector clicks -->
+          <p id="stock-status-note" class="flex items-center gap-1.5 text-sm font-semibold"
+             style={`margin:0;color:${initialStatusColor}`}
+             hidden={initialComboStock > 5}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span id="stock-status-text">{initialStatusText}</span>
+          </p>
 
           <!-- Cart actions -->
           {product.stock <= 0
@@ -579,6 +594,8 @@ const pmI18n = {
   import { isWishlisted, toggleWishlist } from '../../../lib/wishlist.js';
   import { spawnRipple } from '../../../lib/ripple.js';
   import { trackViewContent, trackAddToCart } from '../../../lib/tracking.js';
+  import { comboKey } from '../../../lib/variant-combo.js';
+  import { resolveVariantColor, isColorVariant } from '../../../lib/color-variants.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
@@ -586,6 +603,17 @@ const pmI18n = {
   const images: string[] = JSON.parse(page?.dataset.images ?? '[]');
   const pageLang = page?.dataset.lang ?? 'he';
   const pageVariants: Array<{ name: string; options: string[] }> = JSON.parse(page?.dataset.variants ?? '[]');
+  const pageVariantStock: Record<string, number> = JSON.parse(page?.dataset.variantStock ?? '{}');
+
+  // Stock for a given variant selection — falls back to the product's overall stock
+  // when there are no variants, or the seller hasn't set per-combination numbers yet.
+  function effectiveStockFor(selection: Record<string, string>): number {
+    const btn = document.getElementById('add-to-cart-btn') as HTMLButtonElement | null;
+    const total = Math.max(0, parseInt(btn?.dataset.stock ?? '0', 10) || 0);
+    if (!pageVariants.length || !Object.keys(pageVariantStock).length) return total;
+    const key = comboKey(selection);
+    return key in pageVariantStock ? pageVariantStock[key] : total;
+  }
 
   // ── ViewContent — fire once on product page load ───────────────
   {
@@ -617,6 +645,7 @@ const pmI18n = {
         b.style.background = active ? (hex ? hex + '18' : 'var(--color-primary)') : 'none';
         b.style.color = active ? (hex ? 'var(--color-text)' : '#fff') : 'var(--color-text)';
       });
+      applyStockState();
     });
   });
 
@@ -752,14 +781,47 @@ const pmI18n = {
   const qtyInc = document.querySelector<HTMLButtonElement>('.qty-inc');
   const qtyVal = document.querySelector<HTMLElement>('.qty-val');
   const addBtn = document.getElementById('add-to-cart-btn') as HTMLButtonElement | null;
-  const maxStock = addBtn ? Math.max(1, parseInt(addBtn.dataset.stock ?? '99', 10) || 99) : 99;
+  let maxStock = Math.max(0, effectiveStockFor(selectedVariants));
   let qty = 1;
 
   function updateQty(n: number) {
-    qty = Math.max(1, Math.min(n, maxStock));
+    qty = Math.max(1, Math.min(n, Math.max(1, maxStock)));
     if (qtyVal) qtyVal.textContent = String(qty);
     if (qtyDec) qtyDec.disabled = qty <= 1;
     if (qtyInc) qtyInc.disabled = qty >= maxStock;
+  }
+
+  // Re-derives the stock ceiling for whichever combo is currently selected —
+  // called on every variant-swatch click. Distinct from the page's initial
+  // out-of-stock state (product.stock <= 0, server-rendered) which governs
+  // whether the qty/add-to-cart row exists at all; this only reacts to a
+  // *specific combination* being sold out while the product overall isn't.
+  function applyStockState(): void {
+    maxStock = Math.max(0, effectiveStockFor(selectedVariants));
+    const outOfStock = maxStock <= 0;
+
+    qty = outOfStock ? 0 : Math.min(qty, maxStock);
+    if (qtyVal) qtyVal.textContent = String(Math.max(qty, outOfStock ? 0 : 1));
+    if (qtyDec) qtyDec.disabled = outOfStock || qty <= 1;
+    if (qtyInc) qtyInc.disabled = outOfStock || qty >= maxStock;
+    if (!outOfStock && qty < 1) updateQty(1);
+
+    [addBtn, stickyAddBtn].forEach((btn) => { if (btn) btn.disabled = outOfStock; });
+
+    const note = document.getElementById('stock-status-note') as HTMLElement | null;
+    const noteText = document.getElementById('stock-status-text');
+    if (!note || !noteText) return;
+    if (outOfStock) {
+      note.hidden = false;
+      note.style.color = 'var(--color-danger,#dc2626)';
+      noteText.textContent = getPMI18n().outOfStock || (pageLang === 'he' ? 'אזל מהמלאי' : 'Out of stock');
+    } else if (maxStock <= 5) {
+      note.hidden = false;
+      note.style.color = '#d97706';
+      noteText.textContent = pageLang === 'he' ? `נותרו ${maxStock} בלבד` : `Only ${maxStock} left`;
+    } else {
+      note.hidden = true;
+    }
   }
 
   qtyDec?.addEventListener('click', (e) => { spawnRipple(qtyDec, e.clientX, e.clientY); updateQty(qty - 1); });
@@ -875,6 +937,12 @@ const pmI18n = {
     });
   }
 
+  // Sync button/qty-stepper disabled state with the default combo's stock —
+  // the status note itself is already server-rendered correctly, this covers
+  // the edge case of the *default* variant selection being sold out while the
+  // product's overall stock (which gates whether this row renders at all) isn't.
+  applyStockState();
+
   // ── Wishlist ───────────────────────────────────────────────────────
   const wishlistBtn = document.getElementById('wishlist-btn') as HTMLButtonElement | null;
   const wishlistHeart = document.getElementById('wishlist-heart') as SVGElement | null;
@@ -953,31 +1021,8 @@ const pmI18n = {
     catch { return {}; }
   }
 
-  const PM_COLOR_MAP: Record<string, string> = {
-    'אדום':'#e53e3e','כחול':'#3b82f6','ירוק':'#22c55e','שחור':'#1f2937','לבן':'#f1f5f9',
-    'צהוב':'#eab308','כתום':'#f97316','סגול':'#8b5cf6','ורוד':'#ec4899','חום':'#92400e',
-    'אפור':'#6b7280',"בז'":'#d4b89a','בז':'#d4b89a','זהב':'#d4a017','כסף':'#9ca3af',
-    'טורקיז':'#06b6d4','נייבי':'#1e40af','מנטה':'#6ee7b7','לבנדר':'#c4b5fd','קורל':'#fb7185',
-    'חרדל':'#ca8a04','כחול כהה':'#1e40af','כחול בהיר':'#bfdbfe','ירוק כהה':'#166534',
-    'ירוק בהיר':'#bbf7d0','אדום כהה':'#991b1b','ורוד בהיר':'#fce7f3',
-    'red':'#e53e3e','blue':'#3b82f6','green':'#22c55e','black':'#1f2937','white':'#f1f5f9',
-    'yellow':'#eab308','orange':'#f97316','purple':'#8b5cf6','pink':'#ec4899','brown':'#92400e',
-    'gray':'#6b7280','grey':'#6b7280','beige':'#d4b89a','gold':'#d4a017','silver':'#9ca3af',
-    'turquoise':'#06b6d4','teal':'#0d9488','navy':'#1e40af','mint':'#6ee7b7','lavender':'#c4b5fd',
-    'coral':'#fb7185','mustard':'#ca8a04','cream':'#fef9c3','olive':'#65a30d','maroon':'#9f1239',
-    'indigo':'#4f46e5','cyan':'#06b6d4','magenta':'#d946ef',
-  };
-
-  function pmResolveColor(opt: string): { display: string; hex: string | null } {
-    const m = opt.match(/#([0-9a-fA-F]{3,6})\b/);
-    if (m) return { display: opt.replace(/#([0-9a-fA-F]{3,6})\b/, '').trim() || opt, hex: '#' + m[1] };
-    return { display: opt, hex: PM_COLOR_MAP[opt.trim().toLowerCase()] ?? null };
-  }
-
-  function pmIsColorVariant(name: string): boolean {
-    const l = name.trim().toLowerCase();
-    return l === 'צבע' || l === 'color' || l === 'colour';
-  }
+  const pmResolveColor = resolveVariantColor;
+  const pmIsColorVariant = isColorVariant;
 
   function fmtPrice(price: number): string {
     return new Intl.NumberFormat('he-IL', { style:'currency', currency:'ILS', minimumFractionDigits:0 }).format(price);

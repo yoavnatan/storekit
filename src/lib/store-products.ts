@@ -27,6 +27,8 @@ export interface StoreProduct {
   tags?: string[];
   specs?: ProductSpec[];
   variants?: ProductVariant[];
+  /** Optional per-combination stock override, keyed by variant-combo.ts#comboKey(). Combos with no entry fall back to `stock`. */
+  variantStock?: Record<string, number>;
   createdAt: string;
 }
 
@@ -53,9 +55,10 @@ interface CreateProductInput {
   tags?: string[];
   specs?: ProductSpec[];
   variants?: ProductVariant[];
+  variantStock?: Record<string, number>;
 }
 
-export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, category, tags, specs, variants }: CreateProductInput): StoreProduct {
+export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, category, tags, specs, variants, variantStock }: CreateProductInput): StoreProduct {
   const products = readProducts();
   const storeProducts = products.filter((p) => p.storeId === storeId);
   const base = slugify(name) || 'product';
@@ -76,6 +79,7 @@ export function createProduct(storeId: string, { name, description = '', price, 
     ...(tags?.length ? { tags } : {}),
     ...(specs?.length ? { specs } : {}),
     ...(variants?.length ? { variants } : {}),
+    ...(variantStock && Object.keys(variantStock).length ? { variantStock } : {}),
     createdAt: new Date().toISOString(),
   };
   products.push(product);

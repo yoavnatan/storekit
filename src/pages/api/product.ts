@@ -2,7 +2,8 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
-import { createProduct, updateProduct, deleteProduct, getProductById, type StoreProduct } from '../../lib/store-products.js';
+import { createProduct, updateProduct, deleteProduct, getProductById, type StoreProduct, type ProductVariant } from '../../lib/store-products.js';
+import { comboKey, generateCombos } from '../../lib/variant-combo.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -29,15 +30,51 @@ function parseSpecs(form: FormData): Array<{ label: string; value: string }> {
   return labels.map((label, i) => ({ label, value: values[i] ?? '' })).filter(s => s.label);
 }
 
-function parseVariants(form: FormData): Array<{ name: string; options: string[] }> {
-  const names = form.getAll('variant_name').map(v => String(v).trim());
-  const optionsRaw = form.getAll('variant_options').map(v => String(v).trim());
-  return names
-    .map((name, i) => ({
-      name,
-      options: (optionsRaw[i] ?? '').split(',').map(o => o.trim()).filter(Boolean),
-    }))
-    .filter(v => v.name && v.options.length);
+interface VariantsPayload {
+  variants: ProductVariant[];
+  variantStock: Record<string, number>;
+}
+
+/** Parses the single `variants_json` field the dashboard serializes before submit — replaces
+ *  the old parallel `variant_name`/`variant_options` array zipping, which silently misaligned
+ *  if a block was ever added/removed out of order. */
+function parseVariantsPayload(form: FormData): VariantsPayload {
+  const empty: VariantsPayload = { variants: [], variantStock: {} };
+  const raw = String(form.get('variants_json') || '');
+  if (!raw) return empty;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return empty; }
+  if (!parsed || typeof parsed !== 'object') return empty;
+  const obj = parsed as { variants?: unknown; variantStock?: unknown };
+
+  const variants: ProductVariant[] = Array.isArray(obj.variants)
+    ? obj.variants
+        .map((v): ProductVariant | null => {
+          if (!v || typeof v !== 'object') return null;
+          const name = String((v as { name?: unknown }).name ?? '').trim();
+          const rawOptions = (v as { options?: unknown }).options;
+          const options = Array.isArray(rawOptions)
+            ? rawOptions.map((o) => String(o).trim()).filter(Boolean)
+            : [];
+          return name && options.length ? { name, options } : null;
+        })
+        .filter((v): v is ProductVariant => v !== null)
+    : [];
+
+  // Only keep stock entries for combos that actually exist for the final variant set —
+  // guards against stale/tampered keys once options are renamed or removed client-side.
+  const validKeys = new Set(generateCombos(variants).map(comboKey));
+  const variantStock: Record<string, number> = {};
+  if (obj.variantStock && typeof obj.variantStock === 'object') {
+    for (const [key, val] of Object.entries(obj.variantStock as Record<string, unknown>)) {
+      if (!validKeys.has(key)) continue;
+      const n = Math.floor(Number(val));
+      if (Number.isFinite(n) && n >= 0) variantStock[key] = n;
+    }
+  }
+
+  return { variants, variantStock };
 }
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -60,7 +97,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const category = parseCategory(form);
     const tags = parseTags(form);
     const specs = parseSpecs(form);
-    const variants = parseVariants(form);
+    const { variants, variantStock } = parseVariantsPayload(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
@@ -72,6 +109,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       tags: tags.length ? tags : undefined,
       specs: specs.length ? specs : undefined,
       variants: variants.length ? variants : undefined,
+      variantStock: Object.keys(variantStock).length ? variantStock : undefined,
     });
     return json({ ok: true, product });
   }
@@ -86,7 +124,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const category = parseCategory(form);
     const tags = parseTags(form);
     const specs = parseSpecs(form);
-    const variants = parseVariants(form);
+    const { variants, variantStock } = parseVariantsPayload(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
@@ -98,6 +136,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       tags: tags.length ? tags : [],
       specs: specs.length ? specs : [],
       variants: variants.length ? variants : [],
+      variantStock: Object.keys(variantStock).length ? variantStock : undefined,
     };
 
     const updated = updateProduct(productId, updates);

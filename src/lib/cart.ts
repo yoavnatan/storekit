@@ -1,3 +1,5 @@
+import { comboKey } from './variant-combo.js';
+
 export interface CartItem {
   cartKey: string;
   slug: string;
@@ -30,11 +32,7 @@ function storeKey(storeSlug: string): string {
 
 function makeCartKey(slug: string, selectedVariants?: Record<string, string>): string {
   if (!selectedVariants || !Object.keys(selectedVariants).length) return slug;
-  const combo = Object.entries(selectedVariants)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join(',');
-  return `${slug}__${combo}`;
+  return `${slug}__${comboKey(selectedVariants)}`;
 }
 
 function readStoreCart(storeSlug: string): StoreCart | null {

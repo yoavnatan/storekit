@@ -350,6 +350,7 @@ const pmI18n = {
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
   import { spawnRipple } from '../../lib/ripple.js';
   import { trackAddToCart } from '../../lib/tracking.js';
+  import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart)');
@@ -851,32 +852,9 @@ const pmI18n = {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // ── Color variant resolution ──────────────────────────────────
-  const PM_COLOR_MAP: Record<string, string> = {
-    'אדום':'#e53e3e','כחול':'#3b82f6','ירוק':'#22c55e','שחור':'#1f2937','לבן':'#f1f5f9',
-    'צהוב':'#eab308','כתום':'#f97316','סגול':'#8b5cf6','ורוד':'#ec4899','חום':'#92400e',
-    'אפור':'#6b7280',"בז'":'#d4b89a','בז':'#d4b89a','זהב':'#d4a017','כסף':'#9ca3af',
-    'טורקיז':'#06b6d4','נייבי':'#1e40af','מנטה':'#6ee7b7','לבנדר':'#c4b5fd','קורל':'#fb7185',
-    'חרדל':'#ca8a04','כחול כהה':'#1e40af','כחול בהיר':'#bfdbfe','ירוק כהה':'#166534',
-    'ירוק בהיר':'#bbf7d0','אדום כהה':'#991b1b','ורוד בהיר':'#fce7f3',
-    'red':'#e53e3e','blue':'#3b82f6','green':'#22c55e','black':'#1f2937','white':'#f1f5f9',
-    'yellow':'#eab308','orange':'#f97316','purple':'#8b5cf6','pink':'#ec4899','brown':'#92400e',
-    'gray':'#6b7280','grey':'#6b7280','beige':'#d4b89a','gold':'#d4a017','silver':'#9ca3af',
-    'turquoise':'#06b6d4','teal':'#0d9488','navy':'#1e40af','mint':'#6ee7b7','lavender':'#c4b5fd',
-    'coral':'#fb7185','mustard':'#ca8a04','cream':'#fef9c3','olive':'#65a30d','maroon':'#9f1239',
-    'indigo':'#4f46e5','cyan':'#06b6d4','magenta':'#d946ef',
-  };
-
-  function resolveColor(opt: string): { display: string; hex: string | null } {
-    const m = opt.match(/#([0-9a-fA-F]{3,6})\b/);
-    if (m) return { display: opt.replace(/#([0-9a-fA-F]{3,6})\b/, '').trim() || opt, hex: '#' + m[1] };
-    return { display: opt, hex: PM_COLOR_MAP[opt.trim().toLowerCase()] ?? null };
-  }
-
-  function isColorVariantName(name: string): boolean {
-    const l = name.trim().toLowerCase();
-    return l === 'צבע' || l === 'color' || l === 'colour';
-  }
+  // ── Color variant resolution — shared with the main product page ──
+  const resolveColor = resolveVariantColor;
+  const isColorVariantName = isColorVariant;
 
   function fmtPrice(price: number): string {
     return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', minimumFractionDigits: 0 }).format(price);
