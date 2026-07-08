@@ -3,13 +3,12 @@ export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { store as platform, formatPrice, cdnSrc } from '../config/store.config.js';
-import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
+import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getAllStores } from '../lib/stores.js';
 import { getProductsByStoreId } from '../lib/store-products.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId    = getSellerSession(Astro.cookies);
-const seller      = sellerId ? getSellerById(sellerId) : null;
 const sellerStore = sellerId ? getStoreBySellerId(sellerId) : null;
 const isLoggedIn  = !!sellerId;
 const hasStore    = !!sellerStore;
@@ -39,43 +38,16 @@ const jsonLd = {
   hasStore={hasStore}
   storeMode={true}
   showSearch={true}
+  isHome={true}
   dataLayer={{ event: 'page_view', page_type: 'platform', currency: 'ILS' }}
 >
 
   <h1 class="visually-hidden">{t.home.discoverStores}</h1>
   <div class="home-body">
 
-  {isLoggedIn && seller && (
-    <div class="home-greeting-bar container">
-      <p class="home-greeting">{t.home.welcomeBack},&nbsp;<strong>{seller.name}</strong></p>
-    </div>
-  )}
-
-  <!-- ── Active Carts (client-rendered) ───────────────────────────── -->
-  <!-- Section is visible by default with skeleton — renderCarts() replaces content or hides it -->
-  <section
-    id="carts-section"
-    aria-labelledby="carts-heading"
-    class="home-carts-section container"
-    data-label-items={t.home.cartItems}
-    data-label-open={t.home.cartOpenBtn}
-    data-label-visit={t.home.visitStore}
-    data-label-empty={t.home.noActiveCarts}
-  >
-    <div class="home-section-header">
-      <h2 id="carts-heading" class="home-section-title home-carts-section__title">
-        {t.home.yourCarts}
-      </h2>
-    </div>
-    <div id="carts-list" class="home-carts-wrap" role="list">
-      <div class="home-cart-chip-skel" aria-hidden="true"></div>
-      <div class="home-cart-chip-skel" style="width:6rem" aria-hidden="true"></div>
-    </div>
-  </section>
-
   <!-- ── Per-store product carousels ───────────────────────────────── -->
   {storesWithProducts.length > 0 && (
-    <div class="section container" style="padding-bottom:0">
+    <div class="section container" style="padding-top:1rem;padding-bottom:0">
       <h2 class="home-section-title">{t.home.discoverStores}</h2>
     </div>
   )}
@@ -244,71 +216,17 @@ const jsonLd = {
 <script is:inline type="application/json" id="home-search-stores-data" set:html={JSON.stringify(stores.map(s => ({ name: s.name, slug: s.slug, tagline: s.tagline ?? '', description: s.description ?? '' })))} />
 
 <script>
-  import { getActiveStoreCarts, getSubtotal } from '../lib/cart.js';
-  import { formatPrice } from '../config/store.config.js';
   import { spawnRipple } from '../lib/ripple.js';
+  import { clearLastStore } from '../lib/last-store.js';
+
+  // Landing on the platform home is a deliberate exit from any store context —
+  // don't let a stale "back to store" pill follow the buyer into checkout/dashboard afterward.
+  clearLastStore();
 
   document.addEventListener('pointerdown', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLElement>(
-      'button, a.btn, a.home-product-card, a.home-cart-chip__store'
-    );
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('button, a.btn, a.home-product-card');
     if (btn) spawnRipple(btn, e.clientX, e.clientY);
   });
-
-  // ── Active Carts ───────────────────────────────────────────────────
-  const cartsSection = document.getElementById('carts-section') as HTMLElement | null;
-  const cartsList    = document.getElementById('carts-list')    as HTMLElement | null;
-
-  const labelItems = cartsSection?.dataset.labelItems ?? 'פריטים';
-  const labelOpen  = cartsSection?.dataset.labelOpen  ?? 'פתח עגלה';
-  const labelVisit = cartsSection?.dataset.labelVisit ?? 'בקר בחנות';
-  const labelEmpty = cartsSection?.dataset.labelEmpty ?? 'אין עגלות פעילות';
-
-  function renderCarts(): void {
-    const carts = getActiveStoreCarts();
-    if (!cartsList || !cartsSection) return;
-    cartsSection.removeAttribute('hidden');
-    if (!carts.length) {
-      cartsList.innerHTML = `<p class="muted" style="font-size:0.9rem;padding:0.25rem 0">${labelEmpty}</p>`;
-      return;
-    }
-
-    cartsSection.removeAttribute('hidden');
-
-    cartsList.innerHTML = carts.map((c) => {
-      const subtotal = getSubtotal(c.storeSlug);
-      const initial  = (c.storeName[0] ?? '?').toUpperCase();
-      return `
-        <div class="home-cart-chip" role="listitem">
-          <a
-            href="/store/${encodeURIComponent(c.storeSlug)}"
-            class="home-cart-chip__store"
-            aria-label="${labelVisit} ${c.storeName}"
-          >
-            <div class="home-cart-chip__icon" aria-hidden="true">${initial}</div>
-            <span class="home-cart-chip__name">${c.storeName}</span>
-          </a>
-          <span class="home-cart-chip__sep" aria-hidden="true"></span>
-          <button
-            type="button"
-            class="home-cart-chip__cart"
-            data-open-cart="${encodeURIComponent(c.storeSlug)}"
-            aria-label="${labelOpen} — ${c.storeName}"
-          >
-            <span class="home-cart-chip__meta">${c.count} ${labelItems} · ${formatPrice(subtotal)}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-          </button>
-        </div>`;
-    }).join('');
-  }
-
-  cartsList?.addEventListener('click', (e) => {
-    const btn = (e.target as Element).closest<HTMLElement>('[data-open-cart]');
-    if (btn) window.dispatchEvent(new CustomEvent('cart:open'));
-  });
-
-  renderCarts();
-  window.addEventListener('cart:change', renderCarts);
 
   // ── Carousel arrows (per store section) ───────────────────────────
   const isRtl = document.documentElement.dir === 'rtl';

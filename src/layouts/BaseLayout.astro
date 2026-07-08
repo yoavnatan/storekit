@@ -16,7 +16,7 @@ import '../styles/main.css';
 
 const {
   title, description, image, type, noindex, jsonLd,
-  isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode, hideNav, showSearch,
+  isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode, hideNav, showSearch, isHome,
   dataLayer, productPrice, productCurrency,
 } = Astro.props;
 
@@ -96,7 +96,7 @@ const sessionUserId = getSellerSession(Astro.cookies) ?? '';
     {platformPixel && <noscript set:html={`<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${platformPixel}&ev=PageView&noscript=1" alt="" />`} />}
     <a href="#main-content" class="skip-link">{t.nav.skipToMain}</a>
     <script type="application/json" id="i18n-data" is:inline set:html={i18nJson}></script>
-    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} />
+    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} isHome={isHome} />
     <main id="main-content">
       <slot />
     </main>
@@ -125,7 +125,8 @@ const sessionUserId = getSellerSession(Astro.cookies) ?? '';
       } else if(notifs.length>0){
         window.dispatchEvent(new CustomEvent('notifications:update',{detail:{unreadCount:unreadCount,notifications:notifs}}));
         notifs.slice(0,3).forEach(function(n){
-          window.dispatchEvent(new CustomEvent('toast:show',{detail:{title:n.title,body:n.body}}));
+          var href=n.type==='new_message'?'/seller/dashboard?panel=messages':(n.type==='new_order'||n.type==='order_update')?'/seller/dashboard?panel=orders':'/buyer/dashboard?tab=messages';
+          window.dispatchEvent(new CustomEvent('toast:show',{detail:{title:n.title,body:n.body,key:n.relatedId||n.id,href:href}}));
         });
       }
       if(notifs.length>0) lastCheck=new Date().toISOString();

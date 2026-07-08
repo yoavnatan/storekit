@@ -11,9 +11,10 @@ interface Props {
   sellerMode?: boolean;
   hideNav?: boolean;
   showSearch?: boolean;
+  isHome?: boolean;
 }
 
-const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, storeName, storeSlug } = Astro.props;
+const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, isHome = false, storeName, storeSlug } = Astro.props;
 const logo = store.logo;
 
 
@@ -51,25 +52,25 @@ const strEmpty   = t.store.noProductsFound;
 <header class={`site-header${storeMode ? ' site-header--store' : ''}`}>
   <div class={storeMode ? 'container' : 'container between flex'} style={storeMode ? 'display:flex;align-items:center;gap:0.75rem' : undefined}>
 
-    <!-- Logo / store back-link -->
+    <!-- Logo / store home -->
     <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
       {storeMode && storeName && storeSlug
-        ? <div class="flex items-center" style="gap:0.35rem">
-            <a href="/" class="store-back-link" aria-label={store.name}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={`flex-shrink:0${lang === 'he' ? ';transform:scaleX(-1)' : ''}`}><polyline points="15 18 9 12 15 6"/></svg>
-              <span class="store-back-link__label" aria-hidden="true">{store.name}</span>
-            </a>
-            <span class="store-back-sep" aria-hidden="true" style="color:var(--color-border);font-size:0.85rem;line-height:1">|</span>
-            <a href={`/store/${storeSlug}`} class="logo store-name-link" aria-label={storeName}>
-              <svg class="store-home-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              <span class="store-name-text">{storeName}</span>
-            </a>
-          </div>
+        ? <a href={`/store/${storeSlug}`} class="logo store-name-link" aria-label={storeName}>
+            <span class="store-name-text">{storeName}</span>
+          </a>
         : <a href="/" class="logo" aria-label={store.name}>
             <span>{logo.text}</span>
           </a>
       }
     </div>
+
+    <!-- Back-to-store pill (persistent, subtle) — shown whenever we're not already inside a store's own header, so a buyer detoured away by a notification/toast/checkout always has a way back into the store they were shopping in -->
+    {!(storeName && storeSlug) && !isHome && (
+      <a href="#" id="back-to-store-pill" class="back-to-store-pill" hidden aria-label={lang === 'he' ? 'חזרה לחנות' : 'Back to store'}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={`flex-shrink:0${lang === 'he' ? ';transform:scaleX(-1)' : ''}`}><polyline points="15 18 9 12 15 6"/></svg>
+        <span id="back-to-store-pill__name" class="back-to-store-pill__name"></span>
+      </a>
+    )}
 
     <!-- Homepage search (showSearch=true, no storeSlug) -->
     {showSearch && !storeSlug && (
@@ -206,7 +207,10 @@ const strEmpty   = t.store.noProductsFound;
           </button>
           <div id="notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות">
             <div class="notif-panel-head">
-              <span>התראות</span>
+              <span style="display:inline-flex;align-items:center;gap:0.4rem">
+                התראות
+                <span id="notif-loading-dot" class="dot-pulse" hidden aria-hidden="true"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span>
+              </span>
               <button id="notif-close-btn" class="notif-close-btn" type="button" aria-label="סגור התראות">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
@@ -263,6 +267,10 @@ const strEmpty   = t.store.noProductsFound;
             <span id="seller-alert-avatar-dot" class="notif-dot" hidden aria-hidden="true"></span>
           </button>
           <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
+            <a href="/" class="user-dropdown__item" role="menuitem">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              {t.nav.home}
+            </a>
             <a href="/buyer/dashboard" class="user-dropdown__item" role="menuitem">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
               האזור שלי
@@ -311,6 +319,19 @@ const strEmpty   = t.store.noProductsFound;
 
 <script>
   import { getCount } from '../lib/cart.js';
+  import { getLastStore } from '../lib/last-store.js';
+
+  // ── Back-to-store pill ────────────────────────────────────────
+  {
+    const pill = document.getElementById('back-to-store-pill') as HTMLAnchorElement | null;
+    const last = getLastStore();
+    if (pill && last) {
+      pill.href = last.url;
+      const nameEl = document.getElementById('back-to-store-pill__name');
+      if (nameEl) nameEl.textContent = last.name;
+      pill.hidden = false;
+    }
+  }
 
   function fadeClose(el: HTMLElement, onDone: () => void): void {
     if (el.classList.contains('dropdown--closing')) return;
@@ -482,6 +503,8 @@ const strEmpty   = t.store.noProductsFound;
 
 
   async function loadNotifs() {
+    const loadingDot = document.getElementById('notif-loading-dot');
+    loadingDot?.removeAttribute('hidden');
     try {
       const res = await fetch('/api/notifications');
       if (!res.ok) return;
@@ -490,6 +513,9 @@ const strEmpty   = t.store.noProductsFound;
       const sellerReplyCount = (notifications ?? []).filter((n: NotifItem) => n.type === 'seller_reply' && !n.read).length;
       window.dispatchEvent(new CustomEvent('msg-badge-update', { detail: sellerReplyCount }));
     } catch { /* ignore */ }
+    finally {
+      loadingDot?.setAttribute('hidden', '');
+    }
   }
 
   setInterval(loadNotifs, 30000);

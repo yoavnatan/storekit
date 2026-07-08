@@ -128,7 +128,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       userId: toId,
       role: isSeller ? 'buyer' : 'seller',
       type: isSeller ? 'seller_reply' : 'new_message',
-      title: isSeller ? 'יש לך הודעה ממוכר' : 'יש לך הודעה מקונה',
+      title: isSeller ? 'יש לך הודעה חדשה ממוכר' : 'יש לך הודעה חדשה מקונה',
       body: '',
       relatedId: reply.id,
     });
@@ -160,7 +160,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     userId: toSellerId,
     role: 'seller',
     type: 'new_message',
-    title: 'יש לך הודעה מקונה',
+    title: 'יש לך הודעה חדשה מקונה',
     body: '',
     relatedId: msg.id,
   });

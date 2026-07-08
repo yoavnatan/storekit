@@ -2,25 +2,6 @@
   padding-top: 0.5rem;
 }
 
-/* ── Greeting bar (logged-in only) ─────────────────────────────────── */
-
-.home-greeting-bar {
-  padding-block: 0.625rem;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.home-greeting {
-  font-size: 0.8rem;
-  color: var(--color-muted);
-  margin: 0;
-}
-
-.home-greeting strong {
-  color: var(--color-text);
-  font-weight: 700;
-}
-
-
 /* ── Section layout helpers ────────────────────────────────────────── */
 
 .home-section-header {
@@ -54,13 +35,7 @@
   padding: 0.18rem 0.5rem;
 }
 
-/* ── Active Carts ──────────────────────────────────────────────────── */
-
-.home-carts-section {
-  padding-block: 1.25rem;
-  border-bottom: 1px solid var(--color-border);
-}
-
+/* ── Active Carts (rendered in the buyer's personal area) ────────────── */
 
 .home-carts-wrap {
   display: flex;

@@ -22,7 +22,7 @@
 </div>
 
 <script>
-  import { removeFromWishlist, getWishlistByStore, getWishlistCount } from '../lib/wishlist.js';
+  import { removeFromWishlist, addToWishlist, getWishlistByStore, getWishlistCount } from '../lib/wishlist.js';
   import { addItem } from '../lib/cart.js';
   import { formatPrice } from '../config/store.config.js';
   import { spawnRipple } from '../lib/ripple.js';
@@ -276,11 +276,41 @@
       clearTimeout(Number(rmBtn.dataset.timer ?? '0'));
       delete rmBtn.dataset.confirming;
       delete rmBtn.dataset.timer;
+
+      // Capture full item data before the optimistic removal wipes its row,
+      // so a failed server sync can restore it exactly.
+      const row = rmBtn.closest<HTMLElement>('.wl-item');
+      const cartBtn = row?.querySelector<HTMLButtonElement>('[data-wl-cart]');
+      const itemForRollback = cartBtn ? {
+        slug,
+        name: cartBtn.dataset.wlName ?? '',
+        price: Number(cartBtn.dataset.wlPrice ?? 0),
+        image: cartBtn.dataset.wlImg ?? '',
+        storeSlug: cartBtn.dataset.wlStore ?? '',
+        storeName: cartBtn.dataset.wlSname ?? '',
+      } : null;
+
       fetch('/api/wishlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'remove', productSlug: slug }),
+      }).then((r) => {
+        if (r.ok) return;
+        throw new Error('remove failed');
+      }).catch(() => {
+        if (!itemForRollback) return;
+        addToWishlist(itemForRollback);
+        document.querySelectorAll<HTMLElement>(`[data-wishlist-slug="${slug}"]`).forEach((b) => {
+          b.setAttribute('data-wishlisted', 'true');
+          b.setAttribute('aria-pressed', 'true');
+          setHeartStyle(b, true);
+        });
+        const i18n = getI18n().wishlist ?? {};
+        window.dispatchEvent(new CustomEvent('toast:show', {
+          detail: { title: i18n.removeFailed ?? 'Could not remove from wishlist', body: i18n.removeFailedBody ?? '' },
+        }));
       });
+
       removeFromWishlist(slug);
       document.querySelectorAll<HTMLElement>(`[data-wishlist-slug="${slug}"]`).forEach((b) => {
         b.setAttribute('data-wishlisted', 'false');

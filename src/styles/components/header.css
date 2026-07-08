@@ -338,17 +338,9 @@ nav a:hover { color: var(--color-text); }
   display: block;
 }
 
-/* House icon — always visible, replaces the | separator */
-.store-home-icon { display: block; flex-shrink: 0; }
-
-/* Separator hidden everywhere — house icon takes its place */
-.store-back-sep { display: none; }
-
-/* Store name link: flex so house icon + name sit side by side */
 .store-header__logo-col .store-name-link {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
 }
 
 /* Inner text span — ellipsis when name is too long */
@@ -359,40 +351,36 @@ nav a:hover { color: var(--color-text); }
   min-width: 0;
 }
 
-@media (max-width: 640px) {
-  /* No hover on touch — hide the ShopNest label to prevent tap-triggered reflow */
-  .store-back-link__label { display: none; }
-}
-
-/* Back-link inside store mode header */
-.store-back-link {
+/* Back-to-store pill: persistent, subtle chip shown outside a store's own header */
+.back-to-store-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0;
-  font-size: 0.7rem;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-muted);
+  font-size: 0.75rem;
   font-weight: 500;
   line-height: 1;
   text-decoration: none;
-  color: var(--color-muted);
-  transition: color 0.1s;
-  flex-shrink: 0;
+  transition: color 0.1s, border-color 0.1s;
 }
-.store-back-link:hover { color: var(--color-text); }
+.back-to-store-pill:hover { color: var(--color-text); border-color: var(--color-muted); }
 
-.store-back-link__label {
-  display: inline-block;
-  max-width: 0;
+.back-to-store-pill__name {
+  max-width: 8rem;
   overflow: hidden;
-  opacity: 0;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  margin-inline-start: 0;
-  transition: max-width 0.22s ease, opacity 0.22s ease, margin-inline-start 0.22s ease;
 }
-.store-back-link:hover .store-back-link__label,
-.store-back-link:focus-visible .store-back-link__label {
-  max-width: 6rem;
-  opacity: 1;
-  margin-inline-start: 0.3rem;
+
+@media (max-width: 640px) {
+  /* Icon-only on small screens — keeps the pill from crowding search/actions */
+  .back-to-store-pill__name { display: none; }
+  .back-to-store-pill { padding: 0.35rem; }
 }
 
 /* ── Dropdown fade-out (close animation) ── */

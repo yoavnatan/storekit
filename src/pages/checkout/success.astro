@@ -3,14 +3,17 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getLang, getT } from '../../i18n/index.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
+import { getStoresBySellerId, getAllStores } from '../../lib/stores.js';
 
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
 const c = t.checkout;
-const isLoggedIn = !!getSellerSession(Astro.cookies);
+const userId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!userId;
+const hasStore = userId ? getStoresBySellerId(userId).length > 0 : false;
 ---
 
-<BaseLayout title={c.successTitle} description={c.successDesc} noindex={true} isLoggedIn={isLoggedIn} hideNav={true}>
+<BaseLayout title={c.successTitle} description={c.successDesc} noindex={true} isLoggedIn={isLoggedIn} hasStore={hasStore} hideNav={true} showSearch={true}>
   <main id="main-content" class="container" style="padding-block: 3rem 4rem; text-align:center">
 
     <div style="max-width:480px; margin-inline:auto">
@@ -35,6 +38,8 @@ const isLoggedIn = !!getSellerSession(Astro.cookies);
     </div>
 
   </main>
+
+  <script is:inline type="application/json" id="home-search-stores-data" set:html={JSON.stringify(getAllStores().map(s => ({ name: s.name, slug: s.slug, tagline: s.tagline ?? '', description: s.description ?? '' })))} />
 
   <script>
     // Read order ID from URL and clear cart

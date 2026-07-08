@@ -19,10 +19,12 @@
   const dialog = document.getElementById('confirm-dialog') as HTMLDialogElement | null;
   const titleEl = document.getElementById('confirm-title');
   const msgEl = document.getElementById('confirm-message');
-  const cancelBtn = document.getElementById('confirm-cancel');
-  const okBtn = document.getElementById('confirm-ok');
+  const cancelBtn = document.getElementById('confirm-cancel') as HTMLButtonElement | null;
+  const okBtn = document.getElementById('confirm-ok') as HTMLButtonElement | null;
 
-  let pending: (() => void) | null = null;
+  let pending: (() => void | Promise<void>) | null = null;
+  let workingLabel = 'Working…';
+  let busy = false;
 
   function centerDialog() {
     if (dialog) dialog.style.transform = '';
@@ -30,28 +32,53 @@
 
   window.addEventListener('confirm:open', (e: Event) => {
     const i18n = getI18n().confirm ?? {};
-    const detail = (e as CustomEvent<{ title?: string; message?: string; okLabel?: string; onConfirm?: () => void }>).detail;
+    const detail = (e as CustomEvent<{ title?: string; message?: string; okLabel?: string; workingLabel?: string; onConfirm?: () => void | Promise<void> }>).detail;
     if (titleEl) titleEl.textContent = detail.title ?? i18n.defaultTitle ?? 'Are you sure?';
     if (msgEl) msgEl.textContent = detail.message ?? i18n.defaultMsg ?? 'This action cannot be undone.';
     if (okBtn) okBtn.textContent = detail.okLabel ?? i18n.confirm ?? 'Confirm';
     if (cancelBtn) cancelBtn.textContent = i18n.cancel ?? 'Cancel';
     pending = detail.onConfirm ?? null;
+    workingLabel = detail.workingLabel ?? i18n.working ?? 'Working…';
     centerDialog();
     dialog?.showModal();
   });
 
   cancelBtn?.addEventListener('click', () => {
+    if (busy) return;
     dialog?.close();
     pending = null;
   });
 
-  okBtn?.addEventListener('click', () => {
-    dialog?.close();
-    pending?.();
+  okBtn?.addEventListener('click', async () => {
+    if (busy) return;
+    const action = pending;
     pending = null;
+    if (!action) { dialog?.close(); return; }
+
+    const origOkText = okBtn.textContent ?? '';
+    busy = true;
+    okBtn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
+    okBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${workingLabel}<span class="dot-pulse" role="status" aria-label="${workingLabel}"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
+    try {
+      await action();
+    } finally {
+      busy = false;
+      okBtn.disabled = false;
+      okBtn.textContent = origOkText;
+      if (cancelBtn) cancelBtn.disabled = false;
+      dialog?.close();
+    }
+  });
+
+  // Native Escape triggers a 'cancel' event before 'close' — block it mid-action
+  // so a busy delete/save can't be silently abandoned while its fetch is in flight.
+  dialog?.addEventListener('cancel', (e) => {
+    if (busy) e.preventDefault();
   });
 
   dialog?.addEventListener('click', (e) => {
+    if (busy) return;
     if (e.target === dialog) {
       dialog.close();
       pending = null;

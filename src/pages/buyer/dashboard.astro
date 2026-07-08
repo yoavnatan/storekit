@@ -402,6 +402,10 @@ const shipLabel: Record<string, string> = {
       </div>
 
       <nav class="my-nav" aria-label={t.buyerDashboard.navAriaLabel}>
+        <a href="/" class="my-nav-btn" style="text-decoration:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span class="my-nav-label">{t.buyerDashboard.homeLink}</span>
+        </a>
         <button class="my-nav-btn is-active" data-tab="orders" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           <span class="my-nav-label">{t.buyerDashboard.tabOrders}</span>
@@ -413,6 +417,10 @@ const shipLabel: Record<string, string> = {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="my-nav-label">{t.buyerDashboard.tabMessages}</span>
           {unreadMessages > 0 && <span class="my-nav-badge">{unreadMessages}</span>}
+        </button>
+        <button class="my-nav-btn" data-tab="carts" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          <span class="my-nav-label">{t.buyerDashboard.tabCarts}</span>
         </button>
         <button class="my-nav-btn" data-tab="profile" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
@@ -592,6 +600,23 @@ const shipLabel: Record<string, string> = {
         }
       </div>
 
+      <!-- Carts -->
+      <div
+        id="panel-carts"
+        class="my-panel"
+        hidden
+        data-label-items={t.home.cartItems}
+        data-label-open={t.home.cartOpenBtn}
+        data-label-visit={t.home.visitStore}
+        data-label-empty={t.home.noActiveCarts}
+      >
+        <h1 class="panel-head">{t.home.yourCarts}</h1>
+        <div id="carts-list" class="home-carts-wrap" role="list">
+          <div class="home-cart-chip-skel" aria-hidden="true"></div>
+          <div class="home-cart-chip-skel" style="width:6rem" aria-hidden="true"></div>
+        </div>
+      </div>
+
       <!-- Profile -->
       <div id="panel-profile" class="my-panel" hidden>
         <h1 class="panel-head">{t.buyerDashboard.profileTitle}</h1>
@@ -636,8 +661,10 @@ const shipLabel: Record<string, string> = {
 <div id="buyer-i18n" hidden
   data-tab-orders={t.buyerDashboard.tabOrders}
   data-tab-messages={t.buyerDashboard.tabMessages}
+  data-tab-carts={t.buyerDashboard.tabCarts}
   data-tab-profile={t.buyerDashboard.tabProfile}
   data-msg-you={t.buyerDashboard.msgYou}
+  data-msg-new-toast={t.buyerDashboard.msgNewToast}
   data-msg-delete-confirm={t.buyerDashboard.msgDeleteConfirm}
   data-prof-show-pw={t.buyerDashboard.profShowPw}
   data-prof-hide-pw={t.buyerDashboard.profHidePw}
@@ -648,12 +675,17 @@ const shipLabel: Record<string, string> = {
 ></div>
 
 <script>
+  import { getActiveStoreCarts, getSubtotal } from '../../lib/cart.js';
+  import { formatPrice } from '../../config/store.config.js';
+
   const _i18nEl = document.getElementById('buyer-i18n') as HTMLElement;
   const I = {
     tabOrders:       _i18nEl.dataset.tabOrders       ?? 'Orders',
     tabMessages:     _i18nEl.dataset.tabMessages      ?? 'Messages',
+    tabCarts:        _i18nEl.dataset.tabCarts         ?? 'Carts',
     tabProfile:      _i18nEl.dataset.tabProfile       ?? 'Profile',
     msgYou:          _i18nEl.dataset.msgYou           ?? 'You',
+    msgNewToast:     _i18nEl.dataset.msgNewToast       ?? 'You have a new message',
     msgDeleteConfirm:_i18nEl.dataset.msgDeleteConfirm ?? 'Delete this conversation permanently?',
     profShowPw:      _i18nEl.dataset.profShowPw       ?? '+ Show password fields',
     profHidePw:      _i18nEl.dataset.profHidePw       ?? '− Hide password fields',
@@ -663,12 +695,13 @@ const shipLabel: Record<string, string> = {
     dateLocale:      _i18nEl.dataset.dateLocale       ?? 'he-IL',
   };
 
-  const tabLabels: Record<string, string> = { orders: I.tabOrders, messages: I.tabMessages, profile: I.tabProfile };
+  const tabLabels: Record<string, string> = { orders: I.tabOrders, messages: I.tabMessages, carts: I.tabCarts, profile: I.tabProfile };
 
   const navBtns = document.querySelectorAll<HTMLButtonElement>('.my-nav-btn[data-tab]');
   const panels: Record<string, HTMLElement | null> = {
     orders:   document.getElementById('panel-orders'),
     messages: document.getElementById('panel-messages'),
+    carts:    document.getElementById('panel-carts'),
     profile:  document.getElementById('panel-profile'),
   };
   const sidebar   = document.getElementById('my-sidebar')!;
@@ -728,6 +761,57 @@ const shipLabel: Record<string, string> = {
     const tab = new URLSearchParams(window.location.search).get('tab');
     if (tab && panels[tab]) activateBuyerTab(tab);
   }
+
+  // ── Active carts ─────────────────────────────────────────────────
+  const cartsPanel = document.getElementById('panel-carts') as HTMLElement | null;
+  const cartsList  = document.getElementById('carts-list')  as HTMLElement | null;
+
+  const labelItems = cartsPanel?.dataset.labelItems ?? 'פריטים';
+  const labelOpen  = cartsPanel?.dataset.labelOpen  ?? 'פתח עגלה';
+  const labelVisit = cartsPanel?.dataset.labelVisit ?? 'בקר בחנות';
+  const labelEmpty = cartsPanel?.dataset.labelEmpty ?? 'אין עגלות פעילות';
+
+  function renderCarts(): void {
+    if (!cartsList) return;
+    const carts = getActiveStoreCarts();
+    if (!carts.length) {
+      cartsList.innerHTML = `<p class="muted" style="font-size:0.9rem;padding:0.25rem 0">${labelEmpty}</p>`;
+      return;
+    }
+    cartsList.innerHTML = carts.map((c) => {
+      const subtotal = getSubtotal(c.storeSlug);
+      const initial  = (c.storeName[0] ?? '?').toUpperCase();
+      return `
+        <div class="home-cart-chip" role="listitem">
+          <a
+            href="/store/${encodeURIComponent(c.storeSlug)}"
+            class="home-cart-chip__store"
+            aria-label="${labelVisit} ${c.storeName}"
+          >
+            <div class="home-cart-chip__icon" aria-hidden="true">${initial}</div>
+            <span class="home-cart-chip__name">${c.storeName}</span>
+          </a>
+          <span class="home-cart-chip__sep" aria-hidden="true"></span>
+          <button
+            type="button"
+            class="home-cart-chip__cart"
+            data-open-cart="${encodeURIComponent(c.storeSlug)}"
+            aria-label="${labelOpen} — ${c.storeName}"
+          >
+            <span class="home-cart-chip__meta">${c.count} ${labelItems} · ${formatPrice(subtotal)}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          </button>
+        </div>`;
+    }).join('');
+  }
+
+  cartsList?.addEventListener('click', (e) => {
+    const btn = (e.target as Element).closest<HTMLElement>('[data-open-cart]');
+    if (btn) window.dispatchEvent(new CustomEvent('cart:open'));
+  });
+
+  renderCarts();
+  window.addEventListener('cart:change', renderCarts);
 
   /* ── Live messages badge ── */
   window.addEventListener('msg-badge-update', (e: Event) => {
@@ -820,7 +904,7 @@ const shipLabel: Record<string, string> = {
   function escB(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   const currentBuyerId = (document.getElementById('panel-messages') as HTMLElement | null)?.dataset.userId ?? '';
-  const buyerThreadLoaders = new Map<string, (markRead: boolean) => void>();
+  const buyerThreadLoaders = new Map<string, (markRead: boolean, viaPoll?: boolean) => void>();
 
   document.querySelectorAll<HTMLElement>('[data-bmsg-id]').forEach((row) => {
     const id        = row.dataset.bmsgId ?? '';
@@ -828,10 +912,13 @@ const shipLabel: Record<string, string> = {
     const repliesEl = document.getElementById(`breplies-${id}`);
     let isOpen = false;
 
-    function loadThread(markRead: boolean) {
+    // viaPoll = the live poll found new replies while this thread was already
+    // open — the one case that needs its own toast, keyed by the *reply's
+    // own* id so it matches (and dedupes against) the site-wide notification poller.
+    function loadThread(markRead: boolean, viaPoll = false) {
       fetch(`/api/messages?repliesFor=${id}`)
         .then((r) => r.json())
-        .then(({ replies }: { replies: { fromUserId: string; fromName: string; content: string; createdAt: string; readByBuyer?: boolean }[] }) => {
+        .then(({ replies }: { replies: { id: string; fromUserId: string; fromName: string; content: string; createdAt: string; readByBuyer?: boolean }[] }) => {
           if (!repliesEl) return;
           [...repliesEl.children].slice(1).forEach((c) => c.remove());
           replies.forEach((r) => {
@@ -848,6 +935,12 @@ const shipLabel: Record<string, string> = {
             if (previewTd) previewTd.innerHTML = `${escB(last.content)}${isSelf ? ` <span class="msg-table__preview-you">(${escB(I.msgYou)})</span>` : ''}`;
             const dateTd = row.querySelector('.msg-table__td--date');
             if (dateTd) dateTd.textContent = fmtDateBuyer(last.createdAt);
+            if (viaPoll && markRead && !isSelf) {
+              window.dispatchEvent(new CustomEvent('toast:show', { detail: {
+                title: I.msgNewToast, body: last.fromName, key: last.id,
+                href: '/buyer/dashboard?tab=messages',
+              } }));
+            }
           }
           if (markRead) {
             row.classList.remove('msg-table__row--unread');
@@ -1000,7 +1093,7 @@ const shipLabel: Record<string, string> = {
           const id = row.dataset.bmsgId!;
           if (!unreadIds.includes(id)) return;
           if (row.classList.contains('msg-table__row--open')) {
-            buyerThreadLoaders.get(id)?.(true);
+            buyerThreadLoaders.get(id)?.(true, true);
           } else {
             row.classList.add('msg-table__row--unread');
             refreshRowPreview(id, row);

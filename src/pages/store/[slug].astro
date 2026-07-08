@@ -358,6 +358,7 @@ const pmI18n = {
   import { trackAddToCart } from '../../lib/tracking.js';
   import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
   import { initReadMore } from '../../lib/read-more.js';
+  import { saveLastStore } from '../../lib/last-store.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart)');
@@ -367,6 +368,10 @@ const pmI18n = {
   const storePage = document.querySelector<HTMLElement>('.store-page[data-store-slug]');
   const storeSlug = storePage?.dataset.storeSlug ?? '';
   const storeName = storePage?.dataset.storeName ?? '';
+
+  if (storeSlug) {
+    saveLastStore({ slug: storeSlug, name: storeName, url: location.pathname + location.search });
+  }
 
   // ── Sync cart images ──────────────────────────────────────────
   const currentProducts = Array.from(

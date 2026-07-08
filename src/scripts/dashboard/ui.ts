@@ -19,19 +19,33 @@ export function initSettingsForm(): void {
     const submitBtn = settingsForm.querySelector<HTMLButtonElement>('[type="submit"]');
     const origText = submitBtn?.textContent ?? '';
 
+    if (submitBtn) {
+      submitBtn.style.minWidth = `${submitBtn.offsetWidth}px`;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">שומר<span class="dot-pulse" role="status" aria-label="שומר"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
+    }
+
     const fd = new FormData(settingsForm);
-    const res = await fetch('/api/store', { method: 'POST', body: fd });
-    const data = await res.json() as { ok: boolean; name?: string; error?: string };
-    if (!data.ok) { showSettingsStatus(data.error ?? 'שגיאה בשמירה.', true); return; }
+    let data: { ok: boolean; name?: string; error?: string };
+    try {
+      const res = await fetch('/api/store', { method: 'POST', body: fd });
+      data = await res.json() as { ok: boolean; name?: string; error?: string };
+    } catch {
+      data = { ok: false, error: 'שגיאה בשמירה.' };
+    }
+
+    if (!data.ok) {
+      showSettingsStatus(data.error ?? 'שגיאה בשמירה.', true);
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.style.minWidth = ''; submitBtn.textContent = origText; }
+      return;
+    }
 
     const newName = data.name ?? String(fd.get('name'));
     const storeNameEl = document.querySelector<HTMLElement>('.dash-store-name');
     if (storeNameEl) storeNameEl.textContent = newName;
 
     if (submitBtn) {
-      submitBtn.style.minWidth = `${submitBtn.offsetWidth}px`;
       submitBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px">${checkSvg}נשמר</span>`;
-      submitBtn.disabled = true;
       submitBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
         { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }

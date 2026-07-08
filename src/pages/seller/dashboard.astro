@@ -1924,6 +1924,13 @@ const orderStatusColors: Record<string, string> = {
           if (!card) return;
           ordersList.insertBefore(card, ordersList.firstChild);
           bindOrderCard(card);
+          const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
+          window.dispatchEvent(new CustomEvent('toast:show', { detail: {
+            title: 'הזמנה חדשה!',
+            body: `הזמנה מ-${o.buyerName} על סך ${fmtPrice(storeSub.subtotal + storeSub.shipping)}`,
+            key: o.id,
+            href: '/seller/dashboard?panel=orders',
+          } }));
         });
         updateOrderTabBadge();
         applyOrderFilter(currentOrderFilter);
@@ -1940,7 +1947,7 @@ const orderStatusColors: Record<string, string> = {
   function escMsg(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   const currentSellerId = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.sellerId ?? '';
-  const sellerThreadLoaders = new Map<string, (markRead: boolean) => void>();
+  const sellerThreadLoaders = new Map<string, (markRead: boolean, viaPoll?: boolean) => void>();
 
   document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
     const id        = row.dataset.msgId ?? '';
@@ -1948,10 +1955,14 @@ const orderStatusColors: Record<string, string> = {
     const repliesEl = document.getElementById(`replies-${id}`);
     let isOpen = false;
 
-    function loadThread(markRead: boolean) {
+    // viaPoll = the live poll found new replies while this thread was already
+    // open (the user isn't in the middle of opening it themselves) — that's
+    // the one case that needs its own toast, keyed by the *reply's own* id so
+    // it matches (and dedupes against) the site-wide notification poller.
+    function loadThread(markRead: boolean, viaPoll = false) {
       fetch(`/api/messages?repliesFor=${id}`)
         .then((r) => r.json())
-        .then(({ replies }: { replies: { fromUserId: string; fromName: string; content: string; createdAt: string; toSellerId?: string; readBySeller?: boolean }[] }) => {
+        .then(({ replies }: { replies: { id: string; fromUserId: string; fromName: string; content: string; createdAt: string; toSellerId?: string; readBySeller?: boolean }[] }) => {
           if (!repliesEl) return;
           [...repliesEl.children].slice(1).forEach((c) => c.remove());
           replies.forEach((r) => {
@@ -1968,6 +1979,12 @@ const orderStatusColors: Record<string, string> = {
             if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
             const dateTd = row.querySelector('.msg-table__td--date');
             if (dateTd) dateTd.textContent = fmtDateJs(last.createdAt);
+            if (viaPoll && markRead && !isSelf) {
+              window.dispatchEvent(new CustomEvent('toast:show', { detail: {
+                title: 'יש לך הודעה חדשה מקונה', body: last.fromName, key: last.id,
+                href: '/seller/dashboard?panel=messages',
+              } }));
+            }
           }
           if (markRead) {
             row.classList.remove('msg-table__row--unread');
@@ -2327,7 +2344,7 @@ const orderStatusColors: Record<string, string> = {
           const id = row.dataset.msgId!;
           if (!unreadIds.includes(id)) return;
           if (row.classList.contains('msg-table__row--open')) {
-            sellerThreadLoaders.get(id)?.(true);
+            sellerThreadLoaders.get(id)?.(true, true);
           } else {
             row.classList.add('msg-table__row--unread');
             const statusTd = row.querySelector('.msg-table__td--status');

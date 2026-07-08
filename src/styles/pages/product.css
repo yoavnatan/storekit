@@ -139,6 +139,12 @@
     margin-inline-end: -0.75rem;
     pointer-events: none;
   }
+  /* Mini image/name are still off (real ones visible up top) — "add to
+     cart" fills the bar instead of hugging its own content; if checkout
+     joins it later it just shrinks to make room, same as everywhere else. */
+  .product-detail-page #sticky-add-to-cart-btn.sticky-btn--solo {
+    flex: 1 1 auto;
+  }
   .product-detail-page #sticky-mini-summary img {
     width: 44px;
     height: 44px;

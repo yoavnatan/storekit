@@ -611,10 +611,15 @@ const pmI18n = {
   import { comboKey } from '../../../lib/variant-combo.js';
   import { resolveVariantColor, isColorVariant } from '../../../lib/color-variants.js';
   import { initReadMore } from '../../../lib/read-more.js';
+  import { saveLastStore } from '../../../lib/last-store.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
   const storeName = page?.dataset.storeName ?? '';
+
+  if (storeSlug) {
+    saveLastStore({ slug: storeSlug, name: storeName, url: location.pathname + location.search });
+  }
   const images: string[] = JSON.parse(page?.dataset.images ?? '[]');
   const pageLang = page?.dataset.lang ?? 'he';
   const pageVariants: Array<{ name: string; options: string[] }> = JSON.parse(page?.dataset.variants ?? '[]');
@@ -876,6 +881,14 @@ const pmI18n = {
 
   // The bar's own image+name only join in once the real ones scroll out of
   // view too — while they're still visible up top, the bar shows buttons only.
+  // In that buttons-only state "add to cart" fills the bar (same flex-auto
+  // pattern as the inline #add-to-cart-btn) instead of hugging its own
+  // content — if checkout later joins it, it shrinks to make room for it,
+  // same as everywhere else, rather than snapping back to a small fixed size.
+  function updateStickyBarSoloWidth(): void {
+    const isCollapsed = stickyMiniSummary?.classList.contains('is-collapsed') ?? false;
+    stickyAddBtn?.classList.toggle('sticky-btn--solo', isCollapsed);
+  }
   if (stickyMiniSummary && productNameHeading) {
     new IntersectionObserver(([entry]) => {
       stickyMiniSummary.classList.toggle('is-collapsed', entry.isIntersecting);
@@ -885,6 +898,7 @@ const pmI18n = {
         stickyMiniImg.src = stickyMiniImg.dataset.src;
         stickyMiniImg.removeAttribute('data-src');
       }
+      updateStickyBarSoloWidth();
     }, { rootMargin: '-56px 0px 0px 0px' }).observe(productNameHeading);
   }
 
@@ -915,6 +929,7 @@ const pmI18n = {
 
       if (toCheckoutBtn) toCheckoutBtn.style.display = 'inline-flex';
       if (stickyToCheckoutBtn) stickyToCheckoutBtn.style.display = 'inline-flex';
+      updateStickyBarSoloWidth();
       addBtn.style.minWidth = `${addBtn.offsetWidth}px`;
       if (labelSpan) labelSpan.innerHTML = `${checkSvg}${addBtn.dataset.labelAdded ?? ''}`;
       addBtn.disabled = true;
@@ -954,6 +969,7 @@ const pmI18n = {
 
       if (stickyToCheckoutBtn) stickyToCheckoutBtn.style.display = 'inline-flex';
       if (toCheckoutBtn) toCheckoutBtn.style.display = 'inline-flex';
+      updateStickyBarSoloWidth();
       stickyAddBtn.style.minWidth = `${stickyAddBtn.offsetWidth}px`;
       if (stickyLabelSpan) stickyLabelSpan.innerHTML = `${stickyCheckSvg}${addBtn.dataset.labelAdded ?? ''}`;
       stickyAddBtn.disabled = true;

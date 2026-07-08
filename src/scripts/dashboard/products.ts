@@ -18,6 +18,8 @@ export interface ProductData {
 
 function fmtPrice(n: number) { return formatPrice(n); }
 
+const SPINNER_SVG = `<span class="dot-pulse" role="status" aria-label="טוען"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span>`;
+
 // ── Products pagination + category filter (shared state) ─────────────────────
 const PRODUCTS_PAGE_SIZE = 20;
 let productsActiveCategory = '';
@@ -1408,6 +1410,7 @@ export function initDeleteProduct(): void {
         title: i18n.deleteProductTitle ?? 'Delete product?',
         message: `"${productName}" ${i18n.deleteProductMsg ?? 'will be permanently deleted.'}`,
         okLabel: i18n.delete ?? 'Delete',
+        workingLabel: i18n.deleting ?? 'Deleting…',
         onConfirm: async () => {
           const fd = new FormData();
           fd.set('_action', 'delete-product');
@@ -1687,6 +1690,11 @@ function activateInlineEdit(
     const val = input.value;
     if (field === 'name' && !val.trim()) { cancel(); return; }
 
+    input.disabled = true;
+    xBtn.disabled = true;
+    xBtn.innerHTML = SPINNER_SVG;
+    wrapper.style.opacity = '0.6';
+
     const fd = new FormData();
     fd.set('_action', 'patch-product-fields');
     fd.set('productId', productId);
@@ -1944,6 +1952,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
         title: i.bulkDeleteTitle ?? `מחיקת ${count} מוצרים`,
         message: `${count} ${i.bulkDeleteMsg ?? 'מוצרים יימחקו לצמיתות.'}`,
         okLabel: `${i.bulkDelete ?? 'מחק'} (${count})`,
+        workingLabel: `${i.deleting ?? 'מוחק...'} (${count})`,
         onConfirm: async () => {
           const ids = Array.from(selected);
           await Promise.all(ids.map(async (productId) => {
@@ -2016,7 +2025,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
   function renderUploadPanel(): void {
     if (!uploadPanel) return;
     const g = getGalleryI18n();
-    const spinnerSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="animation:spin 0.75s linear infinite"><circle cx="12" cy="12" r="10" opacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg>`;
+    const spinnerSvg = SPINNER_SVG;
     const checkSvg   = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-success,#22c55e)" stroke-width="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
 
     uploadPanel.innerHTML = `
