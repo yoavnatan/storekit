@@ -388,11 +388,11 @@ const pmI18n = {
              style="margin-top:2.5rem;border:1.5px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);padding:1.75rem;display:flex;flex-direction:column;gap:1.5rem">
 
           {product.description && (
-            <div>
+            <div style="min-width:0">
               <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
                 {lang === 'he' ? 'תיאור המוצר' : 'Description'}
               </p>
-              <p dir="auto" id="product-desc" class="text-base leading-relaxed" style="color:var(--color-muted)">{product.description}</p>
+              <p dir="auto" id="product-desc" class="text-base leading-relaxed" style="color:var(--color-muted);text-align:justify;overflow-wrap:break-word">{product.description}</p>
             </div>
           )}
 
@@ -1000,7 +1000,7 @@ const pmI18n = {
   {
     const descEl = document.getElementById('product-desc');
     if (descEl) {
-      initReadMore(descEl, 4, {
+      initReadMore(descEl, 2, {
         more: pageLang === 'he' ? 'עוד' : 'More',
         less: pageLang === 'he' ? 'פחות' : 'Less',
       });
