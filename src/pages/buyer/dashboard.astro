@@ -1,6 +1,7 @@
 ---
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import StoreAvatar from '../../components/StoreAvatar.astro';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, getAllStores } from '../../lib/stores.js';
 import { getAllOrders } from '../../lib/orders.js';
@@ -32,6 +33,8 @@ const unreadMessages = getUnreadSellerReplyCount(userId);
 const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
   Object.fromEntries(messages.map((m) => [m.id, getMessageReplies(m.id)]));
 
+const storeProfileById = new Map(getAllStores().map((s) => [s.id, s.profileImage]));
+
 const dateLocale = lang === 'he' ? 'he-IL' : 'en-US';
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString(dateLocale, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -40,11 +43,6 @@ function fmtPrice(n: number) {
   return `₪${n.toLocaleString('he-IL')}`;
 }
 
-const payLabel: Record<string, string> = {
-  pending: t.dashboard.paymentPending,
-  paid: t.dashboard.paymentPaid,
-  failed: t.dashboard.paymentFailed,
-};
 const shipLabel: Record<string, string> = {
   pending: t.dashboard.shippingPending,
   processing: t.dashboard.shippingProcessing,
@@ -153,17 +151,24 @@ const shipLabel: Record<string, string> = {
         border-bottom: 1px solid var(--color-border);
         background: var(--color-surface);
         margin-bottom: 1rem;
+        position: sticky;
+        top: 3.3rem; /* fallback estimate; JS below sets the exact fractional px so there's no seam */
+        z-index: 40;
       }
       .my-topbar-title {
-        flex: 1;
+        /* Intentionally not flex:1 — only the button and this text itself
+           should be clickable, not the rest of the bar's empty space. */
         font-size: 0.9rem; font-weight: 700; color: var(--color-text);
+        cursor: pointer;
       }
-      .my-topbar-tab { font-size: 0.8rem; color: var(--color-muted); font-weight: 500; }
+      /* The sticky topbar's title takes over as the single mobile heading —
+         each panel's own <h1> would otherwise duplicate it right below. */
+      .panel-head { display: none; }
       .my-menu-btn {
         display: flex; align-items: center; justify-content: center;
         width: 2rem; height: 2rem;
-        border-radius: 8px; border: 1px solid var(--color-border);
-        background: var(--color-surface); cursor: pointer;
+        border-radius: 8px; border: none;
+        background: none; cursor: pointer;
         color: var(--color-muted); flex-shrink: 0;
         transition: background 0.1s, color 0.1s;
       }
@@ -231,7 +236,7 @@ const shipLabel: Record<string, string> = {
        enough to signal "clickable" here. */
     .o-card:hover { border-color: color-mix(in srgb, var(--color-text) 20%, var(--color-border)); }
     .o-thumbs { display: flex; flex-direction: row-reverse; margin-inline-end: 0.5rem; flex-shrink: 0; }
-    .o-thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: var(--color-surface); border: 2px solid var(--color-surface); margin-inline-start: -12px; }
+    .o-thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: var(--color-surface); border: 1px solid var(--color-border); margin-inline-start: -12px; }
     .o-thumbs .o-thumb:last-child { margin-inline-start: 0; }
     .o-card__hd {
       display: flex; align-items: center; gap: 0.5rem;
@@ -247,13 +252,11 @@ const shipLabel: Record<string, string> = {
     .o-card--open .o-card__chevron { transform: rotate(180deg); }
     .o-id   { font-size: 0.8rem; font-weight: 700; font-family: monospace; color: var(--color-text); }
     .o-date { font-size: 0.74rem; color: var(--color-muted); }
+    .o-card__stores { font-size: 0.74rem; line-height: 1.4; margin-bottom: 0.3rem; color: var(--color-muted); }
     .o-items { font-size: 0.79rem; color: var(--color-muted); margin-bottom: 0.45rem; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .o-foot { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
     .o-badge { font-size: 0.7rem; font-weight: 600; padding: 0.13rem 0.5rem; border-radius: 999px; }
-    .o-badge--pending { background: #fef3c7; color: #92400e; }
-    .o-badge--paid    { background: #dcfce7; color: #166534; }
-    .o-badge--failed  { background: #fee2e2; color: #991b1b; }
-    .o-badge--ship    { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
+    .o-badge--ship { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
     .o-total { margin-inline-start: auto; font-size: 0.875rem; font-weight: 700; color: var(--color-text); }
 
     .o-card__body {
@@ -374,13 +377,12 @@ const shipLabel: Record<string, string> = {
   <!-- Mobile backdrop -->
   <div class="my-drawer-backdrop" id="my-drawer-backdrop" aria-hidden="true"></div>
 
-  <!-- Mobile topbar -->
+  <!-- Mobile topbar — sticky; title + hamburger together, replaces the per-panel <h1> on mobile -->
   <div class="my-topbar">
     <button class="my-menu-btn" id="my-menu-btn" type="button" aria-label={t.buyerDashboard.menuBtn} aria-expanded="false">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
-    <span class="my-topbar-title">{t.buyerDashboard.pageTitle}</span>
-    <span class="my-topbar-tab" id="topbar-tab-label">{t.buyerDashboard.tabOrders}</span>
+    <span class="my-topbar-title" id="topbar-tab-label">{t.buyerDashboard.ordersTitle}</span>
   </div>
 
   <div class="my-page">
@@ -402,10 +404,6 @@ const shipLabel: Record<string, string> = {
       </div>
 
       <nav class="my-nav" aria-label={t.buyerDashboard.navAriaLabel}>
-        <a href="/" class="my-nav-btn" style="text-decoration:none">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          <span class="my-nav-label">{t.buyerDashboard.homeLink}</span>
-        </a>
         <button class="my-nav-btn is-active" data-tab="orders" type="button">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           <span class="my-nav-label">{t.buyerDashboard.tabOrders}</span>
@@ -439,6 +437,10 @@ const shipLabel: Record<string, string> = {
           ? <p class="empty">{t.buyerDashboard.noOrders}</p>
           : orders.map((o) => {
             const stores = [...new Set(o.items.map((i) => i.storeSlug))];
+            const storeEntries = stores.map((slug) => ({
+              slug,
+              name: o.items.find((i) => i.storeSlug === slug)!.storeName,
+            }));
             return (
               <div class="o-card">
                 <div class="o-card__hd" role="button" tabindex="0" aria-expanded="false">
@@ -454,9 +456,16 @@ const shipLabel: Record<string, string> = {
                       <span class="o-id">#{o.checkoutRef ?? o.id.slice(0, 8).toUpperCase()}</span>
                       <span class="o-date">{fmtDate(o.createdAt)}</span>
                     </div>
+                    <div class="o-card__stores">
+                      {storeEntries.map((s, idx) => (
+                        <Fragment>
+                          <span>{s.name}</span>
+                          {idx < storeEntries.length - 1 && <span aria-hidden="true">, </span>}
+                        </Fragment>
+                      ))}
+                    </div>
                     <div class="o-items">{o.items.map((i) => `${i.productName} × ${i.qty}`).join(' · ')}</div>
                     <div class="o-foot">
-                      <span class={`o-badge o-badge--${o.paymentStatus}`}>{payLabel[o.paymentStatus] ?? o.paymentStatus}</span>
                       <span class="o-badge o-badge--ship">{shipLabel[o.shippingStatus] ?? o.shippingStatus}</span>
                       <span class="o-total">{fmtPrice(o.totalAmount)}</span>
                     </div>
@@ -539,7 +548,12 @@ const shipLabel: Record<string, string> = {
                           aria-expanded="false"
                         >
                           <td class="msg-table__td msg-table__td--status"></td>
-                          <td class="msg-table__td msg-table__td--from">{m.toStoreName}</td>
+                          <td class="msg-table__td msg-table__td--from">
+                            <span class="flex items-center gap-2">
+                              <StoreAvatar name={m.toStoreName} profileImage={storeProfileById.get(m.toStoreId)} size={24} />
+                              {m.toStoreName}
+                            </span>
+                          </td>
                           <td class="msg-table__td msg-table__td--subject">{m.subject}</td>
                           <td class="msg-table__td msg-table__td--preview">
                             {lastMsg.content}
@@ -695,8 +709,6 @@ const shipLabel: Record<string, string> = {
     dateLocale:      _i18nEl.dataset.dateLocale       ?? 'he-IL',
   };
 
-  const tabLabels: Record<string, string> = { orders: I.tabOrders, messages: I.tabMessages, carts: I.tabCarts, profile: I.tabProfile };
-
   const navBtns = document.querySelectorAll<HTMLButtonElement>('.my-nav-btn[data-tab]');
   const panels: Record<string, HTMLElement | null> = {
     orders:   document.getElementById('panel-orders'),
@@ -709,6 +721,18 @@ const shipLabel: Record<string, string> = {
   const menuBtn   = document.getElementById('my-menu-btn');
   const closeBtn  = document.getElementById('my-drawer-close');
   const topbarTab = document.getElementById('topbar-tab-label');
+
+  // Sticky topbar's offset must be the real fixed header height, fractional —
+  // offsetHeight (or a hardcoded rem guess) rounds to the nearest integer px,
+  // which alone is enough to leave a 1-2px seam showing page content behind it.
+  const siteHeaderEl = document.querySelector<HTMLElement>('.site-header');
+  const topbarEl = document.querySelector<HTMLElement>('.my-topbar');
+  if (siteHeaderEl && topbarEl) {
+    const updateTopbarOffset = () => { topbarEl.style.top = `${siteHeaderEl.getBoundingClientRect().height}px`; };
+    updateTopbarOffset();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(updateTopbarOffset).observe(siteHeaderEl);
+    else window.addEventListener('resize', updateTopbarOffset);
+  }
 
   function openDrawer() {
     sidebar.classList.add('is-open');
@@ -732,6 +756,7 @@ const shipLabel: Record<string, string> = {
   });
 
   menuBtn?.addEventListener('click', openDrawer);
+  topbarTab?.addEventListener('click', openDrawer);
   closeBtn?.addEventListener('click', closeDrawer);
   backdrop.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (e) => {
@@ -745,7 +770,7 @@ const shipLabel: Record<string, string> = {
       if (k === key) { el.classList.add('is-active'); el.removeAttribute('hidden'); }
       else           { el.classList.remove('is-active'); el.setAttribute('hidden', ''); }
     });
-    if (topbarTab) topbarTab.textContent = tabLabels[key] ?? key;
+    if (topbarTab) topbarTab.textContent = panels[key]?.querySelector<HTMLElement>('.panel-head')?.textContent ?? key;
     history.replaceState(null, '', `?tab=${key}`);
   }
 

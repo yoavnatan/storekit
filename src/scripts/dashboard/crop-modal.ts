@@ -5,8 +5,13 @@ const cropZoomEl   = document.getElementById('crop-zoom') as HTMLInputElement | 
 const cropApplyBtn = document.getElementById('crop-apply') as HTMLButtonElement | null;
 const cropCancelEl = document.getElementById('crop-cancel') as HTMLButtonElement | null;
 
-const VP_SIZE = 280;
+const VP_SIZE_DEFAULT = 280;
 const OUT_SIZE_MAX = 2048; // ceiling only — real output size matches the source pixels selected
+
+export interface CropOptions {
+  vpWidth?: number;  // viewport CSS width in px (default 280 — square gallery crop)
+  aspect?: number;   // output width/height ratio (default 1 = square)
+}
 
 let cropApplyCallback: ((blob: Blob, isProcessed: boolean) => void) | null = null;
 let cropIsProcessed = false;
@@ -14,6 +19,8 @@ let cropFitScale = 1;
 let cropZoomVal = 1;
 let cropPanX = 0;
 let cropPanY = 0;
+let cropVpW = VP_SIZE_DEFAULT;
+let cropVpH = VP_SIZE_DEFAULT;
 let isDragging = false;
 let hadDragMotion = false;
 let dragStartX = 0, dragStartY = 0, dragStartPanX = 0, dragStartPanY = 0;
@@ -21,8 +28,8 @@ let dragStartX = 0, dragStartY = 0, dragStartPanX = 0, dragStartPanY = 0;
 function clampCropPan() {
   if (!cropImgEl?.naturalWidth) return;
   const s = cropFitScale * cropZoomVal;
-  const halfW = Math.max(0, (cropImgEl.naturalWidth * s - VP_SIZE) / 2);
-  const halfH = Math.max(0, (cropImgEl.naturalHeight * s - VP_SIZE) / 2);
+  const halfW = Math.max(0, (cropImgEl.naturalWidth * s - cropVpW) / 2);
+  const halfH = Math.max(0, (cropImgEl.naturalHeight * s - cropVpH) / 2);
   cropPanX = Math.min(halfW, Math.max(-halfW, cropPanX));
   cropPanY = Math.min(halfH, Math.max(-halfH, cropPanY));
 }
@@ -34,20 +41,26 @@ function updateCropDisplay() {
   const h = cropImgEl.naturalHeight * s;
   cropImgEl.style.width = `${w}px`;
   cropImgEl.style.height = `${h}px`;
-  cropImgEl.style.left = `${(VP_SIZE - w) / 2 + cropPanX}px`;
-  cropImgEl.style.top = `${(VP_SIZE - h) / 2 + cropPanY}px`;
+  cropImgEl.style.left = `${(cropVpW - w) / 2 + cropPanX}px`;
+  cropImgEl.style.top = `${(cropVpH - h) / 2 + cropPanY}px`;
 }
 
 const cropHint = document.getElementById('crop-hint');
 
-export function openCropModal(blob: Blob, isProcessed: boolean, onApply?: (blob: Blob, isProcessed: boolean) => void): void {
+export function openCropModal(blob: Blob, isProcessed: boolean, onApply?: (blob: Blob, isProcessed: boolean) => void, options?: CropOptions): void {
   if (!cropModal || !cropImgEl || !cropZoomEl) return;
   cropIsProcessed = isProcessed;
   cropApplyCallback = onApply ?? null;
+  // Panel padding is 1.5rem (24px) per side; cap the viewport so it never
+  // outgrows the panel's own 92vw ceiling on narrow screens.
+  const maxPanelInner = window.innerWidth * 0.92 - 48;
+  cropVpW = Math.min(options?.vpWidth ?? VP_SIZE_DEFAULT, maxPanelInner);
+  cropVpH = cropVpW / (options?.aspect ?? 1);
+  if (cropViewport) { cropViewport.style.width = `${cropVpW}px`; cropViewport.style.height = `${cropVpH}px`; }
   cropPanX = 0; cropPanY = 0; cropZoomVal = 1;
   cropZoomEl.value = '1';
   cropImgEl.onload = () => {
-    cropFitScale = Math.max(VP_SIZE / cropImgEl!.naturalWidth, VP_SIZE / cropImgEl!.naturalHeight);
+    cropFitScale = Math.max(cropVpW / cropImgEl!.naturalWidth, cropVpH / cropImgEl!.naturalHeight);
     updateCropDisplay();
   };
   cropImgEl.src = URL.createObjectURL(blob);
@@ -65,17 +78,21 @@ function closeCropModal() {
 async function applyCrop() {
   if (!cropImgEl?.naturalWidth) return;
   const s = cropFitScale * cropZoomVal;
-  const srcSize = VP_SIZE / s; // number of actual source pixels being cropped, at the current zoom
+  // Number of actual source pixels being cropped, at the current zoom, per axis.
+  const srcW = cropVpW / s;
+  const srcH = cropVpH / s;
   // Match the output to the real source resolution instead of a fixed size — a fixed size
   // would either downscale (losing detail on a large/zoomed-out selection) or pointlessly
-  // upscale (a small/zoomed-in selection). Only cap for very large sources.
-  const outSize = Math.round(Math.min(srcSize, OUT_SIZE_MAX));
+  // upscale (a small/zoomed-in selection). Only cap for very large sources, keeping aspect exact.
+  const capFactor = Math.min(1, OUT_SIZE_MAX / Math.max(srcW, srcH));
+  const outW = Math.round(srcW * capFactor);
+  const outH = Math.round(srcH * capFactor);
   const canvas = document.createElement('canvas');
-  canvas.width = outSize; canvas.height = outSize;
+  canvas.width = outW; canvas.height = outH;
   const ctx = canvas.getContext('2d')!;
-  const srcX = cropImgEl.naturalWidth / 2 - (VP_SIZE / 2 + cropPanX) / s;
-  const srcY = cropImgEl.naturalHeight / 2 - (VP_SIZE / 2 + cropPanY) / s;
-  ctx.drawImage(cropImgEl, srcX, srcY, srcSize, srcSize, 0, 0, outSize, outSize);
+  const srcX = cropImgEl.naturalWidth / 2 - (cropVpW / 2 + cropPanX) / s;
+  const srcY = cropImgEl.naturalHeight / 2 - (cropVpH / 2 + cropPanY) / s;
+  ctx.drawImage(cropImgEl, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
 
   const croppedBlob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'));
   if (!croppedBlob) { closeCropModal(); return; }

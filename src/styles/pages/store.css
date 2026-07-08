@@ -1,24 +1,56 @@
 .store-page { min-height: 60vh; }
 
+/* Vertical rhythm for this whole section is a single 2rem unit: header→banner
+   (this padding-top), banner→details (.store-banner__image-wrap's
+   margin-bottom), and details→products (padding-bottom here + the matching
+   override on the section right after, since that section's own global
+   padding-top would otherwise stack on top of this one). */
 .store-banner {
   background: var(--color-surface);
-  padding: 2.5rem 0 2.25rem;
+  padding: 2rem 0;
 }
 
+.store-banner + .section {
+  padding-top: 2rem;
+}
 
-.store-banner__layout {
+/* Banner image — its own framed block (radius + shadow-card, same
+   hero-surface language as the product page's image wrap), sitting above
+   the store's details rather than behind/under them. Height is capped so
+   a very wide screen doesn't stretch it into a huge strip. */
+.store-banner__image-wrap {
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  height: clamp(160px, 20vw, 220px);
+  margin-bottom: 2rem;
+}
+
+.store-banner__bg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   display: block;
 }
 
-.store-banner__info {
-  /* single column, full width */
+/* Minor rhythm inside the details block: every gap between name / tagline /
+   description / actions is the same 0.5rem unit, instead of ad-hoc values. */
+.store-banner__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* Guarantees a minimum gap after the title even when tagline/description
+     are both missing and the next element (desc or actions) follows right
+     after — margin-collapse takes the larger of this and that element's own
+     top margin, so a normal case (tagline present) is untouched. */
+  margin-bottom: 0.5rem;
 }
 
 .store-banner__actions {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  margin-top: 0.75rem;
+  margin-top: 1rem;
 }
 
 .store-banner-action-btn {
@@ -59,14 +91,14 @@
 }
 
 .store-tagline {
-  margin: 0.4rem 0 0;
+  margin: 0.5rem 0 0;
   font-size: 0.95rem;
   color: var(--color-muted);
   line-height: 1.5;
 }
 
 .store-desc {
-  margin: 0.75rem 0 0;
+  margin: 0.5rem 0 0;
   font-size: 0.9rem;
   line-height: 1.65;
   color: var(--color-muted);
@@ -471,6 +503,7 @@
   box-shadow: 0 8px 48px rgba(0, 0, 0, 0.5);
   user-select: none;
   -webkit-user-drag: none;
+  background: var(--color-surface);
 }
 
 .lightbox__close {

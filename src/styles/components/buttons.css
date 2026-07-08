@@ -29,6 +29,7 @@
 .btn--accent:hover { background: linear-gradient(135deg, var(--color-accent-dark), #4f78c8); }
 
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled.btn--confirmed { opacity: 1; cursor: default; }
 
 .btn--sm { font-size: 0.78rem; padding: 0.28rem 0.65rem; }
 

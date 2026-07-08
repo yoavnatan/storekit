@@ -212,24 +212,23 @@
 .msg-table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: 8px; }
 .msg-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
 .msg-table thead { border-bottom: 2px solid var(--color-border); background: var(--color-bg); }
-.msg-table__th { padding: 0.5rem 0.75rem; text-align: start; font-size: 0.68rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
-.msg-table__th--status { width: 28px; padding-inline-end: 0; }
-.msg-table__th--actions { width: 36px; }
+.msg-table__th { padding: 0.5rem 0.4rem; text-align: start; font-size: 0.68rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+.msg-table__th--status { width: 12px; padding-inline-start: 0.4rem; padding-inline-end: 0; }
+.msg-table__th--actions { width: 36px; padding-inline-start: 0.3rem; padding-inline-end: 0.4rem; }
 .msg-table__row { cursor: pointer; transition: background 0.1s; }
 .msg-table__row:hover .msg-table__td { background: var(--color-bg); }
 .msg-table__row--unread .msg-table__td { background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)); }
-.msg-table__row--unread .msg-table__td--status { border-inline-start: 3px solid var(--color-accent); }
+.msg-table__row--unread .msg-table__td--status { border-inline-start: 3px solid #ef4444; }
 .msg-table__row--unread .msg-table__td--from,
 .msg-table__row--unread .msg-table__td--subject { font-weight: 700; color: var(--color-text); }
-.msg-table__td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--color-border); vertical-align: middle; color: var(--color-text); }
-.msg-table__td--status { width: 28px; padding-inline-end: 0; }
+.msg-table__td { padding: 0.65rem 0.4rem; border-bottom: 1px solid var(--color-border); vertical-align: middle; color: var(--color-text); }
+.msg-table__td--status { width: 12px; padding-inline-start: 0.4rem; padding-inline-end: 0; }
 .msg-table__td--from { font-weight: 500; white-space: nowrap; }
 .msg-table__td--subject { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .msg-table__td--preview { color: var(--color-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
 .msg-table__td--product { white-space: nowrap; font-size: 0.78rem; color: var(--color-accent); }
 .msg-table__td--date { white-space: nowrap; font-size: 0.78rem; color: var(--color-muted); }
-.msg-table__td--actions { width: 36px; padding: 0.2rem 0.4rem; }
-.msg-table__unread-dot { display: block; width: 7px; height: 7px; background: #ef4444; border-radius: 50%; margin: auto; }
+.msg-table__td--actions { width: 36px; padding-block: 0.2rem; padding-inline-start: 0.3rem; padding-inline-end: 0.4rem; }
 .inline-alert-dot { display: inline-block; width: 7px; height: 7px; background: #ef4444; border-radius: 50%; flex-shrink: 0; }
 .msg-thread-row td { padding: 0; border-bottom: 2px solid var(--color-border); }
 
@@ -324,7 +323,7 @@
     bottom: 8px;
     width: 4px;
     border-radius: 0;
-    background: var(--color-accent);
+    background: #ef4444;
   }
   .msg-table__row--unread .msg-table__td--from,
   .msg-table__row--unread .msg-table__td--subject,

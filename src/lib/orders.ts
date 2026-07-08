@@ -64,7 +64,12 @@ export function createOrder(input: CreateOrderInput): Order {
   const order: Order = {
     ...input,
     id: crypto.randomUUID(),
-    paymentStatus: 'pending',
+    // No live payment gateway yet (split-payment integration is still on the
+    // roadmap) — checkout only ever creates an Order after collecting payment
+    // details, so by the time one exists here it's already "paid" in this
+    // stub sense. Once a real webhook-based confirm step lands, that should
+    // become the sole place paymentStatus is set.
+    paymentStatus: 'paid',
     shippingStatus: 'pending',
     createdAt: now,
     updatedAt: now,

@@ -2,6 +2,7 @@
 export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import StoreAvatar from '../../components/StoreAvatar.astro';
 import { getStoreBySlug } from '../../lib/stores.js';
 import { getProductsByStoreId } from '../../lib/store-products.js';
 import { store as platform, formatPrice, cdnSrc } from '../../config/store.config.js';
@@ -61,23 +62,50 @@ const pmI18n = {
   storeSlug={shopStore.slug}
   dataLayer={{ event: 'page_view', page_type: 'store', store_id: shopStore.id, store_name: shopStore.name, store_slug: shopStore.slug, currency: 'ILS' }}
 >
+  <script is:inline>
+    // Anti-flash: if a scroll position is waiting to be restored for this store,
+    // hide the page until the deferred script below has re-applied filters and
+    // scrolled into place — otherwise the page paints at the top first and then
+    // visibly snaps down once the module script catches up.
+    (function () {
+      try {
+        var m = location.pathname.match(/^\/store\/([^/]+)\/?$/);
+        if (m && sessionStorage.getItem('store_scroll_' + m[1])) {
+          document.documentElement.style.visibility = 'hidden';
+          setTimeout(function () { document.documentElement.style.visibility = ''; }, 500);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <script is:inline type="application/json" id="pm-i18n" set:html={JSON.stringify(pmI18n)} />
 
   <div class="store-page" data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang}>
 
     <section class="store-banner" aria-labelledby="store-heading">
-      <div class="container store-banner__layout">
-
-        <!-- Store info -->
+      <div class="container">
+        {shopStore.bannerImage && (
+          <div class="store-banner__image-wrap">
+            <img
+              src={cdnSrc(shopStore.bannerImage, 1200)}
+              alt=""
+              width="1160"
+              height="320"
+              class="store-banner__bg"
+            />
+          </div>
+        )}
         <div class="store-banner__info">
-          <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
+          <div class="store-banner__identity">
+            <StoreAvatar name={shopStore.name} profileImage={shopStore.profileImage} size={56} />
+            <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
+          </div>
           {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
-          {shopStore.description && shopStore.description !== shopStore.tagline && (
-            <p class="store-desc" dir="auto">{shopStore.description}</p>
-          )}
+            {shopStore.description && shopStore.description !== shopStore.tagline && (
+              <p class="store-desc" dir="auto">{shopStore.description}</p>
+            )}
 
-          <!-- Actions row -->
-          <div class="store-banner__actions">
+            <!-- Actions row -->
+            <div class="store-banner__actions">
             <div style="position:relative;display:flex;align-items:center">
               <button
                 id="fav-store-btn"
@@ -123,7 +151,6 @@ const pmI18n = {
             )}
           </div>
         </div>
-
       </div>
     </section>
 
@@ -359,6 +386,7 @@ const pmI18n = {
   import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
   import { initReadMore } from '../../lib/read-more.js';
   import { saveLastStore } from '../../lib/last-store.js';
+  import { saveStoreScroll, applyStoreScrollQuery, restoreStoreScroll } from '../../lib/scroll-restore.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart)');
@@ -369,8 +397,16 @@ const pmI18n = {
   const storeSlug = storePage?.dataset.storeSlug ?? '';
   const storeName = storePage?.dataset.storeName ?? '';
 
+  // Tracks the store's own filter/sort/search query string (kept in sync by
+  // syncUrl() below) — read at pagehide time instead of location.search,
+  // since opening the product quick-view modal rewrites the address bar via
+  // pushState to a /store/slug/product path with no query of its own.
+  let lastQueryString = location.search;
+
   if (storeSlug) {
     saveLastStore({ slug: storeSlug, name: storeName, url: location.pathname + location.search });
+    applyStoreScrollQuery(storeSlug);
+    window.addEventListener('pagehide', () => saveStoreScroll(storeSlug, lastQueryString));
   }
 
   // ── Sync cart images ──────────────────────────────────────────
@@ -548,6 +584,7 @@ const pmI18n = {
       addBtn.style.minWidth = `${addBtn.offsetWidth}px`;
       if (labelSpan) labelSpan.innerHTML = `${checkSvg}${addBtn.dataset.labelAdded ?? ''}`;
       addBtn.disabled = true;
+      addBtn.classList.add('btn--confirmed');
 
       addBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
@@ -558,6 +595,7 @@ const pmI18n = {
         if (labelSpan) labelSpan.innerHTML = originalLabel;
         addBtn.style.minWidth = '';
         addBtn.disabled = false;
+        addBtn.classList.remove('btn--confirmed');
       }, 1400);
     });
   });
@@ -662,6 +700,7 @@ const pmI18n = {
     if (activeTag) params.set('category', activeTag);
     if (currentSort !== 'default') params.set('sort', currentSort);
     const qs = params.toString();
+    lastQueryString = qs ? `?${qs}` : '';
     history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
   }
 
@@ -761,6 +800,8 @@ const pmI18n = {
     }
 
     if (initQ || initSortVal || initCat) filterAndSort();
+    if (storeSlug) restoreStoreScroll(storeSlug);
+    document.documentElement.style.visibility = '';
   }
 
   // ── Skeleton: remove shimmer when image loads ─────────────────
@@ -1150,6 +1191,7 @@ const pmI18n = {
       trackAddToCart({ id: slug, name, price, category }, pmQty);
       updatePmQty(1);
       pmAddBtn.disabled = true;
+      pmAddBtn.classList.add('btn--confirmed');
       if (pmBtnLbl) pmBtnLbl.innerHTML = `${checkSvg}${i18n.addedToCart ?? 'נוסף!'}`;
       if (pmToCheckout) pmToCheckout.style.display = 'inline-flex';
       pmAddBtn.animate(
@@ -1159,6 +1201,7 @@ const pmI18n = {
       setTimeout(() => {
         if (pmBtnLbl) pmBtnLbl.textContent = origLabel;
         pmAddBtn.disabled = false;
+        pmAddBtn.classList.remove('btn--confirmed');
       }, 1400);
     });
 

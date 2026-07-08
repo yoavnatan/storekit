@@ -2,6 +2,7 @@
 export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../layouts/BaseLayout.astro';
+import StoreAvatar from '../components/StoreAvatar.astro';
 import { store as platform, formatPrice, cdnSrc } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getAllStores } from '../lib/stores.js';
@@ -74,8 +75,9 @@ const jsonLd = {
             <div class="container">
               <div class="home-section-header">
                 <div class="home-store-section__title-group">
-                  <a href={`/store/${s.slug}`} style="color:inherit;text-decoration:none" class="hover:text-[var(--color-accent)] transition-colors duration-150">
-                    <h2 id={`sh-${s.slug}`} class="home-section-title">{s.name}</h2>
+                  <a href={`/store/${s.slug}`} class="flex items-center gap-2.5" style="color:inherit;text-decoration:none">
+                    <StoreAvatar name={s.name} profileImage={s.profileImage} size={36} />
+                    <h2 id={`sh-${s.slug}`} class="home-section-title hover:text-[var(--color-accent)] transition-colors duration-150">{s.name}</h2>
                   </a>
                   {(s.tagline || s.description) && (
                     <p class="home-store-section__tagline" dir="auto">{s.tagline || s.description}</p>

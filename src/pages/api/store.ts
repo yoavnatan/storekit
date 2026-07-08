@@ -30,7 +30,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const categories = categoriesRaw.split(',').map(c => c.trim()).filter(Boolean);
     if (!name) return json({ ok: false, error: 'Store name is required.' }, 400);
 
-    updateStore(target.id, { name, tagline, description, colors: target.colors, categories: categories.length ? categories : [] });
+    const bannerImage = String(form.get('bannerImage') ?? '').trim();
+    const profileImage = String(form.get('profileImage') ?? '').trim();
+
+    updateStore(target.id, {
+      name, tagline, description, colors: target.colors, categories: categories.length ? categories : [],
+      bannerImage: bannerImage || undefined, profileImage: profileImage || undefined,
+    });
     return json({ ok: true, name });
   }
 

@@ -933,6 +933,7 @@ const pmI18n = {
       addBtn.style.minWidth = `${addBtn.offsetWidth}px`;
       if (labelSpan) labelSpan.innerHTML = `${checkSvg}${addBtn.dataset.labelAdded ?? ''}`;
       addBtn.disabled = true;
+      addBtn.classList.add('btn--confirmed');
 
       addBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
@@ -943,6 +944,7 @@ const pmI18n = {
         if (labelSpan) labelSpan.innerHTML = originalLabel;
         addBtn.style.minWidth = '';
         addBtn.disabled = false;
+        addBtn.classList.remove('btn--confirmed');
       }, 1400);
     });
   }
@@ -973,6 +975,7 @@ const pmI18n = {
       stickyAddBtn.style.minWidth = `${stickyAddBtn.offsetWidth}px`;
       if (stickyLabelSpan) stickyLabelSpan.innerHTML = `${stickyCheckSvg}${addBtn.dataset.labelAdded ?? ''}`;
       stickyAddBtn.disabled = true;
+      stickyAddBtn.classList.add('btn--confirmed');
 
       stickyAddBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
@@ -983,6 +986,7 @@ const pmI18n = {
         if (stickyLabelSpan) stickyLabelSpan.innerHTML = stickyOriginalLabel;
         stickyAddBtn.style.minWidth = '';
         stickyAddBtn.disabled = false;
+        stickyAddBtn.classList.remove('btn--confirmed');
       }, 1400);
     });
   }
@@ -1280,12 +1284,17 @@ const pmI18n = {
       trackAddToCart({ id: slug, name, price, category }, pmQty);
       updatePmQty(1);
       pmAddBtn.disabled = true;
+      pmAddBtn.classList.add('btn--confirmed');
       if (pmBtnLbl) pmBtnLbl.innerHTML = `${checkSvgSm}${i18n.addedToCart ?? ''}`;
       pmAddBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
         { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
       );
-      setTimeout(() => { if (pmBtnLbl) pmBtnLbl.textContent = origLabel; pmAddBtn.disabled = false; }, 1400);
+      setTimeout(() => {
+        if (pmBtnLbl) pmBtnLbl.textContent = origLabel;
+        pmAddBtn.disabled = false;
+        pmAddBtn.classList.remove('btn--confirmed');
+      }, 1400);
     });
 
     // Wishlist

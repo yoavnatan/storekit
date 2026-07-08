@@ -9,7 +9,7 @@ import {
   updateProduct,
   deleteProduct,
 } from '../../lib/store-products.js';
-import { formatPrice } from '../../config/store.config.js';
+import { formatPrice, cdnSrc } from '../../config/store.config.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
@@ -938,10 +938,11 @@ const orderStatusColors: Record<string, string> = {
                         role="button"
                         aria-expanded="false"
                       >
-                        <td class="msg-table__td msg-table__td--status">
-                          {hasUnread && <span class="msg-table__unread-dot" aria-label="לא נקרא"></span>}
+                        <td class="msg-table__td msg-table__td--status"></td>
+                        <td class="msg-table__td msg-table__td--from">
+                          {hasUnread && <span class="visually-hidden msg-unread-sr">לא נקרא · </span>}
+                          {msg.fromName}
                         </td>
-                        <td class="msg-table__td msg-table__td--from">{msg.fromName}</td>
                         <td class="msg-table__td msg-table__td--subject">{msg.subject}</td>
                         <td class="msg-table__td msg-table__td--preview">
                           {lastMsg.content}
@@ -1013,6 +1014,45 @@ const orderStatusColors: Record<string, string> = {
           <div class="dash-panel-header">
             <h2 class="dash-panel-header__title">{d.tabSettings}</h2>
             <button class="btn btn--sm" type="submit" id="settings-save-btn">{d.saveChanges}</button>
+          </div>
+
+          <div class="field">
+            <span>{d.storeBanner}</span>
+            <p class="muted" style="margin:0.15rem 0 0.6rem;font-size:0.8rem">{d.storeBannerHint}</p>
+            <div
+              id="banner-frame"
+              class="w-full max-w-[420px] overflow-hidden rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+              style="aspect-ratio:3/1"
+            >
+              {store.bannerImage && (
+                <img src={cdnSrc(store.bannerImage, 900)} alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
+              )}
+            </div>
+            <div class="flex gap-2" style="margin-top:1.1rem">
+              <button type="button" class="btn btn--sm btn--ghost" id="banner-upload-btn">{store.bannerImage ? d.storeImageChange : d.uploadImage}</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="banner-remove-btn" hidden={!store.bannerImage}>{d.removeImage}</button>
+            </div>
+            <input type="file" accept="image/*" id="banner-file-input" hidden />
+            <input type="hidden" name="bannerImage" id="banner-image-input" value={store.bannerImage ?? ''} />
+          </div>
+
+          <div class="field">
+            <span>{d.storeProfileImage}</span>
+            <p class="muted" style="margin:0.15rem 0 0.6rem;font-size:0.8rem">{d.storeProfileImageHint}</p>
+            <div
+              id="avatar-frame"
+              class="h-20 w-20 overflow-hidden rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]"
+            >
+              {store.profileImage && (
+                <img src={cdnSrc(store.profileImage, 200)} alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
+              )}
+            </div>
+            <div class="flex gap-2" style="margin-top:1.1rem">
+              <button type="button" class="btn btn--sm btn--ghost" id="avatar-upload-btn">{store.profileImage ? d.storeImageChange : d.uploadImage}</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="avatar-remove-btn" hidden={!store.profileImage}>{d.removeImage}</button>
+            </div>
+            <input type="file" accept="image/*" id="avatar-file-input" hidden />
+            <input type="hidden" name="profileImage" id="avatar-image-input" value={store.profileImage ?? ''} />
           </div>
 
           <label class="field">
@@ -1513,6 +1553,7 @@ const orderStatusColors: Record<string, string> = {
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
   import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initTableSort, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initCategoryFilter, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
+  import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
 
   const uploadCfg = document.getElementById('upload-config');
   const CLOUD  = uploadCfg?.dataset.cloud  ?? '';
@@ -1551,6 +1592,27 @@ const orderStatusColors: Record<string, string> = {
   }
   initCropModal();
   initCleanupModal();
+
+  {
+    let dashI18n: Record<string, string> = {};
+    try { dashI18n = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
+    const labels = {
+      upload: dashI18n.uploadImage ?? 'Upload image',
+      change: dashI18n.storeImageChange ?? 'Change image',
+      remove: dashI18n.removeImage ?? 'Remove',
+      uploading: dashI18n.uploadingImage ?? 'Uploading image…',
+    };
+    initStoreImageWidget({
+      frameId: 'banner-frame', fileInputId: 'banner-file-input', hiddenInputId: 'banner-image-input',
+      uploadBtnId: 'banner-upload-btn', removeBtnId: 'banner-remove-btn',
+      aspect: 3, vpWidth: 420, previewWidth: 900, cloud: CLOUD, preset: PRESET, labels,
+    });
+    initStoreImageWidget({
+      frameId: 'avatar-frame', fileInputId: 'avatar-file-input', hiddenInputId: 'avatar-image-input',
+      uploadBtnId: 'avatar-upload-btn', removeBtnId: 'avatar-remove-btn',
+      aspect: 1, vpWidth: 220, previewWidth: 200, cloud: CLOUD, preset: PRESET, labels,
+    });
+  }
   initSpecsEditors();
   // Registered before the editors below: its document-level click listener
   // must see the pre-click "is anything armed?" state before either editor's
@@ -1605,7 +1667,7 @@ const orderStatusColors: Record<string, string> = {
   // Keeps the store-switcher title dot (and this store's own row-dot in the
   // dropdown) in sync as orders get handled / messages get read — without a
   // page reload. Re-derives "does the current store still have an alert"
-  // from what's actually left in the DOM (.order-new-dot / .msg-table__unread-dot),
+  // from what's actually left in the DOM (.order-new-dot / .msg-table__row--unread),
   // since those are already kept accurate by the order/message handlers.
   function updateSwitcherAlertDot(): void {
     const switcherBtn = document.getElementById('store-switcher-btn');
@@ -1618,7 +1680,7 @@ const orderStatusColors: Record<string, string> = {
       const dot     = currentLink.querySelector<HTMLElement>('.store-switcher__item-dot');
       const currentHasAlert =
         document.querySelectorAll('.order-new-dot').length > 0 ||
-        document.querySelectorAll('.msg-table__unread-dot').length > 0;
+        document.querySelectorAll('.msg-table__row--unread').length > 0;
       if (currentHasAlert && !dot && dotHost) {
         const newDot = document.createElement('span');
         newDot.className = 'store-switcher__item-dot';
@@ -1988,7 +2050,7 @@ const orderStatusColors: Record<string, string> = {
           }
           if (markRead) {
             row.classList.remove('msg-table__row--unread');
-            row.querySelector('.msg-table__unread-dot')?.remove();
+            row.querySelector('.msg-unread-sr')?.remove();
             repliesEl.querySelectorAll('.msg-thread-unread-dot').forEach((el) => el.remove());
             document.querySelector('#tab-messages span[aria-label]')?.remove();
             updateSwitcherAlertDot();
@@ -2347,12 +2409,12 @@ const orderStatusColors: Record<string, string> = {
             sellerThreadLoaders.get(id)?.(true, true);
           } else {
             row.classList.add('msg-table__row--unread');
-            const statusTd = row.querySelector('.msg-table__td--status');
-            if (statusTd && !statusTd.querySelector('.msg-table__unread-dot')) {
-              const dot = document.createElement('span');
-              dot.className = 'msg-table__unread-dot';
-              dot.setAttribute('aria-label', 'לא נקרא');
-              statusTd.appendChild(dot);
+            const fromTd = row.querySelector('.msg-table__td--from');
+            if (fromTd && !fromTd.querySelector('.msg-unread-sr')) {
+              const sr = document.createElement('span');
+              sr.className = 'visually-hidden msg-unread-sr';
+              sr.textContent = 'לא נקרא · ';
+              fromTd.insertBefore(sr, fromTd.firstChild);
             }
             refreshRowPreview(id, row);
           }

@@ -25,6 +25,8 @@ export interface Store {
   colors: StoreColors;
   categories?: string[];
   shipping?: StoreShipping;
+  bannerImage?: string;
+  profileImage?: string;
   createdAt: string;
 }
 

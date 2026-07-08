@@ -170,7 +170,7 @@ const strEmpty   = t.store.noProductsFound;
     )}
 
     <!-- Actions -->
-    <div class="header-actions" style={storeMode ? 'flex:1' : undefined}>
+    <div class="header-actions" style={storeMode ? 'flex-shrink:0' : undefined}>
       {/* Mobile search icon — store pages only, hidden on desktop via CSS */}
       {storeMode && storeSlug && !sellerMode && (
         <button id="mobile-search-btn" class="cart-btn mobile-search-btn" aria-label={lang === 'he' ? 'חיפוש' : 'Search'} aria-expanded="false" aria-controls="mobile-search-panel">
