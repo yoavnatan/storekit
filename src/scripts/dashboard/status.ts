@@ -9,6 +9,7 @@ export function showStatus(msg: string, isError = false): void {
   }
   el.className = isError ? 'dash-error' : 'dash-success';
   el.textContent = msg;
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   clearTimeout(statusTimer);
   statusTimer = setTimeout(() => el?.remove(), 3000);
 }

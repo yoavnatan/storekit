@@ -226,8 +226,8 @@ function specsEditorHtml(specs: Array<{ label: string; value: string }>, i18n: R
   const vp = esc(i18n.specsValuePlaceholder ?? '');
   const rowsHtml = specs.map(s => `
     <div class="specs-row" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
-      <input class="input" name="specs_label" value="${esc(s.label)}" placeholder="${lp}" style="flex:1">
-      <input class="input" name="specs_value" value="${esc(s.value)}" placeholder="${vp}" style="flex:1">
+      <input class="input" name="specs_label" value="${esc(s.label)}" placeholder="${lp}" style="width:170px;flex:0 0 auto">
+      <input class="input" name="specs_value" value="${esc(s.value)}" placeholder="${vp}" style="width:220px;flex:0 0 auto">
       <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label="${esc(i18n.specsRemoveRow ?? 'Remove')}">×</button>
     </div>`).join('');
   return `<div class="field">
@@ -994,8 +994,8 @@ export function initSpecsEditors(): void {
       row.className = 'specs-row';
       row.style.cssText = 'display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem';
       row.innerHTML = `
-        <input class="input" name="specs_label" placeholder="${esc(lp)}" style="flex:1">
-        <input class="input" name="specs_value" placeholder="${esc(vp)}" style="flex:1">
+        <input class="input" name="specs_label" placeholder="${esc(lp)}" style="width:170px;flex:0 0 auto">
+        <input class="input" name="specs_value" placeholder="${esc(vp)}" style="width:220px;flex:0 0 auto">
         <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label="${esc(i18n.specsRemoveRow ?? 'Remove')}">×</button>`;
       container.appendChild(row);
       row.querySelector<HTMLInputElement>('input')?.focus();
@@ -1035,11 +1035,11 @@ export function buildRows(p: ProductData, cloud: string, preset: string, storeSl
     <td class="name-col">
       <span class="product-name">${esc(p.name)}</span>
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
-      ${p.category ? `<span class="product-cat-chip">${esc(p.category)}</span>` : ''}
     </td>
+    <td class="cat-col">${p.category ? `<span class="product-cat-chip">${esc(p.category)}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num product-price">${fmtPrice(p.price)}</td>
     <td class="num product-stock"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
-    <td class="num" style="color:var(--color-muted);font-size:0.82rem">—</td>
+    <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">—</td>
     <td class="date-col">${esc(fmtDateAdded(p.createdAt))}</td>
     <td class="actions">
       <div class="product-menu">
@@ -1060,7 +1060,7 @@ export function buildRows(p: ProductData, cloud: string, preset: string, storeSl
   edit.hidden = true;
   edit.innerHTML = `
     <td class="num row-num"></td>
-    <td colspan="7">
+    <td colspan="20">
       <form method="POST" action="/api/product" class="dash-form inline-edit-form">
         <input type="hidden" name="_action" value="edit-product">
         <input type="hidden" name="productId" value="${p.id}">
@@ -1314,7 +1314,13 @@ export function initAddProduct(cloud: string, preset: string): void {
       fd.set('variants_json', JSON.stringify(collectVariantsPayload(addForm)));
       const res = await fetch('/api/product', { method: 'POST', body: fd });
       const data = await res.json() as { ok: boolean; product?: ProductData; error?: string };
-      if (!data.ok) { showStatus(data.error ?? (i18n.errorAdding ?? 'Error adding product.'), true); return; }
+      if (!data.ok) {
+        const msg = res.status === 401
+          ? (i18n.sessionExpired ?? 'Your session has expired. Please log in again and retry.')
+          : (data.error ?? (i18n.errorAdding ?? 'Error adding product.'));
+        showStatus(msg, true);
+        return;
+      }
 
       const p = { ...data.product!, storeId: storeIdInput?.value ?? '' };
       const tbody = document.getElementById('products-tbody') as HTMLTableSectionElement | null;
@@ -1327,7 +1333,7 @@ export function initAddProduct(cloud: string, preset: string): void {
       if (tbody) {
         const [display, edit] = buildRows(p, cloud, preset);
         attachListeners(display, edit, cloud, preset);
-        tbody.append(display, edit);
+        tbody.prepend(display, edit);
         initThumbs(display);
         refreshCategoryFilter();
         applyPagination();

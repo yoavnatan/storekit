@@ -147,8 +147,20 @@ export function initCropModal(): void {
 
   cropApplyBtn?.addEventListener('click', () => void applyCrop());
   cropCancelEl?.addEventListener('click', closeCropModal);
+
+  // Close-on-backdrop-click must require the press to have *started* on the
+  // backdrop too — not just resolved there. Otherwise a pan/zoom gesture that
+  // begins on cropViewport (nested inside cropModal) but ends with the mouse
+  // released over the surrounding backdrop area resolves its click event to
+  // cropModal (nearest common ancestor of the mousedown/mouseup targets),
+  // silently closing the modal mid-interaction.
+  let backdropPressStarted = false;
+  cropModal?.addEventListener('mousedown', (e) => {
+    backdropPressStarted = e.target === cropModal;
+  });
   cropModal?.addEventListener('click', (e) => {
-    if (e.target === cropModal && !hadDragMotion) closeCropModal();
+    if (e.target === cropModal && backdropPressStarted) closeCropModal();
+    backdropPressStarted = false;
     hadDragMotion = false;
   });
 }

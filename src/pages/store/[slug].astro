@@ -931,8 +931,11 @@ const pmI18n = {
     const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
       ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
       : [];
+    // No dimension pre-selected — buyer must actively choose before add-to-cart
+    // proceeds (see pmFlagMissingVariants below) — except a single-option
+    // dimension, which has no real choice to make.
     const pmSelectedVariants: Record<string, string> = {};
-    pmVariants.forEach((v) => { pmSelectedVariants[v.name] = v.options[0] ?? ''; });
+    pmVariants.forEach((v) => { if (v.options.length === 1) pmSelectedVariants[v.name] = v.options[0]; });
     const i18n        = getPMI18n();
     const mainImgUrl  = images[0] ?? '';
     const hasImages   = images.length > 0;
@@ -1008,22 +1011,22 @@ const pmI18n = {
           ${pmVariants.length ? `<div class="pm-variants" style="display:flex;flex-direction:column;gap:0.75rem">
             ${pmVariants.map(v => {
               const isCv = isColorVariantName(v.name);
-              return `<div>
+              const isSingleOption = v.options.length === 1;
+              return `<div class="variant-group" data-variant-group="${escHtml(v.name)}">
                 <p style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
                 <div style="display:flex;flex-wrap:wrap;gap:0.4rem" role="group" aria-label="${escHtml(v.name)}">
-                  ${v.options.map((opt, i) => {
+                  ${v.options.map((opt) => {
                     const { display, hex } = resolveColor(opt);
-                    const isFirst = i === 0;
-                    const activeBorder = hex ?? 'var(--color-primary)';
-                    const activeBg = hex ? hex + '18' : 'transparent';
                     const swatch = isCv && hex
                       ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
                       : '';
+                    const activeBorder = hex ?? 'var(--color-primary)';
+                    const activeBg = hex ? hex + '18' : 'transparent';
                     return `<button type="button" class="pm-variant-opt"
                             data-pv-name="${escHtml(v.name)}" data-pv-value="${escHtml(opt)}"
                             data-pv-hex="${escHtml(hex ?? '')}"
-                            aria-pressed="${isFirst}"
-                            style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isFirst ? activeBorder : 'var(--color-border)'};border-radius:var(--radius);padding:${isCv && hex ? '0.26rem 0.6rem' : '0.26rem 0.7rem'};font-size:0.8rem;font-weight:${isFirst ? 600 : 500};cursor:pointer;background:${isFirst ? activeBg : 'none'};color:var(--color-text);transition:all 0.15s;white-space:nowrap">
+                            aria-pressed="${isSingleOption}"
+                            style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isSingleOption ? activeBorder : 'var(--color-border)'};border-radius:var(--radius);padding:${isCv && hex ? '0.26rem 0.6rem' : '0.26rem 0.7rem'};font-size:0.8rem;font-weight:${isSingleOption ? 600 : 500};cursor:pointer;background:${isSingleOption ? activeBg : 'none'};color:var(--color-text);transition:all 0.15s;white-space:nowrap">
                       ${swatch}${escHtml(display)}
                     </button>`;
                   }).join('')}
@@ -1053,12 +1056,31 @@ const pmI18n = {
 
     pmClose?.focus();
 
+    // Missing-selection feedback (subtle shake + ring) — mirrors the standalone
+    // product page's flagMissingVariants, scoped to this modal's own DOM.
+    function pmFlagMissingVariants(): boolean {
+      let firstMissing: HTMLElement | null = null;
+      pmVariants.forEach((v) => {
+        if (pmSelectedVariants[v.name]) return;
+        const group = pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(v.name)}"]`);
+        if (!group) return;
+        group.classList.remove('variant-group--invalid');
+        void group.offsetWidth;
+        group.classList.add('variant-group--invalid');
+        setTimeout(() => group.classList.remove('variant-group--invalid'), 650);
+        if (!firstMissing) firstMissing = group;
+      });
+      firstMissing?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return !!firstMissing;
+    }
+
     // ── Modal variant selector ─────────────────────────────────────
     pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((btn) => {
       btn.addEventListener('click', () => {
         const vName = btn.dataset.pvName ?? '';
         const vValue = btn.dataset.pvValue ?? '';
         pmSelectedVariants[vName] = vValue;
+        pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(vName)}"]`)?.classList.remove('variant-group--invalid');
         pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
           const active = b === btn;
           const hex = b.dataset.pvHex || null;
@@ -1186,6 +1208,7 @@ const pmI18n = {
 
     pmAddBtn?.addEventListener('click', () => {
       if (pmAddBtn.disabled) return;
+      if (pmVariants.length && pmFlagMissingVariants()) return;
       const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
       addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock }, pmQty, pmVariantsCopy);
       trackAddToCart({ id: slug, name, price, category }, pmQty);

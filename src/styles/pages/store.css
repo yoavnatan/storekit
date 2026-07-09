@@ -573,3 +573,19 @@
   from { opacity: 0; transform: translateY(-5px) scale(0.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* Missing-variant feedback (product quick-view modal) — a subtle shake +
+   temporary ring on whichever dimension wasn't chosen yet, toggled briefly by
+   pmFlagMissingVariants() on a blocked add-to-cart click. No modal/alert.
+   Ring lives on each option button, not the wrapping [role=group] row — see
+   product.css's identical comment for why a group-level ring breaks on wrap. */
+.store-page .variant-group--invalid { animation: variant-shake 0.4s ease; }
+.store-page .variant-group--invalid .pm-variant-opt {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-text) 30%, transparent);
+}
+@keyframes variant-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}

@@ -51,15 +51,7 @@ const hasStore = userId ? getStoresBySellerId(userId).length > 0 : false;
       if (el) el.textContent = orderId.slice(0, 8).toUpperCase();
     }
 
-    // Clear all store carts from localStorage
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('store_cart_v2_')) keysToRemove.push(key);
-    }
-    keysToRemove.forEach(k => localStorage.removeItem(k));
-
-    // Notify cart badge to update
-    window.dispatchEvent(new CustomEvent('cart:change'));
+    // Purchased items were already removed from the cart by the checkout page itself
+    // (only the items the buyer selected — unselected items stay in the cart).
   </script>
 </BaseLayout>

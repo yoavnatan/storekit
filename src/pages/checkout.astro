@@ -41,6 +41,10 @@ for (const s of getAllStores()) {
     requiredField: c.requiredField,
     invalidEmail: c.invalidEmail,
     orderError: c.orderError,
+    selectItemAria: c.selectItemAria,
+    selectStoreAria: c.selectStoreAria,
+    selectAtLeastOne: c.selectAtLeastOne,
+    noItemsSelected: c.noItemsSelected,
   })}></script>
 
   <main id="main-content" class="co-page">
@@ -92,6 +96,7 @@ for (const s of getAllStores()) {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
               aria-hidden="true" class="co-cta-arrow"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
+          <p id="co-select-hint" class="hidden co-select-hint" role="status">{c.selectAtLeastOne}</p>
         </div>
       </section>
 
@@ -147,6 +152,7 @@ for (const s of getAllStores()) {
             <span id="submit-label">{c.placeOrder}</span>
             <span id="submit-loading" class="hidden" aria-live="polite">{c.processing}</span>
           </button>
+          <p id="co-submit-hint" class="hidden co-select-hint" role="status">{c.noItemsSelected}</p>
         </form>
       </section>
 
@@ -188,7 +194,14 @@ for (const s of getAllStores()) {
       box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
     }
 
-    /* ── store label ── */
+    /* ── store row (select-all checkbox + label) ── */
+    .co-store-row {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+      margin: 1.25rem 0 .625rem;
+    }
+    .co-store-block:first-child .co-store-row { margin-top: 0; }
     .co-store-label {
       display: inline-block;
       font-size: .75rem;
@@ -196,12 +209,66 @@ for (const s of getAllStores()) {
       color: var(--color-muted);
       letter-spacing: .06em;
       text-transform: uppercase;
-      margin: 1.25rem 0 .625rem;
       text-decoration: none;
       transition: color 140ms;
     }
-    .co-store-label:first-child { margin-top: 0; }
     .co-store-label:hover { text-decoration: underline; }
+
+    /* ── custom checkbox (matches site's design system — not a generic input) ── */
+    .co-check {
+      position: relative;
+      display: inline-flex;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .co-check__input {
+      position: absolute;
+      inset: 0;
+      width: 20px;
+      height: 20px;
+      margin: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .co-check__box {
+      position: relative;
+      width: 20px;
+      height: 20px;
+      border-radius: 5px;
+      border: 1.5px solid var(--color-border);
+      background: var(--color-surface);
+      flex-shrink: 0;
+      transition: background 140ms, border-color 140ms, transform 120ms cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .co-check__icon {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 12px; height: 12px;
+      color: #fff;
+      opacity: 0;
+      transform: translate(-50%,-50%) scale(.4);
+      transition: opacity 120ms, transform 220ms cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .co-check__input:checked + .co-check__box,
+    .co-check__input:indeterminate + .co-check__box {
+      background: var(--color-accent);
+      border-color: var(--color-accent);
+    }
+    .co-check__input:checked + .co-check__box .co-check__icon--check {
+      opacity: 1;
+      transform: translate(-50%,-50%) scale(1);
+    }
+    .co-check__input:indeterminate + .co-check__box .co-check__icon--dash {
+      opacity: 1;
+      transform: translate(-50%,-50%) scale(1);
+    }
+    .co-check__input:focus-visible + .co-check__box {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+    .co-check__input:active + .co-check__box {
+      transform: scale(.9);
+    }
 
     /* ── item card ── */
     .co-card {
@@ -213,11 +280,12 @@ for (const s of getAllStores()) {
       padding: 1rem;
       margin-bottom: .75rem;
       box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
-      transition: box-shadow 150ms;
+      transition: box-shadow 150ms, opacity 150ms;
     }
     .co-card:hover {
       box-shadow: 0 3px 10px rgba(0,0,0,.1), 0 0 0 1px var(--color-border);
     }
+    .co-card--unselected { opacity: .5; }
 
     /* image */
     .co-card__img-link {
@@ -424,6 +492,11 @@ for (const s of getAllStores()) {
     .co-cta-arrow {
       transition: transform 220ms cubic-bezier(0.34,1.56,0.64,1);
     }
+    .co-select-hint {
+      text-align: center;
+      font-size: .8rem;
+      color: var(--color-muted);
+    }
     .co-cta-btn[aria-expanded="true"] .co-cta-arrow { transform: rotate(90deg); }
     [dir="rtl"] .co-cta-arrow { transform: scaleX(-1); }
     [dir="rtl"] .co-cta-btn[aria-expanded="true"] .co-cta-arrow { transform: scaleX(-1) rotate(90deg); }
@@ -501,11 +574,41 @@ for (const s of getAllStores()) {
       return (cfg.freeAbove !== null && subtotal >= cfg.freeAbove) ? 0 : cfg.flatRate;
     }
 
+    // ── Selection (which items the buyer is actually paying for) ──
+    // Default: everything selected. Selection is per-page-load (not persisted) —
+    // resets to "all checked" every time checkout is opened.
+    const selKey = (storeSlug: string, cartKey: string) => `${storeSlug}::${cartKey}`;
+    let selected = new Set<string>();
+    let selectionInitialized = false;
+
+    function syncSelection(carts: ReturnType<typeof getFilteredCarts>): void {
+      const currentKeys = new Set<string>();
+      carts.forEach(cart => cart.items.forEach(item => currentKeys.add(selKey(cart.storeSlug, item.cartKey))));
+      if (!selectionInitialized) {
+        selected = new Set(currentKeys);
+        selectionInitialized = true;
+      } else {
+        for (const k of Array.from(selected)) if (!currentKeys.has(k)) selected.delete(k);
+      }
+    }
+
+    function checkboxHtml(cls: string, attrs: string, ariaLabel: string, withDash: boolean): string {
+      const dash = withDash
+        ? `<svg class="co-check__icon co-check__icon--dash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="8" x2="12" y2="8"/></svg>`
+        : '';
+      return `<label class="co-check ${cls}">
+        <input type="checkbox" class="co-check__input" ${attrs} aria-label="${esc(ariaLabel)}">
+        <span class="co-check__box" aria-hidden="true">
+          <svg class="co-check__icon co-check__icon--check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/></svg>
+          ${dash}
+        </span>
+      </label>`;
+    }
+
     function renderCart(): void {
       const carts = getFilteredCarts();
       const contentEl = document.getElementById('cart-content');
       const footerEl  = document.getElementById('co-footer');
-      const totalEl   = document.getElementById('grand-total-amount');
       if (!contentEl) return;
 
       if (!carts.length) {
@@ -514,19 +617,27 @@ for (const s of getAllStores()) {
         return;
       }
 
-      let grandTotal = 0;
+      syncSelection(carts);
+
       let html = '';
 
       carts.forEach(cart => {
+        // Initial paint only — recalculated precisely (per current selection) by
+        // updateSelectionUI() right after this HTML is inserted into the DOM.
         const subtotal = cart.items.reduce((s, i) => s + i.price * i.qty, 0);
         const shipping = calcShipping(cart.storeSlug, subtotal);
-        grandTotal += subtotal + shipping;
 
-        // Store label
-        html += `<a href="/store/${esc(cart.storeSlug)}" class="co-store-label">${esc(cart.storeName)}</a>`;
+        html += `<div class="co-store-block" data-store-slug="${esc(cart.storeSlug)}" style="display:contents">`;
+
+        // Store row: select-all checkbox + store label
+        html += `<div class="co-store-row">
+          ${checkboxHtml('co-store-check', `data-store-slug="${esc(cart.storeSlug)}"`, `${i18n['selectStoreAria'] ?? ''} ${cart.storeName}`, true)}
+          <a href="/store/${esc(cart.storeSlug)}" class="co-store-label">${esc(cart.storeName)}</a>
+        </div>`;
 
         // One card per item
         cart.items.forEach(item => {
+          const isSelected = selected.has(selKey(cart.storeSlug, item.cartKey));
           const imgHtml = item.image
             ? `<img src="${esc(item.image)}" alt="${esc(item.name)}" class="co-card__img" width="80" height="80" loading="lazy" decoding="async" />`
             : `<div class="co-card__img-placeholder" aria-hidden="true">
@@ -538,7 +649,8 @@ for (const s of getAllStores()) {
             ? `<p class="co-card__variants">${esc(Object.entries(item.selectedVariants).map(([k,v]) => `${k}: ${v}`).join(' · '))}</p>`
             : '';
 
-          html += `<div class="co-card" data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" data-item-name="${esc(item.name)}">
+          html += `<div class="co-card ${isSelected ? '' : 'co-card--unselected'}" data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" data-item-name="${esc(item.name)}">
+            ${checkboxHtml('co-item-check', `data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" ${isSelected ? 'checked' : ''}`, `${i18n['selectItemAria'] ?? ''} ${item.name}`, false)}
             <button type="button" class="co-card__img-link pqv-trigger"
               data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}"
               aria-label="${esc(i18n['viewProduct'] ?? '')} ${esc(item.name)}">
@@ -569,7 +681,7 @@ for (const s of getAllStores()) {
 
         // Shipping card for this store
         const isFree = shipping === 0;
-        html += `<div class="co-shipping-card">
+        html += `<div class="co-shipping-card" data-store-slug="${esc(cart.storeSlug)}">
           <div class="co-shipping-card__left">
             <svg class="co-shipping-card__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
             <div>
@@ -582,14 +694,16 @@ for (const s of getAllStores()) {
             <span class="co-shipping-card__amount ${isFree ? 'co-shipping-free' : ''}">${isFree ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(shipping)}</span>
           </div>
         </div>`;
+
+        html += `</div>`; // close .co-store-block
       });
 
       contentEl.innerHTML = html;
 
-      if (totalEl) totalEl.textContent = formatPrice(grandTotal);
       footerEl?.classList.remove('hidden');
 
       attachEvents();
+      updateSelectionUI();
     }
 
     function patchQty(card: HTMLElement, storeSlug: string, cartKey: string): void {
@@ -622,14 +736,61 @@ for (const s of getAllStores()) {
         unitEl?.remove();
       }
 
-      // Update grand total
+      updateSelectionUI();
+    }
+
+    // Recomputes everything that depends on which items are checked: per-store
+    // shipping card (hidden entirely once a store has nothing selected), grand
+    // total, each store's select-all checkbox state, and the pay button.
+    function updateSelectionUI(): void {
+      const carts = getFilteredCarts();
       let grandTotal = 0;
-      carts.forEach(c => {
-        const sub = c.items.reduce((s, it) => s + it.price * it.qty, 0);
-        grandTotal += sub + calcShipping(c.storeSlug, sub);
+      let anySelected = false;
+
+      carts.forEach(cart => {
+        const block = document.querySelector<HTMLElement>(`.co-store-block[data-store-slug="${CSS.escape(cart.storeSlug)}"]`);
+        let subtotal = 0;
+        let selCount = 0;
+        cart.items.forEach(item => {
+          if (selected.has(selKey(cart.storeSlug, item.cartKey))) {
+            subtotal += item.price * item.qty;
+            selCount++;
+          }
+        });
+        if (selCount > 0) anySelected = true;
+
+        const shipping = selCount > 0 ? calcShipping(cart.storeSlug, subtotal) : 0;
+        grandTotal += subtotal + shipping;
+
+        const shipCard = block?.querySelector<HTMLElement>('.co-shipping-card');
+        if (shipCard) {
+          shipCard.classList.toggle('hidden', selCount === 0);
+          if (selCount > 0) {
+            const isFree = shipping === 0;
+            const amountEl = shipCard.querySelector<HTMLElement>('.co-shipping-card__amount');
+            if (amountEl) {
+              amountEl.textContent = isFree ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(shipping);
+              amountEl.classList.toggle('co-shipping-free', isFree);
+            }
+          }
+        }
+
+        const storeCheckbox = block?.querySelector<HTMLInputElement>('.co-store-check .co-check__input');
+        if (storeCheckbox) {
+          storeCheckbox.checked = selCount > 0 && selCount === cart.items.length;
+          storeCheckbox.indeterminate = selCount > 0 && selCount < cart.items.length;
+        }
       });
-      const grandEl = document.getElementById('grand-total-amount');
-      if (grandEl) grandEl.textContent = formatPrice(grandTotal);
+
+      const totalEl = document.getElementById('grand-total-amount');
+      if (totalEl) totalEl.textContent = formatPrice(grandTotal);
+
+      const toPaymentBtn = document.getElementById('to-payment-btn') as HTMLButtonElement | null;
+      if (toPaymentBtn) toPaymentBtn.disabled = !anySelected;
+      const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement | null;
+      if (submitBtn) submitBtn.disabled = !anySelected;
+      document.getElementById('co-select-hint')?.classList.toggle('hidden', anySelected);
+      document.getElementById('co-submit-hint')?.classList.toggle('hidden', anySelected);
     }
 
     function attachEvents(): void {
@@ -676,6 +837,36 @@ for (const s of getAllStores()) {
       }));
     }
 
+    // Delegated (not re-attached per render) — item + per-store "select all" checkboxes
+    document.getElementById('cart-content')?.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      if (!input.classList.contains('co-check__input')) return;
+
+      const storeSlug = input.dataset['storeSlug'] ?? '';
+
+      if (input.closest('.co-store-check')) {
+        const checked = input.checked;
+        const block = input.closest<HTMLElement>('.co-store-block');
+        block?.querySelectorAll<HTMLInputElement>('.co-item-check .co-check__input').forEach(itemInput => {
+          const cartKey = itemInput.dataset['cartKey'] ?? '';
+          if (checked) selected.add(selKey(storeSlug, cartKey));
+          else selected.delete(selKey(storeSlug, cartKey));
+          itemInput.checked = checked;
+          itemInput.closest('.co-card')?.classList.toggle('co-card--unselected', !checked);
+        });
+      } else if (input.closest('.co-item-check')) {
+        const cartKey = input.dataset['cartKey'] ?? '';
+        const key = selKey(storeSlug, cartKey);
+        if (input.checked) selected.add(key);
+        else selected.delete(key);
+        input.closest('.co-card')?.classList.toggle('co-card--unselected', !input.checked);
+      } else {
+        return;
+      }
+
+      updateSelectionUI();
+    });
+
     // ── Payment accordion ──────────────────────────────────
     const toPaymentBtn   = document.getElementById('to-payment-btn');
     const paymentSection = document.getElementById('payment-section');
@@ -720,6 +911,13 @@ for (const s of getAllStores()) {
       e.preventDefault();
       if (!validate()) return;
 
+      const carts = getFilteredCarts();
+      const purchased: { storeSlug: string; item: ReturnType<typeof getFilteredCarts>[number]['items'][number] }[] = [];
+      carts.forEach(cart => cart.items.forEach(item => {
+        if (selected.has(selKey(cart.storeSlug, item.cartKey))) purchased.push({ storeSlug: cart.storeSlug, item });
+      }));
+      if (!purchased.length) return; // nothing selected — button should already be disabled
+
       const labelEl   = document.getElementById('submit-label');
       const loadingEl = document.getElementById('submit-loading');
       const errEl     = document.getElementById('form-global-error');
@@ -730,15 +928,12 @@ for (const s of getAllStores()) {
       if (submitBtn) submitBtn.disabled = true;
       errEl?.classList.add('hidden');
 
-      const carts = getFilteredCarts();
-      const items = carts.flatMap(cart =>
-        cart.items.map(item => ({
-          storeSlug: cart.storeSlug,
-          productSlug: item.slug,
-          qty: item.qty,
-          ...(item.selectedVariants && Object.keys(item.selectedVariants).length ? { selectedVariants: item.selectedVariants } : {}),
-        }))
-      );
+      const items = purchased.map(({ storeSlug, item }) => ({
+        storeSlug,
+        productSlug: item.slug,
+        qty: item.qty,
+        ...(item.selectedVariants && Object.keys(item.selectedVariants).length ? { selectedVariants: item.selectedVariants } : {}),
+      }));
 
       const body = {
         buyerName:    (document.getElementById('buyerName')  as HTMLInputElement).value.trim(),
@@ -757,6 +952,8 @@ for (const s of getAllStores()) {
         const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string };
         if (!res.ok || !data.orderIds?.length) throw new Error(data.error ?? 'Unknown error');
         const ref = data.checkoutRef ?? data.orderIds[0]!.slice(0, 8).toUpperCase();
+        // Only the purchased items leave the cart — anything the buyer left unchecked stays.
+        purchased.forEach(({ storeSlug, item }) => removeItem(storeSlug, item.cartKey));
         window.location.href = `/checkout/success?order=${encodeURIComponent(ref)}`;
       } catch {
         if (errEl) { errEl.textContent = i18n['orderError'] ?? 'שגיאה. נסה שוב.'; errEl.classList.remove('hidden'); }

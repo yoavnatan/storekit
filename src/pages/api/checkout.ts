@@ -8,6 +8,7 @@ import type { OrderItem, StoreSubtotal } from '../../lib/orders.js';
 import { createNotification } from '../../lib/notifications.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getUserCart, saveUserCart } from '../../lib/user-carts.js';
+import { makeCartKey } from '../../lib/cart.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -163,10 +164,28 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     }
   }
 
-  // Clear server-side cart for logged-in users (preserves wishlist + favoriteStores)
+  // Remove only the purchased items from the server-side cart (buyer may have left
+  // other items unselected at checkout) — preserves wishlist + favoriteStores.
   if (userId) {
     const existing = getUserCart(userId);
-    saveUserCart(userId, { cart: {}, wishlist: existing.wishlist, favoriteStores: existing.favoriteStores ?? [] });
+    const cart = { ...existing.cart };
+    for (const raw of items) {
+      const item = raw as CartItemInput;
+      const storeSlug = typeof item.storeSlug === 'string' ? item.storeSlug.trim() : '';
+      const productSlug = typeof item.productSlug === 'string' ? item.productSlug.trim() : '';
+      const selectedVariants =
+        item.selectedVariants && typeof item.selectedVariants === 'object' && !Array.isArray(item.selectedVariants)
+          ? (item.selectedVariants as Record<string, string>)
+          : undefined;
+      const key = makeCartKey(productSlug, selectedVariants);
+      const storeCart = cart[storeSlug];
+      if (!storeCart) continue;
+      const remainingItems = { ...storeCart.items };
+      delete remainingItems[key];
+      if (Object.keys(remainingItems).length === 0) delete cart[storeSlug];
+      else cart[storeSlug] = { ...storeCart, items: remainingItems };
+    }
+    saveUserCart(userId, { cart, wishlist: existing.wishlist, favoriteStores: existing.favoriteStores ?? [] });
   }
 
   return json({ orderIds, checkoutRef }, 201);

@@ -433,9 +433,12 @@ const strEmpty   = t.store.noProductsFound;
   }
   function escH(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  function renderNotifs(items: NotifItem[]) {
-    if (!notifList) return;
-    const unreadCount = items.filter(n => !n.read).length;
+  // Badge/title always reflect the server's own unreadCount (computed fresh from
+  // *all* of a user's notifications) — never derived from whatever `items` list
+  // happens to be on hand, which can be just an incremental since-filtered batch
+  // (see notifications:update below) and would otherwise reset the badge to that
+  // batch's own small size instead of the true total.
+  function setBadge(unreadCount: number) {
     if (notifCountBadge) {
       if (unreadCount > 0) {
         notifCountBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
@@ -445,6 +448,10 @@ const strEmpty   = t.store.noProductsFound;
       }
     }
     document.title = unreadCount > 0 ? `(${unreadCount}) ${originalTitle}` : originalTitle;
+  }
+
+  function renderNotifs(items: NotifItem[]) {
+    if (!notifList) return;
     if (!items.length) { notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>'; return; }
     notifList.innerHTML = items.slice(0, 10).map((n) => `
       <div class="notif-item${n.read ? '' : ' notif-item--unread'}" data-id="${escH(n.id)}" data-type="${escH(n.type ?? '')}" role="button" tabindex="0">
@@ -508,8 +515,9 @@ const strEmpty   = t.store.noProductsFound;
     try {
       const res = await fetch('/api/notifications');
       if (!res.ok) return;
-      const { notifications } = await res.json() as { notifications: NotifItem[]; unreadCount: number };
+      const { notifications, unreadCount } = await res.json() as { notifications: NotifItem[]; unreadCount: number };
       renderNotifs(notifications ?? []);
+      setBadge(unreadCount ?? 0);
       const sellerReplyCount = (notifications ?? []).filter((n: NotifItem) => n.type === 'seller_reply' && !n.read).length;
       window.dispatchEvent(new CustomEvent('msg-badge-update', { detail: sellerReplyCount }));
     } catch { /* ignore */ }
@@ -529,8 +537,13 @@ const strEmpty   = t.store.noProductsFound;
   });
 
   window.addEventListener('notifications:update', (e: Event) => {
-    const { notifications } = (e as CustomEvent<{ unreadCount: number; notifications: NotifItem[] }>).detail;
-    if (notifications) renderNotifs(notifications);
+    const { unreadCount } = (e as CustomEvent<{ unreadCount: number; notifications: NotifItem[] }>).detail;
+    setBadge(unreadCount ?? 0);
+    // The event's own `notifications` is only the incremental since-filtered
+    // batch from the site-wide poller, not the full list — reuse it for the
+    // visible dropdown would show a wrong/shrunk list, so only a real fetch
+    // (loadNotifs, already called whenever the dropdown opens) keeps it accurate.
+    if (notifDrop && !notifDrop.hidden) loadNotifs();
   });
 
   window.addEventListener('notif-refreshed', () => { loadNotifs(); });
@@ -538,6 +551,7 @@ const strEmpty   = t.store.noProductsFound;
   if (bellBtn) {
     fetch('/api/notifications').then(r => r.json()).then((d: { notifications: NotifItem[]; unreadCount: number }) => {
       renderNotifs(d.notifications ?? []);
+      setBadge(d.unreadCount ?? 0);
     }).catch(() => {});
   }
 

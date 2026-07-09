@@ -160,10 +160,11 @@ textarea.input { resize: vertical; }
 /* Category doesn't need the full form width like name/description do. */
 .field--narrow { max-width: 280px; }
 
-/* Tags also shouldn't span the full form width, but the chips themselves
-   need more room than a single text input — 280px wrapped to a new line
-   after just 1-2 tags. */
-.field--tags { max-width: 460px; }
+/* Tags need real room to grow horizontally as chips are added — 460px
+   wrapped to a new line after just 1-2 tags, so let the row run the same
+   full width as name/description instead of capping it like the category
+   field. */
+.field--tags { max-width: none; }
 
 .products-header__title {
   display: flex;
@@ -767,6 +768,9 @@ textarea.input { resize: vertical; }
   overflow: hidden;
   display: block;
   background: var(--color-surface);
+  /* Without this, a transparent (bg-removed) product photo has no edge to
+     separate it from the table row — both sit on the same white surface. */
+  border: 1px solid var(--color-border);
 }
 .thumb-wrap::before {
   content: '';

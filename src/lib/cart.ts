@@ -30,7 +30,7 @@ function storeKey(storeSlug: string): string {
   return `${KEY_PREFIX}${storeSlug}`;
 }
 
-function makeCartKey(slug: string, selectedVariants?: Record<string, string>): string {
+export function makeCartKey(slug: string, selectedVariants?: Record<string, string>): string {
   if (!selectedVariants || !Object.keys(selectedVariants).length) return slug;
   return `${slug}__${comboKey(selectedVariants)}`;
 }

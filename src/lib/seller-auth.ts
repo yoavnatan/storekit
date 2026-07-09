@@ -6,6 +6,9 @@ import type { AstroCookies } from 'astro';
 const SELLERS_PATH = path.join(process.cwd(), 'data/sellers.json');
 const COOKIE_NAME = 'seller_session';
 const ONE_DAY = 60 * 60 * 24;
+// Sellers should stay signed in until they explicitly log out, not get
+// silently signed out every day.
+const SESSION_TTL = ONE_DAY * 180;
 
 export interface Seller {
   id: string;
@@ -132,7 +135,7 @@ export function updateSeller(
 }
 
 function makeToken(sellerId: string): string {
-  const exp = Math.floor(Date.now() / 1000) + ONE_DAY;
+  const exp = Math.floor(Date.now() / 1000) + SESSION_TTL;
   const payload = `${sellerId}|${exp}`;
   return `${payload}.${sign(payload)}`;
 }
@@ -155,7 +158,7 @@ export function setSellerSession(cookies: AstroCookies, sellerId: string): void 
     secure: import.meta.env.PROD,
     sameSite: 'lax',
     path: '/',
-    maxAge: ONE_DAY,
+    maxAge: SESSION_TTL,
   });
 }
 

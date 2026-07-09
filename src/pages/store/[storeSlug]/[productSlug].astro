@@ -27,14 +27,15 @@ const t = getT(lang);
 const isNew = new Date(product.createdAt).toDateString() === new Date().toDateString();
 const images = product.images ?? [];
 
-// Stock for the combo selected by default (first option of each dimension) — falls
-// back to the product's overall stock when there are no variants, or the seller
-// hasn't set per-combination numbers yet.
+// Used only as a heuristic for each option button's own availability preview
+// (combined with the first option of every *other* dimension) — no dimension
+// is actually pre-selected for the buyer; see "no default pre-selection" below.
 const defaultVariantSelection: Record<string, string> =
   Object.fromEntries((product.variants ?? []).map((v) => [v.name, v.options[0] ?? '']));
-const initialComboStock = (product.variants?.length && product.variantStock)
-  ? (product.variantStock[comboKey(defaultVariantSelection)] ?? product.stock)
-  : product.stock;
+// Nothing is selected yet on load, so the note reflects the product's overall
+// stock (matches the client's own unselected-state fallback — no flash of a
+// different number once JS hydrates).
+const initialComboStock = product.stock;
 const initialStatusColor = initialComboStock <= 0 ? 'var(--color-danger,#dc2626)' : '#d97706';
 const initialStatusText = initialComboStock <= 0
   ? t.store.outOfStock
@@ -158,7 +159,7 @@ const pmI18n = {
         <!-- Images column -->
         <div>
           <div id="main-img-wrap"
-               class="relative overflow-hidden cursor-zoom-in"
+               class={`relative overflow-hidden cursor-zoom-in${images[0] ? ' is-loading' : ''}`}
                style="aspect-ratio:1/1;border-radius:var(--radius);background:var(--color-surface)"
                role={images.length > 0 ? 'button' : undefined}
                tabindex={images.length > 0 ? '0' : undefined}
@@ -187,7 +188,7 @@ const pmI18n = {
                   role="listitem"
                   data-img-src={cdnSrc(img, 800)}
                   data-img-index={String(i)}
-                  class="thumb-btn flex-shrink-0 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
+                  class="thumb-btn is-loading flex-shrink-0 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
                   style={`width:4rem;height:4rem;border-radius:var(--radius);background:var(--color-surface);border-color:${i === 0 ? 'var(--color-accent)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
                   aria-pressed={i === 0 ? 'true' : 'false'}
                   aria-label={`${product.name} ${i + 1}`}
@@ -216,18 +217,20 @@ const pmI18n = {
             <div class="flex flex-col gap-3 md:gap-5" id="variant-selectors">
               {product.variants!.map((v) => {
                 const isColor = isColorVariant(v.name);
+                // A dimension with a single option needs no real choice — treat
+                // it as already selected instead of making the buyer tap it.
+                const isSingleOption = v.options.length === 1;
                 return (
-                  <div class="flex flex-col gap-2">
+                  <div class="flex flex-col gap-2 variant-group" data-variant-group={v.name}>
                     <p style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-muted);margin:0">
                       {v.name}
                     </p>
                     <div class="flex flex-wrap gap-2" role="group" aria-label={v.name}>
-                      {v.options.map((opt, i) => {
+                      {v.options.map((opt) => {
                         const { display, hex } = resolveVariantColor(opt);
-                        const isFirst = i === 0;
+                        const isActive = isSingleOption;
                         const activeBorder = hex ?? 'var(--color-primary)';
                         const activeBg = hex ? hex + '18' : 'transparent';
-                        const activeColor = 'var(--color-text)';
                         // Availability for this option combined with the default selection of
                         // every other dimension — client JS recomputes this per-click as the
                         // buyer changes other dimensions (e.g. picking a Size changes which
@@ -243,18 +246,18 @@ const pmI18n = {
                                   data-variant-name={v.name}
                                   data-variant-value={opt}
                                   data-color-hex={hex ?? undefined}
-                                  aria-pressed={isFirst ? 'true' : 'false'}
+                                  aria-pressed={isActive ? 'true' : 'false'}
                                   disabled={!isAvailable}
                                   aria-disabled={!isAvailable ? 'true' : undefined}
                                   style={[
                                     'display:inline-flex;align-items:center;gap:0.4rem',
-                                    `border:1.5px solid ${isFirst ? activeBorder : 'var(--color-border)'}`,
+                                    `border:1.5px solid ${isActive ? activeBorder : 'var(--color-border)'}`,
                                     'border-radius:var(--radius)',
                                     'padding:0.45rem 0.9rem',
-                                    `font-size:0.875rem;font-weight:${isFirst ? 600 : 500}`,
+                                    `font-size:0.875rem;font-weight:${isActive ? 600 : 500}`,
                                     `cursor:${isAvailable ? 'pointer' : 'not-allowed'}`,
-                                    `background:${isFirst ? activeBg : 'transparent'}`,
-                                    `color:${isFirst ? activeColor : 'var(--color-text)'}`,
+                                    `background:${isActive ? activeBg : 'transparent'}`,
+                                    'color:var(--color-text)',
                                     `opacity:${isAvailable ? '1' : '0.4'}`,
                                     `text-decoration:${isAvailable ? 'none' : 'line-through'}`,
                                     'transition:all 0.15s',
@@ -541,9 +544,13 @@ const pmI18n = {
         <!-- Mobile-only sticky duplicate of the cart actions — fades in once the
              inline row above scrolls out of view, so "add to cart" stays reachable
              without duplicating IDs or the add-to-cart logic itself. -->
-        <div id="sticky-cart-bar">
+        <div id="sticky-cart-bar" class="sticky-bottom-bar">
           <div id="sticky-mini-summary">
-            {images[0] && <img id="sticky-mini-img" data-src={cdnSrc(images[0], 96)} alt="" width="44" height="44" decoding="async" />}
+            {images[0] && (
+              <span id="sticky-mini-img-wrap" class="is-loading">
+                <img id="sticky-mini-img" data-src={cdnSrc(images[0], 96)} alt="" width="44" height="44" decoding="async" />
+              </span>
+            )}
             <span id="sticky-mini-name" dir="auto">{product.name}</span>
             <span id="sticky-mini-price">{formatPrice(product.price)}</span>
           </div>
@@ -649,8 +656,48 @@ const pmI18n = {
   }
 
   // ── Variant selector ───────────────────────────────────────────
+  // No dimension is pre-selected — the buyer must actively tap a size/color/etc.
+  // before add-to-cart will proceed (see flagMissingVariants below) — except a
+  // dimension with only one option, which has no real choice to make and is
+  // pre-selected (matches the server-rendered active swatch above).
   const selectedVariants: Record<string, string> = {};
-  pageVariants.forEach((v) => { selectedVariants[v.name] = v.options[0] ?? ''; });
+  pageVariants.forEach((v) => { if (v.options.length === 1) selectedVariants[v.name] = v.options[0]; });
+
+  // Plain scrollIntoView doesn't know the mobile sticky add-to-cart bar (or the
+  // fixed site header) visually covers part of the viewport — an element can
+  // count as "in view" per the browser while actually sitting behind one of
+  // them. Scroll against their real edges instead of the raw viewport bounds.
+  function scrollGroupIntoView(el: HTMLElement): void {
+    const rect = el.getBoundingClientRect();
+    const stickyBar = document.querySelector<HTMLElement>('.sticky-bottom-bar.is-visible');
+    const bottomLimit = stickyBar ? stickyBar.getBoundingClientRect().top : window.innerHeight;
+    const headerEl = document.querySelector<HTMLElement>('header');
+    const topLimit = headerEl ? headerEl.getBoundingClientRect().bottom : 0;
+    if (rect.bottom > bottomLimit) {
+      window.scrollBy({ top: rect.bottom - bottomLimit + 16, behavior: 'smooth' });
+    } else if (rect.top < topLimit) {
+      window.scrollBy({ top: rect.top - topLimit - 16, behavior: 'smooth' });
+    }
+  }
+
+  // Missing-selection feedback: a subtle shake + temporary ring on whichever
+  // dimension(s) haven't been chosen yet, instead of a blocking modal/alert —
+  // called right before add-to-cart actually adds the item.
+  function flagMissingVariants(): boolean {
+    let firstMissing: HTMLElement | null = null;
+    pageVariants.forEach((v) => {
+      if (selectedVariants[v.name]) return;
+      const group = document.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(v.name)}"]`);
+      if (!group) return;
+      group.classList.remove('variant-group--invalid');
+      void group.offsetWidth;
+      group.classList.add('variant-group--invalid');
+      setTimeout(() => group.classList.remove('variant-group--invalid'), 650);
+      if (!firstMissing) firstMissing = group;
+    });
+    if (firstMissing) scrollGroupIntoView(firstMissing);
+    return !!firstMissing;
+  }
 
   // Disables (rather than hides) any option whose combo — combined with the buyer's
   // current picks for every other dimension — is out of stock, so the set of choices
@@ -674,6 +721,7 @@ const pmI18n = {
       const vName = btn.dataset.variantName ?? '';
       const vValue = btn.dataset.variantValue ?? '';
       selectedVariants[vName] = vValue;
+      document.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(vName)}"]`)?.classList.remove('variant-group--invalid');
       document.querySelectorAll<HTMLButtonElement>(`.variant-opt[data-variant-name="${CSS.escape(vName)}"]`).forEach((b) => {
         const active = b === btn;
         const hex = b.dataset.colorHex ?? null;
@@ -692,6 +740,27 @@ const pmI18n = {
   const mainImg = document.getElementById('main-img') as HTMLImageElement | null;
   const thumbBtns = document.querySelectorAll<HTMLButtonElement>('.thumb-btn');
   let activeIndex = 0;
+
+  // ── Skeleton: remove shimmer once the initial images load ───────────
+  const mainImgWrapEl = document.getElementById('main-img-wrap');
+  if (mainImg && mainImgWrapEl) {
+    const doneMain = () => mainImgWrapEl.classList.remove('is-loading');
+    if (mainImg.complete && mainImg.naturalWidth > 0) doneMain();
+    else {
+      mainImg.addEventListener('load', doneMain, { once: true });
+      mainImg.addEventListener('error', doneMain, { once: true });
+    }
+  }
+  document.querySelectorAll<HTMLImageElement>('.thumb-btn img').forEach((img) => {
+    const wrap = img.closest<HTMLElement>('.thumb-btn');
+    if (!wrap) return;
+    const done = () => wrap.classList.remove('is-loading');
+    if (img.complete && img.naturalWidth > 0) done();
+    else {
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+    }
+  });
 
   function setThumbActive(idx: number) {
     thumbBtns.forEach((b) => {
@@ -895,6 +964,10 @@ const pmI18n = {
       // Defer the thumbnail fetch until it's about to be shown — it's fixed-position
       // and always laid out, so native loading="lazy" can't tell it's off-screen.
       if (!entry.isIntersecting && stickyMiniImg && stickyMiniImg.dataset.src) {
+        const stickyImgWrap = stickyMiniImg.closest<HTMLElement>('#sticky-mini-img-wrap');
+        const doneSticky = () => stickyImgWrap?.classList.remove('is-loading');
+        stickyMiniImg.addEventListener('load', doneSticky, { once: true });
+        stickyMiniImg.addEventListener('error', doneSticky, { once: true });
         stickyMiniImg.src = stickyMiniImg.dataset.src;
         stickyMiniImg.removeAttribute('data-src');
       }
@@ -921,6 +994,7 @@ const pmI18n = {
     addBtn.addEventListener('pointerdown', (e) => spawnRipple(addBtn, e.clientX, e.clientY));
     addBtn.addEventListener('click', () => {
       if (addBtn.disabled) return;
+      if (pageVariants.length && flagMissingVariants()) return;
       const { slug = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
       const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
       addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy);
@@ -963,6 +1037,7 @@ const pmI18n = {
     stickyAddBtn.addEventListener('pointerdown', (e) => spawnRipple(stickyAddBtn, e.clientX, e.clientY));
     stickyAddBtn.addEventListener('click', () => {
       if (addBtn.disabled || stickyAddBtn.disabled) return;
+      if (pageVariants.length && flagMissingVariants()) return;
       const { slug = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
       const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
       addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy);
@@ -1109,8 +1184,11 @@ const pmI18n = {
     const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
       ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
       : [];
+    // No dimension pre-selected — same "must actively choose" rule as the main
+    // product page's add-to-cart (see flagMissingVariants below) — except a
+    // single-option dimension, which has no real choice to make.
     const pmSelectedVariants: Record<string, string> = {};
-    pmVariants.forEach((v) => { pmSelectedVariants[v.name] = v.options[0] ?? ''; });
+    pmVariants.forEach((v) => { if (v.options.length === 1) pmSelectedVariants[v.name] = v.options[0]; });
 
     const i18n       = getPMI18n();
     const mainImgUrl = cardImages[0] ?? '';
@@ -1176,21 +1254,21 @@ const pmI18n = {
       ? `<div style="display:flex;flex-direction:column;gap:0.75rem">
           ${pmVariants.map(v => {
             const isCv = pmIsColorVariant(v.name);
-            return `<div>
+            const isSingleOption = v.options.length === 1;
+            return `<div class="variant-group" data-variant-group="${escHtml(v.name)}">
               <p style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
               <div style="display:flex;flex-wrap:wrap;gap:0.4rem" role="group" aria-label="${escHtml(v.name)}">
-                ${v.options.map((opt, i) => {
+                ${v.options.map((opt) => {
                   const { display, hex } = pmResolveColor(opt);
-                  const isFirst = i === 0;
-                  const aBorder = hex ?? 'var(--color-primary)';
-                  const aBg = hex ? hex + '18' : 'transparent';
                   const swatch = isCv && hex
                     ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
                     : '';
+                  const activeBorder = hex ?? 'var(--color-primary)';
+                  const activeBg = hex ? hex + '18' : 'transparent';
                   return `<button type="button" class="pm-variant-opt"
                     data-pv-name="${escHtml(v.name)}" data-pv-value="${escHtml(opt)}" data-pv-hex="${escHtml(hex ?? '')}"
-                    aria-pressed="${isFirst}"
-                    style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isFirst ? aBorder : 'var(--color-border)'};border-radius:var(--radius);padding:0.3rem 0.7rem;font-size:0.82rem;font-weight:${isFirst ? 600 : 500};cursor:pointer;background:${isFirst ? aBg : 'none'};color:var(--color-text);transition:all 0.15s;white-space:nowrap">
+                    aria-pressed="${isSingleOption}"
+                    style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isSingleOption ? activeBorder : 'var(--color-border)'};border-radius:var(--radius);padding:0.3rem 0.7rem;font-size:0.82rem;font-weight:${isSingleOption ? 600 : 500};cursor:pointer;background:${isSingleOption ? activeBg : 'none'};color:var(--color-text);transition:all 0.15s;white-space:nowrap">
                     ${swatch}${escHtml(display)}
                   </button>`;
                 }).join('')}
@@ -1228,11 +1306,30 @@ const pmI18n = {
     );
     pmClose?.focus();
 
+    // Missing-selection feedback (subtle shake + ring), same pattern as the
+    // main product page's flagMissingVariants — scoped to this modal's own DOM.
+    function pmFlagMissingVariants(): boolean {
+      let firstMissing: HTMLElement | null = null;
+      pmVariants.forEach((v) => {
+        if (pmSelectedVariants[v.name]) return;
+        const group = pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(v.name)}"]`);
+        if (!group) return;
+        group.classList.remove('variant-group--invalid');
+        void group.offsetWidth;
+        group.classList.add('variant-group--invalid');
+        setTimeout(() => group.classList.remove('variant-group--invalid'), 650);
+        if (!firstMissing) firstMissing = group;
+      });
+      firstMissing?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return !!firstMissing;
+    }
+
     // Variant clicks
     pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((btn) => {
       btn.addEventListener('click', () => {
         const vName = btn.dataset.pvName ?? '';
         pmSelectedVariants[vName] = btn.dataset.pvValue ?? '';
+        pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(vName)}"]`)?.classList.remove('variant-group--invalid');
         pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
           const active = b === btn;
           const hex = b.dataset.pvHex || null;
@@ -1279,6 +1376,7 @@ const pmI18n = {
     pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
     pmAddBtn?.addEventListener('click', () => {
       if (pmAddBtn.disabled) return;
+      if (pmVariants.length && pmFlagMissingVariants()) return;
       const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
       addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock }, pmQty, pmVariantsCopy);
       trackAddToCart({ id: slug, name, price, category }, pmQty);

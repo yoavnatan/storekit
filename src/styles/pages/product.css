@@ -53,11 +53,48 @@
 }
 .product-detail-page #main-img-wrap:hover { box-shadow: var(--shadow-card-hover); }
 
+/* Skeleton shimmer while the initial image loads — @keyframes skeleton-shimmer
+   lives in utils.css; .is-loading is removed by JS once the image fires load/error. */
+.product-detail-page #main-img-wrap.is-loading,
+.product-detail-page .thumb-btn.is-loading {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+    var(--color-surface) 75%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+.product-detail-page #main-img-wrap.is-loading #main-img,
+.product-detail-page .thumb-btn.is-loading img { opacity: 0; }
+
 .product-detail-page .thumb-btn { box-shadow: var(--shadow-xs); }
 
 .product-detail-page .qty-stepper { box-shadow: var(--shadow-inset); }
 
 .product-detail-page .variant-opt[aria-pressed="true"] { box-shadow: var(--shadow-xs); }
+
+/* Missing-variant feedback (product page + its related-item modal) — a subtle
+   shake + temporary ring on whichever dimension wasn't chosen yet, toggled
+   briefly by flagMissingVariants()/pmFlagMissingVariants() on a blocked
+   add-to-cart click. No modal/alert — the flow stays a single click.
+   The ring lives on each option button, not the wrapping [role=group] row —
+   a `width:fit-content` row can't size itself to "widest wrapped line" once
+   flex-wrap kicks in on mobile (fit-content sizes off max-content, i.e. the
+   unwrapped width, then just clamps to the full available width), so a
+   group-level ring falls back to full screen width the moment options wrap. */
+.product-detail-page .variant-group--invalid { animation: variant-shake 0.4s ease; }
+.product-detail-page .variant-group--invalid .variant-opt,
+.product-detail-page .variant-group--invalid .pm-variant-opt {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-text) 30%, transparent);
+}
+@keyframes variant-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
 
 .product-detail-page .details-card { box-shadow: var(--shadow-card); }
 
@@ -145,13 +182,35 @@
   .product-detail-page #sticky-add-to-cart-btn.sticky-btn--solo {
     flex: 1 1 auto;
   }
+  .product-detail-page #sticky-mini-img-wrap {
+    width: 44px;
+    height: 44px;
+    border-radius: 7px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  /* Shimmer while the sticky thumbnail's deferred fetch (data-src, only
+     triggered once the bar is about to show its mini-summary) is in flight. */
+  .product-detail-page #sticky-mini-img-wrap.is-loading {
+    background: linear-gradient(
+      90deg,
+      var(--color-surface) 25%,
+      color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+      var(--color-surface) 75%
+    );
+    background-size: 400% 100%;
+    animation: skeleton-shimmer 1.4s ease infinite;
+  }
   .product-detail-page #sticky-mini-summary img {
     width: 44px;
     height: 44px;
     border-radius: 7px;
     object-fit: cover;
     flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.18s ease;
   }
+  .product-detail-page #sticky-mini-img-wrap:not(.is-loading) img { opacity: 1; }
   .product-detail-page #sticky-mini-name {
     font-size: 0.9375rem;
     font-weight: 600;

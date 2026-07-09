@@ -149,7 +149,9 @@ const activeStoreId = hasNoStore ? '' : (Astro.url.searchParams.get('store') ?? 
 const store = hasNoStore ? undefined : (allStores.find((s) => s.id === activeStoreId) ?? allStores[0]);
 const settingsSuccess = !hasNoStore && Astro.url.searchParams.get('saved') === '1';
 const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1';
-const products = store ? getProductsByStoreId(store.id) : [];
+const products = store
+  ? getProductsByStoreId(store.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  : [];
 const wishlistCounts = store ? getAllWishlistCounts() : ({} as Record<string, number>);
 const storeFavoriteCount = store ? getFavoriteStoreCount(store.slug) : 0;
 const productCount = products.length;
@@ -743,8 +745,8 @@ const orderStatusColors: Record<string, string> = {
                                data-value-placeholder={d.specsValuePlaceholder}>
                             {(p.specs ?? []).map((s) => (
                               <div class="specs-row" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
-                                <input class="input" name="specs_label" value={s.label} placeholder={d.specsLabelPlaceholder} style="flex:1" />
-                                <input class="input" name="specs_value" value={s.value} placeholder={d.specsValuePlaceholder} style="flex:1" />
+                                <input class="input" name="specs_label" value={s.label} placeholder={d.specsLabelPlaceholder} style="width:170px;flex:0 0 auto" />
+                                <input class="input" name="specs_value" value={s.value} placeholder={d.specsValuePlaceholder} style="width:220px;flex:0 0 auto" />
                                 <button type="button" class="specs-remove-row btn btn--ghost btn--sm" aria-label={d.specsRemoveRow}>×</button>
                               </div>
                             ))}
@@ -991,7 +993,7 @@ const orderStatusColors: Record<string, string> = {
                             <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
                             <div style="display:flex;justify-content:flex-end;gap:0.5rem">
                               <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-                              <button class="seller-msg-reply-send" type="button">שלח תשובה</button>
+                              <button class="seller-msg-reply-send" type="button">שלח</button>
                             </div>
                           </div>
                         </td>
