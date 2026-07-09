@@ -128,7 +128,7 @@ export const store: PlatformConfig = {
 
 export function formatPrice(amount: number | string): string {
   const n = Number(amount || 0);
-  return `${store.business.currencySymbol}${n.toLocaleString('en-US')}`;
+  return `${n.toLocaleString('en-US')} ${store.business.currencySymbol}`;
 }
 
 export function cdnSrc(url: string, w = 400): string {

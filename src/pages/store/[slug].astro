@@ -261,6 +261,7 @@ const pmI18n = {
                     data-wishlist-image={p.images?.[0] ?? ''}
                     data-wishlist-store-slug={shopStore.slug}
                     data-wishlist-store-name={shopStore.name}
+                    data-wishlist-stock={String(p.stock)}
                     data-wishlisted="false"
                     aria-pressed="false"
                     aria-label={t.wishlist.addLabel}
@@ -280,36 +281,40 @@ const pmI18n = {
                        style="color:inherit;text-decoration:none;display:block">
                       <h3 class="product-card__name" dir="auto">{p.name}</h3>
                     </a>
-                    {p.description && <p class="product-card__desc" dir="auto">{p.description}</p>}
                     <div class="product-card__footer" style="flex-direction:column;align-items:stretch;gap:0.4rem">
-                      {p.stock > 0 && (
-                        <div dir="ltr" class="flex items-center flex-shrink-0" style="align-self:flex-end;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-inset)">
-                          <button type="button" class="qty-dec flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30" style="width:1.75rem;height:1.75rem" aria-label={t.cart.qtyDecrease} disabled>
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                          </button>
-                          <span class="qty-val text-sm font-semibold select-none" style="min-width:1.75rem;text-align:center;color:var(--color-text)" aria-live="polite" aria-atomic="true">1</span>
-                          <button type="button" class="qty-inc flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30 disabled:cursor-not-allowed" style="width:1.75rem;height:1.75rem" aria-label={t.cart.qtyIncrease}>
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                          </button>
-                        </div>
-                      )}
-                      <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
-                        <span class="product-card__price">{formatPrice(p.price)}</span>
-                        {p.stock <= 0
+                      <span class="product-card__price">{formatPrice(p.price)}</span>
+                      {p.stock <= 0
                           ? <span class="badge badge--muted">{t.store.outOfStock}</span>
-                          : <button
-                              type="button"
-                              class="btn btn--sm add-to-cart-btn whitespace-nowrap"
-                              style="height:1.875rem"
-                              data-slug={p.slug}
-                              data-name={p.name}
-                              data-price={String(p.price)}
-                              data-image={p.images?.[0] ? cdnSrc(p.images[0]) : ''}
-                              data-stock={String(p.stock)}
-                              data-label-added={t.store.addedToCart}
-                            ><span class="btn-label">{t.store.addToCart}</span></button>
-                        }
-                      </div>
+                          : <div dir="ltr" class="product-card__qtycart flex items-center" style="width:100%;height:2.25rem;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-inset)">
+                              <button type="button" class="qty-dec flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30" style="width:2.25rem;height:100%" aria-label={t.cart.qtyDecrease} disabled>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                              </button>
+                              <button
+                                type="button"
+                                class="product-card__add-btn add-to-cart-btn"
+                                data-slug={p.slug}
+                                data-name={p.name}
+                                data-price={String(p.price)}
+                                data-image={p.images?.[0] ? cdnSrc(p.images[0]) : ''}
+                                data-stock={String(p.stock)}
+                                data-label-added={t.store.addedToCart}
+                                aria-label={t.store.addToCart}
+                              >
+                                <span class="btn-label" aria-hidden="true">
+                                  <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="9" cy="21" r="1.3" fill="currentColor" stroke="none"/>
+                                    <circle cx="17" cy="21" r="1.3" fill="currentColor" stroke="none"/>
+                                    <path d="M1 3h2.4l2.72 13.4a2 2 0 0 0 2 1.6h7.76a2 2 0 0 0 2-1.6L20.4 7H5.1"/>
+                                    <path d="M5.2 11.9h13.9M10.3 7.8L9.6 17.2M15 7.8L14.3 17.2" stroke-width="1.1"/>
+                                  </svg>
+                                </span>
+                                <span class="qty-val text-sm font-semibold select-none" style="display:none" aria-live="polite" aria-atomic="true">1</span>
+                              </button>
+                              <button type="button" class="qty-inc flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30" style="width:2.25rem;height:100%" aria-label={t.cart.qtyIncrease}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                              </button>
+                            </div>
+                      }
                     </div>
                   </div>
                 </li>
@@ -382,6 +387,7 @@ const pmI18n = {
   import { addItem, syncCartImages } from '../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
   import { spawnRipple } from '../../lib/ripple.js';
+  import { spawnBurst } from '../../lib/burst.js';
   import { trackAddToCart } from '../../lib/tracking.js';
   import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
   import { initReadMore } from '../../lib/read-more.js';
@@ -458,6 +464,7 @@ const pmI18n = {
         image: btn.dataset.wishlistImage ?? '',
         storeSlug: btn.dataset.wishlistStoreSlug ?? '',
         storeName: btn.dataset.wishlistStoreName ?? '',
+        stock: btn.dataset.wishlistStock !== undefined ? Number(btn.dataset.wishlistStock) : undefined,
       };
       const nowActive = toggleWishlist(item);
       btn.dataset.wishlisted = String(nowActive);
@@ -546,6 +553,7 @@ const pmI18n = {
 
   // ── Qty stepper + Add to cart (product grid) ──────────────────
   const checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
+  const cardCheckSvg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
   document.querySelectorAll<HTMLElement>('.product-card').forEach((card) => {
     const addBtn = card.querySelector<HTMLButtonElement>('.add-to-cart-btn');
@@ -560,7 +568,10 @@ const pmI18n = {
 
     function updateQty(n: number) {
       qty = Math.max(1, Math.min(n, maxStock));
-      if (qtyVal) qtyVal.textContent = String(qty);
+      // Hide the "1" default — showing it on every idle card in the grid
+      // reads as repetitive clutter; the number earns its place once the
+      // buyer actually picks more than one.
+      if (qtyVal) { qtyVal.textContent = String(qty); qtyVal.style.display = qty > 1 ? '' : 'none'; }
       if (qtyDec) qtyDec.disabled = qty <= 1;
       if (qtyInc) qtyInc.disabled = qty >= maxStock;
     }
@@ -569,22 +580,30 @@ const pmI18n = {
     qtyInc?.addEventListener('click', () => updateQty(qty + 1));
 
     const labelSpan = addBtn.querySelector<HTMLElement>('.btn-label');
-    if (labelSpan) labelSpan.style.cssText = 'display:inline-flex;align-items:center;gap:4px';
-    const originalLabel = labelSpan?.innerHTML ?? '';
-
-    addBtn.addEventListener('pointerdown', (e) => spawnRipple(addBtn, e.clientX, e.clientY));
+    const originalIcon = labelSpan?.innerHTML ?? '';
+    const originalAriaLabel = addBtn.getAttribute('aria-label') ?? '';
 
     addBtn.addEventListener('click', () => {
       if (addBtn.disabled) return;
+      // Variant products (color/size/etc.) can't be added blind from the
+      // card — there's no room for a picker here. Open the quick view
+      // instead, where the picker + its own add-to-cart already live, so
+      // choosing a variant is the very next thing the buyer does rather
+      // than a dead-end error.
+      if (card.dataset.variants) {
+        openProductModal(card, true);
+        return;
+      }
       const { slug = '', name = '', price = '0', image = '' } = addBtn.dataset;
       addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty);
       trackAddToCart({ id: slug, name, price: Number(price), category: cardCategory }, qty);
       updateQty(1);
 
-      addBtn.style.minWidth = `${addBtn.offsetWidth}px`;
-      if (labelSpan) labelSpan.innerHTML = `${checkSvg}${addBtn.dataset.labelAdded ?? ''}`;
+      if (labelSpan) labelSpan.innerHTML = cardCheckSvg;
+      addBtn.setAttribute('aria-label', addBtn.dataset.labelAdded ?? originalAriaLabel);
       addBtn.disabled = true;
       addBtn.classList.add('btn--confirmed');
+      spawnBurst(addBtn);
 
       addBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
@@ -592,8 +611,8 @@ const pmI18n = {
       );
 
       setTimeout(() => {
-        if (labelSpan) labelSpan.innerHTML = originalLabel;
-        addBtn.style.minWidth = '';
+        if (labelSpan) labelSpan.innerHTML = originalIcon;
+        addBtn.setAttribute('aria-label', originalAriaLabel);
         addBtn.disabled = false;
         addBtn.classList.remove('btn--confirmed');
       }, 1400);
@@ -920,7 +939,7 @@ const pmI18n = {
     ).filter(el => el.offsetParent !== null);
   }
 
-  function openProductModal(card: HTMLElement) {
+  function openProductModal(card: HTMLElement, flagMissingOnOpen = false) {
     const images: string[] = card.dataset.images ? (JSON.parse(card.dataset.images) as string[]) : [];
     const name        = card.dataset.productName ?? '';
     const price       = Number(card.dataset.price ?? 0);
@@ -1072,6 +1091,15 @@ const pmI18n = {
       });
       firstMissing?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       return !!firstMissing;
+    }
+
+    // Opened because the buyer tried to add-to-cart from the card itself
+    // (no picker there to fail against) — surface the same "pick this"
+    // nudge they'd have gotten from the modal's own add-to-cart, so the
+    // redirect doesn't feel like a dead end. Delayed past the open
+    // animation (240ms) so the shake reads as its own distinct cue.
+    if (flagMissingOnOpen && pmVariants.length) {
+      setTimeout(() => pmFlagMissingVariants(), 260);
     }
 
     // ── Modal variant selector ─────────────────────────────────────
@@ -1232,7 +1260,7 @@ const pmI18n = {
     const pmWishBtn  = pmFooter?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
     const pmWishLbl  = pmFooter?.querySelector<HTMLElement>('.pm-wish-label');
     pmWishBtn?.addEventListener('click', () => {
-      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl, storeSlug, storeName });
+      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl, storeSlug, storeName, stock });
       const svg = pmWishBtn.querySelector<SVGElement>('svg');
       if (svg) { svg.style.fill = nowActive ? '#e53e3e' : 'none'; svg.style.stroke = nowActive ? '#e53e3e' : 'currentColor'; }
       pmWishBtn.style.color = nowActive ? '#e53e3e' : 'var(--color-muted)';
@@ -1351,6 +1379,24 @@ const pmI18n = {
         slides.style.scrollSnapType = '';
       });
     }, { passive: true });
+  });
+
+  // Anywhere else on the card → product modal too. Buttons/links each have
+  // their own handler (qty stepper, wishlist heart, add-to-cart, the name
+  // link, the image) so this only needs to skip those — everything else
+  // (padding, gaps between elements, the price line) should still open it,
+  // including out-of-stock cards that have no add-to-cart button at all.
+  document.querySelectorAll<HTMLElement>('.product-card').forEach((card) => {
+    card.addEventListener('click', (e) => {
+      // Not e.target.closest(...) — a button's own click handler can mutate
+      // its innerHTML (e.g. the add-to-cart icon swapping to a checkmark)
+      // before this bubbles up here, detaching e.target from the tree and
+      // breaking closest()'s walk to its ancestor button. composedPath() is
+      // captured at dispatch time, so it's immune to that.
+      const path = e.composedPath() as HTMLElement[];
+      if (path.some((el) => el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute?.('role') === 'button')) return;
+      openProductModal(card);
+    });
   });
 
   // Image click → product modal (replaces lightbox)

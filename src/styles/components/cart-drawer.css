@@ -102,7 +102,7 @@
 .cart-line__qty { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--color-border); border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-inset); }
 .cart-line__qty button { width: 24px; height: 24px; border: none; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background 0.1s; }
 .cart-line__qty button:hover { background: var(--color-surface); }
-.cart-line__qty button:disabled { opacity: 0.35; cursor: not-allowed; }
+.cart-line__qty button:disabled { opacity: 0.35; }
 .cart-line__qty span { min-width: 1.5rem; text-align: center; font-size: 0.82rem; font-weight: 600; }
 .cart-line__rm { width: 26px; height: 26px; border: 1px solid var(--color-border); border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-muted); transition: background 0.1s, color 0.1s; }
 .cart-line__rm:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }

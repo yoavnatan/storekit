@@ -350,6 +350,7 @@ const pmI18n = {
                         data-wishlist-image={images[0] ?? ''}
                         data-wishlist-store-slug={shopStore.slug}
                         data-wishlist-store-name={shopStore.name}
+                        data-wishlist-stock={String(product.stock)}
                         data-wishlisted="false"
                         aria-pressed="false"
                         aria-label={t.wishlist.addLabel}>
@@ -1122,6 +1123,7 @@ const pmI18n = {
         image: wishlistBtn.dataset.wishlistImage ?? '',
         storeSlug: wishlistBtn.dataset.wishlistStoreSlug ?? '',
         storeName: wishlistBtn.dataset.wishlistStoreName ?? '',
+        stock: wishlistBtn.dataset.wishlistStock !== undefined ? Number(wishlistBtn.dataset.wishlistStock) : undefined,
       };
       const nowActive = toggleWishlist(item);
       wishlistBtn.dataset.wishlisted = String(nowActive);
@@ -1399,7 +1401,7 @@ const pmI18n = {
     const pmWishBtn = pmBody?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
     const pmWishLbl = pmBody?.querySelector<HTMLElement>('.pm-wish-label');
     pmWishBtn?.addEventListener('click', () => {
-      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl, storeSlug, storeName });
+      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl, storeSlug, storeName, stock });
       const svg = pmWishBtn.querySelector<SVGElement>('svg');
       if (svg) { svg.style.fill = nowActive ? '#e53e3e' : 'none'; svg.style.stroke = nowActive ? '#e53e3e' : 'currentColor'; }
       pmWishBtn.style.color = nowActive ? '#e53e3e' : 'var(--color-muted)';

@@ -789,7 +789,7 @@ const strEmpty   = t.store.noProductsFound;
     } catch { /* no products data embedded */ }
 
     function formatPrice(n: number) {
-      return `₪${n.toLocaleString('he-IL')}`;
+      return `${n.toLocaleString('he-IL')} ₪`;
     }
 
     function getRecents(): string[] {

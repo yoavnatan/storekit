@@ -1875,7 +1875,7 @@ const orderStatusColors: Record<string, string> = {
       return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
     }
     function esc(s: unknown): string { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-    function fmtPrice(n: number): string { return '₪' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    function fmtPrice(n: number): string { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' ₪'; }
 
     function buildOrderCard(o: {
       id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
@@ -2171,7 +2171,7 @@ const orderStatusColors: Record<string, string> = {
           ? `<img class="eom-item__img" src="${escEom(item.image)}" alt="" width="34" height="34" loading="lazy">`
           : `<div class="eom-item__img-ph" aria-hidden="true"></div>`}
         <span class="eom-item__name" title="${escEom(item.productName)}">${escEom(item.productName)}</span>
-        <span class="eom-item__meta">₪${item.price.toLocaleString('he-IL')} × ${item.qty}</span>
+        <span class="eom-item__meta">${item.price.toLocaleString('he-IL')} ₪ × ${item.qty}</span>
         <button type="button" class="eom-item__del" aria-label="מחק פריט" title="מחק פריט">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -2214,7 +2214,7 @@ const orderStatusColors: Record<string, string> = {
     let subtotal = 0;
     document.querySelectorAll<HTMLElement>('#eom-items-list .eom-item:not(.eom-item--deleted)').forEach((row) => {
       const meta = row.querySelector('.eom-item__meta')?.textContent ?? '';
-      const m = meta.match(/₪([\d,]+)\s*×\s*(\d+)/);
+      const m = meta.match(/([\d,]+)\s*₪\s*×\s*(\d+)/);
       if (m) subtotal += parseFloat(m[1]!.replace(/,/g,'')) * parseInt(m[2]!, 10);
     });
     return subtotal + eomCurrentShipping;
@@ -2228,7 +2228,7 @@ const orderStatusColors: Record<string, string> = {
     const applied = eomDiscountType === 'percent'
       ? Math.min(base * val / 100, base)
       : Math.min(val, base);
-    eomDiscountPreview.textContent = applied > 0 ? `= −₪${applied.toFixed(2).replace(/\.00$/, '')}` : '';
+    eomDiscountPreview.textContent = applied > 0 ? `= −${applied.toFixed(2).replace(/\.00$/, '')} ₪` : '';
   }
 
   function openEditOrderModal(btn: HTMLElement) {
@@ -2242,7 +2242,7 @@ const orderStatusColors: Record<string, string> = {
     (document.getElementById('eob-city') as HTMLInputElement).value    = btn.dataset.buyerCity   ?? '';
     (document.getElementById('eob-zip') as HTMLInputElement).value     = btn.dataset.buyerZip    ?? '';
     eomCurrentShipping = parseFloat(btn.dataset.shipping ?? '0') || 0;
-    if (eomShippingAmountEl) eomShippingAmountEl.textContent = eomCurrentShipping > 0 ? `· ₪${eomCurrentShipping}` : '· חינם';
+    if (eomShippingAmountEl) eomShippingAmountEl.textContent = eomCurrentShipping > 0 ? `· ${eomCurrentShipping} ₪` : '· חינם';
     // Restore existing discount
     const existingDtype = (btn.dataset.discountType ?? 'percent') as 'percent' | 'amount';
     const existingDval  = btn.dataset.discountValue ?? '0';
@@ -2331,7 +2331,7 @@ const orderStatusColors: Record<string, string> = {
               ${item.image ? `<img src="${escEom(item.image)}" alt="" width="36" height="36" loading="lazy" class="order-card__item-img">` : ''}
               <span class="order-card__item-name">${escEom(item.productName)}</span>
               <span class="order-card__item-qty">×${item.qty}</span>
-              <span class="order-card__item-price">₪${(item.price * item.qty).toFixed(2)}</span>
+              <span class="order-card__item-price">${(item.price * item.qty).toFixed(2)} ₪</span>
             </li>`).join('');
         }
         // Update subtotal display
@@ -2342,12 +2342,12 @@ const orderStatusColors: Record<string, string> = {
           const subtotalsEl = card.querySelector<HTMLElement>('.order-card__subtotals');
           if (subtotalsEl) {
             subtotalsEl.innerHTML = `
-              <span>משלוח: ${storeSub.shipping === 0 ? 'חינם' : `₪${storeSub.shipping.toFixed(2)}`}</span>
-              ${discApplied > 0 ? `<span style="color:#16a34a">הנחה: −₪${discApplied.toFixed(2)}</span>` : ''}
-              <strong>סה"כ: ₪${total.toFixed(2)}</strong>`;
+              <span>משלוח: ${storeSub.shipping === 0 ? 'חינם' : `${storeSub.shipping.toFixed(2)} ₪`}</span>
+              ${discApplied > 0 ? `<span style="color:#16a34a">הנחה: −${discApplied.toFixed(2)} ₪</span>` : ''}
+              <strong>סה"כ: ${total.toFixed(2)} ₪</strong>`;
           }
           const amountEl = card.querySelector('.order-card__amount');
-          if (amountEl) amountEl.textContent = `₪${total.toFixed(2)}`;
+          if (amountEl) amountEl.textContent = `${total.toFixed(2)} ₪`;
         }
 
         // Update edit button data attributes

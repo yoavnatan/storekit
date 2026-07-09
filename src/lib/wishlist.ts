@@ -5,6 +5,7 @@ export interface WishlistItem {
   image: string;
   storeSlug: string;
   storeName: string;
+  stock?: number;
 }
 
 const KEY = 'wishlist_v1';

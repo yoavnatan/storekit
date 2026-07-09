@@ -346,61 +346,40 @@ for (const s of getAllStores()) {
     .co-card__row {
       display: flex;
       align-items: center;
-      gap: .75rem;
+      gap: .375rem;
       margin-top: .625rem;
     }
 
-    /* qty stepper */
-    .co-qty {
-      display: inline-flex;
-      align-items: center;
-      border: 1.5px solid var(--color-border);
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: var(--shadow-inset);
-    }
-    .co-qty__btn {
-      width: 32px; height: 32px;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      color: var(--color-text);
-      font-size: 1.0625rem;
-      display: flex; align-items: center; justify-content: center;
-      transition: background 100ms;
+    /* qty stepper reuses .cart-line__qty (cart-drawer.css) for a consistent look site-wide.
+       flex-shrink:0 on the stepper itself — otherwise it's a flex item like everything else in
+       .co-card__row and gets squeezed whenever the price column (sibling, not even in this row)
+       grows wide enough to tighten .co-card__body's available width. Fixed width (not min-width)
+       on the number so it doesn't resize between 1- and 2-digit qty either. */
+    .co-card__row .cart-line__qty {
       flex-shrink: 0;
     }
-    .co-qty__btn:hover { background: #f0f1f3; }
-    .co-qty__btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .co-qty__num {
-      min-width: 30px;
-      text-align: center;
-      font-size: .875rem;
-      font-weight: 700;
-      color: var(--color-text);
-      border-inline: 1.5px solid var(--color-border);
-      line-height: 32px;
-      user-select: none;
+    .cart-line__qty .co-qty__num {
+      width: 1.75rem;
     }
 
-    /* delete button */
+    /* delete button — icon-only, matches WishlistDrawer's trash button */
     .co-delete-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: .8rem;
-      color: var(--color-muted);
-      padding: .3rem .4rem;
+      width: 26px; height: 26px;
+      flex-shrink: 0;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
       border-radius: 5px;
+      cursor: pointer;
+      color: var(--color-muted);
       display: flex;
       align-items: center;
-      gap: .25rem;
-      font-family: inherit;
-      transition: color 130ms, background 130ms;
+      justify-content: center;
+      transition: color 130ms, background 130ms, border-color 130ms;
     }
     .co-delete-btn:hover {
       color: var(--color-danger);
       background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+      border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
     }
 
     /* price column */
@@ -661,14 +640,13 @@ for (const s of getAllStores()) {
                 data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}">${esc(item.name)}</button>
               ${variantsHtml}
               <div class="co-card__row">
-                <div class="co-qty" dir="ltr" role="group" aria-label="כמות">
+                <div class="cart-line__qty" dir="ltr" role="group" aria-label="כמות">
                   <button class="co-qty__btn" data-action="dec" aria-label="הפחת כמות" type="button" ${item.qty <= 1 ? 'disabled' : ''}>−</button>
                   <span class="co-qty__num" aria-live="polite">${item.qty}</span>
                   <button class="co-qty__btn" data-action="inc" aria-label="הגדל כמות" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>
                 </div>
                 <button class="co-delete-btn" data-action="remove" aria-label="${esc(i18n['removeItem'] ?? 'הסר')}" type="button">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                  ${esc(i18n['removeItem'] ?? 'הסר')}
                 </button>
               </div>
             </div>

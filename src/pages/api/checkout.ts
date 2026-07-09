@@ -158,7 +158,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         role: 'seller',
         type: 'new_order',
         title: 'הזמנה חדשה!',
-        body: `הזמנה מ-${buyerData.buyerName} על סך ${storeTotalAmount.toFixed(2)}₪`,
+        body: `הזמנה מ-${buyerData.buyerName} על סך ${storeTotalAmount.toFixed(2)} ₪`,
         relatedId: storeOrder.id,
       });
     }
