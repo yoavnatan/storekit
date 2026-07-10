@@ -541,10 +541,10 @@ const pmI18n = {
       </div>
       )}
 
+      <!-- Mobile-only sticky duplicate of the cart actions — fades in once the
+           inline row above scrolls out of view, so "add to cart" stays reachable
+           without duplicating IDs or the add-to-cart logic itself. -->
       {product.stock > 0 && (
-        <!-- Mobile-only sticky duplicate of the cart actions — fades in once the
-             inline row above scrolls out of view, so "add to cart" stays reachable
-             without duplicating IDs or the add-to-cart logic itself. -->
         <div id="sticky-cart-bar" class="sticky-bottom-bar">
           <div id="sticky-mini-summary">
             {images[0] && (
