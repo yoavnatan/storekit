@@ -232,29 +232,199 @@ textarea.input { resize: vertical; }
 
 .date-col { font-size: 0.78rem; color: var(--color-muted); white-space: nowrap; }
 
-/* ── Category filter bar ── */
-.cat-filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  padding-bottom: 0.75rem;
+/* Between the 640px mobile-card breakpoint and full desktop width, the real
+   <table> (10 columns, none of which ever wrap under table-layout:auto) can
+   need more room than the viewport has. Two things were already tried and
+   dropped here: (1) hiding wishlist/date alone wasn't reliably enough against
+   real content, and (2) a horizontal-scroll wrapper technically stopped the
+   page from breaking, but the user explicitly didn't want the header
+   "sliding" separately from the page, and it also broke the desktop sticky
+   table-header (overflow-x:auto forces overflow-y:auto too, making the
+   wrapper a competing position:sticky containing block — the header detached
+   and floated mid-table on scroll instead of tracking the page).
+   The actual fix: table-layout:fixed + an explicit width on every column
+   except name — but that width has to be each column's real natural size
+   (measured live at full desktop, not guessed), or the functional columns
+   themselves end up visibly cramped/misaligned, which is exactly what a
+   first pass at this got wrong. Name+description is the one column that's
+   genuinely just a preview (the row expands to the real thing on click), so
+   it's the one allowed to end up narrow — .product-desc already had its own
+   single-line ellipsis truncation from before this breakpoint existed; the
+   fix here must not override that (an earlier version of this rule
+   accidentally did, forcing it to wrap instead of truncate — the opposite of
+   what was wanted). row-num ("#") is dropped outright at this breakpoint,
+   same as it already is on full mobile — purely decorative, not worth the
+   width. */
+@media (max-width: 999px) {
+  .wishlist-col, .date-col { display: none; }
+  .products-table { table-layout: fixed; }
+  .products-table .row-num { display: none; }
+  .products-table .check-col  { width: 34px; }
+  .products-table .thumb-col  { width: 60px; }
+  .products-table .cat-col    { width: 100px; }
+  .products-table .price-col  { width: 90px; }
+  .products-table .stock-col  { width: 80px; }
+  .products-table .actions-col { width: 44px; }
+  /* No explicit width on .name-col — table-layout:fixed hands it whatever's
+     left over after the columns above. .product-desc's own base rule
+     already truncates with an ellipsis; .product-name doesn't, so it gets
+     the same single-line treatment here rather than wrapping and inflating
+     row height. */
+  .products-table .name-col .product-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
-.cat-chip {
-  padding: 0.22rem 0.7rem;
-  border-radius: 2rem;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-muted);
-  font-size: 0.8rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.12s, color 0.12s, background 0.12s;
-  white-space: nowrap;
+/* ── Mobile-only sort/filter toolbar — on desktop, sort + filter live in the
+   table's own header row (.sort-btn per column + a funnel button where
+   filtering is relevant), same as the variant-combo table. The header
+   controls become unreachable once the table collapses to cards on mobile
+   (thead is display:none below 640px), so this toolbar takes over there
+   instead — hidden by default, shown only ≤640px. Both surfaces share state
+   (see initProductsToolbar in products.ts / the messages inline script) so
+   they can't diverge across a resize. Dropdown content itself renders into
+   .toolbar-portal (see below), not inline here. */
+.table-toolbar {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
 }
-.cat-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
-.cat-chip--active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-.cat-chip--active:hover { color: #fff; }
+@media (max-width: 640px) {
+  .table-toolbar:not([hidden]) { display: flex; }
+}
+
+.table-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 2rem;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.table-toolbar-btn:hover,
+.table-toolbar-btn[aria-expanded="true"] { border-color: var(--color-primary); color: var(--color-primary); }
+
+.table-toolbar-btn__chevron { flex-shrink: 0; transition: transform 0.15s ease; }
+.table-toolbar-btn[aria-expanded="true"] .table-toolbar-btn__chevron { transform: rotate(180deg); }
+
+.filter-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Filter dropdown's drill-down chrome, layered onto the existing
+   .product-menu__dropdown/.product-menu__item (kebab-menu) classes. */
+.product-menu__divider { height: 1px; background: var(--color-border); margin: 0.3rem 0; }
+
+.product-menu__back {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  text-align: start;
+  padding: 0.45rem 0.75rem;
+  border-radius: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+  transition: background 0.1s;
+}
+.product-menu__back:hover { background: var(--color-bg); }
+
+.product-menu__clear {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 0.45rem 0.75rem;
+  border-radius: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  transition: background 0.1s, color 0.1s;
+}
+.product-menu__clear:hover { background: var(--color-bg); color: var(--color-text); }
+
+.product-menu__checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--color-text);
+  transition: background 0.1s;
+}
+.product-menu__checkbox-item:hover { background: var(--color-bg); }
+.product-menu__checkbox-item input { cursor: pointer; flex-shrink: 0; }
+
+/* ── Floating dropdown portal — one body-anchored element reused by every
+   toolbar/header dropdown (mobile sort menu, mobile filter drill-down,
+   desktop per-column funnels), for both the products table and the messages
+   table. Position (top/left) is computed in JS from the real trigger rect and
+   clamped to the viewport on every open, so it can never render off-screen —
+   see positionToolbarPortal() in products.ts / positionMsgPortal() in
+   dashboard.astro. Its contents reuse .product-menu__item/__checkbox-item/
+   __back/__clear/__divider (defined above). ── */
+.toolbar-portal {
+  position: fixed;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.13);
+  padding: 0.3rem;
+  z-index: 300;
+  animation: product-menu-open 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Sort buttons (table headers — products + messages) */
+.sort-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: 600 0.8rem/1 inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: color 0.1s;
+}
+.sort-btn:hover { color: var(--color-text); }
+.sort-btn[data-active="true"] { color: var(--color-primary); }
+
+.sort-icon { opacity: 0.2; transition: opacity 0.1s, transform 0.15s; }
+.sort-btn[data-active="true"] .sort-icon { opacity: 1; }
+.sort-btn[data-active="true"][data-dir="desc"] .sort-icon { transform: rotate(180deg); }
 
 /* ── Products pagination ── */
 .products-pagination {
@@ -853,14 +1023,18 @@ textarea.input { resize: vertical; }
   .products-table thead    { display: none; }
   .products-table tbody    { display: flex; flex-direction: column; }
 
-  /* Each product row → 2-row grid card */
+  /* Each product row → 2-row grid card. "actions" repeats in both rows of
+     the template on purpose, so the kebab button spans the card's full
+     height and reads as "menu for this whole row" — it was previously only
+     in row 1, directly above stock, which visually (mis)read as if stock
+     belonged to the actions button rather than to price right next to it. */
   .products-table tbody tr[data-product-display] {
     display: grid;
-    grid-template-columns: auto auto 1fr auto;
+    grid-template-columns: auto auto 1fr auto auto;
     grid-template-rows: auto auto;
     grid-template-areas:
-      "check thumb name    actions"
-      "check thumb price   stock";
+      "check thumb name  name  actions"
+      "check thumb price stock actions";
     column-gap: 0.6rem;
     row-gap: 0.08rem;
     padding: 0.6rem 0.2rem;
@@ -908,7 +1082,7 @@ textarea.input { resize: vertical; }
     font-size: 0.76rem;
     color: var(--color-muted);
     padding-top: 0.08rem;
-    text-align: end;
+    white-space: nowrap;
   }
   .products-table tr[data-product-display] .actions {
     grid-area: actions;
@@ -1153,32 +1327,6 @@ textarea.input { resize: vertical; }
 
 #settings-body { padding-top: 0; }
 
-/* Sort buttons */
-.sort-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  color: inherit;
-  font: 600 0.8rem/1 inherit;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  transition: color 0.1s;
-}
-
-.sort-btn:hover { color: var(--color-text); }
-.sort-btn[data-active="true"] { color: var(--color-primary); }
-
-.sort-icon {
-  opacity: 0.2;
-  transition: opacity 0.1s, transform 0.15s;
-}
-
-.sort-btn[data-active="true"] .sort-icon { opacity: 1; }
-.sort-btn[data-active="true"][data-dir="desc"] .sort-icon { transform: rotate(180deg); }
 
 /* Variant combo grid — same look as the products-table sort buttons, kept as
    its own class so the global products-table sort script doesn't pick these

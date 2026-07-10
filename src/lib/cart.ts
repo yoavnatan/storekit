@@ -54,6 +54,15 @@ export function getStoreItems(storeSlug: string): CartItem[] {
   return Object.values(readStoreCart(storeSlug)?.items ?? {});
 }
 
+export function getCartQty(
+  storeSlug: string,
+  slug: string,
+  selectedVariants?: Record<string, string>
+): number {
+  const key = makeCartKey(slug, selectedVariants);
+  return readStoreCart(storeSlug)?.items[key]?.qty ?? 0;
+}
+
 export function addItem(
   storeSlug: string,
   storeName: string,
@@ -65,10 +74,11 @@ export function addItem(
   cart.storeName = storeName;
   const key = makeCartKey(product.slug, selectedVariants);
   const prev = cart.items[key];
+  const nextQty = (prev?.qty ?? 0) + qty;
   cart.items[key] = {
     cartKey: key,
     ...product,
-    qty: (prev?.qty ?? 0) + qty,
+    qty: product.stock != null ? Math.min(nextQty, Math.max(0, product.stock)) : nextQty,
     ...(selectedVariants && Object.keys(selectedVariants).length ? { selectedVariants } : {}),
   };
   writeStoreCart(cart);

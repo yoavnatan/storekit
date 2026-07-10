@@ -96,10 +96,32 @@
    the drawer background. */
 .cart-line img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex-shrink: 0; background: var(--color-surface); border: 1px solid var(--color-border); }
 .cart-line__img-placeholder { width: 56px; height: 56px; border-radius: 8px; background: var(--color-surface); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-border); }
+/* Wishlist panel renders its rows via client-side innerHTML, not Astro's own
+   template — a component-scoped <style> block never reaches those elements
+   (Astro's data-astro-cid attribute only lands on markup it compiles itself),
+   so these live here in global CSS instead, same reasoning as .cart-line img above. */
+.wl-img-wrap { position: relative; width: 56px; height: 56px; border-radius: 8px; overflow: hidden; flex-shrink: 0; border: 1px solid var(--color-border); }
+.wl-img-wrap.loaded { background: var(--color-surface); animation: none; }
+/* 100% of the wrap, not a hardcoded 56px — the wrap's own border eats into
+   its box (box-sizing:border-box), shrinking its actual content area below
+   56px; a same-56px child then overflowed that shrunk area and got clipped
+   asymmetrically by overflow:hidden, reading as the border sitting in the
+   wrong place relative to the image. */
+.wl-img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.18s; }
+.wl-img-wrap.loaded .wl-img { opacity: 1; }
+/* Qty stepper (24px) and remove button (26px) are sized for the cart drawer's
+   own row, where they sit beside plain price text — not a same-row .btn,
+   whose padding+line-height renders taller. Grown to match the "add to
+   cart" button's natural height here (rather than shrinking the CTA) so all
+   three controls line up; scoped to .wl-controls so the cart drawer's own
+   rows (and checkout's, which reuse the same classes) are untouched. */
+.wl-controls .cart-line__qty button { height: 30px; }
+.wl-controls .cart-line__rm { width: 30px; height: 30px; }
+.wl-controls .btn { height: 30px; padding-top: 0; padding-bottom: 0; }
 .cart-line__info { flex: 1; min-width: 0; }
 .cart-line__footer { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.3rem; }
 .cart-line__price { flex: 1; font-size: 0.82rem; font-weight: 600; color: var(--color-text); }
-.cart-line__qty { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--color-border); border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-inset); }
+.cart-line__qty { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--color-border); border-radius: 6px; overflow: hidden; }
 .cart-line__qty button { width: 24px; height: 24px; border: none; display: flex; align-items: center; justify-content: center; line-height: 1; transition: background 0.1s; }
 .cart-line__qty button:hover { background: var(--color-surface); }
 .cart-line__qty button:disabled { opacity: 0.35; }

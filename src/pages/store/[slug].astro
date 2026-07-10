@@ -88,8 +88,8 @@ const pmI18n = {
             <img
               src={cdnSrc(shopStore.bannerImage, 1200)}
               alt=""
-              width="1160"
-              height="320"
+              width="1200"
+              height="400"
               class="store-banner__bg"
             />
           </div>
@@ -258,7 +258,7 @@ const pmI18n = {
                     data-wishlist-slug={p.slug}
                     data-wishlist-name={p.name}
                     data-wishlist-price={String(p.price)}
-                    data-wishlist-image={p.images?.[0] ?? ''}
+                    data-wishlist-image={p.images?.[0] ? cdnSrc(p.images[0]) : ''}
                     data-wishlist-store-slug={shopStore.slug}
                     data-wishlist-store-name={shopStore.name}
                     data-wishlist-stock={String(p.stock)}
@@ -285,7 +285,7 @@ const pmI18n = {
                       <span class="product-card__price">{formatPrice(p.price)}</span>
                       {p.stock <= 0
                           ? <span class="badge badge--muted">{t.store.outOfStock}</span>
-                          : <div dir="ltr" class="product-card__qtycart flex items-center" style="width:100%;height:2.25rem;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-inset)">
+                          : <div dir="ltr" class="product-card__qtycart flex items-center" style="width:100%;height:2.25rem;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden">
                               <button type="button" class="qty-dec flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30" style="width:2.25rem;height:100%" aria-label={t.cart.qtyDecrease} disabled>
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                               </button>
@@ -384,8 +384,9 @@ const pmI18n = {
 )} />
 
 <script>
-  import { addItem, syncCartImages } from '../../lib/cart.js';
+  import { addItem, syncCartImages, getCartQty } from '../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
+  import { cdnSrc } from '../../config/store.config.js';
   import { spawnRipple } from '../../lib/ripple.js';
   import { spawnBurst } from '../../lib/burst.js';
   import { trackAddToCart } from '../../lib/tracking.js';
@@ -562,19 +563,33 @@ const pmI18n = {
     const qtyDec = card.querySelector<HTMLButtonElement>('.qty-dec');
     const qtyInc = card.querySelector<HTMLButtonElement>('.qty-inc');
     const qtyVal = card.querySelector<HTMLElement>('.qty-val');
+    const slug = addBtn.dataset.slug ?? '';
     const maxStock = Math.max(1, parseInt(addBtn.dataset.stock ?? '99', 10) || 99);
     const cardCategory = card.dataset.category ?? '';
     let qty = 1;
 
+    // Ceiling isn't just the product's total stock — it's what's left after
+    // whatever quantity of this same product already sits in the cart (added
+    // from here, the quick-view, or elsewhere), so repeated add-to-cart clicks
+    // can't push the cart past real stock once every unit is already in it.
+    function ceiling(): number {
+      return Math.max(0, maxStock - getCartQty(storeSlug, slug));
+    }
+
     function updateQty(n: number) {
-      qty = Math.max(1, Math.min(n, maxStock));
+      const cap = ceiling();
+      qty = cap <= 0 ? 0 : Math.max(1, Math.min(n, cap));
       // Hide the "1" default — showing it on every idle card in the grid
       // reads as repetitive clutter; the number earns its place once the
       // buyer actually picks more than one.
       if (qtyVal) { qtyVal.textContent = String(qty); qtyVal.style.display = qty > 1 ? '' : 'none'; }
       if (qtyDec) qtyDec.disabled = qty <= 1;
-      if (qtyInc) qtyInc.disabled = qty >= maxStock;
+      if (qtyInc) qtyInc.disabled = cap <= 0 || qty >= cap;
+      addBtn.disabled = cap <= 0;
     }
+
+    updateQty(1);
+    window.addEventListener('cart:change', () => updateQty(Math.max(qty, 1)));
 
     qtyDec?.addEventListener('click', () => updateQty(qty - 1));
     qtyInc?.addEventListener('click', () => updateQty(qty + 1));
@@ -594,7 +609,7 @@ const pmI18n = {
         openProductModal(card, true);
         return;
       }
-      const { slug = '', name = '', price = '0', image = '' } = addBtn.dataset;
+      const { name = '', price = '0', image = '' } = addBtn.dataset;
       addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty);
       trackAddToCart({ id: slug, name, price: Number(price), category: cardCategory }, qty);
       updateQty(1);
@@ -613,8 +628,8 @@ const pmI18n = {
       setTimeout(() => {
         if (labelSpan) labelSpan.innerHTML = originalIcon;
         addBtn.setAttribute('aria-label', originalAriaLabel);
-        addBtn.disabled = false;
         addBtn.classList.remove('btn--confirmed');
+        updateQty(1); // re-enables only if stock remains, not blindly
       }, 1400);
     });
   });
@@ -984,7 +999,7 @@ const pmI18n = {
     const cartSection = stock > 0
       ? `<div>
           <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.6rem">
-            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0;box-shadow:var(--shadow-inset)">
+            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
               <button type="button" class="pm-qty-dec" disabled aria-label="הפחת"
                       style="width:2rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted);transition:background 0.1s">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1108,6 +1123,7 @@ const pmI18n = {
         const vName = btn.dataset.pvName ?? '';
         const vValue = btn.dataset.pvValue ?? '';
         pmSelectedVariants[vName] = vValue;
+        updatePmQty(1); // this combo may already have a different amount in the cart
         pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(vName)}"]`)?.classList.remove('variant-group--invalid');
         pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
           const active = b === btn;
@@ -1216,11 +1232,22 @@ const pmI18n = {
     const pmQtyVal = pmFooter?.querySelector<HTMLElement>('.pm-qty-val');
     let pmQty = 1;
 
+    // Ceiling accounts for whatever quantity of this exact combo is already
+    // in the cart (added here, from the product grid, or elsewhere) — not
+    // just the combo's raw stock — so repeated add-to-cart clicks can't push
+    // the cart past real stock once every unit is already in it.
+    function pmCeiling(): number {
+      const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
+      return Math.max(0, stock - getCartQty(storeSlug, slug, pmVariantsCopy));
+    }
+
     function updatePmQty(n: number) {
-      pmQty = Math.max(1, Math.min(n, stock));
+      const cap = pmCeiling();
+      pmQty = cap <= 0 ? 0 : Math.max(1, Math.min(n, cap));
       if (pmQtyVal) pmQtyVal.textContent = String(pmQty);
       if (pmQtyDec) pmQtyDec.disabled = pmQty <= 1;
-      if (pmQtyInc) pmQtyInc.disabled = pmQty >= stock;
+      if (pmQtyInc) pmQtyInc.disabled = cap <= 0 || pmQty >= cap;
+      if (pmAddBtn) pmAddBtn.disabled = cap <= 0;
     }
     pmQtyDec?.addEventListener('click', () => updatePmQty(pmQty - 1));
     pmQtyInc?.addEventListener('click', () => updatePmQty(pmQty + 1));
@@ -1233,6 +1260,7 @@ const pmI18n = {
 
     pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
     const pmToCheckout = pmFooter?.querySelector<HTMLAnchorElement>('.pm-to-checkout');
+    updatePmQty(1); // reflect already-in-cart state as soon as the modal opens
 
     pmAddBtn?.addEventListener('click', () => {
       if (pmAddBtn.disabled) return;
@@ -1251,8 +1279,8 @@ const pmI18n = {
       );
       setTimeout(() => {
         if (pmBtnLbl) pmBtnLbl.textContent = origLabel;
-        pmAddBtn.disabled = false;
         pmAddBtn.classList.remove('btn--confirmed');
+        updatePmQty(1); // re-enables only if stock remains, not blindly
       }, 1400);
     });
 
@@ -1260,7 +1288,7 @@ const pmI18n = {
     const pmWishBtn  = pmFooter?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
     const pmWishLbl  = pmFooter?.querySelector<HTMLElement>('.pm-wish-label');
     pmWishBtn?.addEventListener('click', () => {
-      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl, storeSlug, storeName, stock });
+      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl ? cdnSrc(mainImgUrl) : '', storeSlug, storeName, stock });
       const svg = pmWishBtn.querySelector<SVGElement>('svg');
       if (svg) { svg.style.fill = nowActive ? '#e53e3e' : 'none'; svg.style.stroke = nowActive ? '#e53e3e' : 'currentColor'; }
       pmWishBtn.style.color = nowActive ? '#e53e3e' : 'var(--color-muted)';

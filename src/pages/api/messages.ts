@@ -20,6 +20,7 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   const url = new URL(request.url);
   const role = url.searchParams.get('role') ?? 'buyer';
   const repliesFor = url.searchParams.get('repliesFor');
+  const storeId = url.searchParams.get('storeId');
 
   if (repliesFor) {
     const replies = getMessageReplies(repliesFor);
@@ -29,7 +30,8 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   if (url.searchParams.get('unread') === '1') {
     const json = { 'Content-Type': 'application/json' };
     if (role === 'seller') {
-      const originals = getMessagesBySeller(userId).filter((m) => !m.replyToId);
+      let originals = getMessagesBySeller(userId).filter((m) => !m.replyToId);
+      if (storeId) originals = originals.filter((m) => m.toStoreId === storeId);
       const unreadIds = originals
         .filter((m) => !m.readBySeller || getMessageReplies(m.id).some((r) => r.toSellerId === userId && !r.readBySeller))
         .map((m) => m.id);

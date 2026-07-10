@@ -18,33 +18,13 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div id="wishlist-lines" style="flex:1;overflow-y:auto;padding:0.5rem 0.4rem"></div>
+  <div id="wishlist-lines" style="flex:1;overflow-y:auto;overscroll-behavior:contain;padding:0.5rem 0.4rem"></div>
 </div>
-
-<style>
-  .wl-img-wrap {
-    position: relative;
-    width: 40px; height: 40px;
-    border-radius: 6px;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  .wl-img-wrap.loaded { background: none; animation: none; }
-  .wl-img {
-    width: 40px; height: 40px;
-    object-fit: cover;
-    border-radius: 6px;
-    display: block;
-    opacity: 0;
-    transition: opacity 0.18s;
-  }
-  .wl-img-wrap.loaded .wl-img { opacity: 1; }
-</style>
 
 <script>
   import { removeFromWishlist, addToWishlist, getWishlistByStore, getWishlistCount } from '../lib/wishlist.js';
-  import { addItem } from '../lib/cart.js';
-  import { formatPrice } from '../config/store.config.js';
+  import { addItem, getCartQty } from '../lib/cart.js';
+  import { formatPrice, cdnSrc } from '../config/store.config.js';
   import { spawnRipple } from '../lib/ripple.js';
 
   function getI18n() {
@@ -60,6 +40,15 @@
 
   const esc = (s: unknown) =>
     String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // render() rebuilds the whole list (innerHTML) on every wishlist:change
+  // while the panel is open — even for an unrelated add/remove elsewhere on
+  // the page — which destroys and recreates every <img>, resetting them all
+  // back to their opacity:0 skeleton state and re-fading in at once (a
+  // full-panel "flicker"). Once a src has successfully decoded, it's
+  // recorded here so a later render() can paint it already-loaded from the
+  // first frame instead of replaying the fade for images the user already saw.
+  const loadedImageSrcs = new Set<string>();
 
   function position() {
     if (!panel) return;
@@ -123,7 +112,11 @@
     lines?.querySelectorAll<HTMLElement>('.wl-img-wrap:not(.loaded)').forEach((wrap) => {
       const img = wrap.querySelector<HTMLImageElement>('img');
       if (!img) return;
-      img.decode().then(() => wrap.classList.add('loaded')).catch(() => wrap.classList.add('loaded'));
+      const markLoaded = () => {
+        wrap.classList.add('loaded');
+        if (img.src) loadedImageSrcs.add(img.src);
+      };
+      img.decode().then(markLoaded).catch(markLoaded);
     });
   }
 
@@ -181,24 +174,33 @@
           <a href="/store/${esc(storeSlug)}" style="font-weight:700;font-size:0.82rem;color:var(--color-primary);text-decoration:none;flex:1">${esc(storeName)}</a>
           <span style="font-size:0.72rem;color:var(--color-muted)">${items.length}</span>
         </div>
-        ${items.map((item, idx) => `
+        ${items.map((item, idx) => {
+          // Ceiling nets out whatever quantity of this product already sits in
+          // the cart (added from here, the store page, or a quick-view) — not
+          // just its raw stock — so this stepper/button can't push the cart
+          // past real stock once every unit is already in it.
+          const remaining = item.stock != null ? Math.max(0, item.stock - getCartQty(storeSlug, item.slug)) : undefined;
+          return `
           ${idx > 0 ? '<div style="height:1px;background:var(--color-border);margin:0 0.4rem"></div>' : ''}
-          <div class="wl-item" style="display:flex;gap:0.55rem;padding:0.45rem 0.6rem;align-items:center">
-            <a href="/store/${esc(storeSlug)}/${esc(item.slug)}" style="display:flex;align-items:center;gap:0.55rem;flex:1;min-width:0;text-decoration:none;color:inherit">
+          <div class="wl-item" style="display:flex;flex-direction:column;gap:0.4rem;padding:0.45rem 0.6rem">
+            <a href="/store/${esc(storeSlug)}/${esc(item.slug)}" style="display:flex;align-items:center;gap:0.55rem;min-width:0;text-decoration:none;color:inherit">
               ${item.image
-                ? `<span class="wl-img-wrap skel-bar"><img class="wl-img" src="${esc(item.image)}" alt="${esc(item.name)}" width="40" height="40" loading="eager"></span>`
-                : `<div style="width:40px;height:40px;border-radius:6px;background:var(--color-surface);border:1px solid var(--color-border);flex-shrink:0"></div>`}
+                ? (() => {
+                    const imgSrc = cdnSrc(item.image, 400);
+                    const alreadyLoaded = loadedImageSrcs.has(imgSrc);
+                    return `<span class="wl-img-wrap skel-bar${alreadyLoaded ? ' loaded' : ''}" style="border-radius:8px"><img class="wl-img" src="${esc(imgSrc)}" alt="${esc(item.name)}" width="56" height="56" loading="eager" style="${alreadyLoaded ? 'opacity:1' : ''}"></span>`;
+                  })()
+                : `<div style="width:56px;height:56px;border-radius:8px;background:var(--color-surface);border:1px solid var(--color-border);flex-shrink:0"></div>`}
               <div style="flex:1;min-width:0">
                 <span style="display:block;font-weight:600;font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</span>
                 <span style="font-size:0.8rem;color:var(--color-muted)">${formatPrice(item.price)}</span>
               </div>
             </a>
-            <div style="display:flex;align-items:center;gap:0.28rem;flex-shrink:0">
-                <button data-wl-rm="${esc(item.slug)}" aria-label="${esc(i18n.remove ?? 'Remove')}" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--color-border);background:var(--color-surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:var(--color-muted);transition:background 0.1s,color 0.1s"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><circle cx="10" cy="13" r="1.1" fill="currentColor" stroke="none"/><circle cx="14" cy="13" r="1.1" fill="currentColor" stroke="none"/><path d="M9 6V4h6v2"/></svg></button>
+            <div class="wl-controls" style="display:flex;align-items:center;gap:0.35rem">
                 <div class="cart-line__qty" dir="ltr" style="flex-shrink:0">
                   <button data-wl-minus="${esc(item.slug)}" aria-label="${esc(cartI18n.qtyDecrease ?? 'Decrease quantity')}" disabled>−</button>
                   <span data-wl-qty="${esc(item.slug)}" aria-live="polite" aria-atomic="true">1</span>
-                  <button data-wl-plus="${esc(item.slug)}" data-stock="${item.stock ?? ''}" aria-label="${esc(cartI18n.qtyIncrease ?? 'Increase quantity')}" ${item.stock != null && item.stock <= 1 ? 'disabled' : ''}>+</button>
+                  <button data-wl-plus="${esc(item.slug)}" data-stock="${remaining ?? ''}" aria-label="${esc(cartI18n.qtyIncrease ?? 'Increase quantity')}" ${remaining != null && remaining <= 1 ? 'disabled' : ''}>+</button>
                 </div>
                 <button
                   class="btn btn--sm"
@@ -207,13 +209,16 @@
                   data-wl-sname="${esc(storeName)}"
                   data-wl-name="${esc(item.name)}"
                   data-wl-price="${item.price}"
-                  data-wl-img="${esc(item.image)}"
+                  data-wl-img="${esc(cdnSrc(item.image, 400))}"
                   data-wl-stock="${item.stock ?? ''}"
                   data-label-added="${esc(i18n.addedToCart ?? 'Added ✓')}"
-                  style="font-size:0.72rem;white-space:nowrap;flex-shrink:0"
+                  style="flex:1;font-size:0.78rem;white-space:nowrap"
+                  ${remaining != null && remaining <= 0 ? 'disabled' : ''}
                 >${esc(i18n.addToCart ?? 'Add to cart')}</button>
+                <button data-wl-rm="${esc(item.slug)}" class="cart-line__rm" aria-label="${esc(i18n.remove ?? 'Remove')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><circle cx="10" cy="13" r="1.1" fill="currentColor" stroke="none"/><circle cx="14" cy="13" r="1.1" fill="currentColor" stroke="none"/><path d="M9 6V4h6v2"/></svg></button>
             </div>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>`).join('');
     hydrateImages();
   }
@@ -273,6 +278,8 @@
     const cartBtn = e.target.closest<HTMLButtonElement>('[data-wl-cart]');
     if (cartBtn) {
       const slug = cartBtn.dataset.wlCart ?? '';
+      const cartStoreSlug = cartBtn.dataset.wlStore ?? '';
+      const rawStock = cartBtn.dataset.wlStock ? Number(cartBtn.dataset.wlStock) : undefined;
       const qtyEl = lines.querySelector<HTMLElement>(`[data-wl-qty="${slug}"]`);
       const qty = Math.max(1, parseInt(qtyEl?.textContent ?? '1', 10));
       const itemData = {
@@ -280,10 +287,10 @@
         name:  cartBtn.dataset.wlName  ?? '',
         price: Number(cartBtn.dataset.wlPrice ?? 0),
         image: cartBtn.dataset.wlImg   ?? '',
-        stock: cartBtn.dataset.wlStock ? Number(cartBtn.dataset.wlStock) : undefined,
+        stock: rawStock,
       };
       for (let i = 0; i < qty; i++) {
-        addItem(cartBtn.dataset.wlStore ?? '', cartBtn.dataset.wlSname ?? '', itemData);
+        addItem(cartStoreSlug, cartBtn.dataset.wlSname ?? '', itemData);
       }
       const orig = cartBtn.textContent ?? '';
       cartBtn.textContent = cartBtn.dataset.labelAdded ?? orig;
@@ -295,8 +302,20 @@
       );
       setTimeout(() => {
         cartBtn.textContent = orig;
-        cartBtn.disabled = false;
         cartBtn.classList.remove('btn--confirmed');
+        // Re-enables only if stock remains, not blindly — also re-syncs this
+        // row's own qty stepper to the fresh ceiling.
+        const remaining = rawStock != null ? Math.max(0, rawStock - getCartQty(cartStoreSlug, slug)) : undefined;
+        cartBtn.disabled = remaining != null && remaining <= 0;
+        const qtyRow = cartBtn.closest<HTMLElement>('.wl-controls')?.querySelector<HTMLElement>('.cart-line__qty');
+        const plusBtn = qtyRow?.querySelector<HTMLButtonElement>('[data-wl-plus]');
+        const minusBtn = qtyRow?.querySelector<HTMLButtonElement>('[data-wl-minus]');
+        if (qtyEl) qtyEl.textContent = '1';
+        if (minusBtn) minusBtn.disabled = true;
+        if (plusBtn) {
+          plusBtn.dataset.stock = String(remaining ?? '');
+          plusBtn.disabled = remaining != null && remaining <= 1;
+        }
       }, 1400);
       return;
     }

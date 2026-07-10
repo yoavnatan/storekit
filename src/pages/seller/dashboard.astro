@@ -145,8 +145,25 @@ if (Astro.request.method === 'POST') {
 const allStores = getStoresBySellerId(sellerId);
 const hasNoStore = allStores.length === 0;
 
-const activeStoreId = hasNoStore ? '' : (Astro.url.searchParams.get('store') ?? '');
+// No ?store= in the URL (e.g. arriving fresh via the header's "seller
+// dashboard" link) falls back to whichever store the seller was last on,
+// not always the first one — persisted via a cookie since this is an SSR
+// redirect target, not something a client-side script can decide before
+// the page renders.
+const LAST_STORE_COOKIE = 'seller_last_store';
+const queryStoreId = Astro.url.searchParams.get('store');
+const lastStoreId = Astro.cookies.get(LAST_STORE_COOKIE)?.value ?? '';
+const activeStoreId = hasNoStore ? '' : (queryStoreId ?? lastStoreId);
 const store = hasNoStore ? undefined : (allStores.find((s) => s.id === activeStoreId) ?? allStores[0]);
+if (store && store.id !== lastStoreId) {
+  Astro.cookies.set(LAST_STORE_COOKIE, store.id, {
+    httpOnly: true,
+    secure: import.meta.env.PROD,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 180,
+  });
+}
 const settingsSuccess = !hasNoStore && Astro.url.searchParams.get('saved') === '1';
 const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1';
 const products = store
@@ -160,7 +177,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 const initialPanel = Astro.url.searchParams.get('panel') ?? 'products';
 const storeMessages = store
   ? getMessagesBySeller(sellerId)
-      .filter((m) => !m.replyToId)
+      .filter((m) => !m.replyToId && m.toStoreId === store.id)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   : [];
 const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
@@ -171,6 +188,11 @@ const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
 const unreadMessagesCount = storeMessages.filter((m) =>
   !m.readBySeller || messageReplies[m.id]!.some((r) => r.toSellerId === sellerId && !r.readBySeller)
 ).length;
+// Sorting/filtering by read-status is only meaningful when the store actually
+// has a mix of both — with everything read (or everything unread) there's
+// nothing to sort or filter, so hide those controls entirely rather than
+// leave a dead, functionless option in the menu.
+const showMsgStatusControls = unreadMessagesCount > 0 && unreadMessagesCount < storeMessages.length;
 const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
 const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
 
@@ -225,7 +247,7 @@ const orderStatusColors: Record<string, string> = {
     </section>
   ) : store ? (
   <Fragment>
-  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-name={store.name} data-seller-id={sellerId} hidden></div>
+  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-seller-id={sellerId} hidden></div>
   <section class="section container dash-section">
     <div id="dash-main-card" class="card" style="margin-bottom:1.5rem">
 
@@ -256,7 +278,7 @@ const orderStatusColors: Record<string, string> = {
                 {allStores.map((s) => (
                   <li>
                     <a
-                      href={`/seller/dashboard?store=${s.id}`}
+                      href={`/seller/dashboard?store=${s.id}&panel=${initialPanel}`}
                       role="option"
                       aria-selected={s.id === store.id}
                       class={s.id === store.id ? 'store-option--current' : ''}
@@ -488,8 +510,29 @@ const orderStatusColors: Record<string, string> = {
           {/* Bulk image upload panel */}
           <div id="bulk-upload-panel" class="bulk-upload-panel" hidden></div>
 
-          {/* Category filter bar — rendered by JS when products have categories */}
-          <div class="cat-filter-bar" id="cat-filter-bar" hidden></div>
+          {/* Mobile-only sort/filter toolbar (≤640px) — sits above the table,
+              outside <thead>, so it's reachable once the table collapses to
+              cards (thead is display:none below 640px). On desktop, sort and
+              filter instead live directly in the table header (.sort-btn per
+              column + a funnel button on the category column, same as the
+              variant-combo table's own per-column filter). Both surfaces
+              share the same JS state (initProductsToolbar in products.ts) so
+              they can't diverge across a window resize. Dropdown content
+              itself is built + positioned in JS (a single body-anchored
+              portal, clamped to the viewport) — see toolbarPortal helpers. */}
+          <div class="table-toolbar" hidden={products.length === 0}>
+            <button type="button" id="products-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+              <span id="products-sort-label">{d.sortOptDateDesc}</span>
+              <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button type="button" id="products-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              <span>{d.filterByLabel}</span>
+              <span id="products-filter-count" class="filter-count-badge" hidden>0</span>
+              <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
 
           <table id="products-table" class="products-table" hidden={products.length === 0}>
             <thead>
@@ -497,16 +540,21 @@ const orderStatusColors: Record<string, string> = {
                 <th class="check-col"><input type="checkbox" id="bulk-select-all" class="bulk-select-all" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0"></th>
                 <th class="num row-num" style="width:2rem">#</th>
                 <th class="thumb-col"></th>
-                <th>
+                <th class="name-col">
                   <button type="button" class="sort-btn" data-sort-col="name">{d.colName}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
                 <th class="cat-col">
-                  <button type="button" class="sort-btn" data-sort-col="category">{d.categoryLabel}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                  <div style="display:flex;align-items:center;gap:0.25rem">
+                    <button type="button" class="sort-btn" data-sort-col="category">{d.categoryLabel}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                    <button type="button" class="combo-filter-btn" data-filter-funnel-col="category" aria-expanded="false" aria-haspopup="true" aria-label={`${d.filterByLabel ?? 'סנן לפי'} ${d.categoryLabel}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    </button>
+                  </div>
                 </th>
-                <th>
+                <th class="price-col">
                   <button type="button" class="sort-btn" data-sort-col="price">{d.colPrice}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
-                <th>
+                <th class="stock-col">
                   <button type="button" class="sort-btn" data-sort-col="stock">{d.colStock}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
                 <th class="num wishlist-col">
@@ -518,7 +566,7 @@ const orderStatusColors: Record<string, string> = {
                 <th class="date-col">
                   <button type="button" class="sort-btn" data-sort-col="createdAt">{d.colDateAdded}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
-                <th />
+                <th class="actions-col" />
               </tr>
             </thead>
             <tbody id="products-tbody">
@@ -541,8 +589,8 @@ const orderStatusColors: Record<string, string> = {
                       {p.description && <span class="product-desc">{p.description}</span>}
                     </td>
                     <td class="cat-col">{p.category ? <span class="product-cat-chip">{p.category}</span> : <span style="color:var(--color-border)">—</span>}</td>
-                    <td class="num product-price">{formatPrice(p.price)}</td>
-                    <td class="num product-stock">
+                    <td class="num product-price price-col">{formatPrice(p.price)}</td>
+                    <td class="num product-stock stock-col">
                       <span style="display:inline-flex;align-items:center;gap:0.3rem">
                         <span>{p.stock}</span>
                         {p.stock <= 0 && (
@@ -590,7 +638,7 @@ const orderStatusColors: Record<string, string> = {
                       }
                     </td>
                     <td class="date-col">{fmtDateAdded(p.createdAt)}</td>
-                    <td class="actions">
+                    <td class="actions actions-col">
                       <div class="product-menu">
                         <button class="product-menu__btn" type="button" aria-label={d.menuLabel ?? 'אפשרויות'} aria-expanded="false" aria-haspopup="true">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
@@ -779,11 +827,24 @@ const orderStatusColors: Record<string, string> = {
       <div id="dash-panel-orders" class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
         <div class="orders-panel-head">
           <h2 style="font-size:1rem;font-weight:600;margin:0">{d.ordersTitle}</h2>
+          {/* Orders is cards-only at every screen size (no table/header to fall
+              back to), so this toolbar is always visible — unlike
+              .table-toolbar (products/messages), it's not display:none above
+              640px. Default filter selection = the old "active" preset
+              (pending/processing/ready/shipped), matching today's default. */}
           {storeOrders.length > 0 && (
-            <div class="order-filter-bar" id="order-filter-bar" role="group" aria-label="סנן הזמנות">
-              <button class="order-filter-btn order-filter-btn--sel" data-filter="active" type="button">פעילות</button>
-              <button class="order-filter-btn" data-filter="completed" type="button">הושלמו</button>
-              <button class="order-filter-btn" data-filter="all" type="button">הכל</button>
+            <div class="orders-toolbar" id="orders-toolbar">
+              <button type="button" id="orders-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+                <span id="orders-sort-label">{d.orderSortOptDateDesc}</span>
+                <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <button type="button" id="orders-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                <span>{d.filterByLabel}</span>
+                <span id="orders-filter-count" class="filter-count-badge" hidden>0</span>
+                <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
             </div>
           )}
         </div>
@@ -799,7 +860,7 @@ const orderStatusColors: Record<string, string> = {
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               return (
-                <div class="order-card" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus}>
+                <div class="order-card" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
                   <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
                     <div class="order-card__meta">
                       <span class="order-card__id">
@@ -912,16 +973,61 @@ const orderStatusColors: Record<string, string> = {
         {storeMessages.length === 0 ? (
           <p class="seller-msg-empty">אין הודעות עדיין.</p>
         ) : (
+          /* Mobile-only sort/filter toolbar — mirrors the products table's own
+             (see the comment there): on desktop, sort/filter live in the
+             header row itself instead (.sort-btn on the date column, a
+             funnel button on the status column). */
+          <div class="table-toolbar" data-mixed-status={String(showMsgStatusControls)}>
+            <button type="button" id="msg-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+              <span id="msg-sort-label">{d.msgSortOptDateDesc}</span>
+              <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button type="button" id="msg-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              <span>{d.filterByLabel}</span>
+              <span id="msg-filter-count" class="filter-count-badge" hidden>0</span>
+              <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
+
           <div class="msg-table-wrap">
             <table class="msg-table">
               <thead>
                 <tr>
-                  <th class="msg-table__th msg-table__th--status"></th>
-                  <th class="msg-table__th">שולח</th>
+                  <th class="msg-table__th msg-table__th--status">
+                    {showMsgStatusControls && (
+                      <div style="display:flex;align-items:center;justify-content:center;gap:0.2rem">
+                        <button type="button" class="sort-btn" data-sort-col="unread" aria-label={d.filterColStatus ?? 'סטטוס'}>
+                          <svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button type="button" class="combo-filter-btn" data-filter-funnel-col="status" aria-expanded="false" aria-haspopup="true" aria-label={`${d.filterByLabel ?? 'סנן לפי'} ${d.filterColStatus ?? 'סטטוס'}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                        </button>
+                      </div>
+                    )}
+                  </th>
+                  <th class="msg-table__th">
+                    <div style="display:flex;align-items:center;gap:0.25rem">
+                      שולח
+                      <button type="button" class="combo-filter-btn" data-filter-funnel-col="from" aria-expanded="false" aria-haspopup="true" aria-label={`${d.filterByLabel ?? 'סנן לפי'} ${d.filterColFrom ?? 'שולח'}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                      </button>
+                    </div>
+                  </th>
                   <th class="msg-table__th">נושא</th>
                   <th class="msg-table__th">תוכן</th>
-                  <th class="msg-table__th">מוצר</th>
-                  <th class="msg-table__th">תאריך</th>
+                  <th class="msg-table__th">
+                    <div style="display:flex;align-items:center;gap:0.25rem">
+                      <button type="button" class="sort-btn" data-sort-col="product">{d.filterColProduct ?? 'מוצר'}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                      <button type="button" class="combo-filter-btn" data-filter-funnel-col="product" aria-expanded="false" aria-haspopup="true" aria-label={`${d.filterByLabel ?? 'סנן לפי'} ${d.filterColProduct ?? 'מוצר'}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                      </button>
+                    </div>
+                  </th>
+                  <th class="msg-table__th">
+                    <button type="button" class="sort-btn" data-sort-col="date">תאריך<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                  </th>
                   <th class="msg-table__th msg-table__th--actions"></th>
                 </tr>
               </thead>
@@ -936,6 +1042,10 @@ const orderStatusColors: Record<string, string> = {
                       <tr
                         class={`msg-table__row${hasUnread ? ' msg-table__row--unread' : ''}`}
                         data-msg-id={msg.id}
+                        data-sort-date={lastMsg.createdAt}
+                        data-sort-product={(msg.productRef?.productName ?? '').toLowerCase()}
+                        data-filter-product={msg.productRef?.productName ?? ''}
+                        data-filter-from={msg.fromName}
                         tabindex="0"
                         role="button"
                         aria-expanded="false"
@@ -1098,17 +1208,10 @@ const orderStatusColors: Record<string, string> = {
     display: flex; flex-direction: column; align-items: flex-start;
     margin-bottom: 1rem; gap: 0.6rem;
   }
-  .order-filter-bar { display: flex; gap: 0.25rem; }
-  .order-filter-btn {
-    font-size: 0.78rem; font-weight: 500;
-    padding: 0.25rem 0.75rem; border-radius: 20px;
-    border: 1.5px solid var(--color-border);
-    background: var(--color-surface); color: var(--color-muted);
-    cursor: pointer; font-family: inherit;
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-  }
-  .order-filter-btn:not(.order-filter-btn--sel):hover { background: var(--color-bg); color: var(--color-text); }
-  .order-filter-btn--sel { background: var(--color-text); color: var(--color-surface); border-color: var(--color-text); cursor: default; }
+  /* Orders is cards-only at every screen size, so this toolbar (unlike
+     .table-toolbar for products/messages) is never display:none — there's no
+     desktop table-header alternative for it to hand off to. */
+  .orders-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 
   .orders-list { display: flex; flex-direction: column; gap: 0.75rem; }
 
@@ -1553,9 +1656,10 @@ const orderStatusColors: Record<string, string> = {
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
   import { initCleanupModal } from '../../scripts/dashboard/cleanup-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
-  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initTableSort, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initCategoryFilter, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
+  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initProductsToolbar, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
   import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
+  import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 
   const uploadCfg = document.getElementById('upload-config');
   const CLOUD  = uploadCfg?.dataset.cloud  ?? '';
@@ -1634,11 +1738,10 @@ const orderStatusColors: Record<string, string> = {
   initFormToggles();
   initStoreSwitcher();
   initAutoHideStatus();
-  initTableSort();
+  initProductsToolbar();
   initBulkSelect(CLOUD, PRESET);
   initThumbs();
   initInlineEdit();
-  initCategoryFilter();
   initPagination();
   initStickyOffsets();
   initViewProduct();
@@ -1807,7 +1910,7 @@ const orderStatusColors: Record<string, string> = {
           }
           // update data attribute + re-apply filter (may hide delivered in active view)
           card.dataset.shippingStatus = newStatus;
-          applyOrderFilter(currentOrderFilter);
+          applyOrdersFilter();
           // moving BACK to pending → re-add dot
           if (!hadDot && newStatus === 'pending') {
             const idSpan = card.querySelector('.order-card__id');
@@ -1836,33 +1939,219 @@ const orderStatusColors: Record<string, string> = {
     });
   });
 
-  // ── Order filter ─────────────────────────────────────────────
+  // ── Orders: sort + filter ────────────────────────────────────
+  // Cards-only at every screen size (no table/header split like
+  // products/messages), so one always-visible toolbar instead of a
+  // desktop-header + mobile-dropdown pair. Filter uses the same
+  // column-list → values drill-down as products'/messages' own "filter by"
+  // (ORDER_FILTER_COLUMNS today only has 'status', but the mechanism is
+  // ready for more columns later without restructuring). Default selection
+  // replicates the old "active" preset.
   const ACTIVE_STATUSES = new Set(['pending', 'processing', 'ready', 'shipped']);
-  let currentOrderFilter = 'active';
+  const ORDER_STATUSES = ['pending', 'processing', 'ready', 'shipped', 'delivered'];
+  const ORDER_STATUS_RANK: Record<string, number> = { pending: 0, processing: 1, ready: 2, shipped: 3, delivered: 4 };
+  const ORDER_FILTER_COLUMNS = ['status']; // add more column keys here (+ a case in getOrderFilterValue) if warranted later
+  const ordersFilters = new Map<string, Set<string>>([['status', new Set(ACTIVE_STATUSES)]]);
+  let ordersSortCol: 'date' | 'amount' | 'status' = 'date';
+  let ordersSortDir: 'asc' | 'desc' = 'desc';
+  let ordersDashI18n: Record<string, string> = {};
+  try { ordersDashI18n = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
 
-  function applyOrderFilter(filter: string): void {
-    currentOrderFilter = filter;
+  const ORDER_SORT_OPTIONS: { col: 'date' | 'amount' | 'status'; dir: 'asc' | 'desc'; label: () => string }[] = [
+    { col: 'date', dir: 'desc', label: () => ordersDashI18n.orderSortOptDateDesc ?? 'תאריך: חדש — ישן' },
+    { col: 'date', dir: 'asc', label: () => ordersDashI18n.orderSortOptDateAsc ?? 'תאריך: ישן — חדש' },
+    { col: 'amount', dir: 'desc', label: () => ordersDashI18n.orderSortOptAmountDesc ?? 'סכום: גבוה — נמוך' },
+    { col: 'amount', dir: 'asc', label: () => ordersDashI18n.orderSortOptAmountAsc ?? 'סכום: נמוך — גבוה' },
+    { col: 'status', dir: 'asc', label: () => ordersDashI18n.orderSortOptStatusAsc ?? 'סטטוס: הזמנות חדשות קודם' },
+  ];
+
+  function getOrderSortValue(card: HTMLElement, col: 'date' | 'amount' | 'status'): string | number {
+    if (col === 'amount') return parseFloat(card.dataset.sortAmount ?? '0');
+    if (col === 'status') return ORDER_STATUS_RANK[card.dataset.shippingStatus ?? ''] ?? 99;
+    return card.dataset.sortDate ?? '';
+  }
+
+  function getOrderFilterValue(card: HTMLElement, col: string): string {
+    if (col === 'status') return card.dataset.shippingStatus ?? '';
+    return '';
+  }
+
+  function orderFilterColumnLabel(col: string): string {
+    if (col === 'status') return ordersDashI18n.filterColStatus ?? 'סטטוס';
+    return col;
+  }
+
+  // 'status' is a fixed small enum, kept in workflow order (not alphabetical)
+  // — a future free-text column would instead scan .order-card for its
+  // distinct values, same as products'/messages' own getDistinctFilterValues.
+  function getOrderDistinctValues(col: string): string[] {
+    if (col === 'status') return ORDER_STATUSES;
+    const values = new Set<string>();
+    document.querySelectorAll<HTMLElement>('.order-card').forEach((card) => values.add(getOrderFilterValue(card, col)));
+    return [...values].sort();
+  }
+
+  function orderFilterValueHtml(col: string, value: string): string {
+    if (col === 'status') return `<span class="order-status-dot" style="background:${colorMap[value] ?? '#888'}"></span>${labelMap[value] ?? value}`;
+    return value;
+  }
+
+  function rowMatchesOrderFilters(card: HTMLElement): boolean {
+    for (const [col, values] of ordersFilters) {
+      if (values.size === 0) continue;
+      if (!values.has(getOrderFilterValue(card, col))) return false;
+    }
+    return true;
+  }
+
+  function refreshOrdersFilterBadge(): void {
+    const badge = document.getElementById('orders-filter-count');
+    if (!badge) return;
+    const activeCols = [...ordersFilters.values()].filter((s) => s.size > 0).length;
+    badge.hidden = activeCols === 0;
+    badge.textContent = String(activeCols);
+  }
+
+  function applyOrdersFilter(): void {
     let visible = 0;
     document.querySelectorAll<HTMLElement>('.order-card').forEach((card) => {
-      const status = card.dataset.shippingStatus ?? '';
-      const show = filter === 'all' ? true
-        : filter === 'active' ? ACTIVE_STATUSES.has(status)
-        : status === 'delivered';
+      const show = rowMatchesOrderFilters(card);
       card.style.display = show ? '' : 'none';
       if (show) visible++;
     });
     const emptyEl = document.getElementById('orders-filter-empty');
     if (emptyEl) emptyEl.hidden = visible > 0;
-    document.querySelectorAll<HTMLElement>('.order-filter-btn').forEach((btn) => {
-      btn.classList.toggle('order-filter-btn--sel', btn.dataset.filter === filter);
+    refreshOrdersFilterBadge();
+  }
+
+  function sortOrders(col: 'date' | 'amount' | 'status', dir: 'asc' | 'desc'): void {
+    ordersSortCol = col;
+    ordersSortDir = dir;
+    const list = document.getElementById('orders-list');
+    if (list) {
+      const cards = Array.from(list.querySelectorAll<HTMLElement>('.order-card'));
+      cards.sort((a, b) => {
+        const va = getOrderSortValue(a, col);
+        const vb = getOrderSortValue(b, col);
+        const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+        return dir === 'asc' ? cmp : -cmp;
+      });
+      cards.forEach((card) => list.append(card));
+    }
+    const label = document.getElementById('orders-sort-label');
+    if (label) {
+      const opt = ORDER_SORT_OPTIONS.find((o) => o.col === col && o.dir === dir) ?? ORDER_SORT_OPTIONS[0]!;
+      label.textContent = opt.label();
+    }
+  }
+
+  const ordersPortal = createFloatingPortal('orders-toolbar-portal');
+
+  function openOrdersSort(trigger: HTMLElement): void {
+    ordersPortal.open(trigger, '13rem', () => ORDER_SORT_OPTIONS.map((o) => {
+      const selected = o.col === ordersSortCol && o.dir === ordersSortDir;
+      return `<button type="button" class="product-menu__item" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="cursor:pointer${selected ? ';font-weight:700;color:var(--color-primary)' : ''}">${o.label()}</button>`;
+    }).join(''), (portal) => {
+      portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          sortOrders((btn.dataset.sortCol as 'date' | 'amount' | 'status') ?? 'date', (btn.dataset.sortDir as 'asc' | 'desc') ?? 'desc');
+          ordersPortal.close();
+        });
+      });
     });
   }
 
-  document.querySelectorAll<HTMLButtonElement>('.order-filter-btn').forEach((btn) => {
-    btn.addEventListener('click', () => applyOrderFilter(btn.dataset.filter ?? 'active'));
+  function ordersFilterValuesHtml(col: string): string {
+    const values = getOrderDistinctValues(col);
+    const selected = ordersFilters.get(col) ?? new Set<string>();
+    const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
+    return [
+      `<button type="button" class="product-menu__back" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${orderFilterColumnLabel(col)}</button>`,
+      `<div class="product-menu__divider"></div>`,
+      ...values.map((v) => `<label class="product-menu__checkbox-item"><input type="checkbox" data-order-filter-value="${v}" ${selected.has(v) ? 'checked' : ''}>${orderFilterValueHtml(col, v)}</label>`),
+      `<div class="product-menu__divider"></div>`,
+      `<button type="button" class="product-menu__clear" data-orders-filter-clear-col>${ordersDashI18n.filterClearColumn ?? 'נקה סינון בעמודה זו'}</button>`,
+    ].join('');
+  }
+
+  function ordersFilterColumnsHtml(): string {
+    const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
+    return [
+      ...ORDER_FILTER_COLUMNS.map((col) => {
+        const active = (ordersFilters.get(col)?.size ?? 0) > 0;
+        return `<div class="product-menu__item" data-filter-col="${col}" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+          <input type="checkbox" data-filter-col-toggle="${col}" ${active ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">
+          <span style="flex:1">${orderFilterColumnLabel(col)}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>`;
+      }).join(''),
+      `<div class="product-menu__divider"></div>`,
+      `<button type="button" class="product-menu__clear" data-orders-filter-clear-all>${ordersDashI18n.filterClearAll ?? 'נקה הכל'}</button>`,
+    ].join('');
+  }
+
+  function openOrdersFilterValues(trigger: HTMLElement, col: string): void {
+    ordersPortal.open(trigger, '12rem', () => ordersFilterValuesHtml(col), (portal) => {
+      portal.querySelectorAll<HTMLInputElement>('[data-order-filter-value]').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          const set = ordersFilters.get(col) ?? new Set<string>();
+          const v = cb.dataset.orderFilterValue ?? '';
+          if (cb.checked) set.add(v); else set.delete(v);
+          if (set.size) ordersFilters.set(col, set); else ordersFilters.delete(col);
+          applyOrdersFilter();
+        });
+      });
+      portal.querySelector('[data-filter-back]')?.addEventListener('click', () => openOrdersFilterColumns(trigger));
+      portal.querySelector('[data-orders-filter-clear-col]')?.addEventListener('click', () => {
+        ordersFilters.delete(col);
+        applyOrdersFilter();
+        openOrdersFilterValues(trigger, col);
+      });
+    });
+  }
+
+  function openOrdersFilterColumns(trigger: HTMLElement): void {
+    ordersPortal.open(trigger, '12rem', ordersFilterColumnsHtml, (portal) => {
+      portal.querySelectorAll<HTMLElement>('[data-filter-col]').forEach((row) => {
+        const col = row.dataset.filterCol ?? '';
+        row.addEventListener('click', (e) => {
+          if ((e.target as HTMLElement).closest('[data-filter-col-toggle]')) return;
+          openOrdersFilterValues(trigger, col);
+        });
+        const cb = row.querySelector<HTMLInputElement>('[data-filter-col-toggle]');
+        cb?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (cb.checked) {
+            cb.checked = false;
+            openOrdersFilterValues(trigger, col);
+            return;
+          }
+          ordersFilters.delete(col);
+          applyOrdersFilter();
+          openOrdersFilterColumns(trigger);
+        });
+      });
+      portal.querySelector('[data-orders-filter-clear-all]')?.addEventListener('click', () => {
+        ordersFilters.clear();
+        applyOrdersFilter();
+        openOrdersFilterColumns(trigger);
+      });
+    });
+  }
+
+  const ordersSortTrigger = document.getElementById('orders-sort-trigger') as HTMLButtonElement | null;
+  ordersSortTrigger?.addEventListener('click', () => {
+    if (ordersPortal.currentTrigger() === ordersSortTrigger) { ordersPortal.close(); return; }
+    openOrdersSort(ordersSortTrigger);
   });
 
-  applyOrderFilter('active');
+  const ordersFilterTrigger = document.getElementById('orders-filter-trigger') as HTMLButtonElement | null;
+  ordersFilterTrigger?.addEventListener('click', () => {
+    if (ordersPortal.currentTrigger() === ordersFilterTrigger) { ordersPortal.close(); return; }
+    openOrdersFilterColumns(ordersFilterTrigger);
+  });
+
+  applyOrdersFilter();
 
   // ── Poll for new orders every 15s ────────────────────────────
   const ordersList = document.getElementById('orders-list');
@@ -1913,7 +2202,7 @@ const orderStatusColors: Record<string, string> = {
         <input type="hidden" class="order-status-select" data-field="shippingStatus" value="${esc(o.shippingStatus)}" />
       </div>`;
 
-      return `<div class="order-card" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}">
+      return `<div class="order-card" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
         <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
           <div class="order-card__meta">
             <span class="order-card__id">#${esc(shortId)}${isNew ? '<span class="order-new-dot" aria-label="הזמנה חדשה"></span>' : ''}</span>
@@ -1997,7 +2286,11 @@ const orderStatusColors: Record<string, string> = {
           } }));
         });
         updateOrderTabBadge();
-        applyOrderFilter(currentOrderFilter);
+        applyOrdersFilter();
+        // New cards always land at the top via insertBefore above, regardless
+        // of the seller's chosen sort — re-sort so a poll-inserted order
+        // doesn't silently jump the sort order the seller picked.
+        sortOrders(ordersSortCol, ordersSortDir);
       } catch { /* ignore */ }
     }
 
@@ -2011,7 +2304,350 @@ const orderStatusColors: Record<string, string> = {
   function escMsg(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   const currentSellerId = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.sellerId ?? '';
+  const currentStoreIdForMsgs = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.storeId ?? '';
   const sellerThreadLoaders = new Map<string, (markRead: boolean, viaPoll?: boolean) => void>();
+
+  // ── Messages: sort + filter — desktop uses header controls (.sort-btn on
+  // date, a funnel button on status), mobile uses a "sort by"/"filter by"
+  // toolbar dropdown (table-toolbar is display:none above 640px, see
+  // dashboard.css). Both surfaces share the same state below, and every
+  // dropdown (mobile or desktop funnel) renders through one body-anchored,
+  // viewport-clamped portal — mirrors initProductsToolbar() in products.ts,
+  // duplicated here rather than shared since this script and products.ts are
+  // separate modules with their own row/DOM shape. ──
+  const msgTbody = document.querySelector<HTMLTableSectionElement>('.msg-table tbody');
+  const msgFilters = new Map<string, Set<string>>();
+  // Sorting/filtering by read-status only makes sense when the store actually
+  // has a mix of both — the header controls for it are server-omitted
+  // entirely in that case (see showMsgStatusControls in the frontmatter); the
+  // mobile dropdown's own options mirror that via this same flag, read off
+  // the toolbar's data attribute rather than recomputed here.
+  const msgMixedStatus = document.querySelector<HTMLElement>('#dash-panel-messages .table-toolbar')?.dataset.mixedStatus === 'true';
+  const MSG_FILTER_COLUMNS: string[] = [...(msgMixedStatus ? ['status'] : []), 'product', 'from'];
+  let msgSortCol: 'date' | 'unread' | 'product' = 'date';
+  let msgSortDir: 'asc' | 'desc' = 'desc';
+  let msgDashI18nDict: Record<string, string> = {};
+  try { msgDashI18nDict = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
+  const msgI18n = {
+    filterClearAll: msgDashI18nDict.filterClearAll ?? 'נקה הכל',
+    filterClearColumn: msgDashI18nDict.filterClearColumn ?? 'נקה סינון בעמודה זו',
+    filterColStatus: msgDashI18nDict.filterColStatus ?? 'סטטוס',
+    filterColProduct: msgDashI18nDict.filterColProduct ?? 'מוצר',
+    filterColFrom: msgDashI18nDict.filterColFrom ?? 'שולח',
+    filterNoProduct: msgDashI18nDict.filterNoProduct ?? 'ללא מוצר',
+    filterValUnread: msgDashI18nDict.filterValUnread ?? 'לא נקרא',
+    filterValRead: msgDashI18nDict.filterValRead ?? 'נקרא',
+    msgSortOptDateDesc: msgDashI18nDict.msgSortOptDateDesc ?? 'תאריך: חדש — ישן',
+    msgSortOptDateAsc: msgDashI18nDict.msgSortOptDateAsc ?? 'תאריך: ישן — חדש',
+    msgSortOptUnreadFirst: msgDashI18nDict.msgSortOptUnreadFirst ?? 'לא נקראו קודם',
+    msgSortOptProductAsc: msgDashI18nDict.msgSortOptProductAsc ?? 'מוצר: א — ת',
+    msgSortOptProductDesc: msgDashI18nDict.msgSortOptProductDesc ?? 'מוצר: ת — א',
+  };
+
+  const MSG_SORT_OPTIONS: { col: 'date' | 'unread' | 'product'; dir: 'asc' | 'desc'; label: () => string }[] = [
+    { col: 'date', dir: 'desc', label: () => msgI18n.msgSortOptDateDesc },
+    { col: 'date', dir: 'asc', label: () => msgI18n.msgSortOptDateAsc },
+    ...(msgMixedStatus ? [{ col: 'unread' as const, dir: 'desc' as const, label: () => msgI18n.msgSortOptUnreadFirst }] : []),
+    { col: 'product', dir: 'asc', label: () => msgI18n.msgSortOptProductAsc },
+    { col: 'product', dir: 'desc', label: () => msgI18n.msgSortOptProductDesc },
+  ];
+
+  function getMsgFilterValue(row: HTMLElement, col: string): string {
+    if (col === 'status') return row.classList.contains('msg-table__row--unread') ? msgI18n.filterValUnread : msgI18n.filterValRead;
+    if (col === 'product') return row.dataset.filterProduct || msgI18n.filterNoProduct;
+    if (col === 'from') return row.dataset.filterFrom || '';
+    return '';
+  }
+
+  function rowMatchesMsgFilters(row: HTMLElement): boolean {
+    for (const [col, values] of msgFilters) {
+      if (values.size === 0) continue;
+      if (!values.has(getMsgFilterValue(row, col))) return false;
+    }
+    return true;
+  }
+
+  function applyMessagesFilter(): void {
+    document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
+      // Never hide a thread the seller currently has open — becoming "read"
+      // mid-view shouldn't make the row vanish out from under them.
+      if (row.classList.contains('msg-table__row--open')) { row.hidden = false; return; }
+      row.hidden = !rowMatchesMsgFilters(row);
+    });
+  }
+
+  function refreshMsgFilterUI(): void {
+    document.querySelectorAll<HTMLButtonElement>('.msg-table thead [data-filter-funnel-col]').forEach((btn) => {
+      const col = btn.dataset.filterFunnelCol ?? '';
+      if ((msgFilters.get(col)?.size ?? 0) > 0) btn.dataset.active = 'true'; else delete btn.dataset.active;
+    });
+    const badge = document.getElementById('msg-filter-count');
+    if (badge) {
+      const activeCols = [...msgFilters.values()].filter((s) => s.size > 0).length;
+      badge.hidden = activeCols === 0;
+      badge.textContent = String(activeCols);
+    }
+  }
+
+  function getMsgSortValue(row: HTMLElement, col: 'date' | 'unread' | 'product'): string | number {
+    if (col === 'date') return row.dataset.sortDate ?? '';
+    if (col === 'unread') return row.classList.contains('msg-table__row--unread') ? 1 : 0;
+    if (col === 'product') return row.dataset.sortProduct ?? '';
+    return '';
+  }
+
+  function refreshMsgSortUI(): void {
+    document.querySelectorAll<HTMLButtonElement>('.msg-table thead .sort-btn').forEach((btn) => {
+      if (btn.dataset.sortCol === msgSortCol) { btn.dataset.active = 'true'; btn.dataset.dir = msgSortDir; }
+      else { delete btn.dataset.active; delete btn.dataset.dir; }
+    });
+    const label = document.getElementById('msg-sort-label');
+    if (label) {
+      const opt = MSG_SORT_OPTIONS.find((o) => o.col === msgSortCol && o.dir === msgSortDir) ?? MSG_SORT_OPTIONS[0]!;
+      label.textContent = opt.label();
+    }
+  }
+
+  function sortMessages(col: 'date' | 'unread' | 'product', dir: 'asc' | 'desc') {
+    msgSortCol = col;
+    msgSortDir = dir;
+    if (!msgTbody) { refreshMsgSortUI(); return; }
+    const rows = Array.from(msgTbody.querySelectorAll<HTMLElement>('[data-msg-id]'));
+    rows.sort((a, b) => {
+      const va = getMsgSortValue(a, col);
+      const vb = getMsgSortValue(b, col);
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return dir === 'asc' ? cmp : -cmp;
+    });
+    rows.forEach((row) => {
+      msgTbody.append(row);
+      const detail = document.getElementById(`msg-detail-${row.dataset.msgId}`);
+      if (detail) msgTbody.append(detail);
+    });
+    refreshMsgSortUI();
+  }
+
+  function msgHeaderSortClick(col: 'date' | 'unread' | 'product'): void {
+    const defaultDir: 'asc' | 'desc' = col === 'product' ? 'asc' : 'desc';
+    const dir: 'asc' | 'desc' = msgSortCol === col ? (msgSortDir === 'asc' ? 'desc' : 'asc') : defaultDir;
+    sortMessages(col, dir);
+  }
+
+  // ── Shared floating portal (own copy — see the comment above) ──
+  let msgPortalTrigger: HTMLElement | null = null;
+
+  function getMsgPortal(): HTMLElement {
+    let portal = document.getElementById('msg-toolbar-portal');
+    if (!portal) {
+      portal = document.createElement('div');
+      portal.id = 'msg-toolbar-portal';
+      portal.className = 'toolbar-portal';
+      portal.setAttribute('role', 'menu');
+      portal.hidden = true;
+      document.body.appendChild(portal);
+    }
+    return portal;
+  }
+  function positionMsgPortal(portal: HTMLElement, trigger: HTMLElement): void {
+    const isRTL = getComputedStyle(document.documentElement).direction === 'rtl';
+    const margin = 8;
+    const triggerRect = trigger.getBoundingClientRect();
+    const portalRect = portal.getBoundingClientRect();
+    let left = isRTL ? triggerRect.right - portalRect.width : triggerRect.left;
+    left = Math.max(margin, Math.min(left, window.innerWidth - portalRect.width - margin));
+    let top = triggerRect.bottom + 4;
+    top = Math.min(top, Math.max(margin, window.innerHeight - portalRect.height - margin));
+    portal.style.left = `${left}px`;
+    portal.style.top = `${top}px`;
+  }
+  function closeMsgPortal(): void {
+    const portal = document.getElementById('msg-toolbar-portal');
+    if (portal) portal.hidden = true;
+    msgPortalTrigger?.setAttribute('aria-expanded', 'false');
+    msgPortalTrigger = null;
+  }
+  function openMsgPortal(trigger: HTMLElement, minWidth: string, buildHtml: () => string, wire: (portal: HTMLElement) => void): void {
+    const portal = getMsgPortal();
+    portal.style.minWidth = minWidth;
+    portal.style.maxHeight = '320px';
+    portal.style.overflow = 'auto';
+    portal.innerHTML = buildHtml();
+    portal.hidden = false;
+    positionMsgPortal(portal, trigger);
+    trigger.setAttribute('aria-expanded', 'true');
+    msgPortalTrigger = trigger;
+    wire(portal);
+  }
+  document.addEventListener('click', (e) => {
+    const portal = document.getElementById('msg-toolbar-portal');
+    if (!portal || portal.hidden) return;
+    // composedPath(), not target.contains() — a portal click that swaps
+    // portal.innerHTML (e.g. drilling into a filter column) detaches the
+    // original e.target from the document mid-bubble, so a containment check
+    // done here (after that swap already ran) wrongly reads as "outside" and
+    // closes the portal the instant it opens its next level.
+    const path = e.composedPath();
+    if (path.includes(portal)) return;
+    if (msgPortalTrigger && path.includes(msgPortalTrigger)) return;
+    closeMsgPortal();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMsgPortal(); });
+
+  // ── Sort ──
+  function openMobileMsgSort(trigger: HTMLElement): void {
+    openMsgPortal(trigger, '13rem', () => {
+      return MSG_SORT_OPTIONS.map((o) => {
+        const selected = o.col === msgSortCol && o.dir === msgSortDir;
+        return `<button type="button" class="product-menu__item" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="cursor:pointer${selected ? ';font-weight:700;color:var(--color-primary)' : ''}">${escMsg(o.label())}</button>`;
+      }).join('');
+    }, (portal) => {
+      portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          sortMessages((btn.dataset.sortCol as 'date' | 'unread' | 'product') ?? 'date', (btn.dataset.sortDir as 'asc' | 'desc') ?? 'desc');
+          closeMsgPortal();
+        });
+      });
+    });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.msg-table thead .sort-btn').forEach((btn) => {
+    btn.addEventListener('click', () => msgHeaderSortClick((btn.dataset.sortCol as 'date' | 'unread' | 'product') ?? 'date'));
+  });
+
+  const msgSortTrigger = document.getElementById('msg-sort-trigger') as HTMLButtonElement | null;
+  msgSortTrigger?.addEventListener('click', () => {
+    if (msgPortalTrigger === msgSortTrigger) { closeMsgPortal(); return; }
+    openMobileMsgSort(msgSortTrigger);
+  });
+
+  // ── Filter ──
+  function msgFilterColumnLabel(col: string): string {
+    if (col === 'status') return msgI18n.filterColStatus;
+    if (col === 'product') return msgI18n.filterColProduct;
+    if (col === 'from') return msgI18n.filterColFrom;
+    return col;
+  }
+  function getMsgDistinctValues(col: string): string[] {
+    const values = new Set<string>();
+    document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => values.add(getMsgFilterValue(row, col)));
+    return [...values].sort();
+  }
+  function msgFilterValuesHtml(col: string, showBack: boolean): string {
+    const label = msgFilterColumnLabel(col);
+    const values = getMsgDistinctValues(col);
+    const selected = msgFilters.get(col) ?? new Set<string>();
+    const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
+    const backHtml = showBack
+      ? `<button type="button" class="product-menu__back" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${escMsg(label)}</button><div class="product-menu__divider"></div>`
+      : '';
+    return [
+      backHtml,
+      ...values.map((v) => `<label class="product-menu__checkbox-item"><input type="checkbox" data-filter-value="${escMsg(v)}" ${selected.has(v) ? 'checked' : ''}>${escMsg(v)}</label>`),
+      `<div class="product-menu__divider"></div>`,
+      `<button type="button" class="product-menu__clear" data-filter-clear-col>${escMsg(msgI18n.filterClearColumn)}</button>`,
+    ].join('');
+  }
+  function wireMsgFilterValues(portal: HTMLElement, col: string, reopen: () => void, onBack?: () => void): void {
+    portal.querySelectorAll<HTMLInputElement>('[data-filter-value]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const set = msgFilters.get(col) ?? new Set<string>();
+        if (cb.checked) set.add(cb.dataset.filterValue ?? ''); else set.delete(cb.dataset.filterValue ?? '');
+        if (set.size) msgFilters.set(col, set); else msgFilters.delete(col);
+        applyMessagesFilter();
+        refreshMsgFilterUI();
+      });
+    });
+    portal.querySelector('[data-filter-clear-col]')?.addEventListener('click', () => {
+      msgFilters.delete(col);
+      applyMessagesFilter();
+      refreshMsgFilterUI();
+      reopen();
+    });
+    if (onBack) portal.querySelector('[data-filter-back]')?.addEventListener('click', onBack);
+  }
+
+  function openDesktopMsgFunnel(btn: HTMLButtonElement, col: string): void {
+    openMsgPortal(btn, '10rem', () => msgFilterValuesHtml(col, false), (portal) => {
+      wireMsgFilterValues(portal, col, () => openDesktopMsgFunnel(btn, col));
+    });
+  }
+
+  // The checkbox here is real (not decorative) — unchecking it clears that
+  // column's filter directly, without a drill-down into its values first.
+  // Clicking it while off has nothing to filter by yet, so it opens the
+  // values view instead of actually checking itself. A plain <div> row (not
+  // <label>) on purpose: a <label> wrapping a checkbox forwards any click on
+  // the row into a second, native toggle of the checkbox, double-handling
+  // the same click.
+  function msgFilterColumnsHtml(): string {
+    const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
+    return [
+      ...MSG_FILTER_COLUMNS.map((col) => {
+        const active = (msgFilters.get(col)?.size ?? 0) > 0;
+        return `<div class="product-menu__item" data-filter-col="${col}" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+          <input type="checkbox" data-filter-col-toggle="${col}" ${active ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">
+          <span style="flex:1">${escMsg(msgFilterColumnLabel(col))}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>`;
+      }).join(''),
+      `<div class="product-menu__divider"></div>`,
+      `<button type="button" class="product-menu__clear" data-filter-clear-all>${escMsg(msgI18n.filterClearAll)}</button>`,
+    ].join('');
+  }
+
+  function openMobileMsgFilterColumns(trigger: HTMLElement): void {
+    openMsgPortal(trigger, '11rem', msgFilterColumnsHtml, (portal) => {
+      portal.querySelectorAll<HTMLElement>('[data-filter-col]').forEach((row) => {
+        const col = row.dataset.filterCol ?? '';
+        row.addEventListener('click', (e) => {
+          if ((e.target as HTMLElement).closest('[data-filter-col-toggle]')) return;
+          openMobileMsgFilterValues(trigger, col);
+        });
+        const cb = row.querySelector<HTMLInputElement>('[data-filter-col-toggle]');
+        cb?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (cb.checked) {
+            cb.checked = false;
+            openMobileMsgFilterValues(trigger, col);
+            return;
+          }
+          msgFilters.delete(col);
+          applyMessagesFilter();
+          refreshMsgFilterUI();
+          openMobileMsgFilterColumns(trigger);
+        });
+      });
+      portal.querySelector('[data-filter-clear-all]')?.addEventListener('click', () => {
+        msgFilters.clear();
+        applyMessagesFilter();
+        refreshMsgFilterUI();
+        openMobileMsgFilterColumns(trigger);
+      });
+    });
+  }
+  function openMobileMsgFilterValues(trigger: HTMLElement, col: string): void {
+    openMsgPortal(trigger, '11rem', () => msgFilterValuesHtml(col, true), (portal) => {
+      wireMsgFilterValues(portal, col, () => openMobileMsgFilterValues(trigger, col), () => openMobileMsgFilterColumns(trigger));
+    });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.msg-table thead [data-filter-funnel-col]').forEach((btn) => {
+    const col = btn.dataset.filterFunnelCol ?? '';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (msgPortalTrigger === btn) { closeMsgPortal(); return; }
+      openDesktopMsgFunnel(btn, col);
+    });
+  });
+
+  const msgFilterTrigger = document.getElementById('msg-filter-trigger') as HTMLButtonElement | null;
+  msgFilterTrigger?.addEventListener('click', () => {
+    if (msgPortalTrigger === msgFilterTrigger) { closeMsgPortal(); return; }
+    openMobileMsgFilterColumns(msgFilterTrigger);
+  });
+
+  refreshMsgSortUI();
+  refreshMsgFilterUI();
 
   document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
     const id        = row.dataset.msgId ?? '';
@@ -2043,6 +2679,7 @@ const orderStatusColors: Record<string, string> = {
             if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
             const dateTd = row.querySelector('.msg-table__td--date');
             if (dateTd) dateTd.textContent = fmtDateJs(last.createdAt);
+            row.dataset.sortDate = last.createdAt;
             if (viaPoll && markRead && !isSelf) {
               window.dispatchEvent(new CustomEvent('toast:show', { detail: {
                 title: 'יש לך הודעה חדשה מקונה', body: last.fromName, key: last.id,
@@ -2056,6 +2693,7 @@ const orderStatusColors: Record<string, string> = {
             repliesEl.querySelectorAll('.msg-thread-unread-dot').forEach((el) => el.remove());
             document.querySelector('#tab-messages span[aria-label]')?.remove();
             updateSwitcherAlertDot();
+            applyMessagesFilter();
             fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read', id }) })
               .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
           }
@@ -2119,6 +2757,7 @@ const orderStatusColors: Record<string, string> = {
             if (previewTd) previewTd.innerHTML = `${escMsg(data.message.content)} <span class="msg-table__preview-you">(אתה)</span>`;
             const dateTd = row.querySelector('.msg-table__td--date');
             if (dateTd) dateTd.textContent = fmtDateJs(data.message.createdAt);
+            row.dataset.sortDate = data.message.createdAt;
             textarea.value = '';
           }
         } catch { /* ignore */ } finally {
@@ -2386,12 +3025,13 @@ const orderStatusColors: Record<string, string> = {
         if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
         const dateTd = row.querySelector('.msg-table__td--date');
         if (dateTd) dateTd.textContent = fmtDateJs(last.createdAt);
+        row.dataset.sortDate = last.createdAt;
       }).catch(() => {});
   }
 
   // Live unread polling
   function pollSellerUnread() {
-    fetch('/api/messages?role=seller&unread=1')
+    fetch(`/api/messages?role=seller&unread=1&storeId=${encodeURIComponent(currentStoreIdForMsgs)}`)
       .then((r) => r.json())
       .then(({ unreadIds }: { unreadIds: string[] }) => {
         const tabBtn = document.getElementById('tab-messages');
@@ -2421,6 +3061,7 @@ const orderStatusColors: Record<string, string> = {
             refreshRowPreview(id, row);
           }
         });
+        applyMessagesFilter();
       }).catch(() => {});
   }
   pollSellerUnread();

@@ -71,8 +71,6 @@
 
 .product-detail-page .thumb-btn { box-shadow: var(--shadow-xs); }
 
-.product-detail-page .qty-stepper { box-shadow: var(--shadow-inset); }
-
 .product-detail-page .variant-opt[aria-pressed="true"] { box-shadow: var(--shadow-xs); }
 
 /* Missing-variant feedback (product page + its related-item modal) — a subtle

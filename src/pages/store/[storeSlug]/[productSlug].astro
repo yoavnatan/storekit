@@ -347,7 +347,7 @@ const pmI18n = {
                         data-wishlist-slug={product.slug}
                         data-wishlist-name={product.name}
                         data-wishlist-price={String(product.price)}
-                        data-wishlist-image={images[0] ?? ''}
+                        data-wishlist-image={images[0] ? cdnSrc(images[0]) : ''}
                         data-wishlist-store-slug={shopStore.slug}
                         data-wishlist-store-name={shopStore.name}
                         data-wishlist-stock={String(product.stock)}
@@ -612,8 +612,9 @@ const pmI18n = {
 )} />
 
 <script>
-  import { addItem } from '../../../lib/cart.js';
+  import { addItem, getCartQty } from '../../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../../lib/wishlist.js';
+  import { cdnSrc } from '../../../config/store.config.js';
   import { spawnRipple } from '../../../lib/ripple.js';
   import { trackViewContent, trackAddToCart } from '../../../lib/tracking.js';
   import { comboKey } from '../../../lib/variant-combo.js';
@@ -633,14 +634,28 @@ const pmI18n = {
   const pageVariants: Array<{ name: string; options: string[] }> = JSON.parse(page?.dataset.variants ?? '[]');
   const pageVariantStock: Record<string, number> = JSON.parse(page?.dataset.variantStock ?? '{}');
 
-  // Stock for a given variant selection — falls back to the product's overall stock
-  // when there are no variants, or the seller hasn't set per-combination numbers yet.
+  // Raw stock for a given variant selection — falls back to the product's overall
+  // stock when there are no variants, or the seller hasn't set per-combination
+  // numbers yet. This is the true total; it's what gets passed to addItem() as
+  // product.stock (addItem does its own prev-qty-in-cart math against it, so
+  // passing an already-net value here would double-subtract).
   function effectiveStockFor(selection: Record<string, string>): number {
     const btn = document.getElementById('add-to-cart-btn') as HTMLButtonElement | null;
     const total = Math.max(0, parseInt(btn?.dataset.stock ?? '0', 10) || 0);
     if (!pageVariants.length || !Object.keys(pageVariantStock).length) return total;
     const key = comboKey(selection);
     return key in pageVariantStock ? pageVariantStock[key] : total;
+  }
+
+  // What's actually still addable for this combo — nets out whatever quantity
+  // already sits in the cart (added here, from the product grid, or a quick-view
+  // elsewhere). Used for the qty-stepper ceiling and button disabled state only;
+  // never passed to addItem() as product.stock (see effectiveStockFor above).
+  function remainingFor(selection: Record<string, string>): number {
+    const btn = document.getElementById('add-to-cart-btn') as HTMLButtonElement | null;
+    const slug = btn?.dataset.slug ?? '';
+    const variantsArg = Object.keys(selection).length ? selection : undefined;
+    return Math.max(0, effectiveStockFor(selection) - getCartQty(storeSlug, slug, variantsArg));
   }
 
   // ── ViewContent — fire once on product page load ───────────────
@@ -707,7 +722,7 @@ const pmI18n = {
     document.querySelectorAll<HTMLButtonElement>('.variant-opt').forEach((b) => {
       const bName = b.dataset.variantName ?? '';
       const bValue = b.dataset.variantValue ?? '';
-      const available = effectiveStockFor({ ...selectedVariants, [bName]: bValue }) > 0;
+      const available = remainingFor({ ...selectedVariants, [bName]: bValue }) > 0;
       b.disabled = !available;
       b.setAttribute('aria-disabled', String(!available));
       b.style.opacity = available ? '1' : '0.4';
@@ -890,14 +905,18 @@ const pmI18n = {
   const qtyInc = document.querySelector<HTMLButtonElement>('.qty-inc');
   const qtyVal = document.querySelector<HTMLElement>('.qty-val');
   const addBtn = document.getElementById('add-to-cart-btn') as HTMLButtonElement | null;
+  // maxStock is the combo's raw total stock — passed to addItem() as-is (addItem
+  // does its own prev-qty-in-cart math against it). remaining is what's left to
+  // add right now (nets out cart contents) — drives the stepper/button/note only.
   let maxStock = Math.max(0, effectiveStockFor(selectedVariants));
+  let remaining = Math.max(0, remainingFor(selectedVariants));
   let qty = 1;
 
   function updateQty(n: number) {
-    qty = Math.max(1, Math.min(n, Math.max(1, maxStock)));
+    qty = Math.max(1, Math.min(n, Math.max(1, remaining)));
     if (qtyVal) qtyVal.textContent = String(qty);
     if (qtyDec) qtyDec.disabled = qty <= 1;
-    if (qtyInc) qtyInc.disabled = qty >= maxStock;
+    if (qtyInc) qtyInc.disabled = qty >= remaining;
   }
 
   // Re-derives the stock ceiling for whichever combo is currently selected —
@@ -907,12 +926,13 @@ const pmI18n = {
   // *specific combination* being sold out while the product overall isn't.
   function applyStockState(): void {
     maxStock = Math.max(0, effectiveStockFor(selectedVariants));
-    const outOfStock = maxStock <= 0;
+    remaining = Math.max(0, remainingFor(selectedVariants));
+    const outOfStock = remaining <= 0;
 
-    qty = outOfStock ? 0 : Math.min(qty, maxStock);
+    qty = outOfStock ? 0 : Math.min(qty, remaining);
     if (qtyVal) qtyVal.textContent = String(Math.max(qty, outOfStock ? 0 : 1));
     if (qtyDec) qtyDec.disabled = outOfStock || qty <= 1;
-    if (qtyInc) qtyInc.disabled = outOfStock || qty >= maxStock;
+    if (qtyInc) qtyInc.disabled = outOfStock || qty >= remaining;
     if (!outOfStock && qty < 1) updateQty(1);
 
     [addBtn, stickyAddBtn].forEach((btn) => { if (btn) btn.disabled = outOfStock; });
@@ -924,10 +944,10 @@ const pmI18n = {
       note.hidden = false;
       note.style.color = 'var(--color-danger,#dc2626)';
       noteText.textContent = getPMI18n().outOfStock || (pageLang === 'he' ? 'אזל מהמלאי' : 'Out of stock');
-    } else if (maxStock <= 5) {
+    } else if (remaining <= 5) {
       note.hidden = false;
       note.style.color = '#d97706';
-      noteText.textContent = pageLang === 'he' ? `נותרו ${maxStock} בלבד` : `Only ${maxStock} left`;
+      noteText.textContent = pageLang === 'he' ? `נותרו ${remaining} בלבד` : `Only ${remaining} left`;
     } else {
       note.hidden = true;
     }
@@ -1018,8 +1038,8 @@ const pmI18n = {
       setTimeout(() => {
         if (labelSpan) labelSpan.innerHTML = originalLabel;
         addBtn.style.minWidth = '';
-        addBtn.disabled = false;
         addBtn.classList.remove('btn--confirmed');
+        applyStockState(); // re-enables only if stock remains, not blindly
       }, 1400);
     });
   }
@@ -1061,8 +1081,8 @@ const pmI18n = {
       setTimeout(() => {
         if (stickyLabelSpan) stickyLabelSpan.innerHTML = stickyOriginalLabel;
         stickyAddBtn.style.minWidth = '';
-        stickyAddBtn.disabled = false;
         stickyAddBtn.classList.remove('btn--confirmed');
+        applyStockState(); // re-enables only if stock remains, not blindly
       }, 1400);
     });
   }
@@ -1072,6 +1092,7 @@ const pmI18n = {
   // the edge case of the *default* variant selection being sold out while the
   // product's overall stock (which gates whether this row renders at all) isn't.
   applyStockState();
+  window.addEventListener('cart:change', applyStockState);
 
   {
     const descEl = document.getElementById('product-desc');
@@ -1226,7 +1247,7 @@ const pmI18n = {
     const cartSection = stock > 0
       ? `<div>
           <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:0.6rem;width:100%">
-            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0;box-shadow:var(--shadow-inset)">
+            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
               <button type="button" class="pm-qty-dec" disabled aria-label="${pageLang === 'he' ? 'הפחת' : 'Decrease'}"
                       style="width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1331,6 +1352,7 @@ const pmI18n = {
       btn.addEventListener('click', () => {
         const vName = btn.dataset.pvName ?? '';
         pmSelectedVariants[vName] = btn.dataset.pvValue ?? '';
+        updatePmQty(1); // this combo may already have a different amount in the cart
         pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(vName)}"]`)?.classList.remove('variant-group--invalid');
         pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
           const active = b === btn;
@@ -1361,11 +1383,23 @@ const pmI18n = {
     const pmQtyInc = pmBody?.querySelector<HTMLButtonElement>('.pm-qty-inc');
     const pmQtyVal = pmBody?.querySelector<HTMLElement>('.pm-qty-val');
     let pmQty = 1;
+
+    // Ceiling accounts for whatever quantity of this exact combo is already in
+    // the cart (added here, from the main page, or elsewhere) — not just the
+    // combo's raw stock — so repeated clicks can't exceed real stock once every
+    // unit is already in it.
+    function pmCeiling(): number {
+      const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
+      return Math.max(0, stock - getCartQty(storeSlug, slug, pmVariantsCopy));
+    }
+
     function updatePmQty(n: number) {
-      pmQty = Math.max(1, Math.min(n, stock));
+      const cap = pmCeiling();
+      pmQty = cap <= 0 ? 0 : Math.max(1, Math.min(n, cap));
       if (pmQtyVal) pmQtyVal.textContent = String(pmQty);
       if (pmQtyDec) pmQtyDec.disabled = pmQty <= 1;
-      if (pmQtyInc) pmQtyInc.disabled = pmQty >= stock;
+      if (pmQtyInc) pmQtyInc.disabled = cap <= 0 || pmQty >= cap;
+      if (pmAddBtn) pmAddBtn.disabled = cap <= 0;
     }
     pmQtyDec?.addEventListener('click', () => updatePmQty(pmQty - 1));
     pmQtyInc?.addEventListener('click', () => updatePmQty(pmQty + 1));
@@ -1376,6 +1410,7 @@ const pmI18n = {
     const origLabel = pmBtnLbl?.textContent ?? '';
     const checkSvgSm = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
     pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
+    updatePmQty(1); // reflect already-in-cart state as soon as the modal opens
     pmAddBtn?.addEventListener('click', () => {
       if (pmAddBtn.disabled) return;
       if (pmVariants.length && pmFlagMissingVariants()) return;
@@ -1392,8 +1427,8 @@ const pmI18n = {
       );
       setTimeout(() => {
         if (pmBtnLbl) pmBtnLbl.textContent = origLabel;
-        pmAddBtn.disabled = false;
         pmAddBtn.classList.remove('btn--confirmed');
+        updatePmQty(1); // re-enables only if stock remains, not blindly
       }, 1400);
     });
 
@@ -1401,7 +1436,7 @@ const pmI18n = {
     const pmWishBtn = pmBody?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
     const pmWishLbl = pmBody?.querySelector<HTMLElement>('.pm-wish-label');
     pmWishBtn?.addEventListener('click', () => {
-      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl, storeSlug, storeName, stock });
+      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl ? cdnSrc(mainImgUrl) : '', storeSlug, storeName, stock });
       const svg = pmWishBtn.querySelector<SVGElement>('svg');
       if (svg) { svg.style.fill = nowActive ? '#e53e3e' : 'none'; svg.style.stroke = nowActive ? '#e53e3e' : 'currentColor'; }
       pmWishBtn.style.color = nowActive ? '#e53e3e' : 'var(--color-muted)';

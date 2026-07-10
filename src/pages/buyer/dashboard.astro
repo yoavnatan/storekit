@@ -32,6 +32,12 @@ const unreadMessages = getUnreadSellerReplyCount(userId);
 
 const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
   Object.fromEntries(messages.map((m) => [m.id, getMessageReplies(m.id)]));
+// Same formula as each row's own hasUnreadReply below — sorting/filtering by
+// read-status is only meaningful when there's actually a mix of both.
+const unreadThreadsCount = messages.filter((m) =>
+  (messageReplies[m.id] ?? []).some((r) => r.fromUserId !== userId && !r.readByBuyer)
+).length;
+const showMsgStatusControls = unreadThreadsCount > 0 && unreadThreadsCount < messages.length;
 
 const storeProfileById = new Map(getAllStores().map((s) => [s.id, s.profileImage]));
 
@@ -520,16 +526,63 @@ const shipLabel: Record<string, string> = {
         {messages.length === 0
           ? <p class="empty">{t.buyerDashboard.noMessages}</p>
           : (
+            <Fragment>
+            {/* Mobile-only sort/filter toolbar — same pattern as the seller
+                dashboard's messages tab: on desktop, sort/filter live in the
+                header row itself instead (.sort-btn + funnel buttons); this
+                toolbar takes over once the table collapses to cards on
+                mobile (thead is display:none below 640px). */}
+            <div class="table-toolbar" data-mixed-status={String(showMsgStatusControls)}>
+              <button type="button" id="bmsg-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+                <span id="bmsg-sort-label">{t.dashboard.msgSortOptDateDesc}</span>
+                <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <button type="button" id="bmsg-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                <span>{t.dashboard.filterByLabel}</span>
+                <span id="bmsg-filter-count" class="filter-count-badge" hidden>0</span>
+                <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            </div>
+
             <div class="msg-table-wrap">
               <table class="msg-table">
                 <thead>
                   <tr>
-                    <th class="msg-table__th msg-table__th--status"></th>
-                    <th class="msg-table__th">{t.buyerDashboard.msgColStore}</th>
+                    <th class="msg-table__th msg-table__th--status">
+                      {showMsgStatusControls && (
+                        <div style="display:flex;align-items:center;justify-content:center;gap:0.2rem">
+                          <button type="button" class="sort-btn" data-sort-col="unread" aria-label={t.dashboard.filterColStatus ?? 'סטטוס'}>
+                            <svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+                          </button>
+                          <button type="button" class="combo-filter-btn" data-filter-funnel-col="status" aria-expanded="false" aria-haspopup="true" aria-label={`${t.dashboard.filterByLabel ?? 'סנן לפי'} ${t.dashboard.filterColStatus ?? 'סטטוס'}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                          </button>
+                        </div>
+                      )}
+                    </th>
+                    <th class="msg-table__th">
+                      <div style="display:flex;align-items:center;gap:0.25rem">
+                        {t.buyerDashboard.msgColStore}
+                        <button type="button" class="combo-filter-btn" data-filter-funnel-col="store" aria-expanded="false" aria-haspopup="true" aria-label={`${t.dashboard.filterByLabel ?? 'סנן לפי'} ${t.buyerDashboard.msgColStore}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                        </button>
+                      </div>
+                    </th>
                     <th class="msg-table__th">{t.messages.subject}</th>
                     <th class="msg-table__th">{t.messages.content}</th>
-                    <th class="msg-table__th">{t.buyerDashboard.msgColProduct}</th>
-                    <th class="msg-table__th">{t.dashboard.orderDate}</th>
+                    <th class="msg-table__th">
+                      <div style="display:flex;align-items:center;gap:0.25rem">
+                        <button type="button" class="sort-btn" data-sort-col="product">{t.buyerDashboard.msgColProduct}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                        <button type="button" class="combo-filter-btn" data-filter-funnel-col="product" aria-expanded="false" aria-haspopup="true" aria-label={`${t.dashboard.filterByLabel ?? 'סנן לפי'} ${t.buyerDashboard.msgColProduct}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                        </button>
+                      </div>
+                    </th>
+                    <th class="msg-table__th">
+                      <button type="button" class="sort-btn" data-sort-col="date">{t.dashboard.orderDate}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                    </th>
                     <th class="msg-table__th msg-table__th--actions"></th>
                   </tr>
                 </thead>
@@ -543,6 +596,10 @@ const shipLabel: Record<string, string> = {
                         <tr
                           class={`msg-table__row${hasUnreadReply ? ' msg-table__row--unread' : ''}`}
                           data-bmsg-id={m.id}
+                          data-sort-date={lastMsg.createdAt}
+                          data-sort-product={(m.productRef?.productName ?? '').toLowerCase()}
+                          data-filter-product={m.productRef?.productName ?? ''}
+                          data-filter-store={m.toStoreName}
                           tabindex="0"
                           role="button"
                           aria-expanded="false"
@@ -610,6 +667,7 @@ const shipLabel: Record<string, string> = {
                 </tbody>
               </table>
             </div>
+            </Fragment>
           )
         }
       </div>
@@ -680,6 +738,8 @@ const shipLabel: Record<string, string> = {
   data-msg-you={t.buyerDashboard.msgYou}
   data-msg-new-toast={t.buyerDashboard.msgNewToast}
   data-msg-delete-confirm={t.buyerDashboard.msgDeleteConfirm}
+  data-msg-col-store={t.buyerDashboard.msgColStore}
+  data-msg-col-product={t.buyerDashboard.msgColProduct}
   data-prof-show-pw={t.buyerDashboard.profShowPw}
   data-prof-hide-pw={t.buyerDashboard.profHidePw}
   data-prof-saved={t.buyerDashboard.profSaved}
@@ -701,6 +761,8 @@ const shipLabel: Record<string, string> = {
     msgYou:          _i18nEl.dataset.msgYou           ?? 'You',
     msgNewToast:     _i18nEl.dataset.msgNewToast       ?? 'You have a new message',
     msgDeleteConfirm:_i18nEl.dataset.msgDeleteConfirm ?? 'Delete this conversation permanently?',
+    msgColStore:     _i18nEl.dataset.msgColStore       ?? 'Store',
+    msgColProduct:   _i18nEl.dataset.msgColProduct     ?? 'Product',
     profShowPw:      _i18nEl.dataset.profShowPw       ?? '+ Show password fields',
     profHidePw:      _i18nEl.dataset.profHidePw       ?? '− Hide password fields',
     profSaved:       _i18nEl.dataset.profSaved        ?? 'Details updated successfully',
@@ -931,6 +993,334 @@ const shipLabel: Record<string, string> = {
   const currentBuyerId = (document.getElementById('panel-messages') as HTMLElement | null)?.dataset.userId ?? '';
   const buyerThreadLoaders = new Map<string, (markRead: boolean, viaPoll?: boolean) => void>();
 
+  // ── Messages: sort + filter — mirrors the seller dashboard's own messages
+  // toolbar (src/pages/seller/dashboard.astro) exactly: desktop uses header
+  // controls (.sort-btn + funnel buttons), mobile uses a "sort by"/"filter
+  // by" toolbar dropdown (table-toolbar is display:none above 640px).
+  // Duplicated rather than shared since these are separate pages with their
+  // own row shape (data-bmsg-id vs data-msg-id, store vs sender/status). ──
+  const bmsgTbody = document.querySelector<HTMLTableSectionElement>('.msg-table tbody');
+  const bmsgFilters = new Map<string, Set<string>>();
+  const bmsgMixedStatus = document.querySelector<HTMLElement>('#panel-messages .table-toolbar')?.dataset.mixedStatus === 'true';
+  const BMSG_FILTER_COLUMNS: string[] = [...(bmsgMixedStatus ? ['status'] : []), 'product', 'store'];
+  let bmsgSortCol: 'date' | 'unread' | 'product' = 'date';
+  let bmsgSortDir: 'asc' | 'desc' = 'desc';
+  let bmsgDashI18n: Record<string, string> = {};
+  try { bmsgDashI18n = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
+  const bI = {
+    filterByLabel: bmsgDashI18n.filterByLabel ?? 'סנן לפי',
+    filterClearAll: bmsgDashI18n.filterClearAll ?? 'נקה הכל',
+    filterClearColumn: bmsgDashI18n.filterClearColumn ?? 'נקה סינון בעמודה זו',
+    filterColStatus: bmsgDashI18n.filterColStatus ?? 'סטטוס',
+    filterColStore: I.msgColStore,
+    filterColProduct: I.msgColProduct,
+    filterNoProduct: bmsgDashI18n.filterNoProduct ?? 'ללא מוצר',
+    filterValUnread: bmsgDashI18n.filterValUnread ?? 'לא נקרא',
+    filterValRead: bmsgDashI18n.filterValRead ?? 'נקרא',
+    msgSortOptDateDesc: bmsgDashI18n.msgSortOptDateDesc ?? 'תאריך: חדש — ישן',
+    msgSortOptDateAsc: bmsgDashI18n.msgSortOptDateAsc ?? 'תאריך: ישן — חדש',
+    msgSortOptUnreadFirst: bmsgDashI18n.msgSortOptUnreadFirst ?? 'לא נקראו קודם',
+    msgSortOptProductAsc: bmsgDashI18n.msgSortOptProductAsc ?? 'מוצר: א — ת',
+    msgSortOptProductDesc: bmsgDashI18n.msgSortOptProductDesc ?? 'מוצר: ת — א',
+  };
+
+  const BMSG_SORT_OPTIONS: { col: 'date' | 'unread' | 'product'; dir: 'asc' | 'desc'; label: () => string }[] = [
+    { col: 'date', dir: 'desc', label: () => bI.msgSortOptDateDesc },
+    { col: 'date', dir: 'asc', label: () => bI.msgSortOptDateAsc },
+    ...(bmsgMixedStatus ? [{ col: 'unread' as const, dir: 'desc' as const, label: () => bI.msgSortOptUnreadFirst }] : []),
+    { col: 'product', dir: 'asc', label: () => bI.msgSortOptProductAsc },
+    { col: 'product', dir: 'desc', label: () => bI.msgSortOptProductDesc },
+  ];
+
+  function getBmsgFilterValue(row: HTMLElement, col: string): string {
+    if (col === 'status') return row.classList.contains('msg-table__row--unread') ? bI.filterValUnread : bI.filterValRead;
+    if (col === 'product') return row.dataset.filterProduct || bI.filterNoProduct;
+    if (col === 'store') return row.dataset.filterStore || '';
+    return '';
+  }
+
+  function rowMatchesBmsgFilters(row: HTMLElement): boolean {
+    for (const [col, values] of bmsgFilters) {
+      if (values.size === 0) continue;
+      if (!values.has(getBmsgFilterValue(row, col))) return false;
+    }
+    return true;
+  }
+
+  function applyBmsgFilter(): void {
+    document.querySelectorAll<HTMLElement>('[data-bmsg-id]').forEach((row) => {
+      // Never hide a thread the buyer currently has open — becoming "read"
+      // mid-view shouldn't make the row vanish out from under them.
+      if (row.classList.contains('msg-table__row--open')) { row.hidden = false; return; }
+      row.hidden = !rowMatchesBmsgFilters(row);
+    });
+  }
+
+  function refreshBmsgFilterUI(): void {
+    document.querySelectorAll<HTMLButtonElement>('.msg-table thead [data-filter-funnel-col]').forEach((btn) => {
+      const col = btn.dataset.filterFunnelCol ?? '';
+      if ((bmsgFilters.get(col)?.size ?? 0) > 0) btn.dataset.active = 'true'; else delete btn.dataset.active;
+    });
+    const badge = document.getElementById('bmsg-filter-count');
+    if (badge) {
+      const activeCols = [...bmsgFilters.values()].filter((s) => s.size > 0).length;
+      badge.hidden = activeCols === 0;
+      badge.textContent = String(activeCols);
+    }
+  }
+
+  function getBmsgSortValue(row: HTMLElement, col: 'date' | 'unread' | 'product'): string | number {
+    if (col === 'date') return row.dataset.sortDate ?? '';
+    if (col === 'unread') return row.classList.contains('msg-table__row--unread') ? 1 : 0;
+    if (col === 'product') return row.dataset.sortProduct ?? '';
+    return '';
+  }
+
+  function refreshBmsgSortUI(): void {
+    document.querySelectorAll<HTMLButtonElement>('.msg-table thead .sort-btn').forEach((btn) => {
+      if (btn.dataset.sortCol === bmsgSortCol) { btn.dataset.active = 'true'; btn.dataset.dir = bmsgSortDir; }
+      else { delete btn.dataset.active; delete btn.dataset.dir; }
+    });
+    const label = document.getElementById('bmsg-sort-label');
+    if (label) {
+      const opt = BMSG_SORT_OPTIONS.find((o) => o.col === bmsgSortCol && o.dir === bmsgSortDir) ?? BMSG_SORT_OPTIONS[0]!;
+      label.textContent = opt.label();
+    }
+  }
+
+  function sortBmsg(col: 'date' | 'unread' | 'product', dir: 'asc' | 'desc') {
+    bmsgSortCol = col;
+    bmsgSortDir = dir;
+    if (!bmsgTbody) { refreshBmsgSortUI(); return; }
+    const rows = Array.from(bmsgTbody.querySelectorAll<HTMLElement>('[data-bmsg-id]'));
+    rows.sort((a, b) => {
+      const va = getBmsgSortValue(a, col);
+      const vb = getBmsgSortValue(b, col);
+      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return dir === 'asc' ? cmp : -cmp;
+    });
+    rows.forEach((row) => {
+      bmsgTbody.append(row);
+      const detail = document.getElementById(`bmsg-detail-${row.dataset.bmsgId}`);
+      if (detail) bmsgTbody.append(detail);
+    });
+    refreshBmsgSortUI();
+  }
+
+  function bmsgHeaderSortClick(col: 'date' | 'unread' | 'product'): void {
+    const defaultDir: 'asc' | 'desc' = col === 'product' ? 'asc' : 'desc';
+    const dir: 'asc' | 'desc' = bmsgSortCol === col ? (bmsgSortDir === 'asc' ? 'desc' : 'asc') : defaultDir;
+    sortBmsg(col, dir);
+  }
+
+  // ── Shared floating portal (own copy — see the equivalent in products.ts / the seller dashboard's own messages script) ──
+  let bmsgPortalTrigger: HTMLElement | null = null;
+  function getBmsgPortal(): HTMLElement {
+    let portal = document.getElementById('bmsg-toolbar-portal');
+    if (!portal) {
+      portal = document.createElement('div');
+      portal.id = 'bmsg-toolbar-portal';
+      portal.className = 'toolbar-portal';
+      portal.setAttribute('role', 'menu');
+      portal.hidden = true;
+      document.body.appendChild(portal);
+    }
+    return portal;
+  }
+  function positionBmsgPortal(portal: HTMLElement, trigger: HTMLElement): void {
+    const isRTL = getComputedStyle(document.documentElement).direction === 'rtl';
+    const margin = 8;
+    const triggerRect = trigger.getBoundingClientRect();
+    const portalRect = portal.getBoundingClientRect();
+    let left = isRTL ? triggerRect.right - portalRect.width : triggerRect.left;
+    left = Math.max(margin, Math.min(left, window.innerWidth - portalRect.width - margin));
+    let top = triggerRect.bottom + 4;
+    top = Math.min(top, Math.max(margin, window.innerHeight - portalRect.height - margin));
+    portal.style.left = `${left}px`;
+    portal.style.top = `${top}px`;
+  }
+  function closeBmsgPortal(): void {
+    const portal = document.getElementById('bmsg-toolbar-portal');
+    if (portal) portal.hidden = true;
+    bmsgPortalTrigger?.setAttribute('aria-expanded', 'false');
+    bmsgPortalTrigger = null;
+  }
+  function openBmsgPortal(trigger: HTMLElement, minWidth: string, buildHtml: () => string, wire: (portal: HTMLElement) => void): void {
+    const portal = getBmsgPortal();
+    portal.style.minWidth = minWidth;
+    portal.style.maxHeight = '320px';
+    portal.style.overflow = 'auto';
+    portal.innerHTML = buildHtml();
+    portal.hidden = false;
+    positionBmsgPortal(portal, trigger);
+    trigger.setAttribute('aria-expanded', 'true');
+    bmsgPortalTrigger = trigger;
+    wire(portal);
+  }
+  document.addEventListener('click', (e) => {
+    const portal = document.getElementById('bmsg-toolbar-portal');
+    if (!portal || portal.hidden) return;
+    // composedPath(), not target.contains() — a portal click that swaps
+    // portal.innerHTML (e.g. drilling into a filter column) detaches the
+    // original e.target from the document mid-bubble, so a containment check
+    // done here (after that swap already ran) wrongly reads as "outside" and
+    // closes the portal the instant it opens its next level.
+    const path = e.composedPath();
+    if (path.includes(portal)) return;
+    if (bmsgPortalTrigger && path.includes(bmsgPortalTrigger)) return;
+    closeBmsgPortal();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeBmsgPortal(); });
+
+  // ── Sort ──
+  function openMobileBmsgSort(trigger: HTMLElement): void {
+    openBmsgPortal(trigger, '13rem', () => {
+      return BMSG_SORT_OPTIONS.map((o) => {
+        const selected = o.col === bmsgSortCol && o.dir === bmsgSortDir;
+        return `<button type="button" class="product-menu__item" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="cursor:pointer${selected ? ';font-weight:700;color:var(--color-primary)' : ''}">${escB(o.label())}</button>`;
+      }).join('');
+    }, (portal) => {
+      portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          sortBmsg((btn.dataset.sortCol as 'date' | 'unread' | 'product') ?? 'date', (btn.dataset.sortDir as 'asc' | 'desc') ?? 'desc');
+          closeBmsgPortal();
+        });
+      });
+    });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.msg-table thead .sort-btn').forEach((btn) => {
+    btn.addEventListener('click', () => bmsgHeaderSortClick((btn.dataset.sortCol as 'date' | 'unread' | 'product') ?? 'date'));
+  });
+
+  const bmsgSortTrigger = document.getElementById('bmsg-sort-trigger') as HTMLButtonElement | null;
+  bmsgSortTrigger?.addEventListener('click', () => {
+    if (bmsgPortalTrigger === bmsgSortTrigger) { closeBmsgPortal(); return; }
+    openMobileBmsgSort(bmsgSortTrigger);
+  });
+
+  // ── Filter ──
+  function bmsgFilterColumnLabel(col: string): string {
+    if (col === 'status') return bI.filterColStatus;
+    if (col === 'product') return bI.filterColProduct;
+    if (col === 'store') return bI.filterColStore;
+    return col;
+  }
+  function getBmsgDistinctValues(col: string): string[] {
+    const values = new Set<string>();
+    document.querySelectorAll<HTMLElement>('[data-bmsg-id]').forEach((row) => values.add(getBmsgFilterValue(row, col)));
+    return [...values].sort();
+  }
+  function bmsgFilterValuesHtml(col: string, showBack: boolean): string {
+    const label = bmsgFilterColumnLabel(col);
+    const values = getBmsgDistinctValues(col);
+    const selected = bmsgFilters.get(col) ?? new Set<string>();
+    const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
+    const backHtml = showBack
+      ? `<button type="button" class="product-menu__back" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${escB(label)}</button><div class="product-menu__divider"></div>`
+      : '';
+    return [
+      backHtml,
+      ...values.map((v) => `<label class="product-menu__checkbox-item"><input type="checkbox" data-filter-value="${escB(v)}" ${selected.has(v) ? 'checked' : ''}>${escB(v)}</label>`),
+      `<div class="product-menu__divider"></div>`,
+      `<button type="button" class="product-menu__clear" data-filter-clear-col>${escB(bI.filterClearColumn)}</button>`,
+    ].join('');
+  }
+  function wireBmsgFilterValues(portal: HTMLElement, col: string, reopen: () => void, onBack?: () => void): void {
+    portal.querySelectorAll<HTMLInputElement>('[data-filter-value]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const set = bmsgFilters.get(col) ?? new Set<string>();
+        if (cb.checked) set.add(cb.dataset.filterValue ?? ''); else set.delete(cb.dataset.filterValue ?? '');
+        if (set.size) bmsgFilters.set(col, set); else bmsgFilters.delete(col);
+        applyBmsgFilter();
+        refreshBmsgFilterUI();
+      });
+    });
+    portal.querySelector('[data-filter-clear-col]')?.addEventListener('click', () => {
+      bmsgFilters.delete(col);
+      applyBmsgFilter();
+      refreshBmsgFilterUI();
+      reopen();
+    });
+    if (onBack) portal.querySelector('[data-filter-back]')?.addEventListener('click', onBack);
+  }
+
+  function openDesktopBmsgFunnel(btn: HTMLButtonElement, col: string): void {
+    openBmsgPortal(btn, '10rem', () => bmsgFilterValuesHtml(col, false), (portal) => {
+      wireBmsgFilterValues(portal, col, () => openDesktopBmsgFunnel(btn, col));
+    });
+  }
+
+  function bmsgFilterColumnsHtml(): string {
+    const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
+    return [
+      ...BMSG_FILTER_COLUMNS.map((col) => {
+        const active = (bmsgFilters.get(col)?.size ?? 0) > 0;
+        return `<div class="product-menu__item" data-filter-col="${col}" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+          <input type="checkbox" data-filter-col-toggle="${col}" ${active ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">
+          <span style="flex:1">${escB(bmsgFilterColumnLabel(col))}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>`;
+      }).join(''),
+      `<div class="product-menu__divider"></div>`,
+      `<button type="button" class="product-menu__clear" data-filter-clear-all>${escB(bI.filterClearAll)}</button>`,
+    ].join('');
+  }
+
+  function openMobileBmsgFilterColumns(trigger: HTMLElement): void {
+    openBmsgPortal(trigger, '11rem', bmsgFilterColumnsHtml, (portal) => {
+      portal.querySelectorAll<HTMLElement>('[data-filter-col]').forEach((row) => {
+        const col = row.dataset.filterCol ?? '';
+        row.addEventListener('click', (e) => {
+          if ((e.target as HTMLElement).closest('[data-filter-col-toggle]')) return;
+          openMobileBmsgFilterValues(trigger, col);
+        });
+        const cb = row.querySelector<HTMLInputElement>('[data-filter-col-toggle]');
+        cb?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (cb.checked) {
+            cb.checked = false;
+            openMobileBmsgFilterValues(trigger, col);
+            return;
+          }
+          bmsgFilters.delete(col);
+          applyBmsgFilter();
+          refreshBmsgFilterUI();
+          openMobileBmsgFilterColumns(trigger);
+        });
+      });
+      portal.querySelector('[data-filter-clear-all]')?.addEventListener('click', () => {
+        bmsgFilters.clear();
+        applyBmsgFilter();
+        refreshBmsgFilterUI();
+        openMobileBmsgFilterColumns(trigger);
+      });
+    });
+  }
+  function openMobileBmsgFilterValues(trigger: HTMLElement, col: string): void {
+    openBmsgPortal(trigger, '11rem', () => bmsgFilterValuesHtml(col, true), (portal) => {
+      wireBmsgFilterValues(portal, col, () => openMobileBmsgFilterValues(trigger, col), () => openMobileBmsgFilterColumns(trigger));
+    });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.msg-table thead [data-filter-funnel-col]').forEach((btn) => {
+    const col = btn.dataset.filterFunnelCol ?? '';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (bmsgPortalTrigger === btn) { closeBmsgPortal(); return; }
+      openDesktopBmsgFunnel(btn, col);
+    });
+  });
+
+  const bmsgFilterTrigger = document.getElementById('bmsg-filter-trigger') as HTMLButtonElement | null;
+  bmsgFilterTrigger?.addEventListener('click', () => {
+    if (bmsgPortalTrigger === bmsgFilterTrigger) { closeBmsgPortal(); return; }
+    openMobileBmsgFilterColumns(bmsgFilterTrigger);
+  });
+
+  refreshBmsgSortUI();
+  refreshBmsgFilterUI();
+
   document.querySelectorAll<HTMLElement>('[data-bmsg-id]').forEach((row) => {
     const id        = row.dataset.bmsgId ?? '';
     const threadRow = document.getElementById(`bmsg-detail-${id}`) as HTMLTableRowElement | null;
@@ -960,6 +1350,7 @@ const shipLabel: Record<string, string> = {
             if (previewTd) previewTd.innerHTML = `${escB(last.content)}${isSelf ? ` <span class="msg-table__preview-you">(${escB(I.msgYou)})</span>` : ''}`;
             const dateTd = row.querySelector('.msg-table__td--date');
             if (dateTd) dateTd.textContent = fmtDateBuyer(last.createdAt);
+            row.dataset.sortDate = last.createdAt;
             if (viaPoll && markRead && !isSelf) {
               window.dispatchEvent(new CustomEvent('toast:show', { detail: {
                 title: I.msgNewToast, body: last.fromName, key: last.id,
@@ -970,6 +1361,7 @@ const shipLabel: Record<string, string> = {
           if (markRead) {
             row.classList.remove('msg-table__row--unread');
             document.querySelector('.my-nav-btn[data-tab="messages"] .my-nav-badge')?.remove();
+            applyBmsgFilter();
             fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read-buyer', id }) })
               .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
           }
@@ -1035,6 +1427,7 @@ const shipLabel: Record<string, string> = {
             if (previewTd) previewTd.innerHTML = `${escB(data.message.content)} <span class="msg-table__preview-you">(${escB(I.msgYou)})</span>`;
             const dateTd = row.querySelector('.msg-table__td--date');
             if (dateTd) dateTd.textContent = fmtDateBuyer(data.message.createdAt);
+            row.dataset.sortDate = data.message.createdAt;
             textarea.value = '';
           }
         } catch { /* ignore */ } finally {
@@ -1098,6 +1491,7 @@ const shipLabel: Record<string, string> = {
         if (previewTd) previewTd.innerHTML = `${escB(last.content)}${isSelf ? ` <span class="msg-table__preview-you">(${escB(I.msgYou)})</span>` : ''}`;
         const dateTd = row.querySelector('.msg-table__td--date');
         if (dateTd) dateTd.textContent = fmtDateBuyer(last.createdAt);
+        row.dataset.sortDate = last.createdAt;
       }).catch(() => {});
   }
 
@@ -1124,6 +1518,7 @@ const shipLabel: Record<string, string> = {
             refreshRowPreview(id, row);
           }
         });
+        applyBmsgFilter();
       }).catch(() => {});
   }
   setInterval(pollBuyerUnread, 15000);

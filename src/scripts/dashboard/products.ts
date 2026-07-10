@@ -20,13 +20,27 @@ function fmtPrice(n: number) { return formatPrice(n); }
 
 const SPINNER_SVG = `<span class="dot-pulse" role="status" aria-label="טוען"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span>`;
 
-// ── Products pagination + category filter (shared state) ─────────────────────
+// ── Products pagination + toolbar filter (shared state) ───────────────────────
 const PRODUCTS_PAGE_SIZE = 20;
-let productsActiveCategory = '';
 let productsCurrentPage = 1;
 
-function rowMatchesCategoryFilter(row: HTMLElement): boolean {
-  return !productsActiveCategory || row.dataset.category === productsActiveCategory;
+// Column → set of selected display values. Empty set (or missing entry) for a
+// column means that column doesn't restrict anything; multiple selected values
+// within a column combine with OR, different columns combine with AND — same
+// semantics as the variant-combo table's per-dimension filter.
+const productsFilters = new Map<string, Set<string>>();
+
+function getRowFilterValue(row: HTMLElement, col: string): string {
+  if (col === 'category') return row.dataset.category || (getDashI18n().filterNoCategory ?? 'ללא קטגוריה');
+  return '';
+}
+
+function rowMatchesFilters(row: HTMLElement): boolean {
+  for (const [col, values] of productsFilters) {
+    if (values.size === 0) continue;
+    if (!values.has(getRowFilterValue(row, col))) return false;
+  }
+  return true;
 }
 
 function fmtDateAdded(iso?: string): string {
@@ -1037,11 +1051,11 @@ export function buildRows(p: ProductData, cloud: string, preset: string, storeSl
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
     <td class="cat-col">${p.category ? `<span class="product-cat-chip">${esc(p.category)}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="num product-price">${fmtPrice(p.price)}</td>
-    <td class="num product-stock"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
+    <td class="num product-price price-col">${fmtPrice(p.price)}</td>
+    <td class="num product-stock stock-col"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">—</td>
     <td class="date-col">${esc(fmtDateAdded(p.createdAt))}</td>
-    <td class="actions">
+    <td class="actions actions-col">
       <div class="product-menu">
         <button class="product-menu__btn" type="button" aria-label="${esc(i.menuLabel ?? 'אפשרויות')}" aria-expanded="false" aria-haspopup="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
@@ -1335,7 +1349,6 @@ export function initAddProduct(cloud: string, preset: string): void {
         attachListeners(display, edit, cloud, preset);
         tbody.prepend(display, edit);
         initThumbs(display);
-        refreshCategoryFilter();
         applyPagination();
       }
 
@@ -1428,7 +1441,6 @@ export function initDeleteProduct(): void {
 
           document.querySelector(`[data-product-display="${productId}"]`)?.remove();
           document.querySelector(`[data-product-edit="${productId}"]`)?.remove();
-          refreshCategoryFilter();
           applyPagination();
 
           const tbody = document.getElementById('products-tbody');
@@ -1462,7 +1474,7 @@ export function initThumbs(root: ParentNode = document): void {
 export function renumberRows(): void {
   let n = 0;
   document.querySelectorAll<HTMLElement>('#products-tbody [data-product-display]').forEach((row) => {
-    if (!rowMatchesCategoryFilter(row)) return;
+    if (!rowMatchesFilters(row)) return;
     n++;
     const cell = row.querySelector<HTMLElement>('.row-num');
     if (cell) cell.textContent = String(n);
@@ -1497,7 +1509,7 @@ export function applyPagination(): void {
   if (!tbody) return;
 
   const rows = Array.from(tbody.querySelectorAll<HTMLElement>('[data-product-display]'));
-  const matchedCount = rows.reduce((n, row) => n + (rowMatchesCategoryFilter(row) ? 1 : 0), 0);
+  const matchedCount = rows.reduce((n, row) => n + (rowMatchesFilters(row) ? 1 : 0), 0);
   const totalPages = Math.max(1, Math.ceil(matchedCount / PRODUCTS_PAGE_SIZE));
   productsCurrentPage = Math.min(Math.max(productsCurrentPage, 1), totalPages);
 
@@ -1507,7 +1519,7 @@ export function applyPagination(): void {
   let matchIdx = 0;
   rows.forEach((row) => {
     const editRow = document.querySelector<HTMLElement>(`[data-product-edit="${row.dataset.productDisplay}"]`);
-    if (!rowMatchesCategoryFilter(row)) {
+    if (!rowMatchesFilters(row)) {
       row.hidden = true;
       if (editRow) editRow.hidden = true;
       return;
@@ -1561,53 +1573,349 @@ export function initStickyOffsets(): void {
   }
 }
 
-export function initTableSort(): void {
-  let sortCol = '';
-  let sortDir = 'asc';
+function getRowSortValue(row: HTMLElement, col: string): string | number {
+  if (col === 'name')      return row.dataset.sortName ?? '';
+  if (col === 'price')     return parseFloat(row.dataset.sortPrice ?? '0');
+  if (col === 'stock')     return parseInt(row.dataset.sortStock ?? '0', 10);
+  if (col === 'wishlist')  return parseInt(row.dataset.sortWishlist ?? '0', 10);
+  if (col === 'category')  return (row.dataset.category ?? '').toLowerCase();
+  if (col === 'createdAt') return row.dataset.sortCreatedAt ?? '';
+  return '';
+}
 
-  function sortTable(col: string) {
-    const defaultDir = col === 'wishlist' || col === 'createdAt' ? 'desc' : 'asc';
-    sortDir = sortCol === col ? (sortDir === 'asc' ? 'desc' : 'asc') : defaultDir;
-    sortCol = col;
+function sortProductsBy(col: string, dir: 'asc' | 'desc'): void {
+  const tbody = document.getElementById('products-tbody');
+  if (!tbody) return;
 
-    const tbody = document.getElementById('products-tbody');
-    if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll<HTMLTableRowElement>('[data-product-display]'));
+  rows.sort((a, b) => {
+    const va = getRowSortValue(a, col);
+    const vb = getRowSortValue(b, col);
+    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return dir === 'asc' ? cmp : -cmp;
+  });
 
-    const rows = Array.from(tbody.querySelectorAll<HTMLTableRowElement>('[data-product-display]'));
-    rows.sort((a, b) => {
-      let va: string | number = '';
-      let vb: string | number = '';
-      if (col === 'name')     { va = a.dataset.sortName     ?? ''; vb = b.dataset.sortName     ?? ''; }
-      if (col === 'price')    { va = parseFloat(a.dataset.sortPrice    ?? '0'); vb = parseFloat(b.dataset.sortPrice    ?? '0'); }
-      if (col === 'stock')    { va = parseInt(a.dataset.sortStock   ?? '0', 10); vb = parseInt(b.dataset.sortStock   ?? '0', 10); }
-      if (col === 'wishlist') { va = parseInt(a.dataset.sortWishlist ?? '0', 10); vb = parseInt(b.dataset.sortWishlist ?? '0', 10); }
-      if (col === 'category') { va = (a.dataset.category ?? '').toLowerCase(); vb = (b.dataset.category ?? '').toLowerCase(); }
-      if (col === 'createdAt') { va = a.dataset.sortCreatedAt ?? ''; vb = b.dataset.sortCreatedAt ?? ''; }
-      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-      return sortDir === 'asc' ? cmp : -cmp;
+  for (const display of rows) {
+    const edit = tbody.querySelector<HTMLTableRowElement>(`[data-product-edit="${display.dataset.productDisplay}"]`);
+    tbody.append(display);
+    if (edit) tbody.append(edit);
+  }
+  productsCurrentPage = 1;
+  applyPagination();
+}
+
+// Columns offered in the "filter by" control. Only columns with naturally
+// low-cardinality, repeatable values are listed here — same judgment call the
+// variant-combo table already makes (its dimension columns get a filter
+// funnel, its continuous stock column only gets sort). Add more column keys
+// here (and a matching case in getRowFilterValue) if a future column turns
+// out to warrant it.
+const PRODUCT_FILTER_COLUMNS = ['category'] as const;
+
+function productFilterColumnLabel(col: string, i: Record<string, string>): string {
+  if (col === 'category') return i.categoryLabel ?? 'קטגוריה';
+  return col;
+}
+
+const PRODUCT_SORT_OPTIONS: { col: string; dir: 'asc' | 'desc'; labelKey: string }[] = [
+  { col: 'createdAt', dir: 'desc',    labelKey: 'sortOptDateDesc' },
+  { col: 'createdAt', dir: 'asc',     labelKey: 'sortOptDateAsc' },
+  { col: 'name',       dir: 'asc',    labelKey: 'sortOptNameAsc' },
+  { col: 'name',       dir: 'desc',   labelKey: 'sortOptNameDesc' },
+  { col: 'price',      dir: 'asc',    labelKey: 'sortOptPriceAsc' },
+  { col: 'price',      dir: 'desc',   labelKey: 'sortOptPriceDesc' },
+  { col: 'stock',      dir: 'asc',    labelKey: 'sortOptStockAsc' },
+  { col: 'stock',      dir: 'desc',   labelKey: 'sortOptStockDesc' },
+  { col: 'wishlist',   dir: 'desc',   labelKey: 'sortOptWishlistDesc' },
+  { col: 'category',   dir: 'asc',    labelKey: 'sortOptCategoryAsc' },
+];
+
+let productsSortCol = 'createdAt';
+let productsSortDir: 'asc' | 'desc' = 'desc';
+
+// ── Shared floating portal ──────────────────────────────────────────────────
+// One body-anchored element reused by every toolbar/header dropdown (mobile
+// sort menu, mobile filter drill-down, desktop per-column funnels). Content
+// is swapped via innerHTML per open, and position is computed fresh each time
+// from the trigger's real getBoundingClientRect() and clamped to the
+// viewport — this is what actually fixes off-screen dropdowns; a plain
+// position:absolute + inset-inline-end:0 (the kebab-menu's own approach)
+// only works when the trigger is guaranteed to sit near that edge, which a
+// toolbar button in a wrapping flex row is not. Mirrors the variant-combo
+// table's own getComboFilterPortal()/openComboFilterPortal().
+let toolbarPortalTrigger: HTMLElement | null = null;
+
+function getToolbarPortal(): HTMLElement {
+  let portal = document.getElementById('products-toolbar-portal');
+  if (!portal) {
+    portal = document.createElement('div');
+    portal.id = 'products-toolbar-portal';
+    portal.className = 'toolbar-portal';
+    portal.setAttribute('role', 'menu');
+    portal.hidden = true;
+    document.body.appendChild(portal);
+  }
+  return portal;
+}
+
+function positionToolbarPortal(portal: HTMLElement, trigger: HTMLElement): void {
+  const isRTL = getComputedStyle(document.documentElement).direction === 'rtl';
+  const margin = 8;
+  const triggerRect = trigger.getBoundingClientRect();
+  const portalRect = portal.getBoundingClientRect();
+  let left = isRTL ? triggerRect.right - portalRect.width : triggerRect.left;
+  left = Math.max(margin, Math.min(left, window.innerWidth - portalRect.width - margin));
+  let top = triggerRect.bottom + 4;
+  top = Math.min(top, Math.max(margin, window.innerHeight - portalRect.height - margin));
+  portal.style.left = `${left}px`;
+  portal.style.top = `${top}px`;
+}
+
+function closeToolbarPortal(): void {
+  const portal = document.getElementById('products-toolbar-portal');
+  if (portal) portal.hidden = true;
+  toolbarPortalTrigger?.setAttribute('aria-expanded', 'false');
+  toolbarPortalTrigger = null;
+}
+
+function openToolbarPortal(
+  trigger: HTMLElement,
+  minWidth: string,
+  buildHtml: () => string,
+  wire: (portal: HTMLElement) => void,
+): void {
+  const portal = getToolbarPortal();
+  portal.style.minWidth = minWidth;
+  portal.style.maxHeight = '320px';
+  portal.style.overflow = 'auto';
+  portal.innerHTML = buildHtml();
+  portal.hidden = false;
+  positionToolbarPortal(portal, trigger);
+  trigger.setAttribute('aria-expanded', 'true');
+  toolbarPortalTrigger = trigger;
+  wire(portal);
+}
+
+document.addEventListener('click', (e) => {
+  const portal = document.getElementById('products-toolbar-portal');
+  if (!portal || portal.hidden) return;
+  // composedPath(), not target.contains() — a portal click that swaps
+  // portal.innerHTML (e.g. drilling into a filter column) detaches the
+  // original e.target from the document mid-bubble, so a containment check
+  // done here (after that swap already ran) wrongly reads as "outside" and
+  // closes the portal the instant it opens its next level.
+  const path = e.composedPath();
+  if (path.includes(portal)) return;
+  if (toolbarPortalTrigger && path.includes(toolbarPortalTrigger)) return;
+  closeToolbarPortal();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeToolbarPortal(); });
+
+// ── Sort — keeps desktop header buttons and the mobile "sort by" dropdown in
+// sync, since both call the same applySort() and both get refreshed by it. ──
+
+function refreshSortUI(): void {
+  document.querySelectorAll<HTMLButtonElement>('#products-table thead .sort-btn').forEach((btn) => {
+    if (btn.dataset.sortCol === productsSortCol) { btn.dataset.active = 'true'; btn.dataset.dir = productsSortDir; }
+    else { delete btn.dataset.active; delete btn.dataset.dir; }
+  });
+  const label = document.getElementById('products-sort-label');
+  if (label) {
+    const opt = PRODUCT_SORT_OPTIONS.find((o) => o.col === productsSortCol && o.dir === productsSortDir) ?? PRODUCT_SORT_OPTIONS[0]!;
+    label.textContent = getDashI18n()[opt.labelKey] ?? opt.labelKey;
+  }
+}
+
+function applySort(col: string, dir: 'asc' | 'desc'): void {
+  productsSortCol = col;
+  productsSortDir = dir;
+  sortProductsBy(col, dir);
+  refreshSortUI();
+}
+
+function headerSortClick(col: string): void {
+  const defaultDir = col === 'wishlist' || col === 'createdAt' ? 'desc' : 'asc';
+  const dir: 'asc' | 'desc' = productsSortCol === col ? (productsSortDir === 'asc' ? 'desc' : 'asc') : defaultDir;
+  applySort(col, dir);
+}
+
+function openMobileSortMenu(trigger: HTMLElement): void {
+  openToolbarPortal(trigger, '13rem', () => {
+    const i = getDashI18n();
+    return PRODUCT_SORT_OPTIONS.map((opt) => {
+      const selected = opt.col === productsSortCol && opt.dir === productsSortDir;
+      return `<button type="button" class="product-menu__item" data-sort-col="${opt.col}" data-sort-dir="${opt.dir}" style="cursor:pointer${selected ? ';font-weight:700;color:var(--color-primary)' : ''}">${esc(i[opt.labelKey] ?? opt.labelKey)}</button>`;
+    }).join('');
+  }, (portal) => {
+    portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applySort(btn.dataset.sortCol ?? 'createdAt', (btn.dataset.sortDir as 'asc' | 'desc') ?? 'desc');
+        closeToolbarPortal();
+      });
     });
+  });
+}
 
-    for (const display of rows) {
-      const edit = tbody.querySelector<HTMLTableRowElement>(`[data-product-edit="${display.dataset.productDisplay}"]`);
-      tbody.append(display);
-      if (edit) tbody.append(edit);
-    }
+// ── Filter — desktop gets one funnel button per filterable column (each
+// scoped to exactly that column, like the variant-combo table); mobile gets a
+// single "filter by" entry point that drills down: column list (each row
+// shows a checkbox reflecting whether that column currently has an active
+// filter) → that column's own value checkboxes. Both paths converge on the
+// same productsFilters state + refreshFilterUI(). ──
+
+function refreshFilterUI(): void {
+  document.querySelectorAll<HTMLButtonElement>('#products-table thead [data-filter-funnel-col]').forEach((btn) => {
+    const col = btn.dataset.filterFunnelCol ?? '';
+    if ((productsFilters.get(col)?.size ?? 0) > 0) btn.dataset.active = 'true'; else delete btn.dataset.active;
+  });
+  const badge = document.getElementById('products-filter-count');
+  if (badge) {
+    const activeCols = [...productsFilters.values()].filter((s) => s.size > 0).length;
+    badge.hidden = activeCols === 0;
+    badge.textContent = String(activeCols);
+  }
+}
+
+function getDistinctFilterValues(col: string): string[] {
+  const values = new Set<string>();
+  document.querySelectorAll<HTMLElement>('[data-product-display]').forEach((row) => values.add(getRowFilterValue(row, col)));
+  return [...values].sort();
+}
+
+function filterValuesHtml(col: string, showBack: boolean): string {
+  const i = getDashI18n();
+  const label = productFilterColumnLabel(col, i);
+  const values = getDistinctFilterValues(col);
+  const selected = productsFilters.get(col) ?? new Set<string>();
+  const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
+  const backHtml = showBack
+    ? `<button type="button" class="product-menu__back" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${esc(label)}</button><div class="product-menu__divider"></div>`
+    : '';
+  return [
+    backHtml,
+    ...values.map((v) => `<label class="product-menu__checkbox-item"><input type="checkbox" data-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''}>${esc(v)}</label>`),
+    `<div class="product-menu__divider"></div>`,
+    `<button type="button" class="product-menu__clear" data-filter-clear-col>${esc(i.filterClearColumn ?? 'נקה סינון בעמודה זו')}</button>`,
+  ].join('');
+}
+
+function wireFilterValues(portal: HTMLElement, col: string, reopen: () => void, onBack?: () => void): void {
+  portal.querySelectorAll<HTMLInputElement>('[data-filter-value]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const set = productsFilters.get(col) ?? new Set<string>();
+      if (cb.checked) set.add(cb.dataset.filterValue ?? ''); else set.delete(cb.dataset.filterValue ?? '');
+      if (set.size) productsFilters.set(col, set); else productsFilters.delete(col);
+      productsCurrentPage = 1;
+      applyPagination();
+      refreshFilterUI();
+    });
+  });
+  portal.querySelector('[data-filter-clear-col]')?.addEventListener('click', () => {
+    productsFilters.delete(col);
     productsCurrentPage = 1;
     applyPagination();
+    refreshFilterUI();
+    reopen();
+  });
+  if (onBack) portal.querySelector('[data-filter-back]')?.addEventListener('click', onBack);
+}
 
-    document.querySelectorAll<HTMLButtonElement>('.sort-btn').forEach((btn) => {
-      if (btn.dataset.sortCol === col) {
-        btn.dataset.active = 'true';
-        btn.dataset.dir = sortDir;
-      } else {
-        delete btn.dataset.active;
-        delete btn.dataset.dir;
-      }
+function openDesktopFunnel(btn: HTMLButtonElement, col: string): void {
+  openToolbarPortal(btn, '11rem', () => filterValuesHtml(col, false), (portal) => {
+    wireFilterValues(portal, col, () => openDesktopFunnel(btn, col));
+  });
+}
+
+// The checkbox here is real (not decorative) — unchecking it clears that
+// column's filter directly, without forcing a drill-down into its values
+// first. Clicking the checkbox while it's off has nothing meaningful to do
+// yet (no values chosen), so it opens the values view instead of actually
+// checking itself. A plain <div> row (not <label>) on purpose: a <label>
+// wrapping a checkbox forwards any click on the row — including the
+// "navigate to values" click on the chevron/text — into a second, native
+// toggle of the checkbox, double-handling the same click.
+function filterColumnsHtml(): string {
+  const i = getDashI18n();
+  const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
+  return [
+    ...PRODUCT_FILTER_COLUMNS.map((col) => {
+      const active = (productsFilters.get(col)?.size ?? 0) > 0;
+      return `<div class="product-menu__item" data-filter-col="${col}" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+        <input type="checkbox" data-filter-col-toggle="${col}" ${active ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">
+        <span style="flex:1">${esc(productFilterColumnLabel(col, i))}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>`;
+    }).join(''),
+    `<div class="product-menu__divider"></div>`,
+    `<button type="button" class="product-menu__clear" data-filter-clear-all>${esc(i.filterClearAll ?? 'נקה הכל')}</button>`,
+  ].join('');
+}
+
+function openMobileFilterColumns(trigger: HTMLElement): void {
+  openToolbarPortal(trigger, '12rem', filterColumnsHtml, (portal) => {
+    portal.querySelectorAll<HTMLElement>('[data-filter-col]').forEach((row) => {
+      const col = row.dataset.filterCol ?? '';
+      row.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('[data-filter-col-toggle]')) return;
+        openMobileFilterValues(trigger, col);
+      });
+      const cb = row.querySelector<HTMLInputElement>('[data-filter-col-toggle]');
+      cb?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (cb.checked) {
+          cb.checked = false;
+          openMobileFilterValues(trigger, col);
+          return;
+        }
+        productsFilters.delete(col);
+        productsCurrentPage = 1;
+        applyPagination();
+        refreshFilterUI();
+        openMobileFilterColumns(trigger);
+      });
     });
-  }
+    portal.querySelector('[data-filter-clear-all]')?.addEventListener('click', () => {
+      productsFilters.clear();
+      productsCurrentPage = 1;
+      applyPagination();
+      refreshFilterUI();
+      openMobileFilterColumns(trigger);
+    });
+  });
+}
 
-  document.querySelectorAll<HTMLButtonElement>('.sort-btn').forEach((btn) => {
-    btn.addEventListener('click', () => { if (btn.dataset.sortCol) sortTable(btn.dataset.sortCol); });
+function openMobileFilterValues(trigger: HTMLElement, col: string): void {
+  openToolbarPortal(trigger, '12rem', () => filterValuesHtml(col, true), (portal) => {
+    wireFilterValues(portal, col, () => openMobileFilterValues(trigger, col), () => openMobileFilterColumns(trigger));
+  });
+}
+
+export function initProductsToolbar(): void {
+  refreshSortUI();
+  refreshFilterUI();
+
+  document.querySelectorAll<HTMLButtonElement>('#products-table thead .sort-btn').forEach((btn) => {
+    btn.addEventListener('click', () => { if (btn.dataset.sortCol) headerSortClick(btn.dataset.sortCol); });
+  });
+  document.querySelectorAll<HTMLButtonElement>('#products-table thead [data-filter-funnel-col]').forEach((btn) => {
+    const col = btn.dataset.filterFunnelCol ?? '';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (toolbarPortalTrigger === btn) { closeToolbarPortal(); return; }
+      openDesktopFunnel(btn, col);
+    });
+  });
+
+  const sortTrigger = document.getElementById('products-sort-trigger') as HTMLButtonElement | null;
+  sortTrigger?.addEventListener('click', () => {
+    if (toolbarPortalTrigger === sortTrigger) { closeToolbarPortal(); return; }
+    openMobileSortMenu(sortTrigger);
+  });
+
+  const filterTrigger = document.getElementById('products-filter-trigger') as HTMLButtonElement | null;
+  filterTrigger?.addEventListener('click', () => {
+    if (toolbarPortalTrigger === filterTrigger) { closeToolbarPortal(); return; }
+    openMobileFilterColumns(filterTrigger);
   });
 }
 
@@ -1815,53 +2123,6 @@ export function initStockBreakdowns(): void {
   });
 }
 
-// ── Category filter ───────────────────────────────────────────────────────────
-
-let _refreshCatFilter: (() => void) | null = null;
-
-export function refreshCategoryFilter(): void {
-  _refreshCatFilter?.();
-}
-
-export function initCategoryFilter(): void {
-  const bar = document.getElementById('cat-filter-bar') as HTMLElement | null;
-  if (!bar) return;
-
-  const i = getDashI18n();
-
-  function getCategories(): string[] {
-    const cats = new Set<string>();
-    document.querySelectorAll<HTMLElement>('[data-product-display]').forEach((r) => {
-      const c = r.dataset.category;
-      if (c) cats.add(c);
-    });
-    return [...cats].sort();
-  }
-
-  function renderChips(): void {
-    const cats = getCategories();
-    if (cats.length === 0) { bar!.hidden = true; return; }
-    if (!cats.includes(productsActiveCategory)) productsActiveCategory = '';
-    bar!.hidden = false;
-    bar!.innerHTML = [
-      `<button type="button" class="cat-chip${!productsActiveCategory ? ' cat-chip--active' : ''}" data-filter-cat="">${esc(i.filterAll ?? 'הכל')}</button>`,
-      ...cats.map((c) => `<button type="button" class="cat-chip${productsActiveCategory === c ? ' cat-chip--active' : ''}" data-filter-cat="${esc(c)}">${esc(c)}</button>`),
-    ].join('');
-  }
-
-  bar.addEventListener('click', (e) => {
-    const chip = (e.target as Element).closest<HTMLButtonElement>('[data-filter-cat]');
-    if (!chip) return;
-    productsActiveCategory = chip.dataset.filterCat ?? '';
-    renderChips();
-    productsCurrentPage = 1;
-    applyPagination();
-  });
-
-  renderChips();
-  _refreshCatFilter = renderChips;
-}
-
 export function initBulkSelect(cloud: string, preset: string): void {
   const uploadPanel    = document.getElementById('bulk-upload-panel') as HTMLElement | null;
   const header         = document.querySelector<HTMLElement>('.products-header');
@@ -1982,7 +2243,6 @@ export function initBulkSelect(cloud: string, preset: string): void {
             document.getElementById('products-table')?.setAttribute('hidden', '');
             document.getElementById('empty-products')?.removeAttribute('hidden');
           }
-          refreshCategoryFilter();
           applyPagination();
           showStatus(i.bulkDeleted ?? 'המוצרים נמחקו.');
         },

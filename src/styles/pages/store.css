@@ -16,13 +16,18 @@
 
 /* Banner image — its own framed block (radius + shadow-card, same
    hero-surface language as the product page's image wrap), sitting above
-   the store's details rather than behind/under them. Height is capped so
-   a very wide screen doesn't stretch it into a huge strip. */
+   the store's details rather than behind/under them. aspect-ratio must
+   match the dashboard crop tool's fixed 3:1 (seller/dashboard.astro's
+   #banner-frame + the banner widget's `aspect:3` config) exactly — a
+   height clamp() here previously produced a *different* effective ratio
+   per viewport width, so object-fit:cover re-cropped the seller's already-
+   cropped image a second time, silently, in a way the dashboard preview
+   never showed (bit us: seller sees one crop, site shows another). */
 .store-banner__image-wrap {
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow-card);
-  height: clamp(160px, 20vw, 220px);
+  aspect-ratio: 3 / 1;
   margin-bottom: 2rem;
 }
 
