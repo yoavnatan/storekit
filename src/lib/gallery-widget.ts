@@ -12,6 +12,7 @@ export interface GalleryLabels {
   undoCrop?: string;
   changeImage?: string;
   done?: string;
+  cancel?: string;
   removingBg?: string;
 }
 
@@ -26,6 +27,7 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
     undoCrop:      labels.undoCrop      ?? 'Undo crop',
     changeImage:   labels.changeImage   ?? 'Change image',
     done:          labels.done          ?? 'Done',
+    cancel:        labels.cancel        ?? 'Cancel',
     removingBg:    labels.removingBg    ?? 'Removing background…',
   };
 
@@ -46,11 +48,10 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
     const hasUrl = !!url;
     return `
       <div class="gallery-slot" data-slot="${i}">
-        <label class="gallery-slot__empty"${hasUrl ? ' hidden' : ''}>
+        <button type="button" class="gallery-slot__empty"${hasUrl ? ' hidden' : ''} aria-label="${esc(l.changeImage)}">
           ${i === 0 ? `<span class="gallery-slot__label">${l.main}</span>` : ''}
           ${uploadIcon}
-          <input type="file" accept="image/*" class="visually-hidden gallery-file-input">
-        </label>
+        </button>
         <div class="gallery-slot__filled"${hasUrl ? '' : ' hidden'}>
           <img class="gallery-slot__img" src="${esc(url)}" alt="" width="88" height="88" loading="lazy" decoding="async">
           <div class="gallery-slot__overlay">
@@ -66,6 +67,13 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
   return `
     <div class="gallery-widget">
       <div class="gallery-grid">${slots.join('')}</div>
+      <!-- One shared file input per widget, positioned off-screen (not just visually-hidden) —
+           a real OS drag-drop can never physically land on it since it's nowhere near any
+           drop-zone's visible/hit-testable area, structurally ruling out the browser's own
+           native "drop a file onto a file input" default action from ever double-processing
+           a drop alongside our own drop handler. Click-to-choose triggers it via .click() from
+           JS (see gallery.ts), tracking which slot it's currently opening for. -->
+      <input type="file" accept="image/*" multiple class="gallery-shared-file-input">
       <div class="gallery-panel" hidden>
         <div class="gallery-panel__inner">
           <div class="img-preview-box">
@@ -86,7 +94,8 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
             </div>
             <div class="img-preview__actions-group img-preview__actions-group--meta">
               <button type="button" class="btn btn--ghost btn--sm gallery-change-btn">${uploadIcon}${esc(l.changeImage)}</button>
-              <button type="button" class="btn btn--ghost btn--sm gallery-done-btn">${checkIcon}${esc(l.done)}</button>
+              <button type="button" class="btn btn--ghost btn--sm gallery-cancel-btn">${removeIcon}${esc(l.cancel)}</button>
+              <button type="button" class="btn btn--sm gallery-done-btn">${checkIcon}${esc(l.done)}</button>
             </div>
           </div>
         </div>

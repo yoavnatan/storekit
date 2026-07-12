@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 
 const NOTIFS_PATH = path.join(process.cwd(), 'data/notifications.json');
 
-export type NotificationType = 'new_message' | 'seller_reply' | 'new_order' | 'order_update';
+export type NotificationType = 'new_message' | 'seller_reply' | 'new_order' | 'order_update' | 'low_stock' | 'out_of_stock';
 export type NotificationRole = 'buyer' | 'seller';
 
 export interface Notification {

@@ -19,7 +19,6 @@ if (!shopStore) return Astro.redirect('/404');
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
 const isFavorited = userId ? getFavoriteStoresForUser(userId).includes(shopStore.slug) : false;
-const isOwner = userId === shopStore.sellerId;
 
 const products = getProductsByStoreId(shopStore.id);
 const allCategories = [...new Set(products.map(p => p.category).filter(Boolean))] as string[];
@@ -43,6 +42,7 @@ const pmI18n = {
   addedToCart: t.store.addedToCart,
   toCheckout: t.store.toCheckout,
   outOfStock: t.store.outOfStock,
+  inStockLabel: t.store.inStockLabel,
   addToWishlist: t.wishlist.addLabel,
   removeFromWishlist: t.wishlist.removeLabel,
   fullPage: lang === 'he' ? 'לדף המוצר המלא' : 'View full product page',
@@ -228,7 +228,8 @@ const pmI18n = {
                     data-stock={String(p.stock)}
                     data-category={p.category ?? ''}
                     data-tags={p.tags?.length ? p.tags.join(',') : ''}
-                    data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}>
+                    data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
+                    data-variant-stock={p.variantStock ? JSON.stringify(p.variantStock) : undefined}>
                   <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable is-loading' : ''}`}
                        role={hasImages ? 'button' : undefined}
                        aria-label={hasImages ? p.name : undefined}
@@ -339,7 +340,7 @@ const pmI18n = {
         <button class="lightbox__arrow lightbox__arrow--prev" id="lightbox-prev" aria-label="Previous image">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <img class="lightbox__img" id="lightbox-img" src="" alt="" width="1200" height="1200" />
+        <img class="lightbox__img" id="lightbox-img" src="" alt="" />
         <button class="lightbox__arrow lightbox__arrow--next" id="lightbox-next" aria-label="Next image">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
@@ -391,6 +392,7 @@ const pmI18n = {
   import { spawnBurst } from '../../lib/burst.js';
   import { trackAddToCart } from '../../lib/tracking.js';
   import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
+  import { comboKey } from '../../lib/variant-combo.js';
   import { initReadMore } from '../../lib/read-more.js';
   import { saveLastStore } from '../../lib/last-store.js';
   import { saveStoreScroll, applyStoreScrollQuery, restoreStoreScroll } from '../../lib/scroll-restore.js';
@@ -577,6 +579,7 @@ const pmI18n = {
     }
 
     function updateQty(n: number) {
+      if (!addBtn) return;
       const cap = ceiling();
       qty = cap <= 0 ? 0 : Math.max(1, Math.min(n, cap));
       // Hide the "1" default — showing it on every idle card in the grid
@@ -965,11 +968,47 @@ const pmI18n = {
     const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
       ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
       : [];
+    const pmVariantStock: Record<string, number> = card.dataset.variantStock
+      ? (JSON.parse(card.dataset.variantStock) as Record<string, number>)
+      : {};
     // No dimension pre-selected — buyer must actively choose before add-to-cart
     // proceeds (see pmFlagMissingVariants below) — except a single-option
     // dimension, which has no real choice to make.
     const pmSelectedVariants: Record<string, string> = {};
     pmVariants.forEach((v) => { if (v.options.length === 1) pmSelectedVariants[v.name] = v.options[0]; });
+
+    // The combo's real stock — a per-combo variantStock override if the seller
+    // set one, else the product's shared stock pool. Plain `stock` alone is
+    // wrong here: a combo can have its own (lower or higher) override.
+    function pmEffectiveStock(selection: Record<string, string>): number {
+      if (!pmVariants.length || !Object.keys(pmVariantStock).length) return stock;
+      const key = comboKey(selection);
+      return key in pmVariantStock ? pmVariantStock[key]! : stock;
+    }
+
+    // What's actually still addable for this combo — nets out whatever qty of
+    // this exact combo already sits in the cart (see pmCeiling below, which
+    // is the same computation scoped to the currently-selected combo only).
+    function pmRemainingFor(selection: Record<string, string>): number {
+      const copy = Object.keys(selection).length ? selection : undefined;
+      return Math.max(0, pmEffectiveStock(selection) - getCartQty(storeSlug, slug, copy));
+    }
+
+    // Disables (rather than hides) any option whose combo — combined with the
+    // buyer's current picks for every other dimension — is out of stock, same
+    // pattern as the full product page's updateVariantAvailability().
+    function pmUpdateVariantAvailability(): void {
+      pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((b) => {
+        const bName = b.dataset.pvName ?? '';
+        const bValue = b.dataset.pvValue ?? '';
+        const available = pmRemainingFor({ ...pmSelectedVariants, [bName]: bValue }) > 0;
+        b.disabled = !available;
+        b.setAttribute('aria-disabled', String(!available));
+        b.style.opacity = available ? '1' : '0.4';
+        b.style.cursor = available ? 'pointer' : 'not-allowed';
+        b.style.textDecoration = available ? 'none' : 'line-through';
+      });
+    }
     const i18n        = getPMI18n();
     const mainImgUrl  = images[0] ?? '';
     const hasImages   = images.length > 0;
@@ -998,6 +1037,15 @@ const pmI18n = {
 
     const cartSection = stock > 0
       ? `<div>
+          <p id="pm-stock-note" class="flex items-center gap-1.5 text-sm" style="margin:0 0 0.6rem">
+            <span id="pm-stock-dot" aria-hidden="true" style="width:7px;height:7px;border-radius:50%;background:var(--color-success);flex-shrink:0;display:inline-block"></span>
+            <svg id="pm-stock-warn" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="display:none">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span id="pm-stock-text"></span>
+          </p>
           <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.6rem">
             <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
               <button type="button" class="pm-qty-dec" disabled aria-label="הפחת"
@@ -1093,19 +1141,22 @@ const pmI18n = {
     // Missing-selection feedback (subtle shake + ring) — mirrors the standalone
     // product page's flagMissingVariants, scoped to this modal's own DOM.
     function pmFlagMissingVariants(): boolean {
-      let firstMissing: HTMLElement | null = null;
-      pmVariants.forEach((v) => {
-        if (pmSelectedVariants[v.name]) return;
-        const group = pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(v.name)}"]`);
-        if (!group) return;
+      // A `let` reassigned inside a forEach closure then read with a type
+      // guard right after the loop is a known TS control-flow limitation —
+      // narrows to `never` at the read site regardless of `if`/`?.` form.
+      // Building the list functionally instead sidesteps it entirely.
+      const groups = pmVariants
+        .filter((v) => !pmSelectedVariants[v.name])
+        .map((v) => pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(v.name)}"]`))
+        .filter((g): g is HTMLElement => !!g);
+      groups.forEach((group) => {
         group.classList.remove('variant-group--invalid');
         void group.offsetWidth;
         group.classList.add('variant-group--invalid');
         setTimeout(() => group.classList.remove('variant-group--invalid'), 650);
-        if (!firstMissing) firstMissing = group;
       });
-      firstMissing?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      return !!firstMissing;
+      groups[0]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return groups.length > 0;
     }
 
     // Opened because the buyer tried to add-to-cart from the card itself
@@ -1124,6 +1175,7 @@ const pmI18n = {
         const vValue = btn.dataset.pvValue ?? '';
         pmSelectedVariants[vName] = vValue;
         updatePmQty(1); // this combo may already have a different amount in the cart
+        pmUpdateVariantAvailability(); // picking this dimension may sell out/free up options in the others
         pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(vName)}"]`)?.classList.remove('variant-group--invalid');
         pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
           const active = b === btn;
@@ -1235,10 +1287,38 @@ const pmI18n = {
     // Ceiling accounts for whatever quantity of this exact combo is already
     // in the cart (added here, from the product grid, or elsewhere) — not
     // just the combo's raw stock — so repeated add-to-cart clicks can't push
-    // the cart past real stock once every unit is already in it.
+    // the cart past real stock once every unit is already in it. Uses the
+    // selected combo's own stock (pmEffectiveStock), not the product's flat
+    // `stock` — a variant product can have a much higher/lower combo-specific
+    // number than the shared pool.
     function pmCeiling(): number {
-      const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
-      return Math.max(0, stock - getCartQty(storeSlug, slug, pmVariantsCopy));
+      return pmRemainingFor(pmSelectedVariants);
+    }
+
+    // Same dot/warning-triangle treatment as the full product page's
+    // stock-status-note: green dot when comfortably in stock, amber "only N
+    // left" once low, red "out of stock" once the cap hits zero.
+    function pmUpdateStockNote(cap: number): void {
+      const note = pmFooter?.querySelector<HTMLElement>('#pm-stock-note');
+      const dot  = pmFooter?.querySelector<HTMLElement>('#pm-stock-dot');
+      const warn = pmFooter?.querySelector<HTMLElement>('#pm-stock-warn');
+      const text = pmFooter?.querySelector<HTMLElement>('#pm-stock-text');
+      if (!note || !dot || !warn || !text) return;
+      const outOfStock = cap <= 0;
+      const isLow = !outOfStock && cap <= 5;
+      note.style.fontWeight = outOfStock || isLow ? '600' : '500';
+      dot.style.display = outOfStock || isLow ? 'none' : 'inline-block';
+      warn.style.display = outOfStock || isLow ? 'block' : 'none';
+      if (outOfStock) {
+        note.style.color = 'var(--color-danger)';
+        text.textContent = i18n.outOfStock ?? 'אזל מהמלאי';
+      } else if (isLow) {
+        note.style.color = 'var(--color-warning)';
+        text.textContent = document.documentElement.lang === 'he' ? `נותרו ${cap} בלבד` : `Only ${cap} left`;
+      } else {
+        note.style.color = 'var(--color-muted)';
+        text.textContent = i18n.inStockLabel ?? 'במלאי';
+      }
     }
 
     function updatePmQty(n: number) {
@@ -1248,6 +1328,7 @@ const pmI18n = {
       if (pmQtyDec) pmQtyDec.disabled = pmQty <= 1;
       if (pmQtyInc) pmQtyInc.disabled = cap <= 0 || pmQty >= cap;
       if (pmAddBtn) pmAddBtn.disabled = cap <= 0;
+      pmUpdateStockNote(cap);
     }
     pmQtyDec?.addEventListener('click', () => updatePmQty(pmQty - 1));
     pmQtyInc?.addEventListener('click', () => updatePmQty(pmQty + 1));
@@ -1261,12 +1342,13 @@ const pmI18n = {
     pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
     const pmToCheckout = pmFooter?.querySelector<HTMLAnchorElement>('.pm-to-checkout');
     updatePmQty(1); // reflect already-in-cart state as soon as the modal opens
+    pmUpdateVariantAvailability();
 
     pmAddBtn?.addEventListener('click', () => {
       if (pmAddBtn.disabled) return;
       if (pmVariants.length && pmFlagMissingVariants()) return;
       const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock }, pmQty, pmVariantsCopy);
+      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock: pmEffectiveStock(pmSelectedVariants) }, pmQty, pmVariantsCopy);
       trackAddToCart({ id: slug, name, price, category }, pmQty);
       updatePmQty(1);
       pmAddBtn.disabled = true;

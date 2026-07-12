@@ -4,12 +4,12 @@ import { showStatus } from './status.js';
 import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
-import { comboKey, generateCombos, canonicalDimName, type VariantDimension } from '../../lib/variant-combo.js';
+import { comboKey, generateCombos, canonicalDimName, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
 
 export interface ProductData {
   id: string; storeId: string; slug?: string; name: string;
   description: string; price: number; stock: number; images?: string[];
-  category?: string; tags?: string[];
+  category?: string; tags?: string[]; sku?: string;
   specs?: Array<{ label: string; value: string }>;
   variants?: VariantDimension[];
   variantStock?: Record<string, number>;
@@ -54,9 +54,13 @@ function warnIcon(label: string): string {
 }
 
 function stockHtml(stock: number, outOfStockLabel: string): string {
-  return stock <= 0
-    ? `<span style="display:inline-flex;align-items:center;gap:0.3rem"><span>0</span>${warnIcon(outOfStockLabel)}</span>`
-    : String(stock);
+  if (stock <= 0) {
+    return `<span style="display:inline-flex;align-items:center;gap:0.3rem"><span style="color:var(--color-danger)">0</span>${warnIcon(outOfStockLabel)}</span>`;
+  }
+  if (stock <= LOW_STOCK_THRESHOLD) {
+    return `<span style="color:var(--color-danger)">${stock}</span>`;
+  }
+  return String(stock);
 }
 
 // Joins a combo's values for display — color dimensions must go through
@@ -108,6 +112,13 @@ function categoryFieldHtml(category: string, i18n: Record<string, string>): stri
   return `<label class="field field--narrow">
     <span>${esc(i18n.categoryLabel ?? 'Category')}</span>
     <input class="input" name="category" value="${esc(category)}" placeholder="${esc(i18n.categoryPlaceholder ?? '')}" list="store-categories-list">
+  </label>`;
+}
+
+function skuFieldHtml(sku: string, i18n: Record<string, string>): string {
+  return `<label class="field field--narrow">
+    <span>${esc(i18n.skuLabel ?? 'SKU')}</span>
+    <input class="input" name="sku" value="${esc(sku)}" placeholder="${esc(i18n.skuPlaceholder ?? '')}">
   </label>`;
 }
 
@@ -1020,7 +1031,7 @@ export function initSpecsEditors(): void {
   });
 }
 
-export function buildRows(p: ProductData, cloud: string, preset: string, storeSlug = '', storeName = ''): [HTMLTableRowElement, HTMLTableRowElement] {
+export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTMLTableRowElement, HTMLTableRowElement] {
   const i = getDashI18n();
   const g = getGalleryI18n();
 
@@ -1050,6 +1061,7 @@ export function buildRows(p: ProductData, cloud: string, preset: string, storeSl
       <span class="product-name">${esc(p.name)}</span>
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
+    <td class="sku-col">${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="cat-col">${p.category ? `<span class="product-cat-chip">${esc(p.category)}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num product-price price-col">${fmtPrice(p.price)}</td>
     <td class="num product-stock stock-col"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
@@ -1092,7 +1104,7 @@ export function buildRows(p: ProductData, cloud: string, preset: string, storeSl
           <label class="field"><span>${i.colStock ?? 'Stock'}</span><input class="input" name="stock" type="number" min="0" step="1" value="${p.stock}"></label>
         </div>
         <label class="field"><span>${i.descLabel ?? 'Description'}</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
-        ${categoryFieldHtml(p.category ?? '', i)}
+        <div class="field-row">${categoryFieldHtml(p.category ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}</div>
         ${tagsFieldHtml(p.tags ?? [], i)}
         ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i)}
         ${specsEditorHtml(p.specs ?? [], i)}
@@ -1203,6 +1215,15 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
         displayRow.dataset.hasVariants = savedVariants.variants?.length ? '1' : '';
       }
 
+      const category = String(fd.get('category') ?? '').trim();
+      const catCell = displayRow.querySelector<HTMLElement>('.cat-col');
+      if (catCell) catCell.innerHTML = category ? `<span class="product-cat-chip">${esc(category)}</span>` : `<span style="color:var(--color-border)">—</span>`;
+      displayRow.dataset.category = category;
+
+      const sku = String(fd.get('sku') ?? '').trim();
+      const skuCell = displayRow.querySelector<HTMLElement>('.sku-col');
+      if (skuCell) skuCell.innerHTML = sku ? esc(sku) : `<span style="color:var(--color-border)">—</span>`;
+
       displayRow.dataset.sortName = name.toLowerCase();
       displayRow.dataset.sortPrice = String(price);
       displayRow.dataset.sortStock = String(stock);
@@ -1238,25 +1259,56 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
 // 'start'}) targets the viewport's y:0, which the fixed site header would
 // then cover; computing the exact target ourselves lands it right where it
 // sticks instead, no matter where the row was on the page.
-function scrollEditRowIntoView(edit: HTMLElement): void {
-  const header = edit.querySelector<HTMLElement>('.edit-row-header');
+// Measured (not theoretical) on this RTL site: the browser's own native CSS smooth-scroll
+// (`scroll-behavior:smooth` + `window.scrollTo({top, behavior:'smooth'})`) was visibly nudging
+// window.scrollX away from 0 mid-animation and back — a diagonal jump — for a `top`-only
+// scrollTo call on a tall RTL document. Neither pinning `left` explicitly on the same call, nor
+// a same-thread rAF loop forcing scrollX back to 0 every frame, stopped it — the native
+// animation appears to run off the main thread in a way that races both. The reliable fix is to
+// not delegate to native smooth-scroll here at all: animate scrollY ourselves and call the
+// positional (always-instant, both-axes-explicit) `window.scrollTo(x, y)` every frame instead.
+function animateScrollTo(targetY: number, duration = 380): void {
+  const startY = window.scrollY;
+  const delta = targetY - startY;
+  if (Math.abs(delta) < 1) { window.scrollTo(0, targetY); return; }
+  const start = performance.now();
+  const ease = (t: number) => 1 - Math.pow(1 - t, 3); // ease-out cubic, matches the site's other spring/ease timings in spirit
+
+  function step(now: number) {
+    const t = Math.min(1, (now - start) / duration);
+    window.scrollTo(0, startY + delta * ease(t));
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function scrollStickyHeaderIntoView(container: HTMLElement, headerSelector: string): void {
+  const header = container.querySelector<HTMLElement>(headerSelector);
   if (!header) return;
 
   const scrollToHeader = () => {
     const offset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--site-header-h')) || 0;
     const top = header.getBoundingClientRect().top + window.scrollY - offset;
-    window.scrollTo({ top, behavior: 'smooth' });
+    animateScrollTo(top);
   };
   scrollToHeader();
 
-  // This is the row's first time visible, so its lazy-loaded gallery images
-  // only start fetching now — their real size can land well after this
-  // click, growing the row and leaving the one-shot target short of the
-  // header. Re-aim for a short window whenever the row resizes, so the
-  // scroll keeps chasing the header into place instead of undershooting.
+  // This is the container's first time visible, so its lazy-loaded gallery images (or, for the
+  // bulk-upload panel, several products' worth of them) only start fetching now — their real
+  // size can land well after this click, growing the container and leaving the one-shot target
+  // short of the header. Re-aim for a short window whenever it resizes, so the scroll keeps
+  // chasing the header into place instead of undershooting.
   const ro = new ResizeObserver(scrollToHeader);
-  ro.observe(edit);
+  ro.observe(container);
   setTimeout(() => ro.disconnect(), 1500);
+}
+
+function scrollEditRowIntoView(edit: HTMLElement): void {
+  scrollStickyHeaderIntoView(edit, '.edit-row-header');
+}
+
+function scrollBulkUploadPanelIntoView(panel: HTMLElement): void {
+  scrollStickyHeaderIntoView(panel, '.bulk-upload-header');
 }
 
 // Snapshot of each edit row's last-saved markup — Cancel restores this instead
@@ -1272,7 +1324,7 @@ function bindEditFormInternals(display: HTMLTableRowElement, edit: HTMLTableRowE
   (edit.querySelector('form') as HTMLFormElement | null)
     ?.addEventListener('submit', (e) => void handleEditSubmit(e as SubmitEvent, cloud, preset));
   const gallery = edit.querySelector<Element>('.gallery-widget');
-  if (gallery) initGalleryWidget(gallery, cloud, preset);
+  if (gallery) initGalleryWidget(gallery);
   const variantsEditor = edit.querySelector<HTMLElement>('[data-variants-editor]');
   if (variantsEditor) syncTotalStockField(variantsEditor);
 }
@@ -1345,7 +1397,7 @@ export function initAddProduct(cloud: string, preset: string): void {
       if (emptyMsg) emptyMsg.hidden = true;
 
       if (tbody) {
-        const [display, edit] = buildRows(p, cloud, preset);
+        const [display, edit] = buildRows(p);
         attachListeners(display, edit, cloud, preset);
         tbody.prepend(display, edit);
         initThumbs(display);
@@ -2137,6 +2189,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
   const bulkCountParen = document.getElementById('bulk-count-paren') as HTMLElement | null;
   const bulkDeleteBtn  = document.getElementById('bulk-delete-btn') as HTMLButtonElement | null;
   const bulkUploadBtn  = document.getElementById('bulk-upload-btn') as HTMLButtonElement | null;
+  const bulkUploadLabel = document.getElementById('bulk-upload-label') as HTMLElement | null;
   const bulkEditBtn    = document.getElementById('bulk-edit-btn') as HTMLButtonElement | null;
 
   const selected = new Set<string>();
@@ -2167,6 +2220,8 @@ export function initBulkSelect(cloud: string, preset: string): void {
     if (empty && uploadPanel) uploadPanel.hidden = true;
     if (empty && bulkEditLabel) bulkEditLabel.textContent = i.bulkEdit ?? 'ערוך';
     if (empty && bulkEditBtn) bulkEditBtn.setAttribute('aria-label', i.bulkEdit ?? 'ערוך');
+    if (empty && bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadImages ?? 'העלה תמונות';
+    if (empty && bulkUploadBtn) bulkUploadBtn.setAttribute('aria-label', i.bulkUploadImages ?? 'העלה תמונות');
     if (empty) selectAllChks.forEach((chk) => { chk.hidden = false; });
 
     selectAllChks.forEach((chk) => {
@@ -2250,12 +2305,22 @@ export function initBulkSelect(cloud: string, preset: string): void {
     }));
   });
 
-  // Bulk image upload — show panel
+  // Bulk image upload — toggle: open (render + scroll its sticky header into view, same
+  // pattern as opening a single product's edit row) or close if already open.
   bulkUploadBtn?.addEventListener('click', () => {
     if (!uploadPanel || !selected.size) return;
+    const isOpen = !uploadPanel.hidden;
+    if (isOpen) {
+      uploadPanel.hidden = true;
+      if (bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadImages ?? 'העלה תמונות';
+      bulkUploadBtn.setAttribute('aria-label', i.bulkUploadImages ?? 'העלה תמונות');
+      return;
+    }
     renderUploadPanel();
     uploadPanel.hidden = false;
-    uploadPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadClose ?? 'סגור העלאת תמונות';
+    bulkUploadBtn.setAttribute('aria-label', i.bulkUploadClose ?? 'סגור העלאת תמונות');
+    scrollBulkUploadPanelIntoView(uploadPanel);
   });
 
   // Bulk edit — toggle: if any selected edit row is open → close all; else open all
@@ -2297,9 +2362,12 @@ export function initBulkSelect(cloud: string, preset: string): void {
     uploadPanel.innerHTML = `
       <div class="bulk-upload-header">
         <span>${i.bulkUploadImages ?? 'העלה תמונות'}</span>
-        <button type="button" class="btn btn--ghost btn--sm" id="bulk-upload-close" aria-label="סגור">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        <span class="bulk-upload-header__actions">
+          <button type="button" class="btn btn--sm" id="bulk-upload-save-all">${i.bulkUploadSaveAll ?? 'שמור הכל'}</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="bulk-upload-close" aria-label="סגור">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </span>
       </div>
       <div class="bulk-upload-list">
         ${Array.from(selected).map((productId) => {
@@ -2313,40 +2381,35 @@ export function initBulkSelect(cloud: string, preset: string): void {
                 <span class="bulk-upload-name">${esc(name)}</span>
                 <span class="bulk-img-status" data-status-product="${productId}" aria-live="polite"></span>
               </div>
-              <div class="gallery-widget">
-                ${galleryWidgetHtml(images, g)}
-              </div>
+              ${galleryWidgetHtml(images, g)}
             </div>`;
         }).join('')}
       </div>`;
 
     document.getElementById('bulk-upload-close')?.addEventListener('click', () => {
       if (uploadPanel) uploadPanel.hidden = true;
+      if (bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadImages ?? 'העלה תמונות';
+      bulkUploadBtn?.setAttribute('aria-label', i.bulkUploadImages ?? 'העלה תמונות');
     });
 
     // Init all gallery widgets inside the panel
     uploadPanel.querySelectorAll<Element>('.gallery-widget').forEach((gEl) => {
-      initGalleryWidget(gEl, cloud, preset);
+      initGalleryWidget(gEl);
     });
 
-    // Auto-save when user clicks "Done" in any gallery panel
+    // Auto-save when user clicks "Done" in any single gallery panel, or "Save all" for the batch.
     const saving = new Set<string>();
 
-    uploadPanel.addEventListener('click', (e) => {
-      if (!(e.target as Element).closest('.gallery-done-btn')) return;
-      const item = (e.target as Element).closest<HTMLElement>('.bulk-upload-item');
-      if (!item) return;
-      const productId = item.dataset.uploadProduct ?? '';
-      if (!productId || saving.has(productId)) return;
-
+    function saveProductImages(item: HTMLElement, productId: string): Promise<boolean> {
+      if (!productId || saving.has(productId)) return Promise.resolve(false);
       const galleryEl = item.querySelector<Element>('.gallery-widget');
-      if (!galleryEl) return;
       const statusEl = item.querySelector<HTMLElement>('.bulk-img-status');
+      if (!galleryEl) return Promise.resolve(false);
 
       saving.add(productId);
       if (statusEl) statusEl.innerHTML = spinnerSvg;
 
-      resolveGalleryUrls(galleryEl, cloud, preset)
+      return resolveGalleryUrls(galleryEl, cloud, preset)
         .then(() => {
           const urls = Array.from(
             galleryEl.querySelectorAll<HTMLInputElement>('.gallery-slot__url')
@@ -2381,27 +2444,62 @@ export function initBulkSelect(cloud: string, preset: string): void {
                   thumbCol.append(wrap);
                 }
                 if (rowThumb) rowThumb.src = thumbUrl(firstUrl);
-                if (wrap) { wrap.classList.remove('loaded'); initThumbs(wrap); }
+                // initThumbs needs an ANCESTOR of .thumb-wrap (it does root.querySelectorAll,
+                // which never matches root itself) — passing wrap directly here was a no-op:
+                // the "loaded" class was removed but never re-added, leaving the skeleton
+                // shimmer stuck forever even though the image had already loaded fine.
+                if (wrap) { wrap.classList.remove('loaded'); initThumbs(thumbCol); }
               }
             }
             if (statusEl) {
               statusEl.innerHTML = checkSvg;
               setTimeout(() => { if (statusEl) statusEl.innerHTML = ''; }, 2000);
             }
-          } else {
-            if (statusEl) {
-              statusEl.innerHTML = `<span style="color:var(--color-danger);font-size:0.78rem">${i.uploadError ?? 'שגיאה'}</span>`;
-              setTimeout(() => { if (statusEl) statusEl.innerHTML = ''; }, 2500);
-            }
+            return true;
           }
+          if (statusEl) {
+            statusEl.innerHTML = `<span style="color:var(--color-danger);font-size:0.78rem">${i.uploadError ?? 'שגיאה'}</span>`;
+            setTimeout(() => { if (statusEl) statusEl.innerHTML = ''; }, 2500);
+          }
+          return false;
         })
         .catch(() => {
           if (statusEl) {
             statusEl.innerHTML = `<span style="color:var(--color-danger);font-size:0.78rem">${i.uploadError ?? 'שגיאה'}</span>`;
             setTimeout(() => { if (statusEl) statusEl.innerHTML = ''; }, 2500);
           }
+          return false;
         })
         .finally(() => { saving.delete(productId); });
+    }
+
+    uploadPanel.addEventListener('click', (e) => {
+      if (!(e.target as Element).closest('.gallery-done-btn')) return;
+      const item = (e.target as Element).closest<HTMLElement>('.bulk-upload-item');
+      if (!item) return;
+      void saveProductImages(item, item.dataset.uploadProduct ?? '');
+    });
+
+    const saveAllBtn = document.getElementById('bulk-upload-save-all') as HTMLButtonElement | null;
+    saveAllBtn?.addEventListener('click', () => {
+      const items = Array.from(uploadPanel.querySelectorAll<HTMLElement>('.bulk-upload-item'));
+      if (!items.length) return;
+      saveAllBtn.disabled = true;
+      const origLabel = saveAllBtn.textContent;
+      saveAllBtn.textContent = i.saving ?? 'שומר…';
+
+      // resolveGalleryUrls is a no-op for a product nobody touched (skips slots with no new
+      // blob), so it's safe to call for every item in the panel unconditionally — no need to
+      // track which galleries actually changed.
+      Promise.all(items.map((item) => saveProductImages(item, item.dataset.uploadProduct ?? '')))
+        .then((results) => {
+          const savedCount = results.filter(Boolean).length;
+          showStatus(`${i.bulkUploadSaved ?? 'נשמרו תמונות עבור'} ${savedCount}/${items.length}`);
+        })
+        .finally(() => {
+          saveAllBtn.disabled = false;
+          saveAllBtn.textContent = origLabel;
+        });
     });
   }
 }

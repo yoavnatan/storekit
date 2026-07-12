@@ -336,7 +336,10 @@ nav a:hover { color: var(--color-text); }
   overflow: hidden;
 }
 
-/* Store name truncates when long — never pushes siblings */
+/* Store name truncates when long — never pushes siblings. Also covers the
+   rare storeMode-with-no-storeName fallback (plain platform logo text
+   rendered inside .store-header__logo-col instead of .store-name-text) —
+   kept as its own overflow:hidden boundary for that path only. */
 .store-header__logo-col .logo {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -348,9 +351,19 @@ nav a:hover { color: var(--color-text); }
 .store-header__logo-col .store-name-link {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
-/* Inner text span — ellipsis when name is too long */
+/* The normal case (real store name) additionally has the dedicated
+   .store-name-text span below doing its own overflow:hidden + ellipsis, so
+   this element (both .logo and .store-name-link at once) doesn't need its
+   own overflow:hidden on top of that — one clip boundary instead of two
+   redundant, independently-rounded ones. */
+.store-header__logo-col .logo.store-name-link {
+  overflow: visible;
+}
+
+/* Inner text span — ellipsis when name is too long. */
 .store-name-text {
   overflow: hidden;
   text-overflow: ellipsis;

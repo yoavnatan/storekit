@@ -12,10 +12,13 @@ export interface WidgetState {
   pristineProcessed?: Blob; // bg-removed/cleaned cutout before any crop was applied to it
   croppedOriginal: boolean;  // true once a crop has been applied to `original`
   croppedProcessed: boolean; // true once a crop has been applied to `processed`
+  /** This slot's saved URL (or '' if it was empty) at the moment the widget was rendered —
+   *  the target Cancel reverts to, discarding anything picked/edited in this session. */
+  initialUrl: string;
 }
 const wState = new WeakMap<Element, WidgetState>();
 
-export function initGalleryWidget(gallery: Element, cloud: string, preset: string): void {
+export function initGalleryWidget(gallery: Element): void {
   if ((gallery as HTMLElement).dataset.galleryInit) return;
   (gallery as HTMLElement).dataset.galleryInit = '1';
 
@@ -29,18 +32,25 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
   const cropBtn        = gallery.querySelector<HTMLButtonElement>('.gallery-crop-btn');
   const undoCropBtn    = gallery.querySelector<HTMLButtonElement>('.gallery-undo-crop-btn');
   const changeBtn      = gallery.querySelector<HTMLButtonElement>('.gallery-change-btn');
+  const cancelBtn      = gallery.querySelector<HTMLButtonElement>('.gallery-cancel-btn');
   const doneBtn        = gallery.querySelector<HTMLButtonElement>('.gallery-done-btn');
+  const sharedFileInput = gallery.querySelector<HTMLInputElement>('.gallery-shared-file-input');
   const form           = gallery.closest<HTMLFormElement>('form');
   const submitBtn      = form?.querySelector<HTMLButtonElement>('[type="submit"]');
 
   let activeSlot: Element | null = null;
+  let pendingPickSlot: Element | null = null;
 
   function getState(): WidgetState | null {
     return activeSlot ? (wState.get(activeSlot) ?? null) : null;
   }
 
+  function getGalleryI18n(): Record<string, string> {
+    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').gallery ?? {}; } catch { return {}; }
+  }
+
   function getRemovingBgMsg() {
-    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').gallery?.removingBg ?? 'Removing background…'; } catch { return 'Removing background…'; }
+    return getGalleryI18n().removingBg ?? 'Removing background…';
   }
 
   function setLoading(active: boolean, msg = getRemovingBgMsg()) {
@@ -88,12 +98,31 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
     const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
     const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
     const urlInput  = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
-    const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
     if (slotImg) slotImg.src = '';
     empty?.removeAttribute('hidden');
     filled?.setAttribute('hidden', '');
     if (urlInput) urlInput.value = '';
-    if (fileInput) fileInput.value = '';
+  }
+
+  // Discards whatever was picked/cropped/bg-removed for this ONE slot in this editing session,
+  // restoring it to exactly what it was when the widget was first rendered (a saved url, or
+  // empty) — so a bulk-panel "Done" click right after can't accidentally save it.
+  function revertSlot(slot: Element) {
+    const st = wState.get(slot);
+    const initialUrl = st?.initialUrl ?? '';
+    if (st) {
+      st.original = undefined; st.processed = undefined; st.useProcessed = false;
+      st.pristineOriginal = undefined; st.pristineProcessed = undefined;
+      st.croppedOriginal = false; st.croppedProcessed = false;
+    }
+    const slotImg   = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
+    const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
+    const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
+    const urlInput  = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
+    if (urlInput) urlInput.value = initialUrl;
+    if (slotImg) slotImg.src = initialUrl;
+    empty?.toggleAttribute('hidden', !!initialUrl);
+    filled?.toggleAttribute('hidden', !initialUrl);
   }
 
   function activateSlot(slot: Element) {
@@ -120,33 +149,82 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
     if (panelImg) panelImg.src = '';
   }
 
-  gallery.querySelectorAll<Element>('.gallery-slot').forEach((slot) => {
-    const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
+  const allSlots = Array.from(gallery.querySelectorAll<Element>('.gallery-slot'));
+
+  function isSlotEmpty(slot: Element): boolean {
+    return !slot.querySelector<HTMLElement>('.gallery-slot__empty')?.hasAttribute('hidden');
+  }
+
+  function assignFileToSlot(slot: Element, file: File) {
+    const st = wState.get(slot);
+    if (!st) return;
+    st.original = file; st.pristineOriginal = file;
+    st.processed = undefined; st.pristineProcessed = undefined; st.useProcessed = false;
+    st.croppedOriginal = false; st.croppedProcessed = false;
+    setSlotThumbnail(slot, URL.createObjectURL(file));
+  }
+
+  // A slot's own file picker/drop always fills that slot first (replacing whatever it held,
+  // same as before); a multi-file pick/drop (multiple photos chosen at once, or several dragged
+  // together) spills any extra images forward into the next still-empty slots in order — so
+  // picking 5 photos in one native picker action (common on mobile) fills the whole gallery in
+  // one go instead of needing 5 separate taps.
+  function handleFiles(files: FileList | File[], startSlot: Element) {
+    const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (!imageFiles.length) return;
+    const startIdx = allSlots.indexOf(startSlot);
+    const targets = [startSlot, ...allSlots.slice(startIdx + 1).filter(isSlotEmpty)];
+    imageFiles.slice(0, targets.length).forEach((file, i) => assignFileToSlot(targets[i]!, file));
+    activateSlot(startSlot);
+  }
+
+  // One shared, off-screen (not just visually-hidden) file input per widget drives every
+  // slot's click-to-choose — see the comment in gallery-widget.ts for why: a real OS drag-drop
+  // was double-processing files when each slot nested its own input, because the browser's
+  // native "drop a file onto a file input" default action could land on it independently of our
+  // own drop handler, no matter how we tried to suppress it. With no input anywhere near a drop
+  // zone's hit-testable area, that's structurally impossible now.
+  sharedFileInput?.addEventListener('change', () => {
+    if (pendingPickSlot && sharedFileInput.files?.length) handleFiles(sharedFileInput.files, pendingPickSlot);
+    sharedFileInput.value = '';
+    pendingPickSlot = null;
+  });
+
+  allSlots.forEach((slot) => {
+    const emptyBtn  = slot.querySelector<HTMLButtonElement>('.gallery-slot__empty');
     const editBtn   = slot.querySelector<HTMLButtonElement>('.gallery-slot__action--edit');
     const removeBtn = slot.querySelector<HTMLButtonElement>('.gallery-slot__action--remove');
-    const st: WidgetState = { useProcessed: false, processing: false, croppedOriginal: false, croppedProcessed: false };
+    const initialUrl = slot.querySelector<HTMLInputElement>('.gallery-slot__url')?.value ?? '';
+    const st: WidgetState = { useProcessed: false, processing: false, croppedOriginal: false, croppedProcessed: false, initialUrl };
     wState.set(slot, st);
 
-    fileInput?.addEventListener('change', () => {
-      const file = fileInput.files?.[0];
-      if (!file) return;
-      st.original = file; st.pristineOriginal = file;
-      st.processed = undefined; st.pristineProcessed = undefined; st.useProcessed = false;
-      st.croppedOriginal = false; st.croppedProcessed = false;
-      setSlotThumbnail(slot, URL.createObjectURL(file));
-      activateSlot(slot);
-    });
+    emptyBtn?.addEventListener('click', () => { pendingPickSlot = slot; sharedFileInput?.click(); });
     editBtn?.addEventListener('click', (e) => { e.stopPropagation(); activateSlot(slot); });
     removeBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
+      const gi = getGalleryI18n();
       window.dispatchEvent(new CustomEvent('confirm:open', {
         detail: {
-          title: 'Remove image?',
-          message: 'This image will be removed from the product.',
-          okLabel: 'Remove',
+          title: gi.removeImageTitle ?? 'Remove image?',
+          message: gi.removeImageMsg ?? 'This image will be removed from the product.',
+          okLabel: gi.removeImageBtn ?? 'Remove',
           onConfirm: () => { clearSlot(slot); if (activeSlot === slot) closePanel(); },
         },
       }));
+    });
+
+    // Drag-and-drop straight onto the slot frame, in addition to the click-to-choose button —
+    // dragenter/dragover must both preventDefault or the browser refuses the drop entirely.
+    slot.addEventListener('dragenter', (e) => { e.preventDefault(); slot.classList.add('gallery-slot--dragover'); });
+    slot.addEventListener('dragover', (e) => { e.preventDefault(); });
+    slot.addEventListener('dragleave', (e) => {
+      if (!slot.contains((e as DragEvent).relatedTarget as Node | null)) slot.classList.remove('gallery-slot--dragover');
+    });
+    slot.addEventListener('drop', (e) => {
+      e.preventDefault();
+      slot.classList.remove('gallery-slot--dragover');
+      const files = (e as DragEvent).dataTransfer?.files;
+      if (files?.length) handleFiles(files, slot);
     });
   });
 
@@ -276,7 +354,14 @@ export function initGalleryWidget(gallery: Element, cloud: string, preset: strin
 
   changeBtn?.addEventListener('click', () => {
     if (!activeSlot) return;
-    activeSlot.querySelector<HTMLInputElement>('.gallery-file-input')?.click();
+    pendingPickSlot = activeSlot;
+    sharedFileInput?.click();
+  });
+
+  cancelBtn?.addEventListener('click', () => {
+    if (!activeSlot) return;
+    revertSlot(activeSlot);
+    closePanel();
   });
 
   doneBtn?.addEventListener('click', closePanel);
@@ -332,13 +417,13 @@ export function resetGallery(gallery: Element): void {
     const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
     const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
     const urlInput  = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
-    const fileInput = slot.querySelector<HTMLInputElement>('.gallery-file-input');
     if (slotImg) slotImg.src = '';
     empty?.removeAttribute('hidden');
     filled?.setAttribute('hidden', '');
     if (urlInput) urlInput.value = '';
-    if (fileInput) fileInput.value = '';
   });
+  const sharedFileInput = gallery.querySelector<HTMLInputElement>('.gallery-shared-file-input');
+  if (sharedFileInput) sharedFileInput.value = '';
   gallery.querySelector<HTMLElement>('.gallery-panel')?.setAttribute('hidden', '');
   const panelImg = gallery.querySelector<HTMLImageElement>('.gallery-panel__img');
   if (panelImg) panelImg.src = '';

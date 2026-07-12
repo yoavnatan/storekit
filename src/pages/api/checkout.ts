@@ -2,7 +2,7 @@ export const prerender = false;
 import crypto from 'node:crypto';
 import type { APIContext } from 'astro';
 import { getStoreBySlug } from '../../lib/stores.js';
-import { getProductBySlug } from '../../lib/store-products.js';
+import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD } from '../../lib/store-products.js';
 import { createOrder } from '../../lib/orders.js';
 import type { OrderItem, StoreSubtotal } from '../../lib/orders.js';
 import { createNotification } from '../../lib/notifications.js';
@@ -44,6 +44,13 @@ function isValidEmail(v: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
+/** Identifies which product name a stock alert should read — the exact variant combo that crossed the threshold, not just the product, so the seller knows what to restock. */
+function describeStockAlertProduct(productName: string, selectedVariants?: Record<string, string>): string {
+  if (!selectedVariants || !Object.keys(selectedVariants).length) return productName;
+  const combo = Object.entries(selectedVariants).map(([k, v]) => `${k}: ${v}`).join(', ');
+  return `${productName} (${combo})`;
+}
+
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
   let body: CheckoutBody;
   try {
@@ -67,6 +74,11 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   const orderItems: OrderItem[] = [];
   const storeSubtotals: Record<string, StoreSubtotal> = {};
+  const decremented: { productId: string; qty: number; selectedVariants?: Record<string, string> }[] = [];
+  // Deferred until the order actually commits — a downstream failure rolls the
+  // reservation back below, and a stray stock alert for a purchase that never
+  // went through would be a false positive.
+  const stockAlerts: { type: 'low_stock' | 'out_of_stock'; sellerId: string; productId: string; productName: string; stockAfter: number; selectedVariants?: Record<string, string> }[] = [];
 
   for (const raw of items) {
     const item = raw as CartItemInput;
@@ -89,6 +101,31 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       item.selectedVariants && typeof item.selectedVariants === 'object' && !Array.isArray(item.selectedVariants)
         ? (item.selectedVariants as Record<string, string>)
         : undefined;
+
+    // Reserve stock as each item is validated, not after every order is built — an
+    // insufficient-stock item rolls back everything reserved before it and fails the
+    // whole checkout instead of creating a partially-fulfillable order.
+    const stockResult = await decrementStock(product.id, qty, selectedVariants);
+    if (!stockResult.ok) {
+      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+      return json({ error: `אזל המלאי: ${product.name}` }, 409);
+    }
+    decremented.push({ productId: product.id, qty, selectedVariants });
+
+    // Fire once, right as stock crosses a threshold going down — not on every
+    // subsequent order while it stays low/empty (that'd spam the seller on every
+    // sale of an already-flagged product). before/after come from inside
+    // decrementStock's own mutex-protected write, not a separate read, so a
+    // concurrent checkout on the same product can't skew which side of a
+    // threshold this looks like it's on. Mutually exclusive per item: a single
+    // order that takes stock straight from above the threshold to zero only
+    // gets the more severe out-of-stock alert — low-stock is implied by it, and
+    // sending both for the same event is redundant noise, not "two things to know".
+    if (stockResult.before > 0 && stockResult.after <= 0) {
+      stockAlerts.push({ type: 'out_of_stock', sellerId: store.sellerId, productId: product.id, productName: product.name, stockAfter: stockResult.after, selectedVariants });
+    } else if (stockResult.before > LOW_STOCK_THRESHOLD && stockResult.after <= LOW_STOCK_THRESHOLD) {
+      stockAlerts.push({ type: 'low_stock', sellerId: store.sellerId, productId: product.id, productName: product.name, stockAfter: stockResult.after, selectedVariants });
+    }
 
     orderItems.push({
       productId:   product.id,
@@ -136,57 +173,80 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // Shared reference for the buyer to identify the full purchase across all stores
   const checkoutRef = crypto.randomUUID().slice(0, 8).toUpperCase();
 
-  // Create one order per store so each seller owns a separate, isolated order
-  const orderIds: string[] = [];
-  for (const [storeSlug, sub] of Object.entries(storeSubtotals)) {
-    const storeItems = orderItems.filter((i) => i.storeSlug === storeSlug);
-    const storeTotalAmount = sub.subtotal + sub.shipping;
-    const storeOrder = createOrder({
-      ...buyerData,
-      checkoutRef,
-      items: storeItems,
-      storeSubtotals: { [storeSlug]: sub },
-      shippingAmount: sub.shipping,
-      totalAmount:    storeTotalAmount,
-    });
-    orderIds.push(storeOrder.id);
+  // Everything below only mutates in-memory data until it's written out (orders,
+  // notifications, the buyer's cart) — if any of it throws, the stock already
+  // reserved above must go back rather than sit decremented for an order that
+  // never actually got created.
+  try {
+    // Create one order per store so each seller owns a separate, isolated order
+    const orderIds: string[] = [];
+    for (const [storeSlug, sub] of Object.entries(storeSubtotals)) {
+      const storeItems = orderItems.filter((i) => i.storeSlug === storeSlug);
+      const storeTotalAmount = sub.subtotal + sub.shipping;
+      const storeOrder = createOrder({
+        ...buyerData,
+        checkoutRef,
+        items: storeItems,
+        storeSubtotals: { [storeSlug]: sub },
+        shippingAmount: sub.shipping,
+        totalAmount:    storeTotalAmount,
+      });
+      orderIds.push(storeOrder.id);
 
-    const store = getStoreBySlug(storeSlug);
-    if (store) {
+      const store = getStoreBySlug(storeSlug);
+      if (store) {
+        createNotification({
+          userId: store.sellerId,
+          role: 'seller',
+          type: 'new_order',
+          title: 'הזמנה חדשה!',
+          body: `הזמנה מ-${buyerData.buyerName} על סך ${storeTotalAmount.toFixed(2)} ₪`,
+          relatedId: storeOrder.id,
+        });
+      }
+    }
+
+    for (const alert of stockAlerts) {
+      const label = describeStockAlertProduct(alert.productName, alert.selectedVariants);
       createNotification({
-        userId: store.sellerId,
+        userId: alert.sellerId,
         role: 'seller',
-        type: 'new_order',
-        title: 'הזמנה חדשה!',
-        body: `הזמנה מ-${buyerData.buyerName} על סך ${storeTotalAmount.toFixed(2)} ₪`,
-        relatedId: storeOrder.id,
+        type: alert.type,
+        title: alert.type === 'out_of_stock' ? 'המוצר אזל מהמלאי' : 'מלאי נמוך',
+        body: alert.type === 'out_of_stock'
+          ? `"${label}" אזל לגמרי מהמלאי`
+          : `נותרו ${alert.stockAfter} יחידות בלבד מ"${label}"`,
+        relatedId: alert.productId,
       });
     }
-  }
 
-  // Remove only the purchased items from the server-side cart (buyer may have left
-  // other items unselected at checkout) — preserves wishlist + favoriteStores.
-  if (userId) {
-    const existing = getUserCart(userId);
-    const cart = { ...existing.cart };
-    for (const raw of items) {
-      const item = raw as CartItemInput;
-      const storeSlug = typeof item.storeSlug === 'string' ? item.storeSlug.trim() : '';
-      const productSlug = typeof item.productSlug === 'string' ? item.productSlug.trim() : '';
-      const selectedVariants =
-        item.selectedVariants && typeof item.selectedVariants === 'object' && !Array.isArray(item.selectedVariants)
-          ? (item.selectedVariants as Record<string, string>)
-          : undefined;
-      const key = makeCartKey(productSlug, selectedVariants);
-      const storeCart = cart[storeSlug];
-      if (!storeCart) continue;
-      const remainingItems = { ...storeCart.items };
-      delete remainingItems[key];
-      if (Object.keys(remainingItems).length === 0) delete cart[storeSlug];
-      else cart[storeSlug] = { ...storeCart, items: remainingItems };
+    // Remove only the purchased items from the server-side cart (buyer may have left
+    // other items unselected at checkout) — preserves wishlist + favoriteStores.
+    if (userId) {
+      const existing = getUserCart(userId);
+      const cart = { ...existing.cart };
+      for (const raw of items) {
+        const item = raw as CartItemInput;
+        const storeSlug = typeof item.storeSlug === 'string' ? item.storeSlug.trim() : '';
+        const productSlug = typeof item.productSlug === 'string' ? item.productSlug.trim() : '';
+        const selectedVariants =
+          item.selectedVariants && typeof item.selectedVariants === 'object' && !Array.isArray(item.selectedVariants)
+            ? (item.selectedVariants as Record<string, string>)
+            : undefined;
+        const key = makeCartKey(productSlug, selectedVariants);
+        const storeCart = cart[storeSlug];
+        if (!storeCart) continue;
+        const remainingItems = { ...storeCart.items };
+        delete remainingItems[key];
+        if (Object.keys(remainingItems).length === 0) delete cart[storeSlug];
+        else cart[storeSlug] = { ...storeCart, items: remainingItems };
+      }
+      saveUserCart(userId, { cart, wishlist: existing.wishlist, favoriteStores: existing.favoriteStores ?? [] });
     }
-    saveUserCart(userId, { cart, wishlist: existing.wishlist, favoriteStores: existing.favoriteStores ?? [] });
-  }
 
-  return json({ orderIds, checkoutRef }, 201);
+    return json({ orderIds, checkoutRef }, 201);
+  } catch {
+    for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+    return json({ error: 'Checkout failed, please try again' }, 500);
+  }
 }

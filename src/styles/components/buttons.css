@@ -11,6 +11,7 @@
   color: #fff;
   transition: background 0.1s ease;
   position: relative;
+  cursor: pointer;
 }
 .btn:hover  { background: linear-gradient(135deg, #1c2c30, #2e4550); }
 .btn:active { transform: scale(0.97); }

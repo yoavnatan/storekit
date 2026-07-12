@@ -2,9 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { APIContext } from 'astro';
 import type { UserCartData } from '../src/lib/user-carts.js';
 
-const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[] }> = {
-  widget: { id: 'p1', slug: 'widget', name: 'Widget', price: 50, images: ['w.png'] },
+const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number }> = {
+  widget: { id: 'p1', slug: 'widget', name: 'Widget', price: 50, images: ['w.png'], stock: 100 },
 };
+
+type StockAdjustResult = { ok: boolean; before: number; after: number };
+// Default mirrors the real decrementStock's before/after semantics off the PRODUCTS fixture,
+// so most tests don't need to stub a return value just to get the low-stock math right.
+const decrementStock = vi.fn(async (id: string, qty: number, _selectedVariants?: Record<string, string>): Promise<StockAdjustResult> => {
+  const before = Object.values(PRODUCTS).find((p) => p.id === id)?.stock ?? 0;
+  return { ok: true, before, after: before - qty };
+});
+const restockProduct = vi.fn(async (_id: string, _qty: number, _selectedVariants?: Record<string, string>): Promise<StockAdjustResult> => ({ ok: true, before: 0, after: 0 }));
 
 const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; shipping?: { flatRate: number; freeAbove: number | null; processingDays: number } }> = {
   'test-store': {
@@ -27,6 +36,9 @@ vi.mock('../src/lib/stores.js', () => ({
 }));
 vi.mock('../src/lib/store-products.js', () => ({
   getProductBySlug: (_storeId: string, slug: string) => PRODUCTS[slug] ?? null,
+  decrementStock: (id: string, qty: number, selectedVariants?: Record<string, string>) => decrementStock(id, qty, selectedVariants),
+  restockProduct: (id: string, qty: number, selectedVariants?: Record<string, string>) => restockProduct(id, qty, selectedVariants),
+  LOW_STOCK_THRESHOLD: 3,
 }));
 vi.mock('../src/lib/orders.js', () => ({ createOrder: (input: Record<string, unknown>) => createOrder(input) }));
 vi.mock('../src/lib/notifications.js', () => ({ createNotification: (input: Record<string, unknown>) => createNotification(input) }));
@@ -123,6 +135,177 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     expect(createNotification).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'seller-1', type: 'new_order' })
     );
+  });
+
+  it('decrements stock for each purchased item by its checkout qty', async () => {
+    await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 3 }],
+    }));
+    expect(decrementStock).toHaveBeenCalledWith('p1', 3, undefined);
+  });
+
+  it('rejects checkout and creates no order when stock is insufficient', async () => {
+    decrementStock.mockResolvedValueOnce({ ok: false, before: 1, after: 1 });
+    const res = await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(res.status).toBe(409);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('notifies the seller once stock crosses the low-stock threshold', async () => {
+    PRODUCTS.widget!.stock = 5; // 5 - 3 = 2, at/below LOW_STOCK_THRESHOLD (3)
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 3 }],
+      }));
+      expect(createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'seller-1', type: 'low_stock', relatedId: 'p1' })
+      );
+    } finally {
+      PRODUCTS.widget!.stock = 100;
+    }
+  });
+
+  it('separately notifies the seller when a purchase fully depletes stock', async () => {
+    PRODUCTS.widget!.stock = 2;
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 2 }],
+      }));
+      expect(createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'seller-1', type: 'out_of_stock', relatedId: 'p1' })
+      );
+    } finally {
+      PRODUCTS.widget!.stock = 100;
+    }
+  });
+
+  it('names the specific variant combo in the alert body, not just the product', async () => {
+    PRODUCTS.widget!.stock = 5;
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 3, selectedVariants: { Size: 'L', Color: 'Red' } }],
+      }));
+      expect(createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'low_stock', body: expect.stringContaining('Size: L, Color: Red') })
+      );
+    } finally {
+      PRODUCTS.widget!.stock = 100;
+    }
+  });
+
+  it('leaves the alert body as just the product name when no variant was selected', async () => {
+    PRODUCTS.widget!.stock = 5;
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 3 }],
+      }));
+      expect(createNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'low_stock', body: expect.stringContaining('"Widget"') })
+      );
+    } finally {
+      PRODUCTS.widget!.stock = 100;
+    }
+  });
+
+  it('fires only the more severe out-of-stock alert (not also low-stock) when a single order does both in one shot', async () => {
+    PRODUCTS.widget!.stock = 5; // 5 -> 0: crosses the low-stock threshold AND fully depletes
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 5 }],
+      }));
+      expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'out_of_stock' }));
+      expect(createNotification).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'low_stock' }));
+    } finally {
+      PRODUCTS.widget!.stock = 100;
+    }
+  });
+
+  it('does not send an out-of-stock alert for a purchase that leaves some stock remaining', async () => {
+    PRODUCTS.widget!.stock = 5;
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(createNotification).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'out_of_stock' }));
+    } finally {
+      PRODUCTS.widget!.stock = 100;
+    }
+  });
+
+  it('does not send a low-stock alert for a purchase that stays above the threshold', async () => {
+    await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }], // 100 -> 99
+    }));
+    expect(createNotification).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'low_stock' }));
+  });
+
+  it('does not re-notify on a purchase that was already at/below the threshold before this order', async () => {
+    PRODUCTS.widget!.stock = 2; // already below threshold — no new crossing
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(createNotification).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'low_stock' }));
+    } finally {
+      PRODUCTS.widget!.stock = 100;
+    }
+  });
+
+  it('does not send a low-stock alert when the order that would trigger it fails to commit', async () => {
+    PRODUCTS.widget!.stock = 5;
+    createOrder.mockImplementationOnce(() => { throw new Error('disk write failed'); });
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 3 }],
+      }));
+      expect(createNotification).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'low_stock' }));
+    } finally {
+      PRODUCTS.widget!.stock = 100;
+    }
+  });
+
+  it('rolls back stock already reserved for earlier items when a later item is out of stock', async () => {
+    PRODUCTS.gadget = { id: 'p2', slug: 'gadget', name: 'Gadget', price: 10, stock: 100 };
+    try {
+      decrementStock
+        .mockResolvedValueOnce({ ok: true, before: 100, after: 99 })
+        .mockResolvedValueOnce({ ok: false, before: 100, after: 100 });
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [
+          { storeSlug: 'test-store', productSlug: 'widget', qty: 1 },
+          { storeSlug: 'test-store', productSlug: 'gadget', qty: 1 },
+        ],
+      }));
+      expect(res.status).toBe(409);
+      expect(restockProduct).toHaveBeenCalledWith('p1', 1, undefined);
+      expect(createOrder).not.toHaveBeenCalled();
+    } finally {
+      delete PRODUCTS.gadget;
+    }
+  });
+
+  it('rolls back all reserved stock and returns 500 if order creation fails after stock was already reserved', async () => {
+    createOrder.mockImplementationOnce(() => { throw new Error('disk write failed'); });
+    const res = await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 2 }],
+    }));
+    expect(res.status).toBe(500);
+    expect(restockProduct).toHaveBeenCalledWith('p1', 2, undefined);
   });
 
   it('for a signed-in buyer, stamps buyerId and removes only the purchased item from their server-side cart', async () => {

@@ -82,4 +82,15 @@
 
   (window as unknown as { showToast: typeof showToast }).showToast = showToast;
   (window as unknown as { toastOnce: typeof toastOnce }).toastOnce = toastOnce;
+
+  // Replay anything an early is:inline script (BaseLayout.astro) buffered before
+  // this module script — which only runs once the document has parsed and its own
+  // JS chunk has loaded — had a chance to attach the listener above. toastOnce's
+  // key-based dedup makes this safe even if the live listener above already caught
+  // the same event in the meantime.
+  type QueuedToast = { title: string; body: string; duration?: number; href?: string; key?: string };
+  const queue = (window as unknown as { __toastQueue?: QueuedToast[] }).__toastQueue;
+  if (Array.isArray(queue)) {
+    queue.splice(0).forEach((d) => toastOnce(d.key, d.title, d.body, d.duration, d.href));
+  }
 </script>

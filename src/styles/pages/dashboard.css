@@ -232,6 +232,12 @@ textarea.input { resize: vertical; }
 
 .date-col { font-size: 0.78rem; color: var(--color-muted); white-space: nowrap; }
 
+/* SKU is a reference field, not needed at a glance on mobile/tablet — same
+   treatment as wishlist-col/date-col below (hidden ≤999px), so it doesn't
+   compete for room in the tablet width budget documented there. Still fully
+   visible/editable in the add/edit forms and CSV regardless of viewport. */
+.sku-col { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+
 /* Between the 640px mobile-card breakpoint and full desktop width, the real
    <table> (10 columns, none of which ever wrap under table-layout:auto) can
    need more room than the viewport has. Two things were already tried and
@@ -256,7 +262,7 @@ textarea.input { resize: vertical; }
    same as it already is on full mobile — purely decorative, not worth the
    width. */
 @media (max-width: 999px) {
-  .wishlist-col, .date-col { display: none; }
+  .wishlist-col, .date-col, .sku-col { display: none; }
   .products-table { table-layout: fixed; }
   .products-table .row-num { display: none; }
   .products-table .check-col  { width: 34px; }
@@ -722,6 +728,20 @@ textarea.input { resize: vertical; }
 .products-header:has(~ #products-table tr.edit-row:not([hidden])) {
   position: static;
 }
+
+/* Same unstick-everything-else-above pattern for the bulk image-upload panel — while it's
+   open, only .bulk-upload-header (with the Save all button) should be the one sticky bar,
+   not stacked underneath the table's own header/toolbar. #bulk-upload-panel sits between
+   .products-header and #products-table in the DOM, so each direction uses whichever
+   sibling-combinator actually points the right way: :has(~ X) looks forward (for
+   .products-header, which comes before the panel), a plain ~ selector looks forward too
+   (for #products-table, which comes after the panel — no :has() needed there). */
+.products-header:has(~ #bulk-upload-panel:not([hidden])) {
+  position: static;
+}
+#bulk-upload-panel:not([hidden]) ~ #products-table thead th {
+  position: static;
+}
 .edit-row-title { font-weight: 600; font-size: 0.95rem; }
 
 /* Gallery image widget */
@@ -748,17 +768,48 @@ textarea.input { resize: vertical; }
   gap: 0.3rem;
   width: 100%;
   height: 100%;
+  padding: 0;
   border: 2px dashed var(--color-border);
   border-radius: var(--radius);
   cursor: pointer;
   color: var(--color-muted);
   font-size: 0.72rem;
+  font-family: inherit;
   transition: border-color 0.15s, color 0.15s;
 }
 
 .gallery-slot__empty:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+/* Positioned genuinely off-screen (not just visually-hidden/1px, see gallery-widget.ts) — a
+   real OS-level drag can never physically land on it no matter where a drop zone sits on the
+   page, which is what actually rules out the browser's own native "drop a file onto a file
+   input" default action from double-processing a drop alongside our own drop handler. */
+.gallery-shared-file-input {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+/* Same highlight as the empty-slot hover, plus a light tint fill and a touch of scale so a
+   drop target reads clearly whether the slot is empty or already holds an image (dropping
+   replaces it, same as "change image"). */
+.gallery-slot--dragover .gallery-slot__empty,
+.gallery-slot--dragover .gallery-slot__filled .gallery-slot__img {
+  border-color: var(--color-primary);
+}
+.gallery-slot--dragover .gallery-slot__empty {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+.gallery-slot--dragover {
+  transform: scale(1.04);
+  transition: transform 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .gallery-slot__label {
@@ -1532,6 +1583,14 @@ textarea.input { resize: vertical; }
   background: var(--color-bg);
   animation: bulk-bar-in 0.18s cubic-bezier(0.34,1.56,0.64,1);
 }
+.bulk-upload-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .bulk-upload-header {
   display: flex;
   align-items: center;
@@ -1542,6 +1601,17 @@ textarea.input { resize: vertical; }
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 0.75rem;
+  /* Same sticky-under-site-header pattern as .edit-row-header/products toolbar — with many
+     products open at once (the whole point of "Save all"), the header must stay reachable
+     without scrolling back to the top of a potentially long panel. */
+  position: sticky;
+  top: var(--site-header-h, 3.3rem);
+  z-index: 6;
+  background: var(--color-bg);
+  padding-block: 0.4rem;
+  margin-inline: -0.8rem;
+  padding-inline: 0.8rem;
+  border-bottom: 1px solid var(--color-border);
 }
 .bulk-upload-list {
   display: flex;
@@ -1575,6 +1645,113 @@ textarea.input { resize: vertical; }
   to { transform: rotate(360deg); }
 }
 
+
+/* ── CSV bulk import/export panel (mobile-first: stacked/full-width, row layout ≥641px) ── */
+.csv-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 0.55rem;
+  padding: 0.8rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-bg);
+  animation: bulk-bar-in 0.18s cubic-bezier(0.34,1.56,0.64,1);
+}
+.csv-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+.csv-panel__hint {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+.csv-panel__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+.csv-panel__actions .btn { justify-content: center; }
+#csv-file-name {
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (min-width: 641px) {
+  .csv-panel__actions {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .csv-panel__actions .btn { justify-content: flex-start; }
+}
+
+.csv-preview { margin-top: 0.9rem; }
+.csv-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
+}
+@media (min-width: 641px) {
+  .csv-summary { flex-direction: row; flex-wrap: wrap; gap: 0.6rem; }
+}
+.csv-summary__item {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  width: fit-content;
+}
+.csv-summary__item--create { color: var(--color-success, #16a34a); border-color: var(--color-success, #16a34a); }
+.csv-summary__item--update { color: var(--color-text); }
+.csv-summary__item--error  { color: var(--color-danger, #dc2626); border-color: var(--color-danger, #dc2626); }
+
+.csv-error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+  padding-inline-end: 0.25rem;
+}
+.csv-row--error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border: 1px solid var(--color-danger, #dc2626);
+  border-radius: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--color-surface);
+  font-size: 0.8rem;
+}
+.csv-row__line { font-weight: 600; color: var(--color-muted); }
+.csv-row__msg { color: var(--color-danger, #dc2626); }
+.csv-row--update { border-color: var(--color-border); }
+.csv-row--update .csv-row__msg { color: var(--color-text); }
+.csv-update-list { margin-bottom: 0.5rem; }
+
+.csv-panel__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.csv-panel__confirm .btn { width: 100%; }
+@media (min-width: 641px) {
+  .csv-panel__confirm { flex-direction: row; }
+  .csv-panel__confirm .btn { width: auto; }
+}
+.csv-error { color: var(--color-danger, #dc2626); font-size: 0.85rem; }
 
 /* ── danger btn variant ── */
 .btn--danger {

@@ -22,7 +22,6 @@ let cropPanY = 0;
 let cropVpW = VP_SIZE_DEFAULT;
 let cropVpH = VP_SIZE_DEFAULT;
 let isDragging = false;
-let hadDragMotion = false;
 let dragStartX = 0, dragStartY = 0, dragStartPanX = 0, dragStartPanY = 0;
 
 function clampCropPan() {
@@ -103,14 +102,13 @@ async function applyCrop() {
 
 export function initCropModal(): void {
   cropViewport?.addEventListener('mousedown', (e: MouseEvent) => {
-    isDragging = true; hadDragMotion = false;
+    isDragging = true;
     dragStartX = e.clientX; dragStartY = e.clientY;
     dragStartPanX = cropPanX; dragStartPanY = cropPanY;
     e.preventDefault();
   });
   document.addEventListener('mousemove', (e: MouseEvent) => {
     if (!isDragging) return;
-    hadDragMotion = true;
     cropHint?.classList.add('hidden');
     cropPanX = dragStartPanX + (e.clientX - dragStartX);
     cropPanY = dragStartPanY + (e.clientY - dragStartY);
@@ -120,13 +118,12 @@ export function initCropModal(): void {
 
   cropViewport?.addEventListener('touchstart', (e: TouchEvent) => {
     if (e.touches.length !== 1) return;
-    isDragging = true; hadDragMotion = false;
+    isDragging = true;
     dragStartX = e.touches[0].clientX; dragStartY = e.touches[0].clientY;
     dragStartPanX = cropPanX; dragStartPanY = cropPanY;
   }, { passive: true });
   document.addEventListener('touchmove', (e: TouchEvent) => {
     if (!isDragging || e.touches.length !== 1) return;
-    hadDragMotion = true;
     cropPanX = dragStartPanX + (e.touches[0].clientX - dragStartX);
     cropPanY = dragStartPanY + (e.touches[0].clientY - dragStartY);
     clampCropPan(); updateCropDisplay();
@@ -161,6 +158,5 @@ export function initCropModal(): void {
   cropModal?.addEventListener('click', (e) => {
     if (e.target === cropModal && backdropPressStarted) closeCropModal();
     backdropPressStarted = false;
-    hadDragMotion = false;
   });
 }

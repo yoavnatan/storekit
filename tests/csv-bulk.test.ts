@@ -1,0 +1,235 @@
+import { describe, expect, it } from 'vitest';
+import { parseCsv, mapHeader, toRawRows, validateRows, productsToCsv, templateCsv, CSV_FIELDS } from '../src/lib/csv-bulk.js';
+import type { StoreProduct } from '../src/lib/store-products.js';
+
+describe('parseCsv', () => {
+  it('parses plain comma-separated rows', () => {
+    expect(parseCsv('a,b,c\n1,2,3')).toEqual([['a', 'b', 'c'], ['1', '2', '3']]);
+  });
+
+  it('handles quoted fields with embedded commas and newlines', () => {
+    const csv = 'name,desc\n"Widget, deluxe","Line one\nLine two"';
+    expect(parseCsv(csv)).toEqual([['name', 'desc'], ['Widget, deluxe', 'Line one\nLine two']]);
+  });
+
+  it('unescapes doubled quotes', () => {
+    expect(parseCsv('a\n"He said ""hi"""')).toEqual([['a'], ['He said "hi"']]);
+  });
+
+  it('strips a leading UTF-8 BOM', () => {
+    expect(parseCsv('﻿a,b\n1,2')).toEqual([['a', 'b'], ['1', '2']]);
+  });
+});
+
+describe('mapHeader', () => {
+  it('recognizes Hebrew headers', () => {
+    const { map, missing } = mapHeader(['מזהה (אל תשנה/תמחקי)', 'מק"ט', 'שם *', 'מחיר *', 'מלאי']);
+    expect(missing).toEqual([]);
+    expect(map.get(1)).toBe('sku');
+    expect(map.get(2)).toBe('name');
+    expect(map.get(3)).toBe('price');
+  });
+
+  it('recognizes English headers regardless of current UI language', () => {
+    const { map, missing } = mapHeader(['ID (do not edit/remove)', 'SKU', 'Name *', 'Price *']);
+    expect(missing).toEqual([]);
+    expect(map.get(1)).toBe('sku');
+    expect(map.get(2)).toBe('name');
+  });
+
+  it('flags missing required columns', () => {
+    const { missing } = mapHeader(['ID (do not edit/remove)', 'Stock']);
+    expect(missing).toEqual(['name', 'price']);
+  });
+});
+
+describe('line numbers stay accurate across blank lines', () => {
+  it('reports the true file line for a row after a blank line, not a post-filter index', () => {
+    const header = CSV_FIELDS.map((f) => f.key).join(',');
+    // line 1 = header, line 2 = blank, line 3 = the real (invalid) row
+    const csv = [header, '', ',,,bad-price,,,,'].join('\n');
+    const rows = parseCsv(csv);
+    const { map } = mapHeader(rows[0]!);
+    const [raw] = toRawRows(rows, map);
+    expect(raw.line).toBe(3);
+  });
+});
+
+describe('toRawRows + validateRows', () => {
+  // Field keys, not display labels — the sku label ('מק"ט') contains a raw
+  // double-quote that would need proper CSV quoting to join into a header
+  // row by hand; mapHeader already accepts the bare key as an alias, and
+  // label-recognition itself is covered by the mapHeader describe block above.
+  const header = CSV_FIELDS.map((f) => f.key);
+  const { map } = mapHeader(header);
+  const existingIds = new Set(['p1']);
+
+  // Columns in fixture order: id, sku, name, price, stock, category, tags, description
+  function rowsFrom(csvBody: string) {
+    const rows = parseCsv([header.join(','), csvBody].join('\n'));
+    return toRawRows(rows, map);
+  }
+
+  it('marks a row with no id as a create', () => {
+    const [result] = validateRows(rowsFrom(',,New product,49.9,10,,,'), existingIds);
+    expect(result).toMatchObject({ action: 'create', errors: [] });
+    expect(result.input).toMatchObject({ name: 'New product', price: 49.9, stock: 10 });
+  });
+
+  it('marks a row with a known id as an update', () => {
+    const [result] = validateRows(rowsFrom('p1,,Renamed,60,5,,,'), existingIds);
+    expect(result).toMatchObject({ action: 'update', id: 'p1', errors: [] });
+  });
+
+  it('rejects an unknown id', () => {
+    const [result] = validateRows(rowsFrom('ghost,,X,10,1,,,'), existingIds);
+    expect(result.action).toBe('error');
+    expect(result.errors).toContain('id-not-found');
+  });
+
+  it('rejects a missing name', () => {
+    const [result] = validateRows(rowsFrom(',,,10,1,,,'), existingIds);
+    expect(result.errors).toContain('name-required');
+  });
+
+  it('rejects a negative or non-numeric price', () => {
+    const [neg] = validateRows(rowsFrom(',,X,-5,1,,,'), existingIds);
+    expect(neg.errors).toContain('price-invalid');
+    const [nan] = validateRows(rowsFrom(',,X,abc,1,,,'), existingIds);
+    expect(nan.errors).toContain('price-invalid');
+  });
+
+  it('rejects a negative stock but leaves a blank stock cell as undefined ("no change" on update, 0 on create)', () => {
+    const [neg] = validateRows(rowsFrom(',,X,10,-1,,,'), existingIds);
+    expect(neg.errors).toContain('stock-invalid');
+    const [empty] = validateRows(rowsFrom(',,X,10,,,,'), existingIds);
+    expect(empty.input?.stock).toBeUndefined();
+  });
+
+  it('an update row with blank stock/category/tags/sku cells carries them as undefined, not overwritten values', () => {
+    const [result] = validateRows(rowsFrom('p1,,Renamed,60,,,,'), existingIds);
+    expect(result.action).toBe('update');
+    expect(result.input).toMatchObject({ stock: undefined, category: undefined, tags: undefined, sku: undefined });
+  });
+
+  it('splits and normalizes tags', () => {
+    const [result] = validateRows(rowsFrom(',,X,10,1,,"Red, BLUE ",'), existingIds);
+    expect(result.input?.tags).toEqual(['red', 'blue']);
+  });
+
+  it('passes sku through as a plain field, not used to find/match the row', () => {
+    const [result] = validateRows(rowsFrom(',NEW-SKU,X,10,1,,,'), existingIds);
+    expect(result.action).toBe('create');
+    expect(result.input?.sku).toBe('NEW-SKU');
+  });
+});
+
+describe('validateRows sku-duplicate detection', () => {
+  const header = CSV_FIELDS.map((f) => f.key);
+  const { map } = mapHeader(header);
+  const existingIds = new Set(['p1']);
+
+  function rowsFrom(...csvBodies: string[]) {
+    const rows = parseCsv([header.join(','), ...csvBodies].join('\n'));
+    return toRawRows(rows, map);
+  }
+
+  it('rejects a create row whose sku already belongs to another existing product', () => {
+    const existingSkuOwners = new Map([['W-1', 'p1']]);
+    const [result] = validateRows(rowsFrom(',W-1,New Product,10,1,,,'), existingIds, existingSkuOwners);
+    expect(result.action).toBe('error');
+    expect(result.errors).toContain('sku-duplicate');
+  });
+
+  it('allows an update row to keep its own existing sku (no self-conflict)', () => {
+    const existingSkuOwners = new Map([['W-1', 'p1']]);
+    const [result] = validateRows(rowsFrom('p1,W-1,Renamed,10,1,,,'), existingIds, existingSkuOwners);
+    expect(result.action).toBe('update');
+    expect(result.errors).toEqual([]);
+  });
+
+  it('rejects an update row that steals another existing product\'s sku', () => {
+    const existingSkuOwners = new Map([['W-1', 'other-product-id']]);
+    const [result] = validateRows(rowsFrom('p1,W-1,Renamed,10,1,,,'), existingIds, existingSkuOwners);
+    expect(result.action).toBe('error');
+    expect(result.errors).toContain('sku-duplicate');
+  });
+
+  it('rejects the second of two rows in the same batch that both claim the same new sku', () => {
+    const [first, second] = validateRows(rowsFrom(',DUP-1,Row A,10,1,,,', ',DUP-1,Row B,10,1,,,'), existingIds);
+    expect(first.action).toBe('create');
+    expect(second.action).toBe('error');
+    expect(second.errors).toContain('sku-duplicate');
+  });
+
+  it('does not flag two rows with no sku at all as conflicting', () => {
+    const results = validateRows(rowsFrom(',,Row A,10,1,,,', ',,Row B,10,1,,,'), existingIds);
+    expect(results.every((r) => r.action !== 'error')).toBe(true);
+  });
+});
+
+describe('productsToCsv formula-injection sanitization', () => {
+  it('prefixes a name/description/category/tags/sku cell starting with =, +, -, @, tab or CR with a quote', () => {
+    const products: StoreProduct[] = [{
+      id: 'p1', storeId: 's1', slug: 'x', name: '=HYPERLINK("http://evil.example")',
+      description: '+cmd', price: 1, stock: 1, category: '@SUM(A1)', tags: ['-danger'], sku: '=BAD',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }];
+    const csv = productsToCsv(products, 'en');
+    const rows = parseCsv(csv);
+    const { map } = mapHeader(rows[0]!);
+    const [raw] = toRawRows(rows, map);
+    expect(raw.cells.name).toBe("'=HYPERLINK(\"http://evil.example\")");
+    expect(raw.cells.description).toBe("'+cmd");
+    expect(raw.cells.category).toBe("'@SUM(A1)");
+    expect(raw.cells.tags).toBe("'-danger");
+    expect(raw.cells.sku).toBe("'=BAD");
+  });
+
+  it('leaves an ordinary cell untouched', () => {
+    const products: StoreProduct[] = [{
+      id: 'p1', storeId: 's1', slug: 'x', name: 'Widget', description: '', price: 1, stock: 1, createdAt: '2026-01-01T00:00:00.000Z',
+    }];
+    const csv = productsToCsv(products, 'en');
+    expect(csv).toContain('Widget');
+    expect(csv).not.toContain("'Widget");
+  });
+});
+
+describe('templateCsv', () => {
+  it('produces a header + one example row that parses as a valid, importable create (both languages)', () => {
+    for (const lang of ['he', 'en'] as const) {
+      const rows = parseCsv(templateCsv(lang));
+      expect(rows.length).toBe(2);
+      const { map, missing } = mapHeader(rows[0]!);
+      expect(missing).toEqual([]);
+      const raw = toRawRows(rows, map);
+      expect(raw.length).toBe(1);
+      const [result] = validateRows(raw, new Set());
+      expect(result!.action).toBe('create');
+      expect(result!.errors).toEqual([]);
+      expect(result!.input?.name).toBeTruthy();
+      expect(result!.input?.price).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('productsToCsv round trip', () => {
+  it('re-parses to the same field values, including tags with embedded commas and sku', () => {
+    const products: StoreProduct[] = [{
+      id: 'p1', storeId: 's1', slug: 'widget', name: 'Widget',
+      description: 'A great, useful widget', price: 49.9, stock: 3,
+      category: 'Tools', tags: ['sale', 'new'], sku: 'W-1', createdAt: '2026-01-01T00:00:00.000Z',
+    }];
+    const csv = productsToCsv(products, 'en');
+    const rows = parseCsv(csv);
+    const { map } = mapHeader(rows[0]!);
+    const [raw] = toRawRows(rows, map);
+    expect(raw.cells.name).toBe('Widget');
+    expect(raw.cells.price).toBe('49.9');
+    expect(raw.cells.stock).toBe('3');
+    expect(raw.cells.description).toBe('A great, useful widget');
+    expect(raw.cells.tags).toBe('sale, new');
+    expect(raw.cells.sku).toBe('W-1');
+  });
+});

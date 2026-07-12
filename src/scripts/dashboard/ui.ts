@@ -16,14 +16,14 @@ export function initSettingsForm(): void {
 
   settingsForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const submitBtn = settingsForm.querySelector<HTMLButtonElement>('[type="submit"]');
-    const origText = submitBtn?.textContent ?? '';
+    const submitBtns = Array.from(settingsForm.querySelectorAll<HTMLButtonElement>('[type="submit"]'));
+    const origTexts = submitBtns.map((btn) => btn.textContent ?? '');
 
-    if (submitBtn) {
-      submitBtn.style.minWidth = `${submitBtn.offsetWidth}px`;
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">שומר<span class="dot-pulse" role="status" aria-label="שומר"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
-    }
+    submitBtns.forEach((btn) => {
+      btn.style.minWidth = `${btn.offsetWidth}px`;
+      btn.disabled = true;
+      btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">שומר<span class="dot-pulse" role="status" aria-label="שומר"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
+    });
 
     const fd = new FormData(settingsForm);
     let data: { ok: boolean; name?: string; error?: string };
@@ -36,7 +36,7 @@ export function initSettingsForm(): void {
 
     if (!data.ok) {
       showSettingsStatus(data.error ?? 'שגיאה בשמירה.', true);
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.style.minWidth = ''; submitBtn.textContent = origText; }
+      submitBtns.forEach((btn, i) => { btn.disabled = false; btn.style.minWidth = ''; btn.textContent = origTexts[i]; });
       return;
     }
 
@@ -44,18 +44,18 @@ export function initSettingsForm(): void {
     const storeNameEl = document.querySelector<HTMLElement>('.dash-store-name');
     if (storeNameEl) storeNameEl.textContent = newName;
 
-    if (submitBtn) {
-      submitBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px">${checkSvg}נשמר</span>`;
-      submitBtn.animate(
+    submitBtns.forEach((btn, i) => {
+      btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px">${checkSvg}נשמר</span>`;
+      btn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
         { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
       );
       setTimeout(() => {
-        submitBtn.disabled = false;
-        submitBtn.style.minWidth = '';
-        submitBtn.textContent = origText;
+        btn.disabled = false;
+        btn.style.minWidth = '';
+        btn.textContent = origTexts[i];
       }, 1500);
-    }
+    });
   });
 }
 
@@ -67,6 +67,7 @@ export function initFormToggles(): void {
   toggleAdd?.addEventListener('click', () => {
     addFormWrap?.removeAttribute('hidden');
     toggleAdd.setAttribute('hidden', '');
+    document.getElementById('csv-panel')?.setAttribute('hidden', '');
   });
   cancelAdd?.addEventListener('click', () => {
     addFormWrap?.setAttribute('hidden', '');

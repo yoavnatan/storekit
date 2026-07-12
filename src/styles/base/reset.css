@@ -10,6 +10,20 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  /* Reserve the vertical scrollbar's width permanently, even on a page that doesn't currently
+     need to scroll — otherwise any action that grows page height enough to newly trigger a
+     scrollbar (opening the bulk-upload panel, an edit row, the add-product form...) shifts all
+     content sideways by the scrollbar's width at the exact moment a scroll animation is also
+     running, reading as a diagonal jump. Also a real (if small) Core Web Vitals/CLS win. */
+  scrollbar-gutter: stable;
+  /* No page on this mobile-first site should ever scroll horizontally — closes the door on a
+     confirmed real (if transient) RTL horizontal-overflow case: a tall dynamic panel rendering
+     (many product galleries) could briefly overflow the viewport width before layout settles,
+     and RTL's overflow-scroll-anchor briefly resting at a negative scrollX during that window
+     was visible as a diagonal scroll alongside an unrelated intentional vertical scroll. Set on
+     <html>, not <body> — <html> (document.scrollingElement) is the actual document scroller in
+     standards mode, so overflow-x on body alone doesn't touch window.scrollX at all. */
+  overflow-x: hidden;
 }
 
 body {

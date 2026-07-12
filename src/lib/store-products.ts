@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { comboKey } from './variant-combo.js';
+export { LOW_STOCK_THRESHOLD } from './variant-combo.js';
+import { Mutex } from './mutex.js';
 
 const PRODUCTS_PATH = path.join(process.cwd(), 'data/store-products.json');
 
@@ -25,6 +28,8 @@ export interface StoreProduct {
   images?: string[];
   category?: string;
   tags?: string[];
+  /** Seller-defined product code (SKU) — distinct from `id` (our internal UUID); optional, unique per store when set. */
+  sku?: string;
   specs?: ProductSpec[];
   variants?: ProductVariant[];
   /** Optional per-combination stock override, keyed by variant-combo.ts#comboKey(). Combos with no entry fall back to `stock`. */
@@ -32,16 +37,17 @@ export interface StoreProduct {
   createdAt: string;
 }
 
-function readProducts(): StoreProduct[] {
+/** Exported for store-products-bulk.ts (CSV batch upsert) — same file, same read/write contract, no separate I/O path. */
+export function readProducts(): StoreProduct[] {
   try { return JSON.parse(fs.readFileSync(PRODUCTS_PATH, 'utf8')) as StoreProduct[]; }
   catch { return []; }
 }
 
-function writeProducts(products: StoreProduct[]): void {
+export function writeProducts(products: StoreProduct[]): void {
   fs.writeFileSync(PRODUCTS_PATH, JSON.stringify(products, null, 2));
 }
 
-function slugify(name: string): string {
+export function slugify(name: string): string {
   return name.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 }
 
@@ -53,12 +59,18 @@ interface CreateProductInput {
   images?: string[];
   category?: string;
   tags?: string[];
+  sku?: string;
   specs?: ProductSpec[];
   variants?: ProductVariant[];
   variantStock?: Record<string, number>;
 }
 
-export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, category, tags, specs, variants, variantStock }: CreateProductInput): StoreProduct {
+/** True if another product in this store already uses this exact sku (case-sensitive, as typed). */
+export function isSkuTaken(storeId: string, sku: string, excludeId?: string): boolean {
+  return readProducts().some((p) => p.storeId === storeId && p.sku === sku && p.id !== excludeId);
+}
+
+export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, category, tags, sku, specs, variants, variantStock }: CreateProductInput): StoreProduct {
   const products = readProducts();
   const storeProducts = products.filter((p) => p.storeId === storeId);
   const base = slugify(name) || 'product';
@@ -77,6 +89,7 @@ export function createProduct(storeId: string, { name, description = '', price, 
     ...(images?.length ? { images } : {}),
     ...(category ? { category } : {}),
     ...(tags?.length ? { tags } : {}),
+    ...(sku ? { sku } : {}),
     ...(specs?.length ? { specs } : {}),
     ...(variants?.length ? { variants } : {}),
     ...(variantStock && Object.keys(variantStock).length ? { variantStock } : {}),
@@ -114,4 +127,54 @@ export function deleteProduct(id: string): boolean {
   if (filtered.length === products.length) return false;
   writeProducts(filtered);
   return true;
+}
+
+/** Resolves which stock bucket a variant selection reads/writes: a per-combo `variantStock` entry if one exists, otherwise the shared `stock` pool (see `variantStock` doc comment above). */
+function resolveStockField(product: StoreProduct, selectedVariants?: Record<string, string>): 'stock' | string {
+  if (!product.variants?.length || !selectedVariants) return 'stock';
+  const key = comboKey(selectedVariants);
+  return product.variantStock && key in product.variantStock ? key : 'stock';
+}
+
+/** The stock number that actually governs this selection right now — same bucket `resolveStockField` would read or write. */
+export function getEffectiveStock(product: StoreProduct, selectedVariants?: Record<string, string>): number {
+  const field = resolveStockField(product, selectedVariants);
+  return field === 'stock' ? product.stock : product.variantStock![field]!;
+}
+
+export interface StockAdjustResult {
+  ok: boolean;
+  /** The bucket's value immediately before this call, and after it (only meaningful when `ok`). Read from inside the same mutex-protected read-modify-write as the actual adjustment — a caller that read "before" via a separate, unlocked call could see a stale number if another request's decrement/restock interleaved between the two calls. */
+  before: number;
+  after: number;
+}
+
+function adjustStock(id: string, delta: number, selectedVariants: Record<string, string> | undefined): StockAdjustResult {
+  const products = readProducts();
+  const idx = products.findIndex((p) => p.id === id);
+  if (idx === -1) return { ok: false, before: 0, after: 0 };
+  const product = products[idx]!;
+  const field = resolveStockField(product, selectedVariants);
+  const before = field === 'stock' ? product.stock : product.variantStock![field]!;
+  const after = before + delta;
+  if (after < 0) return { ok: false, before, after: before };
+
+  products[idx] = field === 'stock'
+    ? { ...product, stock: after }
+    : { ...product, variantStock: { ...product.variantStock, [field]: after } };
+
+  writeProducts(products);
+  return { ok: true, before, after };
+}
+
+const stockMutex = new Mutex();
+
+/** Atomically decrements stock (the matching variant-combo bucket, or the shared pool) by `qty`. `ok:false` — without writing — if that would go negative, so callers can reject the purchase instead of overselling. Serialized via a mutex so two concurrent checkouts on the same product can't both read-then-write the same stale count. */
+export function decrementStock(id: string, qty: number, selectedVariants?: Record<string, string>): Promise<StockAdjustResult> {
+  return stockMutex.run(() => adjustStock(id, -qty, selectedVariants));
+}
+
+/** Reverses a decrementStock — used to roll back stock already deducted for other items in the same checkout when a later item turns out to be out of stock. */
+export function restockProduct(id: string, qty: number, selectedVariants?: Record<string, string>): Promise<StockAdjustResult> {
+  return stockMutex.run(() => adjustStock(id, qty, selectedVariants));
 }

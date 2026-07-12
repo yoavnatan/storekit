@@ -20,7 +20,7 @@ import { getOrdersByStoreSlug } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
-import { comboKey, generateCombos, type VariantDimension } from '../../lib/variant-combo.js';
+import { comboKey, generateCombos, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
 // first rows) so seeding legacy combos never silently changes the sum.
@@ -402,13 +402,17 @@ const orderStatusColors: Record<string, string> = {
               </button>
               <button id="bulk-upload-btn" type="button" class="btn btn--sm bulk-btn" hidden aria-label={d.bulkUploadImages}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                <span class="bulk-btn__label" aria-hidden="true">{d.bulkUploadImages}</span>
+                <span id="bulk-upload-label" class="bulk-btn__label" aria-hidden="true">{d.bulkUploadImages}</span>
               </button>
               <button id="bulk-delete-btn" type="button" class="btn btn--sm btn--danger bulk-btn" hidden aria-label={d.bulkDelete}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                 <span class="bulk-btn__label" aria-hidden="true">{d.bulkDelete}</span>
               </button>
               <span class="products-header__sep" id="bulk-sep" aria-hidden="true" hidden></span>
+              <button class="btn btn--sm bulk-btn" id="toggle-csv-panel" aria-label={d.csvImportExport}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="11" x2="12" y2="17"/><polyline points="9.5 14.5 12 17 14.5 14.5"/></svg>
+                <span class="bulk-btn__label" aria-hidden="true">{d.csvImportExport}</span>
+              </button>
               <button class="btn btn--sm add-product-btn" id="toggle-add-form" aria-label={d.addProduct}>
                 <span class="add-product-btn__icon" aria-hidden="true">+</span>
                 <span class="add-product-btn__label" aria-hidden="true">{d.addProduct}</span>
@@ -453,10 +457,16 @@ const orderStatusColors: Record<string, string> = {
                   placeholder={d.descPlaceholderProduct}></textarea>
               </label>
 
-              <label class="field field--narrow">
-                <span>{d.categoryLabel}</span>
-                <input class="input" name="category" placeholder={d.categoryPlaceholder} list="store-categories-list" />
-              </label>
+              <div class="field-row">
+                <label class="field field--narrow">
+                  <span>{d.categoryLabel}</span>
+                  <input class="input" name="category" placeholder={d.categoryPlaceholder} list="store-categories-list" />
+                </label>
+                <label class="field field--narrow">
+                  <span>{d.skuLabel}</span>
+                  <input class="input" name="sku" placeholder={d.skuPlaceholder} />
+                </label>
+              </div>
 
               <div class="field field--tags" data-tags-field>
                 <span>{d.tagsLabel}</span>
@@ -507,6 +517,34 @@ const orderStatusColors: Record<string, string> = {
 
           <p id="empty-products" class="empty-products" hidden={products.length > 0}>{d.noProducts}</p>
 
+          {/* CSV bulk import/export panel */}
+          <div id="csv-panel" class="csv-panel" hidden data-store-id={store.id}>
+            <div class="csv-panel__header">
+              <span>{d.csvImportExport}</span>
+              <button type="button" class="btn btn--ghost btn--sm" id="csv-panel-close" aria-label={d.csvClose}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <p class="csv-panel__hint muted">{d.csvImportHint}</p>
+            <div class="csv-panel__actions">
+              <a class="btn btn--ghost btn--sm" id="csv-export-link" href={`/api/store-product/bulk?storeId=${store.id}`} download="products.csv">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {d.csvExport}
+              </a>
+              <button type="button" class="btn btn--ghost btn--sm" id="csv-template-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+                {d.csvTemplate}
+              </button>
+              <label class="btn btn--ghost btn--sm" for="csv-file-input">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                {d.csvChooseFile}
+              </label>
+              <input type="file" id="csv-file-input" accept=".csv,text/csv" hidden />
+              <span id="csv-file-name" class="muted" aria-live="polite"></span>
+            </div>
+            <div id="csv-preview" class="csv-preview" hidden></div>
+          </div>
+
           {/* Bulk image upload panel */}
           <div id="bulk-upload-panel" class="bulk-upload-panel" hidden></div>
 
@@ -543,6 +581,7 @@ const orderStatusColors: Record<string, string> = {
                 <th class="name-col">
                   <button type="button" class="sort-btn" data-sort-col="name">{d.colName}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
+                <th class="sku-col">{d.skuLabel}</th>
                 <th class="cat-col">
                   <div style="display:flex;align-items:center;gap:0.25rem">
                     <button type="button" class="sort-btn" data-sort-col="category">{d.categoryLabel}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
@@ -588,11 +627,12 @@ const orderStatusColors: Record<string, string> = {
                       <span class="product-name">{p.name}</span>
                       {p.description && <span class="product-desc">{p.description}</span>}
                     </td>
+                    <td class="sku-col">{p.sku || <span style="color:var(--color-border)">—</span>}</td>
                     <td class="cat-col">{p.category ? <span class="product-cat-chip">{p.category}</span> : <span style="color:var(--color-border)">—</span>}</td>
                     <td class="num product-price price-col">{formatPrice(p.price)}</td>
                     <td class="num product-stock stock-col">
                       <span style="display:inline-flex;align-items:center;gap:0.3rem">
-                        <span>{p.stock}</span>
+                        <span style={p.stock <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{p.stock}</span>
                         {p.stock <= 0 && (
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                         )}
@@ -684,10 +724,16 @@ const orderStatusColors: Record<string, string> = {
                           <textarea class="input" name="description" rows="2">{p.description}</textarea>
                         </label>
 
-                        <label class="field field--narrow">
-                          <span>{d.categoryLabel}</span>
-                          <input class="input" name="category" value={p.category ?? ''} placeholder={d.categoryPlaceholder} list="store-categories-list" />
-                        </label>
+                        <div class="field-row">
+                          <label class="field field--narrow">
+                            <span>{d.categoryLabel}</span>
+                            <input class="input" name="category" value={p.category ?? ''} placeholder={d.categoryPlaceholder} list="store-categories-list" />
+                          </label>
+                          <label class="field field--narrow">
+                            <span>{d.skuLabel}</span>
+                            <input class="input" name="sku" value={p.sku ?? ''} placeholder={d.skuPlaceholder} />
+                          </label>
+                        </div>
 
                         <div class="field field--tags" data-tags-field>
                           <span>{d.tagsLabel}</span>
@@ -1192,6 +1238,10 @@ const orderStatusColors: Record<string, string> = {
             <input class="input" name="categories" value={store.categories?.join(', ') ?? ''} placeholder={d.storeCategoriesPlaceholder} />
           </label>
 
+          <div class="form-actions">
+            <button class="btn btn--sm" type="submit">{d.saveChanges}</button>
+          </div>
+
           <p id="settings-status" hidden></p>
         </form>
       </div>
@@ -1657,6 +1707,7 @@ const orderStatusColors: Record<string, string> = {
   import { initCleanupModal } from '../../scripts/dashboard/cleanup-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
   import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initProductsToolbar, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
+  import { initCsvImport } from '../../scripts/dashboard/csv-import.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
   import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
   import { createFloatingPortal } from '../../lib/toolbar-portal.js';
@@ -1729,7 +1780,7 @@ const orderStatusColors: Record<string, string> = {
   initVariantEditors();
   initTagsEditor();
   initStockBreakdowns();
-  document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g, CLOUD, PRESET));
+  document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g));
   bindExistingRows(CLOUD, PRESET);
   initAddProduct(CLOUD, PRESET);
   initProductMenus();
@@ -1740,6 +1791,7 @@ const orderStatusColors: Record<string, string> = {
   initAutoHideStatus();
   initProductsToolbar();
   initBulkSelect(CLOUD, PRESET);
+  initCsvImport(CLOUD, PRESET);
   initThumbs();
   initInlineEdit();
   initPagination();
@@ -1862,12 +1914,16 @@ const orderStatusColors: Record<string, string> = {
       });
     });
 
+    function closeCard(): void {
+      card.classList.remove('order-card--open');
+      if (body) body.hidden = true;
+      header?.setAttribute('aria-expanded', 'false');
+    }
+
     header?.addEventListener('click', () => {
       const isOpen = card.classList.contains('order-card--open');
       if (isOpen) {
-        card.classList.remove('order-card--open');
-        if (body) body.hidden = true;
-        header.setAttribute('aria-expanded', 'false');
+        closeCard();
       } else {
         card.classList.add('order-card--open');
         if (body) body.hidden = false;
@@ -1922,6 +1978,7 @@ const orderStatusColors: Record<string, string> = {
             }
           }
           updateOrderTabBadge();
+          setTimeout(closeCard, 700);
         }
       } catch { /* ignore */ } finally {
         saveBtn.disabled = false;
@@ -2170,7 +2227,7 @@ const orderStatusColors: Record<string, string> = {
       id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
       buyerAddress: { city: string; street: string; zip?: string };
       shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; price: number; image?: string }[];
-      storeSubtotals: Record<string, { subtotal: number; shipping: number }>;
+      storeSubtotals: Record<string, { subtotal: number; shipping: number; discount?: { type: string; value: number; applied: number } }>;
     }): string {
       const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
       const color    = colorMap[o.shippingStatus] ?? '#888';
@@ -2263,6 +2320,7 @@ const orderStatusColors: Record<string, string> = {
     }
 
     async function pollOrders(): Promise<void> {
+      if (!ordersList) return;
       try {
         const res = await fetch(`/api/seller/orders?storeSlug=${encodeURIComponent(storeSlugForOrders)}`);
         if (!res.ok) return;
