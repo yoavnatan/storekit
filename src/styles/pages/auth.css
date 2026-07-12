@@ -1,4 +1,6 @@
-.auth-wrap { max-width: 460px; }
+.auth-wrap {
+  max-width: 460px;
+}
 
 .auth-error {
   background: #fde8e8;

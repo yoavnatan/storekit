@@ -5,6 +5,7 @@ import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, generateCombos, canonicalDimName, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
+import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 
 export interface ProductData {
   id: string; storeId: string; slug?: string; name: string;
@@ -13,6 +14,7 @@ export interface ProductData {
   specs?: Array<{ label: string; value: string }>;
   variants?: VariantDimension[];
   variantStock?: Record<string, number>;
+  variantImages?: Record<string, string>;
   createdAt?: string;
 }
 
@@ -283,9 +285,22 @@ function chipRemoveButtonHtml(i18n: Record<string, string>): string {
   return `<button type="button" class="variant-chip-remove" aria-label="${esc(i18n.variantChipRemove ?? 'Remove value')}" style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:none;background:none;color:var(--color-muted);cursor:pointer;font-size:0.85rem;line-height:1;padding:0">×</button>`;
 }
 
-function chipHtml(dimName: string, value: string, i18n: Record<string, string>): string {
-  const display = isColorVariant(dimName) ? resolveVariantColor(value).display : value;
-  return `<span class="variant-chip" data-variant-chip data-value="${esc(value)}" style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:999px;padding:0.25rem 0.5rem 0.25rem 0.4rem;font-size:0.82rem">${colorChipVisualHtml(dimName, value, i18n)}<span class="variant-chip-label">${esc(display)}</span>${chipRemoveButtonHtml(i18n)}</span>`;
+const CHIP_IMAGE_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+
+// Lets a color chip carry its own product photo — buyer-facing effect is that
+// tapping this color on the storefront swaps the main image (see
+// AI_INSTRUCTIONS → variant-image linking). Only offered on color dimensions;
+// a size/storage/etc chip has nothing meaningful to point a photo at.
+function chipImageBtnHtml(hasImage: boolean, i18n: Record<string, string>): string {
+  const label = hasImage ? (i18n.variantImageAssigned ?? 'Change linked image') : (i18n.variantImageAssign ?? 'Link an image to this color');
+  return `<button type="button" class="variant-chip-image-btn" data-variant-chip-image aria-label="${esc(label)}" title="${esc(label)}" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;border:none;background:none;cursor:pointer;padding:0;color:${hasImage ? 'var(--color-accent)' : 'var(--color-muted)'};flex-shrink:0">${CHIP_IMAGE_ICON_SVG}</button>`;
+}
+
+function chipHtml(dimName: string, value: string, i18n: Record<string, string>, image = ''): string {
+  const isColor = isColorVariant(dimName);
+  const display = isColor ? resolveVariantColor(value).display : value;
+  const imageBtn = isColor ? chipImageBtnHtml(!!image, i18n) : '';
+  return `<span class="variant-chip" data-variant-chip data-value="${esc(value)}" data-image="${esc(image)}" style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:999px;padding:0.25rem 0.5rem 0.25rem 0.4rem;font-size:0.82rem">${colorChipVisualHtml(dimName, value, i18n)}<span class="variant-chip-label">${esc(display)}</span>${imageBtn}${chipRemoveButtonHtml(i18n)}</span>`;
 }
 
 // A remove (×) click never deletes immediately — it swaps to a tiny inline
@@ -329,9 +344,14 @@ function resolveRemoveConfirm(wrapper: HTMLElement, i18n: Record<string, string>
     if (field) syncTagsHiddenInput(field);
     return;
   }
+  // Must be captured *before* the dim/chip is removed below — .remove()
+  // detaches it from its parent, so a .closest() walk from `wrapper` upward
+  // afterward silently fails to reach the editor (the chain is broken at the
+  // removed node), which was leaving the combo-stock table showing the
+  // deleted dimension/value until the next full save re-rendered it.
+  const editor = wrapper.closest<HTMLElement>('[data-variants-editor]');
   if (kind === 'dim') wrapper.closest('[data-variant-dim]')?.remove();
   else if (kind === 'chip') wrapper.closest('[data-variant-chip]')?.remove();
-  const editor = wrapper.closest<HTMLElement>('[data-variants-editor]');
   if (editor) { refreshVariantCombos(editor, i18n); revalidateAllDimNames(editor, i18n); }
 }
 
@@ -383,8 +403,8 @@ function dimRemoveButtonHtml(i18n: Record<string, string>): string {
   return `<button type="button" class="variant-dim-remove btn btn--ghost btn--sm" aria-label="${esc(i18n.variantRemove ?? 'Remove variant type')}" style="flex-shrink:0">×</button>`;
 }
 
-function dimHtml(dim: VariantDimension, i18n: Record<string, string>): string {
-  const chipsHtml = dim.options.map(o => chipHtml(dim.name, o, i18n)).join('');
+function dimHtml(dim: VariantDimension, i18n: Record<string, string>, variantImages: Record<string, string> = {}): string {
+  const chipsHtml = dim.options.map(o => chipHtml(dim.name, o, i18n, variantImages[o] ?? '')).join('');
   return `<div class="variant-dim" data-variant-dim style="border:1px solid var(--color-border);border-radius:var(--radius);padding:0.65rem;margin-bottom:0.5rem">
     <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem">
       <input class="input" data-dim-name value="${esc(dim.name)}" placeholder="${esc(i18n.variantNamePlaceholder ?? '')}" style="width:170px;flex:0 0 auto">
@@ -539,9 +559,9 @@ function sortComboTable(editor: HTMLElement, col: string): void {
   });
 }
 
-function variantsEditorHtml(variants: VariantDimension[], variantStock: Record<string, number>, currentStock: number, i18n: Record<string, string>): string {
+function variantsEditorHtml(variants: VariantDimension[], variantStock: Record<string, number>, currentStock: number, i18n: Record<string, string>, variantImages: Record<string, string> = {}): string {
   const hasAnyStock = Object.keys(variantStock).length > 0;
-  const dimsHtml = variants.map(v => dimHtml(v, i18n)).join('');
+  const dimsHtml = variants.map(v => dimHtml(v, i18n, variantImages)).join('');
   const headerHtml = variants.length ? comboHeaderHtml(variants, i18n) : '';
   const rowsHtml = variants.length ? comboRowsHtml(variants, variantStock, currentStock, hasAnyStock) : '';
   const totalHtml = variants.length ? comboTotalRowHtml(variants, i18n) : '';
@@ -580,6 +600,50 @@ function readVariantDims(editor: HTMLElement): VariantDimension[] {
       seenNames.add(key);
       return true;
     });
+}
+
+function readVariantImages(editor: HTMLElement): Record<string, string> {
+  const out: Record<string, string> = {};
+  editor.querySelectorAll<HTMLElement>('[data-variant-chip]').forEach((chip) => {
+    const value = chip.dataset.value ?? '';
+    const image = chip.dataset.image ?? '';
+    if (value && image) out[value] = image;
+  });
+  return out;
+}
+
+// One shared floating popover (see toolbar-portal.ts) for picking which of the
+// product's own gallery images a color chip should point the storefront's
+// main image at. Reads the gallery's *current* slot URLs live off the same
+// form at open time, not a stale snapshot — a seller can upload a new photo
+// and immediately link it without saving the product first.
+const variantImagePortal = createFloatingPortal('variant-image-picker-portal');
+
+function currentGalleryImages(editor: HTMLElement): string[] {
+  const form = editor.closest('form');
+  if (!form) return [];
+  return [...form.querySelectorAll<HTMLInputElement>('.gallery-slot__url')]
+    .map((input) => input.value.trim())
+    .filter(Boolean);
+}
+
+function variantImagePickerHtml(images: string[], current: string, i18n: Record<string, string>): string {
+  const noneItem = `<button type="button" data-variant-image-pick data-url="" style="display:block;width:100%;text-align:start;padding:0.4rem 0.6rem;border-radius:4px;background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--color-muted)">${esc(i18n.variantImageNone ?? 'No linked image')}</button>`;
+  if (!images.length) {
+    return `${noneItem}<p class="muted" style="font-size:0.75rem;padding:0.3rem 0.6rem;margin:0">${esc(i18n.variantImageNoPhotos ?? 'Upload product photos first')}</p>`;
+  }
+  const thumbs = images.map((url) => `<button type="button" data-variant-image-pick data-url="${esc(url)}" aria-label="${esc(url)}" style="display:block;padding:2px;border-radius:4px;border:2px solid ${url === current ? 'var(--color-accent)' : 'transparent'};background:none;cursor:pointer;line-height:0"><img src="${esc(thumbUrl(url, 64, 64))}" alt="" width="48" height="48" style="width:48px;height:48px;object-fit:cover;border-radius:2px;display:block"></button>`).join('');
+  return `<div style="display:flex;flex-wrap:wrap;gap:0.35rem;padding:0.3rem 0.3rem 0.5rem">${thumbs}</div>${noneItem}`;
+}
+
+function updateChipImageBtnState(chip: HTMLElement, i18n: Record<string, string>): void {
+  const btn = chip.querySelector<HTMLButtonElement>('[data-variant-chip-image]');
+  if (!btn) return;
+  const hasImage = !!chip.dataset.image;
+  const label = hasImage ? (i18n.variantImageAssigned ?? 'Change linked image') : (i18n.variantImageAssign ?? 'Link an image to this color');
+  btn.style.color = hasImage ? 'var(--color-accent)' : 'var(--color-muted)';
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
 }
 
 function readComboStock(editor: HTMLElement): Record<string, number> {
@@ -780,6 +844,18 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
 function expandValueAdder(dimEl: HTMLElement, i18n: Record<string, string>): void {
   const adder = dimEl.querySelector<HTMLElement>('[data-dim-value-adder]');
   if (!adder) return;
+  // If a value-input is already sitting there (the "stays open for the next
+  // value" case, called right after commitVariantValue on Enter) just refocus
+  // it instead of tearing it down and rebuilding — replacing a *currently
+  // focused* element's own innerHTML fires a synchronous blur as part of its
+  // removal, which reentrantly runs the `focusout` listener below (also
+  // commit+collapse) *while this same innerHTML assignment is still being
+  // processed by the browser* — corrupts the DOM (a real "node to be removed
+  // is no longer a child of this node" exception) and can silently drop the
+  // value that was just committed. Only rebuild from scratch when there's
+  // truly nothing there yet (opening from the collapsed trigger button).
+  const existing = adder.querySelector<HTMLInputElement>('[data-dim-value-input]');
+  if (existing) { existing.focus(); return; }
   adder.innerHTML = dimValueInputHtml(i18n);
   adder.querySelector<HTMLInputElement>('[data-dim-value-input]')?.focus();
 }
@@ -817,10 +893,10 @@ function commitVariantValue(dimEl: HTMLElement, editor: HTMLElement, i18n: Recor
   refreshVariantCombos(editor, i18n);
 }
 
-export function collectVariantsPayload(form: HTMLFormElement): { variants: VariantDimension[]; variantStock: Record<string, number> } {
+export function collectVariantsPayload(form: HTMLFormElement): { variants: VariantDimension[]; variantStock: Record<string, number>; variantImages: Record<string, string> } {
   const editor = form.querySelector<HTMLElement>('[data-variants-editor]');
-  if (!editor) return { variants: [], variantStock: {} };
-  return { variants: readVariantDims(editor), variantStock: readComboStock(editor) };
+  if (!editor) return { variants: [], variantStock: {}, variantImages: {} };
+  return { variants: readVariantDims(editor), variantStock: readComboStock(editor), variantImages: readVariantImages(editor) };
 }
 
 export function resetVariantsEditor(form: HTMLFormElement): void {
@@ -875,6 +951,25 @@ export function initVariantEditors(): void {
     const removeChipBtn = target.closest<HTMLButtonElement>('.variant-chip-remove');
     if (removeChipBtn) { replaceWithHtml(removeChipBtn, removeConfirmHtml('chip', i18n)); return; }
 
+    const chipImageBtn = target.closest<HTMLButtonElement>('[data-variant-chip-image]');
+    if (chipImageBtn) {
+      const chip = chipImageBtn.closest<HTMLElement>('[data-variant-chip]');
+      if (!chip) return;
+      if (variantImagePortal.currentTrigger() === chipImageBtn) { variantImagePortal.close(); return; }
+      const gallery = currentGalleryImages(editor);
+      const current = chip.dataset.image ?? '';
+      variantImagePortal.open(chipImageBtn, '150px', () => variantImagePickerHtml(gallery, current, i18n), (portal) => {
+        portal.querySelectorAll<HTMLButtonElement>('[data-variant-image-pick]').forEach((pickBtn) => {
+          pickBtn.addEventListener('click', () => {
+            chip.dataset.image = pickBtn.dataset.url ?? '';
+            updateChipImageBtnState(chip, i18n);
+            variantImagePortal.close();
+          });
+        });
+      });
+      return;
+    }
+
     const triggerBtn = target.closest<HTMLButtonElement>('[data-dim-value-trigger]');
     if (triggerBtn) {
       const dimEl = triggerBtn.closest<HTMLElement>('[data-variant-dim]');
@@ -906,13 +1001,17 @@ export function initVariantEditors(): void {
     if (e.key === 'Escape') closeComboFilterPortal();
 
     // The dimension-name field gets autofocused right after clicking "+ Add
-    // variant type" — pressing Enter there out of habit would otherwise submit
-    // the whole product form prematurely (this field has no submit button of
-    // its own to intercept it), silently dropping the still-optionless
-    // dimension since readVariantDims() filters out any dimension with no
-    // values yet.
+    // variant type". Enter there must never fall through to a real form
+    // submit (this field has no submit button of its own to intercept it,
+    // which would silently drop the still-optionless dimension since
+    // readVariantDims() filters out any dimension with no values yet) — instead
+    // it opens the value-adder input, same as clicking "+ Add", so naming the
+    // type and adding its first value is one continuous Enter/Enter/Enter flow
+    // instead of a name-then-click-then-type break in rhythm.
     if (target.matches('[data-dim-name]') && e.key === 'Enter') {
       e.preventDefault();
+      const dimEl = target.closest<HTMLElement>('[data-variant-dim]');
+      if (dimEl) expandValueAdder(dimEl, getDashI18n());
       return;
     }
 
@@ -965,8 +1064,10 @@ export function initVariantEditors(): void {
     // state it was in survives, and there's no second place that has to
     // remember to keep re-adding it whenever chips get rebuilt.
     const adderEl = chipsWrap.querySelector<HTMLElement>('[data-dim-value-adder]');
-    const options = [...chipsWrap.querySelectorAll<HTMLElement>('[data-variant-chip]')].map(c => c.dataset.value ?? '');
-    chipsWrap.innerHTML = options.map(o => chipHtml(target.value, o, i18n)).join('');
+    const existingChips = [...chipsWrap.querySelectorAll<HTMLElement>('[data-variant-chip]')];
+    const options = existingChips.map(c => c.dataset.value ?? '');
+    const images = existingChips.map(c => c.dataset.image ?? '');
+    chipsWrap.innerHTML = options.map((o, idx) => chipHtml(target.value, o, i18n, images[idx])).join('');
     chipsWrap.appendChild(adderEl ?? createValueAdderElement(i18n));
     refreshVariantCombos(editor, i18n);
   });
@@ -996,7 +1097,7 @@ export function initVariantEditors(): void {
       const newValue = `${baseName} ${target.value}`;
       const i18n = getDashI18n();
       const wrapper = document.createElement('div');
-      wrapper.innerHTML = chipHtml(nameInput.value, newValue, i18n);
+      wrapper.innerHTML = chipHtml(nameInput.value, newValue, i18n, chip.dataset.image ?? '');
       chip.replaceWith(wrapper.firstElementChild as HTMLElement);
       refreshVariantCombos(editor, i18n);
       return;
@@ -1106,7 +1207,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
         <label class="field"><span>${i.descLabel ?? 'Description'}</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
         <div class="field-row">${categoryFieldHtml(p.category ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}</div>
         ${tagsFieldHtml(p.tags ?? [], i)}
-        ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i)}
+        ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i, p.variantImages ?? {})}
         ${specsEditorHtml(p.specs ?? [], i)}
         <div class="field">
           <span class="field-label">${i.productImages ?? 'Product images'}</span>

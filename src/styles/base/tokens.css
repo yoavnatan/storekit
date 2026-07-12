@@ -3,6 +3,13 @@
   --color-primary-dark: #1c2333;
   --color-accent: #4870c0;
   --color-accent-dark: #3a5ca8;
+  /* The site's default .btn gradient (buttons.css) and StoreAvatar's fallback
+     initial badge — a dark teal-slate, referenced here so new code (the
+     homepage's shelf background wash) can pick it up without a fresh
+     hardcoded hex. Not yet threaded through the older hardcoded spots
+     (buttons.css, home.css cart-chip, StoreAvatar.astro) — out of scope for
+     the change that introduced this token, left as-is. */
+  --color-brand-dark: #2a3c40;
   --color-bg: #f7f8fa;
   --color-surface: #ffffff;
   --color-text: #1c2333;

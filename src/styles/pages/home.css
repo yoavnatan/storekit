@@ -1,5 +1,42 @@
-.home-body {
-  padding-top: 0.5rem;
+/* ── Hero — plain white banner, same surface/pattern as a store page's own
+   .store-banner (white background, then the rest of the page continues on
+   the standard gray page background right below it — no border needed
+   between them, the color contrast alone reads as the section break,
+   exactly like every store page already does). */
+.home-hero {
+  background: var(--color-surface);
+}
+
+.home-hero__inner {
+  padding-block: 2.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.5rem;
+}
+
+.home-hero__title {
+  font-size: clamp(1.9rem, 5.5vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.home-hero__phrase {
+  font-size: clamp(0.9rem, 2vw, 1.05rem);
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.home-hero__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem 1.1rem;
+  margin-top: 0.6rem;
 }
 
 /* ── Section layout helpers ────────────────────────────────────────── */
@@ -20,19 +57,6 @@
   align-items: center;
   gap: 0.45rem;
   margin: 0;
-}
-
-.home-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-accent);
-  color: #fff;
-  border-radius: 9999px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  line-height: 1;
-  padding: 0.18rem 0.5rem;
 }
 
 /* ── Active Carts (rendered in the buyer's personal area) ────────────── */
@@ -144,10 +168,7 @@
 
 .home-store-section {
   padding-block: 1.75rem;
-  border-bottom: 1px solid var(--color-border);
 }
-
-.home-store-section:last-of-type { border-bottom: none; }
 
 .home-store-section__title-group {
   display: flex;
@@ -163,14 +184,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-
-.home-store-section__empty {
-  font-size: 0.82rem;
-  color: var(--color-muted);
-  padding-block: 1rem;
-  margin: 0;
 }
 
 /* ── Horizontal carousel ───────────────────────────────────────────── */
@@ -274,8 +287,29 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.18s ease;
 }
+
+/* Skeleton shimmer (2026-07-12 — was missing here; every other image grid on
+   the site shimmers while loading, this one just popped in). @keyframes
+   skeleton-shimmer lives in utils.css. Cleared via JS on img load/error. */
+.home-product-card__img-wrap.is-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+    var(--color-surface) 75%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+  border-radius: inherit;
+}
+
+.home-product-card__img-wrap.is-loading .home-product-card__img { opacity: 0; }
 
 .home-product-card:hover .home-product-card__img { transform: scale(1.09); }
 
@@ -286,19 +320,6 @@
   line-height: 1;
   user-select: none;
   letter-spacing: -0.04em;
-}
-
-.home-product-card__oos {
-  position: absolute;
-  inset-inline-start: 0.4rem;
-  bottom: 0.4rem;
-  font-size: 0.65rem;
-  font-weight: 700;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  letter-spacing: 0.02em;
 }
 
 .home-product-card__body {

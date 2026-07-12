@@ -33,5 +33,6 @@ export const GET: APIRoute = ({ url }) => {
     tags:        product.tags ?? [],
     specs:       product.specs ?? [],
     variants:    product.variants ?? [],
+    variantImages: product.variantImages ?? {},
   });
 };

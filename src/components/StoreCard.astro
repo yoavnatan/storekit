@@ -1,0 +1,82 @@
+---
+import { cdnSrc } from '../config/store.config.js';
+import StoreAvatar from './StoreAvatar.astro';
+import type { Store } from '../lib/stores.js';
+
+interface Props {
+  store: Store;
+  previewImages?: string[];
+  class?: string;
+  /** First card above the fold shouldn't lazy-load + shimmer — same eager/high-priority
+   *  treatment the old homepage gave its very first product image, now handed to whichever
+   *  shelf renders first (liked → new → category → discovery). */
+  eager?: boolean;
+  role?: 'listitem';
+}
+
+const { store, previewImages = [], class: className = '', eager = false, role } = Astro.props;
+const PREVIEW_SLOTS = 3;
+const thumbs = previewImages.slice(0, PREVIEW_SLOTS);
+// Always render a fixed 3-slot row — a store whose products have no photos yet
+// (or fewer than 3) gets neutral placeholder squares for the rest, so every
+// card in the same shelf stays the same height instead of the photo-less one
+// visibly shrinking next to its neighbors.
+const placeholderCount = PREVIEW_SLOTS - thumbs.length;
+const noImgIconSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
+
+// At most 2 tags shown + a "+N" for the rest — a gentle label, not a wall of chips.
+const CATEGORY_TAGS_SHOWN = 2;
+const categories = (store.categories ?? []).map((c) => c.trim()).filter(Boolean);
+const shownCategories = categories.slice(0, CATEGORY_TAGS_SHOWN);
+const extraCategoryCount = categories.length - shownCategories.length;
+---
+
+<a
+  href={`/store/${store.slug}`}
+  class={`store-card ${className}`}
+  data-store-name={store.name.toLowerCase()}
+  data-tagline={(store.tagline || store.description || '').toLowerCase()}
+  role={role}
+>
+  <div class="store-card__head">
+    <span class="store-card__avatar-wrap">
+      <StoreAvatar name={store.name} profileImage={store.profileImage} size={40} />
+    </span>
+    <div class="store-card__title-group">
+      <span class="store-card__name" dir="auto">{store.name}</span>
+      <!-- Always rendered — a store with no tagline/description used to skip
+           this line entirely, same misalignment as the tags row below: its
+           preview row sat higher than a neighboring card that had one. A
+           non-breaking space keeps the line's own height without showing
+           visible text. -->
+      <span class="store-card__tagline" dir="auto">{store.tagline || store.description || ' '}</span>
+    </div>
+  </div>
+  <!-- Always rendered (min-height reserves the row even with zero tags) —
+       skipping this block entirely for a store with no categories left its
+       preview row sitting higher than neighboring cards that do have tags,
+       a visible misalignment across a shelf of side-by-side cards. -->
+  <div class="store-card__tags">
+    {shownCategories.map((c) => <span class="store-card__tag">{c}</span>)}
+    {extraCategoryCount > 0 && <span class="store-card__tag store-card__tag--more">+{extraCategoryCount}</span>}
+  </div>
+  <div class="store-card__preview" aria-hidden="true">
+    {thumbs.map((img, i) => (
+      <span class={`store-card__preview-img-wrap${eager && i === 0 ? '' : ' is-loading'}`}>
+        <img
+          src={cdnSrc(img, 200)}
+          alt=""
+          width="80"
+          height="80"
+          loading={eager && i === 0 ? 'eager' : 'lazy'}
+          fetchpriority={eager && i === 0 ? 'high' : undefined}
+          decoding="async"
+          class="store-card__preview-img"
+        />
+      </span>
+    ))}
+    {Array.from({ length: placeholderCount }).map(() => (
+      <span class="store-card__preview-img-wrap store-card__preview-img-wrap--empty" set:html={noImgIconSvg} />
+    ))}
+  </div>
+</a>

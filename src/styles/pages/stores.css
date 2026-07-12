@@ -1,0 +1,89 @@
+.stores-directory__title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--color-text);
+  margin: 0 0 1.25rem;
+}
+
+.stores-directory__search {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  max-width: 420px;
+  margin-inline: auto;
+}
+
+.stores-directory__search .input {
+  flex: 1;
+}
+
+/* Icon-only, no fill — the default .btn's own dark gradient (buttons.css)
+   read as a heavy, oversized block for a single search-glyph action; the
+   icon itself carries that same dark tone instead via currentColor.
+   align-self:stretch (not a guessed fixed height) matches .input's real
+   rendered height exactly, whatever that resolves to — a hardcoded height
+   here previously fell short of it, leaving the icon sitting visibly
+   off-center against the taller input field beside it. */
+.stores-directory__search-btn {
+  flex-shrink: 0;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: none;
+  color: var(--color-brand-dark);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.stores-directory__search-btn:hover {
+  background: color-mix(in srgb, var(--color-brand-dark) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-brand-dark) 35%, var(--color-border));
+}
+
+.stores-directory__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 1.5rem;
+}
+
+.stores-directory__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.stores-directory__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding-block: 3rem;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.stores-directory__pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2.5rem;
+}
+
+.stores-directory__page-info {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .stores-directory__grid {
+    grid-template-columns: 1fr;
+  }
+}

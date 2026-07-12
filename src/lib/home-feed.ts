@@ -1,0 +1,154 @@
+import type { Store } from './stores.js';
+import type { StoreProduct } from './store-products.js';
+import { getFavoriteStoresForUser } from './user-carts.js';
+
+export interface FeedStore {
+  store: Store;
+  products: StoreProduct[];
+}
+
+export interface CategoryShelf {
+  category: string;
+  stores: FeedStore[];
+}
+
+export interface HomeFeed {
+  liked: FeedStore[];
+  /** Stores the buyer has actually bought from before (derived from order history), most
+   *  recent first — the strongest personalization signal available, stronger than "liked". */
+  buyAgain: FeedStore[];
+  newStores: FeedStore[];
+  discovery: FeedStore[];
+  categories: CategoryShelf[];
+  /** Stores that keep their full product carousel (today's homepage treatment) — a rotating
+   *  subset, not every store, so the page stays bounded once there are hundreds of them. */
+  spotlight: FeedStore[];
+}
+
+const SHELF_SIZE = 10;
+const MAX_CATEGORY_SHELVES = 4;
+const SPOTLIGHT_SIZE = 5;
+
+/** Deterministic string hash → 32-bit int, seed for mulberry32 below. */
+function hashSeed(seed: string): number {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return h >>> 0;
+}
+
+/** mulberry32 — small, fast, seeded PRNG (good enough for shuffling a list, not cryptography). */
+function mulberry32(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Fisher–Yates shuffle seeded off `seed` — same seed always produces the same order, so a
+ *  "discovery"/"spotlight" row stays stable across requests within the same seed window
+ *  (see dailySeed()) instead of reshuffling on every single page load. */
+function seededShuffle<T>(arr: T[], seed: string): T[] {
+  const rand = mulberry32(hashSeed(seed));
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
+/** Changes once a day (UTC date string) — long enough that a shelf doesn't feel randomly
+ *  reordered on every reload, short enough that the homepage doesn't go stale for weeks. */
+function dailySeed(salt: string): string {
+  return `${new Date().toISOString().slice(0, 10)}:${salt}`;
+}
+
+function normalizeCategory(raw: string): string {
+  return raw.trim();
+}
+
+export interface CategoryCount {
+  category: string;
+  count: number;
+}
+
+/** Every category across the catalog with how many stores carry it, most-populated first —
+ *  no minimum threshold (unlike the `categories` shelves below, which need 2+ stores to be
+ *  worth a whole row): this is a browse/navigation list, not a content shelf, so even a
+ *  category with a single store today is still a legitimate thing to browse by. */
+export function getCategoryCounts(storesWithProducts: FeedStore[]): CategoryCount[] {
+  const counts = new Map<string, number>();
+  for (const fs of storesWithProducts) {
+    for (const raw of fs.store.categories ?? []) {
+      const cat = normalizeCategory(raw);
+      if (!cat) continue;
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+/** `previousStoreSlugs` — the buyer's past-order store slugs, most-recent purchase first
+ *  (deduped by the caller); pass `[]` for a guest or a buyer with no order history. Kept as a
+ *  plain input here rather than importing orders.ts directly, same reasoning as
+ *  `storesWithProducts` — this module only decides *which stores go where*, not how to look
+ *  them up. */
+export function buildHomeFeed(storesWithProducts: FeedStore[], userId: string | null, previousStoreSlugs: string[] = []): HomeFeed {
+  const favoriteSlugs = userId ? new Set(getFavoriteStoresForUser(userId)) : new Set<string>();
+  const liked = storesWithProducts.filter((fs) => favoriteSlugs.has(fs.store.slug)).slice(0, SHELF_SIZE);
+  const likedSlugs = new Set(liked.map((fs) => fs.store.slug));
+
+  const storesBySlug = new Map(storesWithProducts.map((fs) => [fs.store.slug, fs]));
+  const buyAgain: FeedStore[] = [];
+  const buyAgainSlugs = new Set<string>();
+  for (const slug of previousStoreSlugs) {
+    if (likedSlugs.has(slug) || buyAgainSlugs.has(slug)) continue;
+    const fs = storesBySlug.get(slug);
+    if (!fs) continue;
+    buyAgain.push(fs);
+    buyAgainSlugs.add(slug);
+    if (buyAgain.length >= SHELF_SIZE) break;
+  }
+
+  const newStores = storesWithProducts
+    .filter((fs) => !likedSlugs.has(fs.store.slug) && !buyAgainSlugs.has(fs.store.slug))
+    .slice()
+    .sort((a, b) => new Date(b.store.createdAt).getTime() - new Date(a.store.createdAt).getTime())
+    .slice(0, SHELF_SIZE);
+  const newSlugs = new Set(newStores.map((fs) => fs.store.slug));
+
+  // One shelf per category with enough stores to be worth a whole row — sorted by how many
+  // stores carry it, so the most populated categories surface first. A store can appear in
+  // several category shelves at once (categories aren't mutually exclusive) and can still also
+  // appear in the daily discovery shuffle — repetition across shelves is fine, each shelf
+  // answers a different "how did I get here" question for the buyer.
+  const byCategory = new Map<string, FeedStore[]>();
+  for (const fs of storesWithProducts) {
+    for (const raw of fs.store.categories ?? []) {
+      const cat = normalizeCategory(raw);
+      if (!cat) continue;
+      if (!byCategory.has(cat)) byCategory.set(cat, []);
+      byCategory.get(cat)!.push(fs);
+    }
+  }
+  const categories: CategoryShelf[] = [...byCategory.entries()]
+    .filter(([, stores]) => stores.length >= 2)
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, MAX_CATEGORY_SHELVES)
+    .map(([category, stores]) => ({ category, stores: stores.slice(0, SHELF_SIZE) }));
+
+  const discoveryPool = storesWithProducts.filter((fs) => !likedSlugs.has(fs.store.slug) && !buyAgainSlugs.has(fs.store.slug) && !newSlugs.has(fs.store.slug));
+  const discovery = seededShuffle(discoveryPool, dailySeed('discovery')).slice(0, SHELF_SIZE);
+
+  const spotlight = seededShuffle(storesWithProducts, dailySeed('spotlight')).slice(0, SPOTLIGHT_SIZE);
+
+  return { liked, buyAgain, newStores, discovery, categories, spotlight };
+}

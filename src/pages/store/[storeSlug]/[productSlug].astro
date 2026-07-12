@@ -135,7 +135,8 @@ const pmI18n = {
        data-images={JSON.stringify(images)}
        data-lang={lang}
        data-variants={product.variants?.length ? JSON.stringify(product.variants) : undefined}
-       data-variant-stock={product.variantStock ? JSON.stringify(product.variantStock) : undefined}>
+       data-variant-stock={product.variantStock ? JSON.stringify(product.variantStock) : undefined}
+       data-variant-images={product.variantImages ? JSON.stringify(product.variantImages) : undefined}>
 
     <!-- Back link + checkout link -->
     <nav class="container pt-4 pb-2 flex items-center justify-between" aria-label="breadcrumb">
@@ -506,6 +507,7 @@ const pmI18n = {
                      data-slug={p.slug}
                      data-category={p.category ?? ''}
                      data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
+                     data-variant-images={p.variantImages ? JSON.stringify(p.variantImages) : undefined}
                      style="flex:0 0 auto;width:170px;border-radius:var(--radius);overflow:hidden;background:var(--color-surface);cursor:pointer">
                   <a href={`/store/${shopStore.slug}/${p.slug}`}
                      class="related-card-trigger"
@@ -643,6 +645,7 @@ const pmI18n = {
   const pageLang = page?.dataset.lang ?? 'he';
   const pageVariants: Array<{ name: string; options: string[] }> = JSON.parse(page?.dataset.variants ?? '[]');
   const pageVariantStock: Record<string, number> = JSON.parse(page?.dataset.variantStock ?? '{}');
+  const pageVariantImages: Record<string, string> = JSON.parse(page?.dataset.variantImages ?? '{}');
 
   // Raw stock for a given variant selection — falls back to the product's overall
   // stock when there are no variants, or the seller hasn't set per-combination
@@ -759,6 +762,17 @@ const pmI18n = {
       });
       updateVariantAvailability();
       applyStockState();
+      // Color chip may carry its own linked photo (seller-assigned in the
+      // dashboard) — swap the main image to it, same visual result as
+      // clicking that image's own thumbnail. Uses switchMainImage(), a
+      // hoisted function declared further down with the rest of the
+      // thumbnail-switcher logic — safe to call here since this callback
+      // only ever runs on a real click, well after the whole module has run.
+      if (isColorVariant(vName)) {
+        const url = pageVariantImages[vValue];
+        const idx = url ? images.indexOf(url) : -1;
+        if (idx !== -1) switchMainImage(idx);
+      }
     });
   });
 
@@ -807,23 +821,30 @@ const pmI18n = {
     });
   }
 
+  // Shared by the thumbnail-click handler and a color-variant click whose
+  // chip has its own linked photo (see the `.variant-opt` listener above) —
+  // a `function` declaration so it's hoisted and safe to call from there
+  // despite being defined later in this module.
+  function switchMainImage(idx: number): void {
+    if (idx === activeIndex) return;
+    activeIndex = idx;
+    const nextSrc = thumbBtns[idx]?.dataset.imgSrc || (images[idx] ? cdnSrc(images[idx], 800) : '');
+    if (mainImg && nextSrc) {
+      // Reveal only once the new image has actually loaded — swapping the
+      // src and un-hiding on a fixed timer let the still-rendered old image
+      // flash back into view if decoding took longer than the timeout.
+      const reveal = () => { mainImg.style.opacity = '1'; };
+      mainImg.style.opacity = '0';
+      mainImg.addEventListener('load', reveal, { once: true });
+      mainImg.addEventListener('error', reveal, { once: true });
+      mainImg.src = nextSrc;
+    }
+    setThumbActive(idx);
+  }
+
   thumbBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
-      const idx = Number(btn.dataset.imgIndex ?? 0);
-      if (idx === activeIndex) return;
-      activeIndex = idx;
-      const nextSrc = btn.dataset.imgSrc ?? '';
-      if (mainImg && nextSrc) {
-        // Reveal only once the new image has actually loaded — swapping the
-        // src and un-hiding on a fixed timer let the still-rendered old image
-        // flash back into view if decoding took longer than the timeout.
-        const reveal = () => { mainImg.style.opacity = '1'; };
-        mainImg.style.opacity = '0';
-        mainImg.addEventListener('load', reveal, { once: true });
-        mainImg.addEventListener('error', reveal, { once: true });
-        mainImg.src = nextSrc;
-      }
-      setThumbActive(idx);
+      switchMainImage(Number(btn.dataset.imgIndex ?? 0));
     });
   });
 
@@ -1222,6 +1243,9 @@ const pmI18n = {
     const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
       ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
       : [];
+    const pmVariantImages: Record<string, string> = card.dataset.variantImages
+      ? (JSON.parse(card.dataset.variantImages) as Record<string, string>)
+      : {};
     // No dimension pre-selected — same "must actively choose" rule as the main
     // product page's add-to-cart (see flagMissingVariants below) — except a
     // single-option dimension, which has no real choice to make.
@@ -1365,11 +1389,25 @@ const pmI18n = {
       return groups.length > 0;
     }
 
+    // Swaps the modal's single main image + syncs the thumbnail strip's active
+    // border — shared by a thumbnail click and a color-variant click whose
+    // chip carries its own linked photo (see pmVariantImages below). A plain
+    // `function` so it's hoisted within this closure and safe to reference
+    // from the variant-click handler wired just above it.
+    function switchPmImage(idx: number): void {
+      const mainEl = document.getElementById('pm-main-img') as HTMLImageElement | null;
+      if (mainEl) mainEl.src = cardImages[idx] ?? '';
+      pmBody?.querySelectorAll<HTMLButtonElement>('.pm-thumb').forEach((t) => {
+        t.style.borderColor = Number(t.dataset.idx) === idx ? 'var(--color-accent)' : 'var(--color-border)';
+      });
+    }
+
     // Variant clicks
     pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((btn) => {
       btn.addEventListener('click', () => {
         const vName = btn.dataset.pvName ?? '';
-        pmSelectedVariants[vName] = btn.dataset.pvValue ?? '';
+        const vValue = btn.dataset.pvValue ?? '';
+        pmSelectedVariants[vName] = vValue;
         updatePmQty(1); // this combo may already have a different amount in the cart
         pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(vName)}"]`)?.classList.remove('variant-group--invalid');
         pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
@@ -1381,18 +1419,18 @@ const pmI18n = {
           b.style.color       = 'var(--color-text)';
           b.style.fontWeight  = active ? '600' : '500';
         });
+        if (pmIsColorVariant(vName)) {
+          const url = pmVariantImages[vValue];
+          const idx = url ? cardImages.indexOf(url) : -1;
+          if (idx !== -1) switchPmImage(idx);
+        }
       });
     });
 
     // Thumbnails
     pmBody?.querySelectorAll<HTMLButtonElement>('.pm-thumb').forEach((thumb) => {
       thumb.addEventListener('click', () => {
-        const idx = Number(thumb.dataset.idx ?? 0);
-        const mainEl = document.getElementById('pm-main-img') as HTMLImageElement | null;
-        if (mainEl) mainEl.src = cardImages[idx] ?? '';
-        pmBody?.querySelectorAll<HTMLButtonElement>('.pm-thumb').forEach((t2) => {
-          t2.style.borderColor = t2 === thumb ? 'var(--color-accent)' : 'var(--color-border)';
-        });
+        switchPmImage(Number(thumb.dataset.idx ?? 0));
       });
     });
 

@@ -26,20 +26,21 @@ export function parseSpecs(form: FormData): Array<{ label: string; value: string
 export interface VariantsPayload {
   variants: ProductVariant[];
   variantStock: Record<string, number>;
+  variantImages: Record<string, string>;
 }
 
 /** Parses the single `variants_json` field the dashboard serializes before submit — replaces
  *  the old parallel `variant_name`/`variant_options` array zipping, which silently misaligned
  *  if a block was ever added/removed out of order. */
 export function parseVariantsPayload(form: FormData): VariantsPayload {
-  const empty: VariantsPayload = { variants: [], variantStock: {} };
+  const empty: VariantsPayload = { variants: [], variantStock: {}, variantImages: {} };
   const raw = String(form.get('variants_json') || '');
   if (!raw) return empty;
 
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return empty; }
   if (!parsed || typeof parsed !== 'object') return empty;
-  const obj = parsed as { variants?: unknown; variantStock?: unknown };
+  const obj = parsed as { variants?: unknown; variantStock?: unknown; variantImages?: unknown };
 
   const variants: ProductVariant[] = Array.isArray(obj.variants)
     ? obj.variants
@@ -67,5 +68,19 @@ export function parseVariantsPayload(form: FormData): VariantsPayload {
     }
   }
 
-  return { variants, variantStock };
+  // Keys must be a real option value on the final variant set (guards against a
+  // stale entry after an option was renamed/removed); values must be one of this
+  // submission's own images — never trust an arbitrary client-supplied URL.
+  const validOptionValues = new Set(variants.flatMap((v) => v.options));
+  const submittedImages = new Set(parseImages(form));
+  const variantImages: Record<string, string> = {};
+  if (obj.variantImages && typeof obj.variantImages === 'object') {
+    for (const [key, val] of Object.entries(obj.variantImages as Record<string, unknown>)) {
+      const url = String(val ?? '').trim();
+      if (!validOptionValues.has(key) || !url || !submittedImages.has(url)) continue;
+      variantImages[key] = url;
+    }
+  }
+
+  return { variants, variantStock, variantImages };
 }

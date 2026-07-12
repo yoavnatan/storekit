@@ -1,0 +1,328 @@
+/* ── Store card — compact store preview (homepage shelves + /stores directory) ──
+   Secondary/repeated card treatment: 1px border + shadow-xs at rest, deepens on
+   hover — same family as product-card, but with its own bit of depth/color
+   play (soft accent glow behind the avatar, gentle lift, preview-image zoom)
+   since a store card is a "who", not a "what", and can afford a touch more
+   personality than a flat product tile. Still restrained — one soft glow, one
+   lift, no gradients-on-gradients. */
+.store-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.24s ease, border-color 0.24s ease, transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.store-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  transform: translateY(-4px);
+}
+
+.store-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+/* Soft radial glow behind the avatar — the one deliberate "color play" touch,
+   kept subtle (16% mix, fades to nothing) so it reads as depth, not a badge. */
+.store-card__avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.store-card__avatar-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 16%, transparent) 0%, transparent 72%);
+  opacity: 0;
+  transition: opacity 0.24s ease;
+}
+
+.store-card:hover .store-card__avatar-wrap::before {
+  opacity: 1;
+}
+
+.store-card__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.store-card__name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.store-card__tagline {
+  font-size: 0.76rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Gentle/classic — plain-text label with a hairline border, no fill. Same
+   family as .category-chip (store page filter) but quieter: this is a
+   read-only fact about the store, not an interactive control. */
+.store-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  /* The div is always rendered now even with zero tags (see StoreCard.astro)
+     specifically so the row's height is reserved — but an empty flex
+     container with no children collapses to 0 regardless, so that alone
+     didn't do it. min-height matches one .store-card__tag's real rendered
+     height (line-height + padding + border), measured at ~22px. */
+  min-height: 22px;
+}
+
+.store-card__tag {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 0.12rem 0.55rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.store-card__tag--more {
+  color: color-mix(in srgb, var(--color-muted) 70%, transparent);
+  border-style: dashed;
+}
+
+.store-card__preview {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.store-card__preview-img-wrap {
+  position: relative;
+  flex: 1 1 0;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+
+.store-card__preview-img-wrap--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-border);
+}
+
+/* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css */
+.store-card__preview-img-wrap.is-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+    var(--color-surface) 75%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+.store-card__preview-img-wrap.is-loading .store-card__preview-img { opacity: 0; }
+
+.store-card__preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.18s ease;
+}
+
+.store-card:hover .store-card__preview-img { transform: scale(1.08); }
+
+/* ── Horizontal shelf context (homepage rows) ──────────────────────── */
+.home-shelf {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  /* padding + negative margin: room for the card's own hover lift+shadow to
+     bleed without being clipped — same trick .home-carousel already used.
+     Went from a bare 6px/0.6rem here (fine under plain overflow-x:auto) to
+     this once the edge-fade mask below was added: any mask/filter forces
+     the element into its own compositing layer, which clips strictly to the
+     box's own bounds — a hover shadow that only *happened* to fit before
+     (barely) now reads as a hard-cut line right under the card. Bottom
+     budget sized off --shadow-card-hover's actual second layer
+     (16px offset + 36px blur - 8px spread ≈ 44px of real visual bleed),
+     not guessed — the first attempt at 1.75rem/28px was still short of that
+     and still clipped, visibly, on hover. */
+  padding-top: 18px;
+  margin-top: -18px;
+  padding-bottom: 3rem;
+  margin-bottom: -2.5rem;
+  /* Same shadow-bleed reasoning, horizontally — the first/last card's hover
+     shadow was clipping at the row's own left/right edge (not scroll-mask
+     related — that's --fade-start/--fade-end and the mask rules below). */
+  padding-inline: 8px;
+  margin-inline: -8px;
+  /* A card cut off mid-width at the edge reads as a hard clip — fade it
+     instead of a hard edge, but only on the side that actually has more,
+     unscrolled content: no fade at the true start (nothing behind you) or
+     true end (nothing ahead). --fade-start/--fade-end are set by JS
+     (initEdgeFade in index.astro's script) to 0px/24px per real scroll
+     position — logical, not physical, so the [dir] split below just maps
+     "start"/"end" onto the correct physical left/right per direction. */
+  --fade-start: 0px;
+  --fade-end: 0px;
+}
+
+[dir="ltr"] .home-shelf {
+  mask-image: linear-gradient(to right, transparent, black var(--fade-start), black calc(100% - var(--fade-end)), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black var(--fade-start), black calc(100% - var(--fade-end)), transparent);
+}
+
+[dir="rtl"] .home-shelf {
+  mask-image: linear-gradient(to right, transparent, black var(--fade-end), black calc(100% - var(--fade-start)), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black var(--fade-end), black calc(100% - var(--fade-start)), transparent);
+}
+
+.home-shelf::-webkit-scrollbar { display: none; }
+
+/* flex-grow:1 + flex-shrink:0 (not the usual 0 0 fixed-basis) — a shelf with
+   only 1-2 cards was leaving dead space after them (the exact "looks empty"
+   complaint); this lets few cards grow to actually fill the row, capped by
+   max-width so a lone card doesn't balloon. Once there are enough cards to
+   fill the row, shrink:0 keeps them at their natural size instead of
+   cramming to fit — that's what makes it scroll instead of shrinking. */
+.home-shelf .store-card {
+  flex: 1 0 clamp(190px, 46vw, 240px);
+  max-width: 300px;
+  scroll-snap-align: start;
+}
+
+/* The cycling multi-variant "metal" background wash (3 gradient variants,
+   see git history if reviving) was tried and reverted — read as heavy/gray
+   overall across a full page of sections. Replaced with one flat, lighter
+   --color-bg-soft wash on .home-body itself (see home.css) — simpler, and
+   exactly what was asked for on reconsideration. */
+
+.home-shelf-section {
+  padding-block: 1.5rem;
+}
+
+.home-shelf-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Three tasteful mix ratios off the same two brand colors — enough to tell
+   category shelves apart at a glance without introducing new hues (Hard
+   rules → colors via tokens.css only). Cycled via nth-of-type in home.css. */
+.home-shelf-dot--0 { background: var(--color-accent); }
+.home-shelf-dot--1 { background: color-mix(in srgb, var(--color-accent) 55%, var(--color-primary)); }
+.home-shelf-dot--2 { background: var(--color-primary); }
+
+/* ── Generic edge-fade — same JS-driven --fade-start/--fade-end vars as
+   .home-shelf/.home-carousel (see index.astro's initEdgeFade), factored out
+   here since a 3rd scroll row (the category browse row) needed the exact
+   same behavior without needing its own padding/layout rules duplicated. */
+.edge-fade {
+  --fade-start: 0px;
+  --fade-end: 0px;
+}
+
+[dir="ltr"] .edge-fade {
+  mask-image: linear-gradient(to right, transparent, black var(--fade-start), black calc(100% - var(--fade-end)), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black var(--fade-start), black calc(100% - var(--fade-end)), transparent);
+}
+
+[dir="rtl"] .edge-fade {
+  mask-image: linear-gradient(to right, transparent, black var(--fade-end), black calc(100% - var(--fade-start)), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black var(--fade-end), black calc(100% - var(--fade-start)), transparent);
+}
+
+/* ── Category browse row — plain pills, not a content shelf: "not fancy,
+   not dead" per the ask. A count badge is the one bit of "life" — real
+   information, not decoration. */
+.home-category-row-wrap {
+  padding-top: 1.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.home-category-row-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  margin-bottom: 0.6rem;
+}
+
+.home-category-row {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Small, deliberately modest buffer — .home-category-pill:hover uses its
+     own small custom shadow now (not --shadow-card-hover, which was built
+     for a big card's 36px blur and way oversized for a small pill; chasing
+     an exact buffer for that was the wrong fix). This just needs to comfortably
+     fit that smaller shadow, same masking-forces-clip reasoning as
+     .home-shelf/.home-carousel, just a much smaller budget. */
+  padding-block: 8px 14px;
+  margin-block: -8px -14px;
+  padding-inline: 16px;
+  margin-inline: -16px;
+}
+
+.home-category-row::-webkit-scrollbar { display: none; }
+
+.home-category-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.home-category-pill:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+  box-shadow: 0 3px 10px -2px color-mix(in srgb, var(--color-text) 14%, transparent);
+}
+

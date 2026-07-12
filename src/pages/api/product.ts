@@ -34,7 +34,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const tags = parseTags(form);
     const sku = parseSku(form);
     const specs = parseSpecs(form);
-    const { variants, variantStock } = parseVariantsPayload(form);
+    const { variants, variantStock, variantImages } = parseVariantsPayload(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
@@ -49,6 +49,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       specs: specs.length ? specs : undefined,
       variants: variants.length ? variants : undefined,
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
+      variantImages: Object.keys(variantImages).length ? variantImages : undefined,
     });
     return json({ ok: true, product });
   }
@@ -69,7 +70,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const tags = parseTags(form);
     const sku = parseSku(form);
     const specs = parseSpecs(form);
-    const { variants, variantStock } = parseVariantsPayload(form);
+    const { variants, variantStock, variantImages } = parseVariantsPayload(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
@@ -84,6 +85,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       specs: specs.length ? specs : [],
       variants: variants.length ? variants : [],
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
+      variantImages: Object.keys(variantImages).length ? variantImages : undefined,
     };
 
     const updated = updateProduct(productId, updates);

@@ -24,6 +24,7 @@
 @import './components/cart-drawer.css';
 @import './components/product-card.css';
 @import './components/confirm-modal.css';
+@import './components/store-card.css';
 
 /* Pages */
 @import './pages/home.css';
@@ -33,6 +34,7 @@
 @import './pages/checkout.css';
 @import './pages/product.css';
 @import './pages/admin.css';
+@import './pages/stores.css';
 
 /* Utilities */
 @import './utilities/utils.css';

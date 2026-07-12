@@ -34,6 +34,8 @@ export interface StoreProduct {
   variants?: ProductVariant[];
   /** Optional per-combination stock override, keyed by variant-combo.ts#comboKey(). Combos with no entry fall back to `stock`. */
   variantStock?: Record<string, number>;
+  /** Optional image override per color-variant option value (e.g. "אדום" → one of `images`) — lets the storefront swap the main photo when that color is picked instead of showing a generic gallery. Keyed by the raw option value, not a comboKey — a color choice implies the photo regardless of other dimensions (size, etc). */
+  variantImages?: Record<string, string>;
   createdAt: string;
 }
 
@@ -63,6 +65,7 @@ interface CreateProductInput {
   specs?: ProductSpec[];
   variants?: ProductVariant[];
   variantStock?: Record<string, number>;
+  variantImages?: Record<string, string>;
 }
 
 /** True if another product in this store already uses this exact sku (case-sensitive, as typed). */
@@ -70,7 +73,7 @@ export function isSkuTaken(storeId: string, sku: string, excludeId?: string): bo
   return readProducts().some((p) => p.storeId === storeId && p.sku === sku && p.id !== excludeId);
 }
 
-export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, category, tags, sku, specs, variants, variantStock }: CreateProductInput): StoreProduct {
+export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, category, tags, sku, specs, variants, variantStock, variantImages }: CreateProductInput): StoreProduct {
   const products = readProducts();
   const storeProducts = products.filter((p) => p.storeId === storeId);
   const base = slugify(name) || 'product';
@@ -93,6 +96,7 @@ export function createProduct(storeId: string, { name, description = '', price, 
     ...(specs?.length ? { specs } : {}),
     ...(variants?.length ? { variants } : {}),
     ...(variantStock && Object.keys(variantStock).length ? { variantStock } : {}),
+    ...(variantImages && Object.keys(variantImages).length ? { variantImages } : {}),
     createdAt: new Date().toISOString(),
   };
   products.push(product);

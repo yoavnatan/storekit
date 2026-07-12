@@ -229,7 +229,8 @@ const pmI18n = {
                     data-category={p.category ?? ''}
                     data-tags={p.tags?.length ? p.tags.join(',') : ''}
                     data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
-                    data-variant-stock={p.variantStock ? JSON.stringify(p.variantStock) : undefined}>
+                    data-variant-stock={p.variantStock ? JSON.stringify(p.variantStock) : undefined}
+                    data-variant-images={p.variantImages ? JSON.stringify(p.variantImages) : undefined}>
                   <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable is-loading' : ''}`}
                        role={hasImages ? 'button' : undefined}
                        aria-label={hasImages ? p.name : undefined}
@@ -971,6 +972,9 @@ const pmI18n = {
     const pmVariantStock: Record<string, number> = card.dataset.variantStock
       ? (JSON.parse(card.dataset.variantStock) as Record<string, number>)
       : {};
+    const pmVariantImages: Record<string, string> = card.dataset.variantImages
+      ? (JSON.parse(card.dataset.variantImages) as Record<string, string>)
+      : {};
     // No dimension pre-selected — buyer must actively choose before add-to-cart
     // proceeds (see pmFlagMissingVariants below) — except a single-option
     // dimension, which has no real choice to make.
@@ -1168,6 +1172,13 @@ const pmI18n = {
       setTimeout(() => pmFlagMissingVariants(), 260);
     }
 
+    // Set once the slides carousel is wired up below (only exists with >1
+    // image) — a color chip's own linked photo (see pmVariantImages) calls
+    // this the same way clicking a dot would, so `let` + late assignment
+    // instead of a hoisted `function`, since it depends on that carousel's
+    // own closures (isRtl/getSlideW) rather than just this modal's data.
+    let pmGoToImage: ((idx: number) => void) | null = null;
+
     // ── Modal variant selector ─────────────────────────────────────
     pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1186,6 +1197,11 @@ const pmI18n = {
           b.style.color = 'var(--color-text)';
           b.style.fontWeight = active ? '600' : '500';
         });
+        if (isColorVariantName(vName)) {
+          const url = pmVariantImages[vValue];
+          const idx = url ? images.indexOf(url) : -1;
+          if (idx !== -1) pmGoToImage?.(idx);
+        }
       });
     });
 
@@ -1223,6 +1239,7 @@ const pmI18n = {
         pmSlidesEl.scrollTo({ left: (isRtl ? -1 : 1) * idx * getSlideW(), behavior: 'smooth' });
         setPmActive(idx);
       };
+      pmGoToImage = scrollPmToIdx;
 
       let pmSnapTimer: ReturnType<typeof setTimeout> | undefined;
       pmSlidesEl.addEventListener('scroll', () => {

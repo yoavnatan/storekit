@@ -279,6 +279,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
     slug: string; name: string; price: number; description: string;
     stock: number; images: string[];
     variants: Array<{ name: string; options: string[] }>;
+    variantImages?: Record<string, string>;
   }
 
   const pqvCache = new Map<string, PQVProduct>();
@@ -316,6 +317,11 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
     p.variants.forEach(v => { selectedVariants[v.name] = v.options[0] ?? ''; });
 
     function renderDialog(): void {
+      // Set once the slide carousel is wired below (only exists with >1
+      // image) — a color chip's own linked photo (p.variantImages) calls this
+      // the same way clicking a dot would.
+      let pqvGoToImage: ((idx: number) => void) | null = null;
+
       const hasImages  = p.images.length > 0;
       const hasMultiple= p.images.length > 1;
 
@@ -414,6 +420,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
           slidesEl!.scrollTo({ left: (isRtl ? -1 : 1) * idx * getSlideW(), behavior: 'smooth' });
           setActive(idx);
         }
+        pqvGoToImage = scrollToIdx;
 
         let snapTimer: ReturnType<typeof setTimeout> | undefined;
         slidesEl.addEventListener('scroll', () => {
@@ -465,6 +472,11 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
           selectedVariants[vName] = vOpt;
           pqvBody!.querySelectorAll<HTMLButtonElement>(`.pqv-variant-opt[data-variant-name="${CSS.escape(vName)}"]`)
             .forEach(b => b.classList.toggle('is-selected', b.dataset['variantOpt'] === vOpt));
+          if (isColorVariant(vName)) {
+            const url = p.variantImages?.[vOpt];
+            const idx = url ? p.images.indexOf(url) : -1;
+            if (idx !== -1) pqvGoToImage?.(idx);
+          }
         });
       });
 

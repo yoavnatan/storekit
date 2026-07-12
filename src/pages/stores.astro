@@ -1,0 +1,167 @@
+---
+export const prerender = false;
+import BaseLayout from '../layouts/BaseLayout.astro';
+import StoreCard from '../components/StoreCard.astro';
+import { store as platform } from '../config/store.config.js';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoreBySellerId, getAllStores } from '../lib/stores.js';
+import { getProductsByStoreId } from '../lib/store-products.js';
+import { getLang, getT } from '../i18n/index.js';
+
+const PAGE_SIZE = 24;
+
+const sellerId    = getSellerSession(Astro.cookies);
+const sellerStore = sellerId ? getStoreBySellerId(sellerId) : null;
+const isLoggedIn  = !!sellerId;
+const hasStore    = !!sellerStore;
+
+const lang = getLang(Astro.cookies);
+const t    = getT(lang);
+
+const q        = (Astro.url.searchParams.get('q') ?? '').trim();
+const category = (Astro.url.searchParams.get('category') ?? '').trim();
+const pageParam = parseInt(Astro.url.searchParams.get('page') ?? '1', 10);
+const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+
+const storesWithProducts = getAllStores()
+  .map((s) => ({ store: s, products: getProductsByStoreId(s.id) }))
+  .filter(({ products }) => products.length > 0);
+
+// Every category across the whole catalog, not just the current filtered
+// results — so picking one category never makes the others disappear from
+// the chip row.
+const allCategories = [...new Set(
+  storesWithProducts.flatMap(({ store }) => (store.categories ?? []).map((c) => c.trim()).filter(Boolean))
+)].sort((a, b) => a.localeCompare(b, lang === 'he' ? 'he' : 'en'));
+
+function norm(s: string): string {
+  return s.toLowerCase().trim();
+}
+
+const nq = norm(q);
+const filtered = storesWithProducts.filter(({ store }) => {
+  const matchesQuery = !nq || norm(store.name).includes(nq) || norm(store.tagline || '').includes(nq) || norm(store.description || '').includes(nq);
+  const matchesCategory = !category || (store.categories ?? []).some((c) => c.trim() === category);
+  return matchesQuery && matchesCategory;
+});
+
+const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+const safePage = Math.min(Math.max(page, 1), totalPages);
+const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+function pageUrl(p: number): string {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (category) params.set('category', category);
+  if (p > 1) params.set('page', String(p));
+  const qs = params.toString();
+  return qs ? `/stores?${qs}` : '/stores';
+}
+
+function categoryUrl(c: string): string {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (c) params.set('category', c);
+  const qs = params.toString();
+  return qs ? `/stores?${qs}` : '/stores';
+}
+
+// A filtered/paginated view is a near-duplicate of the clean directory — keep
+// only the plain /stores page indexable, same reasoning as any other
+// query-param-driven listing on the site.
+const isFiltered = !!q || !!category || safePage > 1;
+
+const titleSuffix = category ? ` — ${category}` : '';
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: t.home.directoryTitle,
+  url: new URL('/stores', platform.url).href,
+};
+---
+
+<BaseLayout
+  title={`${t.home.directoryTitle}${titleSuffix}`}
+  description={t.home.browseDesc}
+  jsonLd={jsonLd}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+  noindex={isFiltered}
+  dataLayer={{ event: 'page_view', page_type: 'store_directory', currency: 'ILS' }}
+>
+  <div class="container section stores-directory">
+    <h1 class="stores-directory__title">{t.home.directoryTitle}</h1>
+
+    <form method="get" action="/stores" class="stores-directory__search" role="search" autocomplete="off">
+      <input
+        type="search"
+        name="q"
+        value={q}
+        placeholder={t.home.directorySearchPlaceholder}
+        class="input"
+        aria-label={t.home.directorySearchPlaceholder}
+        autocomplete="off"
+        list="stores-directory-empty-list"
+      />
+      <datalist id="stores-directory-empty-list"></datalist>
+      {category && <input type="hidden" name="category" value={category} />}
+      <button type="submit" class="stores-directory__search-btn" aria-label={t.home.directorySearchPlaceholder}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
+    </form>
+
+    {allCategories.length > 0 && (
+      <div class="stores-directory__chips" role="list">
+        <a href={categoryUrl('')} class="category-chip" role="listitem" aria-pressed={!category}>
+          {t.home.directoryAllCategories}
+        </a>
+        {allCategories.map((c) => (
+          <a href={categoryUrl(c)} class="category-chip" role="listitem" aria-pressed={category === c}>
+            {c}
+          </a>
+        ))}
+      </div>
+    )}
+
+    {pageItems.length === 0 ? (
+      <div class="stores-directory__empty">
+        <p>{t.home.directoryNoResults}</p>
+        {isFiltered && <a href="/stores" class="btn btn--ghost btn--sm">{t.home.directoryClearFilters}</a>}
+      </div>
+    ) : (
+      <div class="stores-directory__grid" role="list">
+        {pageItems.map(({ store, products }, i) => (
+          <StoreCard
+            store={store}
+            previewImages={products.map((p) => p.images?.[0]).filter((u): u is string => !!u)}
+            eager={i === 0}
+            role="listitem"
+          />
+        ))}
+      </div>
+    )}
+
+    {totalPages > 1 && (
+      <nav class="stores-directory__pager" aria-label="pagination">
+        {safePage > 1
+          ? <a href={pageUrl(safePage - 1)} rel="prev" class="btn btn--ghost btn--sm">{t.home.pagePrev}</a>
+          : <span class="btn btn--ghost btn--sm" aria-disabled="true" style="opacity:0.4;pointer-events:none">{t.home.pagePrev}</span>}
+        <span class="stores-directory__page-info">
+          {t.home.pageOf.replace('{current}', String(safePage)).replace('{total}', String(totalPages))}
+        </span>
+        {safePage < totalPages
+          ? <a href={pageUrl(safePage + 1)} rel="next" class="btn btn--ghost btn--sm">{t.home.pageNext}</a>
+          : <span class="btn btn--ghost btn--sm" aria-disabled="true" style="opacity:0.4;pointer-events:none">{t.home.pageNext}</span>}
+      </nav>
+    )}
+  </div>
+</BaseLayout>
+
+<script>
+  import { initImageSkeletons } from '../lib/img-skeleton.js';
+  initImageSkeletons('.store-card__preview-img-wrap');
+</script>

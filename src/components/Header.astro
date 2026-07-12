@@ -703,16 +703,28 @@ const strEmpty   = t.store.noProductsFound;
         .replace(/\s+/g,' ').trim();
     }
 
+    function matchesQuery(el: HTMLElement, nq: string): boolean {
+      return !nq || normHome(el.dataset.storeName ?? '').includes(nq) || normHome(el.dataset.tagline ?? '').includes(nq);
+    }
+
+    // Filters both the full spotlight carousels (.home-store-section) and the
+    // compact shelf cards (.store-card, inside a .home-shelf) — a shelf whose
+    // cards all get filtered out hides its own [data-shelf] section (title +
+    // all) instead of leaving an empty-looking row with just a heading.
     function filterHomeSections(q: string) {
-      const secs = document.querySelectorAll<HTMLElement>('.home-store-section[data-store-name]');
+      const cards = document.querySelectorAll<HTMLElement>('.home-store-section[data-store-name], .store-card[data-store-name]');
       const noRes = document.getElementById('no-results');
-      if (!secs.length) return;
+      if (!cards.length) return;
       const nq = normHome(q);
       let visible = 0;
-      secs.forEach(sec => {
-        const match = !nq || normHome(sec.dataset.storeName ?? '').includes(nq) || normHome(sec.dataset.tagline ?? '').includes(nq);
-        sec.style.display = match ? '' : 'none';
+      cards.forEach(card => {
+        const match = matchesQuery(card, nq);
+        card.style.display = match ? '' : 'none';
         if (match) visible++;
+      });
+      document.querySelectorAll<HTMLElement>('[data-shelf]').forEach(shelf => {
+        const anyVisible = [...shelf.querySelectorAll<HTMLElement>('.store-card')].some(c => c.style.display !== 'none');
+        shelf.style.display = anyVisible ? '' : 'none';
       });
       if (noRes) noRes.hidden = visible > 0 || !nq;
     }

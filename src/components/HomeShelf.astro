@@ -1,0 +1,37 @@
+---
+import StoreCard from './StoreCard.astro';
+import type { FeedStore } from '../lib/home-feed.js';
+
+interface Props {
+  id: string;
+  title: string;
+  stores: FeedStore[];
+  dotIndex?: number;
+  eagerFirst?: boolean;
+}
+
+const { id, title, stores, dotIndex = 0, eagerFirst = false } = Astro.props;
+---
+
+{stores.length > 0 && (
+  <section class="home-shelf-section" data-shelf aria-labelledby={`shelf-${id}`}>
+    <div class="container">
+      <div class="home-section-header">
+        <h2 id={`shelf-${id}`} class="home-section-title">
+          <span class={`home-shelf-dot home-shelf-dot--${dotIndex % 3}`} aria-hidden="true"></span>
+          {title}
+        </h2>
+      </div>
+      <div class="home-shelf" role="list" aria-label={title}>
+        {stores.map(({ store, products }, i) => (
+          <StoreCard
+            store={store}
+            previewImages={products.map((p) => p.images?.[0]).filter((u): u is string => !!u)}
+            eager={eagerFirst && i === 0}
+            role="listitem"
+          />
+        ))}
+      </div>
+    </div>
+  </section>
+)}

@@ -1,12 +1,14 @@
 ---
 export const prerender = false;
-import { Image } from 'astro:assets';
 import BaseLayout from '../layouts/BaseLayout.astro';
+import HomeShelf from '../components/HomeShelf.astro';
 import StoreAvatar from '../components/StoreAvatar.astro';
 import { store as platform, formatPrice, cdnSrc } from '../config/store.config.js';
-import { getSellerSession } from '../lib/seller-auth.js';
+import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getAllStores } from '../lib/stores.js';
 import { getProductsByStoreId } from '../lib/store-products.js';
+import { getAllOrders } from '../lib/orders.js';
+import { buildHomeFeed, getCategoryCounts } from '../lib/home-feed.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId    = getSellerSession(Astro.cookies);
@@ -21,6 +23,47 @@ const t      = getT(lang);
 const storesWithProducts = stores
   .map((s) => ({ store: s, products: getProductsByStoreId(s.id) }))
   .filter(({ products }) => products.length > 0);
+
+// Stores this buyer has actually bought from before, most-recent purchase first — same
+// buyerId-or-buyerEmail match the buyer dashboard's own order list uses (accounts are
+// unified seller+buyer, and a buyer can check out before ever registering an email match).
+const buyerEmail = sellerId ? getSellerById(sellerId)?.email : undefined;
+const previousStoreSlugs: string[] = [];
+if (sellerId || buyerEmail) {
+  const seenSlugs = new Set<string>();
+  const myOrders = getAllOrders()
+    .filter((o) => o.buyerId === sellerId || (!!buyerEmail && o.buyerEmail === buyerEmail))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  for (const order of myOrders) {
+    for (const item of order.items) {
+      if (!seenSlugs.has(item.storeSlug)) { seenSlugs.add(item.storeSlug); previousStoreSlugs.push(item.storeSlug); }
+    }
+  }
+}
+
+// Bounded, varied feed instead of "render every store's full carousel" — see
+// src/lib/home-feed.ts for the shelf-selection strategy (was the site's actual
+// scaling limit once there are hundreds of stores, not just a style choice).
+const feed = buildHomeFeed(storesWithProducts, sellerId, previousStoreSlugs);
+const categoryCounts = getCategoryCounts(storesWithProducts);
+
+// Render order = discovery order. First non-empty shelf's first card gets the
+// eager/high-priority image load (today's real LCP element, now that shelves
+// sit above the old spotlight carousels).
+const shelves = [
+  { id: 'liked', title: t.home.shelfLiked, stores: feed.liked },
+  { id: 'buy-again', title: t.home.shelfBuyAgain, stores: feed.buyAgain },
+  { id: 'new', title: t.home.shelfNew, stores: feed.newStores },
+  ...feed.categories.map((c, i) => ({ id: `cat-${i}`, title: c.category, stores: c.stores })),
+  { id: 'discovery', title: t.home.shelfDiscovery, stores: feed.discovery },
+];
+const firstShelfId = shelves.find((s) => s.stores.length > 0)?.id;
+
+// Fresh per visit: each shelf/spotlight title's small accent dot
+// (home-shelf-dot--0/1/2, see store-card.css) gets a random starting offset,
+// added onto a running index so adjacent titles never repeat the same dot
+// color back-to-back.
+const bgOffset = Math.floor(Math.random() * 3);
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -43,15 +86,52 @@ const jsonLd = {
   dataLayer={{ event: 'page_view', page_type: 'platform', currency: 'ILS' }}
 >
 
-  <h1 class="visually-hidden">{t.home.discoverStores}</h1>
+  <!-- ── Hero: plain white banner, same treatment as a store page's own
+       banner (.store-banner) — brand name (real H1) + one static tagline,
+       then the rest of the page continues on the standard gray background
+       below, exactly like a store page's banner→content structure. ── -->
+  <section class="home-hero">
+    <div class="container home-hero__inner">
+      <h1 class="home-hero__title">{platform.name}</h1>
+      <p class="home-hero__phrase">{t.home.heroTagline}</p>
+      <div class="home-hero__links">
+        <a href="/stores" class="btn btn--ghost btn--sm">
+          {t.home.viewAllStores}
+          <svg class="rtl:-scale-x-100" width="11" height="11" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </a>
+        {!hasStore && (
+          <a href="/seller/register" class="btn btn--sm">
+            {t.home.heroSellerCta}
+            <svg class="rtl:-scale-x-100" width="11" height="11" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </a>
+        )}
+      </div>
+    </div>
+  </section>
+
   <div class="home-body">
 
-  <!-- ── Per-store product carousels ───────────────────────────────── -->
-  {storesWithProducts.length > 0 && (
-    <div class="section container" style="padding-top:1rem;padding-bottom:0">
-      <h2 class="home-section-title">{t.home.discoverStores}</h2>
+  <!-- ── Category browse row — plain pills, not a shelf: a navigation aid
+       (jumps to /stores pre-filtered), not content of its own. ── -->
+  {categoryCounts.length > 0 && (
+    <div class="container home-category-row-wrap">
+      <span class="home-category-row-label">{t.home.categoryRowLabel}</span>
+      <div class="home-category-row edge-fade" role="list" aria-label={t.home.categoryRowLabel}>
+        {categoryCounts.map(({ category }) => (
+          <a href={`/stores?category=${encodeURIComponent(category)}`} class="home-category-pill" role="listitem">
+            {category}
+          </a>
+        ))}
+      </div>
     </div>
   )}
+
   {storesWithProducts.length === 0 ? (
     <div class="section container flex flex-col items-center gap-4 py-16 text-center">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
@@ -64,103 +144,109 @@ const jsonLd = {
     </div>
   ) : (
     <div id="stores-container">
-      {storesWithProducts.map(({ store: s, products }, storeIdx) => {
-        return (
-          <section
-            class="home-store-section"
-            data-store-name={s.name.toLowerCase()}
-            data-tagline={(s.tagline || s.description || '').toLowerCase()}
-            aria-labelledby={`sh-${s.slug}`}
-          >
-            <div class="container">
-              <div class="home-section-header">
-                <div class="home-store-section__title-group">
-                  <a href={`/store/${s.slug}`} class="flex items-center gap-2.5" style="color:inherit;text-decoration:none">
-                    <StoreAvatar name={s.name} profileImage={s.profileImage} size={36} />
-                    <h2 id={`sh-${s.slug}`} class="home-section-title hover:text-[var(--color-accent)] transition-colors duration-150">{s.name}</h2>
-                  </a>
-                  {(s.tagline || s.description) && (
-                    <p class="home-store-section__tagline" dir="auto">{s.tagline || s.description}</p>
-                  )}
-                </div>
-                <a
-                  href={`/store/${s.slug}`}
-                  class="btn btn--sm btn--ghost inline-flex items-center gap-1.5 shrink-0"
-                >
-                  {t.home.visitStore}
-                  <svg class="rtl:-scale-x-100" width="11" height="11" viewBox="0 0 24 24" fill="none"
-                       stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-                  </svg>
-                </a>
-              </div>
 
-              <div class="home-carousel-wrap">
-                {products.length > 2 && (
-                  <>
-                    <button type="button" class="home-carousel-btn home-carousel-btn--prev"
-                            aria-label={lang === 'he' ? 'הקודם' : 'Previous'}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2.5" aria-hidden="true"
-                           style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
-                        <polyline points="15 18 9 12 15 6"/>
-                      </svg>
-                    </button>
-                    <button type="button" class="home-carousel-btn home-carousel-btn--next"
-                            aria-label={lang === 'he' ? 'הבא' : 'Next'}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2.5" aria-hidden="true"
-                           style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
-                        <polyline points="9 18 15 12 9 6"/>
-                      </svg>
-                    </button>
-                  </>
+      <!-- ── Personalized/discovery shelves ─────────────────────────── -->
+      {shelves.map((s, i) => (
+        <HomeShelf id={s.id} title={s.title} stores={s.stores} dotIndex={i + bgOffset} eagerFirst={s.id === firstShelfId} />
+      ))}
+
+      <!-- ── Spotlight: full per-store product carousels — a rotating subset, not every store.
+           Title styled exactly like every other shelf header (dot + h2, plain background) —
+           not a distinct boxed section of its own. ── -->
+      {feed.spotlight.length > 0 && (
+        <div class="container" style="padding-top:1.5rem">
+          <div class="home-section-header">
+            <h2 class="home-section-title">
+              <span class={`home-shelf-dot home-shelf-dot--${(shelves.length + bgOffset) % 3}`} aria-hidden="true"></span>
+              {t.home.spotlightTitle}
+            </h2>
+          </div>
+        </div>
+      )}
+      {feed.spotlight.map(({ store: s, products }) => (
+        <section
+          class="home-store-section"
+          data-store-name={s.name.toLowerCase()}
+          data-tagline={(s.tagline || s.description || '').toLowerCase()}
+          aria-labelledby={`sh-${s.slug}`}
+        >
+          <div class="container">
+            <div class="home-section-header">
+              <div class="home-store-section__title-group">
+                <a href={`/store/${s.slug}`} class="flex items-center gap-2.5" style="color:inherit;text-decoration:none">
+                  <StoreAvatar name={s.name} profileImage={s.profileImage} size={36} />
+                  <h2 id={`sh-${s.slug}`} class="home-section-title hover:text-[var(--color-accent)] transition-colors duration-150">{s.name}</h2>
+                </a>
+                {(s.tagline || s.description) && (
+                  <p class="home-store-section__tagline" dir="auto">{s.tagline || s.description}</p>
                 )}
-                <div class="home-carousel" role="list" aria-label={s.name}>
-                  {products.map((p, prodIdx) => (
-                    <a
-                      href={`/store/${s.slug}`}
-                      class="home-product-card card"
-                      role="listitem"
-                      aria-label={`${p.name} — ${formatPrice(p.price)}`}
-                    >
-                      <div class="home-product-card__img-wrap">
-                        {p.images?.[0]
-                          ? (storeIdx === 0 && prodIdx < 3
-                              ? <Image
-                                  src={cdnSrc(p.images[0])}
-                                  alt={p.name}
-                                  width={300}
-                                  height={300}
-                                  class="home-product-card__img"
-                                  loading="eager"
-                                  fetchpriority={prodIdx === 0 ? 'high' : undefined}
-                                />
-                              : <img
-                                  data-lazy-src={cdnSrc(p.images[0])}
-                                  alt={p.name}
-                                  width="300"
-                                  height="300"
-                                  class="home-product-card__img"
-                                />
-                            )
-                          : <span class="home-product-card__initial" aria-hidden="true">
-                              {p.name[0]?.toUpperCase() ?? '?'}
-                            </span>
-                        }
-                      </div>
-                      <div class="home-product-card__body">
-                        <span class="home-product-card__name" dir="auto">{p.name}</span>
-                        <span class="home-product-card__price">{formatPrice(p.price)}</span>
-                      </div>
-                    </a>
-                  ))}
-                </div>
+              </div>
+              <a
+                href={`/store/${s.slug}`}
+                class="btn btn--sm btn--ghost inline-flex items-center gap-1.5 shrink-0"
+              >
+                {t.home.visitStore}
+                <svg class="rtl:-scale-x-100" width="11" height="11" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                </svg>
+              </a>
+            </div>
+
+            <div class="home-carousel-wrap">
+              {products.length > 2 && (
+                <>
+                  <button type="button" class="home-carousel-btn home-carousel-btn--prev"
+                          aria-label={lang === 'he' ? 'הקודם' : 'Previous'}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.5" aria-hidden="true"
+                         style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                      <polyline points="15 18 9 12 15 6"/>
+                    </svg>
+                  </button>
+                  <button type="button" class="home-carousel-btn home-carousel-btn--next"
+                          aria-label={lang === 'he' ? 'הבא' : 'Next'}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.5" aria-hidden="true"
+                         style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </button>
+                </>
+              )}
+              <div class="home-carousel" role="list" aria-label={s.name}>
+                {products.map((p) => (
+                  <a
+                    href={`/store/${s.slug}`}
+                    class="home-product-card card"
+                    role="listitem"
+                    aria-label={`${p.name} — ${formatPrice(p.price)}`}
+                  >
+                    <div class={`home-product-card__img-wrap${p.images?.[0] ? ' is-loading' : ''}`}>
+                      {p.images?.[0]
+                        ? <img
+                            data-lazy-src={cdnSrc(p.images[0])}
+                            alt={p.name}
+                            width="300"
+                            height="300"
+                            class="home-product-card__img"
+                          />
+                        : <span class="home-product-card__initial" aria-hidden="true">
+                            {p.name[0]?.toUpperCase() ?? '?'}
+                          </span>
+                      }
+                    </div>
+                    <div class="home-product-card__body">
+                      <span class="home-product-card__name" dir="auto">{p.name}</span>
+                      <span class="home-product-card__price">{formatPrice(p.price)}</span>
+                    </div>
+                  </a>
+                ))}
               </div>
             </div>
-          </section>
-        );
-      })}
+          </div>
+        </section>
+      ))}
 
       <p id="no-results" hidden class="text-center text-[var(--color-muted)] text-sm py-10 container">
         {t.home.noResults}
@@ -220,19 +306,55 @@ const jsonLd = {
 <script>
   import { spawnRipple } from '../lib/ripple.js';
   import { clearLastStore } from '../lib/last-store.js';
+  import { initImageSkeletons } from '../lib/img-skeleton.js';
 
   // Landing on the platform home is a deliberate exit from any store context —
   // don't let a stale "back to store" pill follow the buyer into checkout/dashboard afterward.
   clearLastStore();
 
   document.addEventListener('pointerdown', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLElement>('button, a.btn, a.home-product-card');
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('button, a.btn, a.home-product-card, a.store-card');
     if (btn) spawnRipple(btn, e.clientX, e.clientY);
   });
 
-  // ── Carousel arrows (per store section) ───────────────────────────
+  // ── Carousel arrows (per store section) + edge fade (shelves/category row) ──
   const isRtl = document.documentElement.dir === 'rtl';
   const STEP  = 240;
+  const FADE_SIZE = 24; // px — matches the mask stop distance in store-card.css
+
+  // Logical start/end (not physical left/right — the [dir] split in CSS maps
+  // these onto the correct side), computed the same RTL-safe way as the
+  // carousel arrows' own show/hide already did (Math.abs handles RTL's
+  // negative scrollLeft). No content behind you → no fade at start; no
+  // content ahead → no fade at end; nothing to scroll at all → no fade on
+  // either side (guards a shelf that already fits without overflowing).
+  function edgeState(el: HTMLElement): { atStart: boolean; atEnd: boolean } {
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    return {
+      atStart: Math.abs(scrollLeft) < 4,
+      atEnd: Math.abs(scrollLeft) + clientWidth >= scrollWidth - 4,
+    };
+  }
+
+  // `onUpdate` piggybacks on the same scroll/resize triggers (e.g. the
+  // carousel's own prev/next arrow visibility) so there's one shared
+  // ResizeObserver per element instead of two independent ones. A
+  // ResizeObserver (not just a load-time requestAnimationFrame) is what
+  // makes this correct across window resize too — shrinking the browser
+  // changes clientWidth/scrollWidth, and a stale --fade-* from initial load
+  // would otherwise keep showing (or hiding) a fade that no longer matches
+  // reality.
+  function initEdgeFade(el: HTMLElement, onUpdate?: () => void): void {
+    function update(): void {
+      const { atStart, atEnd } = edgeState(el);
+      el.style.setProperty('--fade-start', atStart ? '0px' : `${FADE_SIZE}px`);
+      el.style.setProperty('--fade-end', atEnd ? '0px' : `${FADE_SIZE}px`);
+      onUpdate?.();
+    }
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    new ResizeObserver(update).observe(el);
+  }
 
   document.querySelectorAll<HTMLElement>('.home-store-section').forEach((section) => {
     const carousel = section.querySelector<HTMLElement>('.home-carousel');
@@ -241,23 +363,24 @@ const jsonLd = {
     if (!carousel) return;
 
     function updateArrows(): void {
-      const { scrollLeft, scrollWidth, clientWidth } = carousel!;
-      // RTL: scrollLeft is negative when scrolled — Math.abs handles both directions
-      const atStart = Math.abs(scrollLeft) < 4;
-      const atEnd   = Math.abs(scrollLeft) + clientWidth >= scrollWidth - 4;
-
+      const { atStart, atEnd } = edgeState(carousel!);
       if (btnPrev) btnPrev.toggleAttribute('hidden', atStart);
       if (btnNext) btnNext.toggleAttribute('hidden', atEnd);
     }
 
     carousel.addEventListener('scroll', updateArrows, { passive: true });
-    // Run once on load (and after fonts/images may have shifted layout)
+    // Run once on load, then again next frame — fonts/images can still shift
+    // scrollWidth after the first synchronous measurement, which was showing
+    // the prev arrow immediately even before any real scrolling happened.
     updateArrows();
     requestAnimationFrame(updateArrows);
 
     btnPrev?.addEventListener('click', () => carousel.scrollBy({ left: isRtl ? STEP : -STEP, behavior: 'smooth' }));
     btnNext?.addEventListener('click', () => carousel.scrollBy({ left: isRtl ? -STEP : STEP, behavior: 'smooth' }));
   });
+
+  document.querySelectorAll<HTMLElement>('.home-shelf').forEach((shelf) => initEdgeFade(shelf));
+  document.querySelectorAll<HTMLElement>('.home-category-row').forEach((row) => initEdgeFade(row));
 
   // ── Carousel lazy loading (IntersectionObserver) ─────────────────
   {
@@ -277,5 +400,11 @@ const jsonLd = {
     document.querySelectorAll<HTMLImageElement>('img[data-lazy-src]')
       .forEach((img) => lazyObs.observe(img));
   }
+
+  // ── Skeleton shimmer clear — spotlight product images + store-card
+  // preview images — once each actually loads (or errors, so a broken/
+  // missing image doesn't shimmer forever). ────────────────────────
+  initImageSkeletons('.home-product-card__img-wrap');
+  initImageSkeletons('.store-card__preview-img-wrap');
 
 </script>
