@@ -152,7 +152,7 @@
             <span>${i18n.subtotal ?? 'Subtotal'}</span>
             <strong>${formatPrice(getSubtotal(c.storeSlug))}</strong>
           </div>
-          <a href="/checkout?store=${esc(c.storeSlug)}" class="btn cart-checkout">
+          <a href="/checkout?store=${esc(c.storeSlug)}" class="btn btn--accent cart-checkout">
             ${i18n.checkout ?? 'Checkout'} — ${esc(c.storeName)}
           </a>
         </div>
@@ -163,7 +163,7 @@
             <span>${i18n.total ?? 'Total'} (${carts.length} ${i18n.stores ?? 'stores'})</span>
             <strong>${formatPrice(grandTotal)}</strong>
           </div>
-          <a href="/checkout" class="btn cart-checkout">
+          <a href="/checkout" class="btn btn--accent cart-checkout">
             ${i18n.payAll ?? 'Pay all stores'}
           </a>
         </div>` : '');

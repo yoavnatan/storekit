@@ -189,18 +189,79 @@
 .store-controls__row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  /* Was flex-wrap:wrap from when the chip row itself could wrap onto
+     several lines (pre-scroll-conversion) — the category row now scrolls
+     internally instead of ever needing a second line, so this row should
+     never wrap either; nowrap keeps sort reliably on the same line as the
+     chips regardless of viewport width, instead of the two nested flex
+     contexts fighting over an ambiguous shrink/wrap tradeoff. */
+  flex-wrap: nowrap;
   gap: 0.5rem;
+}
+
+/* One row, no wrap — overflow scrolls horizontally instead, with edge
+   arrows floating directly over the chips themselves (position:absolute +
+   semi-transparent, like a photo-gallery scroller's overlay arrows) rather
+   than pushed beside them in reserved padding — reserved padding read as a
+   disproportionate gap before the first chip whether or not an arrow was
+   even showing. Floating (not a normal flex item) is still what keeps the
+   row's own box size stable as arrows toggle visible/hidden — see the
+   earlier note this replaced: a flex-item arrow was resizing the row on
+   every scroll step, corrupting the edge-detection math and even pushing
+   the sort button onto its own line in the outer .store-controls__row. */
+.category-filters-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .category-filters-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
   flex: 1 1 auto;
   min-width: 0;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
 }
+.category-filters-row::-webkit-scrollbar { display: none; }
+
+
+.category-filters-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  backdrop-filter: blur(3px);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  z-index: 2;
+  transition: box-shadow 0.15s, opacity 0.15s, background 0.15s;
+}
+.category-filters-arrow:hover { background: color-mix(in srgb, var(--color-surface) 95%, transparent); }
+.category-filters-arrow--prev { inset-inline-start: 0.2rem; }
+.category-filters-arrow--next { inset-inline-end: 0.2rem; }
+.category-filters-arrow[hidden] {
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
+}
+.category-filters-arrow:hover { box-shadow: var(--shadow-card-hover); }
+.category-filters-arrow:active { transform: translateY(-50%) scale(0.91); }
 
 .sort-dropdown-wrap {
   position: relative;
@@ -253,6 +314,7 @@
   font-family: inherit;
   transition: background 0.13s, color 0.13s, border-color 0.13s;
   white-space: nowrap;
+  scroll-snap-align: start;
 }
 
 .category-chip[aria-pressed="true"] {
@@ -274,6 +336,218 @@
   background: color-mix(in srgb, var(--color-primary) 87%, #000);
   border-color: color-mix(in srgb, var(--color-primary) 87%, #000);
   color: #fff;
+}
+
+/* A chip with its own subcategories reveals them on hover (desktop only —
+   see the client script's matchMedia guard) in one shared panel, positioned
+   via JS to the hovered chip's own rect. position:fixed (not absolute) so
+   it's never clipped by the chip row's own overflow-x:auto scroll
+   container. Matches the site's standard "Dropdown design system" spec
+   (Hard rules): var(--color-surface) bg, 0.3rem container padding, 4px
+   item radius + 0.45rem/0.75rem item padding + var(--color-bg) hover. */
+.category-chip-dropdown {
+  position: fixed;
+  z-index: 50;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  padding: 0.3rem;
+  min-width: 9rem;
+  white-space: nowrap;
+  animation: sort-menu-open 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.category-chip-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: start;
+  padding: 0.45rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.1s;
+}
+.category-chip-option:hover { background: var(--color-bg); }
+.category-chip-option svg { flex-shrink: 0; color: var(--color-muted); }
+
+/* A node with its own children drills in on click (replaces the panel's
+   content — see the client script) instead of a further hover cascade;
+   this "back" row returns to the anchor chip's own level. */
+.category-chip-dropdown__back {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  margin-bottom: 0.2rem;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.category-chip-dropdown__back svg { flex-shrink: 0; color: var(--color-muted); }
+.category-chip-dropdown__back:hover { background: var(--color-bg); }
+[dir="rtl"] .category-chip-dropdown__back svg,
+[dir="rtl"] .category-chip-option svg {
+  transform: scaleX(-1);
+}
+
+/* ── Mobile category drawer (no-hover devices) ──────────────────────
+   Touch has no hover, so it gets a hamburger + side drawer instead of the
+   desktop chip row's hover flyout — same underlying interaction (tap a
+   name to select, tap a branch to reveal its children), different chrome.
+   Switch is hover-*capability*, not viewport width, since that's the
+   actual reason one UI works and the other doesn't. */
+.category-drawer-toggle {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.category-drawer-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .category-filters-wrap { display: none; }
+  .category-drawer-toggle { display: inline-flex; }
+}
+
+/* Same overlay+slide-in geometry as .cart-overlay/.cart-drawer
+   (cart-drawer.css) — kept as its own small rule set rather than reusing
+   those classes directly, so this stays legible as "the category drawer"
+   on its own. */
+.category-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 90;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.category-drawer-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Opens from the "start" edge — left for LTR, right for Hebrew/RTL (the
+   site's primary language), matching how a nav drawer conventionally hugs
+   the reading-start side rather than a fixed physical side regardless of
+   language. */
+.category-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(340px, 88vw);
+  background: var(--color-surface);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 4px 0 40px rgba(0, 0, 0, 0.18);
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0.28s;
+}
+[dir="rtl"] .category-drawer {
+  left: auto;
+  right: 0;
+  box-shadow: -4px 0 40px rgba(0, 0, 0, 0.18);
+  transform: translateX(100%);
+}
+.category-drawer.is-open {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0s;
+}
+
+.category-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+.category-drawer__head h2 { margin: 0; font-size: 1rem; font-weight: 700; }
+#category-drawer-close {
+  background: none;
+  border: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  display: flex;
+  padding: 0.25rem;
+}
+
+.category-drawer__body {
+  overflow-y: auto;
+  padding: 0.5rem;
+  flex: 1 1 auto;
+}
+
+.category-drawer-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  text-align: start;
+  cursor: pointer;
+}
+.category-drawer-option:hover { background: var(--color-bg); }
+.category-drawer-option.is-selected { font-weight: 700; color: var(--color-primary); }
+
+.category-drawer-chev {
+  flex-shrink: 0;
+  color: var(--color-muted);
+  transition: transform 150ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.category-drawer-chev.is-open { transform: rotate(90deg); }
+/* Drawn pointing right (LTR "forward") — mirror for RTL so it points
+   outward/left at rest, same reasoning as the desktop tree's own chevron
+   mirroring earlier in this file. */
+[dir="rtl"] .category-drawer-chev { transform: scaleX(-1); }
+[dir="rtl"] .category-drawer-chev.is-open { transform: scaleX(-1) rotate(90deg); }
+
+.category-drawer-group {
+  display: flex;
+  flex-direction: column;
+  padding-inline-start: 0.9rem;
 }
 
 /* Sort trigger — same pill dimensions as .category-chip so it reads as part
@@ -651,7 +925,7 @@
   top: 0.5rem;
   inset-inline-start: 0.5rem;
   z-index: 1;
-  background: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 90%, transparent);
   color: #fff;
   font-weight: 700;
   font-size: 0.7rem;

@@ -256,18 +256,38 @@ const pmI18n = {
 
             <div class="store-controls__row">
               {storeCategories.length > 0 && (
-                <div id="category-filters" class="category-filters-row" role="group" aria-label={t.store.filterByCategory}
+                <button type="button" class="category-drawer-toggle" id="category-drawer-toggle" aria-expanded="false" aria-controls="category-drawer">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                  <span id="category-drawer-toggle-label">{selectedCategory ? selectedCategory.name : t.store.filterByCategory}</span>
+                </button>
+              )}
+              {storeCategories.length > 0 && (
+                <div class="category-filters-wrap" id="category-filters-wrap"
                      hidden={chipLevelCategories.length === 0 && !selectedCategory}>
-                  {!selectedCategory && (
-                    <button type="button" class="category-chip" data-category-id="" aria-pressed="true">
-                      {t.store.filterAll}
-                    </button>
-                  )}
-                  {chipLevelCategories.map((cat) => (
-                    <button type="button" class="category-chip" data-category-id={cat.id} aria-pressed="false">
-                      {cat.name}
-                    </button>
-                  ))}
+                  <button type="button" class="category-filters-arrow category-filters-arrow--prev" id="category-filters-prev" aria-label={lang === 'he' ? 'הקודם' : 'Previous'} hidden>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={lang === 'he' ? 'transform:scaleX(-1)' : ''}><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  <div id="category-filters" class="category-filters-row" role="group" aria-label={t.store.filterByCategory}>
+                    {!selectedCategory && (
+                      <button type="button" class="category-chip" data-category-id="" aria-pressed="true">
+                        {t.store.filterAll}
+                      </button>
+                    )}
+                    {chipLevelCategories.map((cat) => {
+                      const hasChildren = storeCategories.some((c) => c.parentId === cat.id);
+                      return (
+                        <button type="button" class="category-chip" data-category-id={cat.id} aria-pressed="false" data-has-children={hasChildren ? 'true' : undefined}>
+                          {cat.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button type="button" class="category-filters-arrow category-filters-arrow--next" id="category-filters-next" aria-label={lang === 'he' ? 'הבא' : 'Next'} hidden>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={lang === 'he' ? 'transform:scaleX(-1)' : ''}><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                  {/* position:fixed so it's never clipped by the scrollable row's own
+                      overflow-x — one shared panel, repositioned+refilled per hover. */}
+                  <div class="category-chip-dropdown" id="category-chip-dropdown" role="menu" hidden></div>
                 </div>
               )}
               <script type="application/json" id="store-category-tree-data" set:html={JSON.stringify(categoryTree)} />
@@ -300,6 +320,26 @@ const pmI18n = {
                 </ul>
               </div>
             </div>
+
+            {storeCategories.length > 0 && (
+              <Fragment>
+                {/* Mobile-only (no hover) equivalent of the desktop chip row's
+                    hover flyout — a side drawer with the full category tree
+                    as a single-branch accordion, same interaction shape as
+                    the desktop hover panel: tap a name to select it, tap a
+                    branch's own arrow row to reveal its children in place. */}
+                <div class="category-drawer-overlay" id="category-drawer-overlay"></div>
+                <aside class="category-drawer" id="category-drawer" role="dialog" aria-modal="true" aria-labelledby="category-drawer-title" aria-hidden="true">
+                  <header class="category-drawer__head">
+                    <h2 id="category-drawer-title">{t.store.filterByCategory}</h2>
+                    <button type="button" id="category-drawer-close" aria-label={lang === 'he' ? 'סגור' : 'Close'}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </header>
+                  <div class="category-drawer__body" id="category-drawer-body"></div>
+                </aside>
+              </Fragment>
+            )}
           </div>
           <ul class="product-grid" role="list" hidden={products.length === 0}>
             {products.map((p, idx) => {
@@ -788,6 +828,33 @@ const pmI18n = {
 
   const storeControls = document.querySelector<HTMLElement>('.store-controls');
   const categoryFilters = document.getElementById('category-filters') as HTMLElement | null;
+  const categoryFiltersWrap = document.getElementById('category-filters-wrap') as HTMLElement | null;
+  const categoryFiltersPrev = document.getElementById('category-filters-prev') as HTMLButtonElement | null;
+  const categoryFiltersNext = document.getElementById('category-filters-next') as HTMLButtonElement | null;
+  const isRtl = document.documentElement.dir === 'rtl';
+  const CATEGORY_SCROLL_STEP = 200;
+
+  // One row, no wrap — overflow becomes horizontal scroll with edge arrows
+  // (each shown only on the side there's still something to scroll to).
+  // Same edge-detection shape as the homepage's own carousel arrows
+  // (index.astro) — Math.abs handles RTL's negative scrollLeft.
+  function updateCategoryArrows(): void {
+    if (!categoryFilters) return;
+    const { scrollLeft, scrollWidth, clientWidth } = categoryFilters;
+    const atStart = Math.abs(scrollLeft) < 4;
+    const atEnd = Math.abs(scrollLeft) + clientWidth >= scrollWidth - 4;
+    categoryFiltersPrev?.toggleAttribute('hidden', atStart);
+    categoryFiltersNext?.toggleAttribute('hidden', atEnd);
+  }
+
+  if (categoryFilters) {
+    categoryFilters.addEventListener('scroll', updateCategoryArrows, { passive: true });
+    new ResizeObserver(updateCategoryArrows).observe(categoryFilters);
+    updateCategoryArrows();
+    requestAnimationFrame(updateCategoryArrows);
+  }
+  categoryFiltersPrev?.addEventListener('click', () => categoryFilters?.scrollBy({ left: isRtl ? CATEGORY_SCROLL_STEP : -CATEGORY_SCROLL_STEP, behavior: 'smooth' }));
+  categoryFiltersNext?.addEventListener('click', () => categoryFilters?.scrollBy({ left: isRtl ? -CATEGORY_SCROLL_STEP : CATEGORY_SCROLL_STEP, behavior: 'smooth' }));
 
   function renderCategoryNav(): void {
     if (!storeControls) return;
@@ -819,12 +886,15 @@ const pmI18n = {
       breadcrumbEl?.remove();
     }
 
-    if (categoryFilters) {
-      categoryFilters.hidden = children.length === 0 && !selected;
+    if (categoryFilters && categoryFiltersWrap) {
+      categoryFiltersWrap.hidden = children.length === 0 && !selected;
+      categoryFilters.scrollLeft = 0;
       categoryFilters.innerHTML = `
         ${!selected ? `<button type="button" class="category-chip" data-category-id="" aria-pressed="true">${escHtml(i18n?.filterAll ?? '')}</button>` : ''}
-        ${children.map((c) => `<button type="button" class="category-chip" data-category-id="${escHtml(c.id)}" aria-pressed="false">${escHtml(c.name)}</button>`).join('')}
+        ${children.map((c) => `<button type="button" class="category-chip" data-category-id="${escHtml(c.id)}" aria-pressed="false"${c.children.length > 0 ? ' data-has-children="true"' : ''}>${escHtml(c.name)}</button>`).join('')}
       `;
+      updateCategoryArrows();
+      requestAnimationFrame(updateCategoryArrows);
     }
   }
 
@@ -833,8 +903,228 @@ const pmI18n = {
     if (!btn) return;
     activeTag = btn.dataset.categoryId ?? '';
     renderCategoryNav();
+    updateDrawerToggleLabel();
     refreshFromServer();
   });
+
+  // Desktop only (real mouse hover — matchMedia guard, same reasoning as
+  // every other hover-only affordance on the site: a touch tap has no
+  // pointer-leave event to clear a "stuck" hover). Hovering a chip with
+  // children shows its subcategories in one shared, position:fixed panel —
+  // fixed (not absolute) so it's never clipped by the chip row's own
+  // overflow-x:auto, and viewport-positioned via the hovered chip's own
+  // getBoundingClientRect(), no DOM relocation needed. Mobile has no hover
+  // at all, so it doesn't get this — see the mobile category drawer below.
+  const chipDropdown = document.getElementById('category-chip-dropdown') as HTMLElement | null;
+  if (chipDropdown && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    let hideTimer: ReturnType<typeof setTimeout> | undefined;
+    // The dropdown reveals on hover; a further level (a 3rd category depth)
+    // drills in on click instead, same shape as the dashboard's own
+    // toolbar filter dropdown (products.ts) — one shared panel, content
+    // swapped in place, a back row to return, not a second cascading
+    // panel. anchorNode is whatever chip was originally hovered, so "back"
+    // always has something to return to regardless of how deep a click
+    // drilled.
+    let anchorNode: StoreCategoryTreeNode | null = null;
+
+    function renderChipDropdownLevel(nodes: StoreCategoryTreeNode[], showBack: boolean): void {
+      if (!chipDropdown) return;
+      const i18n = getPMI18n();
+      chipDropdown.innerHTML = `
+        ${showBack ? `<button type="button" class="category-chip-dropdown__back" data-back="1">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            ${escHtml(anchorNode?.name ?? i18n?.filterAll ?? '')}
+          </button>` : ''}
+        ${nodes.map((c) => `
+          <button type="button" class="category-chip-option" role="menuitem" data-category-id="${escHtml(c.id)}"${c.children.length ? ` data-drill="${escHtml(c.id)}"` : ''}>
+            <span>${escHtml(c.name)}</span>
+            ${c.children.length ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>` : ''}
+          </button>`).join('')}
+      `;
+    }
+
+    function showChipDropdown(chip: HTMLElement): void {
+      clearTimeout(hideTimer);
+      const id = chip.dataset.categoryId ?? '';
+      const node = flatCategories.find((c) => c.id === id);
+      if (!node?.children.length || !chipDropdown) return;
+      anchorNode = node;
+      renderChipDropdownLevel(node.children, false);
+      const rect = chip.getBoundingClientRect();
+      chipDropdown.style.top = `${rect.bottom + 5}px`;
+      if (isRtl) chipDropdown.style.right = `${window.innerWidth - rect.right}px`;
+      else chipDropdown.style.left = `${rect.left}px`;
+      chipDropdown.hidden = false;
+    }
+
+    function hideChipDropdownSoon(): void {
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => { if (chipDropdown) chipDropdown.hidden = true; }, 150);
+    }
+
+    categoryFilters?.addEventListener('mouseover', (e) => {
+      const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-has-children="true"]');
+      if (chip) showChipDropdown(chip);
+    });
+    categoryFilters?.addEventListener('mouseout', (e) => {
+      const toChip = (e.relatedTarget as HTMLElement | null)?.closest?.('[data-has-children="true"]');
+      const toDropdown = (e.relatedTarget as HTMLElement | null)?.closest?.('.category-chip-dropdown');
+      if (!toChip && !toDropdown) hideChipDropdownSoon();
+    });
+    chipDropdown.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+    chipDropdown.addEventListener('mouseleave', hideChipDropdownSoon);
+    categoryFilters?.addEventListener('scroll', () => { chipDropdown!.hidden = true; }, { passive: true });
+
+    // Click a node that itself has children → drill into it (replace the
+    // panel's content, don't select yet); click "back" → return to the
+    // anchor's own children. A leaf click falls through to the existing
+    // delegated [data-category-id] selection handler on .store-controls.
+    chipDropdown.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-back]')) {
+        e.stopPropagation();
+        if (anchorNode) renderChipDropdownLevel(anchorNode.children, false);
+        return;
+      }
+      const drillId = target.closest<HTMLElement>('[data-drill]')?.dataset.drill;
+      if (drillId) {
+        // A drill row also carries data-category-id (so it stays reachable
+        // as a real category id elsewhere), which would otherwise also
+        // match the delegated [data-category-id] select handler on
+        // .store-controls as this same click bubbles up — stop it here so
+        // drilling in never *also* applies it as the filter.
+        e.stopPropagation();
+        const node = flatCategories.find((c) => c.id === drillId);
+        if (node?.children.length) renderChipDropdownLevel(node.children, true);
+        return;
+      }
+      // A real leaf selection (no data-back, no data-drill) — let it bubble
+      // up to apply the filter as usual, but also close the flyout right
+      // away instead of leaving it open until the mouse happens to leave.
+      if (target.closest('[data-category-id]')) chipDropdown!.hidden = true;
+    });
+  }
+
+  // ── Mobile category drawer (touch — no hover) ───────────────────
+  // Same single-branch accordion shape as the site's own dashboard
+  // category-picker.ts: only one branch open at a time, a plain "הכל" row
+  // inside an open group selects that branch itself.
+  const drawerToggle = document.getElementById('category-drawer-toggle') as HTMLButtonElement | null;
+  const drawerToggleLabel = document.getElementById('category-drawer-toggle-label') as HTMLElement | null;
+  const drawer = document.getElementById('category-drawer') as HTMLElement | null;
+  const drawerOverlay = document.getElementById('category-drawer-overlay') as HTMLElement | null;
+  const drawerBody = document.getElementById('category-drawer-body') as HTMLElement | null;
+  const drawerClose = document.getElementById('category-drawer-close') as HTMLButtonElement | null;
+  let drawerExpandedPath: string[] = [];
+  let drawerPrevFocus: HTMLElement | null = null;
+
+  function renderDrawerRow(node: StoreCategoryTreeNode): string {
+    const i18n = getPMI18n();
+    const isOpen = drawerExpandedPath.includes(node.id);
+    const hasKids = node.children.length > 0;
+    const groupHtml = isOpen && hasKids
+      ? `<div class="category-drawer-group">
+          <button type="button" class="category-drawer-option${node.id === activeTag ? ' is-selected' : ''}" data-select="${escHtml(node.id)}">${escHtml(i18n?.filterAll ?? '')}</button>
+          ${node.children.map((c) => renderDrawerRow(c)).join('')}
+        </div>`
+      : '';
+    return `
+      <button type="button" class="category-drawer-option${!hasKids && node.id === activeTag ? ' is-selected' : ''}"
+              ${hasKids ? `data-toggle="${escHtml(node.id)}"` : `data-select="${escHtml(node.id)}"`}>
+        <span>${escHtml(node.name)}</span>
+        ${hasKids ? `<svg class="category-drawer-chev${isOpen ? ' is-open' : ''}" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>` : ''}
+      </button>
+      ${groupHtml}`;
+  }
+
+  function renderDrawerBody(): void {
+    if (!drawerBody) return;
+    const i18n = getPMI18n();
+    drawerBody.innerHTML = `
+      <button type="button" class="category-drawer-option${!activeTag ? ' is-selected' : ''}" data-select="">${escHtml(i18n?.filterAll ?? '')}</button>
+      ${categoryTree.map((n) => renderDrawerRow(n)).join('')}
+    `;
+  }
+
+  function updateDrawerToggleLabel(): void {
+    if (!drawerToggleLabel) return;
+    const selected = activeTag ? flatCategories.find((c) => c.id === activeTag) : undefined;
+    drawerToggleLabel.textContent = selected ? selected.name : (getPMI18n()?.filterByCategory ?? '');
+  }
+
+  function openDrawer(): void {
+    if (!drawer || !drawerOverlay) return;
+    drawerPrevFocus = document.activeElement as HTMLElement;
+    const chain = activeTag ? categoryAncestorChain(activeTag) : [];
+    drawerExpandedPath = chain.filter((n) => n.children.length > 0).map((n) => n.id);
+    renderDrawerBody();
+    drawer.classList.add('is-open');
+    drawerOverlay.classList.add('is-open');
+    drawer.removeAttribute('aria-hidden');
+    drawerToggle?.setAttribute('aria-expanded', 'true');
+    drawerClose?.focus();
+  }
+
+  function closeDrawer(): void {
+    if (!drawer || !drawerOverlay) return;
+    drawer.classList.remove('is-open');
+    drawerOverlay.classList.remove('is-open');
+    drawer.setAttribute('aria-hidden', 'true');
+    drawerToggle?.setAttribute('aria-expanded', 'false');
+    drawerPrevFocus?.focus();
+    drawerPrevFocus = null;
+  }
+
+  drawerToggle?.addEventListener('click', openDrawer);
+  drawerClose?.addEventListener('click', closeDrawer);
+  drawerOverlay?.addEventListener('click', closeDrawer);
+
+  drawerBody?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+
+    const toggleBtn = target.closest<HTMLButtonElement>('[data-toggle]');
+    if (toggleBtn) {
+      const id = toggleBtn.dataset.toggle ?? '';
+      const idx = drawerExpandedPath.indexOf(id);
+      if (idx !== -1) {
+        drawerExpandedPath = drawerExpandedPath.slice(0, idx);
+      } else {
+        const node = flatCategories.find((c) => c.id === id);
+        const lastOpen = drawerExpandedPath[drawerExpandedPath.length - 1] ?? null;
+        drawerExpandedPath = node?.parentId === lastOpen ? [...drawerExpandedPath, id] : [id];
+      }
+      renderDrawerBody();
+      return;
+    }
+
+    const selectBtn = target.closest<HTMLButtonElement>('[data-select]');
+    if (selectBtn) {
+      activeTag = selectBtn.dataset.select ?? '';
+      renderCategoryNav();
+      updateDrawerToggleLabel();
+      refreshFromServer();
+      closeDrawer();
+    }
+  });
+
+  // Focus trap — Tab/Shift+Tab wrap within the drawer while it's open, same
+  // shape as CartDrawer.astro's own trapFocus.
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (drawer?.getAttribute('aria-hidden') === 'true') return;
+    if (e.key === 'Escape') { closeDrawer(); return; }
+    if (e.key !== 'Tab' || !drawer) return;
+    const focusable = Array.from(drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+
+  updateDrawerToggleLabel();
 
   // ── Server-driven product cards (initial page + load more + refilter) ──
   // Card markup is duplicated here from the Astro template above by hand —
@@ -1428,10 +1718,29 @@ const pmI18n = {
     if (pmFooter) {
       pmFooter.innerHTML = `
         ${cartSection}
-        <a href="/store/${escHtml(storeSlug)}/${escHtml(slug)}"
+        <a href="/store/${escHtml(storeSlug)}/${escHtml(slug)}" class="pm-full-link"
            style="font-size:0.75rem;color:var(--color-muted);text-decoration:none;text-align:center;display:block;padding-top:0.5rem">
           ${i18n.fullPage ?? 'לדף המוצר המלא'}
         </a>`;
+      // The modal's own pushState (below) put a history entry at this exact same
+      // URL. A plain <a> click would stack a *real* navigation on top of it, so
+      // "back" from the full product page lands on that leftover soft entry
+      // first — same URL, no live document to restore — and the browser just
+      // reloads the product page again instead of returning to the store grid;
+      // a second "back" was needed to actually get anywhere. Collapsing the
+      // modal's entry first (history.back()) before navigating for real means
+      // one "back" from the full page goes straight to the store page, with its
+      // saved scroll position + category filter intact.
+      const pmFullLink = pmFooter.querySelector<HTMLAnchorElement>('.pm-full-link');
+      pmFullLink?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const href = pmFullLink.href;
+        let navigated = false;
+        const go = () => { if (navigated) return; navigated = true; location.href = href; };
+        window.addEventListener('popstate', go, { once: true });
+        setTimeout(go, 400);
+        history.back();
+      });
     }
 
     productModal?.removeAttribute('hidden');
