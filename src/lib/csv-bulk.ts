@@ -1,23 +1,25 @@
-import type { StoreProduct } from './store-products.js';
-
 export interface CsvField {
-  key: 'id' | 'sku' | 'name' | 'price' | 'stock' | 'category' | 'tags' | 'description';
+  key: 'id' | 'sku' | 'name' | 'price' | 'stock' | 'category' | 'subcategory1' | 'subcategory2' | 'tags' | 'description';
   he: string;
   en: string;
 }
 
+// Three separate columns (not one "ביגוד > גברים" path string) — much easier for a seller to
+// fill in a spreadsheet correctly than a delimiter syntax, and maps 1:1 onto MAX_CATEGORY_DEPTH.
 export const CSV_FIELDS: CsvField[] = [
-  { key: 'id',          he: 'מזהה (אל תשנה/תמחקי)', en: 'ID (do not edit/remove)' },
-  { key: 'sku',         he: 'מק"ט',                  en: 'SKU' },
-  { key: 'name',        he: 'שם *',                  en: 'Name *' },
-  { key: 'price',       he: 'מחיר *',                en: 'Price *' },
-  { key: 'stock',       he: 'מלאי',                  en: 'Stock' },
-  { key: 'category',    he: 'קטגוריה',                en: 'Category' },
-  { key: 'tags',        he: 'תגיות (מופרדות בפסיק)', en: 'Tags (comma-separated)' },
-  { key: 'description', he: 'תיאור',                  en: 'Description' },
+  { key: 'id',           he: 'מזהה (אל תשנה/תמחקי)', en: 'ID (do not edit/remove)' },
+  { key: 'sku',          he: 'מק"ט',                  en: 'SKU' },
+  { key: 'name',         he: 'שם *',                  en: 'Name *' },
+  { key: 'price',        he: 'מחיר *',                en: 'Price *' },
+  { key: 'stock',        he: 'מלאי',                  en: 'Stock' },
+  { key: 'category',     he: 'קטגוריה',                en: 'Category' },
+  { key: 'subcategory1', he: 'תת קטגוריה 1',          en: 'Subcategory 1' },
+  { key: 'subcategory2', he: 'תת קטגוריה 2',          en: 'Subcategory 2' },
+  { key: 'tags',         he: 'תגיות (מופרדות בפסיק)', en: 'Tags (comma-separated)' },
+  { key: 'description',  he: 'תיאור',                  en: 'Description' },
 ];
 
-const BOM = '﻿';
+export const BOM = '﻿';
 
 /** Generous headroom above the feature's stated ~1000-product target — guards a single request against pathological/abusive file sizes. */
 export const MAX_IMPORT_ROWS = 5000;
@@ -53,19 +55,23 @@ export function parseCsv(text: string): string[][] {
  *  name/description round-tripped from the (unrestricted) product editor could otherwise
  *  execute arbitrary formulas for whoever opens the exported file. Standard OWASP mitigation:
  *  prefix with a literal quote so it's forced back to plain text. */
-function sanitizeCsvCell(value: string): string {
+// Exported for store-products-bulk.ts's productsToCsv() — that function needs store-categories.ts
+// (a Node-only module, fs/path) to resolve a product's category path, so it can't live in this
+// file: csv-import.ts (the dashboard's client-side CSV preview) also imports from here, and
+// bundling a Node-only import into the browser build crashes the whole page on load.
+export function sanitizeCsvCell(value: string): string {
   return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 }
 
-function toCsvCell(value: string): string {
+export function toCsvCell(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
 // Deliberately no size/color in the name — those are variants (edited only on the individual
 // product, never via CSV, see BulkProductInput) and don't belong baked into the name string.
 const TEMPLATE_EXAMPLE_ROW: Record<'he' | 'en', string[]> = {
-  he: ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'קיץ, מבצע', 'חולצת כותנה איכותית'],
-  en: ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'summer, sale', 'High quality cotton shirt'],
+  he: ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'גברים', '', 'קיץ, מבצע', 'חולצת כותנה איכותית'],
+  en: ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'Men', '', 'summer, sale', 'High quality cotton shirt'],
 };
 
 /** A fixed sample file (header + one example row) — always the same regardless of the store's
@@ -78,21 +84,6 @@ export function templateCsv(lang: 'he' | 'en'): string {
   const header = CSV_FIELDS.map((f) => toCsvCell(f[lang])).join(',');
   const example = TEMPLATE_EXAMPLE_ROW[lang].map(toCsvCell).join(',');
   return BOM + [header, example].join('\r\n');
-}
-
-export function productsToCsv(products: StoreProduct[], lang: 'he' | 'en'): string {
-  const header = CSV_FIELDS.map((f) => toCsvCell(f[lang])).join(',');
-  const lines = products.map((p) => [
-    p.id,
-    sanitizeCsvCell(p.sku ?? ''),
-    sanitizeCsvCell(p.name),
-    String(p.price),
-    String(p.stock),
-    sanitizeCsvCell(p.category ?? ''),
-    sanitizeCsvCell((p.tags ?? []).join(', ')),
-    sanitizeCsvCell(p.description ?? ''),
-  ].map(toCsvCell).join(','));
-  return BOM + [header, ...lines].join('\r\n');
 }
 
 export interface RawImportRow {
@@ -131,7 +122,8 @@ export interface BulkProductInput {
   price: number;
   /** Undefined = blank cell = "leave unchanged" on an update row, defaults to 0 on create. */
   stock?: number;
-  category?: string;
+  /** Ordered root-first segment names (e.g. ["ביגוד", "גברים"]), already validated for no orphan gaps — resolved/auto-created into a real categoryId by store-products-bulk.ts. Undefined = all three columns blank = "leave unchanged" on update / no category on create. */
+  categoryPath?: string[];
   tags?: string[];
   description?: string;
   /** Not used to match/find rows (only the id column is) — a plain data field like category/tags, kept in sync with the single-product editor. Uniqueness IS validated here (unlike other bulk fields) — see validateRows' sku-duplicate check — to match the same guarantee the single-product add/edit form enforces via isSkuTaken(). */
@@ -178,12 +170,21 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
       else skuClaimedInBatch.set(sku, raw.line);
     }
 
+    // Three columns, root-first — a subcategory column filled in while the level above it is
+    // blank has no valid parent to attach to, so it's a hard error rather than a silent guess.
+    const categorySegments = [raw.cells.category, raw.cells.subcategory1, raw.cells.subcategory2]
+      .map((c) => c?.trim() || '');
+    const firstEmpty = categorySegments.findIndex((s) => !s);
+    const hasOrphanGap = firstEmpty !== -1 && categorySegments.slice(firstEmpty + 1).some((s) => s);
+    if (hasOrphanGap) errors.push('category-orphan-subcategory');
+
     if (errors.length) return { line: raw.line, action: 'error', id, errors };
 
+    const categoryPath = categorySegments.filter(Boolean);
     const tags = raw.cells.tags ? raw.cells.tags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean) : undefined;
     const input: BulkProductInput = {
       name, price, stock,
-      category: raw.cells.category?.trim() || undefined,
+      categoryPath: categoryPath.length ? categoryPath : undefined,
       tags: tags?.length ? tags : undefined,
       description: raw.cells.description?.trim() || undefined,
       sku,

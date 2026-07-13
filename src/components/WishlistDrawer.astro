@@ -290,7 +290,7 @@
         stock: rawStock,
       };
       for (let i = 0; i < qty; i++) {
-        addItem(cartStoreSlug, cartBtn.dataset.wlSname ?? '', itemData);
+        addItem(cartStoreSlug, cartBtn.dataset.wlSname ?? '', itemData, 1, undefined, false);
       }
       const orig = cartBtn.textContent ?? '';
       cartBtn.textContent = cartBtn.dataset.labelAdded ?? orig;

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseCsv, mapHeader, toRawRows, validateRows, productsToCsv, templateCsv, CSV_FIELDS } from '../src/lib/csv-bulk.js';
+import { parseCsv, mapHeader, toRawRows, validateRows, templateCsv, CSV_FIELDS } from '../src/lib/csv-bulk.js';
+import { productsToCsv } from '../src/lib/store-products-bulk.js';
 import type { StoreProduct } from '../src/lib/store-products.js';
+import type { StoreCategory } from '../src/lib/store-categories.js';
 
 describe('parseCsv', () => {
   it('parses plain comma-separated rows', () => {
@@ -64,7 +66,7 @@ describe('toRawRows + validateRows', () => {
   const { map } = mapHeader(header);
   const existingIds = new Set(['p1']);
 
-  // Columns in fixture order: id, sku, name, price, stock, category, tags, description
+  // Columns in fixture order: id, sku, name, price, stock, category, subcategory1, subcategory2, tags, description
   function rowsFrom(csvBody: string) {
     const rows = parseCsv([header.join(','), csvBody].join('\n'));
     return toRawRows(rows, map);
@@ -107,13 +109,13 @@ describe('toRawRows + validateRows', () => {
   });
 
   it('an update row with blank stock/category/tags/sku cells carries them as undefined, not overwritten values', () => {
-    const [result] = validateRows(rowsFrom('p1,,Renamed,60,,,,'), existingIds);
+    const [result] = validateRows(rowsFrom('p1,,Renamed,60,,,,,,'), existingIds);
     expect(result.action).toBe('update');
-    expect(result.input).toMatchObject({ stock: undefined, category: undefined, tags: undefined, sku: undefined });
+    expect(result.input).toMatchObject({ stock: undefined, categoryPath: undefined, tags: undefined, sku: undefined });
   });
 
   it('splits and normalizes tags', () => {
-    const [result] = validateRows(rowsFrom(',,X,10,1,,"Red, BLUE ",'), existingIds);
+    const [result] = validateRows(rowsFrom(',,X,10,1,,,,"Red, BLUE ",'), existingIds);
     expect(result.input?.tags).toEqual(['red', 'blue']);
   });
 
@@ -170,12 +172,15 @@ describe('validateRows sku-duplicate detection', () => {
 
 describe('productsToCsv formula-injection sanitization', () => {
   it('prefixes a name/description/category/tags/sku cell starting with =, +, -, @, tab or CR with a quote', () => {
+    const categories: StoreCategory[] = [{
+      id: 'c1', storeId: 's1', name: '@SUM(A1)', parentId: null, order: 0, createdAt: '2026-01-01T00:00:00.000Z',
+    }];
     const products: StoreProduct[] = [{
       id: 'p1', storeId: 's1', slug: 'x', name: '=HYPERLINK("http://evil.example")',
-      description: '+cmd', price: 1, stock: 1, category: '@SUM(A1)', tags: ['-danger'], sku: '=BAD',
+      description: '+cmd', price: 1, stock: 1, categoryId: 'c1', tags: ['-danger'], sku: '=BAD',
       createdAt: '2026-01-01T00:00:00.000Z',
     }];
-    const csv = productsToCsv(products, 'en');
+    const csv = productsToCsv(products, categories, 'en');
     const rows = parseCsv(csv);
     const { map } = mapHeader(rows[0]!);
     const [raw] = toRawRows(rows, map);
@@ -190,7 +195,7 @@ describe('productsToCsv formula-injection sanitization', () => {
     const products: StoreProduct[] = [{
       id: 'p1', storeId: 's1', slug: 'x', name: 'Widget', description: '', price: 1, stock: 1, createdAt: '2026-01-01T00:00:00.000Z',
     }];
-    const csv = productsToCsv(products, 'en');
+    const csv = productsToCsv(products, [], 'en');
     expect(csv).toContain('Widget');
     expect(csv).not.toContain("'Widget");
   });
@@ -216,12 +221,15 @@ describe('templateCsv', () => {
 
 describe('productsToCsv round trip', () => {
   it('re-parses to the same field values, including tags with embedded commas and sku', () => {
+    const categories: StoreCategory[] = [{
+      id: 'c1', storeId: 's1', name: 'Tools', parentId: null, order: 0, createdAt: '2026-01-01T00:00:00.000Z',
+    }];
     const products: StoreProduct[] = [{
       id: 'p1', storeId: 's1', slug: 'widget', name: 'Widget',
       description: 'A great, useful widget', price: 49.9, stock: 3,
-      category: 'Tools', tags: ['sale', 'new'], sku: 'W-1', createdAt: '2026-01-01T00:00:00.000Z',
+      categoryId: 'c1', tags: ['sale', 'new'], sku: 'W-1', createdAt: '2026-01-01T00:00:00.000Z',
     }];
-    const csv = productsToCsv(products, 'en');
+    const csv = productsToCsv(products, categories, 'en');
     const rows = parseCsv(csv);
     const { map } = mapHeader(rows[0]!);
     const [raw] = toRawRows(rows, map);

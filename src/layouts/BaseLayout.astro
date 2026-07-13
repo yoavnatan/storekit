@@ -3,6 +3,7 @@ import Seo from '../components/Seo.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import CartDrawer from '../components/CartDrawer.astro';
+import AddToCartPreview from '../components/AddToCartPreview.astro';
 import WishlistDrawer from '../components/WishlistDrawer.astro';
 import ConfirmModal from '../components/ConfirmModal.astro';
 import ProductQuickView from '../components/ProductQuickView.astro';
@@ -119,6 +120,7 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
     </main>
     <Footer />
     <CartDrawer />
+    <AddToCartPreview />
     <WishlistDrawer />
     <ConfirmModal />
     <ProductQuickView />

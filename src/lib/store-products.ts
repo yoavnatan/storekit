@@ -26,7 +26,8 @@ export interface StoreProduct {
   price: number;
   stock: number;
   images?: string[];
-  category?: string;
+  /** Points at a node in store-categories.ts's per-store tree — the leaf/level the seller assigned this product to. Matching a category also matches its descendants (see product-listing.ts). */
+  categoryId?: string;
   tags?: string[];
   /** Seller-defined product code (SKU) — distinct from `id` (our internal UUID); optional, unique per store when set. */
   sku?: string;
@@ -59,7 +60,7 @@ interface CreateProductInput {
   price: number;
   stock?: number;
   images?: string[];
-  category?: string;
+  categoryId?: string;
   tags?: string[];
   sku?: string;
   specs?: ProductSpec[];
@@ -73,7 +74,7 @@ export function isSkuTaken(storeId: string, sku: string, excludeId?: string): bo
   return readProducts().some((p) => p.storeId === storeId && p.sku === sku && p.id !== excludeId);
 }
 
-export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, category, tags, sku, specs, variants, variantStock, variantImages }: CreateProductInput): StoreProduct {
+export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, categoryId, tags, sku, specs, variants, variantStock, variantImages }: CreateProductInput): StoreProduct {
   const products = readProducts();
   const storeProducts = products.filter((p) => p.storeId === storeId);
   const base = slugify(name) || 'product';
@@ -90,7 +91,7 @@ export function createProduct(storeId: string, { name, description = '', price, 
     price,
     stock,
     ...(images?.length ? { images } : {}),
-    ...(category ? { category } : {}),
+    ...(categoryId ? { categoryId } : {}),
     ...(tags?.length ? { tags } : {}),
     ...(sku ? { sku } : {}),
     ...(specs?.length ? { specs } : {}),

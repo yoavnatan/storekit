@@ -22,6 +22,7 @@
 @import './components/header.css';
 @import './components/footer.css';
 @import './components/cart-drawer.css';
+@import './components/cart-preview.css';
 @import './components/product-card.css';
 @import './components/confirm-modal.css';
 @import './components/store-card.css';

@@ -15,6 +15,18 @@ export interface StoreShipping {
   processingDays: number;
 }
 
+export type StoreWeekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
+
+export const STORE_WEEKDAYS: StoreWeekday[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+export interface StoreDayHours {
+  closed: boolean;
+  open: string;  // "HH:MM"
+  close: string; // "HH:MM"
+}
+
+export type StoreHours = Record<StoreWeekday, StoreDayHours>;
+
 export interface Store {
   id: string;
   sellerId: string;
@@ -27,6 +39,10 @@ export interface Store {
   shipping?: StoreShipping;
   bannerImage?: string;
   profileImage?: string;
+  address?: string;
+  addressVisible?: boolean;
+  hours?: StoreHours;
+  hoursVisible?: boolean;
   createdAt: string;
 }
 

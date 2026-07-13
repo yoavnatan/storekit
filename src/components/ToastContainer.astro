@@ -19,12 +19,24 @@
   }
 
   // If a mobile sticky bottom bar (e.g. the product page's sticky add-to-cart
-  // bar) is currently on screen, lift the toast above it instead of letting
-  // the two overlap — recomputed per toast since visibility toggles live.
+  // bar) or the AddToCartPreview panel is currently on screen, lift the toast
+  // above it instead of letting the two overlap — recomputed per toast since
+  // visibility toggles live, and also below via a MutationObserver so an
+  // already-visible toast repositions if the cart preview opens afterwards
+  // (the preview itself never moves — it always stays at its own base
+  // offset; the toast is the one that gets out of its way).
   function updateBottomOffset(): void {
     const bar = document.querySelector<HTMLElement>('.sticky-bottom-bar.is-visible');
-    const height = bar ? window.innerHeight - bar.getBoundingClientRect().top : 0;
+    const cartPreview = document.querySelector<HTMLElement>('#cart-preview.is-open');
+    const barHeight = bar ? window.innerHeight - bar.getBoundingClientRect().top : 0;
+    const previewHeight = cartPreview ? window.innerHeight - cartPreview.getBoundingClientRect().top : 0;
+    const height = Math.max(barHeight, previewHeight);
     container.style.setProperty('--toast-bottom-offset', height > 0 ? `${height + 12}px` : '');
+  }
+
+  const cartPreviewEl = document.getElementById('cart-preview');
+  if (cartPreviewEl) {
+    new MutationObserver(updateBottomOffset).observe(cartPreviewEl, { attributes: true, attributeFilter: ['class'] });
   }
 
   function showToast(title: string, body: string, duration = 5000, href?: string) {

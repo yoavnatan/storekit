@@ -9,6 +9,7 @@ import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getLang, getT } from '../../../i18n/index.js';
 import { resolveVariantColor, isColorVariant } from '../../../lib/color-variants.js';
 import { comboKey, isProductInStock } from '../../../lib/variant-combo.js';
+import { getCategoriesByStoreId, categoryPath } from '../../../lib/store-categories.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
@@ -54,13 +55,17 @@ const relatedProducts = allStoreProducts
   .filter((p) => p.slug !== product.slug)
   .slice(0, 4);
 
+const storeCategoriesForProduct = getCategoriesByStoreId(shopStore.id);
+const productCategoryName = product.categoryId ? storeCategoriesForProduct.find((c) => c.id === product.categoryId)?.name ?? '' : '';
+const productCategoryPathStr = product.categoryId ? categoryPath(storeCategoriesForProduct, product.categoryId) : '';
+
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Product',
   name: product.name,
   ...(product.description ? { description: product.description } : {}),
   ...(images.length ? { image: images } : {}),
-  ...(product.category ? { category: product.category } : {}),
+  ...(productCategoryPathStr ? { category: productCategoryPathStr } : {}),
   ...(product.tags?.length ? { keywords: product.tags.join(', ') } : {}),
   ...(product.specs?.length ? {
     additionalProperty: product.specs.map((s) => ({
@@ -122,7 +127,7 @@ const pmI18n = {
   storeMode={true}
   storeName={shopStore.name}
   storeSlug={shopStore.slug}
-  dataLayer={{ event: 'page_view', page_type: 'product', store_id: shopStore.id, store_name: shopStore.name, store_slug: storeSlug, currency: 'ILS', ecommerce: { currency: 'ILS', items: [{ item_id: product.id, item_name: product.name, price: product.price, item_category: product.category ?? '' }] } }}
+  dataLayer={{ event: 'page_view', page_type: 'product', store_id: shopStore.id, store_name: shopStore.name, store_slug: storeSlug, currency: 'ILS', ecommerce: { currency: 'ILS', items: [{ item_id: product.id, item_name: product.name, price: product.price, item_category: productCategoryPathStr }] } }}
   productPrice={product.price}
   productCurrency="ILS"
 >
@@ -340,12 +345,12 @@ const pmI18n = {
                           data-price={String(product.price)}
                           data-image={images[0] ?? ''}
                           data-stock={String(product.stock)}
-                          data-category={product.category ?? ''}
+                          data-category={productCategoryPathStr}
                           data-label-added={t.store.addedToCart}>
                     <span class="btn-label">{t.store.addToCart}</span>
                   </button>
 
-                  <a href="/checkout" id="to-checkout-btn" class="btn btn--ghost flex-shrink-0"
+                  <a href="/checkout" id="to-checkout-btn" class="btn btn--accent flex-shrink-0"
                      style="display:none;height:48px;white-space:nowrap;align-items:center;justify-content:center;font-size:0.9375rem;font-weight:600">
                     {t.store.toCheckout}
                   </a>
@@ -398,7 +403,7 @@ const pmI18n = {
       </div>
 
       <!-- Details zone: full-width description / specs / category / tags -->
-      {(product.description || (product.specs?.length ?? 0) > 0 || product.category || (product.tags?.length ?? 0) > 0) && (
+      {(product.description || (product.specs?.length ?? 0) > 0 || productCategoryName || (product.tags?.length ?? 0) > 0) && (
         <div class="details-card"
              style="margin-top:2.5rem;border:1.5px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);padding:1.75rem;display:flex;flex-direction:column;gap:1.5rem">
 
@@ -429,15 +434,15 @@ const pmI18n = {
             </div>
           )}
 
-          {product.category && (
+          {productCategoryName && (
             <div>
               <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
                 {t.product.categoryLabel ?? (lang === 'he' ? 'קטגוריה' : 'Category')}
               </p>
-              <a href={`/store/${storeSlug}?category=${encodeURIComponent(product.category)}`}
+              <a href={`/store/${storeSlug}?category=${encodeURIComponent(product.categoryId!)}`}
                  class="hover:bg-[var(--color-bg)] transition-colors duration-150"
                  style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:9999px;padding:0.25rem 0.75rem;font-size:0.8rem;color:var(--color-text);text-decoration:none">
-                {product.category}
+                {productCategoryName}
               </a>
             </div>
           )}
@@ -505,7 +510,7 @@ const pmI18n = {
                      data-description={p.description ?? ''}
                      data-stock={String(p.stock)}
                      data-slug={p.slug}
-                     data-category={p.category ?? ''}
+                     data-category={p.categoryId ? categoryPath(storeCategoriesForProduct, p.categoryId) : ''}
                      data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
                      data-variant-images={p.variantImages ? JSON.stringify(p.variantImages) : undefined}
                      style="flex:0 0 auto;width:170px;border-radius:var(--radius);overflow:hidden;background:var(--color-surface);cursor:pointer">
@@ -572,7 +577,7 @@ const pmI18n = {
             <span class="btn-label">{t.store.addToCart}</span>
           </button>
 
-          <a href="/checkout" id="sticky-to-checkout-btn" class="btn btn--ghost flex-shrink-0"
+          <a href="/checkout" id="sticky-to-checkout-btn" class="btn btn--accent flex-shrink-0"
              style="display:none;height:44px;white-space:nowrap;align-items:center;justify-content:center;font-size:0.9375rem;font-weight:600">
             {t.store.toCheckout}
           </a>
@@ -1054,7 +1059,7 @@ const pmI18n = {
       if (pageVariants.length && flagMissingVariants()) return;
       const { slug = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
       const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy);
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy, false);
       trackAddToCart({ id: slug, name, price: Number(price), category }, qty);
       updateQty(1);
 
@@ -1097,7 +1102,7 @@ const pmI18n = {
       if (pageVariants.length && flagMissingVariants()) return;
       const { slug = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
       const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy);
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy, false);
       trackAddToCart({ id: slug, name, price: Number(price), category }, qty);
       updateQty(1);
 
@@ -1471,7 +1476,7 @@ const pmI18n = {
       if (pmAddBtn.disabled) return;
       if (pmVariants.length && pmFlagMissingVariants()) return;
       const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock }, pmQty, pmVariantsCopy);
+      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock }, pmQty, pmVariantsCopy, false);
       trackAddToCart({ id: slug, name, price, category }, pmQty);
       updatePmQty(1);
       pmAddBtn.disabled = true;

@@ -4,7 +4,10 @@ import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import { getStoreBySlug } from '../../lib/stores.js';
+import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '../../lib/store-hours.js';
 import { getProductsByStoreId } from '../../lib/store-products.js';
+import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
+import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath } from '../../lib/store-categories.js';
 import { store as platform, formatPrice, cdnSrc } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
@@ -20,8 +23,31 @@ const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
 const isFavorited = userId ? getFavoriteStoresForUser(userId).includes(shopStore.slug) : false;
 
-const products = getProductsByStoreId(shopStore.id);
-const allCategories = [...new Set(products.map(p => p.category).filter(Boolean))] as string[];
+const allProducts = getProductsByStoreId(shopStore.id);
+const storeCategories = getCategoriesByStoreId(shopStore.id);
+const categoryTree = buildCategoryTree(storeCategories);
+
+// Initial page render honors the same category/sort/q as the URL (deep links,
+// back-navigation) — server-side, so first paint is already correct and fully
+// crawlable. Beyond page 1, "load more" takes over via /api/store-products
+// using this exact same filterAndSortProducts(), so results never drift.
+const initCategory = Astro.url.searchParams.get('category') ?? '';
+const initSort = Astro.url.searchParams.get('sort') ?? '';
+const initQ = Astro.url.searchParams.get('q') ?? '';
+
+// Drill-down: selecting a category shows it + its own children as the next
+// chip row (breadcrumb above), not a flat list of every category at once.
+const selectedCategory = initCategory ? storeCategories.find((c) => c.id === initCategory) ?? null : null;
+const breadcrumbChain = selectedCategory ? getAncestorChain(storeCategories, selectedCategory.id) : [];
+const chipLevelCategories = storeCategories
+  .filter((c) => c.parentId === (selectedCategory ? selectedCategory.id : null))
+  .sort((a, b) => a.order - b.order);
+
+const categoryIds = selectedCategory ? resolveCategoryFilterIds(storeCategories, selectedCategory.id) : undefined;
+const filteredProducts = filterAndSortProducts(allProducts, { categoryIds, sort: initSort, q: initQ });
+const products = filteredProducts.slice(0, PRODUCTS_PAGE_SIZE);
+const hasMoreProducts = filteredProducts.length > products.length;
+
 const storeUrl = new URL(`/store/${shopStore.slug}`, Astro.url).href;
 const today = new Date().toDateString();
 
@@ -29,12 +55,20 @@ const lang = getLang(Astro.cookies);
 const dir  = getDir(lang);
 const t    = getT(lang);
 
+const showAddress = !!shopStore.addressVisible && !!shopStore.address;
+const showHours = !!shopStore.hoursVisible && !!shopStore.hours;
+const showDetails = showAddress || showHours;
+const hoursRows = showHours && shopStore.hours ? formatStoreHours(shopStore.hours, t.store.hoursDay, t.store.hoursClosed) : null;
+const mapsUrl = showAddress && shopStore.address ? googleMapsSearchUrl(shopStore.address) : null;
+
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Store',
   name: shopStore.name,
   description: shopStore.description || shopStore.tagline || `Shop at ${shopStore.name}`,
   url: storeUrl,
+  ...(showAddress && shopStore.address ? { address: shopStore.address } : {}),
+  ...(showHours && shopStore.hours ? { openingHours: formatStoreHoursSchema(shopStore.hours) } : {}),
 };
 
 const pmI18n = {
@@ -45,6 +79,10 @@ const pmI18n = {
   inStockLabel: t.store.inStockLabel,
   addToWishlist: t.wishlist.addLabel,
   removeFromWishlist: t.wishlist.removeLabel,
+  badgeNew: t.store.badgeNew,
+  loadingMore: t.store.loadingMore,
+  filterAll: t.store.filterAll,
+  filterByCategory: t.store.filterByCategory,
   fullPage: lang === 'he' ? 'לדף המוצר המלא' : 'View full product page',
   close: lang === 'he' ? 'סגור' : 'Close',
   showMore: lang === 'he' ? 'עוד' : 'More',
@@ -101,7 +139,39 @@ const pmI18n = {
           </div>
           {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
             {shopStore.description && shopStore.description !== shopStore.tagline && (
-              <p class="store-desc" dir="auto">{shopStore.description}</p>
+              <p class="store-desc" dir={dir}>{shopStore.description}</p>
+            )}
+
+            {showDetails && (
+              <details class="store-details" dir={dir}>
+                <summary class="store-details__summary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  {t.store.moreDetails}
+                  <svg class="store-details__chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </summary>
+                <div class="store-details__content">
+                  {showAddress && (
+                    <a
+                      class:list={['store-details__item', { 'store-details__item--link': !!mapsUrl }]}
+                      href={mapsUrl || undefined}
+                      target={mapsUrl ? '_blank' : undefined}
+                      rel={mapsUrl ? 'noopener noreferrer' : undefined}
+                      aria-label={mapsUrl ? t.store.viewOnMap : undefined}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      {shopStore.address}
+                    </a>
+                  )}
+                  {hoursRows && (
+                    <div class="store-details__item">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:0.15rem"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      <ul class="store-details__hours-list">
+                        {hoursRows.map((row) => <li>{row}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </details>
             )}
 
             <!-- Actions row -->
@@ -155,7 +225,7 @@ const pmI18n = {
     </section>
 
     <section class="section container">
-{products.length === 0 ? (
+{allProducts.length === 0 ? (
         <div class="empty-state">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
@@ -166,54 +236,72 @@ const pmI18n = {
         </div>
       ) : (
         <Fragment>
-          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1.5rem;flex-wrap:wrap">
+          <div class="store-controls">
             {/* Hidden search input — driven by header search bar */}
             <input type="search" id="product-search" style="display:none" tabindex="-1" aria-hidden="true" autocomplete="off" />
 
-            {allCategories.length > 0 && (
-              <div id="category-filters" role="group" aria-label={t.store.filterByCategory}
-                   style="display:flex;flex-wrap:wrap;gap:0.5rem">
-                <button type="button" class="category-chip" data-category="" aria-pressed="true">
-                  {t.store.filterAll}
-                </button>
-                {allCategories.map((cat) => (
-                  <button type="button" class="category-chip" data-category={cat} aria-pressed="false">
-                    {cat}
-                  </button>
+            {breadcrumbChain.length > 0 && (
+              <nav id="category-breadcrumb" class="category-breadcrumb" aria-label={t.store.filterByCategory}>
+                <button type="button" class="category-breadcrumb__crumb" data-category-id="">{t.store.filterAll}</button>
+                {breadcrumbChain.map((c, i) => (
+                  <Fragment>
+                    <span class="category-breadcrumb__sep" aria-hidden="true">›</span>
+                    {i === breadcrumbChain.length - 1
+                      ? <span class="category-breadcrumb__current">{c.name}</span>
+                      : <button type="button" class="category-breadcrumb__crumb" data-category-id={c.id}>{c.name}</button>}
+                  </Fragment>
                 ))}
-              </div>
+              </nav>
             )}
 
-            <div style="flex-shrink:0;position:relative" id="sort-dropdown">
-              <button
-                type="button"
-                id="sort-trigger"
-                aria-haspopup="listbox"
-                aria-expanded="false"
-                class="input flex items-center gap-2 select-none whitespace-nowrap py-2 text-sm cursor-pointer"
-                style="border-radius:9999px;padding-inline:0.75rem"
-                aria-label={t.store.sortDefault}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
-                <svg id="sort-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
-                <span id="sort-label" class="visually-hidden">{t.store.sortDefault}</span>
-              </button>
-              <ul
-                id="sort-menu"
-                role="listbox"
-                aria-labelledby="sort-trigger"
-                hidden
-                class="absolute ltr:right-0 rtl:right-0 top-full z-20 mt-1"
-                style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:0.3rem;animation:sort-menu-open 0.13s cubic-bezier(0.34,1.56,0.64,1);min-width:11rem;white-space:nowrap">
-                <li role="option" data-value="default" aria-selected="true" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortDefault}</li>
-                <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameAsc}</li>
-                <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameDesc}</li>
-                <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceAsc}</li>
-                <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceDesc}</li>
-                <li role="option" data-value="newest" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNewest}</li>
-              </ul>
+            <div class="store-controls__row">
+              {storeCategories.length > 0 && (
+                <div id="category-filters" class="category-filters-row" role="group" aria-label={t.store.filterByCategory}
+                     hidden={chipLevelCategories.length === 0 && !selectedCategory}>
+                  {!selectedCategory && (
+                    <button type="button" class="category-chip" data-category-id="" aria-pressed="true">
+                      {t.store.filterAll}
+                    </button>
+                  )}
+                  {chipLevelCategories.map((cat) => (
+                    <button type="button" class="category-chip" data-category-id={cat.id} aria-pressed="false">
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <script type="application/json" id="store-category-tree-data" set:html={JSON.stringify(categoryTree)} />
+
+              <div class="sort-dropdown-wrap" id="sort-dropdown">
+                <button
+                  type="button"
+                  id="sort-trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  class="sort-trigger"
+                  aria-label={t.store.sortDefault}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+                  <svg id="sort-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transition:transform 0.15s ease"><polyline points="6 9 12 15 18 9"/></svg>
+                  <span id="sort-label" class="visually-hidden">{t.store.sortDefault}</span>
+                </button>
+                <ul
+                  id="sort-menu"
+                  role="listbox"
+                  aria-labelledby="sort-trigger"
+                  hidden
+                  class="absolute top-full z-20 mt-1"
+                  style="inset-inline-end:0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:0.3rem;animation:sort-menu-open 0.13s cubic-bezier(0.34,1.56,0.64,1);min-width:11rem;max-width:calc(100vw - 1.5rem);white-space:nowrap">
+                  <li role="option" data-value="default" aria-selected="true" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortDefault}</li>
+                  <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameAsc}</li>
+                  <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameDesc}</li>
+                  <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceAsc}</li>
+                  <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceDesc}</li>
+                  <li role="option" data-value="newest" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNewest}</li>
+                </ul>
+              </div>
             </div>
           </div>
-          <ul class="product-grid" role="list">
+          <ul class="product-grid" role="list" hidden={products.length === 0}>
             {products.map((p, idx) => {
               const isNew = new Date(p.createdAt).toDateString() === today;
               const hasImages = !!(p.images?.length);
@@ -226,7 +314,8 @@ const pmI18n = {
                     data-slug={p.slug}
                     data-description={p.description || ''}
                     data-stock={String(p.stock)}
-                    data-category={p.category ?? ''}
+                    data-category-id={p.categoryId ?? ''}
+                    data-category-path={p.categoryId ? categoryPath(storeCategories, p.categoryId) : ''}
                     data-tags={p.tags?.length ? p.tags.join(',') : ''}
                     data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
                     data-variant-stock={p.variantStock ? JSON.stringify(p.variantStock) : undefined}
@@ -323,9 +412,14 @@ const pmI18n = {
               );
             })}
           </ul>
-          <div id="no-results" class="empty-state" hidden>
+          <div id="no-results" class="empty-state" hidden={products.length > 0}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <p>{t.store.noProductsFound}</p>
+          </div>
+          <div id="load-more-wrap" class="load-more-wrap" hidden={!hasMoreProducts}>
+            <button type="button" id="load-more-btn" class="load-more-btn" data-offset={String(products.length)}>
+              <span id="load-more-label">{t.store.loadMore}</span>
+            </button>
           </div>
         </Fragment>
       )}
@@ -377,7 +471,7 @@ const pmI18n = {
 </BaseLayout>
 
 <script is:inline type="application/json" id="header-search-products" set:html={JSON.stringify(
-  products.map((p) => ({
+  allProducts.map((p) => ({
     slug: p.slug,
     name: p.name,
     price: p.price,
@@ -388,7 +482,7 @@ const pmI18n = {
 <script>
   import { addItem, syncCartImages, getCartQty } from '../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
-  import { cdnSrc } from '../../config/store.config.js';
+  import { cdnSrc, formatPrice } from '../../config/store.config.js';
   import { spawnRipple } from '../../lib/ripple.js';
   import { spawnBurst } from '../../lib/burst.js';
   import { trackAddToCart } from '../../lib/tracking.js';
@@ -396,7 +490,9 @@ const pmI18n = {
   import { comboKey } from '../../lib/variant-combo.js';
   import { initReadMore } from '../../lib/read-more.js';
   import { saveLastStore } from '../../lib/last-store.js';
-  import { saveStoreScroll, applyStoreScrollQuery, restoreStoreScroll } from '../../lib/scroll-restore.js';
+  import { saveStoreScroll, applyStoreScrollQuery, restoreStoreScroll, peekStoreScrollState } from '../../lib/scroll-restore.js';
+  import type { StoreProduct as StoreProductDTO } from '../../lib/store-products.js';
+  import { PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button:not([disabled]):not(#sort-trigger):not(.add-to-cart-btn):not(.pm-add-to-cart)');
@@ -416,7 +512,7 @@ const pmI18n = {
   if (storeSlug) {
     saveLastStore({ slug: storeSlug, name: storeName, url: location.pathname + location.search });
     applyStoreScrollQuery(storeSlug);
-    window.addEventListener('pagehide', () => saveStoreScroll(storeSlug, lastQueryString));
+    window.addEventListener('pagehide', () => saveStoreScroll(storeSlug, lastQueryString, loadedCount));
   }
 
   // ── Sync cart images ──────────────────────────────────────────
@@ -451,7 +547,9 @@ const pmI18n = {
     try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}')?.wishlist ?? {}; } catch { return {}; }
   }
 
-  document.querySelectorAll<HTMLButtonElement>('.wishlist-btn').forEach((btn) => {
+  // Extracted so newly-appended "load more" cards can be wired up the same
+  // way as the initial batch — see initNewProductCards() near the bottom.
+  function initWishlistBtn(btn: HTMLButtonElement): void {
     const slug = btn.dataset.wishlistSlug ?? '';
     const active = isWishlisted(slug);
     btn.dataset.wishlisted = String(active);
@@ -487,7 +585,9 @@ const pmI18n = {
         body: JSON.stringify({ action: nowActive ? 'add' : 'remove', productSlug: slug }),
       });
     });
-  });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.wishlist-btn').forEach(initWishlistBtn);
 
   // ── Favorite store button ─────────────────────────────────────
   const favBtn = document.getElementById('fav-store-btn') as HTMLButtonElement | null;
@@ -559,7 +659,7 @@ const pmI18n = {
   const checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
   const cardCheckSvg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
-  document.querySelectorAll<HTMLElement>('.product-card').forEach((card) => {
+  function initProductCardCommerce(card: HTMLElement): void {
     const addBtn = card.querySelector<HTMLButtonElement>('.add-to-cart-btn');
     if (!addBtn) return;
 
@@ -568,7 +668,7 @@ const pmI18n = {
     const qtyVal = card.querySelector<HTMLElement>('.qty-val');
     const slug = addBtn.dataset.slug ?? '';
     const maxStock = Math.max(1, parseInt(addBtn.dataset.stock ?? '99', 10) || 99);
-    const cardCategory = card.dataset.category ?? '';
+    const cardCategory = card.dataset.categoryPath ?? '';
     let qty = 1;
 
     // Ceiling isn't just the product's total stock — it's what's left after
@@ -636,7 +736,9 @@ const pmI18n = {
         updateQty(1); // re-enables only if stock remains, not blindly
       }, 1400);
     });
-  });
+  }
+
+  document.querySelectorAll<HTMLElement>('.product-card').forEach(initProductCardCommerce);
 
   // ── Search + Sort ─────────────────────────────────────────────
   const searchInput = document.getElementById('product-search') as HTMLInputElement | null;
@@ -646,90 +748,266 @@ const pmI18n = {
   const sortChevron = document.getElementById('sort-chevron')   as SVGElement | null;
   const productGrid = document.querySelector<HTMLElement>('.product-grid');
   const noResults   = document.getElementById('no-results');
+  const loadMoreWrap = document.getElementById('load-more-wrap') as HTMLElement | null;
+  const loadMoreBtn  = document.getElementById('load-more-btn')  as HTMLButtonElement | null;
+  const loadMoreLabel = document.getElementById('load-more-label') as HTMLElement | null;
 
   let currentSort = 'default';
   let activeTag = '';
+  // Server-paginated grid: this is how many cards are actually in the DOM right
+  // now, not how many the store has in total — load-more/refetch keep it in sync.
+  let loadedCount = productGrid?.children.length ?? 0;
 
-  const originalOrder = productGrid
-    ? Array.from(productGrid.querySelectorAll<HTMLElement>('li[data-product-name]'))
-    : [];
+  // ── Category filter — drill-down breadcrumb + chip row ─────────
+  // Selecting a category re-renders the nav to show *its* children as the
+  // next chip row (not a flat list of every category at once); the product
+  // grid itself is what refreshFromServer() already refetches.
+  interface StoreCategoryTreeNode { id: string; name: string; parentId: string | null; children: StoreCategoryTreeNode[] }
+  let categoryTree: StoreCategoryTreeNode[] = [];
+  try { categoryTree = JSON.parse(document.getElementById('store-category-tree-data')?.textContent ?? '[]') as StoreCategoryTreeNode[]; }
+  catch { categoryTree = []; }
 
-  // ── Category filter chips ─────────────────────────────────────
-  const categoryChips = Array.from(document.querySelectorAll<HTMLButtonElement>('.category-chip'));
+  function flattenTree(nodes: StoreCategoryTreeNode[]): StoreCategoryTreeNode[] {
+    return nodes.flatMap((n) => [n, ...flattenTree(n.children)]);
+  }
+  const flatCategories = flattenTree(categoryTree);
 
-  function setActiveChip(chip: HTMLButtonElement) {
-    activeTag = chip.dataset.category ?? '';
-    categoryChips.forEach((c) => {
-      c.setAttribute('aria-pressed', String(c === chip));
-      c.style.cssText = '';
-    });
-    filterAndSort();
+  function categoryAncestorChain(categoryId: string): StoreCategoryTreeNode[] {
+    const chain: StoreCategoryTreeNode[] = [];
+    let current = flatCategories.find((c) => c.id === categoryId);
+    while (current) {
+      chain.unshift(current);
+      current = current.parentId ? flatCategories.find((c) => c.id === current!.parentId) : undefined;
+    }
+    return chain;
   }
 
-  categoryChips.forEach((chip) => chip.addEventListener('click', () => setActiveChip(chip)));
-
-  // Normalize Hebrew text for search: remove nikud, normalize sofit letters, collapse punctuation
-  function normalizeHe(str: string): string {
-    return str
-      .toLowerCase()
-      .replace(/[ְ-ׇֽֿׁׂׅׄ]/g, '') // nikud
-      .replace(/[ן]/g, 'נ').replace(/[ף]/g, 'פ').replace(/[ך]/g, 'כ')
-      .replace(/[ם]/g, 'מ').replace(/[ץ]/g, 'צ')
-      .replace(/[׳״’“”]/g, '') // geresh / quotes
-      .replace(/[-_.,!?;:()\[\]{}/\\״׳]/g, ' ')
-      .replace(/\s+/g, ' ').trim();
+  function categoryPathFor(categoryId: string): string {
+    return categoryAncestorChain(categoryId).map((c) => c.name).join(' › ');
   }
 
-  function matchesSearch(query: string, name: string, tags: string): boolean {
-    if (!query) return true;
-    const nQuery = normalizeHe(query);
-    const nCombined = normalizeHe(name) + ' ' + normalizeHe(tags.replace(/,/g, ' '));
-    // Every word in the query must appear somewhere in name+tags
-    return nQuery.split(' ').every((word) => word && nCombined.includes(word));
-  }
+  const storeControls = document.querySelector<HTMLElement>('.store-controls');
+  const categoryFilters = document.getElementById('category-filters') as HTMLElement | null;
 
-  function filterAndSort() {
-    if (!productGrid) return;
-    const query = (searchInput?.value ?? '').trim();
+  function renderCategoryNav(): void {
+    if (!storeControls) return;
+    const selected = activeTag ? flatCategories.find((c) => c.id === activeTag) ?? null : null;
+    const chain = selected ? categoryAncestorChain(selected.id) : [];
+    const children = selected ? selected.children : categoryTree;
+    const i18n = getPMI18n();
 
-    const cards = currentSort === 'default'
-      ? [...originalOrder]
-      : Array.from(productGrid.querySelectorAll<HTMLElement>('li[data-product-name]'));
-
-    if (currentSort !== 'default') {
-      cards.sort((a, b) => {
-        switch (currentSort) {
-          case 'name-asc':   return (a.dataset.productName ?? '').localeCompare(b.dataset.productName ?? '');
-          case 'name-desc':  return (b.dataset.productName ?? '').localeCompare(a.dataset.productName ?? '');
-          case 'price-asc':  return Number(a.dataset.price ?? 0) - Number(b.dataset.price ?? 0);
-          case 'price-desc': return Number(b.dataset.price ?? 0) - Number(a.dataset.price ?? 0);
-          case 'newest':     return (b.dataset.createdAt ?? '') > (a.dataset.createdAt ?? '') ? 1 : -1;
-          default: return 0;
-        }
-      });
+    let breadcrumbEl = document.getElementById('category-breadcrumb');
+    if (chain.length) {
+      const breadcrumbHtml = `
+          <button type="button" class="category-breadcrumb__crumb" data-category-id="">${escHtml(i18n?.filterAll ?? '')}</button>
+          ${chain.map((c, i) => `
+            <span class="category-breadcrumb__sep" aria-hidden="true">›</span>
+            ${i === chain.length - 1
+              ? `<span class="category-breadcrumb__current">${escHtml(c.name)}</span>`
+              : `<button type="button" class="category-breadcrumb__crumb" data-category-id="${escHtml(c.id)}">${escHtml(c.name)}</button>`}
+          `).join('')}
+        `;
+      if (!breadcrumbEl) {
+        breadcrumbEl = document.createElement('nav');
+        breadcrumbEl.id = 'category-breadcrumb';
+        breadcrumbEl.className = 'category-breadcrumb';
+        storeControls.insertBefore(breadcrumbEl, storeControls.firstElementChild?.nextSibling ?? null);
+      }
+      breadcrumbEl.setAttribute('aria-label', i18n?.filterByCategory ?? '');
+      breadcrumbEl.innerHTML = breadcrumbHtml;
+    } else {
+      breadcrumbEl?.remove();
     }
 
-    cards.forEach(c => productGrid.appendChild(c));
-
-    let visible = 0;
-    cards.forEach(card => {
-      const name = card.dataset.productName ?? '';
-      const category = card.dataset.category ?? '';
-      const tags = card.dataset.tags ?? '';
-      const matchesQuery = matchesSearch(query, name, tags);
-      const matchesTag = !activeTag || category === activeTag;
-      const show = matchesQuery && matchesTag;
-      card.style.display = show ? '' : 'none';
-      if (show) visible++;
-    });
-
-    if (noResults) noResults.hidden = visible > 0;
-    const sortEl = document.getElementById('sort-dropdown') as HTMLElement | null;
-    const catFilters = document.getElementById('category-filters') as HTMLElement | null;
-    if (sortEl) sortEl.style.display = visible > 0 ? '' : 'none';
-    if (catFilters) catFilters.style.display = visible > 0 ? '' : 'none';
-    syncUrl();
+    if (categoryFilters) {
+      categoryFilters.hidden = children.length === 0 && !selected;
+      categoryFilters.innerHTML = `
+        ${!selected ? `<button type="button" class="category-chip" data-category-id="" aria-pressed="true">${escHtml(i18n?.filterAll ?? '')}</button>` : ''}
+        ${children.map((c) => `<button type="button" class="category-chip" data-category-id="${escHtml(c.id)}" aria-pressed="false">${escHtml(c.name)}</button>`).join('')}
+      `;
+    }
   }
+
+  storeControls?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-category-id]');
+    if (!btn) return;
+    activeTag = btn.dataset.categoryId ?? '';
+    renderCategoryNav();
+    refreshFromServer();
+  });
+
+  // ── Server-driven product cards (initial page + load more + refilter) ──
+  // Card markup is duplicated here from the Astro template above by hand —
+  // Astro has no client-side component reactivity, so this mirrors the same
+  // pattern already used elsewhere on this site for dynamically-injected
+  // rows (CartDrawer, WishlistDrawer, the quick-view modal body).
+  function getI18nCart(): Record<string, string> {
+    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}')?.cart ?? {}; }
+    catch { return {}; }
+  }
+
+  function renderProductCardHTML(p: StoreProductDTO, isNew: boolean): string {
+    const pi = getPMI18n();
+    const ci = getI18nCart();
+    const hasImages = !!(p.images && p.images.length);
+    const firstImg = p.images?.[0] ? cdnSrc(p.images[0]) : '';
+
+    const slidesHtml = hasImages
+      ? p.images!.map((img) =>
+          `<div class="product-card__slide"><img src="${escHtml(cdnSrc(img))}" alt="${escHtml(p.name)}" class="product-card__img" width="400" height="400" loading="lazy" /></div>`
+        ).join('')
+      : `<div class="product-card__slide"><div class="product-card__img-placeholder" aria-hidden="true"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div></div>`;
+
+    const dotsHtml = hasImages && (p.images?.length ?? 0) > 1
+      ? `<div class="product-card__dots" aria-hidden="true">${p.images!.map((_, i) => `<span class="product-card__dot${i === 0 ? ' is-active' : ''}"></span>`).join('')}</div>`
+      : '';
+
+    const stockHtml = p.stock <= 0
+      ? `<span class="badge badge--muted">${escHtml(pi.outOfStock ?? '')}</span>`
+      : `<div dir="ltr" class="product-card__qtycart flex items-center" style="width:100%;height:2.25rem;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden">
+          <button type="button" class="qty-dec flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30" style="width:2.25rem;height:100%" aria-label="${escHtml(ci.qtyDecrease ?? '')}" disabled>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button type="button" class="product-card__add-btn add-to-cart-btn" data-slug="${escHtml(p.slug)}" data-name="${escHtml(p.name)}" data-price="${p.price}" data-image="${escHtml(firstImg)}" data-stock="${p.stock}" data-label-added="${escHtml(pi.addedToCart ?? '')}" aria-label="${escHtml(pi.addToCart ?? '')}">
+            <span class="btn-label" aria-hidden="true">
+              <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="9" cy="21" r="1.3" fill="currentColor" stroke="none"/>
+                <circle cx="17" cy="21" r="1.3" fill="currentColor" stroke="none"/>
+                <path d="M1 3h2.4l2.72 13.4a2 2 0 0 0 2 1.6h7.76a2 2 0 0 0 2-1.6L20.4 7H5.1"/>
+                <path d="M5.2 11.9h13.9M10.3 7.8L9.6 17.2M15 7.8L14.3 17.2" stroke-width="1.1"/>
+              </svg>
+            </span>
+            <span class="qty-val text-sm font-semibold select-none" style="display:none" aria-live="polite" aria-atomic="true">1</span>
+          </button>
+          <button type="button" class="qty-inc flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30" style="width:2.25rem;height:100%" aria-label="${escHtml(ci.qtyIncrease ?? '')}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>`;
+
+    return `<li class="product-card card"
+        ${hasImages ? `data-images="${escHtml(JSON.stringify(p.images))}"` : ''}
+        data-product-name="${escHtml(p.name)}"
+        data-price="${p.price}"
+        data-created-at="${escHtml(p.createdAt)}"
+        data-slug="${escHtml(p.slug)}"
+        data-description="${escHtml(p.description || '')}"
+        data-stock="${p.stock}"
+        data-category-id="${escHtml(p.categoryId ?? '')}"
+        data-category-path="${escHtml(p.categoryId ? categoryPathFor(p.categoryId) : '')}"
+        data-tags="${escHtml(p.tags?.length ? p.tags.join(',') : '')}"
+        ${p.variants?.length ? `data-variants="${escHtml(JSON.stringify(p.variants))}"` : ''}
+        ${p.variantStock ? `data-variant-stock="${escHtml(JSON.stringify(p.variantStock))}"` : ''}
+        ${p.variantImages ? `data-variant-images="${escHtml(JSON.stringify(p.variantImages))}"` : ''}>
+      <div class="product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable is-loading' : ''}" ${hasImages ? `role="button" aria-label="${escHtml(p.name)}" tabindex="0"` : ''}>
+        <div class="product-card__slides">${slidesHtml}</div>
+        ${isNew ? `<span class="badge badge--new">${escHtml(pi.badgeNew ?? '')}</span>` : ''}
+        <button type="button" class="wishlist-btn" data-wishlist-slug="${escHtml(p.slug)}" data-wishlist-name="${escHtml(p.name)}" data-wishlist-price="${p.price}" data-wishlist-image="${escHtml(firstImg)}" data-wishlist-store-slug="${escHtml(storeSlug)}" data-wishlist-store-name="${escHtml(storeName)}" data-wishlist-stock="${p.stock}" data-wishlisted="false" aria-pressed="false" aria-label="${escHtml(pi.addToWishlist ?? '')}" style="position:absolute;top:0.45rem;inset-inline-end:0.45rem;z-index:2;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.9);color:var(--color-muted);transition:color 0.15s,background 0.15s,transform 0.15s">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        </button>
+        ${dotsHtml}
+      </div>
+      <div class="product-card__body">
+        <a href="/store/${escHtml(storeSlug)}/${escHtml(p.slug)}" class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150" style="color:inherit;text-decoration:none;display:block">
+          <h3 class="product-card__name" dir="auto">${escHtml(p.name)}</h3>
+        </a>
+        <div class="product-card__footer" style="flex-direction:column;align-items:stretch;gap:0.4rem">
+          <span class="product-card__price">${escHtml(formatPrice(p.price))}</span>
+          ${stockHtml}
+        </div>
+      </div>
+    </li>`;
+  }
+
+  function htmlToElement(html: string): HTMLElement {
+    const template = document.createElement('template');
+    template.innerHTML = html.trim();
+    return template.content.firstElementChild as HTMLElement;
+  }
+
+  function initNewProductCards(cards: HTMLElement[]): void {
+    cards.forEach((card) => {
+      card.querySelectorAll<HTMLButtonElement>('.wishlist-btn').forEach(initWishlistBtn);
+      initProductCardCommerce(card);
+      initImageSkeleton(card);
+      initCarouselDots(card);
+      initCardClickToModal(card);
+      card.querySelectorAll<HTMLElement>('.product-card__img-wrap--clickable').forEach(initImageClickToModal);
+      card.querySelectorAll<HTMLAnchorElement>('.product-modal-trigger').forEach(initNameLinkToModal);
+    });
+  }
+
+  function appendProductCards(newProducts: StoreProductDTO[], animate: boolean): HTMLElement[] {
+    if (!productGrid) return [];
+    const todayStr = new Date().toDateString();
+    const cards = newProducts.map((p, i) => {
+      const isNew = new Date(p.createdAt).toDateString() === todayStr;
+      const card = htmlToElement(renderProductCardHTML(p, isNew));
+      if (animate) {
+        card.classList.add('product-card--entering');
+        card.style.animationDelay = `${Math.min(i, 12) * 40}ms`;
+        card.addEventListener('animationend', () => card.classList.remove('product-card--entering'), { once: true });
+      }
+      productGrid.appendChild(card);
+      return card;
+    });
+    initNewProductCards(cards);
+    loadedCount = productGrid.children.length;
+    return cards;
+  }
+
+  function updateResultsState(hasMore: boolean): void {
+    const hasAny = loadedCount > 0;
+    if (productGrid) productGrid.hidden = !hasAny;
+    if (noResults) noResults.hidden = hasAny;
+    if (loadMoreWrap) loadMoreWrap.hidden = !hasMore;
+    if (loadMoreBtn) loadMoreBtn.dataset.offset = String(loadedCount);
+  }
+
+  async function fetchProductsPage(offset: number): Promise<{ products: StoreProductDTO[]; hasMore: boolean }> {
+    const params = new URLSearchParams({ store: storeSlug, offset: String(offset) });
+    if (activeTag) params.set('category', activeTag);
+    if (currentSort !== 'default') params.set('sort', currentSort);
+    const q = searchInput?.value.trim() ?? '';
+    if (q) params.set('q', q);
+    try {
+      const res = await fetch(`/api/store-products?${params.toString()}`);
+      const data = await res.json() as { ok: boolean; products?: StoreProductDTO[]; hasMore?: boolean };
+      if (!data.ok) return { products: [], hasMore: false };
+      return { products: data.products ?? [], hasMore: !!data.hasMore };
+    } catch {
+      return { products: [], hasMore: false };
+    }
+  }
+
+  // Guards against an older, slower request (e.g. rapid category clicks)
+  // resolving after a newer one and clobbering the grid with stale results.
+  let refreshToken = 0;
+
+  async function refreshFromServer(): Promise<void> {
+    syncUrl();
+    const token = ++refreshToken;
+    if (!productGrid) return;
+    const { products: page, hasMore } = await fetchProductsPage(0);
+    if (token !== refreshToken) return;
+    productGrid.innerHTML = '';
+    loadedCount = 0;
+    appendProductCards(page, true);
+    updateResultsState(hasMore);
+  }
+
+  loadMoreBtn?.addEventListener('click', async () => {
+    const offset = Number(loadMoreBtn.dataset.offset ?? loadedCount);
+    loadMoreBtn.disabled = true;
+    const originalLabel = loadMoreLabel?.textContent ?? '';
+    if (loadMoreLabel) {
+      loadMoreLabel.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${escHtml(getPMI18n().loadingMore ?? '')}<span class="dot-pulse" role="status"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
+    }
+    const { products: page, hasMore } = await fetchProductsPage(offset);
+    appendProductCards(page, true);
+    updateResultsState(hasMore);
+    loadMoreBtn.disabled = false;
+    if (loadMoreLabel) loadMoreLabel.textContent = originalLabel;
+  });
 
   function syncUrl() {
     const params = new URLSearchParams();
@@ -767,7 +1045,7 @@ const pmI18n = {
     if (sortTrigger) sortTrigger.setAttribute('aria-label', label);
     closeSort();
     sortTrigger?.focus();
-    filterAndSort();
+    refreshFromServer();
   }
 
   sortTrigger?.addEventListener('click', () => {
@@ -801,7 +1079,11 @@ const pmI18n = {
     if (dropdown && !dropdown.contains(e.target as Node)) closeSort();
   });
 
-  searchInput?.addEventListener('input', filterAndSort);
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+  searchInput?.addEventListener('input', () => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(refreshFromServer, 350);
+  });
 
   // ── Init from URL params (q / sort / category) ────────────────
   {
@@ -826,34 +1108,54 @@ const pmI18n = {
       }
     }
 
-    if (initCat) {
-      const matchingChip = categoryChips.find(c => c.dataset.category === initCat);
-      if (matchingChip) {
-        activeTag = initCat;
-        categoryChips.forEach(c => {
-          c.setAttribute('aria-pressed', String(c === matchingChip));
-          c.style.cssText = '';
-        });
-      }
-    }
+    // The nav (breadcrumb + chip row) was already server-rendered matching
+    // initCat exactly (see the Astro frontmatter above) — just sync the JS
+    // state variable to match, no DOM rebuild needed for the initial paint.
+    if (initCat && flatCategories.some((c) => c.id === initCat)) activeTag = initCat;
 
-    if (initQ || initSortVal || initCat) filterAndSort();
-    if (storeSlug) restoreStoreScroll(storeSlug);
-    document.documentElement.style.visibility = '';
+    // The grid's initial page was already server-rendered matching these exact
+    // params (see the Astro frontmatter above) — no refetch needed here, just
+    // catching load-more back up if the user had loaded further pages before
+    // navigating away, then restoring scroll position once real content is there.
+    // Fetched in parallel (not one-await-at-a-time) and capped — a session that
+    // loaded hundreds of products before leaving shouldn't turn "back" into a
+    // slow chain of round-trips; past the cap we just land wherever it ends.
+    (async () => {
+      const savedState = storeSlug ? peekStoreScrollState(storeSlug) : null;
+      if (savedState && loadedCount < savedState.loadedCount) {
+        const MAX_CATCHUP_PRODUCTS = 240;
+        const target = Math.min(savedState.loadedCount, loadedCount + MAX_CATCHUP_PRODUCTS);
+        const offsets: number[] = [];
+        for (let o = loadedCount; o < target; o += PRODUCTS_PAGE_SIZE) offsets.push(o);
+        const pages = await Promise.all(offsets.map((o) => fetchProductsPage(o)));
+        for (const { products: page, hasMore } of pages) {
+          if (!page.length) break;
+          appendProductCards(page, false);
+          updateResultsState(hasMore);
+          if (!hasMore) break;
+        }
+      }
+      if (storeSlug) restoreStoreScroll(storeSlug);
+      document.documentElement.style.visibility = '';
+    })();
   }
 
   // ── Skeleton: remove shimmer when image loads ─────────────────
-  document.querySelectorAll<HTMLImageElement>('.product-card__img').forEach((img) => {
-    const wrap = img.closest<HTMLElement>('.product-card__img-wrap');
-    if (!wrap) return;
-    const done = () => wrap.classList.remove('is-loading');
-    if (img.complete && img.naturalWidth > 0) {
-      done();
-    } else {
-      img.addEventListener('load', done, { once: true });
-      img.addEventListener('error', done, { once: true });
-    }
-  });
+  function initImageSkeleton(card: HTMLElement): void {
+    card.querySelectorAll<HTMLImageElement>('.product-card__img').forEach((img) => {
+      const wrap = img.closest<HTMLElement>('.product-card__img-wrap');
+      if (!wrap) return;
+      const done = () => wrap.classList.remove('is-loading');
+      if (img.complete && img.naturalWidth > 0) {
+        done();
+      } else {
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
+      }
+    });
+  }
+
+  document.querySelectorAll<HTMLElement>('.product-card').forEach(initImageSkeleton);
 
   // ── Lightbox (available for revert) ──────────────────────────
   const lightbox   = document.getElementById('lightbox') as HTMLDivElement | null;
@@ -965,7 +1267,7 @@ const pmI18n = {
     const description = card.dataset.description ?? '';
     const stock       = Number(card.dataset.stock ?? 0);
     const slug        = card.dataset.slug ?? '';
-    const category    = card.dataset.category ?? '';
+    const category    = card.dataset.categoryPath ?? '';
     const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
       ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
       : [];
@@ -1068,7 +1370,7 @@ const pmI18n = {
                     style="flex:1;height:2.25rem;display:flex;align-items:center;justify-content:center;gap:4px">
               <span class="pm-btn-label">${i18n.addToCart ?? 'הוסף לעגלה'}</span>
             </button>
-            <a href="/checkout" class="pm-to-checkout btn btn--ghost btn--sm"
+            <a href="/checkout" class="pm-to-checkout btn btn--accent btn--sm"
                style="display:none;height:2.25rem;white-space:nowrap;align-items:center;gap:0.3rem">
               ${i18n.toCheckout ?? 'לתשלום'}
             </a>
@@ -1365,7 +1667,7 @@ const pmI18n = {
       if (pmAddBtn.disabled) return;
       if (pmVariants.length && pmFlagMissingVariants()) return;
       const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock: pmEffectiveStock(pmSelectedVariants) }, pmQty, pmVariantsCopy);
+      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock: pmEffectiveStock(pmSelectedVariants) }, pmQty, pmVariantsCopy, false);
       trackAddToCart({ id: slug, name, price, category }, pmQty);
       updatePmQty(1);
       pmAddBtn.disabled = true;
@@ -1422,7 +1724,7 @@ const pmI18n = {
   // ── Carousel dots ─────────────────────────────────────────────
   const BASE_W = 6, ACTIVE_W = 18;
 
-  document.querySelectorAll<HTMLElement>('.product-card').forEach((card) => {
+  function initCarouselDots(card: HTMLElement): void {
     const slides = card.querySelector<HTMLElement>('.product-card__slides');
     const dotsEl = card.querySelector<HTMLElement>('.product-card__dots');
     if (!slides || !dotsEl) return;
@@ -1506,14 +1808,16 @@ const pmI18n = {
         slides.style.scrollSnapType = '';
       });
     }, { passive: true });
-  });
+  }
+
+  document.querySelectorAll<HTMLElement>('.product-card').forEach(initCarouselDots);
 
   // Anywhere else on the card → product modal too. Buttons/links each have
   // their own handler (qty stepper, wishlist heart, add-to-cart, the name
   // link, the image) so this only needs to skip those — everything else
   // (padding, gaps between elements, the price line) should still open it,
   // including out-of-stock cards that have no add-to-cart button at all.
-  document.querySelectorAll<HTMLElement>('.product-card').forEach((card) => {
+  function initCardClickToModal(card: HTMLElement): void {
     card.addEventListener('click', (e) => {
       // Not e.target.closest(...) — a button's own click handler can mutate
       // its innerHTML (e.g. the add-to-cart icon swapping to a checkmark)
@@ -1524,10 +1828,12 @@ const pmI18n = {
       if (path.some((el) => el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute?.('role') === 'button')) return;
       openProductModal(card);
     });
-  });
+  }
+
+  document.querySelectorAll<HTMLElement>('.product-card').forEach(initCardClickToModal);
 
   // Image click → product modal (replaces lightbox)
-  document.querySelectorAll<HTMLElement>('.product-card__img-wrap--clickable').forEach((wrap) => {
+  function initImageClickToModal(wrap: HTMLElement): void {
     const slides = wrap.querySelector<HTMLElement>('.product-card__slides');
     let scrollAtPress = 0;
 
@@ -1548,16 +1854,20 @@ const pmI18n = {
         (e.currentTarget as HTMLElement).click();
       }
     });
-  });
+  }
+
+  document.querySelectorAll<HTMLElement>('.product-card__img-wrap--clickable').forEach(initImageClickToModal);
 
   // Name link click → product modal (prevents navigation)
-  document.querySelectorAll<HTMLAnchorElement>('.product-modal-trigger').forEach((link) => {
+  function initNameLinkToModal(link: HTMLAnchorElement): void {
     link.addEventListener('click', (e) => {
       e.preventDefault();
       const card = link.closest<HTMLElement>('.product-card');
       if (card) openProductModal(card);
     });
-  });
+  }
+
+  document.querySelectorAll<HTMLAnchorElement>('.product-modal-trigger').forEach(initNameLinkToModal);
 
   // ── Global keyboard handlers ──────────────────────────────────
   document.addEventListener('keydown', (e: KeyboardEvent) => {

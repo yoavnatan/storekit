@@ -1,12 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StoreProduct } from '../src/lib/store-products.js';
+import type { StoreCategory } from '../src/lib/store-categories.js';
 
 let db: StoreProduct[] = [];
+let categoriesDb: StoreCategory[] = [];
 
+// bulkUpsertProducts also resolves each row's category through store-categories.ts, which reads/
+// writes its own separate JSON file — the mock has to route by path or the two stores collide.
 vi.mock('node:fs', () => ({
   default: {
-    readFileSync: () => JSON.stringify(db),
-    writeFileSync: (_path: string, data: string) => { db = JSON.parse(data); },
+    readFileSync: (path: string) => JSON.stringify(String(path).includes('store-categories') ? categoriesDb : db),
+    writeFileSync: (path: string, data: string) => {
+      if (String(path).includes('store-categories')) categoriesDb = JSON.parse(data);
+      else db = JSON.parse(data);
+    },
   },
 }));
 
@@ -14,8 +21,11 @@ const { isSkuTaken } = await import('../src/lib/store-products.js');
 const { bulkUpsertProducts } = await import('../src/lib/store-products-bulk.js');
 
 beforeEach(() => {
+  categoriesDb = [
+    { id: 'c1', storeId: 's1', name: 'Tools', parentId: null, order: 0, createdAt: '2026-01-01T00:00:00.000Z' },
+  ];
   db = [
-    { id: 'p1', storeId: 's1', slug: 'widget', name: 'Widget', description: '', price: 10, stock: 5, category: 'Tools', tags: ['sale'], sku: 'W-1', createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'p1', storeId: 's1', slug: 'widget', name: 'Widget', description: '', price: 10, stock: 5, categoryId: 'c1', tags: ['sale'], sku: 'W-1', createdAt: '2026-01-01T00:00:00.000Z' },
     { id: 'p2', storeId: 's2', slug: 'other-store-item', name: 'Other store item', description: '', price: 20, stock: 2, createdAt: '2026-01-01T00:00:00.000Z' },
   ];
 });
@@ -44,7 +54,7 @@ describe('bulkUpsertProducts', () => {
   it('preserves stock/category/tags/sku when the update row omits them (blank CSV cell), instead of wiping them', () => {
     bulkUpsertProducts('s1', [{ id: 'p1', name: 'Widget Renamed', price: 12 }]);
     const updated = db.find((p) => p.id === 'p1')!;
-    expect(updated).toMatchObject({ name: 'Widget Renamed', price: 12, stock: 5, category: 'Tools', tags: ['sale'], sku: 'W-1' });
+    expect(updated).toMatchObject({ name: 'Widget Renamed', price: 12, stock: 5, categoryId: 'c1', tags: ['sale'], sku: 'W-1' });
   });
 
   it('overwrites sku when the row explicitly provides one, and sets it on a fresh create', () => {

@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, updateStore } from '../../lib/stores.js';
+import { parseStoreHoursForm } from '../../lib/store-hours.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -32,10 +33,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     const bannerImage = String(form.get('bannerImage') ?? '').trim();
     const profileImage = String(form.get('profileImage') ?? '').trim();
+    const address = String(form.get('address') ?? '').trim();
+    const addressVisible = form.get('addressVisible') === 'on';
+    const hoursVisible = form.get('hoursVisible') === 'on';
+    const hours = parseStoreHoursForm(form);
 
     updateStore(target.id, {
       name, tagline, description, colors: target.colors, categories: categories.length ? categories : [],
       bannerImage: bannerImage || undefined, profileImage: profileImage || undefined,
+      address: address || undefined, addressVisible, hours, hoursVisible,
     });
     return json({ ok: true, name });
   }

@@ -3,7 +3,8 @@ import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
 import { createProduct, updateProduct, deleteProduct, getProductById, isSkuTaken, type StoreProduct } from '../../lib/store-products.js';
-import { parseImages, parseCategory, parseSku, parseTags, parseSpecs, parseVariantsPayload } from '../../lib/product-form.js';
+import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseVariantsPayload } from '../../lib/product-form.js';
+import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 
 function json(data: unknown, status = 200) {
@@ -11,6 +12,14 @@ function json(data: unknown, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+// Never trust a client-supplied categoryId at face value — confirm it's a real
+// node belonging to this exact store before it's allowed onto the product.
+function resolveCategoryId(raw: string, storeId: string): string | undefined {
+  if (!raw) return undefined;
+  const category = getCategoryById(raw);
+  return category && category.storeId === storeId ? category.id : undefined;
 }
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -30,7 +39,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const price = parseFloat(String(form.get('price') || '0'));
     const stock = parseInt(String(form.get('stock') || '0'), 10);
     const images = parseImages(form);
-    const category = parseCategory(form);
+    const categoryId = resolveCategoryId(parseCategoryId(form), storeId);
     const tags = parseTags(form);
     const sku = parseSku(form);
     const specs = parseSpecs(form);
@@ -43,7 +52,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const product = createProduct(storeId, {
       name, description, price, stock: isNaN(stock) ? 0 : stock,
       images: images.length ? images : undefined,
-      category: category || undefined,
+      categoryId,
       tags: tags.length ? tags : undefined,
       sku: sku || undefined,
       specs: specs.length ? specs : undefined,
@@ -66,7 +75,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const price = parseFloat(String(form.get('price') || '0'));
     const stock = parseInt(String(form.get('stock') || '0'), 10);
     const images = parseImages(form);
-    const category = parseCategory(form);
+    const categoryId = resolveCategoryId(parseCategoryId(form), product.storeId);
     const tags = parseTags(form);
     const sku = parseSku(form);
     const specs = parseSpecs(form);
@@ -79,7 +88,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const updates: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {
       name, description, price, stock: isNaN(stock) ? 0 : stock,
       images,
-      category: category || undefined,
+      categoryId,
       tags: tags.length ? tags : [],
       sku: sku || undefined,
       specs: specs.length ? specs : [],
@@ -94,7 +103,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // full edit form — treat that as acknowledging any low-stock/out-of-stock
     // alert for it, same as an order's status change clearing its own notification.
     deleteNotificationsByRelatedIds([productId], sellerId);
-    return json({ ok: true, images: updated.images ?? [] });
+    const categoryPathStr = updated.categoryId ? categoryPath(getCategoriesByStoreId(product.storeId), updated.categoryId) : '';
+    return json({ ok: true, images: updated.images ?? [], categoryId: updated.categoryId ?? '', categoryPath: categoryPathStr });
   }
 
   if (action === 'patch-product-fields') {

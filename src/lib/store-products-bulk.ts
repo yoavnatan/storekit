@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import { readProducts, writeProducts, slugify, type StoreProduct } from './store-products.js';
+import { resolveOrCreateCategoryPaths, getAncestorChain, type StoreCategory } from './store-categories.js';
+import { CSV_FIELDS, BOM, sanitizeCsvCell, toCsvCell } from './csv-bulk.js';
 
 export interface BulkUpsertInput {
   id?: string;
@@ -7,7 +9,8 @@ export interface BulkUpsertInput {
   price: number;
   /** Undefined = blank CSV cell = "leave unchanged" on update, defaults to 0 on create. */
   stock?: number;
-  category?: string;
+  /** Root-first segment names, e.g. ["ביגוד", "גברים"] — undefined = leave unchanged on update / no category on create. */
+  categoryPath?: string[];
   tags?: string[];
   description?: string;
   sku?: string;
@@ -27,13 +30,18 @@ export function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): Bu
   const idIndex = new Map(products.map((p, idx) => [p.id, idx]));
   const results: BulkUpsertResult[] = [];
 
-  for (const row of rows) {
+  // Resolved once for the whole batch (its own single read+write) rather than per row — a row
+  // with no categoryPath (blank CSV cells) resolves to null here, meaning "leave unchanged".
+  const resolvedCategoryIds = resolveOrCreateCategoryPaths(storeId, rows.map((r) => r.categoryPath ?? []));
+
+  rows.forEach((row, i) => {
+    const categoryId = resolvedCategoryIds[i] ?? null;
     if (row.id) {
       const idx = idIndex.get(row.id);
       const existing = idx !== undefined ? products[idx] : undefined;
       if (idx === undefined || !existing || existing.storeId !== storeId) {
         results.push({ id: row.id, action: 'not-found' });
-        continue;
+        return;
       }
       // Blank CSV cell (row.field undefined) means "leave unchanged" — only an explicit value overwrites.
       const updated: StoreProduct = {
@@ -41,7 +49,7 @@ export function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): Bu
         name: row.name,
         price: row.price,
         stock: row.stock ?? existing.stock,
-        category: row.category ?? existing.category,
+        categoryId: categoryId ?? existing.categoryId,
         tags: row.tags ?? existing.tags,
         description: row.description ?? existing.description,
         sku: row.sku ?? existing.sku,
@@ -63,7 +71,7 @@ export function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): Bu
         description: row.description ?? '',
         price: row.price,
         stock: row.stock ?? 0,
-        ...(row.category ? { category: row.category } : {}),
+        ...(categoryId ? { categoryId } : {}),
         ...(row.tags?.length ? { tags: row.tags } : {}),
         ...(row.sku ? { sku: row.sku } : {}),
         createdAt: new Date().toISOString(),
@@ -71,8 +79,31 @@ export function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): Bu
       products.push(product);
       results.push({ id: product.id, action: 'create', product });
     }
-  }
+  });
 
   writeProducts(products);
   return results;
+}
+
+// Lives here (not csv-bulk.ts) because it needs store-categories.ts (fs/path, Node-only) to
+// resolve each product's category path — csv-bulk.ts is also imported by the dashboard's
+// client-side CSV preview, and a Node-only import there would crash on load in the browser.
+export function productsToCsv(products: StoreProduct[], categories: StoreCategory[], lang: 'he' | 'en'): string {
+  const header = CSV_FIELDS.map((f) => toCsvCell(f[lang])).join(',');
+  const lines = products.map((p) => {
+    const chain = p.categoryId ? getAncestorChain(categories, p.categoryId) : [];
+    return [
+      p.id,
+      sanitizeCsvCell(p.sku ?? ''),
+      sanitizeCsvCell(p.name),
+      String(p.price),
+      String(p.stock),
+      sanitizeCsvCell(chain[0]?.name ?? ''),
+      sanitizeCsvCell(chain[1]?.name ?? ''),
+      sanitizeCsvCell(chain[2]?.name ?? ''),
+      sanitizeCsvCell((p.tags ?? []).join(', ')),
+      sanitizeCsvCell(p.description ?? ''),
+    ].map(toCsvCell).join(',');
+  });
+  return BOM + [header, ...lines].join('\r\n');
 }

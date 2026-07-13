@@ -2,7 +2,8 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, createStore, updateStore } from '../../lib/stores.js';
+import { getStoresBySellerId, createStore, updateStore, STORE_WEEKDAYS } from '../../lib/stores.js';
+import { DEFAULT_STORE_HOURS } from '../../lib/store-hours.js';
 import {
   getProductsByStoreId,
   createProduct,
@@ -21,6 +22,7 @@ import type { Order } from '../../lib/orders.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, generateCombos, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
+import { getCategoriesByStoreId, buildCategoryTree, categoryPath } from '../../lib/store-categories.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
 // first rows) so seeding legacy combos never silently changes the sum.
@@ -169,6 +171,9 @@ const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1
 const products = store
   ? getProductsByStoreId(store.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   : [];
+const storeCategoryList = store ? getCategoriesByStoreId(store.id) : [];
+const categoryTree = buildCategoryTree(storeCategoryList);
+const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
 const wishlistCounts = store ? getAllWishlistCounts() : ({} as Record<string, number>);
 const storeFavoriteCount = store ? getFavoriteStoreCount(store.slug) : 0;
 const productCount = products.length;
@@ -458,10 +463,18 @@ const orderStatusColors: Record<string, string> = {
               </label>
 
               <div class="field-row">
-                <label class="field field--narrow">
+                <div class="field field--narrow">
                   <span>{d.categoryLabel}</span>
-                  <input class="input" name="category" placeholder={d.categoryPlaceholder} list="store-categories-list" />
-                </label>
+                  <div class="category-picker" data-category-picker>
+                    <input type="hidden" name="categoryId" value="" />
+                    <button type="button" class="category-picker__trigger" aria-haspopup="true" aria-expanded="false">
+                      <span class="category-picker__label">{d.categoryNone}</span>
+                      <svg class="category-picker__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="category-picker__menu" hidden></div>
+                  </div>
+                  <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">{d.categoryEditHint}</p>
+                </div>
                 <label class="field field--narrow">
                   <span>{d.skuLabel}</span>
                   <input class="input" name="sku" placeholder={d.skuPlaceholder} />
@@ -617,7 +630,7 @@ const orderStatusColors: Record<string, string> = {
                 const pStockFieldValue = pHasVariants ? pVariantCombos.reduce((s, c) => s + c.value, 0) : p.stock;
                 return (
                 <>
-                  <tr data-product-display={p.id} data-store-id={store.id} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={p.category ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
+                  <tr data-product-display={p.id} data-store-id={store.id} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
                     <td class="check-col"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
                     <td class="num row-num">{idx + 1}</td>
                     <td class="thumb-col">
@@ -628,7 +641,7 @@ const orderStatusColors: Record<string, string> = {
                       {p.description && <span class="product-desc">{p.description}</span>}
                     </td>
                     <td class="sku-col">{p.sku || <span style="color:var(--color-border)">—</span>}</td>
-                    <td class="cat-col">{p.category ? <span class="product-cat-chip">{p.category}</span> : <span style="color:var(--color-border)">—</span>}</td>
+                    <td class="cat-col">{productCategoryPaths.get(p.id) ? <span class="product-cat-chip">{productCategoryPaths.get(p.id)}</span> : <span style="color:var(--color-border)">—</span>}</td>
                     <td class="num product-price price-col">{formatPrice(p.price)}</td>
                     <td class="num product-stock stock-col">
                       <span style="display:inline-flex;align-items:center;gap:0.3rem">
@@ -725,10 +738,18 @@ const orderStatusColors: Record<string, string> = {
                         </label>
 
                         <div class="field-row">
-                          <label class="field field--narrow">
+                          <div class="field field--narrow">
                             <span>{d.categoryLabel}</span>
-                            <input class="input" name="category" value={p.category ?? ''} placeholder={d.categoryPlaceholder} list="store-categories-list" />
-                          </label>
+                            <div class="category-picker" data-category-picker>
+                              <input type="hidden" name="categoryId" value={p.categoryId ?? ''} />
+                              <button type="button" class="category-picker__trigger" aria-haspopup="true" aria-expanded="false">
+                                <span class="category-picker__label">{(p.categoryId && productCategoryPaths.get(p.id)) || d.categoryNone}</span>
+                                <svg class="category-picker__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                              </button>
+                              <div class="category-picker__menu" hidden></div>
+                            </div>
+                            <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">{d.categoryEditHint}</p>
+                          </div>
                           <label class="field field--narrow">
                             <span>{d.skuLabel}</span>
                             <input class="input" name="sku" value={p.sku ?? ''} placeholder={d.skuPlaceholder} />
@@ -1238,12 +1259,72 @@ const orderStatusColors: Record<string, string> = {
             <input class="input" name="categories" value={store.categories?.join(', ') ?? ''} placeholder={d.storeCategoriesPlaceholder} />
           </label>
 
+          <div class="field">
+            <label class="details-visible-toggle">
+              <input type="checkbox" name="addressVisible" id="address-visible-toggle" checked={!!store.addressVisible} />
+              <span>{d.showStoreAddress}</span>
+            </label>
+          </div>
+
+          <div id="store-address-field" class="store-details-fields" data-open={String(!!store.addressVisible)}>
+            <label class="field">
+              <span>{d.storeAddress}</span>
+              <input class="input" name="address" value={store.address ?? ''} placeholder={d.storeAddressPlaceholder} />
+            </label>
+          </div>
+
+          <div class="field">
+            <label class="details-visible-toggle">
+              <input type="checkbox" name="hoursVisible" id="hours-visible-toggle" checked={!!store.hoursVisible} />
+              <span>{d.showStoreHours}</span>
+            </label>
+          </div>
+
+          <div id="store-hours-field" class="store-details-fields" data-open={String(!!store.hoursVisible)}>
+            <div class="field">
+              <span>{d.storeHours}</span>
+              <div id="hours-editor" class="hours-editor">
+                {STORE_WEEKDAYS.map((day) => {
+                  const dh = (store.hours ?? DEFAULT_STORE_HOURS)[day];
+                  return (
+                    <div class="hours-row" data-day={day}>
+                      <span class="hours-row__label">{d.storeHoursDay[day]}</span>
+                      <input class="input hours-time" type="time" name={`hours_${day}_open`} value={dh.open} disabled={dh.closed} />
+                      <span class="hours-row__sep">–</span>
+                      <input class="input hours-time" type="time" name={`hours_${day}_close`} value={dh.close} disabled={dh.closed} />
+                      <label class="hours-row__closed">
+                        <input type="checkbox" class="hours-closed-toggle" name={`hours_${day}_closed`} checked={dh.closed} />
+                        {d.storeHoursClosed}
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           <div class="form-actions">
             <button class="btn btn--sm" type="submit">{d.saveChanges}</button>
           </div>
 
           <p id="settings-status" hidden></p>
         </form>
+
+        <div class="dash-panel-header" style="margin-top:2rem">
+          <h2 class="dash-panel-header__title">{d.categoriesTitle}</h2>
+        </div>
+        <p class="muted" style="margin:0 0 1rem;font-size:0.85rem">{d.categoriesHint}</p>
+
+        {store && (
+          <div id="category-tree-editor" class="category-tree-editor" data-store-id={store.id}>
+            <div id="category-tree-list" class="category-tree-list"></div>
+            <form id="add-root-category-form" class="category-add-form">
+              <input type="text" class="input" id="add-root-category-input" placeholder={d.categoryNamePlaceholder} maxlength="40" />
+              <button type="submit" class="btn btn--sm btn--ghost">{d.addRootCategory}</button>
+            </form>
+          </div>
+        )}
+        <script type="application/json" id="category-tree-data" set:html={JSON.stringify(categoryTree)} />
       </div>
 
     </div>
@@ -1698,18 +1779,16 @@ const orderStatusColors: Record<string, string> = {
   </form>
 </dialog>
 
-<datalist id="store-categories-list">
-  {store && (store.categories ?? []).map((cat) => <option value={cat} />)}
-</datalist>
-
 <script>
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
   import { initCleanupModal } from '../../scripts/dashboard/cleanup-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
   import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initProductsToolbar, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
   import { initCsvImport } from '../../scripts/dashboard/csv-import.js';
-  import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs } from '../../scripts/dashboard/ui.js';
+  import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours } from '../../scripts/dashboard/ui.js';
   import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
+  import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
+  import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
   import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 
   const uploadCfg = document.getElementById('upload-config');
@@ -1782,10 +1861,13 @@ const orderStatusColors: Record<string, string> = {
   initStockBreakdowns();
   document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g));
   bindExistingRows(CLOUD, PRESET);
+  document.querySelectorAll<HTMLElement>('.category-picker').forEach(initCategoryPicker);
   initAddProduct(CLOUD, PRESET);
   initProductMenus();
   initDeleteProduct();
   initSettingsForm();
+  initStoreHours();
+  initCategoryTreeEditor();
   initFormToggles();
   initStoreSwitcher();
   initAutoHideStatus();

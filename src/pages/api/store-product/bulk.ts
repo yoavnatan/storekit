@@ -3,8 +3,9 @@ import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
-import { bulkUpsertProducts } from '../../../lib/store-products-bulk.js';
-import { parseCsv, mapHeader, toRawRows, validateRows, productsToCsv, MAX_IMPORT_ROWS } from '../../../lib/csv-bulk.js';
+import { getCategoriesByStoreId } from '../../../lib/store-categories.js';
+import { bulkUpsertProducts, productsToCsv } from '../../../lib/store-products-bulk.js';
+import { parseCsv, mapHeader, toRawRows, validateRows, MAX_IMPORT_ROWS } from '../../../lib/csv-bulk.js';
 import { getLang } from '../../../i18n/index.js';
 import { deleteNotificationsByRelatedIds } from '../../../lib/notifications.js';
 
@@ -22,7 +23,7 @@ export const GET: APIRoute = ({ url, cookies }) => {
   const storeId = url.searchParams.get('storeId') ?? '';
   if (!storeId || !authorizeStore(sellerId, storeId)) return json({ error: 'Not authorized' }, 403);
 
-  const csv = productsToCsv(getProductsByStoreId(storeId), getLang(cookies));
+  const csv = productsToCsv(getProductsByStoreId(storeId), getCategoriesByStoreId(storeId), getLang(cookies));
   return new Response(csv, {
     status: 200,
     headers: {

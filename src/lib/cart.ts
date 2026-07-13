@@ -24,6 +24,12 @@ export interface ActiveStoreCart {
   items: CartItem[];
 }
 
+export interface CartItemAddedDetail {
+  storeSlug: string;
+  storeName: string;
+  item: CartItem;
+}
+
 const KEY_PREFIX = 'store_cart_v2_';
 
 function storeKey(storeSlug: string): string {
@@ -68,7 +74,12 @@ export function addItem(
   storeName: string,
   product: Pick<CartItem, 'slug' | 'name' | 'price' | 'image'> & { stock?: number },
   qty = 1,
-  selectedVariants?: Record<string, string>
+  selectedVariants?: Record<string, string>,
+  // Product cards are the only place with no add-to-cart feedback of their
+  // own — the quick-view modal and the product page already show an inline
+  // "added ✓" state and their own checkout button, which this preview would
+  // otherwise sit on top of. Those call sites pass notify:false.
+  notify = true
 ): void {
   const cart = readStoreCart(storeSlug) ?? { storeName, storeSlug, items: {} };
   cart.storeName = storeName;
@@ -82,6 +93,11 @@ export function addItem(
     ...(selectedVariants && Object.keys(selectedVariants).length ? { selectedVariants } : {}),
   };
   writeStoreCart(cart);
+  if (notify) {
+    window.dispatchEvent(new CustomEvent<CartItemAddedDetail>('cart:item-added', {
+      detail: { storeSlug, storeName: cart.storeName, item: cart.items[key]! },
+    }));
+  }
 }
 
 export function removeItem(storeSlug: string, key: string): void {

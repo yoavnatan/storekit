@@ -1,0 +1,191 @@
+import type { CategoryNode } from '../../lib/store-categories.js';
+
+const MAX_CATEGORY_DEPTH = 3;
+
+function esc(s: string): string {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function getDashI18n(): Record<string, string> {
+  try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}')?.dashboard ?? {}; }
+  catch { return {}; }
+}
+
+export function initCategoryTreeEditor(): void {
+  const root = document.getElementById('category-tree-editor') as HTMLElement | null;
+  const list = document.getElementById('category-tree-list') as HTMLElement | null;
+  const addRootForm = document.getElementById('add-root-category-form') as HTMLFormElement | null;
+  const addRootInput = document.getElementById('add-root-category-input') as HTMLInputElement | null;
+  if (!root || !list) return;
+  const storeId = root.dataset.storeId ?? '';
+
+  let tree: CategoryNode[] = [];
+  try { tree = JSON.parse(document.getElementById('category-tree-data')?.textContent ?? '[]') as CategoryNode[]; }
+  catch { tree = []; }
+
+  // Which node (if any) is mid-rename or has its "add subcategory" row open —
+  // re-rendered into the tree HTML on every change rather than patched in
+  // place, since the tree is small and this keeps the render logic in one spot.
+  let renamingId: string | null = null;
+  let addingUnderId: string | null = null;
+
+  function renderNode(node: CategoryNode, depth: number): string {
+    const i = getDashI18n();
+    const canAddChild = depth + 1 < MAX_CATEGORY_DEPTH;
+    const isRenaming = renamingId === node.id;
+    const isAddingChild = addingUnderId === node.id;
+
+    const rowHtml = isRenaming
+      ? `<input type="text" class="input category-tree__rename-input" value="${esc(node.name)}" maxlength="40" />
+         <button type="button" class="category-tree__btn" data-action="save-rename">${esc(i.saveCategoryName ?? '')}</button>
+         <button type="button" class="category-tree__btn" data-action="cancel-rename">${esc(i.cancelCategoryEdit ?? '')}</button>`
+      : `<span class="category-tree__name">${esc(node.name)}</span>
+         <div class="category-tree__actions">
+           <button type="button" class="category-tree__btn" data-action="move-up" aria-label="${esc(i.categoryMoveUp ?? '')}">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+           </button>
+           <button type="button" class="category-tree__btn" data-action="move-down" aria-label="${esc(i.categoryMoveDown ?? '')}">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+           </button>
+           ${canAddChild ? `<button type="button" class="category-tree__btn" data-action="add-child">+ ${esc(i.addSubcategoryBtn ?? '')}</button>` : ''}
+           <button type="button" class="category-tree__btn" data-action="rename">${esc(i.renameCategory ?? '')}</button>
+           <button type="button" class="category-tree__btn category-tree__btn--danger" data-action="delete"${node.children.length ? ` disabled title="${esc(i.categoryHasChildrenTooltip ?? '')}"` : ''}>${esc(i.deleteCategory ?? '')}</button>
+         </div>`;
+
+    const addChildRowHtml = isAddingChild
+      ? `<li class="category-tree__add-row" style="padding-inline-start:${(depth + 1) * 1.25}rem">
+           <input type="text" class="input category-tree__add-input" placeholder="${esc(i.categoryNamePlaceholder ?? '')}" maxlength="40" />
+           <button type="button" class="category-tree__btn" data-action="save-child">${esc(i.saveCategoryName ?? '')}</button>
+           <button type="button" class="category-tree__btn" data-action="cancel-add">${esc(i.cancelCategoryEdit ?? '')}</button>
+         </li>`
+      : '';
+
+    const childrenHtml = node.children.map((c) => renderNode(c, depth + 1)).join('') + addChildRowHtml;
+
+    return `<li class="category-tree__item" data-category-id="${esc(node.id)}">
+        <div class="category-tree__row" style="padding-inline-start:${depth * 1.25}rem">${rowHtml}</div>
+        ${childrenHtml ? `<ul class="category-tree__children">${childrenHtml}</ul>` : ''}
+      </li>`;
+  }
+
+  function render(): void {
+    const i = getDashI18n();
+    list!.innerHTML = tree.length
+      ? `<ul class="category-tree__list">${tree.map((n) => renderNode(n, 0)).join('')}</ul>`
+      : `<p class="muted category-tree__empty">${esc(i.noCategoriesYet ?? '')}</p>`;
+
+    if (renamingId) {
+      const input = list!.querySelector<HTMLInputElement>(`[data-category-id="${renamingId}"] > .category-tree__row .category-tree__rename-input`);
+      input?.focus();
+      input?.select();
+    }
+    if (addingUnderId) {
+      const addInput = list!.querySelector<HTMLInputElement>(`[data-category-id="${addingUnderId}"] .category-tree__add-input`);
+      addInput?.focus();
+    }
+  }
+
+  async function callApi(action: string, fields: Record<string, string>): Promise<{ ok: boolean; tree?: CategoryNode[]; error?: string }> {
+    const fd = new FormData();
+    fd.set('_action', action);
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    try {
+      const res = await fetch('/api/store-category', { method: 'POST', body: fd });
+      return await res.json() as { ok: boolean; tree?: CategoryNode[]; error?: string };
+    } catch {
+      return { ok: false, error: 'שגיאת רשת.' };
+    }
+  }
+
+  function showError(message: string): void {
+    (window as unknown as { showToast?: (title: string, body: string) => void }).showToast?.(message, '');
+  }
+
+  render();
+
+  addRootForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = addRootInput?.value.trim() ?? '';
+    if (!name) return;
+    const data = await callApi('create-category', { storeId, name, parentId: '' });
+    if (data.ok && data.tree) {
+      tree = data.tree;
+      if (addRootInput) addRootInput.value = '';
+      render();
+    } else if (data.error) showError(data.error);
+  });
+
+  list.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
+    if (!btn || btn.disabled) return;
+    const item = btn.closest<HTMLElement>('.category-tree__item');
+    const categoryId = item?.dataset.categoryId ?? '';
+    const action = btn.dataset.action;
+
+    if (action === 'move-up' || action === 'move-down') {
+      const data = await callApi('move-category', { categoryId, direction: action === 'move-up' ? 'up' : 'down' });
+      if (data.ok && data.tree) { tree = data.tree; render(); }
+      else if (data.error) showError(data.error);
+      return;
+    }
+
+    if (action === 'rename') { renamingId = categoryId; render(); return; }
+    if (action === 'cancel-rename') { renamingId = null; render(); return; }
+
+    if (action === 'save-rename') {
+      const input = item?.querySelector<HTMLInputElement>('.category-tree__rename-input');
+      const name = input?.value.trim() ?? '';
+      if (!name) return;
+      const data = await callApi('rename-category', { categoryId, name });
+      renamingId = null;
+      if (data.ok && data.tree) tree = data.tree;
+      else if (data.error) showError(data.error);
+      render();
+      return;
+    }
+
+    if (action === 'add-child') { addingUnderId = categoryId; render(); return; }
+    if (action === 'cancel-add') { addingUnderId = null; render(); return; }
+
+    if (action === 'save-child') {
+      const input = item?.querySelector<HTMLInputElement>('.category-tree__add-input');
+      const name = input?.value.trim() ?? '';
+      if (!name) return;
+      const data = await callApi('create-category', { storeId, name, parentId: categoryId });
+      addingUnderId = null;
+      if (data.ok && data.tree) tree = data.tree;
+      else if (data.error) showError(data.error);
+      render();
+      return;
+    }
+
+    if (action === 'delete') {
+      const i = getDashI18n();
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: i.deleteCategoryTitle ?? 'Delete category?',
+          message: i.deleteCategoryMsg ?? '',
+          okLabel: i.deleteCategory ?? 'Delete',
+          onConfirm: async () => {
+            const data = await callApi('delete-category', { categoryId });
+            if (data.ok && data.tree) { tree = data.tree; render(); }
+            else if (data.error) showError(data.error);
+          },
+        },
+      }));
+    }
+  });
+
+  // Enter-to-submit inside the inline rename/add inputs, without a <form> wrapper per row.
+  list.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('category-tree__rename-input')) {
+      e.preventDefault();
+      target.closest<HTMLElement>('.category-tree__row')?.querySelector<HTMLButtonElement>('[data-action="save-rename"]')?.click();
+    } else if (target.classList.contains('category-tree__add-input')) {
+      e.preventDefault();
+      target.closest<HTMLElement>('.category-tree__add-row')?.querySelector<HTMLButtonElement>('[data-action="save-child"]')?.click();
+    }
+  });
+}

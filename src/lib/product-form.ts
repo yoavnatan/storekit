@@ -5,8 +5,8 @@ export function parseImages(form: FormData): string[] {
   return form.getAll('images').map(v => String(v).trim()).filter(Boolean);
 }
 
-export function parseCategory(form: FormData): string {
-  return String(form.get('category') ?? '').trim();
+export function parseCategoryId(form: FormData): string {
+  return String(form.get('categoryId') ?? '').trim();
 }
 
 export function parseSku(form: FormData): string {

@@ -6,11 +6,14 @@ import { thumbUrl } from './cloudinary.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, generateCombos, canonicalDimName, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import type { CategoryNode } from '../../lib/store-categories.js';
+import { getCategoryTree } from './category-tree-cache.js';
+import { initCategoryPicker } from './category-picker.js';
 
 export interface ProductData {
   id: string; storeId: string; slug?: string; name: string;
   description: string; price: number; stock: number; images?: string[];
-  category?: string; tags?: string[]; sku?: string;
+  categoryId?: string; tags?: string[]; sku?: string;
   specs?: Array<{ label: string; value: string }>;
   variants?: VariantDimension[];
   variantStock?: Record<string, number>;
@@ -110,11 +113,59 @@ function getRawI18n() {
 function getDashI18n() { return getRawI18n().dashboard ?? {}; }
 function getGalleryI18n() { return getRawI18n().gallery ?? {}; }
 
-function categoryFieldHtml(category: string, i18n: Record<string, string>): string {
-  return `<label class="field field--narrow">
+// Re-derives the bulk-edit button's "ערוך"/"סגור עריכה" label from actual row state (which
+// selected products currently have their edit row open) rather than trusting whatever it was
+// last set to — a row can close via its own save/cancel, not just via this button, and the
+// label needs to reflect that too. Reads selection straight from the checkboxes rather than
+// initBulkSelect's own `selected` closure, since callers outside that closure (a row's own
+// save) have no access to it.
+function refreshBulkEditLabel(): void {
+  const bulkEditBtn = document.getElementById('bulk-edit-btn') as HTMLButtonElement | null;
+  const bulkEditLabel = document.getElementById('bulk-edit-label') as HTMLElement | null;
+  if (!bulkEditBtn || bulkEditBtn.hidden) return;
+
+  const selectedIds = Array.from(document.querySelectorAll<HTMLInputElement>('[data-bulk-check]:checked'))
+    .map((chk) => chk.dataset.bulkCheck ?? '')
+    .filter(Boolean);
+  if (!selectedIds.length) return;
+
+  const anyOpen = selectedIds.some((productId) =>
+    !(document.querySelector<HTMLElement>(`[data-product-edit="${productId}"]`)?.hidden ?? true)
+  );
+  const i = getDashI18n();
+  const label = anyOpen ? (i.bulkEditClose ?? 'סגור עריכה') : (i.bulkEdit ?? 'ערוך');
+  if (bulkEditLabel) bulkEditLabel.textContent = label;
+  bulkEditBtn.setAttribute('aria-label', label);
+}
+
+/** Root-first ancestor chain, joined with " › " — resolves a categoryId to a display path for the products table (chip/sort/filter). */
+function categoryPathFor(categoryId: string): string {
+  function find(nodes: CategoryNode[]): CategoryNode[] | null {
+    for (const node of nodes) {
+      if (node.id === categoryId) return [node];
+      const nested = find(node.children);
+      if (nested) return [node, ...nested];
+    }
+    return null;
+  }
+  const chain = find(getCategoryTree());
+  return chain ? chain.map((n) => n.name).join(' › ') : '';
+}
+
+function categoryFieldHtml(selectedCategoryId: string, i18n: Record<string, string>): string {
+  const label = selectedCategoryId ? (categoryPathFor(selectedCategoryId) || i18n.categoryNone) : i18n.categoryNone;
+  return `<div class="field field--narrow">
     <span>${esc(i18n.categoryLabel ?? 'Category')}</span>
-    <input class="input" name="category" value="${esc(category)}" placeholder="${esc(i18n.categoryPlaceholder ?? '')}" list="store-categories-list">
-  </label>`;
+    <div class="category-picker" data-category-picker>
+      <input type="hidden" name="categoryId" value="${esc(selectedCategoryId)}" />
+      <button type="button" class="category-picker__trigger" aria-haspopup="true" aria-expanded="false">
+        <span class="category-picker__label">${esc(label ?? '')}</span>
+        <svg class="category-picker__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="category-picker__menu" hidden></div>
+    </div>
+    <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">${esc(i18n.categoryEditHint ?? '')}</p>
+  </div>`;
 }
 
 function skuFieldHtml(sku: string, i18n: Record<string, string>): string {
@@ -1149,7 +1200,8 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   display.dataset.sortStock = String(p.stock);
   display.dataset.sortWishlist = '0';
   display.dataset.sortCreatedAt = p.createdAt ?? '';
-  display.dataset.category = p.category ?? '';
+  display.dataset.category = p.categoryId ? categoryPathFor(p.categoryId) : '';
+  display.dataset.categoryId = p.categoryId ?? '';
   display.dataset.productSlug = p.slug ?? '';
   display.dataset.storeSlug = resolvedStoreSlug;
   display.dataset.storeName = resolvedStoreName;
@@ -1163,7 +1215,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
     <td class="sku-col">${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="cat-col">${p.category ? `<span class="product-cat-chip">${esc(p.category)}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
+    <td class="cat-col">${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num product-price price-col">${fmtPrice(p.price)}</td>
     <td class="num product-stock stock-col"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">—</td>
@@ -1205,7 +1257,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
           <label class="field"><span>${i.colStock ?? 'Stock'}</span><input class="input" name="stock" type="number" min="0" step="1" value="${p.stock}"></label>
         </div>
         <label class="field"><span>${i.descLabel ?? 'Description'}</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
-        <div class="field-row">${categoryFieldHtml(p.category ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}</div>
+        <div class="field-row">${categoryFieldHtml(p.categoryId ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}</div>
         ${tagsFieldHtml(p.tags ?? [], i)}
         ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i, p.variantImages ?? {})}
         ${specsEditorHtml(p.specs ?? [], i)}
@@ -1249,7 +1301,7 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
     const fd = new FormData(form);
     fd.set('variants_json', JSON.stringify(collectVariantsPayload(form)));
     const res = await fetch('/api/product', { method: 'POST', body: fd });
-    const data = await res.json() as { ok: boolean; images?: string[]; error?: string };
+    const data = await res.json() as { ok: boolean; images?: string[]; categoryId?: string; categoryPath?: string; error?: string };
     if (!data.ok) {
       submitBtns.forEach(btn => { btn.disabled = false; btn.textContent = origText; });
       showStatus(data.error ?? (i18n.errorSaving ?? 'Error saving.'), true);
@@ -1348,6 +1400,7 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
       // Cancel should revert here, not to the pre-edit snapshot from before
       // this save.
       if (editRow) originalEditHtml.set(editRow, editRow.innerHTML);
+      refreshBulkEditLabel();
     }, 1500);
   } catch {
     submitBtns.forEach(btn => { btn.disabled = false; btn.textContent = origText; });
@@ -1428,6 +1481,8 @@ function bindEditFormInternals(display: HTMLTableRowElement, edit: HTMLTableRowE
   if (gallery) initGalleryWidget(gallery);
   const variantsEditor = edit.querySelector<HTMLElement>('[data-variants-editor]');
   if (variantsEditor) syncTotalStockField(variantsEditor);
+  const categoryPicker = edit.querySelector<HTMLElement>('.category-picker');
+  if (categoryPicker) initCategoryPicker(categoryPicker);
 }
 
 function restoreEditRow(display: HTMLTableRowElement, edit: HTMLTableRowElement, cloud: string, preset: string): void {
@@ -1438,6 +1493,7 @@ function restoreEditRow(display: HTMLTableRowElement, edit: HTMLTableRowElement,
   }
   edit.hidden = true;
   display.hidden = false;
+  refreshBulkEditLabel();
 }
 
 export function attachListeners(display: HTMLTableRowElement, edit: HTMLTableRowElement, cloud: string, preset: string): void {
@@ -1445,6 +1501,7 @@ export function attachListeners(display: HTMLTableRowElement, edit: HTMLTableRow
   display.querySelector('[data-edit-toggle]')?.addEventListener('click', () => {
     display.hidden = true; edit.hidden = false;
     scrollEditRowIntoView(edit);
+    refreshBulkEditLabel();
   });
   bindEditFormInternals(display, edit, cloud, preset);
 }
@@ -2292,6 +2349,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
   const bulkUploadBtn  = document.getElementById('bulk-upload-btn') as HTMLButtonElement | null;
   const bulkUploadLabel = document.getElementById('bulk-upload-label') as HTMLElement | null;
   const bulkEditBtn    = document.getElementById('bulk-edit-btn') as HTMLButtonElement | null;
+  const bulkEditLabel  = document.getElementById('bulk-edit-label') as HTMLElement | null;
 
   const selected = new Set<string>();
   const i = getDashI18n();
@@ -2425,7 +2483,6 @@ export function initBulkSelect(cloud: string, preset: string): void {
   });
 
   // Bulk edit — toggle: if any selected edit row is open → close all; else open all
-  const bulkEditLabel = document.getElementById('bulk-edit-label') as HTMLElement | null;
   bulkEditBtn?.addEventListener('click', () => {
     if (!selected.size) return;
     const anyOpen = Array.from(selected).some((productId) =>
@@ -2446,10 +2503,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
         }
       }
     });
-    if (bulkEditLabel) {
-      bulkEditLabel.textContent = anyOpen ? (i.bulkEdit ?? 'ערוך') : (i.bulkEditClose ?? 'סגור עריכה');
-    }
-    bulkEditBtn?.setAttribute('aria-label', anyOpen ? (i.bulkEdit ?? 'ערוך') : (i.bulkEditClose ?? 'סגור עריכה'));
+    refreshBulkEditLabel();
     selectAllChks.forEach((chk) => { chk.hidden = !anyOpen; });
     if (!anyOpen) firstRow?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });

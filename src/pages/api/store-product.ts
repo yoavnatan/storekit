@@ -29,7 +29,7 @@ export const GET: APIRoute = ({ url }) => {
     description: product.description ?? '',
     stock:       product.stock,
     images:      product.images ?? [],
-    category:    product.category ?? '',
+    categoryId:  product.categoryId ?? '',
     tags:        product.tags ?? [],
     specs:       product.specs ?? [],
     variants:    product.variants ?? [],

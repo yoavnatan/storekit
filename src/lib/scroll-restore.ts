@@ -3,11 +3,16 @@ const PREFIX = 'store_scroll_';
 interface StoreScrollState {
   scrollY: number;
   search: string; // the store's filter/sort/search query string active when the user left
+  // How many product cards were loaded (via "load more") when the user left. The grid is
+  // server-paginated, so restoring scrollY only lands in the right place once load-more has
+  // caught back up to at least this many cards — otherwise scrollY points past whatever the
+  // fresh page happened to render.
+  loadedCount: number;
 }
 
-export function saveStoreScroll(slug: string, search: string): void {
+export function saveStoreScroll(slug: string, search: string, loadedCount: number): void {
   try {
-    const state: StoreScrollState = { scrollY: window.scrollY, search };
+    const state: StoreScrollState = { scrollY: window.scrollY, search, loadedCount };
     sessionStorage.setItem(PREFIX + slug, JSON.stringify(state));
   } catch {}
 }
@@ -30,7 +35,7 @@ function isLegitReturn(slug: string): boolean {
 
 // Call before the page reads its own URL params: rewrites the address bar's
 // query string to the one active when the user left, so filter/sort/search
-// re-apply and the grid's layout matches before scroll position is restored.
+// re-apply before scroll position is restored.
 export function applyStoreScrollQuery(slug: string): void {
   try {
     if (!isLegitReturn(slug)) return;
@@ -43,7 +48,21 @@ export function applyStoreScrollQuery(slug: string): void {
   } catch {}
 }
 
-// Call after filters have been applied and the grid has its final layout.
+// Non-destructive read — call once the grid's initial (SSR'd) page is in place,
+// to find out whether more pages need loading before scroll position means
+// anything. Does NOT clear the saved state; restoreStoreScroll() does that.
+export function peekStoreScrollState(slug: string): StoreScrollState | null {
+  try {
+    if (!isLegitReturn(slug)) return null;
+    const raw = sessionStorage.getItem(PREFIX + slug);
+    return raw ? (JSON.parse(raw) as StoreScrollState) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Call once the grid has caught up to the saved loadedCount (or has no more
+// pages to give) — the final step, after which the saved state is discarded.
 export function restoreStoreScroll(slug: string): void {
   try {
     const raw = sessionStorage.getItem(PREFIX + slug);

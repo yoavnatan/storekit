@@ -75,6 +75,28 @@ export function initFormToggles(): void {
   });
 }
 
+export function initStoreHours(): void {
+  const container = document.getElementById('hours-editor');
+  container?.addEventListener('change', (e) => {
+    const target = e.target as HTMLInputElement;
+    if (!target.matches('.hours-closed-toggle')) return;
+    target.closest('.hours-row')?.querySelectorAll<HTMLInputElement>('.hours-time')
+      .forEach((input) => { input.disabled = target.checked; });
+  });
+
+  const visibilityToggles: [string, string][] = [
+    ['address-visible-toggle', 'store-address-field'],
+    ['hours-visible-toggle', 'store-hours-field'],
+  ];
+  for (const [toggleId, fieldsId] of visibilityToggles) {
+    const toggle = document.getElementById(toggleId) as HTMLInputElement | null;
+    const fieldsWrap = document.getElementById(fieldsId);
+    toggle?.addEventListener('change', () => {
+      fieldsWrap?.setAttribute('data-open', String(toggle.checked));
+    });
+  }
+}
+
 export function initStoreSwitcher(): void {
   const btn  = document.getElementById('store-switcher-btn') as HTMLButtonElement | null;
   const menu = document.getElementById('store-switcher-menu') as HTMLElement | null;

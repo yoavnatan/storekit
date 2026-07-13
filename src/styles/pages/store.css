@@ -1,17 +1,19 @@
 .store-page { min-height: 60vh; }
 
-/* Vertical rhythm for this whole section is a single 2rem unit: header→banner
-   (this padding-top), banner→details (.store-banner__image-wrap's
-   margin-bottom), and details→products (padding-bottom here + the matching
-   override on the section right after, since that section's own global
-   padding-top would otherwise stack on top of this one). */
+/* Vertical rhythm: header→banner is a 2rem unit (this padding-top), banner→
+   details is the same 2rem unit (.store-banner__image-wrap's margin-bottom).
+   details→categories/products is intentionally tighter — this was a
+   combined 4rem gap (banner's own 2rem bottom padding + the next section's
+   own 2rem top padding stacking on top of it), which read as a lot of dead
+   air right above the category chips. */
 .store-banner {
   background: var(--color-surface);
-  padding: 2rem 0;
+  padding-top: 2rem;
+  padding-bottom: 1rem;
 }
 
 .store-banner + .section {
-  padding-top: 2rem;
+  padding-top: 0.75rem;
 }
 
 /* Banner image — its own framed block (radius + shadow-card, same
@@ -109,16 +111,145 @@
   color: var(--color-muted);
 }
 
+/* Native <details> — a quiet, zero-JS disclosure so address/hours don't
+   crowd the banner by default (this is a store's public storefront, not a
+   dashboard — these details should be a click away, not always on).
+   position:relative + the content panel below being position:absolute keeps
+   it floating over the page instead of pushing the product grid down when
+   opened. */
+.store-details { position: relative; margin-top: 0.65rem; }
+
+.store-details__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.store-details__summary::-webkit-details-marker { display: none; }
+
+.store-details__summary:hover { color: var(--color-text); }
+
+.store-details__chevron { transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.store-details[open] .store-details__chevron { transform: rotate(180deg); }
+
+.store-details__content {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  inset-inline-start: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 2rem));
+}
+
+.store-details__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.83rem;
+  color: var(--color-muted);
+  text-decoration: none;
+}
+
+.store-details__item--link { color: var(--color-primary); cursor: pointer; }
+.store-details__item--link:hover { text-decoration: underline; }
+
+.store-details__hours-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+/* Store controls block: breadcrumb (own full-width row, only when drilled
+   into a category) stacked above the chips+sort row, so neither ever
+   competes for the same line as the other. */
+.store-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.store-controls__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.category-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sort-dropdown-wrap {
+  position: relative;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
+
+.category-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.category-breadcrumb__crumb {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.category-breadcrumb__crumb:hover {
+  text-decoration: underline;
+}
+
+.category-breadcrumb__sep {
+  color: var(--color-muted);
+}
+
+.category-breadcrumb__current {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
 .category-chip {
   border: 1px solid var(--color-border);
   border-radius: 9999px;
-  padding: 0.22rem 0.8rem;
-  font-size: 0.78rem;
-  font-weight: 400;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 500;
   line-height: 1.5;
   cursor: pointer;
-  background: none;
-  color: var(--color-muted);
+  background: var(--color-bg);
+  color: var(--color-text);
   font-family: inherit;
   transition: background 0.13s, color 0.13s, border-color 0.13s;
   white-space: nowrap;
@@ -143,6 +274,33 @@
   background: color-mix(in srgb, var(--color-primary) 87%, #000);
   border-color: color-mix(in srgb, var(--color-primary) 87%, #000);
   color: #fff;
+}
+
+/* Sort trigger — same pill dimensions as .category-chip so it reads as part
+   of the same control row instead of a taller, differently-styled input. */
+.sort-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background 0.13s, color 0.13s, border-color 0.13s;
+}
+
+.sort-trigger:hover,
+.sort-trigger[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
 }
 
 #sort-trigger[aria-expanded="true"] {
@@ -176,6 +334,39 @@
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
   gap: 0.75rem;
 }
+
+/* Cards injected by "load more" fade + rise in, staggered per card via an
+   inline animation-delay set in JS — same spring easing as the rest of the
+   site's tactile-depth language, not a generic linear fade. */
+@keyframes product-card-enter {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.product-card--entering { animation: product-card-enter 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .product-card--entering { animation: none; }
+}
+
+.load-more-wrap { display: flex; justify-content: center; margin-top: 2rem; }
+
+.load-more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.load-more-btn:hover { border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border)); box-shadow: var(--shadow-xs); }
+.load-more-btn:active { transform: scale(0.97); }
+.load-more-btn:disabled { cursor: default; opacity: 0.7; }
 
 /* Tactile depth (see product page's related-card): secondary/list-item
    card, so a 1px border + shadow-xs at rest (the stronger 1.5px/shadow-card
