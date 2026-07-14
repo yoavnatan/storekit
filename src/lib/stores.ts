@@ -104,6 +104,10 @@ export function getStoreBySlug(slug: string): Store | null {
   return readStores().find((s) => s.slug === slug) ?? null;
 }
 
+export function getStoreById(id: string): Store | null {
+  return readStores().find((s) => s.id === id) ?? null;
+}
+
 export function getAllStores(): Store[] {
   return readStores();
 }

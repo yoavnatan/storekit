@@ -64,6 +64,7 @@ const paymentLabel: Record<string, string> = {
             data-order-id={o.id}
             data-shipping-status={o.shippingStatus}
             data-payment-status={o.paymentStatus}
+            data-stores={uniqueStores.join('|')}
             data-sort-date={o.createdAt}
             data-sort-amount={o.totalAmount}
             data-search={searchStr}

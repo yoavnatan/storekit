@@ -10,6 +10,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-panel-subtitle { font-size: 0.95rem; font-weight: 600; margin: 1.5rem 0 1rem; }
 
 /* ── Messages tab: new-conversation composer ── */
+.admin-msg-compose-toggle-row { margin-bottom: 1rem; }
 .admin-msg-compose {
   display: flex;
   flex-direction: column;
@@ -131,6 +132,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   color: var(--color-text);
   flex-wrap: wrap;
 }
+.admin-seller-card__actions { display: flex; align-items: center; }
 .admin-seller-card__body {
   padding: 0 1.1rem 1rem;
   border-top: 1px solid var(--color-border);

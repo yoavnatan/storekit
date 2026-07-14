@@ -19,7 +19,9 @@ const PAYMENT_COLORS: Record<string, string> = { pending: '#f59e0b', paid: '#16a
 const SHIPPING_RANK: Record<string, number> = { pending: 0, processing: 1, ready: 2, shipped: 3, delivered: 4 };
 
 type SortCol = 'date' | 'amount' | 'shippingStatus';
-type FilterCol = 'shippingStatus' | 'paymentStatus';
+type FilterCol = 'shippingStatus' | 'paymentStatus' | 'store';
+
+type FilterColumnDef = { col: FilterCol; label: string; values: string[]; labels: Record<string, string>; colors: Record<string, string> };
 
 const SORT_OPTIONS: { col: SortCol; dir: 'asc' | 'desc'; label: string }[] = [
   { col: 'date', dir: 'desc', label: 'תאריך: חדש — ישן' },
@@ -29,7 +31,12 @@ const SORT_OPTIONS: { col: SortCol; dir: 'asc' | 'desc'; label: string }[] = [
   { col: 'shippingStatus', dir: 'asc', label: 'סטטוס משלוח: הזמנות חדשות קודם' },
 ];
 
-const FILTER_COLUMNS: { col: FilterCol; label: string; values: string[]; labels: Record<string, string>; colors: Record<string, string> }[] = [
+// shippingStatus/paymentStatus have a fixed enum; store is cross-store admin
+// data with no fixed set — its `values`/`labels` get filled in at init time
+// from whatever stores actually appear across the rendered orders (see
+// buildFilterColumns below), same "no meaning to filter on" principle that
+// already excluded phone number.
+const STATIC_FILTER_COLUMNS: FilterColumnDef[] = [
   { col: 'shippingStatus', label: 'סטטוס משלוח', values: ['pending', 'processing', 'ready', 'shipped', 'delivered'], labels: SHIPPING_LABELS, colors: SHIPPING_COLORS },
   { col: 'paymentStatus', label: 'סטטוס תשלום', values: ['pending', 'paid', 'failed'], labels: PAYMENT_LABELS, colors: PAYMENT_COLORS },
 ];
@@ -43,6 +50,15 @@ export function initAdminOrdersFilter(): void {
   const noMatchEl = document.getElementById('admin-orders-filter-empty');
   const cards = () => [...list.querySelectorAll<HTMLElement>('.order-card')];
 
+  // Store filter's values aren't known until we see what's actually on the
+  // page — collected once here from every card's data-stores (pipe-separated,
+  // an order can span multiple stores).
+  const storeNames = [...new Set(cards().flatMap((c) => (c.dataset.stores ?? '').split('|').filter(Boolean)))].sort((a, b) => a.localeCompare(b, 'he'));
+  const FILTER_COLUMNS: FilterColumnDef[] = [
+    ...STATIC_FILTER_COLUMNS,
+    { col: 'store', label: 'חנות', values: storeNames, labels: Object.fromEntries(storeNames.map((s) => [s, s])), colors: {} },
+  ];
+
   let query = '';
   const activeFilters = new Map<FilterCol, Set<string>>();
   let sortCol: SortCol = 'date';
@@ -51,6 +67,11 @@ export function initAdminOrdersFilter(): void {
   function cardMatchesFilters(card: HTMLElement): boolean {
     for (const [col, values] of activeFilters) {
       if (values.size === 0) continue;
+      if (col === 'store') {
+        const cardStores = (card.dataset.stores ?? '').split('|');
+        if (!cardStores.some((s) => values.has(s))) return false;
+        continue;
+      }
       const v = col === 'shippingStatus' ? card.dataset.shippingStatus : card.dataset.paymentStatus;
       if (!values.has(v ?? '')) return false;
     }
@@ -155,7 +176,7 @@ export function initAdminOrdersFilter(): void {
       ...fc.values.map((v) => `
         <label class="product-menu__checkbox-item">
           <input type="checkbox" data-filter-value="${v}" ${selected.has(v) ? 'checked' : ''} />
-          <span class="order-status-dot" style="background:${fc.colors[v]}"></span>
+          ${fc.colors[v] ? `<span class="order-status-dot" style="background:${fc.colors[v]}"></span>` : ''}
           ${fc.labels[v]}
         </label>`).join(''),
       `<div class="product-menu__divider"></div>`,

@@ -52,7 +52,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     userId: sellerId,
     role: 'seller',
     type: 'admin_message',
-    title: 'הודעה חדשה מהמנהל',
+    title: 'הודעת מערכת חדשה',
     body: content.slice(0, 120),
     relatedId: message.id,
   });

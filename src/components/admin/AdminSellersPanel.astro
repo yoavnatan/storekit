@@ -14,6 +14,7 @@ function fmtDate(iso: string): string {
 {sellerCards.length === 0 ? (
   <p class="admin-empty">אין מוכרים עדיין.</p>
 ) : (
+  <Fragment>
   <div class="admin-seller-list">
     {sellerCards.map(({ seller, stores, totalProducts }) => (
       <details class="admin-seller-card">
@@ -26,11 +27,15 @@ function fmtDate(iso: string): string {
             <span>{stores.length} חנויות</span>
             <span>{totalProducts} מוצרים</span>
             <span class="muted">הצטרף/ה {fmtDate(seller.createdAt)}</span>
-            <a
-              href={`/admin?panel=messages&sellerId=${seller.id}`}
-              class="admin-link"
+          </div>
+          <div class="admin-seller-card__actions">
+            <button
+              type="button"
+              class="btn btn--sm btn--ghost admin-msg-open-modal"
+              data-seller-id={seller.id}
+              data-seller-name={seller.name}
               onclick="event.stopPropagation()"
-            >שלח הודעה</a>
+            >שלח הודעה</button>
           </div>
         </summary>
         <div class="admin-seller-card__body">
@@ -93,4 +98,21 @@ function fmtDate(iso: string): string {
       </details>
     ))}
   </div>
+
+  <dialog id="admin-seller-msg-modal" aria-labelledby="admin-seller-msg-modal-title" style="border:none;border-radius:14px;padding:0;width:min(480px,94vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">
+      <h2 id="admin-seller-msg-modal-title" style="font-size:0.95rem;font-weight:700;margin:0">הודעה חדשה</h2>
+      <button type="button" id="admin-seller-msg-modal-close" aria-label="סגור" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:none;background:none;color:var(--color-muted);cursor:pointer">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="padding:1.25rem;display:flex;flex-direction:column;gap:0.75rem">
+      <input type="hidden" id="admin-seller-msg-modal-seller-id" value="" />
+      <textarea id="admin-seller-msg-modal-textarea" class="seller-msg-reply-textarea" placeholder="כתוב הודעה..." rows="4"></textarea>
+      <div style="display:flex;justify-content:flex-end">
+        <button type="button" id="admin-seller-msg-modal-send" class="btn btn--accent btn--sm">שלח הודעה</button>
+      </div>
+    </div>
+  </dialog>
+  </Fragment>
 )}

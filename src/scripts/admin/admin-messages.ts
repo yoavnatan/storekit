@@ -140,6 +140,16 @@ export function initAdminMessagesPanel(): void {
 
   initAdminMsgSellerDropdown(sellers);
 
+  const composeToggle = document.getElementById('admin-msg-compose-toggle') as HTMLButtonElement | null;
+  const composeEl = document.getElementById('admin-msg-compose');
+  composeToggle?.addEventListener('click', () => {
+    if (!composeEl) return;
+    const open = composeEl.hidden;
+    composeEl.hidden = !open;
+    composeToggle.setAttribute('aria-expanded', String(open));
+    if (open) composeEl.querySelector<HTMLElement>('.admin-msg-seller-dd__btn')?.focus();
+  });
+
   document.querySelectorAll<HTMLElement>('#admin-msg-table [data-seller-id]').forEach((row) => wireThreadRow(row, sellers));
 
   const sendNewBtn = document.getElementById('admin-msg-send-new') as HTMLButtonElement | null;
@@ -177,6 +187,8 @@ export function initAdminMessagesPanel(): void {
         if (contentInput) contentInput.value = '';
         if (sellerSelect) sellerSelect.value = '';
         resetAdminMsgSellerDropdown();
+        if (composeEl) composeEl.hidden = true;
+        composeToggle?.setAttribute('aria-expanded', 'false');
       }
     } catch { /* ignore */ } finally {
       sendNewBtn.disabled = false;

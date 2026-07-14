@@ -114,4 +114,4 @@ Keep it simple.
 - **GTM container setup** — triggers: `view_item` → GA4, `add_to_cart` → GA4. ה-dataLayer כבר מוכן.
 
 ## Recommended next step
-שני הסעיפים מוזגו ל-main מקומית (לא נדחף עדיין) — כדאי להריץ בדיקה כוללת אחת (tsc + npm test) על התוצאה המשולבת, כי כל סעיף נבדק בנפרד ולא ביחד.
+כדאי לבדוק ויזואלית בדפדפן את דשבורד האדמין (עדיין לא נבדק חזותית, רק tsc/טסטים), ואז לדחוף (push) את השינויים המקומיים ל-origin.

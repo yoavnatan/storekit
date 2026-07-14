@@ -60,14 +60,4 @@ export function initAdminMsgSellerDropdown(sellers: Map<string, AdminMsgSellerIn
   menu.querySelectorAll<HTMLButtonElement>('[role="option"]').forEach((opt) => {
     opt.addEventListener('click', () => { selectSeller(opt.dataset.sellerId ?? ''); close(); });
   });
-
-  // Deep-link from a seller card's "שלח הודעה" link (AdminSellersPanel):
-  // /admin?panel=messages&sellerId=<id> — pre-select that seller and bring
-  // the composer into view instead of leaving the picker empty.
-  const preselect = new URLSearchParams(window.location.search).get('sellerId');
-  if (preselect && sellers.has(preselect)) {
-    selectSeller(preselect);
-    dd.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    document.getElementById('admin-msg-new-content')?.focus();
-  }
 }
