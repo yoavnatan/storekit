@@ -36,6 +36,7 @@
 @import './pages/product.css';
 @import './pages/admin.css';
 @import './pages/stores.css';
+@import './pages/search.css';
 
 /* Utilities */
 @import './utilities/utils.css';

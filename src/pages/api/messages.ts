@@ -133,6 +133,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       title: isSeller ? 'יש לך הודעה חדשה ממוכר' : 'יש לך הודעה חדשה מקונה',
       body: '',
       relatedId: reply.id,
+      storeName: original.toStoreName,
     });
 
     return new Response(JSON.stringify({ ok: true, message: reply }), {
@@ -165,6 +166,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     title: 'יש לך הודעה חדשה מקונה',
     body: '',
     relatedId: msg.id,
+    storeName: toStoreName ?? '',
   });
 
   return new Response(JSON.stringify({ ok: true, message: msg }), {

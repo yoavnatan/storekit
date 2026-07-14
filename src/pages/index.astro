@@ -247,10 +247,6 @@ const jsonLd = {
           </div>
         </section>
       ))}
-
-      <p id="no-results" hidden class="text-center text-[var(--color-muted)] text-sm py-10 container">
-        {t.home.noResults}
-      </p>
     </div>
   )}
 
@@ -300,8 +296,6 @@ const jsonLd = {
   </div>{/* .home-body */}
 
 </BaseLayout>
-
-<script is:inline type="application/json" id="home-search-stores-data" set:html={JSON.stringify(stores.map(s => ({ name: s.name, slug: s.slug, tagline: s.tagline ?? '', description: s.description ?? '' })))} />
 
 <script>
   import { spawnRipple } from '../lib/ripple.js';

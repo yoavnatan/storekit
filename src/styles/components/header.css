@@ -15,6 +15,18 @@
 /* compensate for fixed header height (padding × 2 + user-btn height + border) */
 body { padding-top: 3.3rem; }
 
+/* storeMode's header row (was an inline style — moved out to a real rule so the
+   desktop media query below can override `display` to grid when a search bar
+   is present; an inline style can't be beaten by any external rule short of
+   !important). `:not(.flex)` scopes this to storeMode's plain `container`
+   class only — the non-storeMode `container between flex` variant already
+   gets its own display:flex from the shared `.flex` utility class. */
+.site-header .container:not(.flex) {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
 .logo { font-weight: 800; font-size: 1.15rem; color: var(--color-text); letter-spacing: -0.01em; }
 
 nav ul { margin: 0; }
@@ -172,6 +184,61 @@ nav a:hover { color: var(--color-text); }
   min-width: 0;
   max-width: 300px;
 }
+/* Desktop only — ≤640px it's teleported into the mobile icon+panel instead,
+   see below, where the 300px default above still applies. */
+@media (min-width: 641px) {
+  /* True centering — a holy-grail 3-column grid, not flex + margin:auto.
+     Margin-auto only centers the search bar within the *leftover gap* next
+     to the logo/actions, which visibly disagrees with anything genuinely
+     centered on the page (e.g. the homepage hero title) unless the logo and
+     actions cluster happen to be exactly the same width. Both outer tracks
+     are equal `1fr`s regardless of the logo/actions' own content width, so
+     the middle column always lands exactly on the row's true center. */
+  .site-header .container:has(> .header-search) {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+  }
+  .site-header .container:has(> .header-search) > *:first-child {
+    grid-column: 1;
+    justify-self: start;
+    min-width: 0;
+    max-width: 260px;
+  }
+  .site-header .container:has(> .header-search) > .header-search {
+    grid-column: 2;
+    justify-self: center;
+  }
+  .site-header .container:has(> .header-search) > .header-actions {
+    grid-column: 3;
+    justify-self: end;
+  }
+  /* The only page where this pill and a search bar can coexist is /stores
+     (a buyer returning from a store they were browsing) — with no 4th grid
+     track to give it, an unplaced item would auto-place into the search's
+     own column 2 and get bumped to a second row instead, breaking the whole
+     row's height. Hidden here specifically; every other page it appears on
+     (checkout, messages, notifications...) never renders a .header-search. */
+  .site-header .container:has(> .header-search) > .back-to-store-pill {
+    display: none;
+  }
+  .header-search {
+    /* Width scales down with the viewport itself (min(480px, 38vw)) instead
+       of staying rigid at 480px until the row runs out of room — starts
+       giving up width earlier, so there's always real breathing room on
+       both sides rather than hugging the logo/icons. */
+    width: min(480px, 38vw);
+    max-width: 480px;
+    min-width: 160px;
+    transition: width 0.2s ease;
+    animation: header-search-in 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  }
+}
+
+@keyframes header-search-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 .header-search__input {
   width: 100%;
@@ -278,25 +345,44 @@ nav a:hover { color: var(--color-text); }
 }
 .hsd-result-item:hover { background: var(--color-bg); }
 
+.hsd-result-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
 .hsd-result-img {
-  width: 36px;
-  height: 36px;
-  border-radius: 4px;
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
   object-fit: cover;
   flex-shrink: 0;
-  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .hsd-result-img-placeholder {
-  width: 36px;
-  height: 36px;
-  border-radius: 4px;
-  background: var(--color-bg);
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--color-muted);
+}
+
+.hsd-result-store {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hsd-result-name {
@@ -322,8 +408,31 @@ nav a:hover { color: var(--color-text); }
   text-align: center;
 }
 
+.hsd-view-all {
+  display: block;
+  width: 100%;
+  margin-top: 0.15rem;
+  padding: 0.5rem;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.hsd-view-all:hover { background: var(--color-bg); }
 
-/* Store mode header logo column */
+
+/* Store mode header logo column. flex:1 1 0 (grows to push the header icons to
+   the row's far edge) is what a search-less storeMode page (checkout, admin)
+   wants; a page that also renders a search bar switches its whole container
+   to the 3-column centering grid above instead, which overrides this via
+   `.container:has(> .header-search) > *:first-child`. */
 .store-header__logo-col {
   flex: 1 1 0;
   min-width: 0;

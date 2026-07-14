@@ -17,7 +17,8 @@ export interface ProductListingQuery {
 // Normalize Hebrew text for search: remove nikud, normalize sofit letters, collapse punctuation.
 // Kept byte-for-byte identical to the store page's own client-side copy (used for instant
 // re-filtering before a server round-trip resolves) so results never disagree between the two.
-function normalizeHe(str: string): string {
+// Exported for site-search.ts (platform-wide store+product search) — same word-match rules apply.
+export function normalizeHe(str: string): string {
   return str
     .toLowerCase()
     .replace(/[ְ-ׇֽֿׁׂׅׄ]/g, '') // nikud
@@ -28,11 +29,15 @@ function normalizeHe(str: string): string {
     .replace(/\s+/g, ' ').trim();
 }
 
-function matchesSearch(query: string, name: string, tags: string): boolean {
+export function matchesQueryWords(query: string, haystack: string): boolean {
   if (!query) return true;
   const nQuery = normalizeHe(query);
-  const nCombined = normalizeHe(name) + ' ' + normalizeHe(tags.replace(/,/g, ' '));
-  return nQuery.split(' ').every((word) => word && nCombined.includes(word));
+  const nHaystack = normalizeHe(haystack);
+  return nQuery.split(' ').every((word) => word && nHaystack.includes(word));
+}
+
+function matchesSearch(query: string, name: string, tags: string): boolean {
+  return matchesQueryWords(query, `${name} ${tags.replace(/,/g, ' ')}`);
 }
 
 /** Single source of truth for category+search+sort — used server-side by both the store page's initial render and the load-more API, so behavior never drifts between the two. */

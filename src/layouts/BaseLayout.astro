@@ -127,6 +127,7 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
     <ToastContainer />
     <MessageCompose />
     <script>import '../lib/cart-sync.js';</script>
+    <script>import { initErrorReporter } from '../scripts/error-reporter.js'; initErrorReporter();</script>
     {sessionUserId && (
       <script is:inline set:html={`
 (function(){
@@ -161,7 +162,8 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
       if(toToast.length>0){
         toToast.slice(0,3).forEach(function(n){
           var href=n.type==='new_message'?'/seller/dashboard?panel=messages':(n.type==='new_order'||n.type==='order_update')?'/seller/dashboard?panel=orders':'/buyer/dashboard?tab=messages';
-          window.dispatchEvent(new CustomEvent('toast:show',{detail:{title:n.title,body:n.body,key:n.relatedId||n.id,href:href}}));
+          var body=n.storeName?(n.body?n.storeName+' — '+n.body:n.storeName):n.body;
+          window.dispatchEvent(new CustomEvent('toast:show',{detail:{title:n.title,body:body,key:n.relatedId||n.id,href:href}}));
         });
       }
       isFirstEverCheck=false;

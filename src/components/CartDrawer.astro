@@ -111,6 +111,7 @@
     }
 
     const grandTotal = getGrandTotal();
+    const singleStore = carts.length === 1;
 
     lines.innerHTML = carts.map((c) => `
       <div class="cart-store-group" data-store-slug="${esc(c.storeSlug)}">
@@ -149,11 +150,11 @@
         </div>
         <div class="cart-store-group__foot">
           <div class="flex between" style="font-size:0.88rem">
-            <span>${i18n.subtotal ?? 'Subtotal'}</span>
+            <span>${singleStore ? (i18n.cartTotal ?? 'Cart total') : (i18n.subtotal ?? 'Subtotal')}</span>
             <strong>${formatPrice(getSubtotal(c.storeSlug))}</strong>
           </div>
           <a href="/checkout?store=${esc(c.storeSlug)}" class="btn btn--accent cart-checkout">
-            ${i18n.checkout ?? 'Checkout'} — ${esc(c.storeName)}
+            ${singleStore ? (i18n.checkout ?? 'Checkout') : `${i18n.checkout ?? 'Checkout'} — ${esc(c.storeName)}`}
           </a>
         </div>
       </div>`).join('<hr class="cart-store-divider">') +

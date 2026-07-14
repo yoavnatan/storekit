@@ -193,7 +193,9 @@
 
 .notif-empty { color: var(--color-muted); font-size: 0.85rem; text-align: center; padding: 1.5rem 1rem; margin: 0; }
 .notif-item {
+  position: relative;
   padding: 0.7rem 1rem;
+  padding-inline-end: 2rem;
   border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   transition: background 0.1s;
@@ -205,6 +207,20 @@
 .notif-item__title { font-size: 0.84rem; font-weight: 600; color: var(--color-text); margin-bottom: 2px; }
 .notif-item__body { font-size: 0.79rem; color: var(--color-muted); line-height: 1.4; }
 .notif-item__time { font-size: 0.72rem; color: var(--color-muted); margin-top: 3px; }
+.notif-item__delete {
+  position: absolute; top: 0.6rem; inset-inline-end: 0.5rem;
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 6px; border: none; background: none;
+  color: var(--color-muted); cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.notif-item__delete:hover { background: var(--color-border); color: var(--color-text); }
+.notif-clear-all-btn {
+  font-size: 0.75rem; color: var(--color-accent);
+  background: none; border: none; cursor: pointer; font-family: inherit; padding: 0;
+}
+.notif-clear-all-btn:hover { text-decoration: underline; }
 
 /* ── Seller dashboard messages tab ──────────────────────── */
 /* ── Seller messages ── */

@@ -1,0 +1,35 @@
+---
+import { formatPrice } from '../../config/store.config.js';
+import type { PlatformOverview } from '../../lib/admin-stats.js';
+
+interface Props {
+  overview: PlatformOverview;
+  attentionCount: number;
+}
+const { overview, attentionCount } = Astro.props;
+---
+
+<div class="admin-stat-grid">
+  <div class="admin-stat-card">
+    <dt>מוכרים</dt>
+    <dd>{overview.totalSellers}</dd>
+  </div>
+  <div class="admin-stat-card">
+    <dt>חנויות</dt>
+    <dd>{overview.totalStores}</dd>
+  </div>
+  <div class="admin-stat-card">
+    <dt>הזמנות</dt>
+    <dd>{overview.totalOrders}</dd>
+  </div>
+  <div class="admin-stat-card">
+    <dt>סה"כ הכנסות פלטפורמה</dt>
+    <dd>{formatPrice(overview.totalRevenue)}</dd>
+  </div>
+  {attentionCount > 0 && (
+    <div class="admin-stat-card admin-stat-card--warning">
+      <dt>חנויות לתשומת לב</dt>
+      <dd>{attentionCount}</dd>
+    </div>
+  )}
+</div>

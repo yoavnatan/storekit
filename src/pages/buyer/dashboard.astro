@@ -1523,5 +1523,3 @@ const shipLabel: Record<string, string> = {
   }
   setInterval(pollBuyerUnread, 15000);
 </script>
-
-<script is:inline type="application/json" id="home-search-stores-data" set:html={JSON.stringify(getAllStores().map(s => ({ name: s.name, slug: s.slug, tagline: s.tagline ?? '', description: s.description ?? '' })))} />

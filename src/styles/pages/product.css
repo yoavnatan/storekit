@@ -47,6 +47,7 @@
    Crisper borders + soft layered shadows so key surfaces read as
    raised/recessed, without going full neumorphism or brutalist. */
 .product-detail-page #main-img-wrap {
+  background: var(--color-surface);
   border: 1.5px solid var(--color-border);
   box-shadow: var(--shadow-card);
   transition: box-shadow 0.25s ease;
@@ -69,7 +70,7 @@
 .product-detail-page #main-img-wrap.is-loading #main-img,
 .product-detail-page .thumb-btn.is-loading img { opacity: 0; }
 
-.product-detail-page .thumb-btn { box-shadow: var(--shadow-xs); }
+.product-detail-page .thumb-btn { background: var(--color-surface); box-shadow: var(--shadow-xs); }
 
 .product-detail-page .variant-opt[aria-pressed="true"] { box-shadow: var(--shadow-xs); }
 

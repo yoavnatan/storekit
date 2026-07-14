@@ -9,6 +9,7 @@ import { createNotification } from '../../lib/notifications.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getUserCart, saveUserCart } from '../../lib/user-carts.js';
 import { makeCartKey } from '../../lib/cart.js';
+import { logError } from '../../lib/error-log.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -78,7 +79,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // Deferred until the order actually commits — a downstream failure rolls the
   // reservation back below, and a stray stock alert for a purchase that never
   // went through would be a false positive.
-  const stockAlerts: { type: 'low_stock' | 'out_of_stock'; sellerId: string; productId: string; productName: string; stockAfter: number; selectedVariants?: Record<string, string> }[] = [];
+  const stockAlerts: { type: 'low_stock' | 'out_of_stock'; sellerId: string; storeSlug: string; storeName: string; productId: string; productName: string; stockAfter: number; selectedVariants?: Record<string, string> }[] = [];
 
   for (const raw of items) {
     const item = raw as CartItemInput;
@@ -122,9 +123,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // gets the more severe out-of-stock alert — low-stock is implied by it, and
     // sending both for the same event is redundant noise, not "two things to know".
     if (stockResult.before > 0 && stockResult.after <= 0) {
-      stockAlerts.push({ type: 'out_of_stock', sellerId: store.sellerId, productId: product.id, productName: product.name, stockAfter: stockResult.after, selectedVariants });
+      stockAlerts.push({ type: 'out_of_stock', sellerId: store.sellerId, storeSlug: store.slug, storeName: store.name, productId: product.id, productName: product.name, stockAfter: stockResult.after, selectedVariants });
     } else if (stockResult.before > LOW_STOCK_THRESHOLD && stockResult.after <= LOW_STOCK_THRESHOLD) {
-      stockAlerts.push({ type: 'low_stock', sellerId: store.sellerId, productId: product.id, productName: product.name, stockAfter: stockResult.after, selectedVariants });
+      stockAlerts.push({ type: 'low_stock', sellerId: store.sellerId, storeSlug: store.slug, storeName: store.name, productId: product.id, productName: product.name, stockAfter: stockResult.after, selectedVariants });
     }
 
     orderItems.push({
@@ -202,6 +203,8 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           title: 'הזמנה חדשה!',
           body: `הזמנה מ-${buyerData.buyerName} על סך ${storeTotalAmount.toFixed(2)} ₪`,
           relatedId: storeOrder.id,
+          storeSlug: store.slug,
+          storeName: store.name,
         });
       }
     }
@@ -217,6 +220,8 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           ? `"${label}" אזל לגמרי מהמלאי`
           : `נותרו ${alert.stockAfter} יחידות בלבד מ"${label}"`,
         relatedId: alert.productId,
+        storeSlug: alert.storeSlug,
+        storeName: alert.storeName,
       });
     }
 
@@ -245,8 +250,15 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     }
 
     return json({ orderIds, checkoutRef }, 201);
-  } catch {
+  } catch (err) {
     for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+    logError({
+      source: 'server',
+      route: '/api/checkout',
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+      statusCode: 500,
+    });
     return json({ error: 'Checkout failed, please try again' }, 500);
   }
 }

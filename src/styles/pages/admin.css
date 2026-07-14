@@ -1,20 +1,146 @@
-.admin-grid {
-  display: grid;
-  grid-template-columns: 1fr 1.5fr;
-  gap: 1.5rem;
-  margin-top: 1.5rem;
-}
-
-.admin-table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
-.admin-table th,
-.admin-table td {
-  text-align: start;
-  padding: 0.5rem;
-  border-bottom: 1px solid var(--color-border);
-}
+/* Admin dashboard — reuses the seller dashboard's shell classes
+   (.dash-tabs/.dash-panel/.dash-head/.card) from dashboard.css;
+   everything below is admin-page-specific only. */
 
 code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius: 5px; }
 
-@media (max-width: 760px) {
-  .admin-grid { grid-template-columns: 1fr; }
+.admin-empty { color: var(--color-muted); font-size: 0.875rem; }
+.admin-link { color: var(--color-accent); text-decoration: none; font-size: 0.82rem; font-weight: 600; }
+.admin-link:hover { text-decoration: underline; }
+.admin-panel-subtitle { font-size: 0.95rem; font-weight: 600; margin: 1.5rem 0 1rem; }
+
+/* ── Messages tab: new-conversation composer ── */
+.admin-msg-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  max-width: 480px;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  border-radius: var(--radius);
+}
+.admin-msg-compose .field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; }
+
+/* ── Alerts tab ── */
+.admin-alerts-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.admin-alerts-toolbar .admin-attention-note { margin: 0; }
+
+/* ── Overview stat cards ── */
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+}
+.admin-stat-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  border-radius: var(--radius);
+  padding: 1.1rem 1rem;
+  text-align: center;
+}
+.admin-stat-card dt { font-size: 0.78rem; color: var(--color-muted); font-weight: 500; margin-bottom: 0.4rem; }
+.admin-stat-card dd { font-size: 1.4rem; font-weight: 800; color: var(--color-text); margin: 0; }
+.admin-stat-card--warning dd { color: var(--color-warning); }
+
+/* ── Sellers accordion ── */
+.admin-seller-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.admin-seller-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  border-radius: var(--radius);
+  padding: 0;
+}
+.admin-seller-card__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem;
+  cursor: pointer;
+  list-style: none;
+}
+.admin-seller-card__summary::-webkit-details-marker { display: none; }
+.admin-seller-card__identity { display: flex; flex-direction: column; gap: 0.15rem; }
+.admin-seller-card__name { font-weight: 700; color: var(--color-text); }
+.admin-seller-card__email { font-size: 0.82rem; color: var(--color-muted); }
+.admin-seller-card__nums {
+  display: flex;
+  gap: 1.25rem;
+  font-size: 0.82rem;
+  color: var(--color-text);
+  flex-wrap: wrap;
+}
+.admin-seller-card__body {
+  padding: 0 1.1rem 1rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.9rem;
+}
+
+.admin-inline-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.admin-inline-table th {
+  text-align: start; padding: 0.4rem 0.6rem;
+  font-size: 0.72rem; font-weight: 600; color: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+.admin-inline-table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--color-border); }
+.admin-inline-table tr:last-child td { border-bottom: none; }
+
+/* ── Orders table ── */
+.admin-orders-search { margin-bottom: 1rem; max-width: 360px; }
+.admin-table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--color-border); }
+.admin-table {
+  width: 100%; border-collapse: collapse; font-size: 0.875rem;
+  background: var(--color-surface);
+}
+.admin-table th {
+  text-align: start; padding: 0.625rem 0.875rem;
+  font-size: 0.75rem; font-weight: 600; color: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg); white-space: nowrap;
+}
+.admin-table td { padding: 0.625rem 0.875rem; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
+.admin-table tr:last-child td { border-bottom: none; }
+.admin-table tr:hover td { background: var(--color-bg); }
+.admin-order-id { font-family: monospace; font-size: 0.75rem; color: var(--color-muted); }
+.admin-nowrap { white-space: nowrap; font-size: 0.8rem; }
+.admin-strong { font-weight: 700; }
+
+.admin-badge {
+  display: inline-block; font-size: 0.72rem; font-weight: 600;
+  padding: 0.2rem 0.55rem; border-radius: 999px; white-space: nowrap;
+}
+.admin-badge--paid { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
+.admin-badge--pending { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); }
+.admin-badge--failed { background: color-mix(in srgb, var(--color-danger) 15%, transparent); color: var(--color-danger); }
+.admin-badge--warning { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); }
+.admin-badge--shipping-pending { background: color-mix(in srgb, var(--color-danger) 15%, transparent); color: var(--color-danger); }
+.admin-badge--shipping-processing { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
+.admin-badge--shipping-ready { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); }
+.admin-badge--shipping-shipped { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
+.admin-badge--shipping-delivered { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
+
+/* ── Attention list ── */
+.admin-attention-note { font-size: 0.82rem; color: var(--color-muted); margin: 0 0 1rem; }
+.admin-attention-list { display: flex; flex-direction: column; gap: 0.6rem; list-style: none; padding: 0; margin: 0; }
+.admin-attention-item {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+.admin-attention-item__info { display: flex; flex-direction: column; gap: 0.1rem; flex: 1 1 220px; }
+.admin-attention-item__store { font-weight: 700; color: var(--color-text); }
+.admin-attention-item__seller { font-size: 0.78rem; }
+.admin-attention-item__reasons { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  .admin-seller-card__nums { gap: 0.75rem; }
 }

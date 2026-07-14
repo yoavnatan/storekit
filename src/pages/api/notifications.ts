@@ -7,6 +7,8 @@ import {
   markNotificationRead,
   markAllReadForUser,
   deleteNotificationsByRelatedIds,
+  deleteNotification,
+  deleteAllNotificationsForUser,
 } from '../../lib/notifications.js';
 
 export const GET: APIRoute = async ({ request, cookies }) => {
@@ -41,6 +43,16 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (body.action === 'delete-by-related' && body.relatedId) {
     deleteNotificationsByRelatedIds([body.relatedId], userId);
+    return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  if (body.action === 'delete' && body.id) {
+    const ok = deleteNotification(body.id, userId);
+    return new Response(JSON.stringify({ ok }), { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  if (body.action === 'delete-all') {
+    deleteAllNotificationsForUser(userId);
     return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
   }
 

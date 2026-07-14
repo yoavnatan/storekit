@@ -1,4 +1,37 @@
 ---
 export const prerender = false;
-return Astro.redirect('/admin');
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { isAdminRequest, checkAdminPassword, setAdminCookie } from '../../lib/admin-auth.js';
+
+if (isAdminRequest(Astro.cookies)) {
+  return Astro.redirect('/admin');
+}
+
+let error = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const password = String(form.get('password') ?? '');
+  if (checkAdminPassword(password)) {
+    setAdminCookie(Astro.cookies);
+    return Astro.redirect('/admin');
+  }
+  error = 'סיסמה שגויה';
+}
 ---
+
+<BaseLayout title="Admin Login" noindex={true} isLoggedIn={false} storeMode={true}>
+  <main id="main-content" style="max-width:360px;margin:4rem auto;padding:0 1rem">
+    <div style="background:var(--color-surface);border:1.5px solid var(--color-border);border-radius:var(--radius);padding:2rem;box-shadow:var(--shadow-card)">
+      <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 1.5rem;text-align:center;color:var(--color-text)">Admin Login</h1>
+      <form method="POST">
+        <label style="display:block;margin-bottom:1rem">
+          <span style="display:block;font-size:.875rem;font-weight:500;margin-bottom:.375rem;color:var(--color-text)">Password</span>
+          <input type="password" name="password" autofocus required
+            style="width:100%;padding:.625rem .75rem;border:1.5px solid var(--color-border);border-radius:8px;font-size:.9375rem;box-sizing:border-box" />
+        </label>
+        {error && <p style="color:var(--color-danger);font-size:.875rem;margin:0 0 1rem">{error}</p>}
+        <button type="submit" class="btn btn--accent" style="width:100%">Login</button>
+      </form>
+    </div>
+  </main>
+</BaseLayout>

@@ -1,0 +1,38 @@
+---
+import type { ErrorLogEntry } from '../../lib/error-log.js';
+import { formatHeDateTime } from '../../lib/format-date.js';
+
+interface Props {
+  errors: ErrorLogEntry[];
+}
+const { errors } = Astro.props;
+
+const sourceLabel: Record<string, string> = { server: 'שרת', client: 'דפדפן' };
+---
+
+<div class="admin-alerts-toolbar">
+  <p class="admin-attention-note">יומן שגיאות תפעוליות (שרת + דפדפן) — לצפייה בלבד.</p>
+  {errors.length > 0 && <button type="button" id="admin-alerts-clear" class="btn btn--ghost btn--sm">נקה יומן</button>}
+</div>
+
+{errors.length === 0 ? (
+  <p class="admin-empty" id="admin-alerts-empty">אין שגיאות רשומות.</p>
+) : (
+  <div class="admin-table-wrap" id="admin-alerts-wrap">
+    <table class="admin-table" id="admin-alerts-table">
+      <thead>
+        <tr><th>זמן</th><th>מקור</th><th>נתיב</th><th>הודעה</th></tr>
+      </thead>
+      <tbody>
+        {errors.map((e) => (
+          <tr>
+            <td class="admin-nowrap">{formatHeDateTime(e.createdAt)}</td>
+            <td><span class="admin-badge admin-badge--failed">{sourceLabel[e.source] ?? e.source}</span></td>
+            <td class="admin-nowrap">{e.route ?? '—'}</td>
+            <td>{e.message}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}

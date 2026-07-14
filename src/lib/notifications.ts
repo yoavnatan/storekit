@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 
 const NOTIFS_PATH = path.join(process.cwd(), 'data/notifications.json');
 
-export type NotificationType = 'new_message' | 'seller_reply' | 'new_order' | 'order_update' | 'low_stock' | 'out_of_stock';
+export type NotificationType = 'new_message' | 'seller_reply' | 'new_order' | 'order_update' | 'low_stock' | 'out_of_stock' | 'admin_message';
 export type NotificationRole = 'buyer' | 'seller';
 
 export interface Notification {
@@ -16,6 +16,8 @@ export interface Notification {
   body: string;
   read: boolean;
   relatedId?: string;
+  storeSlug?: string;
+  storeName?: string;
   createdAt: string;
 }
 
@@ -80,5 +82,19 @@ export function markAllReadForUser(userId: string): void {
 export function deleteNotificationsByRelatedIds(relatedIds: string[], userId: string): void {
   const notifs = readNotifs();
   const filtered = notifs.filter((n) => !(n.userId === userId && n.relatedId && relatedIds.includes(n.relatedId)));
+  if (filtered.length !== notifs.length) writeNotifs(filtered);
+}
+
+export function deleteNotification(id: string, userId: string): boolean {
+  const notifs = readNotifs();
+  const filtered = notifs.filter((n) => !(n.id === id && n.userId === userId));
+  if (filtered.length === notifs.length) return false;
+  writeNotifs(filtered);
+  return true;
+}
+
+export function deleteAllNotificationsForUser(userId: string): void {
+  const notifs = readNotifs();
+  const filtered = notifs.filter((n) => n.userId !== userId);
   if (filtered.length !== notifs.length) writeNotifs(filtered);
 }

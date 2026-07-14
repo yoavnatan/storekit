@@ -1,207 +1,115 @@
 ---
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getAllOrders } from '../../lib/orders.js';
+import { isAdminRequest } from '../../lib/admin-auth.js';
+import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductCountsByStore } from '../../lib/admin-stats.js';
+import { getAllSellers } from '../../lib/seller-auth.js';
 import { getAllStores } from '../../lib/stores.js';
-import { formatPrice } from '../../config/store.config.js';
+import { getAllOrders } from '../../lib/orders.js';
+import { getAdminThreadSummaries } from '../../lib/admin-messages.js';
+import { getRecentErrors } from '../../lib/error-log.js';
+import AdminOverviewPanel from '../../components/admin/AdminOverviewPanel.astro';
+import AdminSellersPanel from '../../components/admin/AdminSellersPanel.astro';
+import AdminOrdersPanel from '../../components/admin/AdminOrdersPanel.astro';
+import AdminAttentionPanel from '../../components/admin/AdminAttentionPanel.astro';
+import AdminMessagesPanel from '../../components/admin/AdminMessagesPanel.astro';
+import AdminAlertsPanel from '../../components/admin/AdminAlertsPanel.astro';
 
-const ADMIN_SECRET = import.meta.env.ADMIN_SECRET ?? 'admin';
-const cookieToken = Astro.cookies.get('admin_token')?.value ?? '';
-
-if (Astro.request.method === 'POST') {
-  const form = await Astro.request.formData();
-  const password = String(form.get('password') ?? '');
-  if (password === ADMIN_SECRET) {
-    Astro.cookies.set('admin_token', ADMIN_SECRET, {
-      httpOnly: true,
-      secure: import.meta.env.PROD,
-      sameSite: 'lax',
-      path: '/admin',
-      maxAge: 60 * 60 * 8,
-    });
-    return Astro.redirect('/admin');
-  }
+if (!isAdminRequest(Astro.cookies)) {
+  return Astro.redirect('/admin/login');
 }
 
-const isAuthed = cookieToken === ADMIN_SECRET;
+const tabs = [
+  { id: 'overview', label: 'סקירה כללית' },
+  { id: 'sellers', label: 'מוכרים' },
+  { id: 'orders', label: 'הזמנות' },
+  { id: 'attention', label: 'לתשומת לב' },
+  { id: 'messages', label: 'הודעות' },
+  { id: 'alerts', label: 'התראות ושגיאות' },
+] as const;
 
-const allOrders = isAuthed ? getAllOrders() : [];
-const allStores = isAuthed ? getAllStores() : [];
+const requestedPanel = Astro.url.searchParams.get('panel');
+const initialPanel = tabs.some((t) => t.id === requestedPanel) ? requestedPanel! : 'overview';
 
-const totalRevenue   = allOrders.reduce((s, o) => s + o.totalAmount, 0);
-const paidOrders     = allOrders.filter((o) => o.paymentStatus === 'paid');
-const pendingOrders  = allOrders.filter((o) => o.shippingStatus === 'pending');
+// Each source file is read exactly once per request and threaded through —
+// admin-stats.ts's functions used to each independently re-read sellers/
+// stores/products, multiplying JSON-file reads on every dashboard load.
+const sellers = getAllSellers();
+const stores = getAllStores();
+const orders = getAllOrders().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+const productCounts = getProductCountsByStore();
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
-
-const shippingLabel: Record<string, string> = {
-  pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר',
-};
-const paymentLabel: Record<string, string> = {
-  pending: 'ממתין', paid: 'שולם', failed: 'נכשל',
-};
+const overview = getPlatformOverview(sellers, stores, orders);
+const sellerCards = getSellerCards(sellers, stores, productCounts);
+const attention = getStoresNeedingAttention(stores, sellers, productCounts);
+const messageThreads = getAdminThreadSummaries();
+const unreadMessagesForAdmin = messageThreads.reduce((sum, t) => sum + t.unreadForAdmin, 0);
+const recentErrors = getRecentErrors();
 ---
 
-<BaseLayout title="Admin" noindex={true} isLoggedIn={false} storeMode={true}>
-  {!isAuthed ? (
-    <main id="main-content" style="max-width:360px;margin:4rem auto;padding:0 1rem">
-      <div style="background:#fff;border-radius:14px;padding:2rem;box-shadow:0 2px 12px rgba(0,0,0,.08)">
-        <h1 style="font-size:1.4rem;font-weight:700;margin:0 0 1.5rem;text-align:center">Admin Login</h1>
-        <form method="POST">
-          <label style="display:block;margin-bottom:1rem">
-            <span style="display:block;font-size:.875rem;font-weight:500;margin-bottom:.375rem">Password</span>
-            <input type="password" name="password" autofocus required
-              style="width:100%;padding:.625rem .75rem;border:1.5px solid var(--color-border);border-radius:8px;font-size:.9375rem;box-sizing:border-box" />
-          </label>
-          <button type="submit" class="btn btn--accent" style="width:100%">Login</button>
-        </form>
-      </div>
-    </main>
-  ) : (
-    <main id="main-content" class="admin-page">
-      <div class="admin-header">
-        <h1 class="admin-title">Admin Dashboard</h1>
-        <a href="/admin/logout" class="btn btn--ghost btn--sm">Logout</a>
+<BaseLayout title="Admin Dashboard" noindex={true} isLoggedIn={false} storeMode={true}>
+  <main id="main-content" class="section container dash-section">
+    <div id="dash-main-card" class="card">
+      <div class="dash-head">
+        <div class="dash-head__top">
+          <h1 class="dash-store-name">דשבורד ניהול</h1>
+          <a href="/admin/logout" class="btn btn--ghost btn--sm">התנתקות</a>
+        </div>
       </div>
 
-      <dl class="admin-stats">
-        <div class="admin-stat-card">
-          <dt>סה"כ הזמנות</dt>
-          <dd>{allOrders.length}</dd>
-        </div>
-        <div class="admin-stat-card">
-          <dt>ממתינות לאיסוף</dt>
-          <dd>{pendingOrders.length}</dd>
-        </div>
-        <div class="admin-stat-card">
-          <dt>שולמו</dt>
-          <dd>{paidOrders.length}</dd>
-        </div>
-        <div class="admin-stat-card">
-          <dt>סה"כ הכנסות</dt>
-          <dd>{formatPrice(totalRevenue)}</dd>
-        </div>
-        <div class="admin-stat-card">
-          <dt>חנויות</dt>
-          <dd>{allStores.length}</dd>
-        </div>
-      </dl>
+      <div class="dash-tabs" role="tablist">
+        {tabs.map((tab) => (
+          <button
+            class={`dash-tab${initialPanel === tab.id ? ' dash-tab--active' : ''}`}
+            role="tab"
+            id={`tab-${tab.id}`}
+            data-panel={tab.id}
+            aria-selected={initialPanel === tab.id}
+            tabindex={initialPanel === tab.id ? 0 : -1}
+            style={tab.id === 'messages' ? 'position:relative' : undefined}
+          >
+            {tab.label}
+            {tab.id === 'messages' && unreadMessagesForAdmin > 0 && (
+              <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMessagesForAdmin} הודעות שלא נקראו`}></span>
+            )}
+          </button>
+        ))}
+      </div>
 
-      <section class="admin-section">
-        <h2 class="admin-section-title">חנויות ({allStores.length})</h2>
-        {allStores.length === 0 ? (
-          <p class="admin-empty">אין חנויות עדיין.</p>
-        ) : (
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr><th>שם חנות</th><th>Slug</th><th>נוצרה</th><th></th></tr>
-              </thead>
-              <tbody>
-                {allStores.map((s) => (
-                  <tr>
-                    <td style="font-weight:600">{s.name}</td>
-                    <td style="font-family:monospace;font-size:0.8rem">{s.slug}</td>
-                    <td style="font-size:0.8rem;color:var(--color-muted)">{fmtDate(s.createdAt)}</td>
-                    <td><a href={`/store/${s.slug}`} target="_blank" rel="noopener" class="admin-link">צפה</a></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <div id="dash-panel-overview" class="dash-panel" role="tabpanel" aria-labelledby="tab-overview" hidden={initialPanel !== 'overview'}>
+        <AdminOverviewPanel overview={overview} attentionCount={attention.length} />
+      </div>
 
-      <section class="admin-section">
-        <h2 class="admin-section-title">הזמנות ({allOrders.length})</h2>
-        {allOrders.length === 0 ? (
-          <p class="admin-empty">אין הזמנות עדיין.</p>
-        ) : (
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>#</th><th>תאריך</th><th>לקוח</th><th>מייל</th><th>טלפון</th>
-                  <th>פריטים</th><th>חנויות</th><th>סה"כ</th><th>תשלום</th><th>משלוח</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allOrders.map((o) => {
-                  const uniqueStores = [...new Set(o.items.map((i) => i.storeName))].join(', ');
-                  return (
-                    <tr>
-                      <td style="font-family:monospace;font-size:0.75rem;color:var(--color-muted)">{o.id.slice(0,8).toUpperCase()}</td>
-                      <td style="font-size:0.8rem;white-space:nowrap">{fmtDate(o.createdAt)}</td>
-                      <td style="font-weight:600">{o.buyerName}</td>
-                      <td style="font-size:0.8rem">{o.buyerEmail}</td>
-                      <td style="font-size:0.8rem">{o.buyerPhone}</td>
-                      <td style="text-align:center">{o.items.reduce((s, i) => s + i.qty, 0)}</td>
-                      <td style="font-size:0.8rem">{uniqueStores}</td>
-                      <td style="font-weight:700">{formatPrice(o.totalAmount)}</td>
-                      <td><span class={`admin-badge admin-badge--${o.paymentStatus}`}>{paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span></td>
-                      <td><span class={`admin-badge admin-badge--shipping-${o.shippingStatus}`}>{shippingLabel[o.shippingStatus] ?? o.shippingStatus}</span></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </main>
-  )}
+      <div id="dash-panel-sellers" class="dash-panel" role="tabpanel" aria-labelledby="tab-sellers" hidden={initialPanel !== 'sellers'}>
+        <AdminSellersPanel sellerCards={sellerCards} />
+      </div>
+
+      <div id="dash-panel-orders" class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
+        <AdminOrdersPanel orders={orders} />
+      </div>
+
+      <div id="dash-panel-attention" class="dash-panel" role="tabpanel" aria-labelledby="tab-attention" hidden={initialPanel !== 'attention'}>
+        <AdminAttentionPanel entries={attention} />
+      </div>
+
+      <div id="dash-panel-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
+        <AdminMessagesPanel threads={messageThreads} sellers={sellers} />
+      </div>
+
+      <div id="dash-panel-alerts" class="dash-panel" role="tabpanel" aria-labelledby="tab-alerts" hidden={initialPanel !== 'alerts'}>
+        <AdminAlertsPanel errors={recentErrors} />
+      </div>
+    </div>
+  </main>
 </BaseLayout>
 
-<style is:global>
-  .admin-page { max-width: 1200px; margin-inline: auto; padding: 2rem 1rem 4rem; }
-  .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
-  .admin-title { font-size: 1.5rem; font-weight: 700; margin: 0; }
-
-  .admin-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2.5rem;
-    padding: 0;
-  }
-  .admin-stat-card {
-    background: #fff;
-    border: 1.5px solid var(--color-border);
-    border-radius: 12px;
-    padding: 1.25rem 1rem;
-    text-align: center;
-  }
-  .admin-stat-card dt { font-size: 0.78rem; color: var(--color-muted); font-weight: 500; margin-bottom: 0.4rem; }
-  .admin-stat-card dd { font-size: 1.5rem; font-weight: 800; color: var(--color-text); margin: 0; }
-
-  .admin-section { margin-bottom: 2.5rem; }
-  .admin-section-title { font-size: 1.05rem; font-weight: 700; margin: 0 0 1rem; }
-  .admin-empty { color: var(--color-muted); font-size: 0.875rem; }
-
-  .admin-table-wrap { overflow-x: auto; border-radius: 10px; border: 1.5px solid var(--color-border); }
-  .admin-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; background: #fff; }
-  .admin-table th {
-    text-align: start; padding: 0.625rem 0.875rem;
-    font-size: 0.75rem; font-weight: 600; color: var(--color-muted);
-    border-bottom: 1.5px solid var(--color-border);
-    background: var(--color-bg); white-space: nowrap;
-  }
-  .admin-table td { padding: 0.625rem 0.875rem; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
-  .admin-table tr:last-child td { border-bottom: none; }
-  .admin-table tr:hover td { background: var(--color-bg); }
-
-  .admin-link { color: var(--color-accent); text-decoration: none; font-size: 0.82rem; font-weight: 600; }
-  .admin-link:hover { text-decoration: underline; }
-
-  .admin-badge { display: inline-block; font-size: 0.72rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 20px; white-space: nowrap; }
-  .admin-badge--paid { background: #dcfce7; color: #16a34a; }
-  .admin-badge--pending { background: #fef3c7; color: #d97706; }
-  .admin-badge--failed { background: #fee2e2; color: #dc2626; }
-  .admin-badge--shipping-pending { background: #fee2e2; color: #ef4444; }
-  .admin-badge--shipping-processing { background: #eff6ff; color: #3b82f6; }
-  .admin-badge--shipping-ready { background: #fffbeb; color: #f59e0b; }
-  .admin-badge--shipping-shipped { background: #f5f3ff; color: #8b5cf6; }
-  .admin-badge--shipping-delivered { background: #dcfce7; color: #16a34a; }
-</style>
+<script>
+  import { initDashTabs } from '../../scripts/dashboard/ui.js';
+  import { initAdminOrdersFilter } from '../../scripts/admin/orders-filter.js';
+  import { initAdminMessagesPanel } from '../../scripts/admin/admin-messages.js';
+  import { initAdminAlertsPanel } from '../../scripts/admin/alerts.js';
+  initDashTabs();
+  initAdminOrdersFilter();
+  initAdminMessagesPanel();
+  initAdminAlertsPanel();
+</script>

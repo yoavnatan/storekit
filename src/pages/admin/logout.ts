@@ -1,7 +1,8 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
+import { clearAdminCookie } from '../../lib/admin-auth.js';
 
 export async function GET({ cookies, redirect }: APIContext): Promise<Response> {
-  cookies.delete('admin_token', { path: '/admin' });
+  clearAdminCookie(cookies);
   return redirect('/admin');
 }

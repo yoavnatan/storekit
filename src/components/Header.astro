@@ -62,7 +62,7 @@ const strEmpty   = t.store.noProductsFound;
 ---
 
 <header class={`site-header${storeMode ? ' site-header--store' : ''}`}>
-  <div class={storeMode ? 'container' : 'container between flex'} style={storeMode ? 'display:flex;align-items:center;gap:0.75rem' : undefined}>
+  <div class={storeMode ? 'container' : 'container between flex'}>
 
     <!-- Logo / store home -->
     <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
@@ -86,7 +86,14 @@ const strEmpty   = t.store.noProductsFound;
 
     <!-- Homepage search (showSearch=true, no storeSlug) -->
     {showSearch && !storeSlug && (
-      <div class="header-search home-header-search" id="home-header-search" style="flex:1">
+      <div
+        class="header-search home-header-search"
+        id="home-header-search"
+        data-str-stores={t.home.searchSectionStores}
+        data-str-products={t.home.searchSectionProducts}
+        data-str-empty={t.home.searchEmpty}
+        data-str-view-all={t.search.viewAllResults}
+      >
         <svg
           class="header-search__icon"
           width="13" height="13"
@@ -134,7 +141,6 @@ const strEmpty   = t.store.noProductsFound;
         data-str-recents={strRecents}
         data-str-clear={strClear}
         data-str-empty={strEmpty}
-        style="flex:1"
       >
         <svg
           class="header-search__icon"
@@ -223,9 +229,12 @@ const strEmpty   = t.store.noProductsFound;
                 התראות
                 <span id="notif-loading-dot" class="dot-pulse" hidden aria-hidden="true"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span>
               </span>
-              <button id="notif-close-btn" class="notif-close-btn" type="button" aria-label="סגור התראות">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
+              <span style="display:inline-flex;align-items:center;gap:0.6rem">
+                <button id="notif-clear-all-btn" class="notif-clear-all-btn" type="button" hidden>נקה הכל</button>
+                <button id="notif-close-btn" class="notif-close-btn" type="button" aria-label="סגור התראות">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </span>
             </div>
             <div id="notif-list" class="notif-list">
               <p class="notif-empty">אין התראות חדשות</p>
@@ -434,7 +443,7 @@ const strEmpty   = t.store.noProductsFound;
   const notifDrop  = document.getElementById('notif-dropdown') as HTMLElement | null;
   const notifList  = document.getElementById('notif-list') as HTMLElement | null;
 
-  interface NotifItem { id: string; type?: string; title: string; body: string; read: boolean; createdAt: string; }
+  interface NotifItem { id: string; type?: string; title: string; body: string; read: boolean; createdAt: string; storeName?: string; }
 
   function timeAgo(iso: string): string {
     const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -464,13 +473,37 @@ const strEmpty   = t.store.noProductsFound;
 
   function renderNotifs(items: NotifItem[]) {
     if (!notifList) return;
+    const clearAllBtn = document.getElementById('notif-clear-all-btn') as HTMLButtonElement | null;
+    if (clearAllBtn) clearAllBtn.hidden = items.length === 0;
     if (!items.length) { notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>'; return; }
     notifList.innerHTML = items.slice(0, 10).map((n) => `
       <div class="notif-item${n.read ? '' : ' notif-item--unread'}" data-id="${escH(n.id)}" data-type="${escH(n.type ?? '')}" role="button" tabindex="0">
+        <button class="notif-item__delete" data-del-id="${escH(n.id)}" type="button" aria-label="מחק התראה">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
         <div class="notif-item__title">${escH(n.title)}</div>
+        ${n.storeName ? `<div class="notif-item__tag">${escH(n.storeName)}</div>` : ''}
         <div class="notif-item__body">${escH(n.body)}</div>
         <div class="notif-item__time">${timeAgo(n.createdAt)}</div>
       </div>`).join('');
+    notifList.querySelectorAll<HTMLElement>('[data-del-id]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.delId ?? '';
+        if (!id) return;
+        const card = btn.closest<HTMLElement>('.notif-item');
+        card?.remove();
+        if (notifList && !notifList.querySelector('.notif-item')) {
+          notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>';
+        }
+        if (clearAllBtn && !notifList?.querySelector('.notif-item')) clearAllBtn.hidden = true;
+        fetch('/api/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', id }),
+        }).then(loadNotifs).catch(() => {});
+      });
+    });
     notifList.querySelectorAll<HTMLElement>('[data-id]').forEach((el) => {
       el.addEventListener('click', () => {
         closeNotifDrop();
@@ -490,6 +523,8 @@ const strEmpty   = t.store.noProductsFound;
         const type = el.dataset.type ?? '';
         const href = type === 'new_message'
           ? '/seller/dashboard?panel=messages'
+          : type === 'admin_message'
+          ? '/seller/dashboard?panel=admin-messages'
           : type === 'new_order' || type === 'order_update'
           ? '/seller/dashboard?panel=orders'
           : type === 'low_stock' || type === 'out_of_stock'
@@ -515,6 +550,18 @@ const strEmpty   = t.store.noProductsFound;
     fadeClose(notifDrop, () => { notifDrop!.hidden = true; });
   }
   document.getElementById('notif-close-btn')?.addEventListener('click', (e) => { e.stopPropagation(); closeNotifDrop(); bellBtn?.focus(); });
+
+  document.getElementById('notif-clear-all-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (notifList) notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>';
+    (document.getElementById('notif-clear-all-btn') as HTMLButtonElement | null)!.hidden = true;
+    setBadge(0);
+    fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete-all' }),
+    }).catch(() => {});
+  });
 
   bellBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -673,17 +720,16 @@ const strEmpty   = t.store.noProductsFound;
     });
   }
 
-  // ── Home / buyer-dashboard store search dropdown ─────────────
+  // ── Home / buyer-dashboard store+product search dropdown ─────
   const homeSearchIn  = document.getElementById('store-search') as HTMLInputElement | null;
   const homeSearchDdEl = document.getElementById('home-search-dropdown') as HTMLElement | null;
+  const homeSearchWrap = document.getElementById('home-header-search') as HTMLElement | null;
 
   if (homeSearchIn && homeSearchDdEl) {
-    type HomeStore = { name: string; slug: string; tagline: string; description: string };
-    let homeStores: HomeStore[] = [];
-    try {
-      const dataEl = document.getElementById('home-search-stores-data');
-      if (dataEl) homeStores = JSON.parse(dataEl.textContent ?? '[]') as HomeStore[];
-    } catch { /* no data */ }
+    const strStores   = homeSearchWrap?.dataset.strStores ?? 'חנויות';
+    const strProducts = homeSearchWrap?.dataset.strProducts ?? 'מוצרים';
+    const strEmptyRes = homeSearchWrap?.dataset.strEmpty ?? 'לא נמצאו תוצאות';
+    const strViewAll  = homeSearchWrap?.dataset.strViewAll ?? 'צפו בכל התוצאות';
 
     const HOME_RECENTS_KEY = 'home_search_recent_v1';
     const MAX_HOME_RECENTS = 5;
@@ -697,36 +743,14 @@ const strEmpty   = t.store.noProductsFound;
     function showHomeDd() { homeSearchDdEl!.removeAttribute('hidden'); homeSearchIn!.setAttribute('aria-expanded', 'true'); }
     function hideHomeDd() { homeSearchDdEl!.setAttribute('hidden', ''); homeSearchIn!.setAttribute('aria-expanded', 'false'); }
 
-    function normHome(s: string): string {
-      return s.toLowerCase()
-        .replace(/[ן]/g,'נ').replace(/[ף]/g,'פ').replace(/[ך]/g,'כ').replace(/[ם]/g,'מ').replace(/[ץ]/g,'צ')
-        .replace(/\s+/g,' ').trim();
-    }
-
-    function matchesQuery(el: HTMLElement, nq: string): boolean {
-      return !nq || normHome(el.dataset.storeName ?? '').includes(nq) || normHome(el.dataset.tagline ?? '').includes(nq);
-    }
-
-    // Filters both the full spotlight carousels (.home-store-section) and the
-    // compact shelf cards (.store-card, inside a .home-shelf) — a shelf whose
-    // cards all get filtered out hides its own [data-shelf] section (title +
-    // all) instead of leaving an empty-looking row with just a heading.
-    function filterHomeSections(q: string) {
-      const cards = document.querySelectorAll<HTMLElement>('.home-store-section[data-store-name], .store-card[data-store-name]');
-      const noRes = document.getElementById('no-results');
-      if (!cards.length) return;
-      const nq = normHome(q);
-      let visible = 0;
-      cards.forEach(card => {
-        const match = matchesQuery(card, nq);
-        card.style.display = match ? '' : 'none';
-        if (match) visible++;
-      });
-      document.querySelectorAll<HTMLElement>('[data-shelf]').forEach(shelf => {
-        const anyVisible = [...shelf.querySelectorAll<HTMLElement>('.store-card')].some(c => c.style.display !== 'none');
-        shelf.style.display = anyVisible ? '' : 'none';
-      });
-      if (noRes) noRes.hidden = visible > 0 || !nq;
+    // Typing here used to also filter whatever page it's on (homepage shelves,
+    // /stores' own grid) in place — dropped (2026-07-14): it silently mutated
+    // the page layout underneath the dropdown, which read as broken/confusing.
+    // This search bar now only ever shows a preview in its own dropdown; the
+    // real destination is the dedicated /search results page (goToSearch).
+    function goToSearch(q: string): void {
+      saveHomeRecent(q);
+      window.location.href = `/search?q=${encodeURIComponent(q)}`;
     }
 
     function renderHomeRecents() {
@@ -742,42 +766,83 @@ const strEmpty   = t.store.noProductsFound;
         </div>`;
       homeSearchDdEl!.querySelector<HTMLButtonElement>('#home-clear-recents')?.addEventListener('click', () => { clearHomeRecents(); hideHomeDd(); });
       homeSearchDdEl!.querySelectorAll<HTMLButtonElement>('.hsd-recent-chip').forEach(btn => {
-        btn.addEventListener('click', () => { homeSearchIn!.value = btn.dataset.q ?? ''; applyHomeSearch(btn.dataset.q ?? ''); });
+        btn.addEventListener('click', () => goToSearch(btn.dataset.q ?? ''));
       });
       showHomeDd();
     }
 
     const STORE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
 
-    function renderHomeResults(q: string) {
-      const nq = normHome(q);
-      const hits = homeStores.filter(s =>
-        normHome(s.name).includes(nq) || normHome(s.tagline).includes(nq) || normHome(s.description).includes(nq)
-      ).slice(0, 6);
-      if (!hits.length) {
-        homeSearchDdEl!.innerHTML = `<div class="hsd-empty">לא נמצאו חנויות</div>`;
-      } else {
-        homeSearchDdEl!.innerHTML = `<ul class="hsd-results" role="listbox">
-          ${hits.map(s => `
-            <li role="option">
-              <a class="hsd-result-item" href="/store/${s.slug}" data-slug="${s.slug}">
-                <div class="hsd-result-img-placeholder" aria-hidden="true">${STORE_ICON}</div>
-                <span class="hsd-result-name">${s.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
-                ${s.tagline ? `<span class="hsd-result-price" style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.tagline.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>` : ''}
-              </a>
-            </li>`).join('')}
-        </ul>`;
-        homeSearchDdEl!.querySelectorAll<HTMLAnchorElement>('.hsd-result-item').forEach(a => {
-          a.addEventListener('click', e => { e.preventDefault(); saveHomeRecent(q); window.location.href = `/store/${a.dataset.slug ?? ''}`; });
-        });
-      }
-      showHomeDd();
-      filterHomeSections(q);
+    function escHtml(s: string): string {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function formatHomePrice(n: number): string {
+      return `${n.toLocaleString('he-IL')} ₪`;
     }
 
-    function applyHomeSearch(q: string) {
-      if (!q.trim()) { filterHomeSections(''); renderHomeRecents(); return; }
-      renderHomeResults(q.trim());
+    type SiteSearchStore = { name: string; slug: string; tagline: string };
+    type SiteSearchProduct = { name: string; slug: string; price: number; image: string; storeSlug: string; storeName: string };
+
+    // Guards a slower, earlier fetch (e.g. a fast backspace-retype) from resolving
+    // after a newer one and overwriting the dropdown with stale results.
+    let homeSearchToken = 0;
+
+    // Platform-wide search: stores by name/tagline/description, products by name —
+    // each product hit carries its own store's name so a product result reads
+    // "product name — in store X", never a bare product with no context.
+    async function renderHomeResults(q: string) {
+      const token = ++homeSearchToken;
+      let stores: SiteSearchStore[] = [];
+      let products: SiteSearchProduct[] = [];
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json() as { ok: boolean; stores?: SiteSearchStore[]; products?: SiteSearchProduct[] };
+        if (data.ok) { stores = data.stores ?? []; products = data.products ?? []; }
+      } catch { /* network error — falls through to the empty-results message */ }
+      if (token !== homeSearchToken) return;
+
+      if (!stores.length && !products.length) {
+        homeSearchDdEl!.innerHTML = `<div class="hsd-empty">${strEmptyRes}</div>`;
+      } else {
+        const storesHtml = !stores.length ? '' : `
+          ${products.length ? `<div class="hsd-section-label">${strStores}</div>` : ''}
+          <ul class="hsd-results" role="listbox">
+            ${stores.map(s => `
+              <li role="option">
+                <a class="hsd-result-item" href="/store/${s.slug}">
+                  <div class="hsd-result-img-placeholder" aria-hidden="true">${STORE_ICON}</div>
+                  <span class="hsd-result-name">${escHtml(s.name)}</span>
+                  ${s.tagline ? `<span class="hsd-result-price" style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.tagline)}</span>` : ''}
+                </a>
+              </li>`).join('')}
+          </ul>`;
+        const productsHtml = !products.length ? '' : `
+          ${stores.length ? `<div class="hsd-section-label">${strProducts}</div>` : ''}
+          <ul class="hsd-results" role="listbox">
+            ${products.map(p => `
+              <li role="option">
+                <a class="hsd-result-item" href="/store/${p.storeSlug}/${p.slug}">
+                  ${p.image
+                    ? `<img class="hsd-result-img" src="${p.image}" alt="${escHtml(p.name)}" width="56" height="56" loading="lazy">`
+                    : `<div class="hsd-result-img-placeholder" aria-hidden="true">${STORE_ICON}</div>`
+                  }
+                  <div class="hsd-result-text">
+                    <span class="hsd-result-name">${escHtml(p.name)}</span>
+                    <span class="hsd-result-store">${escHtml(p.storeName)}</span>
+                  </div>
+                  <span class="hsd-result-price">${formatHomePrice(p.price)}</span>
+                </a>
+              </li>`).join('')}
+          </ul>`;
+        const viewAllHtml = `
+          <button type="button" class="hsd-view-all" id="home-view-all">${escHtml(strViewAll)}</button>`;
+        homeSearchDdEl!.innerHTML = storesHtml + productsHtml + viewAllHtml;
+        homeSearchDdEl!.querySelectorAll<HTMLAnchorElement>('.hsd-result-item').forEach(a => {
+          a.addEventListener('click', e => { e.preventDefault(); saveHomeRecent(q); window.location.href = a.href; });
+        });
+        homeSearchDdEl!.querySelector<HTMLButtonElement>('#home-view-all')?.addEventListener('click', () => goToSearch(q));
+      }
+      showHomeDd();
     }
 
     homeSearchIn.addEventListener('focus', () => {
@@ -788,7 +853,7 @@ const strEmpty   = t.store.noProductsFound;
     homeSearchIn.addEventListener('input', () => {
       clearTimeout(homeDebounce);
       const q = homeSearchIn.value.trim();
-      if (!q) { filterHomeSections(''); hideHomeDd(); renderHomeRecents(); return; }
+      if (!q) { hideHomeDd(); renderHomeRecents(); return; }
       homeDebounce = window.setTimeout(() => renderHomeResults(q), 150);
     });
 
@@ -797,7 +862,7 @@ const strEmpty   = t.store.noProductsFound;
       if (e.key === 'Enter') {
         e.preventDefault();
         const q = homeSearchIn.value.trim();
-        if (q) { saveHomeRecent(q); filterHomeSections(q); hideHomeDd(); }
+        if (q) goToSearch(q);
       }
     });
 
@@ -865,8 +930,10 @@ const strEmpty   = t.store.noProductsFound;
       saveRecent(q);
       const gridSearch = document.getElementById('product-search') as HTMLInputElement | null;
       if (gridSearch) {
-        gridSearch.value = q;
-        gridSearch.dispatchEvent(new Event('input', { bubbles: true }));
+        // Dispatched instead of writing straight into #product-search — this search
+        // bar always searches the whole store, ignoring whatever category filter is
+        // currently selected (the page's own listener resets the category to "all").
+        window.dispatchEvent(new CustomEvent('store-search:global', { detail: { q } }));
         hideDropdown();
       } else {
         window.location.href = `/store/${storeSlug}?q=${encodeURIComponent(q)}`;
@@ -927,10 +994,10 @@ const strEmpty   = t.store.noProductsFound;
             <li role="option">
               <a class="hsd-result-item" href="/store/${storeSlug}/${p.slug}" data-slug="${p.slug}">
                 ${p.image
-                  ? `<img class="hsd-result-img" src="${p.image}" alt="${p.name.replace(/"/g, '&quot;')}" width="36" height="36" loading="lazy">`
+                  ? `<img class="hsd-result-img" src="${p.image}" alt="${escH(p.name)}" width="56" height="56" loading="lazy">`
                   : `<div class="hsd-result-img-placeholder" aria-hidden="true">${PLACEHOLDER_SVG}</div>`
                 }
-                <span class="hsd-result-name">${p.name}</span>
+                <span class="hsd-result-name">${escH(p.name)}</span>
                 <span class="hsd-result-price">${formatPrice(p.price)}</span>
               </a>
             </li>`).join('')}
@@ -957,8 +1024,9 @@ const strEmpty   = t.store.noProductsFound;
       if (!q) {
         const gridSearch = document.getElementById('product-search') as HTMLInputElement | null;
         if (gridSearch) {
-          gridSearch.value = '';
-          gridSearch.dispatchEvent(new Event('input', { bubbles: true }));
+          // Cleared (native "x" or backspaced to empty) — restores whatever filter
+          // was active before this search bar overrode it, see store-search:global.
+          window.dispatchEvent(new CustomEvent('store-search:global', { detail: { q: '' } }));
         } else {
           window.location.href = `/store/${storeSlug}`;
           return;

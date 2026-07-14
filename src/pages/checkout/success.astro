@@ -3,7 +3,7 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getLang, getT } from '../../i18n/index.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, getAllStores } from '../../lib/stores.js';
+import { getStoresBySellerId } from '../../lib/stores.js';
 
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
@@ -38,8 +38,6 @@ const hasStore = userId ? getStoresBySellerId(userId).length > 0 : false;
     </div>
 
   </main>
-
-  <script is:inline type="application/json" id="home-search-stores-data" set:html={JSON.stringify(getAllStores().map(s => ({ name: s.name, slug: s.slug, tagline: s.tagline ?? '', description: s.description ?? '' })))} />
 
   <script>
     // Read order ID from URL and clear cart

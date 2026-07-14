@@ -186,6 +186,89 @@
   margin-bottom: 1.5rem;
 }
 
+/* Breadcrumb + local-search icon share one line — both only exist while a
+   category filter is active, so they appear/disappear together. */
+.category-nav-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Local search — plain, always-open single-line field (only meaningful while a
+   category filter is active — searching the whole store already has the
+   header's own search bar). No box, no animation — a search icon, the input,
+   and a trailing "x" (only shown once there's text) sharing one underline. */
+.local-search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  width: 200px;
+  max-width: 100%;
+  margin-inline-start: auto;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.25rem;
+  transition: border-color 0.15s;
+}
+.local-search-row:focus-within { border-color: var(--color-muted); }
+.local-search-row__icon {
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+.local-search-row__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--color-text);
+  outline: none;
+}
+.local-search-row__input[type="search"]::-webkit-search-cancel-button { display: none; }
+.local-search-row__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color 0.1s;
+}
+.local-search-row__close:hover { color: var(--color-text); }
+@media (max-width: 640px) {
+  .local-search-row { width: 140px; }
+}
+
+.search-results-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  margin: 0 0 0.75rem;
+}
+
+.search-results-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  padding: 0.15rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: color 0.1s;
+}
+.search-results-clear:hover { color: var(--color-text); }
+
 .store-controls__row {
   display: flex;
   align-items: center;

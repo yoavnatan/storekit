@@ -83,6 +83,8 @@ const pmI18n = {
   loadingMore: t.store.loadingMore,
   filterAll: t.store.filterAll,
   filterByCategory: t.store.filterByCategory,
+  searchResultsFor: t.store.searchResultsFor,
+  noResultsFor: t.store.noResultsFor,
   fullPage: lang === 'he' ? 'לדף המוצר המלא' : 'View full product page',
   close: lang === 'he' ? 'סגור' : 'Close',
   showMore: lang === 'he' ? 'עוד' : 'More',
@@ -237,22 +239,34 @@ const pmI18n = {
       ) : (
         <Fragment>
           <div class="store-controls">
-            {/* Hidden search input — driven by header search bar */}
-            <input type="search" id="product-search" style="display:none" tabindex="-1" aria-hidden="true" autocomplete="off" />
-
-            {breadcrumbChain.length > 0 && (
-              <nav id="category-breadcrumb" class="category-breadcrumb" aria-label={t.store.filterByCategory}>
-                <button type="button" class="category-breadcrumb__crumb" data-category-id="">{t.store.filterAll}</button>
-                {breadcrumbChain.map((c, i) => (
-                  <Fragment>
-                    <span class="category-breadcrumb__sep" aria-hidden="true">›</span>
-                    {i === breadcrumbChain.length - 1
-                      ? <span class="category-breadcrumb__current">{c.name}</span>
-                      : <button type="button" class="category-breadcrumb__crumb" data-category-id={c.id}>{c.name}</button>}
-                  </Fragment>
-                ))}
-              </nav>
-            )}
+            {/* Local search — only meaningful once a category filter is active (searching
+                the whole store already has the header's own search bar for that). A plain
+                always-open single-line field, underline only, no box/border. */}
+            <div class="category-nav-row" id="category-nav-row" hidden={breadcrumbChain.length === 0}>
+              {breadcrumbChain.length > 0 && (
+                <nav id="category-breadcrumb" class="category-breadcrumb" aria-label={t.store.filterByCategory}>
+                  <button type="button" class="category-breadcrumb__crumb" data-category-id="">{t.store.filterAll}</button>
+                  {breadcrumbChain.map((c, i) => (
+                    <Fragment>
+                      <span class="category-breadcrumb__sep" aria-hidden="true">›</span>
+                      {i === breadcrumbChain.length - 1
+                        ? <span class="category-breadcrumb__current">{c.name}</span>
+                        : <button type="button" class="category-breadcrumb__crumb" data-category-id={c.id}>{c.name}</button>}
+                    </Fragment>
+                  ))}
+                </nav>
+              )}
+              <div class="local-search-row" id="local-search-row">
+                <svg class="local-search-row__icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <label for="product-search" class="visually-hidden">{t.store.filterSearchLabel}</label>
+                <input type="search" id="product-search" class="local-search-row__input" placeholder={t.store.filterSearchPlaceholder} aria-label={t.store.filterSearchLabel} autocomplete="off" />
+                <button type="button" class="local-search-row__close" id="local-search-close" aria-label={t.store.clearSearchLabel} hidden>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
 
             <div class="store-controls__row">
               {storeCategories.length > 0 && (
@@ -340,6 +354,16 @@ const pmI18n = {
                 </aside>
               </Fragment>
             )}
+          </div>
+          <div id="search-results-heading" class="search-results-heading" hidden={!initQ}>
+            <span id="search-results-heading-text">
+              {initQ && (products.length > 0
+                ? t.store.searchResultsFor.replace('{query}', initQ)
+                : t.store.noResultsFor.replace('{query}', initQ))}
+            </span>
+            <button type="button" id="search-results-clear" class="search-results-clear" aria-label={t.store.clearSearchLabel}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
           <ul class="product-grid" role="list" hidden={products.length === 0}>
             {products.map((p, idx) => {
@@ -452,7 +476,7 @@ const pmI18n = {
               );
             })}
           </ul>
-          <div id="no-results" class="empty-state" hidden={products.length > 0}>
+          <div id="no-results" class="empty-state" hidden={products.length > 0 || !!initQ}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <p>{t.store.noProductsFound}</p>
           </div>
@@ -515,7 +539,7 @@ const pmI18n = {
     slug: p.slug,
     name: p.name,
     price: p.price,
-    image: p.images?.[0] ? cdnSrc(p.images[0], 72) : '',
+    image: p.images?.[0] ? cdnSrc(p.images[0], 112) : '',
   }))
 )} />
 
@@ -791,9 +815,52 @@ const pmI18n = {
   const loadMoreWrap = document.getElementById('load-more-wrap') as HTMLElement | null;
   const loadMoreBtn  = document.getElementById('load-more-btn')  as HTMLButtonElement | null;
   const loadMoreLabel = document.getElementById('load-more-label') as HTMLElement | null;
+  const searchHeading = document.getElementById('search-results-heading') as HTMLElement | null;
+  const searchHeadingText = document.getElementById('search-results-heading-text') as HTMLElement | null;
+  const searchResultsClear = document.getElementById('search-results-clear') as HTMLButtonElement | null;
+  const localSearchClose  = document.getElementById('local-search-close') as HTMLButtonElement | null;
+
+  // Plain always-open field — the only dynamic bit is the trailing "x", which
+  // only shows once there's something to clear.
+  function updateLocalSearchClearBtn(): void {
+    if (localSearchClose) localSearchClose.hidden = !searchInput?.value.trim();
+  }
+  function clearLocalSearch(): void {
+    if (searchInput) searchInput.value = '';
+    updateLocalSearchClearBtn();
+    refreshFromServer();
+  }
+  localSearchClose?.addEventListener('click', () => { clearLocalSearch(); searchInput?.focus(); });
+  searchInput?.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape') clearLocalSearch();
+  });
 
   let currentSort = 'default';
   let activeTag = '';
+  // Set only by the header/general search bar (never by the local, in-filter
+  // search box) — the effective query while activeTag === '' due to that
+  // search overriding the category filter. preGlobalSearchTag remembers what
+  // activeTag was right before the override, so clearing the header search
+  // (its native "x") restores the filter the user was actually browsing.
+  let globalQuery = '';
+  let preGlobalSearchTag: string | null = null;
+
+  // Called whenever the category filter changes via a direct user action (chip,
+  // breadcrumb, drawer) — not via the header search's own override/restore path
+  // below — so a manual filter pick always wins over a stale global search.
+  function clearGlobalSearch(): void {
+    globalQuery = '';
+    preGlobalSearchTag = null;
+    const hInput = document.getElementById('header-search-input') as HTMLInputElement | null;
+    if (hInput) hInput.value = '';
+  }
+
+  // The local (in-filter) search box only applies while a category is selected;
+  // outside of that, whatever the header search bar last set is what's in effect.
+  function effectiveQuery(): string {
+    return activeTag ? (searchInput?.value.trim() ?? '') : globalQuery;
+  }
+
   // Server-paginated grid: this is how many cards are actually in the DOM right
   // now, not how many the store has in total — load-more/refetch keep it in sync.
   let loadedCount = productGrid?.children.length ?? 0;
@@ -863,6 +930,9 @@ const pmI18n = {
     const children = selected ? selected.children : categoryTree;
     const i18n = getPMI18n();
 
+    const categoryNavRow = document.getElementById('category-nav-row');
+    if (categoryNavRow) categoryNavRow.hidden = chain.length === 0;
+
     let breadcrumbEl = document.getElementById('category-breadcrumb');
     if (chain.length) {
       const breadcrumbHtml = `
@@ -878,12 +948,17 @@ const pmI18n = {
         breadcrumbEl = document.createElement('nav');
         breadcrumbEl.id = 'category-breadcrumb';
         breadcrumbEl.className = 'category-breadcrumb';
-        storeControls.insertBefore(breadcrumbEl, storeControls.firstElementChild?.nextSibling ?? null);
+        categoryNavRow?.prepend(breadcrumbEl);
       }
       breadcrumbEl.setAttribute('aria-label', i18n?.filterByCategory ?? '');
       breadcrumbEl.innerHTML = breadcrumbHtml;
     } else {
       breadcrumbEl?.remove();
+      // The local search box is only meaningful while a category filter is active —
+      // once the user navigates back to "all", reset it rather than leaving a stale
+      // query silently still narrowing an unfiltered view.
+      if (searchInput) searchInput.value = '';
+      updateLocalSearchClearBtn();
     }
 
     if (categoryFilters && categoryFiltersWrap) {
@@ -901,6 +976,7 @@ const pmI18n = {
   storeControls?.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-category-id]');
     if (!btn) return;
+    clearGlobalSearch();
     activeTag = btn.dataset.categoryId ?? '';
     renderCategoryNav();
     updateDrawerToggleLabel();
@@ -1099,6 +1175,7 @@ const pmI18n = {
 
     const selectBtn = target.closest<HTMLButtonElement>('[data-select]');
     if (selectBtn) {
+      clearGlobalSearch();
       activeTag = selectBtn.dataset.select ?? '';
       renderCategoryNav();
       updateDrawerToggleLabel();
@@ -1247,17 +1324,45 @@ const pmI18n = {
 
   function updateResultsState(hasMore: boolean): void {
     const hasAny = loadedCount > 0;
+    const hasQuery = !!effectiveQuery();
     if (productGrid) productGrid.hidden = !hasAny;
-    if (noResults) noResults.hidden = hasAny;
+    // The generic empty-state icon+text is redundant once #search-results-heading is
+    // already showing a "no results for X" message naming the actual query.
+    if (noResults) noResults.hidden = hasAny || hasQuery;
     if (loadMoreWrap) loadMoreWrap.hidden = !hasMore;
     if (loadMoreBtn) loadMoreBtn.dataset.offset = String(loadedCount);
+    updateSearchHeading();
   }
+
+  function updateSearchHeading(): void {
+    if (!searchHeading) return;
+    const q = effectiveQuery();
+    if (!q) { searchHeading.hidden = true; return; }
+    const i18n = getPMI18n();
+    const template = loadedCount > 0 ? i18n.searchResultsFor : i18n.noResultsFor;
+    if (searchHeadingText) searchHeadingText.textContent = (template ?? '').replace('{query}', q);
+    searchHeading.hidden = false;
+  }
+
+  // Clears whichever search is currently in effect (the local, in-filter box or
+  // the header's own global override) from the results heading's own "x" —
+  // one clear action regardless of which of the two search bars produced it.
+  function clearActiveSearch(): void {
+    if (activeTag) {
+      clearLocalSearch();
+    } else {
+      const hInput = document.getElementById('header-search-input') as HTMLInputElement | null;
+      if (hInput) hInput.value = '';
+      window.dispatchEvent(new CustomEvent('store-search:global', { detail: { q: '' } }));
+    }
+  }
+  searchResultsClear?.addEventListener('click', clearActiveSearch);
 
   async function fetchProductsPage(offset: number): Promise<{ products: StoreProductDTO[]; hasMore: boolean }> {
     const params = new URLSearchParams({ store: storeSlug, offset: String(offset) });
     if (activeTag) params.set('category', activeTag);
     if (currentSort !== 'default') params.set('sort', currentSort);
-    const q = searchInput?.value.trim() ?? '';
+    const q = effectiveQuery();
     if (q) params.set('q', q);
     try {
       const res = await fetch(`/api/store-products?${params.toString()}`);
@@ -1301,7 +1406,7 @@ const pmI18n = {
 
   function syncUrl() {
     const params = new URLSearchParams();
-    const q = searchInput?.value.trim() ?? '';
+    const q = effectiveQuery();
     if (q) params.set('q', q);
     if (activeTag) params.set('category', activeTag);
     if (currentSort !== 'default') params.set('sort', currentSort);
@@ -1371,9 +1476,33 @@ const pmI18n = {
 
   let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
   searchInput?.addEventListener('input', () => {
+    updateLocalSearchClearBtn();
     clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(refreshFromServer, 350);
   });
+
+  // The general header search bar (top of page) always searches the whole store,
+  // ignoring whatever category filter is currently selected — it fires this event
+  // instead of writing straight into #product-search (which stays untouched, so
+  // whatever local search was active before/after this episode survives intact).
+  // An empty q means the header search was cleared (native "x" or backspaced to
+  // empty) — restore whatever filter was active right before the override began.
+  window.addEventListener('store-search:global', ((e: CustomEvent<{ q: string }>) => {
+    clearTimeout(searchDebounceTimer);
+    const q = e.detail?.q ?? '';
+    if (q) {
+      if (preGlobalSearchTag === null) preGlobalSearchTag = activeTag;
+      activeTag = '';
+      globalQuery = q;
+    } else {
+      activeTag = preGlobalSearchTag ?? '';
+      preGlobalSearchTag = null;
+      globalQuery = '';
+    }
+    renderCategoryNav();
+    updateDrawerToggleLabel();
+    refreshFromServer();
+  }) as EventListener);
 
   // ── Init from URL params (q / sort / category) ────────────────
   {
@@ -1381,12 +1510,6 @@ const pmI18n = {
     const initQ       = urlParams.get('q') ?? '';
     const initSortVal = urlParams.get('sort') ?? '';
     const initCat     = urlParams.get('category') ?? '';
-
-    if (initQ && searchInput) searchInput.value = initQ;
-    if (initQ) {
-      const hInput = document.getElementById('header-search-input') as HTMLInputElement | null;
-      if (hInput) hInput.value = initQ;
-    }
 
     if (initSortVal) {
       const matchingOpt = sortOptions.find(o => o.dataset.value === initSortVal);
@@ -1402,6 +1525,20 @@ const pmI18n = {
     // initCat exactly (see the Astro frontmatter above) — just sync the JS
     // state variable to match, no DOM rebuild needed for the initial paint.
     if (initCat && flatCategories.some((c) => c.id === initCat)) activeTag = initCat;
+
+    if (initQ) {
+      if (activeTag) {
+        // A local (in-filter) search deep link — belongs only to the local search box.
+        if (searchInput) searchInput.value = initQ;
+        updateLocalSearchClearBtn();
+      } else {
+        // A global search deep link (no category in the URL) — belongs only to the
+        // header search bar, mirroring the live store-search:global behavior above.
+        globalQuery = initQ;
+        const hInput = document.getElementById('header-search-input') as HTMLInputElement | null;
+        if (hInput) hInput.value = initQ;
+      }
+    }
 
     // The grid's initial page was already server-rendered matching these exact
     // params (see the Astro frontmatter above) — no refetch needed here, just

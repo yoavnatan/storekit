@@ -1,0 +1,54 @@
+---
+import type { SellerCardData } from '../../lib/admin-stats.js';
+
+interface Props {
+  sellerCards: SellerCardData[];
+}
+const { sellerCards } = Astro.props;
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+---
+
+{sellerCards.length === 0 ? (
+  <p class="admin-empty">אין מוכרים עדיין.</p>
+) : (
+  <div class="admin-seller-list">
+    {sellerCards.map(({ seller, stores, totalProducts }) => (
+      <details class="admin-seller-card">
+        <summary class="admin-seller-card__summary">
+          <div class="admin-seller-card__identity">
+            <span class="admin-seller-card__name">{seller.name}</span>
+            <span class="admin-seller-card__email">{seller.email}</span>
+          </div>
+          <div class="admin-seller-card__nums">
+            <span>{stores.length} חנויות</span>
+            <span>{totalProducts} מוצרים</span>
+            <span class="muted">הצטרף/ה {fmtDate(seller.createdAt)}</span>
+          </div>
+        </summary>
+        <div class="admin-seller-card__body">
+          {stores.length === 0 ? (
+            <p class="admin-empty">אין חנויות למוכר/ת זה/זו.</p>
+          ) : (
+            <table class="admin-inline-table">
+              <thead>
+                <tr><th>חנות</th><th>מוצרים</th><th></th></tr>
+              </thead>
+              <tbody>
+                {stores.map(({ store, productCount }) => (
+                  <tr>
+                    <td>{store.name}</td>
+                    <td>{productCount}</td>
+                    <td><a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link">צפה בחנות</a></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </details>
+    ))}
+  </div>
+)}

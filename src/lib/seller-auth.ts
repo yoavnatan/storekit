@@ -66,6 +66,10 @@ export function getSellerById(id: string): Seller | null {
   return readSellers().find((s) => s.id === id) ?? null;
 }
 
+export function getAllSellers(): Seller[] {
+  return readSellers();
+}
+
 export function getSellerByEmail(email: string): Seller | null {
   return readSellers().find((s) => s.email === email) ?? null;
 }

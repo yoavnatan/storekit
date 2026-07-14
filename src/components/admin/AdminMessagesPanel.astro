@@ -1,0 +1,76 @@
+---
+import type { AdminThreadSummary } from '../../lib/admin-messages.js';
+import type { Seller } from '../../lib/seller-auth.js';
+import { formatHeDateTime } from '../../lib/format-date.js';
+
+interface Props {
+  threads: AdminThreadSummary[];
+  sellers: Seller[];
+}
+const { threads, sellers } = Astro.props;
+
+const sellerById = new Map(sellers.map((s) => [s.id, s]));
+---
+
+<div id="admin-msg-i18n" data-sellers={JSON.stringify(sellers.map((s) => ({ id: s.id, name: s.name, email: s.email })))} hidden></div>
+
+<div class="admin-msg-compose">
+  <label class="field">
+    <span>מוכר/ת</span>
+    <select id="admin-msg-seller-select" class="input">
+      <option value="">בחר/י מוכר/ת...</option>
+      {sellers.map((s) => <option value={s.id}>{s.name} ({s.email})</option>)}
+    </select>
+  </label>
+  <textarea id="admin-msg-new-content" class="seller-msg-reply-textarea" placeholder="כתוב הודעה למוכר/ת..." rows="3"></textarea>
+  <button type="button" id="admin-msg-send-new" class="btn btn--accent btn--sm">שלח הודעה</button>
+</div>
+
+<h2 class="admin-panel-subtitle">שיחות קיימות</h2>
+
+{threads.length === 0 && <p class="admin-empty" id="admin-msg-empty">אין שיחות עדיין.</p>}
+<div class="msg-table-wrap" hidden={threads.length === 0} id="admin-msg-table-wrap">
+    <table class="msg-table" id="admin-msg-table">
+      <thead>
+        <tr>
+          <th class="msg-table__th msg-table__th--status"></th>
+          <th class="msg-table__th">מוכר/ת</th>
+          <th class="msg-table__th">תצוגה מקדימה</th>
+          <th class="msg-table__th">תאריך</th>
+        </tr>
+      </thead>
+      <tbody>
+        {threads.map(({ sellerId, lastMessage, unreadForAdmin }) => {
+          const seller = sellerById.get(sellerId);
+          return (
+            <>
+              <tr class={`msg-table__row${unreadForAdmin > 0 ? ' msg-table__row--unread' : ''}`} data-seller-id={sellerId} tabindex="0" role="button" aria-expanded="false">
+                <td class="msg-table__td msg-table__td--status"></td>
+                <td class="msg-table__td msg-table__td--from">
+                  {unreadForAdmin > 0 && <span class="visually-hidden msg-unread-sr">לא נקרא · </span>}
+                  {seller ? `${seller.name} (${seller.email})` : sellerId}
+                </td>
+                <td class="msg-table__td msg-table__td--preview">
+                  {lastMessage.content}
+                  {lastMessage.fromRole === 'admin' && <span class="msg-table__preview-you"> (אתה)</span>}
+                </td>
+                <td class="msg-table__td msg-table__td--date">{formatHeDateTime(lastMessage.createdAt)}</td>
+              </tr>
+              <tr class="msg-thread-row" id={`admin-msg-detail-${sellerId}`} hidden>
+                <td colspan="4">
+                  <div class="msg-thread" id={`admin-msg-replies-${sellerId}`}></div>
+                  <div class="seller-msg-reply-form" data-reply-for-seller={sellerId} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
+                    <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
+                    <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+                      <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
+                      <button class="seller-msg-reply-send" type="button">שלח</button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </>
+          );
+        })}
+      </tbody>
+    </table>
+</div>

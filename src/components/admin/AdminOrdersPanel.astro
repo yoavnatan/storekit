@@ -1,0 +1,55 @@
+---
+import { formatPrice } from '../../config/store.config.js';
+import type { Order } from '../../lib/orders.js';
+import { formatHeDateTime } from '../../lib/format-date.js';
+
+interface Props {
+  orders: Order[];
+}
+const { orders } = Astro.props;
+
+const shippingLabel: Record<string, string> = {
+  pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר',
+};
+const paymentLabel: Record<string, string> = {
+  pending: 'ממתין', paid: 'שולם', failed: 'נכשל',
+};
+---
+
+<div class="admin-orders-search">
+  <input type="search" id="admin-order-search" class="input" placeholder="חיפוש לפי מספר הזמנה, שם, מייל או טלפון..." aria-label="חיפוש הזמנה" />
+</div>
+
+{orders.length === 0 ? (
+  <p class="admin-empty">אין הזמנות עדיין.</p>
+) : (
+  <div class="admin-table-wrap">
+    <table class="admin-table" id="admin-orders-table">
+      <thead>
+        <tr>
+          <th>#</th><th>תאריך</th><th>קונה</th><th>מייל</th><th>טלפון</th>
+          <th>חנויות</th><th>סה"כ</th><th>תשלום</th><th>משלוח</th>
+        </tr>
+      </thead>
+      <tbody>
+        {orders.map((o) => {
+          const uniqueStores = [...new Set(o.items.map((i) => i.storeName))].join(', ');
+          return (
+            <tr data-order-id={o.id} data-order-search={`${o.id} ${o.buyerName} ${o.buyerEmail} ${o.buyerPhone}`.toLowerCase()}>
+              <td class="admin-order-id">{o.id.slice(0, 8).toUpperCase()}</td>
+              <td class="admin-nowrap">{formatHeDateTime(o.createdAt)}</td>
+              <td class="admin-strong">{o.buyerName}</td>
+              <td>{o.buyerEmail}</td>
+              <td class="admin-nowrap" dir="ltr">{o.buyerPhone}</td>
+              <td>{uniqueStores}</td>
+              <td class="admin-strong">{formatPrice(o.totalAmount)}</td>
+              <td><span class={`admin-badge admin-badge--${o.paymentStatus}`}>{paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span></td>
+              <td><span class={`admin-badge admin-badge--shipping-${o.shippingStatus}`}>{shippingLabel[o.shippingStatus] ?? o.shippingStatus}</span></td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+    <p class="admin-empty" id="admin-orders-no-match" hidden>לא נמצאו הזמנות תואמות.</p>
+  </div>
+)}
