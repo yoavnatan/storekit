@@ -1,6 +1,6 @@
 # AI Instructions
 
-Read this + `CURRENT_TASK.md` at session start.
+Read this + `CURRENT_TASK.md` at session start. If `CURRENT_TASK.md` has multiple substantial, independent items, check whether to split them across parallel worktree sessions (this session in a worktree + background Agent(s) with `isolation:"worktree"`) before diving in — see memory `feedback_parallel_sessions` for when it's worth it vs. not.
 
 ---
 

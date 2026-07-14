@@ -14,14 +14,28 @@ const sellerById = new Map(sellers.map((s) => [s.id, s]));
 
 <div id="admin-msg-i18n" data-sellers={JSON.stringify(sellers.map((s) => ({ id: s.id, name: s.name, email: s.email })))} hidden></div>
 
+<h2 class="admin-panel-subtitle" style="margin-top:0">הודעה חדשה</h2>
 <div class="admin-msg-compose">
-  <label class="field">
+  <div class="field">
     <span>מוכר/ת</span>
-    <select id="admin-msg-seller-select" class="input">
-      <option value="">בחר/י מוכר/ת...</option>
-      {sellers.map((s) => <option value={s.id}>{s.name} ({s.email})</option>)}
-    </select>
-  </label>
+    <div class="admin-msg-seller-dd" id="admin-msg-seller-dd">
+      <button type="button" class="admin-msg-seller-dd__btn" id="admin-msg-seller-dd-btn" aria-haspopup="listbox" aria-expanded="false">
+        <span id="admin-msg-seller-dd-label">בחר/י מוכר/ת...</span>
+        <svg class="admin-msg-seller-dd__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      <ul class="admin-msg-seller-dd__menu" id="admin-msg-seller-dd-menu" role="listbox" hidden>
+        {sellers.length === 0 && <li class="admin-msg-seller-dd__empty">אין מוכרים עדיין</li>}
+        {sellers.map((s) => (
+          <li>
+            <button type="button" role="option" aria-selected="false" data-seller-id={s.id}>{s.name} ({s.email})</button>
+          </li>
+        ))}
+      </ul>
+      <input type="hidden" id="admin-msg-seller-select" value="" />
+    </div>
+  </div>
   <textarea id="admin-msg-new-content" class="seller-msg-reply-textarea" placeholder="כתוב הודעה למוכר/ת..." rows="3"></textarea>
   <button type="button" id="admin-msg-send-new" class="btn btn--accent btn--sm">שלח הודעה</button>
 </div>

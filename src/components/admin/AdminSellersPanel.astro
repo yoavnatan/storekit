@@ -26,6 +26,11 @@ function fmtDate(iso: string): string {
             <span>{stores.length} חנויות</span>
             <span>{totalProducts} מוצרים</span>
             <span class="muted">הצטרף/ה {fmtDate(seller.createdAt)}</span>
+            <a
+              href={`/admin?panel=messages&sellerId=${seller.id}`}
+              class="admin-link"
+              onclick="event.stopPropagation()"
+            >שלח הודעה</a>
           </div>
         </summary>
         <div class="admin-seller-card__body">
