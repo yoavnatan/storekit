@@ -6,3 +6,7 @@ pics/
 _backup/
 public/fonts/
 *.log
+
+# nested full-repo checkouts (git worktree sessions) — never scan/search
+# into these, it's the same source tree duplicated per active worktree
+.claude/worktrees/

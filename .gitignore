@@ -22,6 +22,9 @@ yarn-error.log*
 .vscode/
 .idea/
 
+# claude code worktree sessions (nested full checkouts, never source)
+.claude/worktrees/
+
 # astro
 .astro/
 
