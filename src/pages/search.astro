@@ -6,7 +6,7 @@ import StoreCard from '../components/StoreCard.astro';
 import { store as platform, formatPrice } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getStoresBySellerId, getStoreBySlug } from '../lib/stores.js';
-import { getProductsByStoreId } from '../lib/store-products.js';
+import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { searchSite } from '../lib/site-search.js';
 import { getLang, getT } from '../i18n/index.js';
 
@@ -33,7 +33,7 @@ const storeCards = storeHits
   .map((hit) => {
     const store = getStoreBySlug(hit.slug);
     if (!store) return null;
-    const previewImages = getProductsByStoreId(store.id).map((p) => p.images?.[0]).filter((u): u is string => !!u);
+    const previewImages = getVisibleProductsByStoreId(store.id).map((p) => p.images?.[0]).filter((u): u is string => !!u);
     return { store, previewImages };
   })
   .filter((c): c is { store: NonNullable<ReturnType<typeof getStoreBySlug>>; previewImages: string[] } => !!c);

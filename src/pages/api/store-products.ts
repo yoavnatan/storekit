@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
-import { getStoreBySlug } from '../../lib/stores.js';
-import { getProductsByStoreId } from '../../lib/store-products.js';
+import { getStoreBySlug, isStoreVisible } from '../../lib/stores.js';
+import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds } from '../../lib/store-categories.js';
 
@@ -17,7 +17,7 @@ function json(data: unknown, status = 200) {
 export const GET: APIRoute = async ({ url }) => {
   const storeSlug = url.searchParams.get('store') ?? '';
   const store = storeSlug ? getStoreBySlug(storeSlug) : null;
-  if (!store) return json({ ok: false, error: 'Store not found.' }, 404);
+  if (!store || !isStoreVisible(store)) return json({ ok: false, error: 'Store not found.' }, 404);
 
   const category = url.searchParams.get('category') ?? '';
   const sort = url.searchParams.get('sort') ?? 'default';
@@ -25,7 +25,9 @@ export const GET: APIRoute = async ({ url }) => {
   const offset = Math.max(0, parseInt(url.searchParams.get('offset') ?? '0', 10) || 0);
   const categoryIds = category ? resolveCategoryFilterIds(getCategoriesByStoreId(store.id), category) : undefined;
 
-  const filtered = filterAndSortProducts(getProductsByStoreId(store.id), { categoryIds, sort, q });
+  // Blocked individual products (see admin-moderation.ts) never appear in the
+  // store's own "load more" pagination either.
+  const filtered = filterAndSortProducts(getVisibleProductsByStoreId(store.id), { categoryIds, sort, q });
   const products = filtered.slice(offset, offset + PRODUCTS_PAGE_SIZE);
 
   return json({

@@ -2,7 +2,7 @@
 export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getLang, getT } from '../i18n/index.js';
-import { getAllStores } from '../lib/stores.js';
+import { getVisibleStores } from '../lib/stores.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 
 const lang = getLang(Astro.cookies);
@@ -14,8 +14,15 @@ const isLoggedIn = !!sessionUserId;
 const sessionSeller = sessionUserId ? getSellerById(sessionUserId) : null;
 const prefillEmail = sessionSeller?.email ?? '';
 
+// Admin-blocked stores (see admin-moderation.ts) are left out — a buyer with
+// a stale cart item from a store blocked mid-session would otherwise see a
+// real computed shipping total for it here and only find out it's rejected
+// after submitting. The client's own calcShipping() already falls back to
+// {flatRate:0, freeAbove:null} for a missing slug, so this doesn't break
+// the total display, it just stops charging shipping for an item checkout
+// will reject anyway (found in review, 2026-07-14).
 const storeShipping: Record<string, { flatRate: number; freeAbove: number | null }> = {};
-for (const s of getAllStores()) {
+for (const s of getVisibleStores()) {
   storeShipping[s.slug] = {
     flatRate: s.shipping?.flatRate ?? 0,
     freeAbove: s.shipping?.freeAbove ?? null,

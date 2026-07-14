@@ -4,8 +4,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import StoreCard from '../components/StoreCard.astro';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
-import { getStoreBySellerId, getAllStores } from '../lib/stores.js';
-import { getProductsByStoreId } from '../lib/store-products.js';
+import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
+import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const PAGE_SIZE = 24;
@@ -23,8 +23,10 @@ const category = (Astro.url.searchParams.get('category') ?? '').trim();
 const pageParam = parseInt(Astro.url.searchParams.get('page') ?? '1', 10);
 const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
 
-const storesWithProducts = getAllStores()
-  .map((s) => ({ store: s, products: getProductsByStoreId(s.id) }))
+// Admin-blocked stores/products (see admin-moderation.ts) are excluded from
+// the directory — same reasoning as the homepage feed.
+const storesWithProducts = getVisibleStores()
+  .map((s) => ({ store: s, products: getVisibleProductsByStoreId(s.id) }))
   .filter(({ products }) => products.length > 0);
 
 // Every category across the whole catalog, not just the current filtered

@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
 import { createCategory, renameCategory, deleteCategory, moveCategory, getCategoryById, buildCategoryTree, getCategoriesByStoreId } from '../../lib/store-categories.js';
+import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -33,6 +34,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const name = String(form.get('name') || '');
     const parentIdRaw = String(form.get('parentId') || '');
     if (parentIdRaw && !ownsCategory(sellerId, parentIdRaw)) return json({ ok: false, error: 'Not authorized' }, 403);
+    const spamHit = findSpamKeyword(name);
+    if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
+    const stuffingHit = findKeywordStuffing(name);
+    if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
     const result = createCategory(storeId, { name, parentId: parentIdRaw || null });
     if ('error' in result) return json({ ok: false, error: result.error }, 400);
@@ -43,6 +48,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const categoryId = String(form.get('categoryId') || '');
     if (!ownsCategory(sellerId, categoryId)) return json({ ok: false, error: 'Not authorized' }, 403);
     const name = String(form.get('name') || '');
+    const spamHit = findSpamKeyword(name);
+    if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
+    const stuffingHit = findKeywordStuffing(name);
+    if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
     const result = renameCategory(categoryId, name);
     if ('error' in result) return json({ ok: false, error: result.error }, 400);

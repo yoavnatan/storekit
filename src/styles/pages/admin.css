@@ -82,6 +82,28 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   padding-top: 0.9rem;
 }
 
+/* ── Per-store block within a seller card (nested <details>, own moderation
+   toggle + a collapsible product list, each product with its own toggle) ── */
+.admin-store-block {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: 0.6rem;
+}
+.admin-store-block:last-child { margin-bottom: 0; }
+.admin-store-block__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+.admin-store-block__summary::-webkit-details-marker { display: none; }
+.admin-store-block__name { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; }
+.admin-store-block__nums { font-size: 0.78rem; color: var(--color-muted); }
+.admin-store-block .admin-inline-table { padding: 0 0.75rem 0.6rem; }
+
 .admin-inline-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
 .admin-inline-table th {
   text-align: start; padding: 0.4rem 0.6rem;
@@ -91,7 +113,8 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-inline-table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--color-border); }
 .admin-inline-table tr:last-child td { border-bottom: none; }
 
-/* ── Orders table ── */
+/* ── Orders tab: search box + status badges (card list itself reuses
+   .orders-toolbar/.order-card* from dashboard.css, see orders-filter.ts) ── */
 .admin-orders-search { margin-bottom: 1rem; max-width: 360px; }
 .admin-table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--color-border); }
 .admin-table {
@@ -107,9 +130,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-table td { padding: 0.625rem 0.875rem; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
 .admin-table tr:last-child td { border-bottom: none; }
 .admin-table tr:hover td { background: var(--color-bg); }
-.admin-order-id { font-family: monospace; font-size: 0.75rem; color: var(--color-muted); }
 .admin-nowrap { white-space: nowrap; font-size: 0.8rem; }
-.admin-strong { font-weight: 700; }
 
 .admin-badge {
   display: inline-block; font-size: 0.72rem; font-weight: 600;

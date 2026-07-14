@@ -6,6 +6,7 @@ import { createProduct, updateProduct, deleteProduct, getProductById, isSkuTaken
 import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseVariantsPayload } from '../../lib/product-form.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
+import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -48,6 +49,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
     if (sku && isSkuTaken(storeId, sku)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
+    const spamHit = findSpamKeyword(name, description, ...tags);
+    if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
+    const stuffingHit = findKeywordStuffing(name, description, ...tags);
+    if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
     const product = createProduct(storeId, {
       name, description, price, stock: isNaN(stock) ? 0 : stock,
@@ -84,6 +89,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
     if (sku && isSkuTaken(product.storeId, sku, productId)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
+    const spamHit = findSpamKeyword(name, description, ...tags);
+    if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
+    const stuffingHit = findKeywordStuffing(name, description, ...tags);
+    if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
     const updates: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {
       name, description, price, stock: isNaN(stock) ? 0 : stock,
@@ -118,6 +127,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (form.has('name')) {
       const name = String(form.get('name') || '').trim();
       if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
+      const spamHit = findSpamKeyword(name);
+      if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
+      const stuffingHit = findKeywordStuffing(name);
+      if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
       patch.name = name;
     }
     if (form.has('price')) {

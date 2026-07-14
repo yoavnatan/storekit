@@ -16,6 +16,8 @@ function rowErrorLabel(i: Record<string, string>, code: string): string {
     case 'stock-invalid':  return i.csvErrStockInvalid ?? 'Invalid stock';
     case 'sku-duplicate':  return i.csvErrSkuDuplicate ?? 'SKU already used by another product';
     case 'category-orphan-subcategory': return i.csvErrCategoryOrphan ?? 'A subcategory column is filled in without the category level above it';
+    case 'spam-keyword': return i.csvErrSpamKeyword ?? 'The text contains a term flagged as spam';
+    case 'keyword-stuffing': return i.csvErrKeywordStuffing ?? 'A word repeats far more than natural writing (keyword stuffing)';
     default: return code;
   }
 }

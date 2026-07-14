@@ -1,8 +1,8 @@
 export const prerender = false;
 import crypto from 'node:crypto';
 import type { APIContext } from 'astro';
-import { getStoreBySlug } from '../../lib/stores.js';
-import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD } from '../../lib/store-products.js';
+import { getStoreBySlug, isStoreVisible } from '../../lib/stores.js';
+import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD, isProductVisible } from '../../lib/store-products.js';
 import { createOrder } from '../../lib/orders.js';
 import type { OrderItem, StoreSubtotal } from '../../lib/orders.js';
 import { createNotification } from '../../lib/notifications.js';
@@ -93,10 +93,25 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
     const store = getStoreBySlug(storeSlug);
     if (!store) return json({ error: `Store not found: ${storeSlug}` }, 400);
+    // Admin-blocked store (see admin-moderation.ts) — reject the whole
+    // checkout rather than silently drop the item, same as "not found". Rolls
+    // back stock already reserved for earlier items in this same cart (a
+    // multi-item order where an earlier item committed fine) — unlike the
+    // pre-existing "not found" checks around this one, a store/product going
+    // blocked *while a cart sits open* is a realistic mid-session admin
+    // action, not just a hard-to-hit deleted-product race.
+    if (!isStoreVisible(store)) {
+      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+      return json({ error: `Store not found: ${storeSlug}` }, 400);
+    }
 
     // Server-side price lookup — never trust client-sent prices
     const product = getProductBySlug(store.id, productSlug);
     if (!product) return json({ error: `Product not found: ${productSlug}` }, 400);
+    if (!isProductVisible(product)) {
+      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+      return json({ error: `Product not found: ${productSlug}` }, 400);
+    }
 
     const selectedVariants =
       item.selectedVariants && typeof item.selectedVariants === 'object' && !Array.isArray(item.selectedVariants)

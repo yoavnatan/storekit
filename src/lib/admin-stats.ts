@@ -1,7 +1,7 @@
 import type { Seller } from './seller-auth.js';
 import type { Store } from './stores.js';
 import type { Order } from './orders.js';
-import { readProducts } from './store-products.js';
+import { readProducts, type StoreProduct } from './store-products.js';
 
 export interface PlatformOverview {
   totalSellers: number;
@@ -25,22 +25,26 @@ export function getPlatformOverview(sellers: Seller[], stores: Store[], orders: 
 
 // A single read of store-products.json, grouped by store — callers pass the
 // resulting map into getSellerCards/getStoresNeedingAttention instead of each
-// re-reading the file per store.
-export function getProductCountsByStore(): Map<string, number> {
-  const counts = new Map<string, number>();
+// re-reading the file per store. Carries the full product list (not just a
+// count) so the sellers tab can also surface a per-product "block" toggle
+// (see AdminSellersPanel.astro) without a second read.
+export function getProductsByStoreMap(): Map<string, StoreProduct[]> {
+  const map = new Map<string, StoreProduct[]>();
   for (const product of readProducts()) {
-    counts.set(product.storeId, (counts.get(product.storeId) ?? 0) + 1);
+    const list = map.get(product.storeId) ?? [];
+    list.push(product);
+    map.set(product.storeId, list);
   }
-  return counts;
+  return map;
 }
 
 export interface SellerCardData {
   seller: Seller;
-  stores: Array<{ store: Store; productCount: number }>;
+  stores: Array<{ store: Store; products: StoreProduct[] }>;
   totalProducts: number;
 }
 
-export function getSellerCards(sellers: Seller[], stores: Store[], productCounts: Map<string, number>): SellerCardData[] {
+export function getSellerCards(sellers: Seller[], stores: Store[], productsByStore: Map<string, StoreProduct[]>): SellerCardData[] {
   const storesBySeller = new Map<string, Store[]>();
   for (const store of stores) {
     const list = storesBySeller.get(store.sellerId) ?? [];
@@ -52,12 +56,12 @@ export function getSellerCards(sellers: Seller[], stores: Store[], productCounts
     .map((seller) => {
       const sellerStores = (storesBySeller.get(seller.id) ?? []).map((store) => ({
         store,
-        productCount: productCounts.get(store.id) ?? 0,
+        products: productsByStore.get(store.id) ?? [],
       }));
       return {
         seller,
         stores: sellerStores,
-        totalProducts: sellerStores.reduce((sum, s) => sum + s.productCount, 0),
+        totalProducts: sellerStores.reduce((sum, s) => sum + s.products.length, 0),
       };
     })
     .sort((a, b) => new Date(b.seller.createdAt).getTime() - new Date(a.seller.createdAt).getTime());
@@ -82,11 +86,11 @@ export interface AttentionEntry {
   reasons: string[];
 }
 
-export function getStoresNeedingAttention(stores: Store[], sellers: Seller[], productCounts: Map<string, number>): AttentionEntry[] {
+export function getStoresNeedingAttention(stores: Store[], sellers: Seller[], productsByStore: Map<string, StoreProduct[]>): AttentionEntry[] {
   const sellerById = new Map(sellers.map((s) => [s.id, s]));
   return stores
     .map((store) => {
-      const productCount = productCounts.get(store.id) ?? 0;
+      const productCount = productsByStore.get(store.id)?.length ?? 0;
       const reasons = attentionReasons(store, productCount);
       if (reasons.length === 0) return null;
       return { store, seller: sellerById.get(store.sellerId), reasons };

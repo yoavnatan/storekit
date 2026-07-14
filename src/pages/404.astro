@@ -1,5 +1,14 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+
+// SSR (not Astro's static build-time 404 fallback) so a redirect here — from
+// a missing/blocked store or product, see admin-moderation.ts — actually
+// serves a real 404 status. Without this, Astro.redirect('/404') elsewhere
+// only 302s to this route, which would otherwise render 200 OK: Google (and
+// any other crawler) never sees "not found", defeating the whole point of
+// blocking a listing for SEO reasons.
+export const prerender = false;
+Astro.response.status = 404;
 ---
 <BaseLayout title="Page not found" noindex={true}>
   <section class="section container center">

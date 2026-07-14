@@ -2,8 +2,8 @@
 export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { getStoreBySlug } from '../../../lib/stores.js';
-import { getProductBySlug, getProductsByStoreId } from '../../../lib/store-products.js';
+import { getStoreBySlug, isStoreVisible } from '../../../lib/stores.js';
+import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../../lib/store-products.js';
 import { store as platform, formatPrice, cdnSrc } from '../../../config/store.config.js';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getLang, getT } from '../../../i18n/index.js';
@@ -16,9 +16,13 @@ if (!storeSlug || !productSlug) return Astro.redirect('/404');
 
 const shopStore = getStoreBySlug(storeSlug);
 if (!shopStore) return Astro.redirect('/404');
+// Admin-blocked store or product (see admin-moderation.ts) — 404, same
+// reasoning as the store page itself.
+if (!isStoreVisible(shopStore)) return Astro.redirect('/404');
 
 const product = getProductBySlug(shopStore.id, productSlug);
 if (!product) return Astro.redirect(`/store/${storeSlug}`);
+if (!isProductVisible(product)) return Astro.redirect('/404');
 
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
@@ -50,7 +54,10 @@ const initialStatusText =
   : t.store.inStockLabel;
 const productUrl = new URL(`/store/${storeSlug}/${productSlug}`, Astro.url).href;
 
-const allStoreProducts = getProductsByStoreId(shopStore.id);
+// Pre-filtered to non-blocked (see store-products.ts#getVisibleProductsByStoreId) — this list
+// also feeds the header search-suggestions JSON below, which used to leak a blocked product
+// as a suggestion that led straight into a 404 (found in review, 2026-07-14).
+const allStoreProducts = getVisibleProductsByStoreId(shopStore.id);
 const relatedProducts = allStoreProducts
   .filter((p) => p.slug !== product.slug)
   .slice(0, 4);

@@ -1,4 +1,13 @@
 ---
+// Cards-only orders list (same shape as the seller dashboard's orders tab —
+// see AI_INSTRUCTIONS.md → Dashboard sort/filter toolbar), reporting-only:
+// admin never edits shipping status/tracking here, that's the seller's job.
+// Shared .order-card*/.orders-toolbar CSS lives in dashboard.css (moved
+// 2026-07-14) so this and the seller dashboard's own markup render identically
+// without duplicating styles. Sort/filter only covers fields with real
+// signal for a cross-store admin view (date, amount, shipping/payment
+// status) — phone number etc. stay search-only, same call the seller
+// dashboard's own orders tab already made for itself.
 import { formatPrice } from '../../config/store.config.js';
 import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
@@ -11,45 +20,107 @@ const { orders } = Astro.props;
 const shippingLabel: Record<string, string> = {
   pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר',
 };
+const shippingColor: Record<string, string> = {
+  pending: '#ef4444', processing: '#3b82f6', ready: '#f59e0b', shipped: '#8b5cf6', delivered: '#16a34a',
+};
 const paymentLabel: Record<string, string> = {
   pending: 'ממתין', paid: 'שולם', failed: 'נכשל',
 };
 ---
 
 <div class="admin-orders-search">
-  <input type="search" id="admin-order-search" class="input" placeholder="חיפוש לפי מספר הזמנה, שם, מייל או טלפון..." aria-label="חיפוש הזמנה" />
+  <input type="search" id="admin-order-search" class="input" placeholder="חיפוש לפי מספר הזמנה, שם, מייל, טלפון או חנות..." aria-label="חיפוש הזמנה" />
 </div>
 
 {orders.length === 0 ? (
   <p class="admin-empty">אין הזמנות עדיין.</p>
 ) : (
-  <div class="admin-table-wrap">
-    <table class="admin-table" id="admin-orders-table">
-      <thead>
-        <tr>
-          <th>#</th><th>תאריך</th><th>קונה</th><th>מייל</th><th>טלפון</th>
-          <th>חנויות</th><th>סה"כ</th><th>תשלום</th><th>משלוח</th>
-        </tr>
-      </thead>
-      <tbody>
-        {orders.map((o) => {
-          const uniqueStores = [...new Set(o.items.map((i) => i.storeName))].join(', ');
-          return (
-            <tr data-order-id={o.id} data-order-search={`${o.id} ${o.buyerName} ${o.buyerEmail} ${o.buyerPhone}`.toLowerCase()}>
-              <td class="admin-order-id">{o.id.slice(0, 8).toUpperCase()}</td>
-              <td class="admin-nowrap">{formatHeDateTime(o.createdAt)}</td>
-              <td class="admin-strong">{o.buyerName}</td>
-              <td>{o.buyerEmail}</td>
-              <td class="admin-nowrap" dir="ltr">{o.buyerPhone}</td>
-              <td>{uniqueStores}</td>
-              <td class="admin-strong">{formatPrice(o.totalAmount)}</td>
-              <td><span class={`admin-badge admin-badge--${o.paymentStatus}`}>{paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span></td>
-              <td><span class={`admin-badge admin-badge--shipping-${o.shippingStatus}`}>{shippingLabel[o.shippingStatus] ?? o.shippingStatus}</span></td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-    <p class="admin-empty" id="admin-orders-no-match" hidden>לא נמצאו הזמנות תואמות.</p>
-  </div>
+  <Fragment>
+    <div class="orders-panel-head">
+      <div class="orders-toolbar" id="admin-orders-toolbar">
+        <button type="button" id="admin-orders-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+          <span id="admin-orders-sort-label">תאריך: חדש — ישן</span>
+          <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <button type="button" id="admin-orders-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          <span>סינון לפי</span>
+          <span id="admin-orders-filter-count" class="filter-count-badge" hidden>0</span>
+          <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <p class="admin-empty" id="admin-orders-filter-empty" hidden>לא נמצאו הזמנות תואמות.</p>
+
+    <div class="orders-list" id="admin-orders-list">
+      {orders.map((o) => {
+        const uniqueStores = [...new Set(o.items.map((i) => i.storeName))];
+        const searchStr = `${o.id} ${o.checkoutRef ?? ''} ${o.buyerName} ${o.buyerEmail} ${o.buyerPhone} ${uniqueStores.join(' ')}`.toLowerCase();
+        return (
+          <div
+            class="order-card"
+            data-order-id={o.id}
+            data-shipping-status={o.shippingStatus}
+            data-payment-status={o.paymentStatus}
+            data-sort-date={o.createdAt}
+            data-sort-amount={o.totalAmount}
+            data-search={searchStr}
+          >
+            <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
+              <div class="order-card__meta">
+                <span class="order-card__id">#{(o.checkoutRef ?? o.id.slice(0, 8)).toUpperCase()}</span>
+                <span class="order-card__date">{formatHeDateTime(o.createdAt)}</span>
+              </div>
+              <div class="order-card__summary">
+                <span class="order-card__buyer">{o.buyerName}</span>
+                <span class="order-card__amount">{formatPrice(o.totalAmount)}</span>
+                <span class="order-card__status-badge" style={`background:${shippingColor[o.shippingStatus] ?? '#888'}1a;color:${shippingColor[o.shippingStatus] ?? '#888'}`}>
+                  {shippingLabel[o.shippingStatus] ?? o.shippingStatus}
+                </span>
+              </div>
+              <svg class="order-card__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="order-card__body" hidden>
+              <div class="order-card__section">
+                <h3 class="order-card__section-title">קונה</h3>
+                <p class="order-card__info-line"><strong>{o.buyerName}</strong></p>
+                <p class="order-card__info-line">{o.buyerEmail}</p>
+                <p class="order-card__info-line" dir="ltr">{o.buyerPhone}</p>
+                <p class="order-card__info-line">{o.buyerAddress.street}, {o.buyerAddress.city}{o.buyerAddress.zip ? ` ${o.buyerAddress.zip}` : ''}</p>
+              </div>
+              <div class="order-card__section">
+                <h3 class="order-card__section-title">פריטים {uniqueStores.length > 1 ? `(${uniqueStores.length} חנויות)` : `(${uniqueStores[0] ?? ''})`}</h3>
+                <ul class="order-card__items">
+                  {o.items.map((item) => (
+                    <li class="order-card__item">
+                      {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="order-card__item-img" />}
+                      <span class="order-card__item-name">
+                        {item.productName}
+                        {uniqueStores.length > 1 && <span class="order-card__item-store"> · {item.storeName}</span>}
+                      </span>
+                      <span class="order-card__item-qty">×{item.qty}</span>
+                      <span class="order-card__item-price">{formatPrice(item.price * item.qty)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div class="order-card__subtotals">
+                  <span>משלוח: {o.shippingAmount === 0 ? 'חינם' : formatPrice(o.shippingAmount)}</span>
+                  <strong>סה"כ: {formatPrice(o.totalAmount)}</strong>
+                </div>
+              </div>
+              <div class="order-card__section">
+                <h3 class="order-card__section-title">סטטוס</h3>
+                <div class="order-card__control-row">
+                  <span class={`admin-badge admin-badge--${o.paymentStatus}`}>תשלום: {paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span>
+                  <span class={`admin-badge admin-badge--shipping-${o.shippingStatus}`}>משלוח: {shippingLabel[o.shippingStatus] ?? o.shippingStatus}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </Fragment>
 )}
