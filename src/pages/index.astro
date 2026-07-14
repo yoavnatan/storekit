@@ -5,8 +5,8 @@ import HomeShelf from '../components/HomeShelf.astro';
 import StoreAvatar from '../components/StoreAvatar.astro';
 import { store as platform, formatPrice, cdnSrc } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
-import { getStoreBySellerId, getAllStores } from '../lib/stores.js';
-import { getProductsByStoreId } from '../lib/store-products.js';
+import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
+import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { getAllOrders } from '../lib/orders.js';
 import { buildHomeFeed, getCategoryCounts } from '../lib/home-feed.js';
 import { getLang, getT } from '../i18n/index.js';
@@ -16,12 +16,15 @@ const sellerStore = sellerId ? getStoreBySellerId(sellerId) : null;
 const isLoggedIn  = !!sellerId;
 const hasStore    = !!sellerStore;
 
-const stores = getAllStores();
+// Admin-blocked stores/products (see admin-moderation.ts) never appear on the
+// discovery surfaces — a blocked store's card here would be a live link into
+// a page that immediately 404s, and defeats the point of blocking it.
+const stores = getVisibleStores();
 const lang   = getLang(Astro.cookies);
 const t      = getT(lang);
 
 const storesWithProducts = stores
-  .map((s) => ({ store: s, products: getProductsByStoreId(s.id) }))
+  .map((s) => ({ store: s, products: getVisibleProductsByStoreId(s.id) }))
   .filter(({ products }) => products.length > 0);
 
 // Stores this buyer has actually bought from before, most-recent purchase first — same

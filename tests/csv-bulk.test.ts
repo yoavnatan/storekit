@@ -124,6 +124,24 @@ describe('toRawRows + validateRows', () => {
     expect(result.action).toBe('create');
     expect(result.input?.sku).toBe('NEW-SKU');
   });
+
+  it('rejects a row whose product name contains a blocklisted spam keyword', () => {
+    const [result] = validateRows(rowsFrom(',,Online Casino Bonus,10,1,,,'), existingIds);
+    expect(result.action).toBe('error');
+    expect(result.errors).toContain('spam-keyword');
+  });
+
+  it('rejects a row whose tags column contains a blocklisted spam keyword', () => {
+    const [result] = validateRows(rowsFrom(',,Legit product,10,1,,,,viagra,'), existingIds);
+    expect(result.action).toBe('error');
+    expect(result.errors).toContain('spam-keyword');
+  });
+
+  it('rejects a row whose tags column repeats the same word far beyond natural writing (keyword stuffing, distinct from the blocklist check)', () => {
+    const [result] = validateRows(rowsFrom(',,Legit product,10,1,,,,"מילה מילה מילה מילה מילה מילה מילה מילה",'), existingIds);
+    expect(result.action).toBe('error');
+    expect(result.errors).toContain('keyword-stuffing');
+  });
 });
 
 describe('validateRows sku-duplicate detection', () => {

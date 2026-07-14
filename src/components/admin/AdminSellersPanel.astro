@@ -32,20 +32,57 @@ function fmtDate(iso: string): string {
           {stores.length === 0 ? (
             <p class="admin-empty">אין חנויות למוכר/ת זה/זו.</p>
           ) : (
-            <table class="admin-inline-table">
-              <thead>
-                <tr><th>חנות</th><th>מוצרים</th><th></th></tr>
-              </thead>
-              <tbody>
-                {stores.map(({ store, productCount }) => (
-                  <tr>
-                    <td>{store.name}</td>
-                    <td>{productCount}</td>
-                    <td><a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link">צפה בחנות</a></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            stores.map(({ store, products }) => (
+              <details class="admin-store-block">
+                <summary class="admin-store-block__summary">
+                  <span class="admin-store-block__name">
+                    {store.name}
+                    {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+                  </span>
+                  <span class="admin-store-block__nums">{products.length} מוצרים</span>
+                  <a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link" onclick="event.stopPropagation()">צפה בחנות</a>
+                  <button
+                    type="button"
+                    class={`btn btn--sm ${store.blocked ? '' : 'btn--ghost'} admin-block-toggle`}
+                    data-kind="store"
+                    data-store-slug={store.slug}
+                    data-blocked={store.blocked ? '1' : ''}
+                    onclick="event.stopPropagation()"
+                  >
+                    {store.blocked ? 'בטל חסימה' : 'חסום חנות'}
+                  </button>
+                </summary>
+                {products.length > 0 && (
+                  <table class="admin-inline-table">
+                    <thead>
+                      <tr><th>מוצר</th><th>מחיר</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                      {products.map((p) => (
+                        <tr>
+                          <td>
+                            {p.name}
+                            {p.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+                          </td>
+                          <td>{p.price.toFixed(2)} ₪</td>
+                          <td>
+                            <button
+                              type="button"
+                              class={`btn btn--sm ${p.blocked ? '' : 'btn--ghost'} admin-block-toggle`}
+                              data-kind="product"
+                              data-product-id={p.id}
+                              data-blocked={p.blocked ? '1' : ''}
+                            >
+                              {p.blocked ? 'בטל חסימה' : 'חסום מוצר'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </details>
+            ))
           )}
         </div>
       </details>

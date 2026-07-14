@@ -3,9 +3,9 @@ export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
-import { getStoreBySlug } from '../../lib/stores.js';
+import { getStoreBySlug, isStoreVisible } from '../../lib/stores.js';
 import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '../../lib/store-hours.js';
-import { getProductsByStoreId } from '../../lib/store-products.js';
+import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath } from '../../lib/store-categories.js';
 import { store as platform, formatPrice, cdnSrc } from '../../config/store.config.js';
@@ -18,12 +18,19 @@ if (!slug) return Astro.redirect('/404');
 
 const shopStore = getStoreBySlug(slug);
 if (!shopStore) return Astro.redirect('/404');
+// Admin-blocked store (see admin-moderation.ts) — 404s like a nonexistent
+// store rather than rendering, so it stops accumulating crawl/index signal
+// while it's under review.
+if (!isStoreVisible(shopStore)) return Astro.redirect('/404');
 
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
 const isFavorited = userId ? getFavoriteStoresForUser(userId).includes(shopStore.slug) : false;
 
-const allProducts = getProductsByStoreId(shopStore.id);
+// Blocked individual products (store itself still fine) never show in the
+// store's own grid/search/category filters — getVisibleProductsByStoreId is
+// the shared helper every listing surface should call (see store-products.ts).
+const allProducts = getVisibleProductsByStoreId(shopStore.id);
 const storeCategories = getCategoriesByStoreId(shopStore.id);
 const categoryTree = buildCategoryTree(storeCategories);
 

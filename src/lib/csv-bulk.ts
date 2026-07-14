@@ -1,3 +1,5 @@
+import { findSpamKeyword, findKeywordStuffing } from './spam-filter.js';
+
 export interface CsvField {
   key: 'id' | 'sku' | 'name' | 'price' | 'stock' | 'category' | 'subcategory1' | 'subcategory2' | 'tags' | 'description';
   he: string;
@@ -177,6 +179,14 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
     const firstEmpty = categorySegments.findIndex((s) => !s);
     const hasOrphanGap = firstEmpty !== -1 && categorySegments.slice(firstEmpty + 1).some((s) => s);
     if (hasOrphanGap) errors.push('category-orphan-subcategory');
+
+    const tagsForSpamCheck = raw.cells.tags ? raw.cells.tags.split(',').map((t) => t.trim()) : [];
+    // Same blocklist + stuffing gates as the single-product form (product.ts)
+    // — a bulk import is the higher-leverage version of the same risk
+    // (hundreds of rows in one request instead of one), so it needs the same
+    // checks, not lighter ones.
+    if (findSpamKeyword(name, raw.cells.description, ...tagsForSpamCheck)) errors.push('spam-keyword');
+    if (findKeywordStuffing(name, raw.cells.description, ...tagsForSpamCheck)) errors.push('keyword-stuffing');
 
     if (errors.length) return { line: raw.line, action: 'error', id, errors };
 

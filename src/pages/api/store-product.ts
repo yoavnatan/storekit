@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
-import { getStoreBySlug } from '../../lib/stores.js';
-import { getProductBySlug } from '../../lib/store-products.js';
+import { getStoreBySlug, isStoreVisible } from '../../lib/stores.js';
+import { getProductBySlug, isProductVisible } from '../../lib/store-products.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -17,10 +17,10 @@ export const GET: APIRoute = ({ url }) => {
   if (!storeSlug || !productSlug) return json({ error: 'Missing params' }, 400);
 
   const store = getStoreBySlug(storeSlug);
-  if (!store) return json({ error: 'Store not found' }, 404);
+  if (!store || !isStoreVisible(store)) return json({ error: 'Store not found' }, 404);
 
   const product = getProductBySlug(store.id, productSlug);
-  if (!product) return json({ error: 'Product not found' }, 404);
+  if (!product || !isProductVisible(product)) return json({ error: 'Product not found' }, 404);
 
   return json({
     slug:        product.slug,

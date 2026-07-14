@@ -1,5 +1,5 @@
-import { getAllStores } from './stores.js';
-import { readProducts } from './store-products.js';
+import { getVisibleStores } from './stores.js';
+import { readProducts, isProductVisible } from './store-products.js';
 import { matchesQueryWords } from './product-listing.js';
 import { cdnSrc } from '../config/store.config.js';
 
@@ -47,7 +47,9 @@ export function searchSite(rawQuery: string, options: SiteSearchOptions = {}): {
   const productLimit = options.productLimit ?? DEFAULT_PRODUCT_LIMIT;
   const imageWidth = options.imageWidth ?? DEFAULT_IMAGE_WIDTH;
 
-  const stores = getAllStores();
+  // Admin-blocked stores/products (see admin-moderation.ts) never surface in
+  // search — same reasoning as the homepage/directory feeds.
+  const stores = getVisibleStores();
   const storeById = new Map(stores.map((s) => [s.id, s]));
 
   const matchedStores: StoreSearchHit[] = stores
@@ -58,6 +60,7 @@ export function searchSite(rawQuery: string, options: SiteSearchOptions = {}): {
   const matchedProducts: ProductSearchHit[] = [];
   for (const p of readProducts()) {
     if (matchedProducts.length >= productLimit) break;
+    if (!isProductVisible(p)) continue;
     if (!matchesQueryWords(q, `${p.name} ${(p.tags ?? []).join(' ')}`)) continue;
     const store = storeById.get(p.storeId);
     if (!store) continue;

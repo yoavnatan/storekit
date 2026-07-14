@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { APIContext } from 'astro';
 import type { UserCartData } from '../src/lib/user-carts.js';
 
-const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number }> = {
+const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number; blocked?: boolean }> = {
   widget: { id: 'p1', slug: 'widget', name: 'Widget', price: 50, images: ['w.png'], stock: 100 },
 };
 
@@ -15,7 +15,7 @@ const decrementStock = vi.fn(async (id: string, qty: number, _selectedVariants?:
 });
 const restockProduct = vi.fn(async (_id: string, _qty: number, _selectedVariants?: Record<string, string>): Promise<StockAdjustResult> => ({ ok: true, before: 0, after: 0 }));
 
-const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; shipping?: { flatRate: number; freeAbove: number | null; processingDays: number } }> = {
+const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; shipping?: { flatRate: number; freeAbove: number | null; processingDays: number }; blocked?: boolean }> = {
   'test-store': {
     id: 's1',
     slug: 'test-store',
@@ -33,11 +33,13 @@ const saveUserCart = vi.fn();
 
 vi.mock('../src/lib/stores.js', () => ({
   getStoreBySlug: (slug: string) => STORES[slug] ?? null,
+  isStoreVisible: (store: { blocked?: boolean }) => !store.blocked,
 }));
 vi.mock('../src/lib/store-products.js', () => ({
   getProductBySlug: (_storeId: string, slug: string) => PRODUCTS[slug] ?? null,
   decrementStock: (id: string, qty: number, selectedVariants?: Record<string, string>) => decrementStock(id, qty, selectedVariants),
   restockProduct: (id: string, qty: number, selectedVariants?: Record<string, string>) => restockProduct(id, qty, selectedVariants),
+  isProductVisible: (product: { blocked?: boolean }) => !product.blocked,
   LOW_STOCK_THRESHOLD: 3,
 }));
 vi.mock('../src/lib/orders.js', () => ({ createOrder: (input: Record<string, unknown>) => createOrder(input) }));
@@ -101,6 +103,54 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     }));
     expect(res.status).toBe(400);
     expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejects checkout for an admin-blocked store instead of trusting the item as purchasable', async () => {
+    STORES['test-store']!.blocked = true;
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(res.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+    } finally {
+      delete STORES['test-store']!.blocked;
+    }
+  });
+
+  it('rejects checkout for an admin-blocked product even when its store is fine', async () => {
+    PRODUCTS.widget!.blocked = true;
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(res.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+    } finally {
+      delete PRODUCTS.widget!.blocked;
+    }
+  });
+
+  it('rolls back stock already reserved for an earlier item when a later item turns out to be blocked', async () => {
+    PRODUCTS.gadget = { id: 'p2', slug: 'gadget', name: 'Gadget', price: 10, stock: 100, blocked: true };
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [
+          { storeSlug: 'test-store', productSlug: 'widget', qty: 1 },
+          { storeSlug: 'test-store', productSlug: 'gadget', qty: 1 },
+        ],
+      }));
+      expect(res.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+      // widget (the first, valid item) already had stock reserved before the
+      // second item's blocked-check failed — that reservation must be undone.
+      expect(restockProduct).toHaveBeenCalledWith('p1', 1, undefined);
+    } finally {
+      delete PRODUCTS.gadget;
+    }
   });
 
   it('rejects checkout with an empty cart', async () => {

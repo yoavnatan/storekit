@@ -43,6 +43,11 @@ export interface Store {
   addressVisible?: boolean;
   hours?: StoreHours;
   hoursVisible?: boolean;
+  /** Admin-only kill switch (see admin-moderation.ts) — a blocked store 404s on every
+   *  public route and is excluded from every discovery surface (homepage, /stores,
+   *  search), so it can't keep damaging the shared platform domain's Google standing
+   *  while the seller sorts it out. Never set by anything but an admin action. */
+  blocked?: boolean;
   createdAt: string;
 }
 
@@ -101,6 +106,19 @@ export function getStoreBySlug(slug: string): Store | null {
 
 export function getAllStores(): Store[] {
   return readStores();
+}
+
+/** false for an admin-blocked store (see admin-moderation.ts). Every public discovery/purchase
+ *  surface must gate through this — not repeat `!store.blocked` inline — so a future call site
+ *  can't forget the check the way a few already did (found in review, 2026-07-14). */
+export function isStoreVisible(store: Store): boolean {
+  return !store.blocked;
+}
+
+/** getAllStores(), pre-filtered to non-blocked — the version every public discovery surface
+ *  (homepage, /stores, search) should call instead of getAllStores() + an inline filter. */
+export function getVisibleStores(): Store[] {
+  return readStores().filter(isStoreVisible);
 }
 
 export function updateStore(storeId: string, updates: Partial<Omit<Store, 'id' | 'sellerId' | 'createdAt'>>): Store | null {

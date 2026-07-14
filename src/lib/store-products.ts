@@ -37,6 +37,10 @@ export interface StoreProduct {
   variantStock?: Record<string, number>;
   /** Optional image override per color-variant option value (e.g. "אדום" → one of `images`) — lets the storefront swap the main photo when that color is picked instead of showing a generic gallery. Keyed by the raw option value, not a comboKey — a color choice implies the photo regardless of other dimensions (size, etc). */
   variantImages?: Record<string, string>;
+  /** Admin-only kill switch (see admin-moderation.ts) — same purpose as Store.blocked
+   *  but scoped to a single listing when the rest of the store is fine. 404s on its own
+   *  product page, excluded from its store's grid/search/checkout. */
+  blocked?: boolean;
   createdAt: string;
 }
 
@@ -107,6 +111,22 @@ export function createProduct(storeId: string, { name, description = '', price, 
 
 export function getProductsByStoreId(storeId: string): StoreProduct[] {
   return readProducts().filter((p) => p.storeId === storeId);
+}
+
+/** false for an admin-blocked product (see admin-moderation.ts). Every public discovery/
+ *  purchase surface must gate through this — not repeat `!product.blocked` inline — so a
+ *  future call site can't forget the check the way a few already did (found in review,
+ *  2026-07-14: the product page's own header-search suggestions and checkout.astro's
+ *  shipping-total map both still leaked a blocked product before this consolidation). */
+export function isProductVisible(product: StoreProduct): boolean {
+  return !product.blocked;
+}
+
+/** getProductsByStoreId(), pre-filtered to non-blocked — the version every public listing
+ *  (store grid, related products, search, "load more") should call instead of
+ *  getProductsByStoreId() + an inline filter. */
+export function getVisibleProductsByStoreId(storeId: string): StoreProduct[] {
+  return getProductsByStoreId(storeId).filter(isProductVisible);
 }
 
 export function getProductById(id: string): StoreProduct | null {

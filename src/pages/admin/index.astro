@@ -2,7 +2,7 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { isAdminRequest } from '../../lib/admin-auth.js';
-import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductCountsByStore } from '../../lib/admin-stats.js';
+import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductsByStoreMap } from '../../lib/admin-stats.js';
 import { getAllSellers } from '../../lib/seller-auth.js';
 import { getAllStores } from '../../lib/stores.js';
 import { getAllOrders } from '../../lib/orders.js';
@@ -37,17 +37,24 @@ const initialPanel = tabs.some((t) => t.id === requestedPanel) ? requestedPanel!
 const sellers = getAllSellers();
 const stores = getAllStores();
 const orders = getAllOrders().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-const productCounts = getProductCountsByStore();
+const productsByStore = getProductsByStoreMap();
 
 const overview = getPlatformOverview(sellers, stores, orders);
-const sellerCards = getSellerCards(sellers, stores, productCounts);
-const attention = getStoresNeedingAttention(stores, sellers, productCounts);
+const sellerCards = getSellerCards(sellers, stores, productsByStore);
+const attention = getStoresNeedingAttention(stores, sellers, productsByStore);
 const messageThreads = getAdminThreadSummaries();
 const unreadMessagesForAdmin = messageThreads.reduce((sum, t) => sum + t.unreadForAdmin, 0);
 const recentErrors = getRecentErrors();
 ---
 
-<BaseLayout title="Admin Dashboard" noindex={true} isLoggedIn={false} storeMode={true}>
+{/* sellerMode=true here isn't "seller dashboard" semantics — reusing the flag
+    that already tells Header.astro "not a shopping session" (hides cart/
+    wishlist icons + the buyer login link). An admin session is logically
+    distinct from any buyer/seller session; showing shopping icons here read
+    as being logged into two things at once (2026-07-14, see CURRENT_TASK.md
+    → סשן ב׳). The avatar itself already doesn't render — isLoggedIn stays
+    false since there's no buyer/seller session active. */}
+<BaseLayout title="Admin Dashboard" noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
   <main id="main-content" class="section container dash-section">
     <div id="dash-main-card" class="card">
       <div class="dash-head">
@@ -105,10 +112,12 @@ const recentErrors = getRecentErrors();
 
 <script>
   import { initDashTabs } from '../../scripts/dashboard/ui.js';
+  import { initAdminSellersPanel } from '../../scripts/admin/sellers.js';
   import { initAdminOrdersFilter } from '../../scripts/admin/orders-filter.js';
   import { initAdminMessagesPanel } from '../../scripts/admin/admin-messages.js';
   import { initAdminAlertsPanel } from '../../scripts/admin/alerts.js';
   initDashTabs();
+  initAdminSellersPanel();
   initAdminOrdersFilter();
   initAdminMessagesPanel();
   initAdminAlertsPanel();
