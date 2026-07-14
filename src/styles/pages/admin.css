@@ -203,6 +203,23 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-badge--shipping-shipped { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
 .admin-badge--shipping-delivered { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
 
+.admin-alerts-th-details { width: 1%; }
+.admin-alerts-details-btn {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  background: none; border: none; padding: 0.2rem 0.4rem; border-radius: 4px;
+  color: var(--color-muted); font-size: 0.78rem; cursor: pointer; white-space: nowrap;
+}
+.admin-alerts-details-btn:hover { background: var(--color-bg); color: var(--color-text); }
+.admin-alerts-details-btn__chevron { transition: transform 0.13s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.admin-alerts-details-btn[aria-expanded="true"] .admin-alerts-details-btn__chevron { transform: rotate(180deg); }
+.admin-alerts-details-row td { background: var(--color-bg); padding: 0.75rem 0.875rem; }
+.admin-alerts-details-body p { font-size: 0.8rem; margin: 0 0 0.4rem; }
+.admin-alerts-stack {
+  font-size: 0.72rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  direction: ltr; text-align: start; color: var(--color-muted); margin: 0;
+  max-height: 240px; overflow-y: auto;
+}
+
 /* ── Attention list ── */
 .admin-attention-note { font-size: 0.82rem; color: var(--color-muted); margin: 0 0 1rem; }
 .admin-attention-list { display: flex; flex-direction: column; gap: 0.6rem; list-style: none; padding: 0; margin: 0; }

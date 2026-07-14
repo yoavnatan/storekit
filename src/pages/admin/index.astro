@@ -77,7 +77,7 @@ const recentErrors = getRecentErrors();
           >
             {tab.label}
             {tab.id === 'messages' && unreadMessagesForAdmin > 0 && (
-              <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMessagesForAdmin} הודעות שלא נקראו`}></span>
+              <span class="admin-msg-tab-dot" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMessagesForAdmin} הודעות שלא נקראו`}></span>
             )}
           </button>
         ))}

@@ -12,7 +12,12 @@ const { threads, sellers } = Astro.props;
 const sellerById = new Map(sellers.map((s) => [s.id, s]));
 ---
 
-<div id="admin-msg-i18n" data-sellers={JSON.stringify(sellers.map((s) => ({ id: s.id, name: s.name, email: s.email })))} hidden></div>
+<div
+  id="admin-msg-i18n"
+  data-sellers={JSON.stringify(sellers.map((s) => ({ id: s.id, name: s.name, email: s.email })))}
+  data-threads-seed={JSON.stringify(threads.map((t) => ({ sellerId: t.sellerId, lastMessageId: t.lastMessage.id, unreadForAdmin: t.unreadForAdmin })))}
+  hidden
+></div>
 
 <div class="admin-msg-compose-toggle-row">
   <button type="button" id="admin-msg-compose-toggle" class="btn btn--accent btn--sm" aria-expanded="false" aria-controls="admin-msg-compose">

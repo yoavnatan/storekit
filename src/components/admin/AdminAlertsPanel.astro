@@ -21,16 +21,43 @@ const sourceLabel: Record<string, string> = { server: 'שרת', client: 'דפד�
   <div class="admin-table-wrap" id="admin-alerts-wrap">
     <table class="admin-table" id="admin-alerts-table">
       <thead>
-        <tr><th>זמן</th><th>מקור</th><th>נתיב</th><th>הודעה</th></tr>
+        <tr><th>זמן</th><th>מקור</th><th>נתיב</th><th>הודעה</th><th class="admin-alerts-th-details"><span class="sr-only">פרטים נוספים</span></th></tr>
       </thead>
       <tbody>
         {errors.map((e) => (
-          <tr>
-            <td class="admin-nowrap">{formatHeDateTime(e.createdAt)}</td>
-            <td><span class="admin-badge admin-badge--failed">{sourceLabel[e.source] ?? e.source}</span></td>
-            <td class="admin-nowrap">{e.route ?? '—'}</td>
-            <td>{e.message}</td>
-          </tr>
+          <>
+            <tr>
+              <td class="admin-nowrap">{formatHeDateTime(e.createdAt)}</td>
+              <td><span class="admin-badge admin-badge--failed">{sourceLabel[e.source] ?? e.source}</span></td>
+              <td class="admin-nowrap">{e.route ?? '—'}</td>
+              <td>{e.message}</td>
+              <td class="admin-nowrap">
+                <button
+                  type="button"
+                  class="admin-alerts-details-btn"
+                  aria-expanded="false"
+                  aria-controls={`admin-alert-details-${e.id}`}
+                >
+                  <span>פרטים נוספים</span>
+                  <svg class="admin-alerts-details-btn__chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
+              </td>
+            </tr>
+            <tr id={`admin-alert-details-${e.id}`} class="admin-alerts-details-row" hidden>
+              <td colspan="5">
+                <div class="admin-alerts-details-body">
+                  <p><strong>קוד סטטוס:</strong> {e.statusCode ?? '—'}</p>
+                  {e.stack ? (
+                    <pre class="admin-alerts-stack">{e.stack}</pre>
+                  ) : (
+                    <p class="admin-empty">אין stack trace לשגיאה זו.</p>
+                  )}
+                </div>
+              </td>
+            </tr>
+          </>
         ))}
       </tbody>
     </table>

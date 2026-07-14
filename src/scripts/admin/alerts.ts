@@ -1,4 +1,15 @@
 export function initAdminAlertsPanel(): void {
+  const table = document.getElementById('admin-alerts-table');
+  table?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.admin-alerts-details-btn') as HTMLButtonElement | null;
+    if (!btn) return;
+    const detailsRow = document.getElementById(btn.getAttribute('aria-controls') ?? '');
+    if (!detailsRow) return;
+    const isOpen = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', String(!isOpen));
+    detailsRow.hidden = isOpen;
+  });
+
   const clearBtn = document.getElementById('admin-alerts-clear') as HTMLButtonElement | null;
   clearBtn?.addEventListener('click', async () => {
     if (!confirm('לנקות את כל יומן השגיאות?')) return;

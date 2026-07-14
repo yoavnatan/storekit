@@ -30,6 +30,7 @@ const createNotification = vi.fn();
 const getSellerSession = vi.fn(() => null as string | null);
 const getUserCart = vi.fn((_id: string): UserCartData => ({ cart: {}, wishlist: [], favoriteStores: [] }));
 const saveUserCart = vi.fn();
+const logError = vi.fn();
 
 vi.mock('../src/lib/stores.js', () => ({
   getStoreBySlug: (slug: string) => STORES[slug] ?? null,
@@ -49,6 +50,11 @@ vi.mock('../src/lib/user-carts.js', () => ({
   getUserCart: (id: string) => getUserCart(id),
   saveUserCart: (id: string, data: unknown) => saveUserCart(id, data),
 }));
+// Without this mock, the "order creation fails" test below performed a real
+// fs.writeFileSync into the actual dev data/error-log.json on every test run
+// — polluting the admin dashboard's error log with a fake "disk write failed"
+// entry that looked like a real production incident.
+vi.mock('../src/lib/error-log.js', () => ({ logError: (entry: Record<string, unknown>) => logError(entry) }));
 
 const { POST } = await import('../src/pages/api/checkout.js');
 
