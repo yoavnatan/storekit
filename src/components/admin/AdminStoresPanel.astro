@@ -1,0 +1,54 @@
+---
+// Flat, top-level "every store, one row each" view — the Sellers tab already
+// shows stores, but three levels deep inside a per-seller accordion
+// (AdminSellersPanel.astro). This is the owner-requested "there has to be a
+// Stores tab" (CURRENT_TASK.md, 2026-07-14): a plain scannable/searchable
+// list across every store regardless of who owns it. Reuses the same
+// block/unblock endpoint (/api/admin/moderation) the Sellers tab already
+// calls, wired independently in stores.ts (see that file's header comment
+// for why it doesn't share the Sellers tab's .admin-block-toggle class).
+import type { StoreRow } from '../../lib/admin-stats.js';
+
+interface Props {
+  storeRows: StoreRow[];
+}
+const { storeRows } = Astro.props;
+---
+
+<div class="admin-orders-search">
+  <input type="search" id="admin-store-search" class="input" placeholder="חיפוש לפי שם חנות, כתובת או מוכר/ת..." aria-label="חיפוש חנות" />
+</div>
+
+{storeRows.length === 0 ? (
+  <p class="admin-empty">אין חנויות עדיין.</p>
+) : (
+  <Fragment>
+    <p class="admin-empty" id="admin-stores-search-empty" hidden>לא נמצאו חנויות תואמות.</p>
+    <ul class="admin-store-list" id="admin-store-list">
+      {storeRows.map(({ store, seller, productCount }) => {
+        const searchStr = `${store.name} ${store.slug} ${seller?.name ?? ''} ${seller?.email ?? ''}`.toLowerCase();
+        return (
+          <li class="admin-store-row" data-search={searchStr}>
+            <div class="admin-store-row__info">
+              <span class="admin-store-row__name">
+                {store.name}
+                {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+              </span>
+              <span class="admin-store-row__seller muted">{seller?.name ?? '—'} · {seller?.email ?? ''}</span>
+            </div>
+            <span class="admin-store-row__count">{productCount} מוצרים</span>
+            <a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link">צפה בחנות</a>
+            <button
+              type="button"
+              class={`btn btn--sm ${store.blocked ? '' : 'btn--ghost'} admin-store-row-toggle`}
+              data-store-slug={store.slug}
+              data-blocked={store.blocked ? '1' : ''}
+            >
+              {store.blocked ? 'בטל חסימה' : 'חסום חנות'}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  </Fragment>
+)}
