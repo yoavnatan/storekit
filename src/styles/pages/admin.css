@@ -220,6 +220,22 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   max-height: 240px; overflow-y: auto;
 }
 
+/* ── Stores tab: flat, top-level store list + search (same row shape as
+   the Attention list below, plus a moderation action) ── */
+.admin-store-list { display: flex; flex-direction: column; gap: 0.6rem; list-style: none; padding: 0; margin: 0; }
+.admin-store-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+.admin-store-row__info { display: flex; flex-direction: column; gap: 0.1rem; flex: 1 1 220px; }
+.admin-store-row__name { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 700; color: var(--color-text); }
+.admin-store-row__seller { font-size: 0.78rem; }
+.admin-store-row__count { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; }
+
 /* ── Attention list ── */
 .admin-attention-note { font-size: 0.82rem; color: var(--color-muted); margin: 0 0 1rem; }
 .admin-attention-list { display: flex; flex-direction: column; gap: 0.6rem; list-style: none; padding: 0; margin: 0; }

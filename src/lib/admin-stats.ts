@@ -86,6 +86,28 @@ export interface AttentionEntry {
   reasons: string[];
 }
 
+export interface StoreRow {
+  store: Store;
+  seller: Seller | undefined;
+  productCount: number;
+}
+
+// Flat, top-level "one row per store" view for the admin Stores tab — unlike
+// getSellerCards (grouped per-seller, three levels deep with a nested
+// accordion), this is a plain list an admin can scan/search across every
+// store regardless of who owns it. Sorted by store name since that's what an
+// admin searching for a specific store is scanning for, not seller identity.
+export function getStoreRows(stores: Store[], sellers: Seller[], productsByStore: Map<string, StoreProduct[]>): StoreRow[] {
+  const sellerById = new Map(sellers.map((s) => [s.id, s]));
+  return stores
+    .map((store) => ({
+      store,
+      seller: sellerById.get(store.sellerId),
+      productCount: productsByStore.get(store.id)?.length ?? 0,
+    }))
+    .sort((a, b) => a.store.name.localeCompare(b.store.name, 'he'));
+}
+
 export function getStoresNeedingAttention(stores: Store[], sellers: Seller[], productsByStore: Map<string, StoreProduct[]>): AttentionEntry[] {
   const sellerById = new Map(sellers.map((s) => [s.id, s]));
   return stores

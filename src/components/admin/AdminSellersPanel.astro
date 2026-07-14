@@ -11,13 +11,20 @@ function fmtDate(iso: string): string {
 }
 ---
 
+<div class="admin-orders-search">
+  <input type="search" id="admin-seller-search" class="input" placeholder="חיפוש לפי שם מוכר/ת, מייל או שם חנות..." aria-label="חיפוש מוכר/ת" />
+</div>
+
 {sellerCards.length === 0 ? (
   <p class="admin-empty">אין מוכרים עדיין.</p>
 ) : (
   <Fragment>
-  <div class="admin-seller-list">
-    {sellerCards.map(({ seller, stores, totalProducts }) => (
-      <details class="admin-seller-card">
+  <p class="admin-empty" id="admin-sellers-search-empty" hidden>לא נמצאו מוכרים תואמים.</p>
+  <div class="admin-seller-list" id="admin-seller-list">
+    {sellerCards.map(({ seller, stores, totalProducts }) => {
+      const searchStr = `${seller.name} ${seller.email} ${stores.map((s) => s.store.name).join(' ')}`.toLowerCase();
+      return (
+      <details class="admin-seller-card" data-search={searchStr}>
         <summary class="admin-seller-card__summary">
           <div class="admin-seller-card__identity">
             <span class="admin-seller-card__name">{seller.name}</span>
@@ -96,7 +103,8 @@ function fmtDate(iso: string): string {
           )}
         </div>
       </details>
-    ))}
+      );
+    })}
   </div>
 
   <dialog id="admin-seller-msg-modal" aria-labelledby="admin-seller-msg-modal-title" style="border:none;border-radius:14px;padding:0;width:min(480px,94vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">

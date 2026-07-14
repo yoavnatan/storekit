@@ -45,11 +45,36 @@ function wireSellerMessageModal(): void {
   });
 }
 
+// Plain substring search over each seller card's precomputed data-search
+// (name + email + all of that seller's store names — a store name is a
+// plausible thing to search for even on the nominally seller-scoped tab, see
+// CURRENT_TASK.md). Same simplified pattern as the Orders tab's search
+// (orders-filter.ts) minus the sort/filter-dropdown machinery this tab
+// doesn't need — just show/hide + an empty-state toggle.
+function wireSellerSearch(): void {
+  const list = document.getElementById('admin-seller-list');
+  const searchInput = document.getElementById('admin-seller-search') as HTMLInputElement | null;
+  const noMatchEl = document.getElementById('admin-sellers-search-empty');
+  if (!list || !searchInput) return;
+
+  searchInput.addEventListener('input', () => {
+    const query = searchInput.value.trim().toLowerCase();
+    let visible = 0;
+    list.querySelectorAll<HTMLElement>('.admin-seller-card').forEach((card) => {
+      const show = !query || (card.dataset.search ?? '').includes(query);
+      card.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    if (noMatchEl) noMatchEl.hidden = visible > 0;
+  });
+}
+
 // Store/product block toggle — admin-only kill switch (see moderation.ts).
 // Optimistic DOM update (button label + badge) so the accordion doesn't
 // collapse/reload; a failed request reverts the button back.
 export function initAdminSellersPanel(): void {
   wireSellerMessageModal();
+  wireSellerSearch();
 
   document.querySelectorAll<HTMLButtonElement>('.admin-block-toggle').forEach((btn) => {
     btn.addEventListener('click', async () => {

@@ -2,7 +2,7 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { isAdminRequest } from '../../lib/admin-auth.js';
-import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductsByStoreMap } from '../../lib/admin-stats.js';
+import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductsByStoreMap, getStoreRows } from '../../lib/admin-stats.js';
 import { getAllSellers } from '../../lib/seller-auth.js';
 import { getAllStores } from '../../lib/stores.js';
 import { getAllOrders } from '../../lib/orders.js';
@@ -10,6 +10,7 @@ import { getAdminThreadSummaries } from '../../lib/admin-messages.js';
 import { getRecentErrors } from '../../lib/error-log.js';
 import AdminOverviewPanel from '../../components/admin/AdminOverviewPanel.astro';
 import AdminSellersPanel from '../../components/admin/AdminSellersPanel.astro';
+import AdminStoresPanel from '../../components/admin/AdminStoresPanel.astro';
 import AdminOrdersPanel from '../../components/admin/AdminOrdersPanel.astro';
 import AdminAttentionPanel from '../../components/admin/AdminAttentionPanel.astro';
 import AdminMessagesPanel from '../../components/admin/AdminMessagesPanel.astro';
@@ -22,6 +23,7 @@ if (!isAdminRequest(Astro.cookies)) {
 const tabs = [
   { id: 'overview', label: 'סקירה כללית' },
   { id: 'sellers', label: 'מוכרים' },
+  { id: 'stores', label: 'חנויות' },
   { id: 'orders', label: 'הזמנות' },
   { id: 'attention', label: 'לתשומת לב' },
   { id: 'messages', label: 'הודעות' },
@@ -41,6 +43,7 @@ const productsByStore = getProductsByStoreMap();
 
 const overview = getPlatformOverview(sellers, stores, orders);
 const sellerCards = getSellerCards(sellers, stores, productsByStore);
+const storeRows = getStoreRows(stores, sellers, productsByStore);
 const attention = getStoresNeedingAttention(stores, sellers, productsByStore);
 const messageThreads = getAdminThreadSummaries();
 const unreadMessagesForAdmin = messageThreads.reduce((sum, t) => sum + t.unreadForAdmin, 0);
@@ -91,6 +94,10 @@ const recentErrors = getRecentErrors();
         <AdminSellersPanel sellerCards={sellerCards} />
       </div>
 
+      <div id="dash-panel-stores" class="dash-panel" role="tabpanel" aria-labelledby="tab-stores" hidden={initialPanel !== 'stores'}>
+        <AdminStoresPanel storeRows={storeRows} />
+      </div>
+
       <div id="dash-panel-orders" class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
         <AdminOrdersPanel orders={orders} />
       </div>
@@ -113,11 +120,13 @@ const recentErrors = getRecentErrors();
 <script>
   import { initDashTabs } from '../../scripts/dashboard/ui.js';
   import { initAdminSellersPanel } from '../../scripts/admin/sellers.js';
+  import { initAdminStoresPanel } from '../../scripts/admin/stores.js';
   import { initAdminOrdersFilter } from '../../scripts/admin/orders-filter.js';
   import { initAdminMessagesPanel } from '../../scripts/admin/admin-messages.js';
   import { initAdminAlertsPanel } from '../../scripts/admin/alerts.js';
   initDashTabs();
   initAdminSellersPanel();
+  initAdminStoresPanel();
   initAdminOrdersFilter();
   initAdminMessagesPanel();
   initAdminAlertsPanel();
