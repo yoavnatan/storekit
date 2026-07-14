@@ -524,7 +524,7 @@ const strEmpty   = t.store.noProductsFound;
         const href = type === 'new_message'
           ? '/seller/dashboard?panel=messages'
           : type === 'admin_message'
-          ? '/seller/dashboard?panel=admin-messages'
+          ? '/seller/dashboard?panel=messages&msg=system'
           : type === 'new_order' || type === 'order_update'
           ? '/seller/dashboard?panel=orders'
           : type === 'low_stock' || type === 'out_of_stock'

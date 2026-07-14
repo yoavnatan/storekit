@@ -1,5 +1,6 @@
 import { escapeHtml } from '../../lib/html-escape.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
+import { initAdminMsgSellerDropdown, resetAdminMsgSellerDropdown } from './admin-msg-seller-dropdown.js';
 
 interface AdminMsgSellerInfo { id: string; name: string; email: string }
 interface AdminMsg { id: string; sellerId: string; fromRole: 'admin' | 'seller'; content: string; createdAt: string }
@@ -137,10 +138,12 @@ export function initAdminMessagesPanel(): void {
   const sellerList: AdminMsgSellerInfo[] = i18nEl?.dataset.sellers ? JSON.parse(i18nEl.dataset.sellers) : [];
   const sellers = new Map(sellerList.map((s) => [s.id, s]));
 
+  initAdminMsgSellerDropdown(sellers);
+
   document.querySelectorAll<HTMLElement>('#admin-msg-table [data-seller-id]').forEach((row) => wireThreadRow(row, sellers));
 
   const sendNewBtn = document.getElementById('admin-msg-send-new') as HTMLButtonElement | null;
-  const sellerSelect = document.getElementById('admin-msg-seller-select') as HTMLSelectElement | null;
+  const sellerSelect = document.getElementById('admin-msg-seller-select') as HTMLInputElement | null;
   const contentInput = document.getElementById('admin-msg-new-content') as HTMLTextAreaElement | null;
 
   sendNewBtn?.addEventListener('click', async () => {
@@ -173,6 +176,7 @@ export function initAdminMessagesPanel(): void {
         }
         if (contentInput) contentInput.value = '';
         if (sellerSelect) sellerSelect.value = '';
+        resetAdminMsgSellerDropdown();
       }
     } catch { /* ignore */ } finally {
       sendNewBtn.disabled = false;

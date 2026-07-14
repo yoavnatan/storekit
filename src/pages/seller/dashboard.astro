@@ -195,13 +195,19 @@ const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
 const unreadMessagesCount = storeMessages.filter((m) =>
   !m.readBySeller || messageReplies[m.id]!.some((r) => r.toSellerId === sellerId && !r.readBySeller)
 ).length;
-// Sorting/filtering by read-status is only meaningful when the store actually
+const adminMessages = sellerId ? getAdminMessagesForSeller(sellerId) : [];
+const unreadAdminMsgCount = sellerId ? getUnreadCountForSellerFromAdmin(sellerId) : 0;
+// "הודעות מערכת" is a synthetic row folded into the buyer-messages table
+// below (dash-panel-messages) — it always exists, even with zero admin
+// messages, so it always counts as one more row here.
+const lastAdminMessage = adminMessages.length > 0 ? adminMessages[adminMessages.length - 1] : undefined;
+// Sorting/filtering by read-status is only meaningful when the table actually
 // has a mix of both — with everything read (or everything unread) there's
 // nothing to sort or filter, so hide those controls entirely rather than
 // leave a dead, functionless option in the menu.
-const showMsgStatusControls = unreadMessagesCount > 0 && unreadMessagesCount < storeMessages.length;
-const adminMessages = sellerId ? getAdminMessagesForSeller(sellerId) : [];
-const unreadAdminMsgCount = sellerId ? getUnreadCountForSellerFromAdmin(sellerId) : 0;
+const totalMsgRows = storeMessages.length + 1;
+const unreadMsgRows = unreadMessagesCount + (unreadAdminMsgCount > 0 ? 1 : 0);
+const showMsgStatusControls = unreadMsgRows > 0 && unreadMsgRows < totalMsgRows;
 const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
 const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
 
@@ -354,22 +360,8 @@ const orderStatusColors: Record<string, string> = {
           style="position:relative"
         >
           הודעות
-          {unreadMessagesCount > 0 && (
-            <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMessagesCount} הודעות שלא נקראו`}></span>
-          )}
-        </button>
-        <button
-          class={`dash-tab${initialPanel === 'admin-messages' ? ' dash-tab--active' : ''}`}
-          role="tab"
-          id="tab-admin-messages"
-          data-panel="admin-messages"
-          aria-selected={initialPanel === 'admin-messages'}
-          tabindex={initialPanel === 'admin-messages' ? 0 : -1}
-          style="position:relative"
-        >
-          הודעות מהמנהל
-          {unreadAdminMsgCount > 0 && (
-            <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadAdminMsgCount} הודעות שלא נקראו מהמנהל`}></span>
+          {(unreadMessagesCount + unreadAdminMsgCount) > 0 && (
+            <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMessagesCount + unreadAdminMsgCount} הודעות שלא נקראו`}></span>
           )}
         </button>
         <button
@@ -1054,10 +1046,8 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Messages ── -->
       <div id="dash-panel-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
-        <h2 style="font-size:1rem;font-weight:600;margin:0 0 1rem">הודעות מקונים</h2>
-        {storeMessages.length === 0 ? (
-          <p class="seller-msg-empty">אין הודעות עדיין.</p>
-        ) : (
+        <h2 style="font-size:1rem;font-weight:600;margin:0 0 1rem">הודעות</h2>
+        {
           /* Mobile-only sort/filter toolbar — mirrors the products table's own
              (see the comment there): on desktop, sort/filter live in the
              header row itself instead (.sort-btn on the date column, a
@@ -1117,6 +1107,55 @@ const orderStatusColors: Record<string, string> = {
                 </tr>
               </thead>
               <tbody>
+                <Fragment>
+                  <tr
+                    class={`msg-table__row${unreadAdminMsgCount > 0 ? ' msg-table__row--unread' : ''}`}
+                    data-msg-id="system"
+                    data-sort-date={lastAdminMessage?.createdAt ?? '1970-01-01T00:00:00.000Z'}
+                    data-sort-product=""
+                    data-filter-product=""
+                    data-filter-from="הודעות מערכת"
+                    tabindex="0"
+                    role="button"
+                    aria-expanded="false"
+                  >
+                    <td class="msg-table__td msg-table__td--status"></td>
+                    <td class="msg-table__td msg-table__td--from">
+                      {unreadAdminMsgCount > 0 && <span class="visually-hidden msg-unread-sr">לא נקרא · </span>}
+                      הודעות מערכת
+                    </td>
+                    <td class="msg-table__td msg-table__td--subject"><span style="color:var(--color-muted)">—</span></td>
+                    <td class="msg-table__td msg-table__td--preview">
+                      {lastAdminMessage ? lastAdminMessage.content : 'אין הודעות מערכת עדיין'}
+                      {lastAdminMessage?.fromRole === 'seller' && <span class="msg-table__preview-you"> (אתה)</span>}
+                    </td>
+                    <td class="msg-table__td msg-table__td--product"><span style="color:var(--color-muted)">—</span></td>
+                    <td class="msg-table__td msg-table__td--date">{lastAdminMessage ? formatHeDateTime(lastAdminMessage.createdAt) : ''}</td>
+                    <td class="msg-table__td msg-table__td--actions"></td>
+                  </tr>
+                  <tr class="msg-thread-row" id="msg-detail-system" hidden>
+                    <td colspan="7">
+                      <div class="msg-thread msg-thread--seller-pov" id="replies-system">
+                        {adminMessages.map((m) => (
+                          <div class={`msg-thread-entry ${m.fromRole === 'seller' ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`}>
+                            <div class="msg-thread-entry__header">
+                              <span class="msg-thread-entry__who">{m.fromRole === 'seller' ? 'אתה' : 'המנהל'}</span>
+                              <span class="msg-thread-entry__date">{formatHeDateTime(m.createdAt)}</span>
+                            </div>
+                            <div class="msg-thread-entry__body">{m.content}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div class="seller-msg-reply-form" data-reply-for="system" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
+                        <textarea class="seller-msg-reply-textarea" placeholder="כתוב הודעה למנהל..." rows="3"></textarea>
+                        <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+                          <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
+                          <button class="seller-msg-reply-send" type="button">שלח</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </Fragment>
                 {storeMessages.map((msg) => {
                   const replies = messageReplies[msg.id] ?? [];
                   const fmtDate = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -1199,30 +1238,7 @@ const orderStatusColors: Record<string, string> = {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      <!-- ── Panel: Messages from admin (single flat conversation, not subject-based like buyer messages) ── -->
-      <div id="dash-panel-admin-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-admin-messages" hidden={initialPanel !== 'admin-messages'}>
-        <h2 style="font-size:1rem;font-weight:600;margin:0 0 1rem">הודעות מהמנהל</h2>
-        {adminMessages.length === 0 && <p class="seller-msg-empty" id="admin-msg-seller-empty">אין הודעות מהמנהל עדיין.</p>}
-        <div class="msg-thread" id="admin-msg-thread-seller">
-          {adminMessages.map((m) => (
-            <div class={`msg-thread-entry ${m.fromRole === 'seller' ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`}>
-              <div class="msg-thread-entry__header">
-                <span class="msg-thread-entry__who">{m.fromRole === 'seller' ? 'אתה' : 'המנהל'}</span>
-                <span class="msg-thread-entry__date">{formatHeDateTime(m.createdAt)}</span>
-              </div>
-              <div class="msg-thread-entry__body">{m.content}</div>
-            </div>
-          ))}
-        </div>
-        <div class="seller-msg-reply-form" style="padding:0.75rem 0;border-top:1px solid var(--color-border);margin-top:1rem">
-          <textarea class="seller-msg-reply-textarea" id="admin-msg-seller-textarea" placeholder="כתוב הודעה למנהל..." rows="3"></textarea>
-          <div style="display:flex;justify-content:flex-end">
-            <button class="seller-msg-reply-send" id="admin-msg-seller-send" type="button">שלח</button>
-          </div>
-        </div>
+        }
       </div>
 
       <!-- ── Panel: Settings ── -->
@@ -1700,8 +1716,6 @@ const orderStatusColors: Record<string, string> = {
   import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
   import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
   import { createFloatingPortal } from '../../lib/toolbar-portal.js';
-  import { escapeHtml } from '../../lib/html-escape.js';
-  import { formatHeDateTime } from '../../lib/format-date.js';
 
   const uploadCfg = document.getElementById('upload-config');
   const CLOUD  = uploadCfg?.dataset.cloud  ?? '';
@@ -1737,53 +1751,6 @@ const orderStatusColors: Record<string, string> = {
       u.searchParams.delete('msg');
       history.replaceState(null, '', u.toString());
     }
-  }
-  // Admin↔seller messages — single flat conversation (see AdminMessage in
-  // admin-messages.ts), so unlike the buyer-messages tab there's just one
-  // thread to render/reply to, not a table of subject-based threads.
-  {
-    const sendBtn  = document.getElementById('admin-msg-seller-send') as HTMLButtonElement | null;
-    const textarea = document.getElementById('admin-msg-seller-textarea') as HTMLTextAreaElement | null;
-    const threadEl = document.getElementById('admin-msg-thread-seller');
-    const tabBtn   = document.getElementById('tab-admin-messages');
-
-    function markAdminMsgsRead() {
-      fetch('/api/admin-messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'mark-read' }),
-      }).then(() => {
-        document.querySelector('#tab-admin-messages span[aria-label]')?.remove();
-        window.dispatchEvent(new CustomEvent('notif-refreshed'));
-      }).catch(() => {});
-    }
-
-    if (tabBtn?.classList.contains('dash-tab--active')) markAdminMsgsRead();
-    tabBtn?.addEventListener('click', markAdminMsgsRead);
-
-    sendBtn?.addEventListener('click', async () => {
-      const content = textarea?.value.trim() ?? '';
-      if (!content || !threadEl) return;
-      sendBtn.disabled = true;
-      try {
-        const res = await fetch('/api/admin-messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
-        });
-        const data = await res.json() as { message?: { content: string; createdAt: string } };
-        if (res.ok && data.message) {
-          document.getElementById('admin-msg-seller-empty')?.remove();
-          const div = document.createElement('div');
-          div.className = 'msg-thread-entry msg-thread-entry--seller';
-          div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">אתה</span><span class="msg-thread-entry__date">${escapeHtml(formatHeDateTime(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escapeHtml(data.message.content)}</div>`;
-          threadEl.appendChild(div);
-          if (textarea) textarea.value = '';
-        }
-      } catch { /* ignore */ } finally {
-        sendBtn.disabled = false;
-      }
-    });
   }
 
   initCropModal();
@@ -2751,15 +2718,57 @@ const orderStatusColors: Record<string, string> = {
 
   document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
     const id        = row.dataset.msgId ?? '';
+    const isSystem  = id === 'system';
     const threadRow = document.getElementById(`msg-detail-${id}`) as HTMLTableRowElement | null;
     const repliesEl = document.getElementById(`replies-${id}`);
     let isOpen = false;
+
+    // "הודעות מערכת" (admin<->seller) is a single flat thread — not
+    // subject-based replies like the buyer messages below — so it reads/
+    // writes /api/admin-messages instead of /api/messages, and its message
+    // shape is { fromRole } rather than { fromUserId, fromName }.
+    function loadThreadSystem(markRead: boolean) {
+      fetch('/api/admin-messages')
+        .then((r) => r.json())
+        .then(({ messages }: { messages: { fromRole: 'admin' | 'seller'; content: string; createdAt: string }[] }) => {
+          if (!repliesEl) return;
+          repliesEl.innerHTML = '';
+          messages.forEach((m) => {
+            const isSelf = m.fromRole === 'seller';
+            const div = document.createElement('div');
+            div.className = `msg-thread-entry ${isSelf ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`;
+            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escMsg(isSelf ? 'אתה' : 'המנהל')}</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(m.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(m.content)}</div>`;
+            repliesEl.appendChild(div);
+          });
+          if (messages.length > 0) {
+            const last = messages[messages.length - 1]!;
+            const isSelf = last.fromRole === 'seller';
+            const previewTd = row.querySelector('.msg-table__td--preview');
+            if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
+            const dateTd = row.querySelector('.msg-table__td--date');
+            if (dateTd) dateTd.textContent = fmtDateJs(last.createdAt);
+            row.dataset.sortDate = last.createdAt;
+          }
+          if (markRead) {
+            row.classList.remove('msg-table__row--unread');
+            row.querySelector('.msg-unread-sr')?.remove();
+            document.querySelector('#tab-messages span[aria-label]')?.remove();
+            updateSwitcherAlertDot();
+            applyMessagesFilter();
+            fetch('/api/admin-messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read' }) })
+              .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
+          }
+          threadRow?.querySelector<HTMLElement>('[data-reply-for]')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          threadRow?.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true });
+        }).catch(() => {});
+    }
 
     // viaPoll = the live poll found new replies while this thread was already
     // open (the user isn't in the middle of opening it themselves) — that's
     // the one case that needs its own toast, keyed by the *reply's own* id so
     // it matches (and dedupes against) the site-wide notification poller.
     function loadThread(markRead: boolean, viaPoll = false) {
+      if (isSystem) { loadThreadSystem(markRead); return; }
       fetch(`/api/messages?repliesFor=${id}`)
         .then((r) => r.json())
         .then(({ replies }: { replies: { id: string; fromUserId: string; fromName: string; content: string; createdAt: string; toSellerId?: string; readBySeller?: boolean }[] }) => {
@@ -2842,13 +2851,16 @@ const orderStatusColors: Record<string, string> = {
         if (!content) return;
         sendBtn.disabled = true;
         try {
-          const res = await fetch('/api/messages', {
+          const res = await fetch(isSystem ? '/api/admin-messages' : '/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ replyToId: id, content }),
+            body: JSON.stringify(isSystem ? { content } : { replyToId: id, content }),
           });
           const data = await res.json() as { ok?: boolean; message?: { content: string; createdAt: string } };
-          if (res.ok && data.ok && data.message && repliesEl) {
+          // /api/admin-messages has no `ok` field on its message response
+          // (unlike /api/messages) — see admin-messages.ts POST handler.
+          const success = isSystem ? (res.ok && data.message) : (res.ok && data.ok && data.message);
+          if (success && data.message && repliesEl) {
             const div = document.createElement('div');
             div.className = 'msg-thread-entry msg-thread-entry--seller';
             div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">אתה</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(data.message.content)}</div>`;
@@ -3129,40 +3141,61 @@ const orderStatusColors: Record<string, string> = {
       }).catch(() => {});
   }
 
-  // Live unread polling
-  function pollSellerUnread() {
-    fetch(`/api/messages?role=seller&unread=1&storeId=${encodeURIComponent(currentStoreIdForMsgs)}`)
+  function refreshSystemRowPreview(row: HTMLElement) {
+    fetch('/api/admin-messages')
       .then((r) => r.json())
-      .then(({ unreadIds }: { unreadIds: string[] }) => {
-        const tabBtn = document.getElementById('tab-messages');
-        const tabDot = tabBtn?.querySelector<HTMLElement>('span[aria-label]');
-        if (unreadIds.length > 0 && !tabDot && tabBtn) {
-          const dot = document.createElement('span');
-          dot.setAttribute('aria-label', 'הודעות שלא נקראו');
-          dot.style.cssText = 'position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:#ef4444;border-radius:50%';
-          tabBtn.appendChild(dot);
-        } else if (unreadIds.length === 0) {
-          tabDot?.remove();
-        }
-        document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
-          const id = row.dataset.msgId!;
-          if (!unreadIds.includes(id)) return;
-          if (row.classList.contains('msg-table__row--open')) {
-            sellerThreadLoaders.get(id)?.(true, true);
-          } else {
-            row.classList.add('msg-table__row--unread');
-            const fromTd = row.querySelector('.msg-table__td--from');
-            if (fromTd && !fromTd.querySelector('.msg-unread-sr')) {
-              const sr = document.createElement('span');
-              sr.className = 'visually-hidden msg-unread-sr';
-              sr.textContent = 'לא נקרא · ';
-              fromTd.insertBefore(sr, fromTd.firstChild);
-            }
-            refreshRowPreview(id, row);
-          }
-        });
-        applyMessagesFilter();
+      .then(({ messages }: { messages: { fromRole: 'admin' | 'seller'; content: string; createdAt: string }[] }) => {
+        if (messages.length === 0) return;
+        const last = messages[messages.length - 1]!;
+        const isSelf = last.fromRole === 'seller';
+        const previewTd = row.querySelector('.msg-table__td--preview');
+        if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
+        const dateTd = row.querySelector('.msg-table__td--date');
+        if (dateTd) dateTd.textContent = fmtDateJs(last.createdAt);
+        row.dataset.sortDate = last.createdAt;
       }).catch(() => {});
+  }
+
+  // Live unread polling — combines buyer<->seller messages with the
+  // admin<->seller "הודעות מערכת" row folded into the same tab/table, so a
+  // seller with zero buyer-unread but a fresh admin message still keeps the
+  // tab dot (a buyer-only unreadIds.length check used to wipe it either way).
+  function pollSellerUnread() {
+    Promise.all([
+      fetch(`/api/messages?role=seller&unread=1&storeId=${encodeURIComponent(currentStoreIdForMsgs)}`).then((r) => r.json()) as Promise<{ unreadIds: string[] }>,
+      fetch('/api/admin-messages?unread=1').then((r) => r.json()) as Promise<{ unreadCount: number }>,
+    ]).then(([{ unreadIds }, { unreadCount }]) => {
+      const tabBtn = document.getElementById('tab-messages');
+      const tabDot = tabBtn?.querySelector<HTMLElement>('span[aria-label]');
+      const hasAnyUnread = unreadIds.length > 0 || unreadCount > 0;
+      if (hasAnyUnread && !tabDot && tabBtn) {
+        const dot = document.createElement('span');
+        dot.setAttribute('aria-label', 'הודעות שלא נקראו');
+        dot.style.cssText = 'position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:#ef4444;border-radius:50%';
+        tabBtn.appendChild(dot);
+      } else if (!hasAnyUnread) {
+        tabDot?.remove();
+      }
+      document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
+        const id = row.dataset.msgId!;
+        const isUnread = id === 'system' ? unreadCount > 0 : unreadIds.includes(id);
+        if (!isUnread) return;
+        if (row.classList.contains('msg-table__row--open')) {
+          sellerThreadLoaders.get(id)?.(true, true);
+        } else {
+          row.classList.add('msg-table__row--unread');
+          const fromTd = row.querySelector('.msg-table__td--from');
+          if (fromTd && !fromTd.querySelector('.msg-unread-sr')) {
+            const sr = document.createElement('span');
+            sr.className = 'visually-hidden msg-unread-sr';
+            sr.textContent = 'לא נקרא · ';
+            fromTd.insertBefore(sr, fromTd.firstChild);
+          }
+          if (id === 'system') refreshSystemRowPreview(row); else refreshRowPreview(id, row);
+        }
+      });
+      applyMessagesFilter();
+    }).catch(() => {});
   }
   pollSellerUnread();
   setInterval(pollSellerUnread, 15000);
