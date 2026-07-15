@@ -9,6 +9,7 @@ import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree } from './category-tree-cache.js';
 import { initCategoryPicker } from './category-picker.js';
+import { encodeList, debounce } from '../../lib/admin-nav.js';
 
 export interface ProductData {
   id: string; storeId: string; slug?: string; name: string;
@@ -19,33 +20,52 @@ export interface ProductData {
   variantStock?: Record<string, number>;
   variantImages?: Record<string, string>;
   createdAt?: string;
+  // Only set on rows fetched via /api/seller/products (a brand-new product
+  // from the add-product form naturally has 0 of both, buildRows' defaults
+  // below already cover that case without these).
+  wishlistCount?: number;
+  purchasedCount?: number;
 }
 
 function fmtPrice(n: number) { return formatPrice(n); }
 
 const SPINNER_SVG = `<span class="dot-pulse" role="status" aria-label="טוען"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span>`;
 
+// Shared dropdown-trigger/panel chrome for the read-only per-row stock breakdown popover.
+const STOCK_BREAKDOWN_BTN = 'inline-flex items-center justify-center w-[1.1rem] h-[1.1rem] bg-transparent border-0 rounded-full cursor-pointer [color:var(--color-muted)] transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] hover:[color:var(--color-text)] aria-expanded:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] aria-expanded:[color:var(--color-text)] aria-expanded:rotate-180';
+const STOCK_BREAKDOWN_DROPDOWN = 'absolute top-[calc(100%+0.3rem)] end-0 min-w-[140px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 m-0 p-[0.3rem] animate-product-menu-open';
+
 // ── Products pagination + toolbar filter (shared state) ───────────────────────
-const PRODUCTS_PAGE_SIZE = 20;
+// Search/sort/filter/page-size all resolve server-side now (see applyPagination
+// below) — pagination means the toolbar can no longer just show/hide DOM rows
+// already on the page, the same reasoning that moved the admin dashboard's own
+// list tabs server-side. This module only holds the *current query state*.
 let productsCurrentPage = 1;
+let productsPageSize = 20;
+let productsSearchQuery = '';
 
 // Column → set of selected display values. Empty set (or missing entry) for a
 // column means that column doesn't restrict anything; multiple selected values
 // within a column combine with OR, different columns combine with AND — same
-// semantics as the variant-combo table's per-dimension filter.
+// semantics as the variant-combo table's per-dimension filter. Values are
+// category *display paths*; the "no category" row uses i18n.filterNoCategory
+// as its sentinel value (translated to '' when building the server query).
 const productsFilters = new Map<string, Set<string>>();
 
-function getRowFilterValue(row: HTMLElement, col: string): string {
-  if (col === 'category') return row.dataset.category || (getDashI18n().filterNoCategory ?? 'ללא קטגוריה');
-  return '';
-}
-
-function rowMatchesFilters(row: HTMLElement): boolean {
-  for (const [col, values] of productsFilters) {
-    if (values.size === 0) continue;
-    if (!values.has(getRowFilterValue(row, col))) return false;
+// Category filter's value list can no longer be read off DOM rows (only the
+// current page's rows exist in the DOM) — walk the full category tree
+// instead, same data source the edit-row's own category picker uses.
+function allCategoryPaths(): string[] {
+  const paths: string[] = [];
+  function walk(nodes: CategoryNode[], prefix: string): void {
+    for (const node of nodes) {
+      const path = prefix ? `${prefix} › ${node.name}` : node.name;
+      paths.push(path);
+      walk(node.children, path);
+    }
   }
-  return true;
+  walk(getCategoryTree(), '');
+  return paths;
 }
 
 function fmtDateAdded(iso?: string): string {
@@ -97,13 +117,13 @@ function stockBreakdownHtml(variants: VariantDimension[] | undefined, variantSto
     const label = comboLabelHtml(variants, combo);
     const value = key in stockMap ? stockMap[key] : (hasAnyStock ? 0 : (splitDefaults[idx] ?? 0));
     const warn = value <= 0 ? warnIcon(i18n.outOfStock ?? 'Out of stock') : '';
-    return `<div class="stock-breakdown__row"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span style="display:inline-flex;align-items:center;gap:0.3rem">${value}${warn}</span></div>`;
+    return `<div class="flex items-center justify-between gap-3 px-3 py-[0.45rem] rounded [color:var(--color-text)] text-[0.82rem] whitespace-nowrap"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span style="display:inline-flex;align-items:center;gap:0.3rem">${value}${warn}</span></div>`;
   }).join('');
-  return `<span class="stock-breakdown" data-stock-breakdown>
-    <button type="button" class="stock-breakdown__btn" aria-expanded="false" aria-haspopup="true" aria-label="${esc(i18n.stockBreakdownLabel ?? 'Show stock breakdown by variant')}">
+  return `<span class="relative inline-flex" data-stock-breakdown>
+    <button type="button" class="${STOCK_BREAKDOWN_BTN}" data-stock-breakdown-btn aria-expanded="false" aria-haspopup="true" aria-label="${esc(i18n.stockBreakdownLabel ?? 'Show stock breakdown by variant')}">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
-    <div class="stock-breakdown__dropdown" role="menu" hidden>${rows}</div>
+    <div class="${STOCK_BREAKDOWN_DROPDOWN}" data-stock-breakdown-dropdown role="menu" hidden>${rows}</div>
   </span>`;
 }
 
@@ -154,22 +174,22 @@ function categoryPathFor(categoryId: string): string {
 
 function categoryFieldHtml(selectedCategoryId: string, i18n: Record<string, string>): string {
   const label = selectedCategoryId ? (categoryPathFor(selectedCategoryId) || i18n.categoryNone) : i18n.categoryNone;
-  return `<div class="field field--narrow">
+  return `<div class="field max-w-[280px]">
     <span>${esc(i18n.categoryLabel ?? 'Category')}</span>
-    <div class="category-picker" data-category-picker>
+    <div class="category-picker relative" data-category-picker>
       <input type="hidden" name="categoryId" value="${esc(selectedCategoryId)}" />
-      <button type="button" class="category-picker__trigger" aria-haspopup="true" aria-expanded="false">
-        <span class="category-picker__label">${esc(label ?? '')}</span>
-        <svg class="category-picker__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      <button type="button" class="category-picker__trigger group flex items-center justify-between gap-2 w-full px-[0.7rem] py-2 bg-[color:var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius)] cursor-pointer text-sm text-[color:var(--color-text)] text-start transition-colors duration-[120ms] hover:border-[var(--color-muted)] aria-expanded:border-[var(--color-accent)]" aria-haspopup="true" aria-expanded="false">
+        <span class="category-picker__label overflow-hidden text-ellipsis whitespace-nowrap">${esc(label ?? '')}</span>
+        <svg class="category-picker__chevron shrink-0 text-[color:var(--color-muted)] transition-transform duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
-      <div class="category-picker__menu" hidden></div>
+      <div class="category-picker__menu absolute start-0 top-[calc(100%+5px)] w-max min-w-full max-w-[20rem] max-h-[18rem] overflow-y-auto bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] p-[0.3rem] shadow-[0_4px_20px_rgba(0,0,0,0.12)] z-[60] animate-status-pop" hidden></div>
     </div>
     <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">${esc(i18n.categoryEditHint ?? '')}</p>
   </div>`;
 }
 
 function skuFieldHtml(sku: string, i18n: Record<string, string>): string {
-  return `<label class="field field--narrow">
+  return `<label class="field max-w-[280px]">
     <span>${esc(i18n.skuLabel ?? 'SKU')}</span>
     <input class="input" name="sku" value="${esc(sku)}" placeholder="${esc(i18n.skuPlaceholder ?? '')}">
   </label>`;
@@ -198,7 +218,7 @@ function tagAddInputHtml(i18n: Record<string, string>): string {
 // downstream had to change.
 function tagsFieldHtml(tags: string[], i18n: Record<string, string>): string {
   const chipsHtml = tags.map(t => tagChipHtml(t, i18n)).join('');
-  return `<div class="field field--tags" data-tags-field>
+  return `<div class="field max-w-none" data-tags-field>
     <span>${esc(i18n.tagsLabel ?? 'Tags')}</span>
     <div class="variant-chips" data-tag-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">${chipsHtml}<span data-tag-adder>${tagAddTriggerHtml(i18n)}</span></div>
     <input type="hidden" name="tags" value="${esc(tags.join(','))}">
@@ -812,7 +832,7 @@ function getComboFilterPortal(): HTMLElement {
     portal.className = 'combo-filter-dropdown';
     portal.setAttribute('role', 'menu');
     portal.hidden = true;
-    portal.style.cssText = 'position:fixed;min-width:130px;max-height:220px;overflow:auto;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.13);z-index:300;padding:0.3rem;animation:product-menu-open 0.13s cubic-bezier(0.34,1.56,0.64,1)';
+    portal.style.cssText = 'position:fixed;min-width:130px;max-height:220px;overflow:auto;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.13);z-index:300;padding:0.3rem;animation:var(--animate-product-menu-open)';
     document.body.appendChild(portal);
   }
   return portal;
@@ -1198,7 +1218,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   display.dataset.sortName = p.name.toLowerCase();
   display.dataset.sortPrice = String(p.price);
   display.dataset.sortStock = String(p.stock);
-  display.dataset.sortWishlist = '0';
+  display.dataset.sortWishlist = String(p.wishlistCount ?? 0);
   display.dataset.sortCreatedAt = p.createdAt ?? '';
   display.dataset.category = p.categoryId ? categoryPathFor(p.categoryId) : '';
   display.dataset.categoryId = p.categoryId ?? '';
@@ -1207,28 +1227,31 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   display.dataset.storeName = resolvedStoreName;
   display.dataset.hasVariants = p.variants?.length ? '1' : '';
   display.innerHTML = `
-    <td class="check-col"><input type="checkbox" class="bulk-check" data-bulk-check="${p.id}" aria-label="${esc(p.name)}" style="cursor:pointer;width:15px;height:15px"></td>
-    <td class="num row-num"></td>
+    <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check="${p.id}" aria-label="${esc(p.name)}" style="cursor:pointer;width:15px;height:15px"></td>
+    <td class="num row-num pe-[0.2rem]"></td>
     <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap"><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy"></span>` : ''}</td>
     <td class="name-col">
-      <span class="product-name">${esc(p.name)}</span>
+      <span class="product-name cursor-text">${esc(p.name)}</span>
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
     <td class="sku-col">${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="cat-col">${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="num product-price price-col">${fmtPrice(p.price)}</td>
-    <td class="num product-stock stock-col"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
-    <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">—</td>
+    <td class="cat-col">${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
+    <td class="num product-price price-col group cursor-text">${fmtPrice(p.price)}</td>
+    <td class="num product-stock stock-col group cursor-text"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
+    <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">${(p.wishlistCount ?? 0) > 0
+      ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${p.wishlistCount}</span>`
+      : `<span style="color:var(--color-border)">—</span>`}</td>
+    <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem">${(p.purchasedCount ?? 0) > 0 ? String(p.purchasedCount) : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="date-col">${esc(fmtDateAdded(p.createdAt))}</td>
     <td class="actions actions-col">
-      <div class="product-menu">
-        <button class="product-menu__btn" type="button" aria-label="${esc(i.menuLabel ?? 'אפשרויות')}" aria-expanded="false" aria-haspopup="true">
+      <div class="product-menu relative inline-block">
+        <button class="product-menu__btn inline-flex items-center justify-center w-7 h-7 bg-transparent border-0 rounded-full cursor-pointer [color:var(--color-muted)] opacity-50 transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] hover:[color:var(--color-text)] hover:opacity-100 aria-expanded:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] aria-expanded:[color:var(--color-text)] aria-expanded:opacity-100 active:scale-90" type="button" aria-label="${esc(i.menuLabel ?? 'אפשרויות')}" aria-expanded="false" aria-haspopup="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
         </button>
-        <ul class="product-menu__dropdown" hidden role="menu">
-          <li role="none"><button class="product-menu__item" type="button" data-view-product="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>${esc(i.viewProduct ?? 'צפה במוצר')}</button></li>
-          <li role="none"><button class="product-menu__item" type="button" data-edit-toggle="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>${esc(i.edit ?? 'Edit')}</button></li>
-          <li role="none"><button class="product-menu__item product-menu__item--danger" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>${esc(i.delete ?? 'Delete')}</button></li>
+        <ul class="product-menu__dropdown absolute top-[calc(100%+0.3rem)] end-0 min-w-[130px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 list-none m-0 p-[0.3rem] animate-product-menu-open" hidden role="menu">
+          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>${esc(i.viewProduct ?? 'צפה במוצר')}</button></li>
+          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>${esc(i.edit ?? 'Edit')}</button></li>
+          <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>${esc(i.delete ?? 'Delete')}</button></li>
         </ul>
       </div>
     </td>`;
@@ -1238,26 +1261,26 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   edit.dataset.productEdit = p.id;
   edit.hidden = true;
   edit.innerHTML = `
-    <td class="num row-num"></td>
+    <td class="num row-num pe-[0.2rem]"></td>
     <td colspan="20">
-      <form method="POST" action="/api/product" class="dash-form inline-edit-form">
+      <form method="POST" action="/api/product" class="mt-4 inline-edit-form">
         <input type="hidden" name="_action" value="edit-product">
         <input type="hidden" name="productId" value="${p.id}">
         <div class="edit-row-header">
           ${p.images?.[0] ? `<img src="${esc(thumbUrl(p.images[0], 72, 72))}" alt="" width="36" height="36" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0">` : ''}
           <span class="edit-row-title">${esc(p.name)}</span>
-          <div class="form-actions" style="margin-inline-start:auto;margin-top:0">
+          <div class="flex gap-2 mt-2" style="margin-inline-start:auto;margin-top:0">
             <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">${i.save ?? 'Save'}</button>
             <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit="${p.id}">${i.cancel ?? 'Cancel'}</button>
           </div>
         </div>
-        <div class="field-row">
+        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
           <label class="field"><span>${i.nameReq ?? 'Name *'}</span><input class="input" name="name" value="${esc(p.name)}" required></label>
           <label class="field"><span>${i.priceLabel ?? 'Price'}</span><input class="input" name="price" type="number" min="0" step="0.01" value="${p.price}"></label>
           <label class="field"><span>${i.colStock ?? 'Stock'}</span><input class="input" name="stock" type="number" min="0" step="1" value="${p.stock}"></label>
         </div>
         <label class="field"><span>${i.descLabel ?? 'Description'}</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
-        <div class="field-row">${categoryFieldHtml(p.categoryId ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}</div>
+        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">${categoryFieldHtml(p.categoryId ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}</div>
         ${tagsFieldHtml(p.tags ?? [], i)}
         ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i, p.variantImages ?? {})}
         ${specsEditorHtml(p.specs ?? [], i)}
@@ -1265,7 +1288,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
           <span class="field-label">${i.productImages ?? 'Product images'}</span>
           ${galleryWidgetHtml(p.images ?? [], g)}
         </div>
-        <div class="form-actions">
+        <div class="flex gap-2 mt-2">
           <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">${i.save ?? 'Save'}</button>
           <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit="${p.id}">${i.cancel ?? 'Cancel'}</button>
         </div>
@@ -1370,7 +1393,7 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
 
       const category = String(fd.get('category') ?? '').trim();
       const catCell = displayRow.querySelector<HTMLElement>('.cat-col');
-      if (catCell) catCell.innerHTML = category ? `<span class="product-cat-chip">${esc(category)}</span>` : `<span style="color:var(--color-border)">—</span>`;
+      if (catCell) catCell.innerHTML = category ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(category)}</span>` : `<span style="color:var(--color-border)">—</span>`;
       displayRow.dataset.category = category;
 
       const sku = String(fd.get('sku') ?? '').trim();
@@ -1516,7 +1539,6 @@ export function bindExistingRows(cloud: string, preset: string): void {
 export function initAddProduct(cloud: string, preset: string): void {
   const addFormWrap = document.getElementById('add-product-form');
   const addForm = addFormWrap?.querySelector('form') as HTMLFormElement | null;
-  const storeIdInput = addForm?.querySelector<HTMLInputElement>('input[name="storeId"]');
 
   addForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1546,21 +1568,13 @@ export function initAddProduct(cloud: string, preset: string): void {
         return;
       }
 
-      const p = { ...data.product!, storeId: storeIdInput?.value ?? '' };
-      const tbody = document.getElementById('products-tbody') as HTMLTableSectionElement | null;
-      const table = document.getElementById('products-table') as HTMLTableElement | null;
-      const emptyMsg = document.getElementById('empty-products');
-
-      if (table) table.hidden = false;
-      if (emptyMsg) emptyMsg.hidden = true;
-
-      if (tbody) {
-        const [display, edit] = buildRows(p);
-        attachListeners(display, edit, cloud, preset);
-        tbody.prepend(display, edit);
-        initThumbs(display);
-        applyPagination();
-      }
+      // Re-fetch page 1 from the server rather than prepending a DOM row —
+      // with server pagination the new product's real position (and whether
+      // it's even on the current filter/search/sort view at all) can only be
+      // known by asking the server, the same reasoning applyPagination()
+      // itself is built on.
+      productsCurrentPage = 1;
+      applyPagination();
 
       addForm.reset();
       resetVariantsEditor(addForm);
@@ -1649,15 +1663,11 @@ export function initDeleteProduct(): void {
           const data = await res.json() as { ok: boolean; error?: string };
           if (!data.ok) { showStatus(data.error ?? (i18n.errorDeleting ?? 'Error deleting.'), true); return; }
 
-          document.querySelector(`[data-product-display="${productId}"]`)?.remove();
-          document.querySelector(`[data-product-edit="${productId}"]`)?.remove();
+          // applyPagination() re-fetches the current page from the server,
+          // which both drops the deleted row and clamps the page back down
+          // if it was the last item on a trailing page — no manual DOM
+          // removal or empty-state toggling needed here anymore.
           applyPagination();
-
-          const tbody = document.getElementById('products-tbody');
-          if (tbody && tbody.querySelectorAll('[data-product-display]').length === 0) {
-            document.getElementById('products-table')?.setAttribute('hidden', '');
-            document.getElementById('empty-products')?.removeAttribute('hidden');
-          }
           showStatus(i18n.productDeleted ?? 'Product deleted.');
         },
       },
@@ -1681,21 +1691,6 @@ export function initThumbs(root: ParentNode = document): void {
   });
 }
 
-export function renumberRows(): void {
-  let n = 0;
-  document.querySelectorAll<HTMLElement>('#products-tbody [data-product-display]').forEach((row) => {
-    if (!rowMatchesFilters(row)) return;
-    n++;
-    const cell = row.querySelector<HTMLElement>('.row-num');
-    if (cell) cell.textContent = String(n);
-    const productId = row.dataset.productDisplay;
-    if (productId) {
-      const editNum = document.querySelector<HTMLElement>(`[data-product-edit="${productId}"] .row-num`);
-      if (editNum) editNum.textContent = String(n);
-    }
-  });
-}
-
 function renderPaginationControls(totalPages: number): void {
   const nav = document.getElementById('products-pagination') as HTMLElement | null;
   if (!nav) return;
@@ -1708,45 +1703,80 @@ function renderPaginationControls(totalPages: number): void {
 
   nav.hidden = false;
   nav.innerHTML = `
-    <button type="button" class="btn btn--ghost btn--sm" data-page-prev${productsCurrentPage <= 1 ? ' disabled' : ''}>${esc(i.paginationPrev ?? 'הקודם')}</button>
-    <span class="products-pagination__info">${esc(pageInfo)}</span>
-    <button type="button" class="btn btn--ghost btn--sm" data-page-next${productsCurrentPage >= totalPages ? ' disabled' : ''}>${esc(i.paginationNext ?? 'הבא')}</button>
+    <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-prev${productsCurrentPage <= 1 ? ' disabled' : ''}>${esc(i.paginationPrev ?? 'הקודם')}</button>
+    <span class="text-[0.82rem] whitespace-nowrap [color:var(--color-muted)]">${esc(pageInfo)}</span>
+    <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-next${productsCurrentPage >= totalPages ? ' disabled' : ''}>${esc(i.paginationNext ?? 'הבא')}</button>
   `;
 }
 
-export function applyPagination(): void {
-  const tbody = document.getElementById('products-tbody');
-  if (!tbody) return;
+// Fetches the current page/search/sort/filter state from /api/seller/products
+// and rebuilds the tbody from the response — the AJAX counterpart of the
+// admin dashboard's server-paginated list tabs, except via fetch+DOM patch
+// (not a full navigation) so the page never visibly reloads. Every toolbar
+// control (sort, filter, search, page-size, prev/next) funnels through this
+// one function so they can't drift into inconsistent DOM state.
+export async function applyPagination(): Promise<void> {
+  const tbody = document.getElementById('products-tbody') as HTMLTableSectionElement | null;
+  const table = document.getElementById('products-table') as HTMLTableElement | null;
+  const emptyMsg = document.getElementById('empty-products');
+  const emptyMsgSearch = document.getElementById('empty-products-search');
+  const uploadCfg = document.getElementById('upload-config') as HTMLElement | null;
+  const storeId = uploadCfg?.dataset.storeId ?? '';
+  if (!tbody || !storeId) return;
 
-  const rows = Array.from(tbody.querySelectorAll<HTMLElement>('[data-product-display]'));
-  const matchedCount = rows.reduce((n, row) => n + (rowMatchesFilters(row) ? 1 : 0), 0);
-  const totalPages = Math.max(1, Math.ceil(matchedCount / PRODUCTS_PAGE_SIZE));
-  productsCurrentPage = Math.min(Math.max(productsCurrentPage, 1), totalPages);
+  const params = new URLSearchParams();
+  params.set('storeId', storeId);
+  params.set('ppage', String(productsCurrentPage));
+  params.set('psize', String(productsPageSize));
+  if (productsSearchQuery) params.set('pq', productsSearchQuery);
+  params.set('psort', `${productsSortCol}:${productsSortDir}`);
+  const catValues = productsFilters.get('category');
+  if (catValues?.size) {
+    const noCatLabel = getDashI18n().filterNoCategory ?? 'ללא קטגוריה';
+    params.set('pcat', encodeList([...catValues].map((v) => (v === noCatLabel ? '' : v))));
+  }
 
-  const start = (productsCurrentPage - 1) * PRODUCTS_PAGE_SIZE;
-  const end = start + PRODUCTS_PAGE_SIZE;
+  let data: { ok: boolean; items?: ProductData[]; page?: number; totalPages?: number; total?: number };
+  try {
+    const res = await fetch(`/api/seller/products?${params.toString()}`);
+    data = await res.json() as typeof data;
+  } catch { return; }
+  if (!data.ok) return;
 
-  let matchIdx = 0;
-  rows.forEach((row) => {
-    const editRow = document.querySelector<HTMLElement>(`[data-product-edit="${row.dataset.productDisplay}"]`);
-    if (!rowMatchesFilters(row)) {
-      row.hidden = true;
-      if (editRow) editRow.hidden = true;
-      return;
-    }
-    const onPage = matchIdx >= start && matchIdx < end;
-    row.hidden = !onPage;
-    if (editRow && !onPage) editRow.hidden = true;
-    matchIdx++;
+  productsCurrentPage = data.page ?? 1;
+
+  const cloud = uploadCfg?.dataset.cloud ?? '';
+  const preset = uploadCfg?.dataset.preset ?? '';
+  const storeSlug = uploadCfg?.dataset.storeSlug ?? '';
+  const storeName = uploadCfg?.dataset.storeName ?? '';
+
+  tbody.innerHTML = '';
+  (data.items ?? []).forEach((p, idx) => {
+    const [display, edit] = buildRows(p, storeSlug, storeName);
+    const numCell = display.querySelector<HTMLElement>('.row-num');
+    if (numCell) numCell.textContent = String((productsCurrentPage - 1) * productsPageSize + idx + 1);
+    attachListeners(display, edit, cloud, preset);
+    tbody.append(display, edit);
+    initThumbs(display);
   });
 
-  renumberRows();
-  renderPaginationControls(totalPages);
+  const total = data.total ?? 0;
+  const hasActiveQuery = !!productsSearchQuery || (catValues?.size ?? 0) > 0;
+  if (table) table.hidden = total === 0;
+  if (emptyMsg) emptyMsg.hidden = total !== 0 || hasActiveQuery;
+  if (emptyMsgSearch) emptyMsgSearch.hidden = total !== 0 || !hasActiveQuery;
+
+  renderPaginationControls(data.totalPages ?? 1);
 }
 
 export function initPagination(): void {
   const nav = document.getElementById('products-pagination') as HTMLElement | null;
   if (!nav) return;
+
+  productsCurrentPage = parseInt(nav.dataset.page ?? '1', 10) || 1;
+  const sizeSelect = document.getElementById('products-page-size') as HTMLSelectElement | null;
+  productsPageSize = parseInt(sizeSelect?.value ?? '20', 10) || 20;
+  renderPaginationControls(parseInt(nav.dataset.totalPages ?? '1', 10) || 1);
 
   nav.addEventListener('click', (e) => {
     const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next]');
@@ -1755,6 +1785,20 @@ export function initPagination(): void {
     applyPagination();
     document.getElementById('products-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+
+  sizeSelect?.addEventListener('change', () => {
+    productsPageSize = parseInt(sizeSelect.value, 10) || 20;
+    productsCurrentPage = 1;
+    applyPagination();
+  });
+
+  const searchInput = document.getElementById('products-search-input') as HTMLInputElement | null;
+  const debouncedSearch = debounce(() => {
+    productsSearchQuery = searchInput?.value.trim() ?? '';
+    productsCurrentPage = 1;
+    applyPagination();
+  }, 300);
+  searchInput?.addEventListener('input', debouncedSearch);
 
   applyPagination();
 }
@@ -1783,43 +1827,13 @@ export function initStickyOffsets(): void {
   }
 }
 
-function getRowSortValue(row: HTMLElement, col: string): string | number {
-  if (col === 'name')      return row.dataset.sortName ?? '';
-  if (col === 'price')     return parseFloat(row.dataset.sortPrice ?? '0');
-  if (col === 'stock')     return parseInt(row.dataset.sortStock ?? '0', 10);
-  if (col === 'wishlist')  return parseInt(row.dataset.sortWishlist ?? '0', 10);
-  if (col === 'category')  return (row.dataset.category ?? '').toLowerCase();
-  if (col === 'createdAt') return row.dataset.sortCreatedAt ?? '';
-  return '';
-}
-
-function sortProductsBy(col: string, dir: 'asc' | 'desc'): void {
-  const tbody = document.getElementById('products-tbody');
-  if (!tbody) return;
-
-  const rows = Array.from(tbody.querySelectorAll<HTMLTableRowElement>('[data-product-display]'));
-  rows.sort((a, b) => {
-    const va = getRowSortValue(a, col);
-    const vb = getRowSortValue(b, col);
-    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-    return dir === 'asc' ? cmp : -cmp;
-  });
-
-  for (const display of rows) {
-    const edit = tbody.querySelector<HTMLTableRowElement>(`[data-product-edit="${display.dataset.productDisplay}"]`);
-    tbody.append(display);
-    if (edit) tbody.append(edit);
-  }
-  productsCurrentPage = 1;
-  applyPagination();
-}
 
 // Columns offered in the "filter by" control. Only columns with naturally
 // low-cardinality, repeatable values are listed here — same judgment call the
 // variant-combo table already makes (its dimension columns get a filter
 // funnel, its continuous stock column only gets sort). Add more column keys
-// here (and a matching case in getRowFilterValue) if a future column turns
-// out to warrant it.
+// here (and a matching case in getDistinctFilterValues + filterAndSortSellerProducts
+// in seller-products-query.ts) if a future column turns out to warrant it.
 const PRODUCT_FILTER_COLUMNS = ['category'] as const;
 
 function productFilterColumnLabel(col: string, i: Record<string, string>): string {
@@ -1837,6 +1851,7 @@ const PRODUCT_SORT_OPTIONS: { col: string; dir: 'asc' | 'desc'; labelKey: string
   { col: 'stock',      dir: 'asc',    labelKey: 'sortOptStockAsc' },
   { col: 'stock',      dir: 'desc',   labelKey: 'sortOptStockDesc' },
   { col: 'wishlist',   dir: 'desc',   labelKey: 'sortOptWishlistDesc' },
+  { col: 'purchased',  dir: 'desc',   labelKey: 'sortOptPurchasedDesc' },
   { col: 'category',   dir: 'asc',    labelKey: 'sortOptCategoryAsc' },
 ];
 
@@ -1860,7 +1875,7 @@ function getToolbarPortal(): HTMLElement {
   if (!portal) {
     portal = document.createElement('div');
     portal.id = 'products-toolbar-portal';
-    portal.className = 'toolbar-portal';
+    portal.className = 'toolbar-portal fixed bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] p-[.3rem] z-[300] animate-product-menu-open';
     portal.setAttribute('role', 'menu');
     portal.hidden = true;
     document.body.appendChild(portal);
@@ -1939,12 +1954,13 @@ function refreshSortUI(): void {
 function applySort(col: string, dir: 'asc' | 'desc'): void {
   productsSortCol = col;
   productsSortDir = dir;
-  sortProductsBy(col, dir);
+  productsCurrentPage = 1;
+  applyPagination();
   refreshSortUI();
 }
 
 function headerSortClick(col: string): void {
-  const defaultDir = col === 'wishlist' || col === 'createdAt' ? 'desc' : 'asc';
+  const defaultDir = col === 'wishlist' || col === 'purchased' || col === 'createdAt' ? 'desc' : 'asc';
   const dir: 'asc' | 'desc' = productsSortCol === col ? (productsSortDir === 'asc' ? 'desc' : 'asc') : defaultDir;
   applySort(col, dir);
 }
@@ -1954,7 +1970,7 @@ function openMobileSortMenu(trigger: HTMLElement): void {
     const i = getDashI18n();
     return PRODUCT_SORT_OPTIONS.map((opt) => {
       const selected = opt.col === productsSortCol && opt.dir === productsSortDir;
-      return `<button type="button" class="product-menu__item" data-sort-col="${opt.col}" data-sort-dir="${opt.dir}" style="cursor:pointer${selected ? ';font-weight:700;color:var(--color-primary)' : ''}">${esc(i[opt.labelKey] ?? opt.labelKey)}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${opt.col}" data-sort-dir="${opt.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${esc(i[opt.labelKey] ?? opt.labelKey)}</button>`;
     }).join('');
   }, (portal) => {
     portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
@@ -1987,9 +2003,8 @@ function refreshFilterUI(): void {
 }
 
 function getDistinctFilterValues(col: string): string[] {
-  const values = new Set<string>();
-  document.querySelectorAll<HTMLElement>('[data-product-display]').forEach((row) => values.add(getRowFilterValue(row, col)));
-  return [...values].sort();
+  if (col !== 'category') return [];
+  return [...allCategoryPaths().sort(), getDashI18n().filterNoCategory ?? 'ללא קטגוריה'];
 }
 
 function filterValuesHtml(col: string, showBack: boolean): string {
@@ -1999,13 +2014,13 @@ function filterValuesHtml(col: string, showBack: boolean): string {
   const selected = productsFilters.get(col) ?? new Set<string>();
   const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
   const backHtml = showBack
-    ? `<button type="button" class="product-menu__back" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${esc(label)}</button><div class="product-menu__divider"></div>`
+    ? `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${esc(label)}</button><div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`
     : '';
   return [
     backHtml,
-    ...values.map((v) => `<label class="product-menu__checkbox-item"><input type="checkbox" data-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''}>${esc(v)}</label>`),
-    `<div class="product-menu__divider"></div>`,
-    `<button type="button" class="product-menu__clear" data-filter-clear-col>${esc(i.filterClearColumn ?? 'נקה סינון בעמודה זו')}</button>`,
+    ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''}>${esc(v)}</label>`),
+    `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+    `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${esc(i.filterClearColumn ?? 'נקה סינון בעמודה זו')}</button>`,
   ].join('');
 }
 
@@ -2050,14 +2065,14 @@ function filterColumnsHtml(): string {
   return [
     ...PRODUCT_FILTER_COLUMNS.map((col) => {
       const active = (productsFilters.get(col)?.size ?? 0) > 0;
-      return `<div class="product-menu__item" data-filter-col="${col}" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
-        <input type="checkbox" data-filter-col-toggle="${col}" ${active ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">
+      return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
+        <input type="checkbox" class="cursor-pointer shrink-0" data-filter-col-toggle="${col}" ${active ? 'checked' : ''}>
         <span style="flex:1">${esc(productFilterColumnLabel(col, i))}</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
       </div>`;
     }).join(''),
-    `<div class="product-menu__divider"></div>`,
-    `<button type="button" class="product-menu__clear" data-filter-clear-all>${esc(i.filterClearAll ?? 'נקה הכל')}</button>`,
+    `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+    `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${esc(i.filterClearAll ?? 'נקה הכל')}</button>`,
   ].join('');
 }
 
@@ -2150,6 +2165,10 @@ export function initViewProduct(): void {
 
 // ── Inline field editing ──────────────────────────────────────────────────────
 
+const INLINE_INPUT_BASE = '[font:inherit] [color:var(--color-text)] bg-[color:var(--color-surface)] border-[1.5px] [border-color:var(--color-primary)] rounded px-[0.3rem] py-[0.1rem] outline-none block min-w-10 shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-primary)_15%,transparent)]';
+const INLINE_INPUT_NUM = `${INLINE_INPUT_BASE} w-auto group-hover:[color:var(--color-primary)] [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0`;
+const INLINE_CANCEL_BTN = 'inline-flex items-center justify-center w-5 h-5 rounded-full border-none bg-transparent [color:var(--color-muted)] cursor-pointer p-0 shrink-0 transition-colors duration-[120ms] hover:[color:var(--color-danger,#dc2626)] hover:bg-[color-mix(in_srgb,var(--color-danger,#dc2626)_10%,transparent)]';
+
 function activateInlineEdit(
   trigger: HTMLElement,
   row: HTMLElement,
@@ -2169,7 +2188,8 @@ function activateInlineEdit(
   const input = document.createElement('input');
   input.type = field === 'name' ? 'text' : 'number';
   input.value = rawValue;
-  input.className = field === 'name' ? 'inline-input' : 'inline-input inline-input--num';
+  input.dataset.inlineInput = '1';
+  input.className = field === 'name' ? `${INLINE_INPUT_BASE} w-full` : INLINE_INPUT_NUM;
   if (field !== 'name') {
     input.min = '0';
     input.step = field === 'price' ? '0.01' : '1';
@@ -2183,7 +2203,7 @@ function activateInlineEdit(
 
   const xBtn = document.createElement('button');
   xBtn.type = 'button';
-  xBtn.className = 'inline-cancel-btn';
+  xBtn.className = INLINE_CANCEL_BTN;
   xBtn.setAttribute('aria-label', 'ביטול');
   xBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
   xBtn.addEventListener('mousedown', (e) => e.preventDefault());
@@ -2275,7 +2295,7 @@ export function initInlineEdit(): void {
 
   document.addEventListener('click', (e) => {
     const target = e.target as Element;
-    if (target.closest('.inline-input')) return;
+    if (target.closest('[data-inline-input]')) return;
     if (target.closest('[data-stock-breakdown]')) return;
 
     const nameEl   = target.closest<HTMLElement>('.product-name');
@@ -2304,20 +2324,20 @@ export function initInlineEdit(): void {
 
 export function initStockBreakdowns(): void {
   function closeAll(except?: HTMLElement): void {
-    document.querySelectorAll<HTMLButtonElement>('.stock-breakdown__btn[aria-expanded="true"]').forEach((btn) => {
+    document.querySelectorAll<HTMLButtonElement>('[data-stock-breakdown-btn][aria-expanded="true"]').forEach((btn) => {
       const wrap = btn.closest<HTMLElement>('[data-stock-breakdown]');
       if (wrap && wrap === except) return;
       btn.setAttribute('aria-expanded', 'false');
-      wrap?.querySelector<HTMLElement>('.stock-breakdown__dropdown')?.setAttribute('hidden', '');
+      wrap?.querySelector<HTMLElement>('[data-stock-breakdown-dropdown]')?.setAttribute('hidden', '');
     });
   }
 
   document.addEventListener('click', (e) => {
     const target = e.target as Element;
-    const btn = target.closest<HTMLButtonElement>('.stock-breakdown__btn');
+    const btn = target.closest<HTMLButtonElement>('[data-stock-breakdown-btn]');
     if (btn) {
       const wrap = btn.closest<HTMLElement>('[data-stock-breakdown]');
-      const dropdown = wrap?.querySelector<HTMLElement>('.stock-breakdown__dropdown');
+      const dropdown = wrap?.querySelector<HTMLElement>('[data-stock-breakdown-dropdown]');
       if (!wrap || !dropdown) return;
       const isOpen = btn.getAttribute('aria-expanded') === 'true';
       closeAll(isOpen ? undefined : wrap);
@@ -2445,18 +2465,11 @@ export function initBulkSelect(cloud: string, preset: string): void {
             fd.set('storeId', storeId);
             const res = await fetch('/api/product', { method: 'POST', body: fd });
             const data = await res.json() as { ok: boolean };
-            if (data.ok) {
-              document.querySelector(`[data-product-display="${productId}"]`)?.remove();
-              document.querySelector(`[data-product-edit="${productId}"]`)?.remove();
-              selected.delete(productId);
-            }
+            if (data.ok) selected.delete(productId);
           }));
           updateBar();
-          const tbody = document.getElementById('products-tbody');
-          if (tbody && tbody.querySelectorAll('[data-product-display]').length === 0) {
-            document.getElementById('products-table')?.setAttribute('hidden', '');
-            document.getElementById('empty-products')?.removeAttribute('hidden');
-          }
+          // Re-fetches the current page from the server (drops deleted rows,
+          // clamps the page if it ran off the end) — same as single-delete.
           applyPagination();
           showStatus(i.bulkDeleted ?? 'המוצרים נמחקו.');
         },
@@ -2515,25 +2528,25 @@ export function initBulkSelect(cloud: string, preset: string): void {
     const checkSvg   = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-success,#22c55e)" stroke-width="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
 
     uploadPanel.innerHTML = `
-      <div class="bulk-upload-header">
+      <div class="bulk-upload-header flex items-center justify-between text-[0.85rem] font-semibold [color:var(--color-muted)] uppercase tracking-[0.04em] mb-3 sticky [top:var(--site-header-h,3.3rem)] z-[6] bg-[color:var(--color-bg)] py-[0.4rem] -mx-[0.8rem] px-[0.8rem] border-b [border-color:var(--color-border)]">
         <span>${i.bulkUploadImages ?? 'העלה תמונות'}</span>
-        <span class="bulk-upload-header__actions">
+        <span class="bulk-upload-header__actions flex items-center gap-2 normal-case tracking-normal">
           <button type="button" class="btn btn--sm" id="bulk-upload-save-all">${i.bulkUploadSaveAll ?? 'שמור הכל'}</button>
           <button type="button" class="btn btn--ghost btn--sm" id="bulk-upload-close" aria-label="סגור">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </span>
       </div>
-      <div class="bulk-upload-list">
+      <div class="bulk-upload-list flex flex-col gap-4">
         ${Array.from(selected).map((productId) => {
           const row = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
           const name = row?.querySelector('.product-name')?.textContent?.trim() ?? '';
           let images: string[] = [];
           try { images = JSON.parse(row?.dataset.images ?? '[]') as string[]; } catch { images = []; }
           return `
-            <div class="bulk-upload-item" data-upload-product="${productId}">
-              <div class="bulk-upload-item-header">
-                <span class="bulk-upload-name">${esc(name)}</span>
+            <div class="bulk-upload-item border [border-color:var(--color-border)] rounded-[0.45rem] p-3 bg-[color:var(--color-surface)]" data-upload-product="${productId}">
+              <div class="bulk-upload-item-header flex items-center justify-between gap-2 mb-[0.65rem]">
+                <span class="bulk-upload-name text-[0.88rem] font-semibold [color:var(--color-text)] overflow-hidden text-ellipsis whitespace-nowrap min-w-0">${esc(name)}</span>
                 <span class="bulk-img-status" data-status-product="${productId}" aria-live="polite"></span>
               </div>
               ${galleryWidgetHtml(images, g)}

@@ -11,11 +11,28 @@
 import { formatPrice } from '../../config/store.config.js';
 import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
+import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
+import AdminPager from './AdminPager.astro';
 
 interface Props {
-  orders: Order[];
+  orders: Order[]; // current page only
+  totalAll: number;
+  totalFiltered: number;
+  q: string;
+  sortCol: AdminOrderSortCol;
+  sortDir: AdminOrderSortDir;
+  shippingStatus: string[];
+  paymentStatus: string[];
+  store: string[];
+  storeNames: string[]; // every store name across all orders, for the filter dropdown
+  page: number;
+  totalPages: number;
+  buildUrl: (page: number) => string;
 }
-const { orders } = Astro.props;
+const {
+  orders, totalAll, totalFiltered, q, sortCol, sortDir, shippingStatus, paymentStatus, store, storeNames,
+  page, totalPages, buildUrl,
+} = Astro.props;
 
 const shippingLabel: Record<string, string> = {
   pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר',
@@ -26,94 +43,109 @@ const shippingColor: Record<string, string> = {
 const paymentLabel: Record<string, string> = {
   pending: 'ממתין', paid: 'שולם', failed: 'נכשל',
 };
+
+const sortLabels: Record<string, string> = {
+  'date:desc': 'תאריך: חדש — ישן',
+  'date:asc': 'תאריך: ישן — חדש',
+  'amount:desc': 'סכום: גבוה — נמוך',
+  'amount:asc': 'סכום: נמוך — גבוה',
+  'shippingStatus:asc': 'סטטוס משלוח: הזמנות חדשות קודם',
+};
+const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s.length > 0).length;
 ---
 
 <div class="admin-orders-search">
-  <input type="search" id="admin-order-search" class="input" placeholder="חיפוש לפי מספר הזמנה, שם, מייל, טלפון או חנות..." aria-label="חיפוש הזמנה" />
+  <input type="search" id="admin-order-search" class="input" value={q} placeholder="חיפוש לפי מספר הזמנה, שם, מייל, טלפון או חנות..." aria-label="חיפוש הזמנה" />
 </div>
 
-{orders.length === 0 ? (
+{totalAll === 0 ? (
   <p class="admin-empty">אין הזמנות עדיין.</p>
 ) : (
   <Fragment>
-    <div class="orders-panel-head">
-      <div class="orders-toolbar" id="admin-orders-toolbar">
-        <button type="button" id="admin-orders-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+    <div class="flex flex-col items-start mb-4 gap-[0.6rem]">
+      <div
+        class="flex flex-wrap items-center gap-2"
+        id="admin-orders-toolbar"
+        data-sort-col={sortCol}
+        data-sort-dir={sortDir}
+        data-ship={shippingStatus.join(',')}
+        data-pay={paymentStatus.join(',')}
+        data-store={store.join(',')}
+        data-store-names={JSON.stringify(storeNames)}
+      >
+        <button type="button" id="admin-orders-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
-          <span id="admin-orders-sort-label">תאריך: חדש — ישן</span>
-          <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          <span id="admin-orders-sort-label">{sortLabels[`${sortCol}:${sortDir}`] ?? sortLabels['date:desc']}</span>
+          <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
-        <button type="button" id="admin-orders-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+        <button type="button" id="admin-orders-filter-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="true" aria-expanded="false">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
           <span>סינון לפי</span>
-          <span id="admin-orders-filter-count" class="filter-count-badge" hidden>0</span>
-          <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          <span id="admin-orders-filter-count" class="filter-count-badge inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-primary)] text-white text-[.68rem] font-bold leading-none" hidden={activeFilterCount === 0}>{activeFilterCount}</span>
+          <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
       </div>
     </div>
 
-    <p class="admin-empty" id="admin-orders-filter-empty" hidden>לא נמצאו הזמנות תואמות.</p>
+    {totalFiltered === 0 && <p class="admin-empty">לא נמצאו הזמנות תואמות.</p>}
 
-    <div class="orders-list" id="admin-orders-list">
+    <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
+
+    <div class="flex flex-col gap-3" id="admin-orders-list">
       {orders.map((o) => {
         const uniqueStores = [...new Set(o.items.map((i) => i.storeName))];
-        const searchStr = `${o.id} ${o.checkoutRef ?? ''} ${o.buyerName} ${o.buyerEmail} ${o.buyerPhone} ${uniqueStores.join(' ')}`.toLowerCase();
         return (
           <div
-            class="order-card"
+            class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]"
             data-order-id={o.id}
             data-shipping-status={o.shippingStatus}
             data-payment-status={o.paymentStatus}
-            data-stores={uniqueStores.join('|')}
-            data-sort-date={o.createdAt}
-            data-sort-amount={o.totalAmount}
-            data-search={searchStr}
           >
-            <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
-              <div class="order-card__meta">
-                <span class="order-card__id">#{(o.checkoutRef ?? o.id.slice(0, 8)).toUpperCase()}</span>
-                <span class="order-card__date">{formatHeDateTime(o.createdAt)}</span>
+            <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
+              <div class="flex flex-col gap-[0.1rem] min-w-20 shrink-0">
+                <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#{(o.checkoutRef ?? o.id.slice(0, 8)).toUpperCase()}</span>
+                <span class="text-[0.72rem] text-[color:var(--color-muted)]">{formatHeDateTime(o.createdAt)}</span>
               </div>
-              <div class="order-card__summary">
-                <span class="order-card__buyer">{o.buyerName}</span>
-                <span class="order-card__amount">{formatPrice(o.totalAmount)}</span>
-                <span class="order-card__status-badge" style={`background:${shippingColor[o.shippingStatus] ?? '#888'}1a;color:${shippingColor[o.shippingStatus] ?? '#888'}`}>
+              <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
+                <span class="text-sm font-semibold text-[color:var(--color-text)]">{o.buyerName}</span>
+                <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(o.totalAmount)}</span>
+                <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px]" style={`background:${shippingColor[o.shippingStatus] ?? '#888'}1a;color:${shippingColor[o.shippingStatus] ?? '#888'}`}>
                   {shippingLabel[o.shippingStatus] ?? o.shippingStatus}
                 </span>
               </div>
-              <svg class="order-card__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="shrink-0 text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
-            <div class="order-card__body" hidden>
-              <div class="order-card__section">
-                <h3 class="order-card__section-title">קונה</h3>
-                <p class="order-card__info-line"><strong>{o.buyerName}</strong></p>
-                <p class="order-card__info-line">{o.buyerEmail}</p>
-                <p class="order-card__info-line" dir="ltr">{o.buyerPhone}</p>
-                <p class="order-card__info-line">{o.buyerAddress.street}, {o.buyerAddress.city}{o.buyerAddress.zip ? ` ${o.buyerAddress.zip}` : ''}</p>
+            <div class="order-card__body border-t border-[color:var(--color-border)] p-4 flex flex-col gap-4" hidden>
+              <div>
+                <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">קונה</h3>
+                <p class="text-sm text-[color:var(--color-text)] my-[0.1rem]"><strong>{o.buyerName}</strong></p>
+                <p class="text-sm text-[color:var(--color-text)] my-[0.1rem]">{o.buyerEmail}</p>
+                <p class="text-sm text-[color:var(--color-text)] my-[0.1rem]">טלפון: <span dir="ltr">{o.buyerPhone}</span></p>
+                <p class="text-sm text-[color:var(--color-text)] my-[0.1rem]">{o.buyerAddress.street}, {o.buyerAddress.city}{o.buyerAddress.zip ? ` ${o.buyerAddress.zip}` : ''}</p>
               </div>
-              <div class="order-card__section">
-                <h3 class="order-card__section-title">פריטים {uniqueStores.length > 1 ? `(${uniqueStores.length} חנויות)` : `(${uniqueStores[0] ?? ''})`}</h3>
-                <ul class="order-card__items">
+              <div>
+                <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">פריטים {uniqueStores.length > 1 ? `(${uniqueStores.length} חנויות)` : `(${uniqueStores[0] ?? ''})`}</h3>
+                <ul class="order-card__items list-none p-0 flex flex-col gap-2">
                   {o.items.map((item) => (
-                    <li class="order-card__item">
-                      {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="order-card__item-img" />}
-                      <span class="order-card__item-name">
+                    <li class="flex items-center gap-2.5 text-sm">
+                      {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-md shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
+                      <span class="flex-1 text-[color:var(--color-text)]">
                         {item.productName}
-                        {uniqueStores.length > 1 && <span class="order-card__item-store"> · {item.storeName}</span>}
+                        {uniqueStores.length > 1 && <span class="text-[color:var(--color-muted)] text-xs"> · {item.storeName}</span>}
                       </span>
-                      <span class="order-card__item-qty">×{item.qty}</span>
-                      <span class="order-card__item-price">{formatPrice(item.price * item.qty)}</span>
+                      <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
+                      <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(item.price * item.qty)}</span>
                     </li>
                   ))}
                 </ul>
-                <div class="order-card__subtotals">
+                <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
                   <span>משלוח: {o.shippingAmount === 0 ? 'חינם' : formatPrice(o.shippingAmount)}</span>
-                  <strong>סה"כ: {formatPrice(o.totalAmount)}</strong>
+                  <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: {formatPrice(o.totalAmount)}</strong>
                 </div>
               </div>
-              <div class="order-card__section">
-                <h3 class="order-card__section-title">סטטוס</h3>
-                <div class="order-card__control-row">
+              <div>
+                <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס</h3>
+                <div class="flex gap-2 items-center flex-wrap">
                   <span class={`admin-badge admin-badge--${o.paymentStatus}`}>תשלום: {paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span>
                   <span class={`admin-badge admin-badge--shipping-${o.shippingStatus}`}>משלוח: {shippingLabel[o.shippingStatus] ?? o.shippingStatus}</span>
                 </div>
@@ -123,5 +155,6 @@ const paymentLabel: Record<string, string> = {
         );
       })}
     </div>
+    <AdminPager page={page} totalPages={totalPages} buildUrl={buildUrl} />
   </Fragment>
 )}

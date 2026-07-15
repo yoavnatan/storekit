@@ -14,27 +14,27 @@ const hasStore = userId ? getStoresBySellerId(userId).length > 0 : false;
 ---
 
 <BaseLayout title={c.successTitle} description={c.successDesc} noindex={true} isLoggedIn={isLoggedIn} hasStore={hasStore} hideNav={true} showSearch={true}>
-  <main id="main-content" class="container" style="padding-block: 3rem 4rem; text-align:center">
+  <main id="main-content" class="container pt-12 pb-16 text-center">
 
-    <div style="max-width:480px; margin-inline:auto">
+    <div class="max-w-[480px] mx-auto">
       <!-- Success icon -->
-      <div style="width:72px; height:72px; border-radius:50%; background:#dcfce7; display:flex; align-items:center; justify-content:center; margin-inline:auto; margin-bottom:1.5rem">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <div class="w-[72px] h-[72px] rounded-full bg-[color-mix(in_srgb,var(--color-success)_15%,white)] flex items-center justify-center mx-auto mb-6">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       </div>
 
-      <h1 style="font-size:clamp(1.5rem,3vw,2rem); font-weight:700; color:var(--color-text); margin-bottom:.75rem" id="success-title">{c.successTitle}</h1>
-      <p style="color:var(--color-muted); margin-bottom:1.5rem">{c.successDesc}</p>
+      <h1 class="text-[clamp(1.5rem,3vw,2rem)] font-bold [color:var(--color-text)] mb-3" id="success-title">{c.successTitle}</h1>
+      <p class="[color:var(--color-muted)] mb-6">{c.successDesc}</p>
 
-      <div style="background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius); padding:1.25rem; margin-bottom:1.5rem">
-        <p style="font-size:.875rem; color:var(--color-muted); margin-bottom:.375rem">{c.successOrderNum}</p>
-        <p id="order-number" style="font-size:1rem; font-weight:600; color:var(--color-text); font-family:monospace; letter-spacing:.04em">—</p>
+      <div class="bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-5 mb-6">
+        <p class="text-sm [color:var(--color-muted)] mb-1.5">{c.successOrderNum}</p>
+        <p id="order-number" class="text-base font-semibold [color:var(--color-text)] font-mono tracking-[.04em]">—</p>
       </div>
 
-      <p style="font-size:.875rem; color:var(--color-muted); margin-bottom:2rem">{c.successEmailNote}</p>
+      <p class="text-sm [color:var(--color-muted)] mb-8">{c.successEmailNote}</p>
 
-      <a href="/" class="btn btn--accent" style="display:inline-flex">{c.continueShopping}</a>
+      <a href="/" class="btn btn--accent inline-flex">{c.continueShopping}</a>
     </div>
 
   </main>

@@ -100,6 +100,19 @@ export function getOrdersBySellerStores(storeSlugs: string[]): Order[] {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+// productId → total units ever ordered (all payment/shipping statuses — a
+// "how popular is this product" signal for the seller, not a fulfillment one).
+export function getPurchasedCountsByStoreSlug(storeSlug: string): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const o of readOrders()) {
+    for (const item of o.items) {
+      if (item.storeSlug !== storeSlug) continue;
+      counts[item.productId] = (counts[item.productId] ?? 0) + item.qty;
+    }
+  }
+  return counts;
+}
+
 export function updateOrder(id: string, updates: Partial<Omit<Order, 'id' | 'createdAt'>>): Order | null {
   const orders = readOrders();
   const idx = orders.findIndex((o) => o.id === id);

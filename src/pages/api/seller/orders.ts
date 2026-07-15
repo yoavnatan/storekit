@@ -4,6 +4,8 @@ import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug, getOrderById, updateOrder } from '../../../lib/orders.js';
 import type { StoreSubtotal } from '../../../lib/orders.js';
+import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../../lib/seller-orders-query.js';
+import { paginate, parsePage } from '../../../lib/pagination.js';
 
 function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -25,7 +27,16 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const orders = getOrdersByStoreSlug(storeSlug);
-  return json({ orders });
+
+  // No ?page → the original unfiltered/unpaginated shape, used by the
+  // 15s new-order poll (it needs to see every order regardless of the
+  // seller's current page/filter/search to reliably detect brand-new ones).
+  if (!url.searchParams.has('page')) return json({ orders });
+
+  const query = parseSellerOrderQuery(url.searchParams);
+  const filtered = filterAndSortSellerOrders(orders, storeSlug, query);
+  const page = paginate(filtered, parsePage(url.searchParams, 'page'), 15);
+  return json({ ok: true, items: page.items, page: page.page, totalPages: page.totalPages, total: page.total });
 }
 
 export async function PATCH({ request, cookies }: APIContext): Promise<Response> {

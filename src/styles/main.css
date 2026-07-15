@@ -5,11 +5,23 @@
  *  main.css — single entry point for all styles.
  *  Import order matters: base → layout → components → pages → utilities.
  *  New code uses Tailwind utility classes.
- *  Existing CSS files are kept as-is and take precedence (not in @layer).
- * ============================================================ */
+ *  Existing CSS files are kept as-is and take precedence (not in @layer) —
+ *  EXCEPT reset.css, which is Tailwind's own preflight equivalent (generic
+ *  element resets, not component styles) and belongs in Tailwind's own
+ *  "base" layer for the same reason preflight does: so any component's
+ *  Tailwind utility classes (border, bg-, etc) can actually override it.
+ *  Left unlayered, `button { border: none; background: none; }` alone
+ *  silently wins over EVERY Tailwind border/bg utility applied to a button
+ *  anywhere on the site, regardless of specificity — unlayered CSS always
+ *  beats @layer'd CSS. Found 2026-07-15 while converting category-picker's
+ *  dropdown trigger button; also silently broke ProductQuickView's
+ *  border-0/bg-white-10 close+qty buttons from the earlier PQV round
+ *  (never visibly caught — the transparent fallback was subtle over photo
+ *  backgrounds). Fixed at the root here instead of patching every
+ *  affected button with Tailwind's important modifier. */
 
 /* Base */
-@import './base/reset.css';
+@import './base/reset.css' layer(base);
 @import './base/tokens.css';
 
 /* Layout */
@@ -27,14 +39,15 @@
 @import './components/confirm-modal.css';
 @import './components/store-card.css';
 
-/* Pages */
+/* Pages
+ * admin.css is deliberately NOT imported here — it's only reachable via
+ * /admin, so it's imported directly in src/pages/admin/index.astro instead,
+ * keeping its weight off every public (SEO-facing) page. */
 @import './pages/home.css';
 @import './pages/auth.css';
 @import './pages/dashboard.css';
 @import './pages/store.css';
-@import './pages/checkout.css';
 @import './pages/product.css';
-@import './pages/admin.css';
 @import './pages/stores.css';
 @import './pages/search.css';
 

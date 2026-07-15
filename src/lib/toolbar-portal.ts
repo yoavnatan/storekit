@@ -20,7 +20,7 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
     if (!portal) {
       portal = document.createElement('div');
       portal.id = portalId;
-      portal.className = 'toolbar-portal';
+      portal.className = 'toolbar-portal fixed bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] p-[.3rem] z-[300] animate-product-menu-open';
       portal.setAttribute('role', 'menu');
       portal.hidden = true;
       document.body.appendChild(portal);

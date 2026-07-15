@@ -1,0 +1,25 @@
+---
+// Shared arrow pager for every admin list tab — mirrors the public /stores
+// directory's own query-param pagination (src/pages/stores.astro) so both
+// follow the same convention: full SSR navigation, not a client fetch.
+interface Props {
+  page: number;
+  totalPages: number;
+  buildUrl: (page: number) => string;
+  position?: 'top' | 'bottom'; // 'top' sits above the card list (spacing below it instead of above)
+}
+const { page, totalPages, buildUrl, position = 'bottom' } = Astro.props;
+const spacingClass = position === 'top' ? 'mb-6' : 'mt-8';
+---
+
+{totalPages > 1 && (
+  <nav class={`flex items-center justify-center gap-4 ${spacingClass}`} aria-label="עימוד">
+    {page > 1
+      ? <a href={buildUrl(page - 1)} rel="prev" class="btn btn--ghost btn--sm">‹ הקודם</a>
+      : <span class="btn btn--ghost btn--sm" aria-disabled="true" style="opacity:0.4;pointer-events:none">‹ הקודם</span>}
+    <span class="text-[0.82rem] whitespace-nowrap [color:var(--color-muted)]">עמוד {page} מתוך {totalPages}</span>
+    {page < totalPages
+      ? <a href={buildUrl(page + 1)} rel="next" class="btn btn--ghost btn--sm">הבא ›</a>
+      : <span class="btn btn--ghost btn--sm" aria-disabled="true" style="opacity:0.4;pointer-events:none">הבא ›</span>}
+  </nav>
+)}

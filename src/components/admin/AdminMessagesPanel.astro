@@ -2,20 +2,26 @@
 import type { AdminThreadSummary } from '../../lib/admin-messages.js';
 import type { Seller } from '../../lib/seller-auth.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
+import AdminPager from './AdminPager.astro';
 
 interface Props {
-  threads: AdminThreadSummary[];
+  threads: AdminThreadSummary[]; // current page only — what actually renders as rows
+  allThreadsForSeed: AdminThreadSummary[]; // full unpaginated list — seeds the client's unread-badge tracking so it starts accurate even for threads on other pages
   sellers: Seller[];
+  page: number;
+  totalPages: number;
+  buildUrl: (page: number) => string;
 }
-const { threads, sellers } = Astro.props;
+const { threads, allThreadsForSeed, sellers, page, totalPages, buildUrl } = Astro.props;
 
 const sellerById = new Map(sellers.map((s) => [s.id, s]));
 ---
 
 <div
   id="admin-msg-i18n"
+  data-page={page}
   data-sellers={JSON.stringify(sellers.map((s) => ({ id: s.id, name: s.name, email: s.email })))}
-  data-threads-seed={JSON.stringify(threads.map((t) => ({ sellerId: t.sellerId, lastMessageId: t.lastMessage.id, unreadForAdmin: t.unreadForAdmin })))}
+  data-threads-seed={JSON.stringify(allThreadsForSeed.map((t) => ({ sellerId: t.sellerId, lastMessageId: t.lastMessage.id, unreadForAdmin: t.unreadForAdmin })))}
   hidden
 ></div>
 
@@ -52,6 +58,8 @@ const sellerById = new Map(sellers.map((s) => [s.id, s]));
 </div>
 
 <h2 class="admin-panel-subtitle">שיחות קיימות</h2>
+
+<AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
 
 {threads.length === 0 && <p class="admin-empty" id="admin-msg-empty">אין שיחות עדיין.</p>}
 <div class="msg-table-wrap" hidden={threads.length === 0} id="admin-msg-table-wrap">
@@ -99,3 +107,4 @@ const sellerById = new Map(sellers.map((s) => [s.id, s]));
       </tbody>
     </table>
 </div>
+<AdminPager page={page} totalPages={totalPages} buildUrl={buildUrl} />

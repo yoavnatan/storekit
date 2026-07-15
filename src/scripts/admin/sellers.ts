@@ -1,3 +1,7 @@
+import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
+
+const PANEL_ID = 'dash-panel-sellers';
+
 // "Send message" opens a modal right where the seller card already lives
 // (no tab navigation) — posts straight to the admin messages API; the
 // seller sees it as a normal message in their own merged messages tab
@@ -45,28 +49,23 @@ function wireSellerMessageModal(): void {
   });
 }
 
-// Plain substring search over each seller card's precomputed data-search
-// (name + email + all of that seller's store names — a store name is a
-// plausible thing to search for even on the nominally seller-scoped tab, see
-// CURRENT_TASK.md). Same simplified pattern as the Orders tab's search
-// (orders-filter.ts) minus the sort/filter-dropdown machinery this tab
-// doesn't need — just show/hide + an empty-state toggle.
+// Search now round-trips to the server (see admin-stats.ts#filterSellerCards)
+// so it stays correct once pagination means most sellers aren't in the DOM at
+// all. Debounced, then AJAX-swapped (not a full-page nav — see admin-nav.ts's
+// swapPanel) so mid-typing the panel refreshes in place instead of flashing
+// the whole page; the search input is a fresh DOM node afterward, so it's
+// refocused (cursor at the end) right after the swap.
 function wireSellerSearch(): void {
-  const list = document.getElementById('admin-seller-list');
   const searchInput = document.getElementById('admin-seller-search') as HTMLInputElement | null;
-  const noMatchEl = document.getElementById('admin-sellers-search-empty');
-  if (!list || !searchInput) return;
-
-  searchInput.addEventListener('input', () => {
-    const query = searchInput.value.trim().toLowerCase();
-    let visible = 0;
-    list.querySelectorAll<HTMLElement>('.admin-seller-card').forEach((card) => {
-      const show = !query || (card.dataset.search ?? '').includes(query);
-      card.style.display = show ? '' : 'none';
-      if (show) visible++;
+  if (!searchInput) return;
+  searchInput.addEventListener('input', debounce(() => {
+    const url = buildAdminUrl('sellers', { sq: searchInput.value.trim() || undefined });
+    swapPanel(url, PANEL_ID, () => {
+      initAdminSellersPanel();
+      const fresh = document.getElementById('admin-seller-search') as HTMLInputElement | null;
+      if (fresh) { fresh.focus(); fresh.setSelectionRange(fresh.value.length, fresh.value.length); }
     });
-    if (noMatchEl) noMatchEl.hidden = visible > 0;
-  });
+  }, 450));
 }
 
 // Store/product block toggle — admin-only kill switch (see moderation.ts).
@@ -75,6 +74,8 @@ function wireSellerSearch(): void {
 export function initAdminSellersPanel(): void {
   wireSellerMessageModal();
   wireSellerSearch();
+  wirePanelLinks(PANEL_ID, () => initAdminSellersPanel());
+  wirePopstateReload();
 
   document.querySelectorAll<HTMLButtonElement>('.admin-block-toggle').forEach((btn) => {
     btn.addEventListener('click', async () => {

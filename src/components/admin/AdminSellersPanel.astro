@@ -1,10 +1,18 @@
 ---
 import type { SellerCardData } from '../../lib/admin-stats.js';
+import { formatPrice } from '../../config/store.config.js';
+import AdminPager from './AdminPager.astro';
 
 interface Props {
-  sellerCards: SellerCardData[];
+  sellerCards: SellerCardData[]; // current page only
+  q: string;
+  totalAll: number;   // sellers, unfiltered
+  totalFiltered: number;
+  page: number;
+  totalPages: number;
+  buildUrl: (page: number) => string;
 }
-const { sellerCards } = Astro.props;
+const { sellerCards, q, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -12,19 +20,20 @@ function fmtDate(iso: string): string {
 ---
 
 <div class="admin-orders-search">
-  <input type="search" id="admin-seller-search" class="input" placeholder="חיפוש לפי שם מוכר/ת, מייל או שם חנות..." aria-label="חיפוש מוכר/ת" />
+  <input type="search" id="admin-seller-search" class="input" value={q} placeholder="חיפוש לפי שם מוכר/ת, מייל או שם חנות..." aria-label="חיפוש מוכר/ת" />
 </div>
 
-{sellerCards.length === 0 ? (
+{totalAll === 0 ? (
   <p class="admin-empty">אין מוכרים עדיין.</p>
+) : totalFiltered === 0 ? (
+  <p class="admin-empty">לא נמצאו מוכרים תואמים.</p>
 ) : (
   <Fragment>
-  <p class="admin-empty" id="admin-sellers-search-empty" hidden>לא נמצאו מוכרים תואמים.</p>
+  <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
   <div class="admin-seller-list" id="admin-seller-list">
-    {sellerCards.map(({ seller, stores, totalProducts }) => {
-      const searchStr = `${seller.name} ${seller.email} ${stores.map((s) => s.store.name).join(' ')}`.toLowerCase();
+    {sellerCards.map(({ seller, stores, totalProducts, revenue }) => {
       return (
-      <details class="admin-seller-card" data-search={searchStr}>
+      <details class="admin-seller-card">
         <summary class="admin-seller-card__summary">
           <div class="admin-seller-card__identity">
             <span class="admin-seller-card__name">{seller.name}</span>
@@ -33,6 +42,8 @@ function fmtDate(iso: string): string {
           <div class="admin-seller-card__nums">
             <span>{stores.length} חנויות</span>
             <span>{totalProducts} מוצרים</span>
+            <span class="admin-seller-card__revenue">{formatPrice(revenue.totalRevenue)} סה"כ</span>
+            <span class="admin-seller-card__revenue">{formatPrice(revenue.monthRevenue)} החודש</span>
             <span class="muted">הצטרף/ה {fmtDate(seller.createdAt)}</span>
           </div>
           <div class="admin-seller-card__actions">
@@ -49,7 +60,7 @@ function fmtDate(iso: string): string {
           {stores.length === 0 ? (
             <p class="admin-empty">אין חנויות למוכר/ת זה/זו.</p>
           ) : (
-            stores.map(({ store, products }) => (
+            stores.map(({ store, products, revenue }) => (
               <details class="admin-store-block">
                 <summary class="admin-store-block__summary">
                   <span class="admin-store-block__name">
@@ -57,6 +68,7 @@ function fmtDate(iso: string): string {
                     {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
                   </span>
                   <span class="admin-store-block__nums">{products.length} מוצרים</span>
+                  <span class="admin-store-block__nums">{formatPrice(revenue.totalRevenue)} סה"כ · {formatPrice(revenue.monthRevenue)} החודש</span>
                   <a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link" onclick="event.stopPropagation()">צפה בחנות</a>
                   <button
                     type="button"
@@ -106,6 +118,8 @@ function fmtDate(iso: string): string {
       );
     })}
   </div>
+
+  <AdminPager page={page} totalPages={totalPages} buildUrl={buildUrl} />
 
   <dialog id="admin-seller-msg-modal" aria-labelledby="admin-seller-msg-modal-title" style="border:none;border-radius:14px;padding:0;width:min(480px,94vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">

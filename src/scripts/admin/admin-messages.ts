@@ -1,6 +1,7 @@
 import { escapeHtml } from '../../lib/html-escape.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { initAdminMsgSellerDropdown, resetAdminMsgSellerDropdown } from './admin-msg-seller-dropdown.js';
+import { ADMIN_PAGE_SIZE } from '../../lib/pagination.js';
 
 interface AdminMsgSellerInfo { id: string; name: string; email: string }
 interface AdminMsg { id: string; sellerId: string; fromRole: 'admin' | 'seller'; content: string; createdAt: string }
@@ -153,6 +154,22 @@ function moveRowToTop(row: HTMLElement): void {
   tbody.prepend(row, threadRow);
 }
 
+// A brand-new thread prepended to page 1 by the live poll (see
+// pollAdminMessages) isn't backed by a server-side reload, so nothing else
+// caps the tbody back down to what the server would actually render as page
+// 1 — without this, a long-open session can silently accumulate more than
+// ADMIN_PAGE_SIZE rows.
+function trimToPageSize(): void {
+  const tbody = document.querySelector('#admin-msg-table tbody');
+  if (!tbody) return;
+  const mainRows = [...tbody.querySelectorAll<HTMLElement>('.msg-table__row')];
+  for (const row of mainRows.slice(ADMIN_PAGE_SIZE)) {
+    const threadRow = row.nextElementSibling;
+    if (threadRow?.classList.contains('msg-thread-row')) threadRow.remove();
+    row.remove();
+  }
+}
+
 function insertThreadRow(sellerId: string, seller: AdminMsgSellerInfo | undefined, message: AdminMsg, unread = false): HTMLElement | null {
   const table = document.getElementById('admin-msg-table');
   const tbody = table?.querySelector('tbody');
@@ -186,7 +203,15 @@ function insertThreadRow(sellerId: string, seller: AdminMsgSellerInfo | undefine
 // arriving, or a brand-new seller thread) — the admin's own sends already
 // update the DOM immediately via the handlers above, this only covers what
 // those can't see. Mirrors the seller dashboard's pollSellerUnread pattern.
-function pollAdminMessages(sellers: Map<string, AdminMsgSellerInfo>, known: Map<string, { lastMessageId: string; unreadForAdmin: number }>): void {
+// `onPage1` gates only the "insert as a brand-new row" branch — threads are
+// sorted most-recent-first, so a thread missing from the DOM only means
+// "genuinely new" when the table is showing its newest page; off page 1 it
+// more likely just means "lives on a different page," and inserting it here
+// would be wrong. A row that IS in the current page's DOM, though — however
+// many new messages arrive, wherever the admin has that page's table open —
+// is always safe to refresh in place regardless of page number, including
+// live-appending into an already-open thread and auto-marking it read.
+function pollAdminMessages(sellers: Map<string, AdminMsgSellerInfo>, known: Map<string, { lastMessageId: string; unreadForAdmin: number }>, onPage1: boolean): void {
   fetch('/api/admin/messages')
     .then((r) => r.json())
     .then(({ threads }: { threads: AdminThreadSummary[] }) => {
@@ -198,11 +223,14 @@ function pollAdminMessages(sellers: Map<string, AdminMsgSellerInfo>, known: Map<
 
         const row = document.querySelector<HTMLElement>(`#admin-msg-table [data-seller-id="${CSS.escape(t.sellerId)}"]`);
         if (!row) {
-          document.getElementById('admin-msg-empty')?.remove();
-          const wrap = document.getElementById('admin-msg-table-wrap');
-          if (wrap) wrap.hidden = false;
-          const newRow = insertThreadRow(t.sellerId, sellers.get(t.sellerId), t.lastMessage, t.unreadForAdmin > 0);
-          if (newRow) wireThreadRow(newRow, sellers, known);
+          if (onPage1) {
+            document.getElementById('admin-msg-empty')?.remove();
+            const wrap = document.getElementById('admin-msg-table-wrap');
+            if (wrap) wrap.hidden = false;
+            const newRow = insertThreadRow(t.sellerId, sellers.get(t.sellerId), t.lastMessage, t.unreadForAdmin > 0);
+            if (newRow) wireThreadRow(newRow, sellers, known);
+            trimToPageSize();
+          }
           continue;
         }
 
@@ -245,6 +273,7 @@ export function initAdminMessagesPanel(): void {
   const threadsSeed: { sellerId: string; lastMessageId: string; unreadForAdmin: number }[] =
     i18nEl?.dataset.threadsSeed ? JSON.parse(i18nEl.dataset.threadsSeed) : [];
   const knownThreads = new Map(threadsSeed.map((t) => [t.sellerId, { lastMessageId: t.lastMessageId, unreadForAdmin: t.unreadForAdmin }]));
+  const onPage1 = (i18nEl?.dataset.page ?? '1') === '1';
 
   initAdminMsgSellerDropdown(sellers);
 
@@ -301,5 +330,5 @@ export function initAdminMessagesPanel(): void {
     }
   });
 
-  setInterval(() => pollAdminMessages(sellers, knownThreads), 15000);
+  setInterval(() => pollAdminMessages(sellers, knownThreads, onPage1), 15000);
 }

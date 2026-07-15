@@ -54,13 +54,13 @@ for (const s of getVisibleStores()) {
     noItemsSelected: c.noItemsSelected,
   })}></script>
 
-  <main id="main-content" class="co-page">
+  <main id="main-content" class="max-w-[640px] mx-auto px-4 pt-7 pb-16">
 
     <!-- Empty state -->
-    <div id="checkout-empty" class="hidden co-empty">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" class="co-empty__icon"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-      <p class="co-empty__title">{c.emptyCart}</p>
-      <p class="co-empty__desc">{c.emptyCartDesc}</p>
+    <div id="checkout-empty" class="hidden text-center py-16">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" class="[color:var(--color-muted)] mx-auto block mb-4"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+      <p class="text-[1.1rem] font-semibold [color:var(--color-text)] mb-2">{c.emptyCart}</p>
+      <p class="[color:var(--color-muted)] mb-6">{c.emptyCartDesc}</p>
       <a href="/" class="btn btn--accent">{c.backToShopping}</a>
     </div>
 
@@ -68,98 +68,98 @@ for (const s of getVisibleStores()) {
 
       <!-- ── Cart section ── -->
       <section aria-labelledby="cart-heading">
-        <h1 id="cart-heading" class="co-heading">{c.yourCart}</h1>
+        <h1 id="cart-heading" class="text-[clamp(1.3rem,3vw,1.6rem)] font-bold [color:var(--color-text)] mb-5">{c.yourCart}</h1>
 
         <!-- Skeleton -->
         <div id="cart-content" aria-live="polite">
-          <div class="co-skel-card">
-            <div class="skel-bar" style="width:80px;height:80px;border-radius:10px;flex-shrink:0"></div>
-            <div style="flex:1;display:flex;flex-direction:column;gap:.5rem;padding-top:.25rem">
-              <div class="skel-bar" style="height:15px;width:55%"></div>
-              <div class="skel-bar" style="height:13px;width:35%"></div>
-              <div class="skel-bar" style="height:30px;width:96px;border-radius:6px;margin-top:.25rem"></div>
+          <div class="flex gap-4 items-start bg-[color:var(--color-surface)] rounded-[14px] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)]">
+            <div class="skel-bar w-20 h-20 rounded-[10px] shrink-0"></div>
+            <div class="flex-1 flex flex-col gap-2 pt-1">
+              <div class="skel-bar h-[15px] w-[55%]"></div>
+              <div class="skel-bar h-[13px] w-[35%]"></div>
+              <div class="skel-bar h-[30px] w-24 rounded-[6px] mt-1"></div>
             </div>
-            <div class="skel-bar" style="width:56px;height:22px;border-radius:4px;flex-shrink:0;align-self:center"></div>
+            <div class="skel-bar w-14 h-[22px] rounded shrink-0 self-center"></div>
           </div>
-          <div class="co-skel-card" style="opacity:.55">
-            <div class="skel-bar" style="width:80px;height:80px;border-radius:10px;flex-shrink:0"></div>
-            <div style="flex:1;display:flex;flex-direction:column;gap:.5rem;padding-top:.25rem">
-              <div class="skel-bar" style="height:15px;width:70%"></div>
-              <div class="skel-bar" style="height:13px;width:40%"></div>
+          <div class="flex gap-4 items-start bg-[color:var(--color-surface)] rounded-[14px] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)] opacity-[.55]">
+            <div class="skel-bar w-20 h-20 rounded-[10px] shrink-0"></div>
+            <div class="flex-1 flex flex-col gap-2 pt-1">
+              <div class="skel-bar h-[15px] w-[70%]"></div>
+              <div class="skel-bar h-[13px] w-[40%]"></div>
             </div>
-            <div class="skel-bar" style="width:56px;height:22px;border-radius:4px;flex-shrink:0;align-self:center"></div>
+            <div class="skel-bar w-14 h-[22px] rounded shrink-0 self-center"></div>
           </div>
         </div>
 
         <!-- Grand total + CTA (revealed after render) -->
         <div id="co-footer" class="hidden">
-          <div class="co-total-row">
-            <span class="co-total-label">{c.total}</span>
-            <strong class="co-total-amount" id="grand-total-amount"></strong>
+          <div class="flex justify-between items-center pt-4 pb-[1.125rem] border-t-2 [border-color:var(--color-border)] mt-1">
+            <span class="text-base font-medium [color:var(--color-text)]">{c.total}</span>
+            <strong class="text-[1.35rem] font-extrabold [color:var(--color-text)]" id="grand-total-amount"></strong>
           </div>
-          <button id="to-payment-btn" class="btn btn--accent co-cta-btn" type="button"
+          <button id="to-payment-btn" class="btn btn--accent group w-full py-[.9rem] px-6 text-[1.0625rem] flex items-center justify-center gap-2 mb-2" type="button"
             aria-expanded="false" aria-controls="payment-section">
             <span>{c.toPayment}</span>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-              aria-hidden="true" class="co-cta-arrow"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              aria-hidden="true" class="transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] rtl:-scale-x-100 group-aria-expanded:rotate-90"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
-          <p id="co-select-hint" class="hidden co-select-hint" role="status">{c.selectAtLeastOne}</p>
+          <p id="co-select-hint" class="hidden text-center text-[.8rem] [color:var(--color-muted)]" role="status">{c.selectAtLeastOne}</p>
         </div>
       </section>
 
       <!-- ── Payment accordion ── -->
-      <section id="payment-section" class="co-payment" aria-hidden="true">
-        <h2 class="co-heading" style="font-size:1.25rem;margin-top:.25rem">{c.paymentDetails}</h2>
+      <section id="payment-section" class="overflow-hidden max-h-0 opacity-0 transition-[max-height_420ms_cubic-bezier(.4,0,.2,1),opacity_280ms_ease] data-[open]:max-h-[1300px] data-[open]:opacity-100" aria-hidden="true">
+        <h2 class="font-bold [color:var(--color-text)] mb-5 text-xl mt-1">{c.paymentDetails}</h2>
 
         <form id="checkout-form" novalidate aria-label={c.buyerDetails}>
-          <div class="co-form-card" style="margin-bottom:.875rem">
-            <h3 class="co-form-card__title">{c.buyerDetails}</h3>
-            <div class="co-fields">
+          <div class="bg-[color:var(--color-surface)] rounded-[14px] p-5 border-[1.5px] [border-color:var(--color-border)] shadow-[var(--shadow-card)] mb-3.5">
+            <h3 class="text-[.9375rem] font-semibold [color:var(--color-text)] mb-4">{c.buyerDetails}</h3>
+            <div class="grid gap-3.5">
               <div>
-                <label for="buyerName" class="co-label">{c.fullName} *</label>
-                <input type="text" id="buyerName" name="buyerName" required autocomplete="name" class="co-input" />
-                <p class="co-err hidden" data-err="buyerName" role="alert">{c.requiredField}</p>
+                <label for="buyerName" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.fullName} *</label>
+                <input type="text" id="buyerName" name="buyerName" required autocomplete="name" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+                <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="buyerName" role="alert">{c.requiredField}</p>
               </div>
               <div>
-                <label for="buyerEmail" class="co-label">{c.email} *</label>
-                <input type="email" id="buyerEmail" name="buyerEmail" required autocomplete="email" class="co-input" value={prefillEmail} />
-                <p class="co-err hidden" data-err="buyerEmail" role="alert">{c.invalidEmail}</p>
+                <label for="buyerEmail" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.email} *</label>
+                <input type="email" id="buyerEmail" name="buyerEmail" required autocomplete="email" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" value={prefillEmail} />
+                <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="buyerEmail" role="alert">{c.invalidEmail}</p>
               </div>
               <div>
-                <label for="buyerPhone" class="co-label">{c.phone} *</label>
-                <input type="tel" id="buyerPhone" name="buyerPhone" required autocomplete="tel" inputmode="tel" class="co-input" />
-                <p class="co-err hidden" data-err="buyerPhone" role="alert">{c.requiredField}</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="co-form-card" style="margin-bottom:1.25rem">
-            <h3 class="co-form-card__title">{c.shippingAddress}</h3>
-            <div class="co-fields">
-              <div>
-                <label for="city" class="co-label">{c.city} *</label>
-                <input type="text" id="city" name="city" required autocomplete="address-level2" class="co-input" />
-                <p class="co-err hidden" data-err="city" role="alert">{c.requiredField}</p>
-              </div>
-              <div>
-                <label for="street" class="co-label">{c.street} *</label>
-                <input type="text" id="street" name="street" required autocomplete="street-address" class="co-input" />
-                <p class="co-err hidden" data-err="street" role="alert">{c.requiredField}</p>
-              </div>
-              <div>
-                <label for="zip" class="co-label">{c.zip}</label>
-                <input type="text" id="zip" name="zip" autocomplete="postal-code" inputmode="numeric" class="co-input" />
+                <label for="buyerPhone" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.phone} *</label>
+                <input type="tel" id="buyerPhone" name="buyerPhone" required autocomplete="tel" inputmode="tel" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+                <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="buyerPhone" role="alert">{c.requiredField}</p>
               </div>
             </div>
           </div>
 
-          <p id="form-global-error" class="hidden co-global-err" role="alert"></p>
+          <div class="bg-[color:var(--color-surface)] rounded-[14px] p-5 border-[1.5px] [border-color:var(--color-border)] shadow-[var(--shadow-card)] mb-5">
+            <h3 class="text-[.9375rem] font-semibold [color:var(--color-text)] mb-4">{c.shippingAddress}</h3>
+            <div class="grid gap-3.5">
+              <div>
+                <label for="city" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.city} *</label>
+                <input type="text" id="city" name="city" required autocomplete="address-level2" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+                <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="city" role="alert">{c.requiredField}</p>
+              </div>
+              <div>
+                <label for="street" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.street} *</label>
+                <input type="text" id="street" name="street" required autocomplete="street-address" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+                <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="street" role="alert">{c.requiredField}</p>
+              </div>
+              <div>
+                <label for="zip" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.zip}</label>
+                <input type="text" id="zip" name="zip" autocomplete="postal-code" inputmode="numeric" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+              </div>
+            </div>
+          </div>
 
-          <button type="submit" id="submit-btn" class="btn btn--accent co-cta-btn">
+          <p id="form-global-error" class="hidden text-sm [color:var(--color-danger)] mb-4" role="alert"></p>
+
+          <button type="submit" id="submit-btn" class="btn btn--accent w-full py-[.9rem] px-6 text-[1.0625rem] flex items-center justify-center gap-2 mb-2">
             <span id="submit-label">{c.placeOrder}</span>
             <span id="submit-loading" class="hidden" aria-live="polite">{c.processing}</span>
           </button>
-          <p id="co-submit-hint" class="hidden co-select-hint" role="status">{c.noItemsSelected}</p>
+          <p id="co-submit-hint" class="hidden text-center text-[.8rem] [color:var(--color-muted)]" role="status">{c.noItemsSelected}</p>
         </form>
       </section>
 
@@ -167,374 +167,6 @@ for (const s of getVisibleStores()) {
   </main>
 
   <!-- PQV and lightbox dialogs are rendered globally via ProductQuickView in BaseLayout -->
-
-  <style is:global>
-    .co-page {
-      max-width: 640px;
-      margin-inline: auto;
-      padding: 1.75rem 1rem 4rem;
-    }
-
-    /* heading */
-    .co-heading {
-      font-size: clamp(1.3rem,3vw,1.6rem);
-      font-weight: 700;
-      color: var(--color-text);
-      margin-bottom: 1.25rem;
-    }
-
-    /* empty */
-    .co-empty { text-align:center; padding-block:4rem; }
-    .co-empty__icon { color:var(--color-muted); margin-inline:auto; display:block; margin-bottom:1rem; }
-    .co-empty__title { font-size:1.1rem; font-weight:600; color:var(--color-text); margin-bottom:.5rem; }
-    .co-empty__desc { color:var(--color-muted); margin-bottom:1.5rem; }
-
-    /* ── skeleton ── */
-    .co-skel-card {
-      display: flex;
-      gap: 1rem;
-      align-items: flex-start;
-      background: #fff;
-      border-radius: 14px;
-      padding: 1rem;
-      margin-bottom: .75rem;
-      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
-    }
-
-    /* ── store row (select-all checkbox + label) ── */
-    .co-store-row {
-      display: flex;
-      align-items: center;
-      gap: .625rem;
-      margin: 1.25rem 0 .625rem;
-    }
-    .co-store-block:first-child .co-store-row { margin-top: 0; }
-    .co-store-label {
-      display: inline-block;
-      font-size: .75rem;
-      font-weight: 700;
-      color: var(--color-muted);
-      letter-spacing: .06em;
-      text-transform: uppercase;
-      text-decoration: none;
-      transition: color 140ms;
-    }
-    .co-store-label:hover { text-decoration: underline; }
-
-    /* ── custom checkbox (matches site's design system — not a generic input) ── */
-    .co-check {
-      position: relative;
-      display: inline-flex;
-      flex-shrink: 0;
-      cursor: pointer;
-    }
-    .co-check__input {
-      position: absolute;
-      inset: 0;
-      width: 20px;
-      height: 20px;
-      margin: 0;
-      opacity: 0;
-      cursor: pointer;
-    }
-    .co-check__box {
-      position: relative;
-      width: 20px;
-      height: 20px;
-      border-radius: 5px;
-      border: 1.5px solid var(--color-border);
-      background: var(--color-surface);
-      flex-shrink: 0;
-      transition: background 140ms, border-color 140ms, transform 120ms cubic-bezier(0.34,1.56,0.64,1);
-    }
-    .co-check__icon {
-      position: absolute;
-      top: 50%; left: 50%;
-      width: 12px; height: 12px;
-      color: #fff;
-      opacity: 0;
-      transform: translate(-50%,-50%) scale(.4);
-      transition: opacity 120ms, transform 220ms cubic-bezier(0.34,1.56,0.64,1);
-    }
-    .co-check__input:checked + .co-check__box,
-    .co-check__input:indeterminate + .co-check__box {
-      background: var(--color-accent);
-      border-color: var(--color-accent);
-    }
-    .co-check__input:checked + .co-check__box .co-check__icon--check {
-      opacity: 1;
-      transform: translate(-50%,-50%) scale(1);
-    }
-    .co-check__input:indeterminate + .co-check__box .co-check__icon--dash {
-      opacity: 1;
-      transform: translate(-50%,-50%) scale(1);
-    }
-    .co-check__input:focus-visible + .co-check__box {
-      outline: 2px solid var(--color-accent);
-      outline-offset: 2px;
-    }
-    .co-check__input:active + .co-check__box {
-      transform: scale(.9);
-    }
-
-    /* ── item card ── */
-    .co-card {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      background: #fff;
-      border-radius: 14px;
-      padding: 1rem;
-      margin-bottom: .75rem;
-      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
-      transition: box-shadow 150ms, opacity 150ms;
-    }
-    .co-card:hover {
-      box-shadow: 0 3px 10px rgba(0,0,0,.1), 0 0 0 1px var(--color-border);
-    }
-    .co-card--unselected { opacity: .5; }
-
-    /* image */
-    .co-card__img-link {
-      flex-shrink: 0;
-      display: block;
-      width: 80px;
-      height: 80px;
-      border-radius: 10px;
-      overflow: hidden;
-      background: var(--color-border);
-      transition: opacity 140ms;
-      border: none;
-      padding: 0;
-      cursor: pointer;
-    }
-    .co-card__img-link:hover { opacity: .85; }
-    .co-card__img {
-      width: 80px; height: 80px;
-      object-fit: cover; display: block;
-    }
-    .co-card__img-placeholder {
-      width: 80px; height: 80px;
-      display: flex; align-items: center; justify-content: center;
-      color: var(--color-muted);
-    }
-
-    /* body */
-    .co-card__body {
-      flex: 1;
-      min-width: 0;
-    }
-    .co-card__name {
-      font-size: .9375rem;
-      font-weight: 600;
-      color: var(--color-text);
-      text-decoration: none;
-      display: block;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      transition: color 140ms;
-      background: none;
-      border: none;
-      padding: 0;
-      cursor: pointer;
-      font-family: inherit;
-      text-align: inherit;
-      width: 100%;
-    }
-    .co-card__name:hover { color: var(--color-muted); }
-    .co-card__variants {
-      font-size: .775rem;
-      color: var(--color-muted);
-      margin-top: .2rem;
-    }
-
-    /* bottom row inside body: qty + delete */
-    .co-card__row {
-      display: flex;
-      align-items: center;
-      gap: .375rem;
-      margin-top: .625rem;
-    }
-
-    /* qty stepper reuses .cart-line__qty (cart-drawer.css) for a consistent look site-wide.
-       flex-shrink:0 on the stepper itself — otherwise it's a flex item like everything else in
-       .co-card__row and gets squeezed whenever the price column (sibling, not even in this row)
-       grows wide enough to tighten .co-card__body's available width. Fixed width (not min-width)
-       on the number so it doesn't resize between 1- and 2-digit qty either. */
-    .co-card__row .cart-line__qty {
-      flex-shrink: 0;
-    }
-    .cart-line__qty .co-qty__num {
-      width: 1.75rem;
-    }
-
-    /* delete button — icon-only, matches WishlistDrawer's trash button */
-    .co-delete-btn {
-      width: 26px; height: 26px;
-      flex-shrink: 0;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: 5px;
-      cursor: pointer;
-      color: var(--color-muted);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: color 130ms, background 130ms, border-color 130ms;
-    }
-    .co-delete-btn:hover {
-      color: var(--color-danger);
-      background: color-mix(in srgb, var(--color-danger) 8%, transparent);
-      border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
-    }
-
-    /* price column */
-    .co-card__price-col {
-      flex-shrink: 0;
-      text-align: end;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: .15rem;
-    }
-    .co-card__total {
-      font-size: 1.0625rem;
-      font-weight: 800;
-      color: var(--color-text);
-    }
-    .co-card__unit {
-      font-size: .72rem;
-      color: var(--color-muted);
-    }
-
-    /* ── shipping card ── */
-    .co-shipping-card {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: #fff;
-      border-radius: 14px;
-      padding: .875rem 1rem;
-      margin-bottom: .75rem;
-      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
-    }
-    .co-shipping-card__left {
-      display: flex;
-      align-items: center;
-      gap: .625rem;
-      font-size: .9rem;
-      font-weight: 500;
-      color: var(--color-text);
-    }
-    .co-shipping-card__icon { color: var(--color-accent); }
-    .co-shipping-card__store {
-      font-size: .75rem;
-      color: var(--color-muted);
-      font-weight: 400;
-    }
-    .co-shipping-change {
-      font-size: .75rem;
-      color: var(--color-muted);
-      background: transparent;
-      border: 1px solid var(--color-border);
-      border-radius: 6px;
-      padding: .2rem .55rem;
-      cursor: pointer;
-      font-family: inherit;
-      transition: color 140ms, border-color 140ms;
-    }
-    .co-shipping-change:hover { color: var(--color-text); border-color: var(--color-muted); }
-    .co-shipping-card__amount {
-      font-size: .9375rem;
-      font-weight: 700;
-      color: var(--color-text);
-    }
-    .co-shipping-free { color: #16a34a !important; }
-
-    /* ── total row ── */
-    .co-total-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 1rem 0 1.125rem;
-      border-top: 2px solid var(--color-border);
-      margin-top: .25rem;
-    }
-    .co-total-label { font-size: 1rem; font-weight: 500; color: var(--color-text); }
-    .co-total-amount { font-size: 1.35rem; font-weight: 800; color: var(--color-text); }
-
-    /* ── CTA button ── */
-    .co-cta-btn {
-      width: 100%;
-      padding: .9rem 1.5rem;
-      font-size: 1.0625rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: .5rem;
-      margin-bottom: .5rem;
-    }
-    .co-cta-arrow {
-      transition: transform 220ms cubic-bezier(0.34,1.56,0.64,1);
-    }
-    .co-select-hint {
-      text-align: center;
-      font-size: .8rem;
-      color: var(--color-muted);
-    }
-    .co-cta-btn[aria-expanded="true"] .co-cta-arrow { transform: rotate(90deg); }
-    [dir="rtl"] .co-cta-arrow { transform: scaleX(-1); }
-    [dir="rtl"] .co-cta-btn[aria-expanded="true"] .co-cta-arrow { transform: scaleX(-1) rotate(90deg); }
-
-    /* ── payment accordion ── */
-    .co-payment {
-      overflow: hidden;
-      max-height: 0;
-      opacity: 0;
-      transition: max-height 420ms cubic-bezier(.4,0,.2,1), opacity 280ms ease;
-    }
-    .co-payment.is-open { max-height: 1300px; opacity: 1; }
-
-    /* ── form cards ── */
-    .co-form-card {
-      background: #fff;
-      border-radius: 14px;
-      padding: 1.25rem;
-      box-shadow: 0 1px 4px rgba(0,0,0,.07), 0 0 0 1px var(--color-border);
-    }
-    .co-form-card__title {
-      font-size: .9375rem;
-      font-weight: 600;
-      color: var(--color-text);
-      margin-bottom: 1rem;
-    }
-    .co-fields { display: grid; gap: .875rem; }
-    .co-label {
-      display: block;
-      font-size: .875rem;
-      font-weight: 500;
-      margin-bottom: .375rem;
-      color: var(--color-text);
-    }
-    .co-input {
-      width: 100%;
-      padding: .625rem .75rem;
-      border: 1.5px solid var(--color-border);
-      border-radius: 8px;
-      background: #fafbfc;
-      color: var(--color-text);
-      font-size: .9375rem;
-      font-family: inherit;
-      transition: border-color 150ms, background 150ms;
-      box-sizing: border-box;
-    }
-    .co-input:focus { outline: none; border-color: var(--color-accent); background: #fff; }
-    .co-input[aria-invalid="true"] { border-color: var(--color-danger); }
-    .co-err { font-size: .75rem; color: var(--color-danger); margin-top: .25rem; }
-    .co-global-err { font-size: .875rem; color: var(--color-danger); margin-bottom: 1rem; }
-
-  </style>
 
   <script>
     import { getActiveStoreCarts, setQty, removeItem } from '../lib/cart.js';
@@ -578,16 +210,18 @@ for (const s of getVisibleStores()) {
       }
     }
 
+    // Flattened custom checkbox: box + icons are direct siblings of the (peer)
+    // input rather than nested inside the box, so peer-checked/peer-indeterminate
+    // can target them directly (Tailwind's peer-* only matches true siblings).
     function checkboxHtml(cls: string, attrs: string, ariaLabel: string, withDash: boolean): string {
       const dash = withDash
-        ? `<svg class="co-check__icon co-check__icon--dash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="8" x2="12" y2="8"/></svg>`
+        ? `<svg class="pointer-events-none absolute inset-0 m-auto w-3 h-3 [color:var(--color-surface)] opacity-0 scale-[.4] peer-indeterminate:opacity-100 peer-indeterminate:scale-100 transition-[opacity,transform] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="8" x2="12" y2="8"/></svg>`
         : '';
-      return `<label class="co-check ${cls}">
-        <input type="checkbox" class="co-check__input" ${attrs} aria-label="${esc(ariaLabel)}">
-        <span class="co-check__box" aria-hidden="true">
-          <svg class="co-check__icon co-check__icon--check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/></svg>
-          ${dash}
-        </span>
+      return `<label class="relative inline-flex shrink-0 cursor-pointer ${cls}">
+        <input type="checkbox" class="peer absolute inset-0 w-5 h-5 m-0 opacity-0 cursor-pointer" ${attrs} aria-label="${esc(ariaLabel)}">
+        <span class="pointer-events-none relative w-5 h-5 rounded-[5px] border-[1.5px] [border-color:var(--color-border)] bg-[color:var(--color-surface)] shrink-0 transition-[background_140ms,border-color_140ms,transform_120ms_cubic-bezier(0.34,1.56,0.64,1)] peer-checked:bg-[color:var(--color-accent)] peer-checked:border-[color:var(--color-accent)] peer-indeterminate:bg-[color:var(--color-accent)] peer-indeterminate:border-[color:var(--color-accent)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:[outline-color:var(--color-accent)] peer-active:scale-90" aria-hidden="true"></span>
+        <svg class="pointer-events-none absolute inset-0 m-auto w-3 h-3 [color:var(--color-surface)] opacity-0 scale-[.4] peer-checked:opacity-100 peer-checked:scale-100 transition-[opacity,transform] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/></svg>
+        ${dash}
       </label>`;
     }
 
@@ -607,76 +241,76 @@ for (const s of getVisibleStores()) {
 
       let html = '';
 
-      carts.forEach(cart => {
+      carts.forEach((cart, idx) => {
         // Initial paint only — recalculated precisely (per current selection) by
         // updateSelectionUI() right after this HTML is inserted into the DOM.
         const subtotal = cart.items.reduce((s, i) => s + i.price * i.qty, 0);
         const shipping = calcShipping(cart.storeSlug, subtotal);
 
-        html += `<div class="co-store-block" data-store-slug="${esc(cart.storeSlug)}" style="display:contents">`;
+        html += `<div class="co-store-block contents" data-store-slug="${esc(cart.storeSlug)}">`;
 
         // Store row: select-all checkbox + store label
-        html += `<div class="co-store-row">
+        html += `<div class="flex items-center gap-2.5 ${idx === 0 ? 'mt-0' : 'mt-5'} mb-2.5">
           ${checkboxHtml('co-store-check', `data-store-slug="${esc(cart.storeSlug)}"`, `${i18n['selectStoreAria'] ?? ''} ${cart.storeName}`, true)}
-          <a href="/store/${esc(cart.storeSlug)}" class="co-store-label">${esc(cart.storeName)}</a>
+          <a href="/store/${esc(cart.storeSlug)}" class="inline-block text-xs font-bold [color:var(--color-muted)] tracking-[.06em] uppercase no-underline transition-colors duration-[140ms] hover:underline">${esc(cart.storeName)}</a>
         </div>`;
 
         // One card per item
         cart.items.forEach(item => {
           const isSelected = selected.has(selKey(cart.storeSlug, item.cartKey));
           const imgHtml = item.image
-            ? `<img src="${esc(item.image)}" alt="${esc(item.name)}" class="co-card__img" width="80" height="80" loading="lazy" decoding="async" />`
-            : `<div class="co-card__img-placeholder" aria-hidden="true">
+            ? `<img src="${esc(item.image)}" alt="${esc(item.name)}" class="w-20 h-20 object-cover block" width="80" height="80" loading="lazy" decoding="async" />`
+            : `<div class="w-20 h-20 flex items-center justify-center [color:var(--color-muted)]" aria-hidden="true">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                   <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
                 </svg>
                </div>`;
           const variantsHtml = item.selectedVariants && Object.keys(item.selectedVariants).length
-            ? `<p class="co-card__variants">${esc(Object.entries(item.selectedVariants).map(([k,v]) => `${k}: ${v}`).join(' · '))}</p>`
+            ? `<p class="text-[.775rem] [color:var(--color-muted)] mt-[.2rem]">${esc(Object.entries(item.selectedVariants).map(([k,v]) => `${k}: ${v}`).join(' · '))}</p>`
             : '';
 
-          html += `<div class="co-card ${isSelected ? '' : 'co-card--unselected'}" data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" data-item-name="${esc(item.name)}">
+          html += `<div class="co-card flex items-center gap-4 bg-[color:var(--color-surface)] rounded-[14px] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)] transition-[box-shadow,opacity] duration-150 hover:shadow-[var(--shadow-card-hover)] data-[unselected]:opacity-50" data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" data-item-name="${esc(item.name)}" ${isSelected ? '' : 'data-unselected'}>
             ${checkboxHtml('co-item-check', `data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" ${isSelected ? 'checked' : ''}`, `${i18n['selectItemAria'] ?? ''} ${item.name}`, false)}
-            <button type="button" class="co-card__img-link pqv-trigger"
+            <button type="button" class="pqv-trigger shrink-0 block w-20 h-20 rounded-[10px] overflow-hidden bg-[color:var(--color-border)] transition-opacity duration-[140ms] border-0 p-0 cursor-pointer hover:opacity-[.85]"
               data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}"
               aria-label="${esc(i18n['viewProduct'] ?? '')} ${esc(item.name)}">
               ${imgHtml}
             </button>
-            <div class="co-card__body">
-              <button type="button" class="co-card__name pqv-trigger"
+            <div class="flex-1 min-w-0">
+              <button type="button" class="co-card__name pqv-trigger text-[.9375rem] font-semibold [color:var(--color-text)] no-underline block whitespace-nowrap overflow-hidden text-ellipsis transition-colors duration-[140ms] bg-transparent border-0 p-0 cursor-pointer [font-family:inherit] [text-align:inherit] w-full hover:[color:var(--color-muted)]"
                 data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}">${esc(item.name)}</button>
               ${variantsHtml}
-              <div class="co-card__row">
-                <div class="cart-line__qty" dir="ltr" role="group" aria-label="כמות">
+              <div class="flex items-center gap-1.5 mt-2.5">
+                <div class="cart-line__qty shrink-0" dir="ltr" role="group" aria-label="כמות">
                   <button class="co-qty__btn" data-action="dec" aria-label="הפחת כמות" type="button" ${item.qty <= 1 ? 'disabled' : ''}>−</button>
-                  <span class="co-qty__num" aria-live="polite">${item.qty}</span>
+                  <span class="co-qty__num w-7" aria-live="polite">${item.qty}</span>
                   <button class="co-qty__btn" data-action="inc" aria-label="הגדל כמות" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>
                 </div>
-                <button class="co-delete-btn" data-action="remove" aria-label="${esc(i18n['removeItem'] ?? 'הסר')}" type="button">
+                <button class="w-[26px] h-[26px] shrink-0 bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[5px] cursor-pointer [color:var(--color-muted)] flex items-center justify-center transition-[color,background,border-color] duration-[130ms] hover:[color:var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)] hover:[border-color:color-mix(in_srgb,var(--color-danger)_30%,var(--color-border))]" data-action="remove" aria-label="${esc(i18n['removeItem'] ?? 'הסר')}" type="button">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                 </button>
               </div>
             </div>
-            <div class="co-card__price-col">
-              <span class="co-card__total">${formatPrice(item.price * item.qty)}</span>
-              ${item.qty > 1 ? `<span class="co-card__unit">${formatPrice(item.price)} ליח׳</span>` : ''}
+            <div class="co-card__price-col shrink-0 text-end flex flex-col items-end gap-[.15rem]">
+              <span class="co-card__total text-[1.0625rem] font-extrabold [color:var(--color-text)]">${formatPrice(item.price * item.qty)}</span>
+              ${item.qty > 1 ? `<span class="co-card__unit text-[.72rem] [color:var(--color-muted)]">${formatPrice(item.price)} ליח׳</span>` : ''}
             </div>
           </div>`;
         });
 
         // Shipping card for this store
         const isFree = shipping === 0;
-        html += `<div class="co-shipping-card" data-store-slug="${esc(cart.storeSlug)}">
-          <div class="co-shipping-card__left">
-            <svg class="co-shipping-card__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        html += `<div class="co-shipping-card flex items-center justify-between bg-[color:var(--color-surface)] rounded-[14px] py-3.5 px-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)]" data-store-slug="${esc(cart.storeSlug)}">
+          <div class="flex items-center gap-2.5 text-[.9rem] font-medium [color:var(--color-text)]">
+            <svg class="[color:var(--color-accent)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
             <div>
               <span>${esc(i18n['shipping'] ?? 'משלוח')}</span>
-              <span class="co-shipping-card__store"> · ${esc(cart.storeName)}</span>
+              <span class="text-xs [color:var(--color-muted)] font-normal"> · ${esc(cart.storeName)}</span>
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:.625rem">
-            <button class="co-shipping-change" type="button" disabled title="בקרוב">${esc(i18n['changeShipping'] ?? 'שנה')}</button>
-            <span class="co-shipping-card__amount ${isFree ? 'co-shipping-free' : ''}">${isFree ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(shipping)}</span>
+          <div class="flex items-center gap-2.5">
+            <button class="text-xs [color:var(--color-muted)] bg-transparent border [border-color:var(--color-border)] rounded-[6px] py-[.2rem] px-[.55rem] cursor-pointer [font-family:inherit] transition-[color,border-color] duration-[140ms] hover:[color:var(--color-text)] hover:[border-color:var(--color-muted)]" type="button" disabled title="בקרוב">${esc(i18n['changeShipping'] ?? 'שנה')}</button>
+            <span class="co-shipping-card__amount text-[.9375rem] font-bold ${isFree ? 'data-[free]:[color:var(--color-success)]' : ''} [color:var(--color-text)]" ${isFree ? 'data-free' : ''}>${isFree ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(shipping)}</span>
           </div>
         </div>`;
 
@@ -713,7 +347,7 @@ for (const s of getVisibleStores()) {
         if (unitEl) { unitEl.textContent = txt; }
         else {
           const span = document.createElement('span');
-          span.className = 'co-card__unit';
+          span.className = 'co-card__unit text-[.72rem] [color:var(--color-muted)]';
           span.textContent = txt;
           priceCol?.appendChild(span);
         }
@@ -755,12 +389,12 @@ for (const s of getVisibleStores()) {
             const amountEl = shipCard.querySelector<HTMLElement>('.co-shipping-card__amount');
             if (amountEl) {
               amountEl.textContent = isFree ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(shipping);
-              amountEl.classList.toggle('co-shipping-free', isFree);
+              amountEl.toggleAttribute('data-free', isFree);
             }
           }
         }
 
-        const storeCheckbox = block?.querySelector<HTMLInputElement>('.co-store-check .co-check__input');
+        const storeCheckbox = block?.querySelector<HTMLInputElement>('.co-store-check input');
         if (storeCheckbox) {
           storeCheckbox.checked = selCount > 0 && selCount === cart.items.length;
           storeCheckbox.indeterminate = selCount > 0 && selCount < cart.items.length;
@@ -779,7 +413,7 @@ for (const s of getVisibleStores()) {
     }
 
     function attachEvents(): void {
-      document.querySelectorAll<HTMLElement>('.co-card[data-cart-key]').forEach(card => {
+      document.querySelectorAll<HTMLElement>('.co-card').forEach(card => {
         const storeSlug = card.dataset['storeSlug'] ?? '';
         const cartKey   = card.dataset['cartKey'] ?? '';
         const itemName  = card.dataset['itemName'] ?? '';
@@ -825,26 +459,26 @@ for (const s of getVisibleStores()) {
     // Delegated (not re-attached per render) — item + per-store "select all" checkboxes
     document.getElementById('cart-content')?.addEventListener('change', (e) => {
       const input = e.target as HTMLInputElement;
-      if (!input.classList.contains('co-check__input')) return;
+      if (input.type !== 'checkbox') return;
 
       const storeSlug = input.dataset['storeSlug'] ?? '';
 
       if (input.closest('.co-store-check')) {
         const checked = input.checked;
         const block = input.closest<HTMLElement>('.co-store-block');
-        block?.querySelectorAll<HTMLInputElement>('.co-item-check .co-check__input').forEach(itemInput => {
+        block?.querySelectorAll<HTMLInputElement>('.co-item-check input').forEach(itemInput => {
           const cartKey = itemInput.dataset['cartKey'] ?? '';
           if (checked) selected.add(selKey(storeSlug, cartKey));
           else selected.delete(selKey(storeSlug, cartKey));
           itemInput.checked = checked;
-          itemInput.closest('.co-card')?.classList.toggle('co-card--unselected', !checked);
+          itemInput.closest('.co-card')?.toggleAttribute('data-unselected', !checked);
         });
       } else if (input.closest('.co-item-check')) {
         const cartKey = input.dataset['cartKey'] ?? '';
         const key = selKey(storeSlug, cartKey);
         if (input.checked) selected.add(key);
         else selected.delete(key);
-        input.closest('.co-card')?.classList.toggle('co-card--unselected', !input.checked);
+        input.closest('.co-card')?.toggleAttribute('data-unselected', !input.checked);
       } else {
         return;
       }
@@ -857,13 +491,13 @@ for (const s of getVisibleStores()) {
     const paymentSection = document.getElementById('payment-section');
 
     toPaymentBtn?.addEventListener('click', () => {
-      const isOpen = paymentSection?.classList.contains('is-open');
+      const isOpen = paymentSection?.hasAttribute('data-open');
       if (isOpen) {
-        paymentSection?.classList.remove('is-open');
+        paymentSection?.removeAttribute('data-open');
         paymentSection?.setAttribute('aria-hidden', 'true');
         toPaymentBtn.setAttribute('aria-expanded', 'false');
       } else {
-        paymentSection?.classList.add('is-open');
+        paymentSection?.setAttribute('data-open', '');
         paymentSection?.setAttribute('aria-hidden', 'false');
         toPaymentBtn.setAttribute('aria-expanded', 'true');
         setTimeout(() => paymentSection?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
@@ -962,8 +596,8 @@ for (const s of getVisibleStores()) {
     if (new URLSearchParams(window.location.search).get('pay') === '1') {
       const paymentSection = document.getElementById('payment-section');
       const toPaymentBtn   = document.getElementById('to-payment-btn') as HTMLButtonElement | null;
-      if (paymentSection && !paymentSection.classList.contains('is-open')) {
-        paymentSection.classList.add('is-open');
+      if (paymentSection && !paymentSection.hasAttribute('data-open')) {
+        paymentSection.setAttribute('data-open', '');
         paymentSection.setAttribute('aria-hidden', 'false');
         toPaymentBtn?.setAttribute('aria-expanded', 'true');
       }

@@ -3,6 +3,19 @@ import { getCategoryTree, setCategoryTree } from './category-tree-cache.js';
 
 const MAX_CATEGORY_DEPTH = 3;
 
+const BTN_CLASSES = 'text-[0.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)]';
+const ADD_CLASSES = 'block w-full text-start py-[0.4rem] px-[0.6rem] mt-[0.15rem] rounded text-[0.8rem] font-semibold text-[color:var(--color-primary)] bg-transparent cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+const ADD_ROOT_CLASSES = 'block w-full text-start py-[0.4rem] px-[0.6rem] mt-[0.3rem] pt-2 rounded text-[0.8rem] font-semibold text-[color:var(--color-primary)] bg-transparent border-t border-[color:var(--color-border)] cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+const EXPAND_CLASSES = 'shrink-0 w-5 h-5 flex items-center justify-center text-[color:var(--color-muted)] rounded transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:bg-[color:var(--color-bg)] data-[open]:rotate-90';
+const EXPAND_SPACER_CLASSES = 'shrink-0 w-5 h-5';
+const OPTION_BASE_CLASSES = 'flex-1 block text-start py-[0.4rem] px-[0.6rem] rounded text-[0.84rem] bg-transparent border-0 cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+
+function optionClasses(selected: boolean, isNone: boolean): string {
+  if (selected) return `${OPTION_BASE_CLASSES} font-bold text-[color:var(--color-primary)]`;
+  if (isNone) return `${OPTION_BASE_CLASSES} text-[color:var(--color-muted)]`;
+  return `${OPTION_BASE_CLASSES} text-[color:var(--color-text)]`;
+}
+
 function esc(s: string): string {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -61,10 +74,10 @@ export function initCategoryPicker(root: HTMLElement): void {
 
   function renderAddRow(): string {
     const i = getDashI18n();
-    return `<div class="category-picker__add-row">
-      <input type="text" class="input category-picker__add-input" placeholder="${esc(i.categoryNamePlaceholder ?? '')}" maxlength="40" />
-      <button type="button" class="category-picker__btn" data-save-add>${esc(i.saveCategoryName ?? '')}</button>
-      <button type="button" class="category-picker__btn" data-cancel-add>${esc(i.cancelCategoryEdit ?? '')}</button>
+    return `<div class="flex items-center gap-[0.35rem] py-1">
+      <input type="text" class="input category-picker__add-input max-w-[10rem] py-[0.3rem] px-2 text-[0.82rem]" placeholder="${esc(i.categoryNamePlaceholder ?? '')}" maxlength="40" />
+      <button type="button" class="${BTN_CLASSES}" data-save-add>${esc(i.saveCategoryName ?? '')}</button>
+      <button type="button" class="${BTN_CLASSES}" data-cancel-add>${esc(i.cancelCategoryEdit ?? '')}</button>
     </div>`;
   }
 
@@ -75,22 +88,22 @@ export function initCategoryPicker(root: HTMLElement): void {
     const showToggle = node.children.length > 0 || canNest;
 
     const childrenHtml = isExpanded
-      ? `<div class="category-picker__group">
+      ? `<div class="flex flex-col ps-[1.1rem]">
           ${node.children.map((c) => renderRow(c, depth + 1)).join('')}
           ${canNest
-            ? (addingUnderId === node.id ? renderAddRow() : `<button type="button" class="category-picker__add" data-add-under="${esc(node.id)}">+ ${esc((i.addSubcategoryUnder ?? '{name}').replace('{name}', node.name))}</button>`)
+            ? (addingUnderId === node.id ? renderAddRow() : `<button type="button" class="${ADD_CLASSES}" data-add-under="${esc(node.id)}">+ ${esc((i.addSubcategoryUnder ?? '{name}').replace('{name}', node.name))}</button>`)
             : ''}
         </div>`
       : '';
 
-    return `<div class="category-picker__row-wrap">
-      <div class="category-picker__row" style="padding-inline-start:${depth * 0.9}rem">
+    return `<div class="flex flex-col">
+      <div class="flex items-center gap-[0.15rem]" style="padding-inline-start:${depth * 0.9}rem">
         ${showToggle
-          ? `<button type="button" class="category-picker__expand${isExpanded ? ' is-open' : ''}" data-expand="${esc(node.id)}" aria-label="${esc(i.toggleExpand ?? '')}">
+          ? `<button type="button" class="${EXPAND_CLASSES}" data-expand="${esc(node.id)}" aria-label="${esc(i.toggleExpand ?? '')}"${isExpanded ? ' data-open' : ''}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
             </button>`
-          : `<span class="category-picker__expand-spacer"></span>`}
-        <button type="button" class="category-picker__option${node.id === selectedId ? ' is-selected' : ''}" data-select="${esc(node.id)}">${esc(node.name)}</button>
+          : `<span class="${EXPAND_SPACER_CLASSES}"></span>`}
+        <button type="button" class="${optionClasses(node.id === selectedId, false)}" data-select="${esc(node.id)}">${esc(node.name)}</button>
       </div>
       ${childrenHtml}
     </div>`;
@@ -100,9 +113,9 @@ export function initCategoryPicker(root: HTMLElement): void {
     const i = getDashI18n();
     const tree = getCategoryTree();
     menu!.innerHTML = `
-      <button type="button" class="category-picker__option category-picker__option--none${!selectedId ? ' is-selected' : ''}" data-select="">${esc(i.categoryNone ?? '')}</button>
+      <button type="button" class="${optionClasses(!selectedId, true)}" data-select="">${esc(i.categoryNone ?? '')}</button>
       ${tree.map((n) => renderRow(n, 0)).join('')}
-      ${addingUnderId === null ? renderAddRow() : `<button type="button" class="category-picker__add category-picker__add--root" data-add-under="">+ ${esc(i.addRootCategory ?? '')}</button>`}
+      ${addingUnderId === null ? renderAddRow() : `<button type="button" class="${ADD_ROOT_CLASSES}" data-add-under="">+ ${esc(i.addRootCategory ?? '')}</button>`}
     `;
     menu!.querySelector<HTMLInputElement>('.category-picker__add-input')?.focus();
   }

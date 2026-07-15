@@ -1,6 +1,6 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
-import { logError } from '../../lib/error-log.js';
+import { logError, resolveErrorContext } from '../../lib/error-log.js';
 
 const MAX_MESSAGE_LEN = 500;
 const MAX_STACK_LEN = 2000;
@@ -12,7 +12,7 @@ const MAX_BODY_BYTES = 20_000;
 // Intentionally unauthenticated — any page (buyer, seller, or anonymous
 // visitor) can report a client-side JS error here. Only the admin-guarded
 // GET/clear in api/admin/errors.ts requires a login.
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, cookies }) => {
   const contentLength = Number(request.headers.get('content-length') ?? 0);
   if (contentLength > MAX_BODY_BYTES) return new Response(null, { status: 413 });
 
@@ -29,6 +29,12 @@ export const POST: APIRoute = async ({ request }) => {
   const routeRaw = (body as { route?: unknown })?.route;
   const route = typeof routeRaw === 'string' ? routeRaw.slice(0, 200) : undefined;
 
-  logError({ source: 'client', message, stack, route });
+  logError({
+    source: 'client',
+    message,
+    stack,
+    route,
+    ...resolveErrorContext(route ?? '', cookies),
+  });
   return new Response(null, { status: 204 });
 };

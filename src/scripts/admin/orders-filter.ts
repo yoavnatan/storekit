@@ -1,12 +1,21 @@
-// Admin orders tab: text search + sort + filter-by-status, mirroring the
-// seller dashboard's own orders toolbar (see AI_INSTRUCTIONS.md → "Dashboard
-// sort/filter toolbar") but read-only (no shipping-status/tracking edit — the
-// admin dashboard is a reporting surface, editing an order stays the
-// seller's job) and cross-store, so it also filters by payment status, which
-// isn't meaningful on the single-store seller view. Search + sort + filter
-// all narrow the same .order-card list; a card only shows once every active
-// condition agrees.
+// Admin orders tab: text search + sort + filter-by-status. Pagination moved
+// the actual filtering/sorting server-side (src/lib/admin-orders-filter.ts —
+// only one page of orders is ever in the DOM now), so this file's job
+// shrank to: read the server-rendered initial state, let the user change it
+// via the same UI as before, and navigate to the updated query-param URL —
+// the server does the rest on the next SSR render.
+import { buildAdminUrl, debounce, encodeList, decodeList, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+
+const PANEL_ID = 'dash-panel-orders';
+
+// Module-level singleton, not created inside initAdminOrdersFilter() — that
+// function now re-runs on every AJAX panel swap (see swapPanel in
+// admin-nav.ts) to re-wire the fresh DOM, and createFloatingPortal() adds
+// its own document-level click/keydown listeners on every call. Creating it
+// once here (constant across re-inits) avoids piling up duplicate listeners
+// each time the user types another search character.
+const ordersPortal = createFloatingPortal('admin-orders-toolbar-portal');
 
 const SHIPPING_LABELS: Record<string, string> = {
   pending: 'חדשה', processing: 'בטיפול', ready: 'ממתין לאיסוף', shipped: 'נשלח', delivered: 'נמסר',
@@ -16,11 +25,9 @@ const SHIPPING_COLORS: Record<string, string> = {
 };
 const PAYMENT_LABELS: Record<string, string> = { pending: 'ממתין', paid: 'שולם', failed: 'נכשל' };
 const PAYMENT_COLORS: Record<string, string> = { pending: '#f59e0b', paid: '#16a34a', failed: '#ef4444' };
-const SHIPPING_RANK: Record<string, number> = { pending: 0, processing: 1, ready: 2, shipped: 3, delivered: 4 };
 
 type SortCol = 'date' | 'amount' | 'shippingStatus';
 type FilterCol = 'shippingStatus' | 'paymentStatus' | 'store';
-
 type FilterColumnDef = { col: FilterCol; label: string; values: string[]; labels: Record<string, string>; colors: Record<string, string> };
 
 const SORT_OPTIONS: { col: SortCol; dir: 'asc' | 'desc'; label: string }[] = [
@@ -31,101 +38,75 @@ const SORT_OPTIONS: { col: SortCol; dir: 'asc' | 'desc'; label: string }[] = [
   { col: 'shippingStatus', dir: 'asc', label: 'סטטוס משלוח: הזמנות חדשות קודם' },
 ];
 
-// shippingStatus/paymentStatus have a fixed enum; store is cross-store admin
-// data with no fixed set — its `values`/`labels` get filled in at init time
-// from whatever stores actually appear across the rendered orders (see
-// buildFilterColumns below), same "no meaning to filter on" principle that
-// already excluded phone number.
-const STATIC_FILTER_COLUMNS: FilterColumnDef[] = [
-  { col: 'shippingStatus', label: 'סטטוס משלוח', values: ['pending', 'processing', 'ready', 'shipped', 'delivered'], labels: SHIPPING_LABELS, colors: SHIPPING_COLORS },
-  { col: 'paymentStatus', label: 'סטטוס תשלום', values: ['pending', 'paid', 'failed'], labels: PAYMENT_LABELS, colors: PAYMENT_COLORS },
-];
-
 export function initAdminOrdersFilter(): void {
-  const listEl = document.getElementById('admin-orders-list');
-  if (!listEl) return; // no orders at all — nothing to wire
-  const list = listEl; // re-bound so TS keeps the non-null narrowing inside nested closures below
+  const root = document.getElementById('admin-orders-toolbar');
+  if (!root) return; // no orders at all — nothing to wire
 
-  const searchInput = document.getElementById('admin-order-search') as HTMLInputElement | null;
-  const noMatchEl = document.getElementById('admin-orders-filter-empty');
-  const cards = () => [...list.querySelectorAll<HTMLElement>('.order-card')];
+  const state = root.dataset;
+  let sortCol = (state.sortCol as SortCol) || 'date';
+  let sortDir = (state.sortDir as 'asc' | 'desc') || 'desc';
+  const storeNames: string[] = JSON.parse(state.storeNames ?? '[]');
 
-  // Store filter's values aren't known until we see what's actually on the
-  // page — collected once here from every card's data-stores (pipe-separated,
-  // an order can span multiple stores).
-  const storeNames = [...new Set(cards().flatMap((c) => (c.dataset.stores ?? '').split('|').filter(Boolean)))].sort((a, b) => a.localeCompare(b, 'he'));
   const FILTER_COLUMNS: FilterColumnDef[] = [
-    ...STATIC_FILTER_COLUMNS,
+    { col: 'shippingStatus', label: 'סטטוס משלוח', values: ['pending', 'processing', 'ready', 'shipped', 'delivered'], labels: SHIPPING_LABELS, colors: SHIPPING_COLORS },
+    { col: 'paymentStatus', label: 'סטטוס תשלום', values: ['pending', 'paid', 'failed'], labels: PAYMENT_LABELS, colors: PAYMENT_COLORS },
     { col: 'store', label: 'חנות', values: storeNames, labels: Object.fromEntries(storeNames.map((s) => [s, s])), colors: {} },
   ];
 
-  let query = '';
   const activeFilters = new Map<FilterCol, Set<string>>();
-  let sortCol: SortCol = 'date';
-  let sortDir: 'asc' | 'desc' = 'desc';
+  const ship0 = new Set((state.ship ?? '').split(',').filter(Boolean));
+  const pay0 = new Set((state.pay ?? '').split(',').filter(Boolean));
+  const store0 = new Set(decodeList(state.store ?? '')); // store names may contain commas — see admin-nav.ts
+  if (ship0.size) activeFilters.set('shippingStatus', ship0);
+  if (pay0.size) activeFilters.set('paymentStatus', pay0);
+  if (store0.size) activeFilters.set('store', store0);
 
-  function cardMatchesFilters(card: HTMLElement): boolean {
-    for (const [col, values] of activeFilters) {
-      if (values.size === 0) continue;
-      if (col === 'store') {
-        const cardStores = (card.dataset.stores ?? '').split('|');
-        if (!cardStores.some((s) => values.has(s))) return false;
-        continue;
-      }
-      const v = col === 'shippingStatus' ? card.dataset.shippingStatus : card.dataset.paymentStatus;
-      if (!values.has(v ?? '')) return false;
-    }
-    return true;
+  const badge = document.getElementById('admin-orders-filter-count');
+  if (badge) {
+    const activeCols = [...activeFilters.values()].filter((s) => s.size > 0).length;
+    badge.hidden = activeCols === 0;
+    badge.textContent = String(activeCols);
   }
 
-  function applyVisibility(): void {
-    let visible = 0;
-    cards().forEach((card) => {
-      const searchOk = !query || (card.dataset.search ?? '').includes(query);
-      const show = searchOk && cardMatchesFilters(card);
-      card.style.display = show ? '' : 'none';
-      if (show) visible++;
+  function buildOrdersNavUrl(): string {
+    const searchInput = document.getElementById('admin-order-search') as HTMLInputElement | null;
+    const ship = activeFilters.get('shippingStatus');
+    const pay = activeFilters.get('paymentStatus');
+    const store = activeFilters.get('store');
+    return buildAdminUrl('orders', {
+      oq: searchInput?.value.trim() || undefined,
+      osort: (sortCol !== 'date' || sortDir !== 'desc') ? `${sortCol}:${sortDir}` : undefined,
+      oship: ship?.size ? [...ship].join(',') : undefined,
+      opay: pay?.size ? [...pay].join(',') : undefined,
+      ostore: store?.size ? encodeList([...store]) : undefined,
     });
-    if (noMatchEl) noMatchEl.hidden = visible > 0;
-    const badge = document.getElementById('admin-orders-filter-count');
-    if (badge) {
-      const activeCols = [...activeFilters.values()].filter((s) => s.size > 0).length;
-      badge.hidden = activeCols === 0;
-      badge.textContent = String(activeCols);
-    }
   }
 
-  function sortCards(col: SortCol, dir: 'asc' | 'desc'): void {
-    sortCol = col;
-    sortDir = dir;
-    const sorted = cards().sort((a, b) => {
-      const va = col === 'amount' ? parseFloat(a.dataset.sortAmount ?? '0')
-        : col === 'shippingStatus' ? (SHIPPING_RANK[a.dataset.shippingStatus ?? ''] ?? 99)
-        : (a.dataset.sortDate ?? '');
-      const vb = col === 'amount' ? parseFloat(b.dataset.sortAmount ?? '0')
-        : col === 'shippingStatus' ? (SHIPPING_RANK[b.dataset.shippingStatus ?? ''] ?? 99)
-        : (b.dataset.sortDate ?? '');
-      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-      return dir === 'asc' ? cmp : -cmp;
+// AJAX-swaps the panel (see admin-nav.ts's swapPanel) instead of a full page
+// nav — shared by sort selection and filter apply/clear (the search box's
+// own debounce handler below calls swapPanel directly instead, so it can
+// also refocus itself after the swap).
+  function navigate(): void {
+    swapPanel(buildOrdersNavUrl(), PANEL_ID, () => initAdminOrdersFilter());
+  }
+
+  const searchInput = document.getElementById('admin-order-search') as HTMLInputElement | null;
+  searchInput?.addEventListener('input', debounce(() => {
+    swapPanel(buildOrdersNavUrl(), PANEL_ID, () => {
+      initAdminOrdersFilter();
+      const fresh = document.getElementById('admin-order-search') as HTMLInputElement | null;
+      if (fresh) { fresh.focus(); fresh.setSelectionRange(fresh.value.length, fresh.value.length); }
     });
-    sorted.forEach((card) => list.append(card));
-    const label = document.getElementById('admin-orders-sort-label');
-    const opt = SORT_OPTIONS.find((o) => o.col === col && o.dir === dir);
-    if (label && opt) label.textContent = opt.label;
-  }
-
-  searchInput?.addEventListener('input', () => {
-    query = searchInput.value.trim().toLowerCase();
-    applyVisibility();
-  });
+  }, 450));
 
   // ── Expand/collapse (mirrors the seller dashboard's own order-card) ──
-  cards().forEach((card) => {
+  document.querySelectorAll<HTMLElement>('.order-card').forEach((card) => {
     const header = card.querySelector<HTMLElement>('.order-card__header');
     const body = card.querySelector<HTMLElement>('.order-card__body');
     if (!header || !body) return;
     const toggle = () => {
-      const open = card.classList.toggle('order-card--open');
+      const open = !card.hasAttribute('data-open');
+      card.toggleAttribute('data-open', open);
       header.setAttribute('aria-expanded', String(open));
       body.hidden = !open;
     };
@@ -137,19 +118,20 @@ export function initAdminOrdersFilter(): void {
 
   // ── Sort + filter dropdowns (shared floating portal, same pattern as the
   // seller dashboard's own orders toolbar) ──
-  const portal = createFloatingPortal('admin-orders-toolbar-portal');
+  const portal = ordersPortal;
 
   const sortTrigger = document.getElementById('admin-orders-sort-trigger') as HTMLButtonElement | null;
   sortTrigger?.addEventListener('click', () => {
     if (portal.currentTrigger() === sortTrigger) { portal.close(); return; }
     portal.open(sortTrigger, '15rem', () => SORT_OPTIONS.map((o) => {
       const selected = o.col === sortCol && o.dir === sortDir;
-      return `<button type="button" class="product-menu__item" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="cursor:pointer${selected ? ';font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          sortCards((btn.dataset.sortCol as SortCol) ?? 'date', (btn.dataset.sortDir as 'asc' | 'desc') ?? 'desc');
-          portal.close();
+          sortCol = (btn.dataset.sortCol as SortCol) ?? 'date';
+          sortDir = (btn.dataset.sortDir as 'asc' | 'desc') ?? 'desc';
+          navigate();
         });
       });
     });
@@ -158,7 +140,7 @@ export function initAdminOrdersFilter(): void {
   function openFilterColumns(trigger: HTMLElement): void {
     portal.open(trigger, '12rem', () => FILTER_COLUMNS.map((fc) => {
       const active = (activeFilters.get(fc.col)?.size ?? 0) > 0;
-      return `<button type="button" class="product-menu__item" data-filter-col="${fc.col}" style="display:flex;justify-content:space-between;cursor:pointer${active ? ';font-weight:700;color:var(--color-primary)' : ''}">${fc.label}${active ? ' ●' : ''}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center justify-between gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${fc.col}" style="${active ? 'font-weight:700;color:var(--color-primary)' : ''}">${fc.label}${active ? ' ●' : ''}</button>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-filter-col]').forEach((btn) => {
         btn.addEventListener('click', () => openFilterValues(trigger, btn.dataset.filterCol as FilterCol));
@@ -166,21 +148,27 @@ export function initAdminOrdersFilter(): void {
     });
   }
 
+  // Checkbox changes only update in-memory state — the page only navigates
+  // once the user hits "החל" (apply), so picking several values doesn't
+  // reload the page after every single click.
   function openFilterValues(trigger: HTMLElement, col: FilterCol): void {
     const fc = FILTER_COLUMNS.find((f) => f.col === col);
     if (!fc) return;
     const selected = activeFilters.get(col) ?? new Set<string>();
     portal.open(trigger, '13rem', () => [
-      `<button type="button" class="product-menu__back" data-filter-back>‹ ${fc.label}</button>`,
-      `<div class="product-menu__divider"></div>`,
+      `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back>‹ ${fc.label}</button>`,
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
       ...fc.values.map((v) => `
-        <label class="product-menu__checkbox-item">
-          <input type="checkbox" data-filter-value="${v}" ${selected.has(v) ? 'checked' : ''} />
+        <label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]">
+          <input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${v}" ${selected.has(v) ? 'checked' : ''} />
           ${fc.colors[v] ? `<span class="order-status-dot" style="background:${fc.colors[v]}"></span>` : ''}
           ${fc.labels[v]}
         </label>`).join(''),
-      `<div class="product-menu__divider"></div>`,
-      `<button type="button" class="product-menu__clear" data-filter-clear>נקה סינון</button>`,
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      `<div style="display:flex;gap:0.4rem;padding:0.3rem 0.6rem">
+        <button type="button" class="btn btn--ghost btn--sm" data-filter-clear style="flex:1">נקה</button>
+        <button type="button" class="btn btn--accent btn--sm" data-filter-apply style="flex:1">החל</button>
+      </div>`,
     ].join(''), (p) => {
       p.querySelector('[data-filter-back]')?.addEventListener('click', () => openFilterColumns(trigger));
       p.querySelectorAll<HTMLInputElement>('[data-filter-value]').forEach((cb) => {
@@ -188,14 +176,13 @@ export function initAdminOrdersFilter(): void {
           const set = activeFilters.get(col) ?? new Set<string>();
           if (cb.checked) set.add(cb.dataset.filterValue!); else set.delete(cb.dataset.filterValue!);
           if (set.size) activeFilters.set(col, set); else activeFilters.delete(col);
-          applyVisibility();
         });
       });
       p.querySelector('[data-filter-clear]')?.addEventListener('click', () => {
         activeFilters.delete(col);
-        applyVisibility();
-        openFilterValues(trigger, col);
+        navigate();
       });
+      p.querySelector('[data-filter-apply]')?.addEventListener('click', () => navigate());
     });
   }
 
@@ -204,4 +191,7 @@ export function initAdminOrdersFilter(): void {
     if (portal.currentTrigger() === filterTrigger) { portal.close(); return; }
     openFilterColumns(filterTrigger);
   });
+
+  wirePanelLinks(PANEL_ID, () => initAdminOrdersFilter());
+  wirePopstateReload();
 }

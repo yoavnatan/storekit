@@ -1,13 +1,24 @@
 export function initAdminAlertsPanel(): void {
   const table = document.getElementById('admin-alerts-table');
   table?.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest('.admin-alerts-details-btn') as HTMLButtonElement | null;
-    if (!btn) return;
-    const detailsRow = document.getElementById(btn.getAttribute('aria-controls') ?? '');
-    if (!detailsRow) return;
-    const isOpen = btn.getAttribute('aria-expanded') === 'true';
-    btn.setAttribute('aria-expanded', String(!isOpen));
-    detailsRow.hidden = isOpen;
+    const detailsBtn = (e.target as HTMLElement).closest('.admin-alerts-details-btn') as HTMLButtonElement | null;
+    if (detailsBtn) {
+      const detailsRow = document.getElementById(detailsBtn.getAttribute('aria-controls') ?? '');
+      if (!detailsRow) return;
+      const isOpen = detailsBtn.getAttribute('aria-expanded') === 'true';
+      detailsBtn.setAttribute('aria-expanded', String(!isOpen));
+      detailsRow.hidden = isOpen;
+      return;
+    }
+
+    const copyBtn = (e.target as HTMLElement).closest('.admin-alerts-copy-btn') as HTMLButtonElement | null;
+    if (copyBtn) {
+      const text = copyBtn.dataset.copyText ?? '';
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.classList.add('admin-alerts-copy-btn--done');
+        setTimeout(() => copyBtn.classList.remove('admin-alerts-copy-btn--done'), 1200);
+      }).catch(() => { /* clipboard permission denied — nothing more we can do */ });
+    }
   });
 
   const clearBtn = document.getElementById('admin-alerts-clear') as HTMLButtonElement | null;

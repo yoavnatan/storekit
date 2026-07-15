@@ -1,3 +1,7 @@
+import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
+
+const PANEL_ID = 'dash-panel-stores';
+
 // Stores tab: flat, top-level list of every store across all sellers (see
 // AdminStoresPanel.astro's header comment). Deliberately does NOT reuse the
 // Sellers tab's `.admin-block-toggle` class/selector — AdminSellersPanel's
@@ -6,22 +10,19 @@
 // hidden), so sharing the class would double-bind a click handler to the
 // same button and fire the moderation request twice. This file owns its own
 // class (`.admin-store-row-toggle`) and DOM-update logic instead.
+// Search round-trips to the server (see admin-stats.ts#filterStoreRows) so it
+// stays correct once pagination means most stores aren't in the DOM at all.
 function initStoreSearch(): void {
-  const list = document.getElementById('admin-store-list');
   const searchInput = document.getElementById('admin-store-search') as HTMLInputElement | null;
-  const noMatchEl = document.getElementById('admin-stores-search-empty');
-  if (!list || !searchInput) return;
-
-  searchInput.addEventListener('input', () => {
-    const query = searchInput.value.trim().toLowerCase();
-    let visible = 0;
-    list.querySelectorAll<HTMLElement>('.admin-store-row').forEach((row) => {
-      const show = !query || (row.dataset.search ?? '').includes(query);
-      row.style.display = show ? '' : 'none';
-      if (show) visible++;
+  if (!searchInput) return;
+  searchInput.addEventListener('input', debounce(() => {
+    const url = buildAdminUrl('stores', { stq: searchInput.value.trim() || undefined });
+    swapPanel(url, PANEL_ID, () => {
+      initAdminStoresPanel();
+      const fresh = document.getElementById('admin-store-search') as HTMLInputElement | null;
+      if (fresh) { fresh.focus(); fresh.setSelectionRange(fresh.value.length, fresh.value.length); }
     });
-    if (noMatchEl) noMatchEl.hidden = visible > 0;
-  });
+  }, 450));
 }
 
 // Same optimistic-update pattern as the Sellers tab's block toggle (button
@@ -67,4 +68,6 @@ function initStoreBlockToggles(): void {
 export function initAdminStoresPanel(): void {
   initStoreSearch();
   initStoreBlockToggles();
+  wirePanelLinks(PANEL_ID, () => initAdminStoresPanel());
+  wirePopstateReload();
 }

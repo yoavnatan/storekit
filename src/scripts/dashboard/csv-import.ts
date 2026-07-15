@@ -1,6 +1,6 @@
 import { esc } from '../../lib/gallery-widget.js';
 import { showStatus } from './status.js';
-import { buildRows, attachListeners, initThumbs, applyPagination, type ProductData } from './products.js';
+import { applyPagination, type ProductData } from './products.js';
 import { templateCsv, type BulkRowResult } from '../../lib/csv-bulk.js';
 import { csvErrorMessage, buildPreviewHtml } from './csv-preview.js';
 
@@ -9,7 +9,7 @@ function getDashI18n(): Record<string, string> {
   catch { return {}; }
 }
 
-export function initCsvImport(cloud: string, preset: string): void {
+export function initCsvImport(): void {
   const panel       = document.getElementById('csv-panel') as HTMLElement | null;
   const toggleBtn   = document.getElementById('toggle-csv-panel');
   const closeBtn    = document.getElementById('csv-panel-close');
@@ -69,12 +69,12 @@ export function initCsvImport(cloud: string, preset: string): void {
       });
       const data = await res.json() as { ok: boolean; results?: Array<BulkRowResult & { currentName?: string }>; error?: string };
       if (!data.ok) {
-        previewEl!.innerHTML = `<p class="csv-error">${esc(csvErrorMessage(i, data.error))}</p>`;
+        previewEl!.innerHTML = `<p class="csv-error [color:var(--color-danger)] text-[0.85rem]">${esc(csvErrorMessage(i, data.error))}</p>`;
         return;
       }
       renderPreview(data.results ?? []);
     } catch {
-      previewEl!.innerHTML = `<p class="csv-error">${esc(i.csvImportFailed ?? 'Import failed.')}</p>`;
+      previewEl!.innerHTML = `<p class="csv-error [color:var(--color-danger)] text-[0.85rem]">${esc(i.csvImportFailed ?? 'Import failed.')}</p>`;
     }
   }
 
@@ -123,40 +123,11 @@ export function initCsvImport(cloud: string, preset: string): void {
   }
 
   function applyResults(results: Array<BulkRowResult & { product?: ProductData }>): void {
-    const tbody    = document.getElementById('products-tbody') as HTMLTableSectionElement | null;
-    const table    = document.getElementById('products-table') as HTMLTableElement | null;
-    const emptyMsg = document.getElementById('empty-products');
-    if (!tbody) return;
-
-    // Build id → element maps once instead of a querySelector per updated row —
-    // matters once a batch touches hundreds of existing rows in a large table.
-    const displayById = new Map<string, Element>();
-    const editById = new Map<string, Element>();
-    tbody.querySelectorAll<HTMLElement>('[data-product-display]').forEach((el) => {
-      displayById.set(el.dataset.productDisplay ?? '', el);
-    });
-    tbody.querySelectorAll<HTMLElement>('[data-product-edit]').forEach((el) => {
-      editById.set(el.dataset.productEdit ?? '', el);
-    });
-
-    for (const r of results) {
-      if (r.action === 'error' || !r.product) continue;
-      const [display, edit] = buildRows(r.product);
-      attachListeners(display, edit, cloud, preset);
-
-      const oldDisplay = r.action === 'update' ? displayById.get(r.id ?? '') : undefined;
-      const oldEdit     = r.action === 'update' ? editById.get(r.id ?? '') : undefined;
-      if (oldDisplay && oldEdit) {
-        oldDisplay.replaceWith(display);
-        oldEdit.replaceWith(edit);
-      } else {
-        tbody.prepend(display, edit);
-      }
-      initThumbs(display);
-    }
-
-    if (table) table.hidden = false;
-    if (emptyMsg) emptyMsg.hidden = true;
+    // A CSV batch can touch products scattered across many server pages, so
+    // patching individual DOM rows in place (the pre-pagination approach) no
+    // longer makes sense — just re-fetch whatever page/search/sort/filter
+    // the seller currently has open.
+    if (!results.some((r) => r.action !== 'error')) return;
     applyPagination();
   }
 }

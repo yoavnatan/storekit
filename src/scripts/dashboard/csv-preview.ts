@@ -32,9 +32,9 @@ export function buildPreviewHtml(results: Array<BulkRowResult & { currentName?: 
   const errors  = results.filter((r) => r.action === 'error');
 
   const errorRows = errors.map((r) => `
-    <div class="csv-row csv-row--error">
-      <span class="csv-row__line">${esc(i.csvLine ?? 'Line')} ${r.line}</span>
-      <span class="csv-row__msg">${esc(r.errors.map((e) => rowErrorLabel(i, e)).join(', '))}</span>
+    <div class="csv-row csv-row--error flex flex-col gap-[0.15rem] border [border-color:var(--color-danger)] rounded-[0.4rem] px-[0.6rem] py-[0.45rem] bg-[color:var(--color-surface)] text-[0.8rem]">
+      <span class="csv-row__line font-semibold [color:var(--color-muted)]">${esc(i.csvLine ?? 'Line')} ${r.line}</span>
+      <span class="csv-row__msg [color:var(--color-danger)]">${esc(r.errors.map((e) => rowErrorLabel(i, e)).join(', '))}</span>
     </div>`).join('');
 
   // The id column is an internal UUID the seller has no reason to trust blindly — showing
@@ -45,22 +45,22 @@ export function buildPreviewHtml(results: Array<BulkRowResult & { currentName?: 
     const newName = r.input?.name;
     const changed = newName && newName !== r.currentName;
     return `
-    <div class="csv-row csv-row--update">
-      <span class="csv-row__line">${esc(i.csvLine ?? 'Line')} ${r.line}</span>
-      <span class="csv-row__msg">${esc(r.currentName ?? '')}${changed ? ` → ${esc(newName!)}` : ''}</span>
+    <div class="csv-row csv-row--update [border-color:var(--color-border)]">
+      <span class="csv-row__line font-semibold [color:var(--color-muted)]">${esc(i.csvLine ?? 'Line')} ${r.line}</span>
+      <span class="csv-row__msg [color:var(--color-text)]">${esc(r.currentName ?? '')}${changed ? ` → ${esc(newName!)}` : ''}</span>
     </div>`;
   }).join('');
 
   return `
-    <div class="csv-summary">
-      <span class="csv-summary__item csv-summary__item--create">${creates.length} ${esc(i.csvRowsToCreate ?? 'New products')}</span>
-      <span class="csv-summary__item csv-summary__item--update">${updates.length} ${esc(i.csvRowsToUpdate ?? 'Products to update')}</span>
-      ${errors.length ? `<span class="csv-summary__item csv-summary__item--error">${errors.length} ${esc(i.csvRowsError ?? 'Rows with errors')}</span>` : ''}
+    <div class="csv-summary flex flex-col gap-[0.4rem] mb-[0.65rem] sm:flex-row sm:flex-wrap sm:gap-[0.6rem]">
+      <span class="csv-summary__item csv-summary__item--create text-[0.82rem] font-semibold px-[0.6rem] py-[0.3rem] rounded-[0.4rem] border [border-color:var(--color-success)] bg-[color:var(--color-surface)] w-fit [color:var(--color-success)]">${creates.length} ${esc(i.csvRowsToCreate ?? 'New products')}</span>
+      <span class="csv-summary__item csv-summary__item--update text-[0.82rem] font-semibold px-[0.6rem] py-[0.3rem] rounded-[0.4rem] border [border-color:var(--color-border)] bg-[color:var(--color-surface)] w-fit [color:var(--color-text)]">${updates.length} ${esc(i.csvRowsToUpdate ?? 'Products to update')}</span>
+      ${errors.length ? `<span class="csv-summary__item csv-summary__item--error text-[0.82rem] font-semibold px-[0.6rem] py-[0.3rem] rounded-[0.4rem] border [border-color:var(--color-danger)] bg-[color:var(--color-surface)] w-fit [color:var(--color-danger)]">${errors.length} ${esc(i.csvRowsError ?? 'Rows with errors')}</span>` : ''}
     </div>
-    ${updateRows ? `<p class="csv-panel__hint muted">${esc(i.csvConfirmUpdates ?? 'Confirm these are the right products before importing:')}</p><div class="csv-error-list csv-update-list">${updateRows}</div>` : ''}
-    ${errorRows ? `<div class="csv-error-list">${errorRows}</div>` : ''}
-    <div class="csv-panel__confirm">
-      <button type="button" class="btn btn--sm" id="csv-confirm-btn" ${creates.length + updates.length === 0 ? 'disabled' : ''}>${esc(i.csvConfirmImport ?? 'Confirm import')}</button>
-      <button type="button" class="btn btn--ghost btn--sm" id="csv-cancel-btn">${esc(i.csvCancelImport ?? 'Cancel')}</button>
+    ${updateRows ? `<p class="csv-panel__hint muted">${esc(i.csvConfirmUpdates ?? 'Confirm these are the right products before importing:')}</p><div class="csv-error-list csv-update-list flex flex-col gap-[0.4rem] max-h-[220px] overflow-y-auto mb-2 pe-[0.25rem]">${updateRows}</div>` : ''}
+    ${errorRows ? `<div class="csv-error-list flex flex-col gap-[0.4rem] max-h-[220px] overflow-y-auto mb-3 pe-[0.25rem]">${errorRows}</div>` : ''}
+    <div class="csv-panel__confirm flex flex-col gap-2 sm:flex-row">
+      <button type="button" class="btn btn--sm w-full sm:w-auto" id="csv-confirm-btn" ${creates.length + updates.length === 0 ? 'disabled' : ''}>${esc(i.csvConfirmImport ?? 'Confirm import')}</button>
+      <button type="button" class="btn btn--ghost btn--sm w-full sm:w-auto" id="csv-cancel-btn">${esc(i.csvCancelImport ?? 'Cancel')}</button>
     </div>`;
 }

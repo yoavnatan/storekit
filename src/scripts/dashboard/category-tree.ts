@@ -36,43 +36,43 @@ export function initCategoryTreeEditor(): void {
     const isAddingChild = addingUnderId === node.id;
 
     const rowHtml = isRenaming
-      ? `<input type="text" class="input category-tree__rename-input" value="${esc(node.name)}" maxlength="40" />
-         <button type="button" class="category-tree__btn" data-action="save-rename">${esc(i.saveCategoryName ?? '')}</button>
-         <button type="button" class="category-tree__btn" data-action="cancel-rename">${esc(i.cancelCategoryEdit ?? '')}</button>`
-      : `<span class="category-tree__name">${esc(node.name)}</span>
-         <div class="category-tree__actions">
-           <button type="button" class="category-tree__btn" data-action="move-up" aria-label="${esc(i.categoryMoveUp ?? '')}">
+      ? `<input type="text" class="input category-tree__rename-input max-w-[14rem] py-[.35rem] px-[.6rem]" value="${esc(node.name)}" maxlength="40" />
+         <button type="button" class="category-tree__btn text-[.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer inline-flex items-center whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)] disabled:opacity-35 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-[color:var(--color-muted)]" data-action="save-rename">${esc(i.saveCategoryName ?? '')}</button>
+         <button type="button" class="category-tree__btn text-[.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer inline-flex items-center whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)] disabled:opacity-35 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-[color:var(--color-muted)]" data-action="cancel-rename">${esc(i.cancelCategoryEdit ?? '')}</button>`
+      : `<span class="text-[.9rem] font-semibold text-[color:var(--color-text)]">${esc(node.name)}</span>
+         <div class="flex items-center gap-[.3rem] ms-auto flex-wrap">
+           <button type="button" class="category-tree__btn text-[.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer inline-flex items-center whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)] disabled:opacity-35 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-[color:var(--color-muted)]" data-action="move-up" aria-label="${esc(i.categoryMoveUp ?? '')}">
              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
            </button>
-           <button type="button" class="category-tree__btn" data-action="move-down" aria-label="${esc(i.categoryMoveDown ?? '')}">
+           <button type="button" class="category-tree__btn text-[.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer inline-flex items-center whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)] disabled:opacity-35 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-[color:var(--color-muted)]" data-action="move-down" aria-label="${esc(i.categoryMoveDown ?? '')}">
              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
            </button>
-           ${canAddChild ? `<button type="button" class="category-tree__btn" data-action="add-child">+ ${esc(i.addSubcategoryBtn ?? '')}</button>` : ''}
-           <button type="button" class="category-tree__btn" data-action="rename">${esc(i.renameCategory ?? '')}</button>
-           <button type="button" class="category-tree__btn category-tree__btn--danger" data-action="delete"${node.children.length ? ` disabled title="${esc(i.categoryHasChildrenTooltip ?? '')}"` : ''}>${esc(i.deleteCategory ?? '')}</button>
+           ${canAddChild ? `<button type="button" class="category-tree__btn text-[.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer inline-flex items-center whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)] disabled:opacity-35 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-[color:var(--color-muted)]" data-action="add-child">+ ${esc(i.addSubcategoryBtn ?? '')}</button>` : ''}
+           <button type="button" class="category-tree__btn text-[.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer inline-flex items-center whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)] disabled:opacity-35 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-[color:var(--color-muted)]" data-action="rename">${esc(i.renameCategory ?? '')}</button>
+           <button type="button" class="category-tree__btn text-[.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer inline-flex items-center whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)] disabled:opacity-35 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-[color:var(--color-muted)] hover:text-[color:var(--color-danger)] hover:border-[color:var(--color-danger)]" data-action="delete"${node.children.length ? ` disabled title="${esc(i.categoryHasChildrenTooltip ?? '')}"` : ''}>${esc(i.deleteCategory ?? '')}</button>
          </div>`;
 
     const addChildRowHtml = isAddingChild
-      ? `<li class="category-tree__add-row" style="padding-inline-start:${(depth + 1) * 1.25}rem">
-           <input type="text" class="input category-tree__add-input" placeholder="${esc(i.categoryNamePlaceholder ?? '')}" maxlength="40" />
-           <button type="button" class="category-tree__btn" data-action="save-child">${esc(i.saveCategoryName ?? '')}</button>
-           <button type="button" class="category-tree__btn" data-action="cancel-add">${esc(i.cancelCategoryEdit ?? '')}</button>
+      ? `<li class="category-tree__add-row flex items-center gap-2 py-[.3rem]" style="padding-inline-start:${(depth + 1) * 1.25}rem">
+           <input type="text" class="input category-tree__add-input max-w-[14rem] py-[.35rem] px-[.6rem]" placeholder="${esc(i.categoryNamePlaceholder ?? '')}" maxlength="40" />
+           <button type="button" class="category-tree__btn text-[.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer inline-flex items-center whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)] disabled:opacity-35 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-[color:var(--color-muted)]" data-action="save-child">${esc(i.saveCategoryName ?? '')}</button>
+           <button type="button" class="category-tree__btn text-[.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer inline-flex items-center whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)] disabled:opacity-35 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-[color:var(--color-muted)]" data-action="cancel-add">${esc(i.cancelCategoryEdit ?? '')}</button>
          </li>`
       : '';
 
     const childrenHtml = node.children.map((c) => renderNode(c, depth + 1)).join('') + addChildRowHtml;
 
     return `<li class="category-tree__item" data-category-id="${esc(node.id)}">
-        <div class="category-tree__row" style="padding-inline-start:${depth * 1.25}rem">${rowHtml}</div>
-        ${childrenHtml ? `<ul class="category-tree__children">${childrenHtml}</ul>` : ''}
+        <div class="category-tree__row flex items-center flex-wrap gap-2 py-[.3rem]" style="padding-inline-start:${depth * 1.25}rem">${rowHtml}</div>
+        ${childrenHtml ? `<ul class="category-tree__children list-none m-0 p-0 flex flex-col gap-[.35rem] mt-[.35rem]">${childrenHtml}</ul>` : ''}
       </li>`;
   }
 
   function render(): void {
     const i = getDashI18n();
     list!.innerHTML = tree.length
-      ? `<ul class="category-tree__list">${tree.map((n) => renderNode(n, 0)).join('')}</ul>`
-      : `<p class="muted category-tree__empty">${esc(i.noCategoriesYet ?? '')}</p>`;
+      ? `<ul class="category-tree__list list-none m-0 p-0 flex flex-col gap-[.35rem]">${tree.map((n) => renderNode(n, 0)).join('')}</ul>`
+      : `<p class="muted category-tree__empty text-[.85rem] m-0">${esc(i.noCategoriesYet ?? '')}</p>`;
 
     if (renamingId) {
       const input = list!.querySelector<HTMLInputElement>(`[data-category-id="${renamingId}"] > .category-tree__row .category-tree__rename-input`);

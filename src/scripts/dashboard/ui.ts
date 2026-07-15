@@ -7,7 +7,9 @@ export function initSettingsForm(): void {
 
   function showSettingsStatus(msg: string, isError = false) {
     if (!settingsStatus) return;
-    settingsStatus.className = isError ? 'dash-error' : 'dash-success';
+    settingsStatus.className = isError
+      ? 'dash-error bg-[#fef2f2] text-[color:var(--color-danger)] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#fecaca] text-sm mb-4'
+      : 'dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm mb-4';
     settingsStatus.textContent = msg;
     settingsStatus.hidden = false;
     clearTimeout(settingsTimer);

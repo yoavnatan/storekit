@@ -19,19 +19,25 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
 ---
 
 <!-- Lightbox (native dialog → top-layer, opens above pqv-dialog) -->
-<dialog id="co-lightbox" class="co-lb" aria-label={strEnlarged}>
-  <div class="co-lb__panel">
-    <button class="co-lb__close" id="co-lb-close" aria-label={strClose}>
+<dialog id="co-lightbox" aria-label={strEnlarged}
+  class="border-0 p-0 m-0 w-screen h-screen max-w-[100vw] max-h-[100vh] bg-transparent overflow-hidden [&::backdrop]:bg-black/90 [&::backdrop]:cursor-zoom-out">
+  <div class="relative flex items-center justify-center w-full h-full py-12 px-20 box-border pointer-events-none max-[600px]:py-14 max-[600px]:px-10">
+    <button id="co-lb-close" aria-label={strClose}
+      class="absolute top-4 right-5 z-[2] w-9 h-9 rounded-[var(--radius)] border-0 bg-white/10 text-white cursor-pointer flex items-center justify-center transition-colors duration-100 [pointer-events:all] hover:bg-white/20">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
-    <button class="co-lb__arrow co-lb__arrow--prev" id="co-lb-prev" aria-label={strPrev}>
+    <button id="co-lb-prev" aria-label={strPrev}
+      class="absolute top-1/2 -translate-y-1/2 z-[2] w-10 h-10 rounded-[var(--radius)] border-0 bg-white/10 text-white cursor-pointer flex items-center justify-center transition-colors duration-100 [pointer-events:all] hover:bg-white/20 left-5 max-[600px]:left-2">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <img class="co-lb__img" id="co-lb-img" src="" alt="" />
-    <button class="co-lb__arrow co-lb__arrow--next" id="co-lb-next" aria-label={strNext}>
+    <img id="co-lb-img" src="" alt=""
+      class="w-auto h-auto max-w-full max-h-full object-contain rounded-[var(--radius)] block shadow-[0_8px_48px_rgba(0,0,0,.5)] select-none pointer-events-none bg-[color:var(--color-surface)] [-webkit-user-drag:none]" />
+    <button id="co-lb-next" aria-label={strNext}
+      class="absolute top-1/2 -translate-y-1/2 z-[2] w-10 h-10 rounded-[var(--radius)] border-0 bg-white/10 text-white cursor-pointer flex items-center justify-center transition-colors duration-100 [pointer-events:all] hover:bg-white/20 right-5 max-[600px]:right-2">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
-    <div class="co-lb__counter" id="co-lb-counter" hidden></div>
+    <div id="co-lb-counter" hidden
+      class="absolute bottom-5 left-1/2 -translate-x-1/2 text-white/60 text-[.78rem] tracking-[.04em] pointer-events-none"></div>
   </div>
 </dialog>
 
@@ -48,13 +54,15 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
   data-str-error={strError}
   data-str-show-more={strShowMore}
   data-str-show-less={strShowLess}
+  class="border-0 rounded-2xl p-0 w-[min(540px,94vw)] max-h-[90dvh] overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,.22)] [overscroll-behavior:contain] fixed inset-0 m-auto will-change-transform contain-layout open:animate-modal-in [&::backdrop]:bg-black/50"
 >
-  <div class="pqv-inner">
-    <button class="pqv-close" id="pqv-close" aria-label={strClose} type="button">
+  <div class="relative max-h-[90dvh] flex flex-col overflow-hidden">
+    <button id="pqv-close" aria-label={strClose} type="button"
+      class="absolute top-3 end-3 z-10 w-8 h-8 rounded-full bg-black/35 border-0 text-white cursor-pointer flex items-center justify-center transition-colors duration-[140ms] hover:bg-black/60">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
-    <div id="pqv-body" class="pqv-body">
-      <div class="pqv-loading">
+    <div id="pqv-body" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+      <div class="p-5">
         <div class="skel-bar" style="height:220px;border-radius:12px;margin-bottom:1rem"></div>
         <div class="skel-bar" style="height:22px;width:60%;margin-bottom:.5rem"></div>
         <div class="skel-bar" style="height:18px;width:35%"></div>
@@ -62,193 +70,6 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
     </div>
   </div>
 </dialog>
-
-<style is:global>
-  /* ── Product quick-view dialog ─────────────── */
-  #pqv-dialog {
-    border: none;
-    border-radius: 16px;
-    padding: 0;
-    width: min(540px, 94vw);
-    max-height: 90dvh;
-    overflow: hidden;
-    box-shadow: 0 8px 40px rgba(0,0,0,.22);
-    overscroll-behavior: contain;
-    position: fixed;
-    inset: 0;
-    margin: auto;
-  }
-  #pqv-dialog::backdrop { background: rgba(0,0,0,.5); }
-  #pqv-dialog { will-change: transform, opacity; contain: layout style; }
-  #pqv-dialog[open] { animation: pqv-in 120ms ease-out both; }
-  @keyframes pqv-in {
-    from { opacity:0; transform:translateY(8px) scale(.99); }
-    to   { opacity:1; transform:none; }
-  }
-  .pqv-content-in { animation: pqv-content-in 100ms ease-out both; }
-  @keyframes pqv-content-in {
-    from { opacity:0; }
-    to   { opacity:1; }
-  }
-  .pqv-inner {
-    position: relative; max-height: 90dvh;
-    display: flex; flex-direction: column; overflow: hidden;
-  }
-  .pqv-scroll { overflow-y: auto; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch; }
-  .pqv-footer {
-    flex-shrink: 0;
-    padding: .75rem 1.25rem 1.125rem;
-    border-top: 1px solid var(--color-border);
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, .06);
-  }
-  .pqv-close {
-    position: absolute;
-    inset-block-start: .75rem;
-    inset-inline-end: .75rem;
-    z-index: 10;
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    background: rgba(0,0,0,.35);
-    border: none;
-    color: #fff;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 140ms;
-  }
-  .pqv-close:hover { background: rgba(0,0,0,.6); }
-  /* flex:1/min-height:0/overflow:hidden repeated at every wrapper between
-     .pqv-inner and .pqv-scroll — a plain flex child defaults to
-     min-height:auto (sized to content), which silently breaks the shrink
-     chain and pushes .pqv-footer below the dialog's max-height. */
-  .pqv-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
-  .pqv-layout { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
-  .pqv-loading { padding: 1.25rem; }
-  @keyframes pqv-shimmer {
-    0%   { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-  }
-  .pqv-img-area {
-    position: relative; background: var(--color-surface);
-    aspect-ratio: 4/3; overflow: hidden;
-    /* Separates the image from the white content below when there's no
-       thumbs row (which already has its own border-bottom) to do it. */
-    border-bottom: 1px solid var(--color-border);
-  }
-  .pqv-slides {
-    display: flex; width: 100%; height: 100%;
-    overflow-x: scroll; overflow-y: hidden;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    touch-action: pan-x;
-    overscroll-behavior-x: contain;
-  }
-  .pqv-slides::-webkit-scrollbar { display: none; }
-  .pqv-slide {
-    flex: 0 0 100%; width: 100%; height: 100%;
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
-    position: relative; overflow: hidden;
-  }
-  .pqv-slide.is-loading {
-    background: linear-gradient(90deg, var(--color-border) 25%, var(--color-bg) 50%, var(--color-border) 75%);
-    background-size: 200% 100%;
-    animation: pqv-shimmer 1.3s infinite linear;
-  }
-  .pqv-main-img {
-    width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in;
-    transition: opacity 0.18s;
-  }
-  .pqv-slide.is-loading .pqv-main-img { opacity: 0; }
-  .pqv-no-img { aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; color: var(--color-muted); }
-  .pqv-dots {
-    position: absolute; bottom: 7px; left: 50%;
-    transform: translateX(-50%);
-    display: flex; align-items: center; justify-content: center;
-    gap: 4px; padding: 4px 8px;
-    border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.15);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    border: 0.75px solid rgba(255, 255, 255, 0.2);
-    z-index: 3;
-    pointer-events: none;
-  }
-  .pqv-dot {
-    width: 6px; height: 6px;
-    border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.7);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
-    flex-shrink: 0; cursor: pointer;
-    pointer-events: auto;
-  }
-  .pqv-dot.is-active { width: 18px; background: #fff; }
-  .pqv-content { padding: .875rem 1.25rem 1.25rem; }
-  .pqv-store-link {
-    font-size: .75rem; font-weight: 700;
-    color: var(--color-muted); text-decoration: none;
-    letter-spacing: .05em; text-transform: uppercase;
-    display: inline-block; margin-bottom: .375rem;
-    transition: color 140ms;
-  }
-  .pqv-store-link:hover { color: var(--color-text); }
-  .pqv-name { font-size: 1.2rem; font-weight: 700; color: var(--color-text); margin-bottom: .375rem; }
-  .pqv-price { font-size: 1.125rem; font-weight: 800; color: var(--color-accent); margin-bottom: .5rem; }
-  .pqv-desc { font-size: .875rem; color: var(--color-muted); line-height: 1.65; margin-bottom: .5rem; white-space: pre-line; }
-  .pqv-variant-group { margin-bottom: .5rem; }
-  .pqv-variant-label { font-size: .8rem; font-weight: 600; color: var(--color-text); margin-bottom: .375rem; }
-  .pqv-variant-opts { display: flex; flex-wrap: wrap; gap: .375rem; }
-  .pqv-variant-opt {
-    display: inline-flex; align-items: center; gap: .35rem;
-    padding: .3rem .75rem;
-    border: 1.5px solid var(--color-border);
-    border-radius: 6px;
-    font-size: .8rem; font-family: inherit;
-    background: transparent; cursor: pointer;
-    color: var(--color-text);
-    transition: border-color 130ms, background 130ms;
-  }
-  .pqv-variant-opt.is-selected {
-    border-color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-    color: var(--color-accent); font-weight: 600;
-  }
-  .pqv-cart-row { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
-  .pqv-qty { display: inline-flex; align-items: center; border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; height: 36px; }
-  .pqv-qty-btn {
-    width: 34px; height: 100%;
-    background: transparent; border: none; cursor: pointer;
-    color: var(--color-muted);
-    display: flex; align-items: center; justify-content: center;
-    transition: background 100ms; flex-shrink: 0;
-  }
-  .pqv-qty-btn:hover { background: var(--color-surface); }
-  .pqv-qty-btn:disabled { opacity: .35; cursor: default; }
-  .pqv-qty-val {
-    min-width: 28px; text-align: center; font-weight: 600;
-    font-size: .875rem; color: var(--color-text);
-    user-select: none;
-  }
-  .pqv-qty-label { font-size: .875rem; color: var(--color-muted); }
-  .pqv-to-payment { width: 100%; height: 44px; display: flex; align-items: center; justify-content: center; gap: .4rem; font-size: .9375rem; }
-  .pqv-arrow { display: inline-flex; flex-shrink: 0; transition: transform 150ms; }
-  [dir="rtl"] .pqv-arrow { transform: scaleX(-1); }
-  .pqv-product-link { display: block; text-align: center; margin-top: .5rem; font-size: .75rem; color: var(--color-muted); text-decoration: none; }
-  .pqv-product-link:hover { text-decoration: underline; }
-
-  /* ── Lightbox ── */
-  #co-lightbox { border:none;padding:0;margin:0;width:100vw;height:100vh;max-width:100vw;max-height:100vh;background:transparent;overflow:hidden; }
-  #co-lightbox::backdrop { background:rgba(0,0,0,.9);cursor:zoom-out; }
-  .co-lb__panel { position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:3rem 5rem;box-sizing:border-box;pointer-events:none; }
-  .co-lb__img { width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--radius);display:block;box-shadow:0 8px 48px rgba(0,0,0,.5);user-select:none;-webkit-user-drag:none;pointer-events:none;background:var(--color-surface); }
-  .co-lb__close { position:absolute;top:1rem;right:1.25rem;z-index:2;width:36px;height:36px;border-radius:var(--radius);border:none;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s;pointer-events:all; }
-  .co-lb__close:hover { background:rgba(255,255,255,.2); }
-  .co-lb__arrow { position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:40px;height:40px;border-radius:var(--radius);border:none;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s;pointer-events:all; }
-  .co-lb__arrow:hover { background:rgba(255,255,255,.2); }
-  .co-lb__arrow--prev { left:1.25rem; }
-  .co-lb__arrow--next { right:1.25rem; }
-  .co-lb__counter { position:absolute;bottom:1.25rem;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.6);font-size:.78rem;font-weight:.5;letter-spacing:.04em;pointer-events:none; }
-  @media(max-width:600px){.co-lb__panel{padding:3.5rem 2.5rem;}.co-lb__arrow--prev{left:.5rem;}.co-lb__arrow--next{right:.5rem;}}
-</style>
 
 <script>
   import { formatPrice } from '../config/store.config.js';
@@ -292,7 +113,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
     let product: PQVProduct | undefined = pqvCache.get(cacheKey);
 
     if (!product) {
-      pqvBody.innerHTML = `<div class="pqv-loading">
+      pqvBody.innerHTML = `<div class="p-5">
         <div class="skel-bar" style="height:220px;border-radius:12px;margin-bottom:1rem"></div>
         <div class="skel-bar" style="height:22px;width:60%;margin-bottom:.5rem"></div>
         <div class="skel-bar" style="height:18px;width:35%"></div>
@@ -304,7 +125,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
         product = await res.json() as PQVProduct;
         pqvCache.set(cacheKey, product);
       } catch {
-        pqvBody.innerHTML = `<div class="pqv-loading" style="text-align:center;padding:2rem;color:var(--color-muted)">${strings.error}</div>`;
+        pqvBody.innerHTML = `<div class="p-5 text-center py-8 text-[color:var(--color-muted)]">${strings.error}</div>`;
         return;
       }
     } else {
@@ -325,62 +146,67 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
       const hasImages  = p.images.length > 0;
       const hasMultiple= p.images.length > 1;
 
+      const slideClasses = 'group pqv-slide relative overflow-hidden shrink-0 w-full h-full [scroll-snap-align:start] [scroll-snap-stop:always] data-[loading]:[background:linear-gradient(90deg,var(--color-border)_25%,var(--color-bg)_50%,var(--color-border)_75%)] data-[loading]:[background-size:200%_100%] data-[loading]:animate-[skeleton-shimmer_1.3s_infinite_linear]';
+      const imgClasses   = 'w-full h-full object-cover block cursor-zoom-in transition-opacity duration-[180ms] group-data-[loading]:opacity-0';
+      const dotClasses   = 'pqv-dot w-1.5 h-1.5 rounded-full bg-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.25)] shrink-0 cursor-pointer pointer-events-auto transition-[width] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] data-[active]:w-[18px] data-[active]:bg-white';
+
       const imgAreaHtml = hasImages
-        ? `<div class="pqv-img-area">
-             <div class="pqv-slides">${p.images.map((img) => `<div class="pqv-slide is-loading"><img data-src="${pqvEsc(img)}" alt="${pqvEsc(p.name)}" class="pqv-main-img" /></div>`).join('')}</div>
-             ${hasMultiple ? `<div class="pqv-dots" aria-hidden="true">${p.images.map((_, i) => `<span class="pqv-dot${i === 0 ? ' is-active' : ''}"></span>`).join('')}</div>` : ''}
+        ? `<div class="relative bg-[color:var(--color-surface)] aspect-[4/3] overflow-hidden border-b border-[color:var(--color-border)]">
+             <div class="pqv-slides flex w-full h-full overflow-x-scroll overflow-y-hidden [scroll-snap-type:x_mandatory] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [touch-action:pan-x] [overscroll-behavior-inline:contain] [&::-webkit-scrollbar]:hidden">${p.images.map((img) => `<div class="${slideClasses}" data-loading><img data-src="${pqvEsc(img)}" alt="${pqvEsc(p.name)}" class="${imgClasses}" /></div>`).join('')}</div>
+             ${hasMultiple ? `<div class="pqv-dots absolute bottom-[7px] left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 py-1 px-2 rounded-full bg-white/15 [backdrop-filter:blur(8px)] border-[0.75px] border-white/20 z-[3] pointer-events-none" aria-hidden="true">${p.images.map((_, i) => `<span class="${dotClasses}"${i === 0 ? ' data-active' : ''}></span>`).join('')}</div>` : ''}
            </div>`
-        : `<div class="pqv-img-area pqv-no-img"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
+        : `<div class="relative bg-[color:var(--color-surface)] aspect-[4/3] overflow-hidden border-b border-[color:var(--color-border)] flex items-center justify-center text-[color:var(--color-muted)]"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
 
       const variantsHtml = p.variants.map(v => {
         const isCv = isColorVariant(v.name);
         return `
-        <div class="pqv-variant-group">
-          <p class="pqv-variant-label">${pqvEsc(v.name)}</p>
-          <div class="pqv-variant-opts">
+        <div class="mb-2">
+          <p class="text-[.8rem] font-semibold text-[color:var(--color-text)] mb-1.5">${pqvEsc(v.name)}</p>
+          <div class="flex flex-wrap gap-1.5">
             ${v.options.map(opt => {
               const { display, hex } = resolveVariantColor(opt);
               const swatch = isCv && hex
                 ? `<span aria-hidden="true" style="width:12px;height:12px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0;display:inline-block"></span>`
                 : '';
-              return `<button type="button" class="pqv-variant-opt ${selectedVariants[v.name] === opt ? 'is-selected' : ''}" data-variant-name="${pqvEsc(v.name)}" data-variant-opt="${pqvEsc(opt)}">${swatch}${pqvEsc(display)}</button>`;
+              const selected = selectedVariants[v.name] === opt;
+              return `<button type="button" class="pqv-variant-opt inline-flex items-center gap-[.35rem] py-[.3rem] px-3 border-[1.5px] border-[color:var(--color-border)] rounded-md text-[.8rem] font-[inherit] bg-transparent cursor-pointer text-[color:var(--color-text)] transition-colors duration-[130ms] data-[selected]:border-[color:var(--color-accent)] data-[selected]:bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] data-[selected]:text-[color:var(--color-accent)] data-[selected]:font-semibold" data-variant-name="${pqvEsc(v.name)}" data-variant-opt="${pqvEsc(opt)}"${selected ? ' data-selected' : ''}>${swatch}${pqvEsc(display)}</button>`;
             }).join('')}
           </div>
         </div>`;
       }).join('');
 
       const descHtml = p.description
-        ? `<p class="pqv-desc" id="pqv-desc">${pqvEsc(p.description)}</p>`
+        ? `<p class="text-sm text-[color:var(--color-muted)] leading-[1.65] mb-2 whitespace-pre-line" id="pqv-desc">${pqvEsc(p.description)}</p>`
         : '';
 
-      pqvBody!.innerHTML = `<div class="pqv-content-in pqv-layout">
-        <div class="pqv-scroll">
+      pqvBody!.innerHTML = `<div class="animate-fade-in flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div class="overflow-y-auto flex-1 min-h-0 [-webkit-overflow-scrolling:touch]">
           ${imgAreaHtml}
-          <div class="pqv-content">
-            <a href="/store/${pqvEsc(storeSlug)}" class="pqv-store-link">${pqvEsc(storeName)}</a>
-            <h2 class="pqv-name" id="pqv-name">${pqvEsc(p.name)}</h2>
-            <p class="pqv-price">${formatPrice(p.price)}</p>
+          <div class="pt-3.5 px-5 pb-5">
+            <a href="/store/${pqvEsc(storeSlug)}" class="text-xs font-bold text-[color:var(--color-muted)] no-underline tracking-[.05em] uppercase inline-block mb-1.5 transition-colors duration-[140ms] hover:text-[color:var(--color-text)]">${pqvEsc(storeName)}</a>
+            <h2 class="text-[1.2rem] font-bold text-[color:var(--color-text)] mb-1.5" id="pqv-name">${pqvEsc(p.name)}</h2>
+            <p class="text-[1.125rem] font-extrabold text-[color:var(--color-accent)] mb-2">${formatPrice(p.price)}</p>
             ${descHtml}
             ${variantsHtml}
           </div>
         </div>
-        <div class="pqv-footer">
-          <div class="pqv-cart-row">
-            <span class="pqv-qty-label">${pqvEsc(strings.qty)}</span>
-            <div class="pqv-qty" dir="ltr" role="group" aria-label="${pqvEsc(strings.qty)}">
-              <button type="button" class="pqv-qty-btn" id="pqv-dec" aria-label="${pqvEsc(strings.dec)}" disabled>
+        <div class="shrink-0 pt-3 px-5 pb-[1.125rem] border-t border-[color:var(--color-border)] shadow-[0_-4px_16px_rgba(0,0,0,.06)]">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="text-sm text-[color:var(--color-muted)]">${pqvEsc(strings.qty)}</span>
+            <div class="inline-flex items-center border border-[color:var(--color-border)] rounded-[var(--radius)] overflow-hidden h-9" dir="ltr" role="group" aria-label="${pqvEsc(strings.qty)}">
+              <button type="button" class="w-[34px] h-full bg-transparent border-0 cursor-pointer text-[color:var(--color-muted)] flex items-center justify-center transition-colors duration-100 shrink-0 hover:bg-[color:var(--color-surface)] disabled:opacity-35 disabled:cursor-default" id="pqv-dec" aria-label="${pqvEsc(strings.dec)}" disabled>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
-              <span class="pqv-qty-val" id="pqv-qty-val" aria-live="polite">1</span>
-              <button type="button" class="pqv-qty-btn" id="pqv-inc" aria-label="${pqvEsc(strings.inc)}">
+              <span class="min-w-7 text-center font-semibold text-sm text-[color:var(--color-text)] select-none" id="pqv-qty-val" aria-live="polite">1</span>
+              <button type="button" class="w-[34px] h-full bg-transparent border-0 cursor-pointer text-[color:var(--color-muted)] flex items-center justify-center transition-colors duration-100 shrink-0 hover:bg-[color:var(--color-surface)] disabled:opacity-35 disabled:cursor-default" id="pqv-inc" aria-label="${pqvEsc(strings.inc)}">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
             </div>
           </div>
-          <button type="button" class="btn btn--accent pqv-to-payment" id="pqv-to-payment">
-            ${pqvEsc(strings.toPayment)} <svg class="pqv-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <button type="button" class="btn btn--accent w-full h-11 flex items-center justify-center gap-[.4rem] text-[.9375rem]" id="pqv-to-payment">
+            ${pqvEsc(strings.toPayment)} <svg class="inline-flex shrink-0 transition-transform duration-150 rtl:-scale-x-100" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
-          <a href="/store/${pqvEsc(storeSlug)}/${pqvEsc(p.slug)}" class="pqv-product-link"${newTab ? ' target="_blank" rel="noopener"' : ''}>${pqvEsc(strings.viewFull)}</a>
+          <a href="/store/${pqvEsc(storeSlug)}/${pqvEsc(p.slug)}" class="block text-center mt-2 text-xs text-[color:var(--color-muted)] no-underline hover:underline"${newTab ? ' target="_blank" rel="noopener"' : ''}>${pqvEsc(strings.viewFull)}</a>
         </div>
       </div>`;
 
@@ -394,8 +220,8 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
         if (img && img.dataset['src']) {
           img.src = img.dataset['src'];
           img.decode()
-            .then(() => slide.classList.remove('is-loading'))
-            .catch(() => slide.classList.remove('is-loading'));
+            .then(() => slide.removeAttribute('data-loading'))
+            .catch(() => slide.removeAttribute('data-loading'));
         }
       });
 
@@ -404,16 +230,11 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
 
       if (slidesEl && slideEls.length > 1) {
         const isRtl = getComputedStyle(slidesEl).direction === 'rtl';
-        const BASE_W = 6, ACTIVE_W = 18;
         const getSlideW = () => slidesEl.offsetWidth || 1;
 
         function setActive(idx: number): void {
           pqvImgIdx = idx;
-          dots.forEach((d, i) => {
-            d.style.transition = 'width 220ms cubic-bezier(0.34,1.56,0.64,1)';
-            d.style.width = `${i === idx ? ACTIVE_W : BASE_W}px`;
-            d.style.background = i === idx ? '#fff' : 'rgba(255,255,255,0.7)';
-          });
+          dots.forEach((d, i) => { d.toggleAttribute('data-active', i === idx); });
         }
 
         function scrollToIdx(idx: number): void {
@@ -471,7 +292,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
           const vOpt  = btn.dataset['variantOpt']  ?? '';
           selectedVariants[vName] = vOpt;
           pqvBody!.querySelectorAll<HTMLButtonElement>(`.pqv-variant-opt[data-variant-name="${CSS.escape(vName)}"]`)
-            .forEach(b => b.classList.toggle('is-selected', b.dataset['variantOpt'] === vOpt));
+            .forEach(b => b.toggleAttribute('data-selected', b.dataset['variantOpt'] === vOpt));
           if (isColorVariant(vName)) {
             const url = p.variantImages?.[vOpt];
             const idx = url ? p.images.indexOf(url) : -1;

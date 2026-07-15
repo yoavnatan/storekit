@@ -112,27 +112,40 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   padding: 0;
 }
 .admin-seller-card__summary {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 30.5rem auto;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
   padding: 0.9rem 1.1rem;
   cursor: pointer;
   list-style: none;
 }
 .admin-seller-card__summary::-webkit-details-marker { display: none; }
-.admin-seller-card__identity { display: flex; flex-direction: column; gap: 0.15rem; }
+.admin-seller-card__identity { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .admin-seller-card__name { font-weight: 700; color: var(--color-text); }
 .admin-seller-card__email { font-size: 0.82rem; color: var(--color-muted); }
+/* Fixed sub-columns (not content-sized) so every card's stats line up into
+   the same vertical columns regardless of that row's own digit count or
+   identity-column width — see CURRENT_TASK.md "not aligned" feedback
+   (2026-07-15): a plain flex row let the columns drift per row. */
 .admin-seller-card__nums {
-  display: flex;
-  gap: 1.25rem;
+  display: grid;
+  grid-template-columns: 4.2rem 4.6rem 7.4rem 7.4rem 7rem;
   font-size: 0.82rem;
   color: var(--color-text);
-  flex-wrap: wrap;
 }
-.admin-seller-card__actions { display: flex; align-items: center; }
+.admin-seller-card__nums > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.admin-seller-card__revenue { font-weight: 700; color: var(--color-success); }
+.admin-seller-card__actions { display: flex; align-items: center; justify-self: start; }
+
+@media (max-width: 900px) {
+  .admin-seller-card__summary { grid-template-columns: 1fr auto; }
+  .admin-seller-card__nums {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(8rem, 1fr));
+    gap: 0.3rem 1rem;
+  }
+}
 .admin-seller-card__body {
   padding: 0 1.1rem 1rem;
   border-top: 1px solid var(--color-border);
@@ -204,16 +217,27 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-badge--shipping-delivered { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
 
 .admin-alerts-th-details { width: 1%; }
+.admin-alerts-actions { display: flex; align-items: center; gap: 0.2rem; }
 .admin-alerts-details-btn {
   display: inline-flex; align-items: center; gap: 0.3rem;
   background: none; border: none; padding: 0.2rem 0.4rem; border-radius: 4px;
   color: var(--color-muted); font-size: 0.78rem; cursor: pointer; white-space: nowrap;
 }
-.admin-alerts-details-btn:hover { background: var(--color-bg); color: var(--color-text); }
+.admin-alerts-copy-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; padding: 0.3rem; border-radius: 4px;
+  color: var(--color-muted); cursor: pointer; flex-shrink: 0;
+}
+.admin-alerts-details-btn:hover, .admin-alerts-copy-btn:hover { background: var(--color-bg); color: var(--color-text); }
+.admin-alerts-copy-btn.admin-alerts-copy-btn--done { color: var(--color-success); }
 .admin-alerts-details-btn__chevron { transition: transform 0.13s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .admin-alerts-details-btn[aria-expanded="true"] .admin-alerts-details-btn__chevron { transform: rotate(180deg); }
 .admin-alerts-details-row td { background: var(--color-bg); padding: 0.75rem 0.875rem; }
 .admin-alerts-details-body p { font-size: 0.8rem; margin: 0 0 0.4rem; }
+.admin-alerts-hint {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius); padding: 0.5rem 0.7rem;
+}
 .admin-alerts-stack {
   font-size: 0.72rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
   direction: ltr; text-align: start; color: var(--color-muted); margin: 0;
@@ -223,18 +247,32 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 /* ── Stores tab: flat, top-level store list + search (same row shape as
    the Attention list below, plus a moderation action) ── */
 .admin-store-list { display: flex; flex-direction: column; gap: 0.6rem; list-style: none; padding: 0; margin: 0; }
+/* Fixed sub-columns (not content-sized), same reasoning as
+   .admin-seller-card__summary above — a plain flex row let each row's count/
+   revenue/link/button drift left-right depending on both that row's own
+   digit count and its store/seller name length (CURRENT_TASK.md "not
+   aligned" feedback, 2026-07-15). */
 .admin-store-row {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 4.6rem 7.2rem 7.2rem auto auto;
+  align-items: center;
+  gap: 0.75rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-xs);
   border-radius: var(--radius);
   padding: 0.75rem 1rem;
 }
-.admin-store-row__info { display: flex; flex-direction: column; gap: 0.1rem; flex: 1 1 220px; }
+.admin-store-row__info { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .admin-store-row__name { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 700; color: var(--color-text); }
 .admin-store-row__seller { font-size: 0.78rem; }
-.admin-store-row__count { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; }
+.admin-store-row__count { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.admin-store-row__revenue { font-size: 0.82rem; font-weight: 700; color: var(--color-success); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 780px) {
+  .admin-store-row { grid-template-columns: 1fr auto; }
+  .admin-store-row__count, .admin-store-row__revenue { grid-column: 1 / -1; }
+}
 
 /* ── Attention list ── */
 .admin-attention-note { font-size: 0.82rem; color: var(--color-muted); margin: 0 0 1rem; }

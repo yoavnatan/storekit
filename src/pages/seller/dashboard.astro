@@ -19,12 +19,19 @@ import { thumbUrl } from '../../lib/cloudinary.js';
 import { getMessagesBySeller, getMessageReplies } from '../../lib/messages.js';
 import { getAdminMessagesForSeller, getUnreadCountForSellerFromAdmin } from '../../lib/admin-messages.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
-import { getOrdersByStoreSlug } from '../../lib/orders.js';
+import { getOrdersByStoreSlug, getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
+import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
+import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
+import { buildSellerMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
+import { paginate, parsePage } from '../../lib/pagination.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, generateCombos, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath } from '../../lib/store-categories.js';
+import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
+import { getCampaignsByStoreId, getMockCampaignStats, getMockBaselineImpressions } from '../../lib/ad-campaigns.js';
+import { buildBarChartSvg } from '../../lib/chart-svg.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
 // first rows) so seeding legacy combos never silently changes the sum.
@@ -177,10 +184,22 @@ const storeCategoryList = store ? getCategoriesByStoreId(store.id) : [];
 const categoryTree = buildCategoryTree(storeCategoryList);
 const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
 const wishlistCounts = store ? getAllWishlistCounts() : ({} as Record<string, number>);
+const purchasedCounts = store ? getPurchasedCountsByStoreSlug(store.slug) : ({} as Record<string, number>);
 const storeFavoriteCount = store ? getFavoriteStoreCount(store.slug) : 0;
 const productCount = products.length;
 const inStockCount = products.filter((p) => p.stock > 0).length;
 const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
+// Products tab pagination — mirrors the admin dashboard's server-paginated
+// list tabs (src/lib/pagination.ts) so /api/seller/products (AJAX page/sort/
+// filter/search) and this initial SSR render never drift. `products` above
+// stays the full unfiltered list (category tree, CSV export, stats all still
+// need it); only the table body renders off `productsPage.items`.
+const sellerProductQuery = parseSellerProductQuery(Astro.url.searchParams);
+const PRODUCTS_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const requestedPageSize = parseInt(Astro.url.searchParams.get('psize') ?? '20', 10);
+const productsPageSize = PRODUCTS_PAGE_SIZE_OPTIONS.includes(requestedPageSize) ? requestedPageSize : 20;
+const filteredSortedProducts = filterAndSortSellerProducts(products, productCategoryPaths, wishlistCounts, purchasedCounts, sellerProductQuery);
+const productsPage = paginate(filteredSortedProducts, parsePage(Astro.url.searchParams, 'ppage'), productsPageSize);
 const initialPanel = Astro.url.searchParams.get('panel') ?? 'products';
 const storeMessages = store
   ? getMessagesBySeller(sellerId)
@@ -208,8 +227,55 @@ const lastAdminMessage = adminMessages.length > 0 ? adminMessages[adminMessages.
 const totalMsgRows = storeMessages.length + 1;
 const unreadMsgRows = unreadMessagesCount + (unreadAdminMsgCount > 0 ? 1 : 0);
 const showMsgStatusControls = unreadMsgRows > 0 && unreadMsgRows < totalMsgRows;
+// Messages tab pagination — same server-paginated approach as Products/Orders
+// above (src/lib/seller-messages-query.ts). The pinned "הודעות מערכת" row
+// stays outside this pipeline entirely (rendered separately below, never
+// paginated/filtered/searched — see the lib's own top comment).
+const sellerMessageQuery = parseSellerMessageQuery(Astro.url.searchParams);
+const messageRows = buildSellerMessageRows(storeMessages, messageReplies, sellerId);
+const filteredMessageRows = filterAndSortSellerMessages(messageRows, sellerMessageQuery);
+const messagesPage = paginate(filteredMessageRows, parsePage(Astro.url.searchParams, 'mpage'), 15);
+// Distinct filter-dropdown values must come from the full (unpaginated) set,
+// not just the current page's rows — same reasoning as Products' category
+// filter (allCategoryPaths() in products.ts) once only one page's worth of
+// rows live in the DOM at a time.
+const msgDistinctProducts = [...new Set(storeMessages.map((m) => m.productRef?.productName ?? ''))].sort((a, b) => a.localeCompare(b, 'he'));
+const msgDistinctFrom = [...new Set([...storeMessages.map((m) => m.fromName), 'הודעות מערכת'])].sort((a, b) => a.localeCompare(b, 'he'));
 const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
+
+// Performance tab — SSR renders the default "last 30 days" range so it's
+// never a blank flash before JS runs; range-picker changes re-fetch from
+// /api/seller/performance and re-render client-side (same AJAX pattern as
+// Products/Orders/Messages, no full page nav).
+const PERF_DEFAULT_RANGE_DAYS = 30;
+const perfToday = new Date();
+const perfToISO = perfToday.toISOString().slice(0, 10);
+const perfFromDate = new Date(perfToday);
+perfFromDate.setUTCDate(perfFromDate.getUTCDate() - (PERF_DEFAULT_RANGE_DAYS - 1));
+const perfFromISO = perfFromDate.toISOString().slice(0, 10);
+const perfGranularity = pickGranularity(perfFromISO, perfToISO);
+const perfSummary = store ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity) : undefined;
+
+// Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
+// Google Ads/Meta API wired up yet).
+const adCampaigns = store ? getCampaignsByStoreId(store.id).map((c) => ({ ...c, stats: getMockCampaignStats(c) })) : [];
+const adBaselineImpressions = store ? getMockBaselineImpressions(store.id) : 0;
+const adEligibleProducts = store ? products.filter((p) => p.stock > 0) : [];
+
+const perfRevenueChartSvg = perfSummary
+  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenue })), { color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: d.perfNoData })
+  : '';
+const perfVisitorsChartSvg = perfSummary
+  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.views })), { color: 'var(--color-accent)', valueFormatter: (v) => String(v), emptyMessage: d.perfNoData })
+  : '';
 const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
+// Orders tab pagination — same server-paginated approach as Products above
+// (src/lib/seller-orders-query.ts mirrors admin-orders-filter.ts), fixed at
+// 15/page like the admin dashboard's own list tabs (no items-per-page
+// control here — that was only asked for on Products).
+const sellerOrderQuery = parseSellerOrderQuery(Astro.url.searchParams);
+const filteredSortedOrders = filterAndSortSellerOrders(storeOrders, store?.slug ?? '', sellerOrderQuery);
+const ordersPage = paginate(filteredSortedOrders, parsePage(Astro.url.searchParams, 'opage'), 15);
 
 // Alerts per store for store-switcher dots (pending orders or unread messages)
 const storeAlerts: Record<string, boolean> = allStores.length > 1 ? getSellerStoreAlerts(sellerId) : {};
@@ -243,14 +309,14 @@ const orderStatusColors: Record<string, string> = {
   {hasNoStore ? (
     <section class="section container">
       <div class="card" style="max-width:520px;margin:2rem auto;padding:2.5rem 2rem;text-align:center">
-        {error && <p class="dash-error" style="margin-bottom:1.5rem;text-align:start">{error}</p>}
+        {error && <p class="dash-error bg-[#fef2f2] text-[color:var(--color-danger)] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#fecaca] text-sm" style="margin-bottom:1.5rem;text-align:start">{error}</p>}
         <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent);margin:0 auto 1.25rem;display:block" aria-hidden="true">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
           <polyline points="9 22 9 12 15 12 15 22"/>
         </svg>
         <h1 style="font-size:1.5rem;margin:0 0 0.5rem">{d.noStoreTitle}</h1>
         <p class="muted" style="margin-bottom:2rem">{d.noStoreDesc}</p>
-        <form method="POST" class="dash-form" style="text-align:start">
+        <form method="POST" class="mt-4" style="text-align:start">
           <input type="hidden" name="_action" value="create-store" />
           <label class="field">
             <span>{d.storeNameReq}</span>
@@ -270,33 +336,35 @@ const orderStatusColors: Record<string, string> = {
       <div class="dash-head">
         <div class="dash-head__top">
           {allStores.length === 1 ? (
-            <h1 class="dash-store-name">{store.name}</h1>
+            <h1 class="dash-store-name text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">{store.name}</h1>
           ) : (
-            <div class="store-switcher" id="store-switcher">
+            <div class="relative inline-block" id="store-switcher">
               <button
-                class="store-switcher__btn"
+                class="group inline-flex items-center gap-[.3rem] bg-transparent border-0 p-0 cursor-pointer font-[inherit] text-[color:var(--color-text)] transition-colors duration-150 hover:text-[color:var(--color-accent)]"
                 id="store-switcher-btn"
                 type="button"
                 aria-haspopup="listbox"
                 aria-expanded="false"
                 aria-label={lang === 'he' ? 'החלף חנות' : 'Switch store'}
               >
-                <span class="dash-store-name">{store.name}</span>
-                <svg class="store-switcher__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                <span class="dash-store-name text-[1.3rem] font-bold m-0 leading-[1.2]">{store.name}</span>
+                <svg class="text-[color:var(--color-muted)] shrink-0 mt-px [transition:transform_.2s_ease,color_.15s] group-hover:text-[color:var(--color-accent)] group-aria-expanded:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
                 {hasAnyNonCurrentAlert && (
                   <span class="store-switcher__alert-dot" aria-label="יש התראות בחנויות אחרות"></span>
                 )}
               </button>
-              <ul class="store-switcher__menu" id="store-switcher-menu" role="listbox" hidden>
+              <ul class="absolute top-[calc(100%+0.5rem)] start-0 min-w-[200px] bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.1)] z-20 list-none m-0 p-[.35rem] [&:not([hidden])]:animate-[user-dropdown-open_130ms_cubic-bezier(0.34,1.56,0.64,1)]" id="store-switcher-menu" role="listbox" hidden>
                 {allStores.map((s) => (
                   <li>
                     <a
                       href={`/seller/dashboard?store=${s.id}&panel=${initialPanel}`}
                       role="option"
                       aria-selected={s.id === store.id}
-                      class={s.id === store.id ? 'store-option--current' : ''}
+                      class={s.id === store.id
+                        ? 'flex items-center justify-between gap-2 py-[.45rem] px-3 rounded no-underline text-[.9rem] transition-colors duration-100 hover:bg-[color:var(--color-bg)] font-semibold text-[color:var(--color-primary)]'
+                        : 'flex items-center justify-between gap-2 py-[.45rem] px-3 rounded text-[color:var(--color-text)] no-underline text-[.9rem] transition-colors duration-100 hover:bg-[color:var(--color-bg)]'}
                     >
                       <span>{s.name}</span>
                       <span class="store-switcher__item-actions" style="display:flex;align-items:center;gap:0.35rem;flex-shrink:0">
@@ -321,9 +389,9 @@ const orderStatusColors: Record<string, string> = {
         </div>
         <p class="muted" style="margin:0.25rem 0 0;font-size:0.82rem">{d.storeSubtitle} · <code style="font-size:0.78rem">/store/{store.slug}</code></p>
 
-        {settingsSuccess && <p class="dash-success" style="margin-top:1rem;margin-bottom:0">{d.settingsSaved}</p>}
-        {productSuccess && <p class="dash-success" style="margin-top:1rem;margin-bottom:0">{d.productAdded}</p>}
-        {error && <p class="dash-error" style="margin-top:1rem;margin-bottom:0">{error}</p>}
+        {settingsSuccess && <p class="dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm" style="margin-top:1rem;margin-bottom:0">{d.settingsSaved}</p>}
+        {productSuccess && <p class="dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm" style="margin-top:1rem;margin-bottom:0">{d.productAdded}</p>}
+        {error && <p class="dash-error bg-[#fef2f2] text-[color:var(--color-danger)] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#fecaca] text-sm" style="margin-top:1rem;margin-bottom:0">{error}</p>}
       </div>
 
       <!-- ── Section tabs ── -->
@@ -350,6 +418,22 @@ const orderStatusColors: Record<string, string> = {
             <span class="dash-tab-badge" aria-label={`${newOrdersCount} הזמנות חדשות`}>{newOrdersCount}</span>
           )}
         </button>
+        <button
+          class={`dash-tab${initialPanel === 'performance' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-performance"
+          data-panel="performance"
+          aria-selected={initialPanel === 'performance'}
+          tabindex={initialPanel === 'performance' ? 0 : -1}
+        >{d.tabPerformance}</button>
+        <button
+          class={`dash-tab${initialPanel === 'advertising' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-advertising"
+          data-panel="advertising"
+          aria-selected={initialPanel === 'advertising'}
+          tabindex={initialPanel === 'advertising' ? 0 : -1}
+        >{d.tabAdvertising}</button>
         <button
           class={`dash-tab${initialPanel === 'messages' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -419,7 +503,7 @@ const orderStatusColors: Record<string, string> = {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <span id="bulk-upload-label" class="bulk-btn__label" aria-hidden="true">{d.bulkUploadImages}</span>
               </button>
-              <button id="bulk-delete-btn" type="button" class="btn btn--sm btn--danger bulk-btn" hidden aria-label={d.bulkDelete}>
+              <button id="bulk-delete-btn" type="button" class="btn btn--sm btn--danger bulk-btn !bg-[color:var(--color-danger)] hover:opacity-90" hidden aria-label={d.bulkDelete}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                 <span class="bulk-btn__label" aria-hidden="true">{d.bulkDelete}</span>
               </button>
@@ -435,13 +519,13 @@ const orderStatusColors: Record<string, string> = {
             </div>
           </div>
 
-          <div id="add-product-form" class="add-form" hidden>
-            <h3>{d.newProduct}</h3>
-            <form method="POST" class="dash-form">
+          <div id="add-product-form" class="bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] p-5 mb-6" hidden>
+            <h3 class="m-0 mb-3 text-base">{d.newProduct}</h3>
+            <form method="POST" class="mt-4">
               <input type="hidden" name="_action" value="add-product" />
               <input type="hidden" name="storeId" value={store.id} />
 
-              <div class="field-row">
+              <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
                 <label class="field">
                   <span>{d.nameReq}</span>
                   <input class="input" name="name" required placeholder={d.namePlaceholder} />
@@ -472,26 +556,26 @@ const orderStatusColors: Record<string, string> = {
                   placeholder={d.descPlaceholderProduct}></textarea>
               </label>
 
-              <div class="field-row">
-                <div class="field field--narrow">
+              <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
+                <div class="field max-w-[280px]">
                   <span>{d.categoryLabel}</span>
-                  <div class="category-picker" data-category-picker>
+                  <div class="category-picker relative" data-category-picker>
                     <input type="hidden" name="categoryId" value="" />
-                    <button type="button" class="category-picker__trigger" aria-haspopup="true" aria-expanded="false">
-                      <span class="category-picker__label">{d.categoryNone}</span>
-                      <svg class="category-picker__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                    <button type="button" class="category-picker__trigger group flex items-center justify-between gap-2 w-full px-[0.7rem] py-2 bg-[color:var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius)] cursor-pointer text-sm text-[color:var(--color-text)] text-start transition-colors duration-[120ms] hover:border-[var(--color-muted)] aria-expanded:border-[var(--color-accent)]" aria-haspopup="true" aria-expanded="false">
+                      <span class="category-picker__label overflow-hidden text-ellipsis whitespace-nowrap">{d.categoryNone}</span>
+                      <svg class="category-picker__chevron shrink-0 text-[color:var(--color-muted)] transition-transform duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                    <div class="category-picker__menu" hidden></div>
+                    <div class="category-picker__menu absolute start-0 top-[calc(100%+5px)] w-max min-w-full max-w-[20rem] max-h-[18rem] overflow-y-auto bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] p-[0.3rem] shadow-[0_4px_20px_rgba(0,0,0,0.12)] z-[60] animate-status-pop" hidden></div>
                   </div>
                   <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">{d.categoryEditHint}</p>
                 </div>
-                <label class="field field--narrow">
+                <label class="field max-w-[280px]">
                   <span>{d.skuLabel}</span>
                   <input class="input" name="sku" placeholder={d.skuPlaceholder} />
                 </label>
               </div>
 
-              <div class="field field--tags" data-tags-field>
+              <div class="field max-w-none" data-tags-field>
                 <span>{d.tagsLabel}</span>
                 <div class="variant-chips" data-tag-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
                   <span data-tag-adder>
@@ -531,7 +615,7 @@ const orderStatusColors: Record<string, string> = {
                 <div set:html={galleryWidgetHtml([], g)}></div>
               </div>
 
-              <div class="form-actions">
+              <div class="flex gap-2 mt-2">
                 <button class="btn" type="submit">{d.addProductBtn}</button>
                 <button class="btn btn--ghost" type="button" id="cancel-add">{d.cancel}</button>
               </div>
@@ -539,37 +623,57 @@ const orderStatusColors: Record<string, string> = {
           </div>
 
           <p id="empty-products" class="empty-products" hidden={products.length > 0}>{d.noProducts}</p>
+          <p id="empty-products-search" class="empty-products" hidden={products.length === 0 || productsPage.total > 0}>{d.noProductsMatch}</p>
 
           {/* CSV bulk import/export panel */}
-          <div id="csv-panel" class="csv-panel" hidden data-store-id={store.id}>
-            <div class="csv-panel__header">
+          <div id="csv-panel" class="csv-panel border [border-color:var(--color-border)] rounded-[0.55rem] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden data-store-id={store.id}>
+            <div class="csv-panel__header flex items-center justify-between text-[0.85rem] font-semibold [color:var(--color-muted)] uppercase tracking-[0.04em] mb-2">
               <span>{d.csvImportExport}</span>
               <button type="button" class="btn btn--ghost btn--sm" id="csv-panel-close" aria-label={d.csvClose}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-            <p class="csv-panel__hint muted">{d.csvImportHint}</p>
-            <div class="csv-panel__actions">
-              <a class="btn btn--ghost btn--sm" id="csv-export-link" href={`/api/store-product/bulk?storeId=${store.id}`} download="products.csv">
+            <p class="csv-panel__hint muted text-[0.82rem] leading-[1.5] mb-3">{d.csvImportHint}</p>
+            <div class="csv-panel__actions flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+              <a class="btn btn--ghost btn--sm sm:!justify-start" id="csv-export-link" href={`/api/store-product/bulk?storeId=${store.id}`} download="products.csv">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 {d.csvExport}
               </a>
-              <button type="button" class="btn btn--ghost btn--sm" id="csv-template-btn">
+              <button type="button" class="btn btn--ghost btn--sm sm:!justify-start" id="csv-template-btn">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
                 {d.csvTemplate}
               </button>
-              <label class="btn btn--ghost btn--sm" for="csv-file-input">
+              <label class="btn btn--ghost btn--sm sm:!justify-start" for="csv-file-input">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 {d.csvChooseFile}
               </label>
               <input type="file" id="csv-file-input" accept=".csv,text/csv" hidden />
-              <span id="csv-file-name" class="muted" aria-live="polite"></span>
+              <span id="csv-file-name" class="muted text-[0.8rem] overflow-hidden text-ellipsis whitespace-nowrap" aria-live="polite"></span>
             </div>
-            <div id="csv-preview" class="csv-preview" hidden></div>
+            <div id="csv-preview" class="csv-preview mt-[0.9rem]" hidden></div>
           </div>
 
           {/* Bulk image upload panel */}
-          <div id="bulk-upload-panel" class="bulk-upload-panel" hidden></div>
+          <div id="bulk-upload-panel" class="bulk-upload-panel border [border-color:var(--color-border)] rounded-[0.55rem] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden></div>
+
+          {/* Search + items-per-page — unlike sort/filter (which have a
+              desktop-only equivalent baked into the table header, see
+              .table-toolbar below), these have no other home, so this row is
+              visible at every width, not just mobile. Both drive a server
+              refetch (initProductsToolbar in products.ts), same as sort/filter/
+              pagination — search-input debounced, select fires immediately. */}
+          <div class="flex flex-wrap items-center gap-2 pb-3" hidden={products.length === 0}>
+            <div class="relative flex-1 min-w-[160px] max-w-[280px]">
+              <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="search" id="products-search-input" value={sellerProductQuery.q} placeholder={d.productsSearchPlaceholder ?? 'חיפוש מוצרים…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
+            </div>
+            <label class="inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-muted)] shrink-0">
+              {d.itemsPerPageLabel ?? 'בעמוד:'}
+              <select id="products-page-size" class="font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] ps-[.6rem] pe-[1.6rem] outline-none cursor-pointer">
+                {PRODUCTS_PAGE_SIZE_OPTIONS.map((n) => <option value={n} selected={n === productsPageSize}>{n}</option>)}
+              </select>
+            </label>
+          </div>
 
           {/* Mobile-only sort/filter toolbar (≤640px) — sits above the table,
               outside <thead>, so it's reachable once the table collapses to
@@ -582,24 +686,24 @@ const orderStatusColors: Record<string, string> = {
               itself is built + positioned in JS (a single body-anchored
               portal, clamped to the viewport) — see toolbarPortal helpers. */}
           <div class="table-toolbar" hidden={products.length === 0}>
-            <button type="button" id="products-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+            <button type="button" id="products-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
               <span id="products-sort-label">{d.sortOptDateDesc}</span>
-              <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <button type="button" id="products-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+            <button type="button" id="products-filter-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="true" aria-expanded="false">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
               <span>{d.filterByLabel}</span>
-              <span id="products-filter-count" class="filter-count-badge" hidden>0</span>
-              <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              <span id="products-filter-count" class="filter-count-badge inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-primary)] text-white text-[.68rem] font-bold leading-none" hidden>0</span>
+              <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
           </div>
 
-          <table id="products-table" class="products-table" hidden={products.length === 0}>
+          <table id="products-table" class="products-table" hidden={productsPage.total === 0}>
             <thead>
               <tr>
-                <th class="check-col"><input type="checkbox" id="bulk-select-all" class="bulk-select-all" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0"></th>
-                <th class="num row-num" style="width:2rem">#</th>
+                <th class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" id="bulk-select-all" class="bulk-select-all" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0"></th>
+                <th class="num row-num pe-[0.2rem]" style="width:2rem">#</th>
                 <th class="thumb-col"></th>
                 <th class="name-col">
                   <button type="button" class="sort-btn" data-sort-col="name">{d.colName}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
@@ -625,6 +729,9 @@ const orderStatusColors: Record<string, string> = {
                     <svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
                   </button>
                 </th>
+                <th class="num purchased-col">
+                  <button type="button" class="sort-btn" data-sort-col="purchased">{d.colPurchased}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                </th>
                 <th class="date-col">
                   <button type="button" class="sort-btn" data-sort-col="createdAt">{d.colDateAdded}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
@@ -632,7 +739,7 @@ const orderStatusColors: Record<string, string> = {
               </tr>
             </thead>
             <tbody id="products-tbody">
-              {products.map((p, idx) => {
+              {productsPage.items.map((p, idx) => {
                 const fmtDateAdded = (iso: string) => new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
                 const { hasAnyStock: pHasVariantStock, combos: pVariantCombos } = variantCombosData(p.variants ?? [], p.variantStock, p.stock);
                 const pVariantColumns = (p.variants ?? []).map((v) => v.name);
@@ -641,32 +748,32 @@ const orderStatusColors: Record<string, string> = {
                 return (
                 <>
                   <tr data-product-display={p.id} data-store-id={store.id} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
-                    <td class="check-col"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
-                    <td class="num row-num">{idx + 1}</td>
+                    <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
+                    <td class="num row-num pe-[0.2rem]">{(productsPage.page - 1) * productsPageSize + idx + 1}</td>
                     <td class="thumb-col">
                       {p.images?.[0] && <span class="thumb-wrap"><img src={thumbUrl(p.images[0])} alt="" class="product-thumb" width="42" height="42" loading="lazy" /></span>}
                     </td>
                     <td class="name-col">
-                      <span class="product-name">{p.name}</span>
+                      <span class="product-name cursor-text">{p.name}</span>
                       {p.description && <span class="product-desc">{p.description}</span>}
                     </td>
                     <td class="sku-col">{p.sku || <span style="color:var(--color-border)">—</span>}</td>
-                    <td class="cat-col">{productCategoryPaths.get(p.id) ? <span class="product-cat-chip">{productCategoryPaths.get(p.id)}</span> : <span style="color:var(--color-border)">—</span>}</td>
-                    <td class="num product-price price-col">{formatPrice(p.price)}</td>
-                    <td class="num product-stock stock-col">
+                    <td class="cat-col">{productCategoryPaths.get(p.id) ? <span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">{productCategoryPaths.get(p.id)}</span> : <span style="color:var(--color-border)">—</span>}</td>
+                    <td class="num product-price price-col group cursor-text">{formatPrice(p.price)}</td>
+                    <td class="num product-stock stock-col group cursor-text">
                       <span style="display:inline-flex;align-items:center;gap:0.3rem">
                         <span style={p.stock <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{p.stock}</span>
                         {p.stock <= 0 && (
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                         )}
                         {(p.variants ?? []).length > 0 && (
-                          <span class="stock-breakdown" data-stock-breakdown>
-                            <button type="button" class="stock-breakdown__btn" aria-expanded="false" aria-haspopup="true" aria-label={d.stockBreakdownLabel}>
+                          <span class="relative inline-flex" data-stock-breakdown>
+                            <button type="button" class="inline-flex items-center justify-center w-[1.1rem] h-[1.1rem] bg-transparent border-0 rounded-full cursor-pointer [color:var(--color-muted)] transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] hover:[color:var(--color-text)] aria-expanded:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] aria-expanded:[color:var(--color-text)] aria-expanded:rotate-180" data-stock-breakdown-btn aria-expanded="false" aria-haspopup="true" aria-label={d.stockBreakdownLabel}>
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                             </button>
-                            <div class="stock-breakdown__dropdown" role="menu" hidden>
+                            <div class="absolute top-[calc(100%+0.3rem)] end-0 min-w-[140px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 m-0 p-[0.3rem] animate-product-menu-open" data-stock-breakdown-dropdown role="menu" hidden>
                               {pVariantCombos.map((c) => (
-                                <div class="stock-breakdown__row">
+                                <div class="flex items-center justify-between gap-3 px-3 py-[0.45rem] rounded [color:var(--color-text)] text-[0.82rem] whitespace-nowrap">
                                   <span style="display:inline-flex;align-items:center;gap:0.35rem">
                                     {c.parts.map((part, i) => (
                                       <>
@@ -700,35 +807,38 @@ const orderStatusColors: Record<string, string> = {
                         : <span style="color:var(--color-border)">—</span>
                       }
                     </td>
+                    <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem">
+                      {(purchasedCounts[p.id] ?? 0) > 0 ? purchasedCounts[p.id] : <span style="color:var(--color-border)">—</span>}
+                    </td>
                     <td class="date-col">{fmtDateAdded(p.createdAt)}</td>
                     <td class="actions actions-col">
-                      <div class="product-menu">
-                        <button class="product-menu__btn" type="button" aria-label={d.menuLabel ?? 'אפשרויות'} aria-expanded="false" aria-haspopup="true">
+                      <div class="product-menu relative inline-block">
+                        <button class="product-menu__btn inline-flex items-center justify-center w-7 h-7 bg-transparent border-0 rounded-full cursor-pointer [color:var(--color-muted)] opacity-50 transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] hover:[color:var(--color-text)] hover:opacity-100 aria-expanded:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] aria-expanded:[color:var(--color-text)] aria-expanded:opacity-100 active:scale-90" type="button" aria-label={d.menuLabel ?? 'אפשרויות'} aria-expanded="false" aria-haspopup="true">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                         </button>
-                        <ul class="product-menu__dropdown" hidden role="menu">
-                          <li role="none"><button class="product-menu__item" type="button" data-view-product={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>{d.viewProduct}</button></li>
-                          <li role="none"><button class="product-menu__item" type="button" data-edit-toggle={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{d.edit}</button></li>
-                          <li role="none"><button class="product-menu__item product-menu__item--danger" type="button" data-delete-product={p.id} data-store-id={store.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>{d.delete}</button></li>
+                        <ul class="product-menu__dropdown absolute top-[calc(100%+0.3rem)] end-0 min-w-[130px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 list-none m-0 p-[0.3rem] animate-product-menu-open" hidden role="menu">
+                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>{d.viewProduct}</button></li>
+                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{d.edit}</button></li>
+                          <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product={p.id} data-store-id={store.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>{d.delete}</button></li>
                         </ul>
                       </div>
                     </td>
                   </tr>
                   <tr class="edit-row" data-product-edit={p.id} hidden>
-                    <td class="num row-num">{idx + 1}</td>
+                    <td class="num row-num pe-[0.2rem]">{idx + 1}</td>
                     <td colspan="20">
-                      <form method="POST" action="/api/product" class="dash-form inline-edit-form">
+                      <form method="POST" action="/api/product" class="mt-4 inline-edit-form">
                         <input type="hidden" name="_action" value="edit-product" />
                         <input type="hidden" name="productId" value={p.id} />
                         <div class="edit-row-header">
                           {p.images?.[0] && <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0">}
                           <span class="edit-row-title">{p.name}</span>
-                          <div class="form-actions" style="margin-inline-start:auto;margin-top:0">
+                          <div class="flex gap-2 mt-2" style="margin-inline-start:auto;margin-top:0">
                             <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
                             <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
                           </div>
                         </div>
-                        <div class="field-row">
+                        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
                           <label class="field">
                             <span>{d.nameReq}</span>
                             <input class="input" name="name" value={p.name} required />
@@ -747,26 +857,26 @@ const orderStatusColors: Record<string, string> = {
                           <textarea class="input" name="description" rows="2">{p.description}</textarea>
                         </label>
 
-                        <div class="field-row">
-                          <div class="field field--narrow">
+                        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
+                          <div class="field max-w-[280px]">
                             <span>{d.categoryLabel}</span>
-                            <div class="category-picker" data-category-picker>
+                            <div class="category-picker relative" data-category-picker>
                               <input type="hidden" name="categoryId" value={p.categoryId ?? ''} />
-                              <button type="button" class="category-picker__trigger" aria-haspopup="true" aria-expanded="false">
-                                <span class="category-picker__label">{(p.categoryId && productCategoryPaths.get(p.id)) || d.categoryNone}</span>
-                                <svg class="category-picker__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                              <button type="button" class="category-picker__trigger group flex items-center justify-between gap-2 w-full px-[0.7rem] py-2 bg-[color:var(--color-bg)] border border-[var(--color-border)] rounded-[var(--radius)] cursor-pointer text-sm text-[color:var(--color-text)] text-start transition-colors duration-[120ms] hover:border-[var(--color-muted)] aria-expanded:border-[var(--color-accent)]" aria-haspopup="true" aria-expanded="false">
+                                <span class="category-picker__label overflow-hidden text-ellipsis whitespace-nowrap">{(p.categoryId && productCategoryPaths.get(p.id)) || d.categoryNone}</span>
+                                <svg class="category-picker__chevron shrink-0 text-[color:var(--color-muted)] transition-transform duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                               </button>
-                              <div class="category-picker__menu" hidden></div>
+                              <div class="category-picker__menu absolute start-0 top-[calc(100%+5px)] w-max min-w-full max-w-[20rem] max-h-[18rem] overflow-y-auto bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] p-[0.3rem] shadow-[0_4px_20px_rgba(0,0,0,0.12)] z-[60] animate-status-pop" hidden></div>
                             </div>
                             <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">{d.categoryEditHint}</p>
                           </div>
-                          <label class="field field--narrow">
+                          <label class="field max-w-[280px]">
                             <span>{d.skuLabel}</span>
                             <input class="input" name="sku" value={p.sku ?? ''} placeholder={d.skuPlaceholder} />
                           </label>
                         </div>
 
-                        <div class="field field--tags" data-tags-field>
+                        <div class="field max-w-none" data-tags-field>
                           <span>{d.tagsLabel}</span>
                           <div class="variant-chips" data-tag-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
                             {(p.tags ?? []).map((tag) => (
@@ -883,7 +993,7 @@ const orderStatusColors: Record<string, string> = {
                           <span class="field-label">{d.productImages}</span>
                           <div set:html={galleryWidgetHtml(p.images ?? [], g)}></div>
                         </div>
-                        <div class="form-actions">
+                        <div class="flex gap-2 mt-2">
                           <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
                           <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
                         </div>
@@ -896,13 +1006,13 @@ const orderStatusColors: Record<string, string> = {
             </tbody>
           </table>
 
-          <nav id="products-pagination" class="products-pagination" aria-label={d.productsTitle} hidden></nav>
+          <nav id="products-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={d.productsTitle} data-page={productsPage.page} data-total-pages={productsPage.totalPages} hidden></nav>
         </div>
       </div>
 
       <!-- ── Panel: Orders ── -->
       <div id="dash-panel-orders" class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
-        <div class="orders-panel-head">
+        <div class="flex flex-col items-start mb-4 gap-[0.6rem]">
           <h2 style="font-size:1rem;font-weight:600;margin:0">{d.ordersTitle}</h2>
           {/* Orders is cards-only at every screen size (no table/header to fall
               back to), so this toolbar is always visible — unlike
@@ -910,17 +1020,21 @@ const orderStatusColors: Record<string, string> = {
               640px. Default filter selection = the old "active" preset
               (pending/processing/ready/shipped), matching today's default. */}
           {storeOrders.length > 0 && (
-            <div class="orders-toolbar" id="orders-toolbar">
-              <button type="button" id="orders-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+            <div class="flex flex-wrap items-center gap-2" id="orders-toolbar">
+              <div class="relative flex-1 min-w-[160px] max-w-[280px]">
+                <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="orders-search-input" value={sellerOrderQuery.q} placeholder={d.ordersSearchPlaceholder ?? 'חיפוש הזמנות…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
+              </div>
+              <button type="button" id="orders-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
                 <span id="orders-sort-label">{d.orderSortOptDateDesc}</span>
-                <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
-              <button type="button" id="orders-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+              <button type="button" id="orders-filter-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="true" aria-expanded="false">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                 <span>{d.filterByLabel}</span>
-                <span id="orders-filter-count" class="filter-count-badge" hidden>0</span>
-                <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                <span id="orders-filter-count" class="filter-count-badge inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-primary)] text-white text-[.68rem] font-bold leading-none" hidden>0</span>
+                <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
             </div>
           )}
@@ -929,38 +1043,38 @@ const orderStatusColors: Record<string, string> = {
           <p class="seller-msg-empty">{d.noOrders}</p>
         ) : (
           <Fragment>
-          <p class="seller-msg-empty" id="orders-filter-empty" hidden>אין הזמנות בקטגוריה זו.</p>
-          <div class="orders-list" id="orders-list">
-            {storeOrders.map((order) => {
+          <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>אין הזמנות בקטגוריה זו.</p>
+          <div class="flex flex-col gap-3" id="orders-list">
+            {ordersPage.items.map((order) => {
               const storeItems = order.items.filter((i) => i.storeSlug === store!.slug);
               const storeSub   = order.storeSubtotals[store!.slug];
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               return (
-                <div class="order-card" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
-                  <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
-                    <div class="order-card__meta">
-                      <span class="order-card__id">
+                <div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
+                  <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
+                    <div class="flex flex-col gap-[0.1rem] min-w-20 shrink-0">
+                      <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">
                         #{shortId}
                         {order.shippingStatus === 'pending' && (
-                          <span class="order-new-dot" aria-label="הזמנה חדשה"></span>
+                          <span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="הזמנה חדשה"></span>
                         )}
                       </span>
-                      <span class="order-card__date">{fmtDate(order.createdAt)}</span>
+                      <span class="text-[0.72rem] text-[color:var(--color-muted)]">{fmtDate(order.createdAt)}</span>
                     </div>
-                    <div class="order-card__summary">
-                      <span class="order-card__buyer">{order.buyerName}</span>
-                      <span class="order-card__amount">{formatPrice(storeSub ? storeSub.subtotal + storeSub.shipping : 0)}</span>
-                      <span class="order-card__status-badge" style={`background:${orderStatusColors[order.shippingStatus] ?? '#888'}1a;color:${orderStatusColors[order.shippingStatus] ?? '#888'};`}>
+                    <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
+                      <span class="text-sm font-semibold text-[color:var(--color-text)]">{order.buyerName}</span>
+                      <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(storeSub ? storeSub.subtotal + storeSub.shipping : 0)}</span>
+                      <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px]" style={`background:${orderStatusColors[order.shippingStatus] ?? '#888'}1a;color:${orderStatusColors[order.shippingStatus] ?? '#888'};`}>
                         {orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}
                       </span>
                     </div>
-                    <svg class="order-card__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                    <svg class="shrink-0 text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                   </div>
-                  <div class="order-card__body" hidden>
-                    <div class="order-card__section">
+                  <div class="order-card__body border-t border-[color:var(--color-border)] p-4 flex flex-col gap-4" hidden>
+                    <div>
                       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
-                        <h3 class="order-card__section-title" style="margin:0">{d.orderBuyer}</h3>
+                        <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em]">{d.orderBuyer}</h3>
                         <button
                           class="btn btn--ghost btn--sm order-edit-buyer-btn"
                           type="button"
@@ -982,33 +1096,33 @@ const orderStatusColors: Record<string, string> = {
                           ערוך פרטים
                         </button>
                       </div>
-                      <p class="order-card__info-line order-buyer-name"><strong>{order.buyerName}</strong></p>
-                      <p class="order-card__info-line order-buyer-email">{order.buyerEmail}</p>
-                      <p class="order-card__info-line order-buyer-phone">{d.orderPhone}: {order.buyerPhone}</p>
-                      <p class="order-card__info-line order-buyer-address">{d.orderAddress}: {order.buyerAddress.street}, {order.buyerAddress.city}{order.buyerAddress.zip ? ` ${order.buyerAddress.zip}` : ''}</p>
+                      <p class="order-card__info-line order-buyer-name text-sm text-[color:var(--color-text)] my-[0.1rem]"><strong>{order.buyerName}</strong></p>
+                      <p class="order-card__info-line order-buyer-email text-sm text-[color:var(--color-text)] my-[0.1rem]">{order.buyerEmail}</p>
+                      <p class="order-card__info-line order-buyer-phone text-sm text-[color:var(--color-text)] my-[0.1rem]">{d.orderPhone}: {order.buyerPhone}</p>
+                      <p class="order-card__info-line order-buyer-address text-sm text-[color:var(--color-text)] my-[0.1rem]">{d.orderAddress}: {order.buyerAddress.street}, {order.buyerAddress.city}{order.buyerAddress.zip ? ` ${order.buyerAddress.zip}` : ''}</p>
                     </div>
-                    <div class="order-card__section">
-                      <h3 class="order-card__section-title">{d.orderItems}</h3>
-                      <ul class="order-card__items">
+                    <div>
+                      <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">{d.orderItems}</h3>
+                      <ul class="order-card__items list-none p-0 flex flex-col gap-2">
                         {storeItems.map((item) => (
-                          <li class="order-card__item">
-                            {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="order-card__item-img" />}
-                            <span class="order-card__item-name">{item.productName}</span>
-                            <span class="order-card__item-qty">×{item.qty}</span>
-                            <span class="order-card__item-price">{formatPrice(item.price * item.qty)}</span>
+                          <li class="flex items-center gap-2.5 text-sm">
+                            {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-md shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
+                            <span class="flex-1 text-[color:var(--color-text)]">{item.productName}</span>
+                            <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
+                            <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(item.price * item.qty)}</span>
                           </li>
                         ))}
                       </ul>
                       {storeSub && (
-                        <div class="order-card__subtotals">
+                        <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
                           <span>{d.orderShipping}: {storeSub.shipping === 0 ? 'חינם' : formatPrice(storeSub.shipping)}</span>
-                          <strong>{d.orderTotal}: {formatPrice(storeSub.subtotal + storeSub.shipping)}</strong>
+                          <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatPrice(storeSub.subtotal + storeSub.shipping)}</strong>
                         </div>
                       )}
                     </div>
-                    <div class="order-card__section order-card__section--controls">
-                      <h3 class="order-card__section-title">{d.orderShippingStatus}</h3>
-                      <div class="order-card__control-row">
+                    <div class="bg-[color:var(--color-bg)] rounded-b-[11px] p-[0.875rem] overflow-visible">
+                      <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">{d.orderShippingStatus}</h3>
+                      <div class="flex gap-2 items-center flex-wrap">
                         <div class="order-status-dropdown">
                           <button class="order-status-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
                             <span class="order-status-dot" style={`background:${orderStatusColors[order.shippingStatus] ?? '#888'}`}></span>
@@ -1028,41 +1142,222 @@ const orderStatusColors: Record<string, string> = {
                           <input type="hidden" class="order-status-select" data-field="shippingStatus" value={order.shippingStatus} />
                         </div>
                       </div>
-                      <h3 class="order-card__section-title" style="margin-top:0.75rem">{d.orderTracking}</h3>
-                      <div class="order-card__control-row">
+                      <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mt-3 mb-2">{d.orderTracking}</h3>
+                      <div class="flex gap-2 items-center flex-wrap">
                         <input type="text" class="order-tracking-input input" data-field="trackingNumber" value={order.trackingNumber ?? ''} placeholder={d.orderTrackingPlaceholder} style="flex:1" />
                         <button class="order-save-btn btn btn--sm btn--accent" type="button">{d.orderSave}</button>
                       </div>
-                      <p class="order-save-status" hidden aria-live="polite">{d.orderSaved}</p>
+                      <p class="order-save-status text-[0.8rem] font-semibold text-[color:var(--color-success)] mt-[0.4rem]" hidden aria-live="polite">{d.orderSaved}</p>
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
+          <nav id="orders-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={d.ordersTitle} data-page={ordersPage.page} data-total-pages={ordersPage.totalPages} hidden></nav>
           </Fragment>
         )}
+      </div>
+
+      <!-- ── Panel: Performance ── -->
+      <div id="dash-panel-performance" class="dash-panel" role="tabpanel" aria-labelledby="tab-performance" hidden={initialPanel !== 'performance'}>
+        <div class="mb-4">
+          <h2 class="m-0 text-base font-semibold">{d.perfTitle}</h2>
+          <p class="muted text-[0.82rem] m-0 mt-1">{d.perfSubtitle}</p>
+        </div>
+
+        <div id="perf-range-picker" class="flex flex-wrap items-center gap-2 mb-5" data-store-slug={store.slug} data-active-preset="30d">
+          {([
+            ['7d', d.perfPreset7d, false],
+            ['30d', d.perfPreset30d, true],
+            ['90d', d.perfPreset90d, false],
+            ['thisMonth', d.perfPresetThisMonth, false],
+            ['lastMonth', d.perfPresetLastMonth, false],
+          ] as const).map(([preset, label, active]) => (
+            <button
+              type="button"
+              class="perf-preset-btn font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] border cursor-pointer transition-colors duration-[120ms] [border-color:var(--color-border)] [color:var(--color-text)] bg-[color:var(--color-surface)] hover:[border-color:var(--color-primary)] aria-pressed:bg-[color:var(--color-primary)] aria-pressed:[color:white] aria-pressed:[border-color:var(--color-primary)]"
+              data-preset={preset}
+              aria-pressed={active}
+            >{label}</button>
+          ))}
+          <span class="inline-flex items-center gap-1.5" dir="ltr">
+            <input type="date" id="perf-from-input" value={perfFromISO} class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.6rem] outline-none" />
+            <span class="muted text-[0.8rem]">–</span>
+            <input type="date" id="perf-to-input" value={perfToISO} class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.6rem] outline-none" />
+          </span>
+          <button type="button" id="perf-apply-btn" class="btn btn--sm btn--ghost">{d.perfApply}</button>
+        </div>
+
+        <dl id="perf-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5" aria-live="polite">
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+            <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfRevenue}</dt>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue">{perfSummary && formatPrice(perfSummary.totalRevenue)}</dd>
+          </div>
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+            <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfOrders}</dt>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-orders">{perfSummary?.totalOrders ?? 0}</dd>
+          </div>
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+            <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfAvgOrder}</dt>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg">{perfSummary && formatPrice(perfSummary.avgOrderValue)}</dd>
+          </div>
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+            <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfVisitors}</dt>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-visitors">{perfSummary?.totalViews ?? 0}</dd>
+          </div>
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+            <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfConversion}</dt>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-conversion">{(perfSummary?.conversionRate ?? 0).toFixed(1)}%</dd>
+          </div>
+        </dl>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
+            <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.perfRevenueChartTitle}</h3>
+            <div id="perf-revenue-chart" set:html={perfRevenueChartSvg}></div>
+          </div>
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
+            <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.perfVisitorsChartTitle}</h3>
+            <div id="perf-visitors-chart" set:html={perfVisitorsChartSvg}></div>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.perfTopProducts}</h3>
+          <div id="perf-top-products" class="flex flex-col gap-2">
+            {perfSummary && perfSummary.topProducts.length === 0 && (
+              <p class="muted text-[0.85rem] m-0">{d.perfTopProductsEmpty}</p>
+            )}
+            {perfSummary?.topProducts.map((tp) => {
+              const maxRevenue = Math.max(...perfSummary.topProducts.map((x) => x.revenue), 1);
+              const pct = Math.round((tp.revenue / maxRevenue) * 100);
+              return (
+                <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
+                  <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)]" style={`width:${pct}%`}></div>
+                  <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
+                    <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">{tp.name}</span>
+                    <span class="shrink-0 [color:var(--color-muted)]">{tp.units} {d.perfUnitsSold} · <strong class="[color:var(--color-text)]">{formatPrice(tp.revenue)}</strong></span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Panel: Advertising ── -->
+      <div id="dash-panel-advertising" class="dash-panel" role="tabpanel" aria-labelledby="tab-advertising" hidden={initialPanel !== 'advertising'}>
+        <div class="mb-4">
+          <h2 class="m-0 text-base font-semibold">{d.adTitle}</h2>
+          <p class="muted text-[0.82rem] m-0 mt-1">{d.adSubtitle}</p>
+        </div>
+
+        <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4 [background:color-mix(in_srgb,var(--color-success)_6%,transparent)]">
+          <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBaselineTitle}</h3>
+          <p class="muted text-[0.82rem] m-0 mb-2">{d.adBaselineDesc}</p>
+          <p class="m-0 text-[0.85rem]">{d.adBaselineImpressions}: <strong id="ad-baseline-impressions">{adBaselineImpressions.toLocaleString('he-IL')}</strong></p>
+        </div>
+
+        <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4">
+          <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBoostTitle}</h3>
+          <p class="muted text-[0.82rem] m-0 mb-3">{d.adBoostDesc}</p>
+
+          <form id="ad-create-form" class="flex flex-col gap-3" data-store-slug={store.slug}>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label class="field">
+                <span>{d.adScopeStore} / {d.adScopeProduct}</span>
+                <select id="ad-scope-select" name="scope" class="input">
+                  <option value="store">{d.adScopeStore}</option>
+                  <option value="product">{d.adScopeProduct}</option>
+                </select>
+              </label>
+              <label class="field" id="ad-product-field" hidden>
+                <span>{d.adSelectProduct}</span>
+                <select id="ad-product-select" name="productId" class="input">
+                  {adEligibleProducts.map((p) => <option value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+              <label class="field">
+                <span>{d.adPlatform}</span>
+                <select id="ad-platform-select" name="platform" class="input">
+                  <option value="google">{d.adPlatformGoogle}</option>
+                  <option value="meta">{d.adPlatformMeta}</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>{d.adBudgetLabel}</span>
+                <input type="number" id="ad-budget-input" name="monthlyBudget" class="input" min="50" step="10" value="200" dir="ltr" />
+              </label>
+            </div>
+            <p class="muted text-[0.78rem] m-0">{d.adBudgetHint}</p>
+            <div>
+              <button type="submit" class="btn btn--sm btn--accent">{d.adCreateCampaign}</button>
+            </div>
+          </form>
+        </div>
+
+        <div>
+          <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.adYourCampaigns}</h3>
+          <div id="ad-campaigns-list" class="flex flex-col gap-3" data-store-slug={store.slug}>
+            {adCampaigns.length === 0 && <p class="muted text-[0.85rem] m-0" id="ad-empty-msg">{d.adNoCampaigns}</p>}
+            {adCampaigns.map((c) => (
+              <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3" data-campaign-id={c.id} data-status={c.status}>
+                <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-[0.85rem] font-semibold">{c.scope === 'product' ? c.productName : d.adScopeStore}</span>
+                    <span class="text-[0.72rem] font-medium [color:var(--color-muted)]">{c.platform === 'google' ? d.adPlatformGoogle : d.adPlatformMeta}</span>
+                    <span class={`text-[0.68rem] font-bold py-[.1rem] px-[.5rem] rounded-full ${c.status === 'active' ? '[color:var(--color-success)] [background:color-mix(in_srgb,var(--color-success)_14%,transparent)]' : '[color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)]'}`}>
+                      {c.status === 'active' ? d.adStatusActive : d.adStatusPaused}
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn--ghost btn--sm" data-ad-action="toggle" data-campaign-id={c.id}>{c.status === 'active' ? d.adPauseCampaign : d.adResumeCampaign}</button>
+                    <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" data-ad-action="delete" data-campaign-id={c.id}>{d.adDeleteCampaign}</button>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-[0.82rem]">
+                  <div><span class="[color:var(--color-muted)]">{d.adBudgetLabel}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adImpressions}</span><br /><strong>{c.stats.impressions.toLocaleString('he-IL')}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adClicks}</span><br /><strong>{c.stats.clicks.toLocaleString('he-IL')}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adSpend}</span><br /><strong>{formatPrice(c.stats.spend)}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adRoas}</span><br /><strong>x{c.stats.roas}</strong></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p class="muted text-[0.76rem] mt-3">{d.adDemoDataNote}</p>
+        </div>
       </div>
 
       <!-- ── Panel: Messages ── -->
       <div id="dash-panel-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
         <h2 style="font-size:1rem;font-weight:600;margin:0 0 1rem">הודעות</h2>
+        {/* Search — no desktop/mobile split like sort/filter below (those have
+            a header-row equivalent on desktop); this has no other home, so
+            it's visible at every width. Debounced refetch, same as Products'
+            own search input. */}
+        <div class="relative flex-1 min-w-[160px] max-w-[280px] mb-3">
+          <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="msg-search-input" value={sellerMessageQuery.q} placeholder={d.msgSearchPlaceholder ?? 'חיפוש הודעות…'} class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] ps-[1.9rem] pe-[.85rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
+        </div>
+        <script type="application/json" id="msg-filter-values-data" set:html={JSON.stringify({ product: msgDistinctProducts, from: msgDistinctFrom })} />
         {
           /* Mobile-only sort/filter toolbar — mirrors the products table's own
              (see the comment there): on desktop, sort/filter live in the
              header row itself instead (.sort-btn on the date column, a
              funnel button on the status column). */
           <div class="table-toolbar" data-mixed-status={String(showMsgStatusControls)}>
-            <button type="button" id="msg-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+            <button type="button" id="msg-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
               <span id="msg-sort-label">{d.msgSortOptDateDesc}</span>
-              <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <button type="button" id="msg-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+            <button type="button" id="msg-filter-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="true" aria-expanded="false">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
               <span>{d.filterByLabel}</span>
-              <span id="msg-filter-count" class="filter-count-badge" hidden>0</span>
-              <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              <span id="msg-filter-count" class="filter-count-badge inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-primary)] text-white text-[.68rem] font-bold leading-none" hidden>0</span>
+              <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
           </div>
 
@@ -1156,11 +1451,8 @@ const orderStatusColors: Record<string, string> = {
                     </td>
                   </tr>
                 </Fragment>
-                {storeMessages.map((msg) => {
-                  const replies = messageReplies[msg.id] ?? [];
+                {messagesPage.items.map(({ msg, replies, lastMsg, hasUnread }) => {
                   const fmtDate = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-                  const hasUnread = !msg.readBySeller || replies.some((r) => r.toSellerId === sellerId && !r.readBySeller);
-                  const lastMsg = replies.length > 0 ? replies[replies.length - 1]! : msg;
                   return (
                     <Fragment>
                       <tr
@@ -1238,17 +1530,19 @@ const orderStatusColors: Record<string, string> = {
               </tbody>
             </table>
           </div>
+          <p class="seller-msg-empty" id="msg-filter-empty" hidden={messagesPage.total > 0}>אין הודעות שתואמות לחיפוש/סינון.</p>
+          <nav id="msg-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label="הודעות" data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
         }
       </div>
 
       <!-- ── Panel: Settings ── -->
       <div id="dash-panel-settings" class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden={initialPanel !== 'settings'}>
-        <form method="POST" action="/api/store" class="dash-form" id="settings-form" style="margin-top:0">
+        <form method="POST" action="/api/store" class="mt-4" id="settings-form" style="margin-top:0">
           <input type="hidden" name="_action" value="save-settings" />
           <input type="hidden" name="storeId" value={store.id} />
 
-          <div class="dash-panel-header">
-            <h2 class="dash-panel-header__title">{d.tabSettings}</h2>
+          <div class="flex items-center justify-between gap-4 mb-5 pb-[.875rem] border-b border-[color:var(--color-border)]">
+            <h2 class="text-[.92rem] font-semibold text-[color:var(--color-text)] m-0">{d.tabSettings}</h2>
             <button class="btn btn--sm" type="submit" id="settings-save-btn">{d.saveChanges}</button>
           </div>
 
@@ -1317,13 +1611,13 @@ const orderStatusColors: Record<string, string> = {
           </label>
 
           <div class="field">
-            <label class="details-visible-toggle">
+            <label class="inline-flex items-center gap-[.55rem] font-semibold text-[.9rem] cursor-pointer">
               <input type="checkbox" name="addressVisible" id="address-visible-toggle" checked={!!store.addressVisible} />
               <span>{d.showStoreAddress}</span>
             </label>
           </div>
 
-          <div id="store-address-field" class="store-details-fields" data-open={String(!!store.addressVisible)}>
+          <div id="store-address-field" class="mt-[.9rem] ps-4 border-s-2 border-[color:var(--color-border)] transition-opacity duration-150 data-[open=false]:opacity-55" data-open={String(!!store.addressVisible)}>
             <label class="field">
               <span>{d.storeAddress}</span>
               <input class="input" name="address" value={store.address ?? ''} placeholder={d.storeAddressPlaceholder} />
@@ -1331,25 +1625,25 @@ const orderStatusColors: Record<string, string> = {
           </div>
 
           <div class="field">
-            <label class="details-visible-toggle">
+            <label class="inline-flex items-center gap-[.55rem] font-semibold text-[.9rem] cursor-pointer">
               <input type="checkbox" name="hoursVisible" id="hours-visible-toggle" checked={!!store.hoursVisible} />
               <span>{d.showStoreHours}</span>
             </label>
           </div>
 
-          <div id="store-hours-field" class="store-details-fields" data-open={String(!!store.hoursVisible)}>
+          <div id="store-hours-field" class="mt-[.9rem] ps-4 border-s-2 border-[color:var(--color-border)] transition-opacity duration-150 data-[open=false]:opacity-55" data-open={String(!!store.hoursVisible)}>
             <div class="field">
               <span>{d.storeHours}</span>
-              <div id="hours-editor" class="hours-editor">
+              <div id="hours-editor" class="hours-editor flex flex-col gap-2">
                 {STORE_WEEKDAYS.map((day) => {
                   const dh = (store.hours ?? DEFAULT_STORE_HOURS)[day];
                   return (
-                    <div class="hours-row" data-day={day}>
-                      <span class="hours-row__label">{d.storeHoursDay[day]}</span>
-                      <input class="input hours-time" type="time" name={`hours_${day}_open`} value={dh.open} disabled={dh.closed} />
-                      <span class="hours-row__sep">–</span>
-                      <input class="input hours-time" type="time" name={`hours_${day}_close`} value={dh.close} disabled={dh.closed} />
-                      <label class="hours-row__closed">
+                    <div class="hours-row flex items-center gap-[.6rem] flex-wrap" data-day={day}>
+                      <span class="min-w-[3.2rem] text-[.85rem] font-semibold text-[color:var(--color-text)] shrink-0">{d.storeHoursDay[day]}</span>
+                      <input class="input hours-time w-auto max-w-[8.5rem] py-[.4rem] px-[.6rem] disabled:opacity-45" type="time" name={`hours_${day}_open`} value={dh.open} disabled={dh.closed} />
+                      <span class="text-[color:var(--color-muted)] shrink-0">–</span>
+                      <input class="input hours-time w-auto max-w-[8.5rem] py-[.4rem] px-[.6rem] disabled:opacity-45" type="time" name={`hours_${day}_close`} value={dh.close} disabled={dh.closed} />
+                      <label class="inline-flex items-center gap-[.35rem] ms-auto max-[480px]:ms-0 text-[.8rem] text-[color:var(--color-muted)] cursor-pointer whitespace-nowrap">
                         <input type="checkbox" class="hours-closed-toggle" name={`hours_${day}_closed`} checked={dh.closed} />
                         {d.storeHoursClosed}
                       </label>
@@ -1360,23 +1654,23 @@ const orderStatusColors: Record<string, string> = {
             </div>
           </div>
 
-          <div class="form-actions">
+          <div class="flex gap-2 mt-2">
             <button class="btn btn--sm" type="submit">{d.saveChanges}</button>
           </div>
 
           <p id="settings-status" hidden></p>
         </form>
 
-        <div class="dash-panel-header" style="margin-top:2rem">
-          <h2 class="dash-panel-header__title">{d.categoriesTitle}</h2>
+        <div class="flex items-center justify-between gap-4 mb-5 pb-[.875rem] border-b border-[color:var(--color-border)]" style="margin-top:2rem">
+          <h2 class="text-[.92rem] font-semibold text-[color:var(--color-text)] m-0">{d.categoriesTitle}</h2>
         </div>
         <p class="muted" style="margin:0 0 1rem;font-size:0.85rem">{d.categoriesHint}</p>
 
         {store && (
-          <div id="category-tree-editor" class="category-tree-editor" data-store-id={store.id}>
+          <div id="category-tree-editor" class="category-tree-editor flex flex-col gap-3" data-store-id={store.id}>
             <div id="category-tree-list" class="category-tree-list"></div>
-            <form id="add-root-category-form" class="category-add-form">
-              <input type="text" class="input" id="add-root-category-input" placeholder={d.categoryNamePlaceholder} maxlength="40" />
+            <form id="add-root-category-form" class="category-add-form flex gap-2 max-w-[24rem]">
+              <input type="text" class="input flex-1" id="add-root-category-input" placeholder={d.categoryNamePlaceholder} maxlength="40" />
               <button type="submit" class="btn btn--sm btn--ghost">{d.addRootCategory}</button>
             </form>
           </div>
@@ -1432,10 +1726,6 @@ const orderStatusColors: Record<string, string> = {
     z-index: 60;
     list-style: none; margin: 0;
     animation: status-pop 0.13s cubic-bezier(0.34,1.56,0.64,1) forwards;
-  }
-  @keyframes status-pop {
-    from { opacity: 0; transform: translateY(-5px) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0)   scale(1); }
   }
   .order-status-option {
     display: flex; align-items: center; gap: 0.5rem;
@@ -1630,7 +1920,7 @@ const orderStatusColors: Record<string, string> = {
 
     <!-- Buyer details -->
     <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0">פרטי לקוח</p>
-    <div class="field-row">
+    <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
       <label class="field" style="flex:1">
         <span>שם מלא</span>
         <input class="input" id="eob-name" name="buyerName" required placeholder="שם מלא" />
@@ -1644,7 +1934,7 @@ const orderStatusColors: Record<string, string> = {
       <span>אימייל</span>
       <input class="input" id="eob-email" name="buyerEmail" type="email" placeholder="אימייל" />
     </label>
-    <div class="field-row">
+    <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
       <label class="field" style="flex:2">
         <span>רחוב ומספר</span>
         <input class="input" id="eob-street" name="buyerStreet" placeholder="רחוב ומספר" />
@@ -1716,6 +2006,9 @@ const orderStatusColors: Record<string, string> = {
   import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
   import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
   import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+  import { encodeList, debounce } from '../../lib/admin-nav.js';
+  import { initPerformanceTab } from '../../scripts/dashboard/performance.js';
+  import { initAdvertisingTab } from '../../scripts/dashboard/advertising.js';
 
   const uploadCfg = document.getElementById('upload-config');
   const CLOUD  = uploadCfg?.dataset.cloud  ?? '';
@@ -1730,6 +2023,8 @@ const orderStatusColors: Record<string, string> = {
   }
 
   initDashTabs();
+  initPerformanceTab();
+  initAdvertisingTab();
 
   // Deep-link: ?panel=messages&msg=<id>
   {
@@ -1800,7 +2095,7 @@ const orderStatusColors: Record<string, string> = {
   initAutoHideStatus();
   initProductsToolbar();
   initBulkSelect(CLOUD, PRESET);
-  initCsvImport(CLOUD, PRESET);
+  initCsvImport();
   initThumbs();
   initInlineEdit();
   initPagination();
@@ -1924,17 +2219,17 @@ const orderStatusColors: Record<string, string> = {
     });
 
     function closeCard(): void {
-      card.classList.remove('order-card--open');
+      card.removeAttribute('data-open');
       if (body) body.hidden = true;
       header?.setAttribute('aria-expanded', 'false');
     }
 
     header?.addEventListener('click', () => {
-      const isOpen = card.classList.contains('order-card--open');
+      const isOpen = card.hasAttribute('data-open');
       if (isOpen) {
         closeCard();
       } else {
-        card.classList.add('order-card--open');
+        card.setAttribute('data-open', '');
         if (body) body.hidden = false;
         header.setAttribute('aria-expanded', 'true');
       }
@@ -1973,15 +2268,18 @@ const orderStatusColors: Record<string, string> = {
             }).catch(() => {});
             window.dispatchEvent(new CustomEvent('notif-refreshed'));
           }
-          // update data attribute + re-apply filter (may hide delivered in active view)
+          // update data attribute + hide locally if it no longer matches the
+          // active filter (e.g. moving to "delivered" while "active" is on) —
+          // a single-card check against state already known client-side, no
+          // need to re-fetch the whole page just for this.
           card.dataset.shippingStatus = newStatus;
-          applyOrdersFilter();
+          if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
           // moving BACK to pending → re-add dot
           if (!hadDot && newStatus === 'pending') {
             const idSpan = card.querySelector('.order-card__id');
             if (idSpan && !idSpan.querySelector('.order-new-dot')) {
               const dot = document.createElement('span');
-              dot.className = 'order-new-dot';
+              dot.className = 'order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0';
               dot.setAttribute('aria-label', 'הזמנה חדשה');
               idSpan.appendChild(dot);
             }
@@ -2015,13 +2313,121 @@ const orderStatusColors: Record<string, string> = {
   // replicates the old "active" preset.
   const ACTIVE_STATUSES = new Set(['pending', 'processing', 'ready', 'shipped']);
   const ORDER_STATUSES = ['pending', 'processing', 'ready', 'shipped', 'delivered'];
-  const ORDER_STATUS_RANK: Record<string, number> = { pending: 0, processing: 1, ready: 2, shipped: 3, delivered: 4 };
   const ORDER_FILTER_COLUMNS = ['status']; // add more column keys here (+ a case in getOrderFilterValue) if warranted later
   const ordersFilters = new Map<string, Set<string>>([['status', new Set(ACTIVE_STATUSES)]]);
   let ordersSortCol: 'date' | 'amount' | 'status' = 'date';
   let ordersSortDir: 'asc' | 'desc' = 'desc';
+  let ordersCurrentPage = 1;
+  let ordersSearchQuery = '';
   let ordersDashI18n: Record<string, string> = {};
   try { ordersDashI18n = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
+
+  // Lifted out of the old poll-only block below (buildOrderCard originally
+  // only existed to render a poll-inserted new order) — applyOrdersPagination
+  // needs it too now, to render every card fetched via AJAX, not just polled
+  // ones. Both only ever close over storeSlugForOrders (a top-level const),
+  // so nothing here actually depended on living inside that block.
+  function fmtOrderDate(iso: string): string {
+    return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+  function esc(s: unknown): string { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtPrice(n: number): string { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' ₪'; }
+
+  function buildOrderCard(o: {
+    id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
+    buyerAddress: { city: string; street: string; zip?: string };
+    shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; price: number; image?: string }[];
+    storeSubtotals: Record<string, { subtotal: number; shipping: number; discount?: { type: string; value: number; applied: number } }>;
+  }): string {
+    const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
+    const color    = colorMap[o.shippingStatus] ?? '#888';
+    const label    = labelMap[o.shippingStatus] ?? o.shippingStatus;
+    const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
+    const total    = storeSub.subtotal + storeSub.shipping;
+    const storeItems = o.items.filter(i => i.storeSlug === storeSlugForOrders);
+    const isNew    = o.shippingStatus === 'pending';
+
+    const itemsHtml = storeItems.map(item => `
+      <li class="flex items-center gap-2.5 text-sm">
+        ${item.image ? `<img src="${esc(item.image)}" alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-md shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />` : ''}
+        <span class="flex-1 text-[color:var(--color-text)]">${esc(item.productName)}</span>
+        <span class="text-[color:var(--color-muted)] text-[0.8rem]">×${item.qty}</span>
+        <span class="font-bold text-[color:var(--color-text)] ms-auto">${fmtPrice(item.price * item.qty)}</span>
+      </li>`).join('');
+
+    const statusEntries: [string, string][] = [
+      ['pending','חדשה'],['processing','בטיפול'],['ready','ממתין לאיסוף'],['shipped','נשלח'],['delivered','נמסר']
+    ];
+    const statusDotHtml = (v: string) => `<span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>`;
+    const statusOpts = statusEntries.map(([v, l]) => `<li role="none"><button class="order-status-option" type="button" role="option" data-value="${esc(v)}" aria-selected="${o.shippingStatus === v}">${statusDotHtml(v)}${esc(l)}</button></li>`).join('');
+    const statusDropdown = `<div class="order-status-dropdown">
+      <button class="order-status-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+        ${statusDotHtml(o.shippingStatus)}<span class="order-status-label">${esc(label)}</span>
+        <svg class="order-status-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <ul class="order-status-menu" role="listbox" hidden>${statusOpts}</ul>
+      <input type="hidden" class="order-status-select" data-field="shippingStatus" value="${esc(o.shippingStatus)}" />
+    </div>`;
+
+    return `<div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
+      <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
+        <div class="flex flex-col gap-[0.1rem] min-w-20 shrink-0">
+          <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? '<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="הזמנה חדשה"></span>' : ''}</span>
+          <span class="text-[0.72rem] text-[color:var(--color-muted)]">${esc(fmtOrderDate(o.createdAt))}</span>
+        </div>
+        <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
+          <span class="text-sm font-semibold text-[color:var(--color-text)]">${esc(o.buyerName)}</span>
+          <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] ms-auto">${fmtPrice(total)}</span>
+          <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px]" style="background:${esc(color)}1a;color:${esc(color)}">${esc(label)}</span>
+        </div>
+        <svg class="shrink-0 text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="order-card__body border-t border-[color:var(--color-border)] p-4 flex flex-col gap-4" hidden>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+            <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em]">לקוח</h3>
+            <button class="btn btn--ghost btn--sm order-edit-buyer-btn" type="button"
+              data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"
+              data-buyer-name="${esc(o.buyerName)}" data-buyer-email="${esc(o.buyerEmail)}"
+              data-buyer-phone="${esc(o.buyerPhone)}" data-buyer-city="${esc(o.buyerAddress.city)}"
+              data-buyer-street="${esc(o.buyerAddress.street)}" data-buyer-zip="${esc(o.buyerAddress.zip ?? '')}"
+              data-items="${esc(JSON.stringify(storeItems))}"
+              data-shipping="${esc(String(storeSub.shipping))}"
+              data-discount-type="${esc(storeSub.discount?.type ?? 'percent')}"
+              data-discount-value="${esc(String(storeSub.discount?.value ?? 0))}"
+              style="font-size:0.75rem">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              ערוך פרטים
+            </button>
+          </div>
+          <p class="order-card__info-line order-buyer-name text-sm text-[color:var(--color-text)] my-[0.1rem]"><strong>${esc(o.buyerName)}</strong></p>
+          <p class="order-card__info-line order-buyer-email text-sm text-[color:var(--color-text)] my-[0.1rem]">${esc(o.buyerEmail)}</p>
+          <p class="order-card__info-line order-buyer-phone text-sm text-[color:var(--color-text)] my-[0.1rem]">טלפון: ${esc(o.buyerPhone)}</p>
+          <p class="order-card__info-line order-buyer-address text-sm text-[color:var(--color-text)] my-[0.1rem]">כתובת: ${esc(o.buyerAddress.street)}, ${esc(o.buyerAddress.city)}${o.buyerAddress.zip ? ' ' + esc(o.buyerAddress.zip) : ''}</p>
+        </div>
+        <div>
+          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">פריטים</h3>
+          <ul class="order-card__items list-none p-0 flex flex-col gap-2">${itemsHtml}</ul>
+          <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
+            <span>משלוח: ${storeSub.shipping === 0 ? 'חינם' : fmtPrice(storeSub.shipping)}</span>
+            <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: ${fmtPrice(total)}</strong>
+          </div>
+        </div>
+        <div class="bg-[color:var(--color-bg)] rounded-b-[11px] p-[0.875rem] overflow-visible">
+          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס משלוח</h3>
+          <div class="flex gap-2 items-center flex-wrap">
+            ${statusDropdown}
+          </div>
+          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mt-3 mb-2">מספר מעקב</h3>
+          <div class="flex gap-2 items-center flex-wrap">
+            <input type="text" class="order-tracking-input input" data-field="trackingNumber" value="" placeholder="לדוגמה: IL1234567890" style="flex:1" />
+            <button class="order-save-btn btn btn--sm btn--accent" type="button">שמור</button>
+          </div>
+          <p class="order-save-status text-[0.8rem] font-semibold text-[color:var(--color-success)] mt-[0.4rem]" hidden aria-live="polite">נשמר ✓</p>
+        </div>
+      </div>
+    </div>`;
+  }
 
   const ORDER_SORT_OPTIONS: { col: 'date' | 'amount' | 'status'; dir: 'asc' | 'desc'; label: () => string }[] = [
     { col: 'date', dir: 'desc', label: () => ordersDashI18n.orderSortOptDateDesc ?? 'תאריך: חדש — ישן' },
@@ -2030,12 +2436,6 @@ const orderStatusColors: Record<string, string> = {
     { col: 'amount', dir: 'asc', label: () => ordersDashI18n.orderSortOptAmountAsc ?? 'סכום: נמוך — גבוה' },
     { col: 'status', dir: 'asc', label: () => ordersDashI18n.orderSortOptStatusAsc ?? 'סטטוס: הזמנות חדשות קודם' },
   ];
-
-  function getOrderSortValue(card: HTMLElement, col: 'date' | 'amount' | 'status'): string | number {
-    if (col === 'amount') return parseFloat(card.dataset.sortAmount ?? '0');
-    if (col === 'status') return ORDER_STATUS_RANK[card.dataset.shippingStatus ?? ''] ?? 99;
-    return card.dataset.sortDate ?? '';
-  }
 
   function getOrderFilterValue(card: HTMLElement, col: string): string {
     if (col === 'status') return card.dataset.shippingStatus ?? '';
@@ -2078,32 +2478,19 @@ const orderStatusColors: Record<string, string> = {
     badge.textContent = String(activeCols);
   }
 
+  // Filter changed — re-fetch page 1 of the current query from the server
+  // (kept as the same function name/shape the toolbar's own filter handlers
+  // already call, just server-driven now instead of a DOM show/hide pass).
   function applyOrdersFilter(): void {
-    let visible = 0;
-    document.querySelectorAll<HTMLElement>('.order-card').forEach((card) => {
-      const show = rowMatchesOrderFilters(card);
-      card.style.display = show ? '' : 'none';
-      if (show) visible++;
-    });
-    const emptyEl = document.getElementById('orders-filter-empty');
-    if (emptyEl) emptyEl.hidden = visible > 0;
-    refreshOrdersFilterBadge();
+    ordersCurrentPage = 1;
+    applyOrdersPagination();
   }
 
   function sortOrders(col: 'date' | 'amount' | 'status', dir: 'asc' | 'desc'): void {
     ordersSortCol = col;
     ordersSortDir = dir;
-    const list = document.getElementById('orders-list');
-    if (list) {
-      const cards = Array.from(list.querySelectorAll<HTMLElement>('.order-card'));
-      cards.sort((a, b) => {
-        const va = getOrderSortValue(a, col);
-        const vb = getOrderSortValue(b, col);
-        const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-        return dir === 'asc' ? cmp : -cmp;
-      });
-      cards.forEach((card) => list.append(card));
-    }
+    ordersCurrentPage = 1;
+    applyOrdersPagination();
     const label = document.getElementById('orders-sort-label');
     if (label) {
       const opt = ORDER_SORT_OPTIONS.find((o) => o.col === col && o.dir === dir) ?? ORDER_SORT_OPTIONS[0]!;
@@ -2116,7 +2503,7 @@ const orderStatusColors: Record<string, string> = {
   function openOrdersSort(trigger: HTMLElement): void {
     ordersPortal.open(trigger, '13rem', () => ORDER_SORT_OPTIONS.map((o) => {
       const selected = o.col === ordersSortCol && o.dir === ordersSortDir;
-      return `<button type="button" class="product-menu__item" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="cursor:pointer${selected ? ';font-weight:700;color:var(--color-primary)' : ''}">${o.label()}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label()}</button>`;
     }).join(''), (portal) => {
       portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -2132,11 +2519,11 @@ const orderStatusColors: Record<string, string> = {
     const selected = ordersFilters.get(col) ?? new Set<string>();
     const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
     return [
-      `<button type="button" class="product-menu__back" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${orderFilterColumnLabel(col)}</button>`,
-      `<div class="product-menu__divider"></div>`,
-      ...values.map((v) => `<label class="product-menu__checkbox-item"><input type="checkbox" data-order-filter-value="${v}" ${selected.has(v) ? 'checked' : ''}>${orderFilterValueHtml(col, v)}</label>`),
-      `<div class="product-menu__divider"></div>`,
-      `<button type="button" class="product-menu__clear" data-orders-filter-clear-col>${ordersDashI18n.filterClearColumn ?? 'נקה סינון בעמודה זו'}</button>`,
+      `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${orderFilterColumnLabel(col)}</button>`,
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-order-filter-value="${v}" ${selected.has(v) ? 'checked' : ''}>${orderFilterValueHtml(col, v)}</label>`),
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-orders-filter-clear-col>${ordersDashI18n.filterClearColumn ?? 'נקה סינון בעמודה זו'}</button>`,
     ].join('');
   }
 
@@ -2145,14 +2532,14 @@ const orderStatusColors: Record<string, string> = {
     return [
       ...ORDER_FILTER_COLUMNS.map((col) => {
         const active = (ordersFilters.get(col)?.size ?? 0) > 0;
-        return `<div class="product-menu__item" data-filter-col="${col}" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
-          <input type="checkbox" data-filter-col-toggle="${col}" ${active ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">
+        return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
+          <input type="checkbox" class="cursor-pointer shrink-0" data-filter-col-toggle="${col}" ${active ? 'checked' : ''}>
           <span style="flex:1">${orderFilterColumnLabel(col)}</span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
         </div>`;
       }).join(''),
-      `<div class="product-menu__divider"></div>`,
-      `<button type="button" class="product-menu__clear" data-orders-filter-clear-all>${ordersDashI18n.filterClearAll ?? 'נקה הכל'}</button>`,
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-orders-filter-clear-all>${ordersDashI18n.filterClearAll ?? 'נקה הכל'}</button>`,
     ].join('');
   }
 
@@ -2217,133 +2604,115 @@ const orderStatusColors: Record<string, string> = {
     openOrdersFilterColumns(ordersFilterTrigger);
   });
 
-  applyOrdersFilter();
+  // ── Orders: server-fetched page/search/sort/filter (AJAX) ───────────
+  // Same reasoning as Products' applyPagination() — search/sort/filter now
+  // run server-side (seller-orders-query.ts), so a change re-fetches the
+  // current query's page and rebuilds #orders-list via buildOrderCard()
+  // rather than show/hide-ing DOM cards already on the page.
+  async function applyOrdersPagination(): Promise<void> {
+    const list = document.getElementById('orders-list');
+    if (!list || !storeSlugForOrders) return;
+
+    const params = new URLSearchParams();
+    params.set('storeSlug', storeSlugForOrders);
+    params.set('page', String(ordersCurrentPage));
+    if (ordersSearchQuery) params.set('oq', ordersSearchQuery);
+    params.set('osort', `${ordersSortCol}:${ordersSortDir}`);
+    const statusValues = ordersFilters.get('status');
+    params.set('ostatus', encodeList(statusValues ? [...statusValues] : []));
+
+    let data: { ok: boolean; items?: Parameters<typeof buildOrderCard>[0][]; page?: number; totalPages?: number; total?: number };
+    try {
+      const res = await fetch(`/api/seller/orders?${params.toString()}`);
+      data = await res.json() as typeof data;
+    } catch { return; }
+    if (!data.ok) return;
+
+    ordersCurrentPage = data.page ?? 1;
+    list.innerHTML = (data.items ?? []).map(buildOrderCard).join('');
+    list.querySelectorAll<HTMLElement>('.order-card').forEach(bindOrderCard);
+
+    const total = data.total ?? 0;
+    const emptyEl = document.getElementById('orders-filter-empty');
+    if (emptyEl) emptyEl.hidden = total !== 0;
+    refreshOrdersFilterBadge();
+    renderOrdersPaginationControls(data.totalPages ?? 1);
+  }
+
+  function renderOrdersPaginationControls(totalPages: number): void {
+    const nav = document.getElementById('orders-pagination') as HTMLElement | null;
+    if (!nav) return;
+    if (totalPages <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
+    const pageInfo = (ordersDashI18n.paginationPageInfo ?? 'עמוד {page} מתוך {total}')
+      .replace('{page}', String(ordersCurrentPage)).replace('{total}', String(totalPages));
+    nav.hidden = false;
+    nav.innerHTML = `
+      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-prev${ordersCurrentPage <= 1 ? ' disabled' : ''}>${esc(ordersDashI18n.paginationPrev ?? 'הקודם')}</button>
+      <span class="text-[0.82rem] whitespace-nowrap [color:var(--color-muted)]">${esc(pageInfo)}</span>
+      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-next${ordersCurrentPage >= totalPages ? ' disabled' : ''}>${esc(ordersDashI18n.paginationNext ?? 'הבא')}</button>
+    `;
+  }
+
+  function initOrdersPagination(): void {
+    const nav = document.getElementById('orders-pagination') as HTMLElement | null;
+    if (!nav) return;
+    ordersCurrentPage = parseInt(nav.dataset.page ?? '1', 10) || 1;
+    renderOrdersPaginationControls(parseInt(nav.dataset.totalPages ?? '1', 10) || 1);
+    nav.addEventListener('click', (e) => {
+      const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next]');
+      if (!btn || btn.disabled) return;
+      ordersCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
+      applyOrdersPagination();
+      document.getElementById('orders-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+  initOrdersPagination();
+
+  const ordersSearchInput = document.getElementById('orders-search-input') as HTMLInputElement | null;
+  ordersSearchInput?.addEventListener('input', debounce(() => {
+    ordersSearchQuery = ordersSearchInput.value.trim();
+    ordersCurrentPage = 1;
+    applyOrdersPagination();
+  }, 300));
 
   // ── Poll for new orders every 15s ────────────────────────────
   const ordersList = document.getElementById('orders-list');
   if (ordersList && storeSlugForOrders) {
-    const knownIds = new Set(
-      Array.from(document.querySelectorAll<HTMLElement>('.order-card')).map(c => c.dataset.orderId ?? '')
-    );
+    const knownIds = new Set<string>();
 
-    function fmtOrderDate(iso: string): string {
-      return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-    }
-    function esc(s: unknown): string { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-    function fmtPrice(n: number): string { return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' ₪'; }
-
-    function buildOrderCard(o: {
-      id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
-      buyerAddress: { city: string; street: string; zip?: string };
-      shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; price: number; image?: string }[];
-      storeSubtotals: Record<string, { subtotal: number; shipping: number; discount?: { type: string; value: number; applied: number } }>;
-    }): string {
-      const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
-      const color    = colorMap[o.shippingStatus] ?? '#888';
-      const label    = labelMap[o.shippingStatus] ?? o.shippingStatus;
-      const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
-      const total    = storeSub.subtotal + storeSub.shipping;
-      const storeItems = o.items.filter(i => i.storeSlug === storeSlugForOrders);
-      const isNew    = o.shippingStatus === 'pending';
-
-      const itemsHtml = storeItems.map(item => `
-        <li class="order-card__item">
-          ${item.image ? `<img src="${esc(item.image)}" alt="" width="36" height="36" loading="lazy" class="order-card__item-img" />` : ''}
-          <span class="order-card__item-name">${esc(item.productName)}</span>
-          <span class="order-card__item-qty">×${item.qty}</span>
-          <span class="order-card__item-price">${fmtPrice(item.price * item.qty)}</span>
-        </li>`).join('');
-
-      const statusEntries: [string, string][] = [
-        ['pending','חדשה'],['processing','בטיפול'],['ready','ממתין לאיסוף'],['shipped','נשלח'],['delivered','נמסר']
-      ];
-      const statusDotHtml = (v: string) => `<span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>`;
-      const statusOpts = statusEntries.map(([v, l]) => `<li role="none"><button class="order-status-option" type="button" role="option" data-value="${esc(v)}" aria-selected="${o.shippingStatus === v}">${statusDotHtml(v)}${esc(l)}</button></li>`).join('');
-      const statusDropdown = `<div class="order-status-dropdown">
-        <button class="order-status-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
-          ${statusDotHtml(o.shippingStatus)}<span class="order-status-label">${esc(label)}</span>
-          <svg class="order-status-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <ul class="order-status-menu" role="listbox" hidden>${statusOpts}</ul>
-        <input type="hidden" class="order-status-select" data-field="shippingStatus" value="${esc(o.shippingStatus)}" />
-      </div>`;
-
-      return `<div class="order-card" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
-        <div class="order-card__header" role="button" tabindex="0" aria-expanded="false">
-          <div class="order-card__meta">
-            <span class="order-card__id">#${esc(shortId)}${isNew ? '<span class="order-new-dot" aria-label="הזמנה חדשה"></span>' : ''}</span>
-            <span class="order-card__date">${esc(fmtOrderDate(o.createdAt))}</span>
-          </div>
-          <div class="order-card__summary">
-            <span class="order-card__buyer">${esc(o.buyerName)}</span>
-            <span class="order-card__amount">${fmtPrice(total)}</span>
-            <span class="order-card__status-badge" style="background:${esc(color)}1a;color:${esc(color)}">${esc(label)}</span>
-          </div>
-          <svg class="order-card__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="order-card__body" hidden>
-          <div class="order-card__section">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
-              <h3 class="order-card__section-title" style="margin:0">לקוח</h3>
-              <button class="btn btn--ghost btn--sm order-edit-buyer-btn" type="button"
-                data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"
-                data-buyer-name="${esc(o.buyerName)}" data-buyer-email="${esc(o.buyerEmail)}"
-                data-buyer-phone="${esc(o.buyerPhone)}" data-buyer-city="${esc(o.buyerAddress.city)}"
-                data-buyer-street="${esc(o.buyerAddress.street)}" data-buyer-zip="${esc(o.buyerAddress.zip ?? '')}"
-                data-items="${esc(JSON.stringify(storeItems))}"
-                data-shipping="${esc(String(storeSub.shipping))}"
-                data-discount-type="${esc(storeSub.discount?.type ?? 'percent')}"
-                data-discount-value="${esc(String(storeSub.discount?.value ?? 0))}"
-                style="font-size:0.75rem">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                ערוך פרטים
-              </button>
-            </div>
-            <p class="order-card__info-line order-buyer-name"><strong>${esc(o.buyerName)}</strong></p>
-            <p class="order-card__info-line order-buyer-email">${esc(o.buyerEmail)}</p>
-            <p class="order-card__info-line order-buyer-phone">טלפון: ${esc(o.buyerPhone)}</p>
-            <p class="order-card__info-line order-buyer-address">כתובת: ${esc(o.buyerAddress.street)}, ${esc(o.buyerAddress.city)}${o.buyerAddress.zip ? ' ' + esc(o.buyerAddress.zip) : ''}</p>
-          </div>
-          <div class="order-card__section">
-            <h3 class="order-card__section-title">פריטים</h3>
-            <ul class="order-card__items">${itemsHtml}</ul>
-            <div class="order-card__subtotals">
-              <span>משלוח: ${storeSub.shipping === 0 ? 'חינם' : fmtPrice(storeSub.shipping)}</span>
-              <strong>סה"כ: ${fmtPrice(total)}</strong>
-            </div>
-          </div>
-          <div class="order-card__section order-card__section--controls">
-            <h3 class="order-card__section-title">סטטוס משלוח</h3>
-            <div class="order-card__control-row">
-              ${statusDropdown}
-            </div>
-            <h3 class="order-card__section-title" style="margin-top:0.75rem">מספר מעקב</h3>
-            <div class="order-card__control-row">
-              <input type="text" class="order-tracking-input input" data-field="trackingNumber" value="" placeholder="לדוגמה: IL1234567890" style="flex:1" />
-              <button class="order-save-btn btn btn--sm btn--accent" type="button">שמור</button>
-            </div>
-            <p class="order-save-status" hidden aria-live="polite">נשמר ✓</p>
-          </div>
-        </div>
-      </div>`;
+    async function fetchStoreOrders(): Promise<Parameters<typeof buildOrderCard>[0][] | null> {
+      try {
+        const res = await fetch(`/api/seller/orders?storeSlug=${encodeURIComponent(storeSlugForOrders)}`);
+        if (!res.ok) return null;
+        const { orders } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][] };
+        return orders;
+      } catch { return null; }
     }
 
     async function pollOrders(): Promise<void> {
       if (!ordersList) return;
       try {
-        const res = await fetch(`/api/seller/orders?storeSlug=${encodeURIComponent(storeSlugForOrders)}`);
-        if (!res.ok) return;
-        const { orders } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][] };
+        const orders = await fetchStoreOrders();
+        if (!orders) return;
         const newOrders = orders.filter(o => !knownIds.has(o.id));
         if (!newOrders.length) return;
         newOrders.forEach(o => {
           knownIds.add(o.id);
-          const tmp = document.createElement('div');
-          tmp.innerHTML = buildOrderCard(o);
-          const card = tmp.firstElementChild as HTMLElement | null;
-          if (!card) return;
-          ordersList.insertBefore(card, ordersList.firstChild);
-          bindOrderCard(card);
+          // Only insert into the visible list on page 1 — the sorted-by-
+          // recency assumption an insertBefore(firstChild) relies on only
+          // holds there once orders are paginated (same reasoning as the
+          // admin dashboard's own Messages tab live-poll). Toast/badge still
+          // fire regardless of which page the seller is looking at.
+          if (ordersCurrentPage === 1) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = buildOrderCard(o);
+            const card = tmp.firstElementChild as HTMLElement | null;
+            if (card) {
+              ordersList.insertBefore(card, ordersList.firstChild);
+              bindOrderCard(card);
+              if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
+            }
+          }
           const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
           window.dispatchEvent(new CustomEvent('toast:show', { detail: {
             title: 'הזמנה חדשה!',
@@ -2352,16 +2721,24 @@ const orderStatusColors: Record<string, string> = {
             href: '/seller/dashboard?panel=orders',
           } }));
         });
+        // Trim page 1 back to the server page size (15) — poll inserts land
+        // at the top regardless of how many accumulate mid-session.
+        if (ordersCurrentPage === 1) {
+          Array.from(ordersList.querySelectorAll<HTMLElement>('.order-card')).slice(15).forEach((c) => c.remove());
+        }
         updateOrderTabBadge();
-        applyOrdersFilter();
-        // New cards always land at the top via insertBefore above, regardless
-        // of the seller's chosen sort — re-sort so a poll-inserted order
-        // doesn't silently jump the sort order the seller picked.
-        sortOrders(ordersSortCol, ordersSortDir);
       } catch { /* ignore */ }
     }
 
-    setInterval(pollOrders, 15000);
+    // Seed knownIds from the *full* store order list (not just the DOM's
+    // rendered page-1 cards, which pagination caps at 15) before the poll
+    // loop starts — otherwise every order beyond page 1 looks "new" on the
+    // first tick after every page load, firing a toast for each one (real
+    // bug: was seeding from `.order-card` elements in the DOM).
+    fetchStoreOrders().then((orders) => {
+      (orders ?? []).forEach((o) => knownIds.add(o.id));
+      setInterval(pollOrders, 15000);
+    });
   }
 
   // ── Seller messages: expand / mark read / reply ──────────────
@@ -2393,6 +2770,15 @@ const orderStatusColors: Record<string, string> = {
   const MSG_FILTER_COLUMNS: string[] = [...(msgMixedStatus ? ['status'] : []), 'product', 'from'];
   let msgSortCol: 'date' | 'unread' | 'product' = 'date';
   let msgSortDir: 'asc' | 'desc' = 'desc';
+  let messagesCurrentPage = 1;
+  let messagesSearchQuery = '';
+  // Distinct filter-dropdown values (product/from) — read from an embedded
+  // JSON blob computed server-side over the *full* message list, not scanned
+  // off DOM rows, since only one page's worth of rows exist in the DOM at a
+  // time once messages are paginated (same reasoning as allCategoryPaths()
+  // in products.ts once the category filter hit the same problem).
+  let msgFilterValuesData: { product: string[]; from: string[] } = { product: [], from: [] };
+  try { msgFilterValuesData = JSON.parse(document.getElementById('msg-filter-values-data')?.textContent ?? '{}'); } catch { /* noop */ }
   let msgDashI18nDict: Record<string, string> = {};
   try { msgDashI18nDict = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
   const msgI18n = {
@@ -2434,13 +2820,12 @@ const orderStatusColors: Record<string, string> = {
     return true;
   }
 
+  // Filter changed — re-fetch page 1 of the current query from the server
+  // (kept as the same function name/shape the toolbar's own filter handlers
+  // already call, just server-driven now instead of a DOM show/hide pass).
   function applyMessagesFilter(): void {
-    document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
-      // Never hide a thread the seller currently has open — becoming "read"
-      // mid-view shouldn't make the row vanish out from under them.
-      if (row.classList.contains('msg-table__row--open')) { row.hidden = false; return; }
-      row.hidden = !rowMatchesMsgFilters(row);
-    });
+    messagesCurrentPage = 1;
+    applyMessagesPagination();
   }
 
   function refreshMsgFilterUI(): void {
@@ -2454,13 +2839,6 @@ const orderStatusColors: Record<string, string> = {
       badge.hidden = activeCols === 0;
       badge.textContent = String(activeCols);
     }
-  }
-
-  function getMsgSortValue(row: HTMLElement, col: 'date' | 'unread' | 'product'): string | number {
-    if (col === 'date') return row.dataset.sortDate ?? '';
-    if (col === 'unread') return row.classList.contains('msg-table__row--unread') ? 1 : 0;
-    if (col === 'product') return row.dataset.sortProduct ?? '';
-    return '';
   }
 
   function refreshMsgSortUI(): void {
@@ -2478,19 +2856,8 @@ const orderStatusColors: Record<string, string> = {
   function sortMessages(col: 'date' | 'unread' | 'product', dir: 'asc' | 'desc') {
     msgSortCol = col;
     msgSortDir = dir;
-    if (!msgTbody) { refreshMsgSortUI(); return; }
-    const rows = Array.from(msgTbody.querySelectorAll<HTMLElement>('[data-msg-id]'));
-    rows.sort((a, b) => {
-      const va = getMsgSortValue(a, col);
-      const vb = getMsgSortValue(b, col);
-      const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-      return dir === 'asc' ? cmp : -cmp;
-    });
-    rows.forEach((row) => {
-      msgTbody.append(row);
-      const detail = document.getElementById(`msg-detail-${row.dataset.msgId}`);
-      if (detail) msgTbody.append(detail);
-    });
+    messagesCurrentPage = 1;
+    applyMessagesPagination();
     refreshMsgSortUI();
   }
 
@@ -2508,7 +2875,7 @@ const orderStatusColors: Record<string, string> = {
     if (!portal) {
       portal = document.createElement('div');
       portal.id = 'msg-toolbar-portal';
-      portal.className = 'toolbar-portal';
+      portal.className = 'toolbar-portal fixed bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] p-[.3rem] z-[300] animate-product-menu-open';
       portal.setAttribute('role', 'menu');
       portal.hidden = true;
       document.body.appendChild(portal);
@@ -2565,7 +2932,7 @@ const orderStatusColors: Record<string, string> = {
     openMsgPortal(trigger, '13rem', () => {
       return MSG_SORT_OPTIONS.map((o) => {
         const selected = o.col === msgSortCol && o.dir === msgSortDir;
-        return `<button type="button" class="product-menu__item" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="cursor:pointer${selected ? ';font-weight:700;color:var(--color-primary)' : ''}">${escMsg(o.label())}</button>`;
+        return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escMsg(o.label())}</button>`;
       }).join('');
     }, (portal) => {
       portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
@@ -2595,9 +2962,10 @@ const orderStatusColors: Record<string, string> = {
     return col;
   }
   function getMsgDistinctValues(col: string): string[] {
-    const values = new Set<string>();
-    document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => values.add(getMsgFilterValue(row, col)));
-    return [...values].sort();
+    if (col === 'status') return [msgI18n.filterValUnread, msgI18n.filterValRead];
+    if (col === 'product') return msgFilterValuesData.product.map((v) => v || msgI18n.filterNoProduct);
+    if (col === 'from') return msgFilterValuesData.from;
+    return [];
   }
   function msgFilterValuesHtml(col: string, showBack: boolean): string {
     const label = msgFilterColumnLabel(col);
@@ -2605,13 +2973,13 @@ const orderStatusColors: Record<string, string> = {
     const selected = msgFilters.get(col) ?? new Set<string>();
     const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
     const backHtml = showBack
-      ? `<button type="button" class="product-menu__back" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${escMsg(label)}</button><div class="product-menu__divider"></div>`
+      ? `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${escMsg(label)}</button><div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`
       : '';
     return [
       backHtml,
-      ...values.map((v) => `<label class="product-menu__checkbox-item"><input type="checkbox" data-filter-value="${escMsg(v)}" ${selected.has(v) ? 'checked' : ''}>${escMsg(v)}</label>`),
-      `<div class="product-menu__divider"></div>`,
-      `<button type="button" class="product-menu__clear" data-filter-clear-col>${escMsg(msgI18n.filterClearColumn)}</button>`,
+      ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${escMsg(v)}" ${selected.has(v) ? 'checked' : ''}>${escMsg(v)}</label>`),
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${escMsg(msgI18n.filterClearColumn)}</button>`,
     ].join('');
   }
   function wireMsgFilterValues(portal: HTMLElement, col: string, reopen: () => void, onBack?: () => void): void {
@@ -2651,14 +3019,14 @@ const orderStatusColors: Record<string, string> = {
     return [
       ...MSG_FILTER_COLUMNS.map((col) => {
         const active = (msgFilters.get(col)?.size ?? 0) > 0;
-        return `<div class="product-menu__item" data-filter-col="${col}" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
-          <input type="checkbox" data-filter-col-toggle="${col}" ${active ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">
+        return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
+          <input type="checkbox" class="cursor-pointer shrink-0" data-filter-col-toggle="${col}" ${active ? 'checked' : ''}>
           <span style="flex:1">${escMsg(msgFilterColumnLabel(col))}</span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
         </div>`;
       }).join(''),
-      `<div class="product-menu__divider"></div>`,
-      `<button type="button" class="product-menu__clear" data-filter-clear-all>${escMsg(msgI18n.filterClearAll)}</button>`,
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${escMsg(msgI18n.filterClearAll)}</button>`,
     ].join('');
   }
 
@@ -2716,7 +3084,77 @@ const orderStatusColors: Record<string, string> = {
   refreshMsgSortUI();
   refreshMsgFilterUI();
 
-  document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
+  // Builds the two <tr> a message occupies (main row + collapsible thread
+  // row) from an AJAX-fetched item — mirrors the SSR template exactly, minus
+  // the reply entries themselves: expanding a row always re-fetches its
+  // thread fresh via loadThread() (see bindMessageRow below), which replaces
+  // everything after the first child, so there was never a need to embed
+  // existing replies here — only the buyer's own opening message.
+  interface MessageRowData {
+    msg: { id: string; fromName: string; subject: string; content: string; createdAt: string; readBySeller: boolean; productRef?: { productName: string; productSlug: string; storeSlug: string } };
+    lastMsg: { content: string; createdAt: string; fromUserId: string };
+    hasUnread: boolean;
+  }
+  function buildMessageRow(data: MessageRowData): [HTMLTableRowElement, HTMLTableRowElement] {
+    const { msg, lastMsg, hasUnread } = data;
+    const row = document.createElement('tr');
+    row.className = `msg-table__row${hasUnread ? ' msg-table__row--unread' : ''}`;
+    row.dataset.msgId = msg.id;
+    row.dataset.sortDate = lastMsg.createdAt;
+    row.dataset.sortProduct = (msg.productRef?.productName ?? '').toLowerCase();
+    row.dataset.filterProduct = msg.productRef?.productName ?? '';
+    row.dataset.filterFrom = msg.fromName;
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-expanded', 'false');
+    const productTd = msg.productRef
+      ? `<a href="/store/${escMsg(msg.productRef.storeSlug)}/${escMsg(msg.productRef.productSlug)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${escMsg(msg.productRef.productName)}</a>`
+      : `<span style="color:var(--color-muted)">—</span>`;
+    row.innerHTML = `
+      <td class="msg-table__td msg-table__td--status"></td>
+      <td class="msg-table__td msg-table__td--from">${hasUnread ? '<span class="visually-hidden msg-unread-sr">לא נקרא · </span>' : ''}${escMsg(msg.fromName)}</td>
+      <td class="msg-table__td msg-table__td--subject">${escMsg(msg.subject)}</td>
+      <td class="msg-table__td msg-table__td--preview">${escMsg(lastMsg.content)}${lastMsg.fromUserId === currentSellerId ? '<span class="msg-table__preview-you"> (אתה)</span>' : ''}</td>
+      <td class="msg-table__td msg-table__td--product">${productTd}</td>
+      <td class="msg-table__td msg-table__td--date">${escMsg(fmtDateJs(lastMsg.createdAt))}</td>
+      <td class="msg-table__td msg-table__td--actions">
+        <button class="seller-msg-delete" data-delete-msg-id="${escMsg(msg.id)}" type="button" aria-label="מחק שיחה" title="מחק שיחה">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </td>`;
+
+    const threadRow = document.createElement('tr');
+    threadRow.className = 'msg-thread-row';
+    threadRow.id = `msg-detail-${msg.id}`;
+    threadRow.hidden = true;
+    threadRow.innerHTML = `
+      <td colspan="7">
+        <div class="msg-thread msg-thread--seller-pov" id="replies-${msg.id}">
+          <div class="msg-thread-entry msg-thread-entry--buyer">
+            <div class="msg-thread-entry__header">
+              <span class="msg-thread-entry__who">${escMsg(msg.fromName)}</span>
+              ${!msg.readBySeller ? '<span class="msg-thread-unread-dot" aria-label="לא נקרא"></span>' : ''}
+              <span class="msg-thread-entry__date">${escMsg(fmtDateJs(msg.createdAt))}</span>
+            </div>
+            <div class="msg-thread-entry__body">${escMsg(msg.content)}</div>
+          </div>
+        </div>
+        <div class="seller-msg-reply-form" data-reply-for="${escMsg(msg.id)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
+          <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
+          <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+            <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
+            <button class="seller-msg-reply-send" type="button">שלח</button>
+          </div>
+        </div>
+      </td>`;
+
+    return [row, threadRow];
+  }
+
+  // Extracted to a named function (was an inline forEach body) so a freshly
+  // AJAX-fetched message row (applyMessagesPagination below) can be bound
+  // the same way an initial SSR row is, instead of duplicating this logic.
+  function bindMessageRow(row: HTMLElement): void {
     const id        = row.dataset.msgId ?? '';
     const isSystem  = id === 'system';
     const threadRow = document.getElementById(`msg-detail-${id}`) as HTMLTableRowElement | null;
@@ -2754,7 +3192,7 @@ const orderStatusColors: Record<string, string> = {
             row.querySelector('.msg-unread-sr')?.remove();
             document.querySelector('#tab-messages span[aria-label]')?.remove();
             updateSwitcherAlertDot();
-            applyMessagesFilter();
+            if (!rowMatchesMsgFilters(row)) row.hidden = true;
             fetch('/api/admin-messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read' }) })
               .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
           }
@@ -2802,7 +3240,7 @@ const orderStatusColors: Record<string, string> = {
             repliesEl.querySelectorAll('.msg-thread-unread-dot').forEach((el) => el.remove());
             document.querySelector('#tab-messages span[aria-label]')?.remove();
             updateSwitcherAlertDot();
-            applyMessagesFilter();
+            if (!rowMatchesMsgFilters(row)) row.hidden = true;
             fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read', id }) })
               .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
           }
@@ -2877,28 +3315,119 @@ const orderStatusColors: Record<string, string> = {
         }
       });
     }
-  });
+  }
 
-  /* ── Delete message thread ── */
-  document.querySelectorAll<HTMLButtonElement>('[data-delete-msg-id]').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (!confirm('למחוק את השיחה הזו לצמיתות?')) return;
-      const id = btn.dataset.deleteMsgId ?? '';
-      try {
-        const res = await fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete', id }),
-        });
-        if (res.ok) {
-          const row = btn.closest('tr');
-          const nextRow = row?.nextElementSibling;
-          row?.remove();
-          if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
-        }
-      } catch { /* ignore */ }
+  document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach(bindMessageRow);
+
+  // ── Messages: server-fetched page/search/sort/filter (AJAX) ──────────
+  // Same reasoning as Products/Orders' own applyPagination() — search/sort/
+  // filter now run server-side (seller-messages-query.ts), so a change
+  // re-fetches the current query's page and rebuilds the *buyer* message
+  // rows (via buildMessageRow) — the pinned "הודעות מערכת" row and its
+  // thread stay untouched, they're never part of this fetch at all.
+  async function applyMessagesPagination(): Promise<void> {
+    const storeId = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.storeId ?? '';
+    if (!msgTbody || !storeId) return;
+
+    const params = new URLSearchParams();
+    params.set('storeId', storeId);
+    params.set('page', String(messagesCurrentPage));
+    if (messagesSearchQuery) params.set('mq', messagesSearchQuery);
+    params.set('msort', `${msgSortCol}:${msgSortDir}`);
+    const statusValues = msgFilters.get('status');
+    if (statusValues?.size) {
+      params.set('mstatus', encodeList([...statusValues].map((v) => (v === msgI18n.filterValUnread ? 'unread' : 'read'))));
+    }
+    const productValues = msgFilters.get('product');
+    if (productValues?.size) {
+      params.set('mproduct', encodeList([...productValues].map((v) => (v === msgI18n.filterNoProduct ? '' : v))));
+    }
+    const fromValues = msgFilters.get('from');
+    if (fromValues?.size) params.set('mfrom', encodeList([...fromValues]));
+
+    let data: { ok: boolean; items?: MessageRowData[]; page?: number; totalPages?: number; total?: number };
+    try {
+      const res = await fetch(`/api/seller/messages?${params.toString()}`);
+      data = await res.json() as typeof data;
+    } catch { return; }
+    if (!data.ok) return;
+
+    messagesCurrentPage = data.page ?? 1;
+
+    // Everything after the pinned system row + its own thread row (the
+    // first two <tr> children) is buyer-message content this function owns.
+    Array.from(msgTbody.children).slice(2).forEach((el) => el.remove());
+    (data.items ?? []).forEach((item) => {
+      const [row, threadRow] = buildMessageRow(item);
+      msgTbody!.append(row, threadRow);
+      bindMessageRow(row);
     });
+
+    const total = data.total ?? 0;
+    const emptyEl = document.getElementById('msg-filter-empty');
+    if (emptyEl) emptyEl.hidden = total !== 0;
+    refreshMsgFilterUI();
+    renderMessagesPaginationControls(data.totalPages ?? 1);
+  }
+
+  function renderMessagesPaginationControls(totalPages: number): void {
+    const nav = document.getElementById('msg-pagination') as HTMLElement | null;
+    if (!nav) return;
+    if (totalPages <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
+    const pageInfo = (msgDashI18nDict.paginationPageInfo ?? 'עמוד {page} מתוך {total}')
+      .replace('{page}', String(messagesCurrentPage)).replace('{total}', String(totalPages));
+    nav.hidden = false;
+    nav.innerHTML = `
+      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-prev${messagesCurrentPage <= 1 ? ' disabled' : ''}>${escMsg(msgDashI18nDict.paginationPrev ?? 'הקודם')}</button>
+      <span class="text-[0.82rem] whitespace-nowrap [color:var(--color-muted)]">${escMsg(pageInfo)}</span>
+      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-next${messagesCurrentPage >= totalPages ? ' disabled' : ''}>${escMsg(msgDashI18nDict.paginationNext ?? 'הבא')}</button>
+    `;
+  }
+
+  function initMessagesPagination(): void {
+    const nav = document.getElementById('msg-pagination') as HTMLElement | null;
+    if (!nav) return;
+    messagesCurrentPage = parseInt(nav.dataset.page ?? '1', 10) || 1;
+    renderMessagesPaginationControls(parseInt(nav.dataset.totalPages ?? '1', 10) || 1);
+    nav.addEventListener('click', (e) => {
+      const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next]');
+      if (!btn || btn.disabled) return;
+      messagesCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
+      applyMessagesPagination();
+      document.querySelector('.msg-table-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+  initMessagesPagination();
+
+  const msgSearchInput = document.getElementById('msg-search-input') as HTMLInputElement | null;
+  msgSearchInput?.addEventListener('input', debounce(() => {
+    messagesSearchQuery = msgSearchInput.value.trim();
+    messagesCurrentPage = 1;
+    applyMessagesPagination();
+  }, 300));
+
+  /* ── Delete message thread — event-delegated on document (not a per-button
+     bind loop) so a message row inserted later via AJAX doesn't need its
+     delete button separately re-bound. ── */
+  document.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-delete-msg-id]');
+    if (!btn) return;
+    e.stopPropagation();
+    if (!confirm('למחוק את השיחה הזו לצמיתות?')) return;
+    const id = btn.dataset.deleteMsgId ?? '';
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id }),
+      });
+      if (res.ok) {
+        const row = btn.closest('tr');
+        const nextRow = row?.nextElementSibling;
+        row?.remove();
+        if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
+      }
+    } catch { /* ignore */ }
   });
 
   // ── Edit Order Details Modal ─────────────────────────────────
@@ -3078,11 +3607,11 @@ const orderStatusColors: Record<string, string> = {
         if (cardItemsEl && savedOrder.items) {
           const storeItems = savedOrder.items.filter((i) => i.storeSlug === storeSlug);
           cardItemsEl.innerHTML = storeItems.map((item) => `
-            <li class="order-card__item">
-              ${item.image ? `<img src="${escEom(item.image)}" alt="" width="36" height="36" loading="lazy" class="order-card__item-img">` : ''}
-              <span class="order-card__item-name">${escEom(item.productName)}</span>
-              <span class="order-card__item-qty">×${item.qty}</span>
-              <span class="order-card__item-price">${(item.price * item.qty).toFixed(2)} ₪</span>
+            <li class="flex items-center gap-2.5 text-sm">
+              ${item.image ? `<img src="${escEom(item.image)}" alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-md shrink-0">` : ''}
+              <span class="flex-1 text-[color:var(--color-text)]">${escEom(item.productName)}</span>
+              <span class="text-[color:var(--color-muted)] text-[0.8rem]">×${item.qty}</span>
+              <span class="font-bold text-[color:var(--color-text)] ms-auto">${(item.price * item.qty).toFixed(2)} ₪</span>
             </li>`).join('');
         }
         // Update subtotal display
@@ -3094,8 +3623,8 @@ const orderStatusColors: Record<string, string> = {
           if (subtotalsEl) {
             subtotalsEl.innerHTML = `
               <span>משלוח: ${storeSub.shipping === 0 ? 'חינם' : `${storeSub.shipping.toFixed(2)} ₪`}</span>
-              ${discApplied > 0 ? `<span style="color:#16a34a">הנחה: −${discApplied.toFixed(2)} ₪</span>` : ''}
-              <strong>סה"כ: ${total.toFixed(2)} ₪</strong>`;
+              ${discApplied > 0 ? `<span class="text-[color:var(--color-success)]">הנחה: −${discApplied.toFixed(2)} ₪</span>` : ''}
+              <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: ${total.toFixed(2)} ₪</strong>`;
           }
           const amountEl = card.querySelector('.order-card__amount');
           if (amountEl) amountEl.textContent = `${total.toFixed(2)} ₪`;
@@ -3192,9 +3721,12 @@ const orderStatusColors: Record<string, string> = {
             fromTd.insertBefore(sr, fromTd.firstChild);
           }
           if (id === 'system') refreshSystemRowPreview(row); else refreshRowPreview(id, row);
+          // Becoming unread may no longer match an active "read only" filter
+          // — a single-row check against state already known client-side,
+          // not a full re-fetch of the current page.
+          if (!rowMatchesMsgFilters(row)) row.hidden = true;
         }
       });
-      applyMessagesFilter();
     }).catch(() => {});
   }
   pollSellerUnread();

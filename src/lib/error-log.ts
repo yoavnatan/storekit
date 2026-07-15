@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import type { AstroCookies } from 'astro';
+import { getSellerSession, getSellerById } from './seller-auth.js';
+import { getStoreBySellerId, getStoreBySlug } from './stores.js';
 
 const ERROR_LOG_PATH = path.join(process.cwd(), 'data/error-log.json');
 const MAX_ENTRIES = 500;
@@ -13,6 +16,54 @@ export interface ErrorLogEntry {
   stack?: string;
   statusCode?: number;
   createdAt: string;
+  // Who/where this happened to — best-effort, not always resolvable (e.g. an
+  // anonymous visitor or a route with no store in its path leaves these unset).
+  storeSlug?: string;
+  storeName?: string;
+  actorRole?: 'buyer' | 'seller';
+  actorId?: string;
+  actorLabel?: string; // email, for admin display
+  // Automation groundwork: a human-readable "how to resolve" message, set by
+  // the call site when the failure mode is known — not sent anywhere yet,
+  // just carried on the entry so a future notifier can relay it as-is.
+  resolutionHint?: string;
+}
+
+// Best-effort identity for an error entry: derives the store from a
+// `/store/[slug]` route and the signed-in account (buyer or seller share the
+// same session cookie — an account only counts as 'seller' if it owns a
+// store). Callers with more specific context (e.g. checkout, which already
+// knows the buyer email) should build these fields directly instead.
+// Called from a catch block building logError's own arguments (i.e. before
+// logError's internal try/catch even starts) — so this one, unlike logError,
+// has to guarantee it never throws by itself rather than relying on a
+// caller to wrap it.
+export function resolveErrorContext(
+  pathname: string,
+  cookies: AstroCookies
+): Pick<ErrorLogEntry, 'storeSlug' | 'storeName' | 'actorRole' | 'actorId' | 'actorLabel'> {
+  const ctx: Pick<ErrorLogEntry, 'storeSlug' | 'storeName' | 'actorRole' | 'actorId' | 'actorLabel'> = {};
+  try {
+    const storeMatch = pathname.match(/^\/store\/([^/]+)/);
+    if (storeMatch?.[1]) {
+      const store = getStoreBySlug(storeMatch[1]);
+      if (store) { ctx.storeSlug = store.slug; ctx.storeName = store.name; }
+    }
+
+    const accountId = getSellerSession(cookies);
+    if (accountId) {
+      const account = getSellerById(accountId);
+      if (account) {
+        const ownStore = getStoreBySellerId(accountId);
+        ctx.actorId = accountId;
+        ctx.actorLabel = account.email;
+        ctx.actorRole = ownStore ? 'seller' : 'buyer';
+        if (ownStore && !ctx.storeSlug) { ctx.storeSlug = ownStore.slug; ctx.storeName = ownStore.name; }
+      }
+    }
+  } catch { /* best-effort — never throw from inside an error handler's own context-gathering */ }
+
+  return ctx;
 }
 
 function readErrorLog(): ErrorLogEntry[] {

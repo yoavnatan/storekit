@@ -540,6 +540,8 @@ const strEmpty   = t.store.noProductsFound;
     if (window.innerWidth <= 640) {
       const rect = bellBtn.getBoundingClientRect();
       Object.assign(notifDrop.style, { top: `${rect.bottom + 8}px`, left: '8px', right: '8px', width: 'auto', maxHeight: '480px' });
+    } else {
+      notifDrop.style.cssText = '';
     }
     notifDrop.hidden = false;
     bellBtn.setAttribute('aria-expanded', 'true');

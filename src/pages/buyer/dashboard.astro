@@ -79,7 +79,17 @@ const shipLabel: Record<string, string> = {
     }
 
     /* ── Sidebar ── */
+    /* display:contents on desktop — the wrapper is invisible to the grid so
+       .my-sidebar participates directly as the 220px grid column; it only
+       becomes a real (clipping) box inside the mobile media query below. */
+    .my-sidebar-clip { display: contents; }
     .my-sidebar { position: sticky; top: 5rem; }
+
+    /* Grid items default to min-width:auto (their content's max-content size).
+       .o-items below is white-space:nowrap, so a long order's item list can
+       force this 1fr column — and the whole page — wider than the viewport
+       at any width above the mobile breakpoint, not just on mobile. */
+    .my-content-wrap { min-width: 0; }
 
     .my-user-card {
       display: flex;
@@ -180,12 +190,31 @@ const shipLabel: Record<string, string> = {
       }
       .my-menu-btn:hover { background: var(--color-bg); color: var(--color-text); }
 
+      /* Clips the off-canvas drawer to the viewport. .my-sidebar itself stays
+         position:fixed for correct in-place positioning at any scroll offset,
+         but a translateX(100%) fixed box still counts toward the document's
+         scrollable width on mobile (confirmed: it pushed scrollWidth past the
+         viewport even with overflow-x:hidden on <html>, which only guards
+         normal in-flow overflow, not this). The transform below turns this
+         wrapper into the containing block for the fixed child (per spec) so
+         its own overflow:hidden actually clips it — inset:0 keeps the clip
+         box identical to the true viewport, so positioning is unaffected. */
+      .my-sidebar-clip {
+        display: block;
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+        transform: translateZ(0);
+        z-index: 99;
+      }
+
       .my-sidebar {
         position: fixed;
         right: 0; top: 0; bottom: 0;
         width: 230px;
         background: var(--color-surface);
-        z-index: 99;
+        pointer-events: auto;
         padding: 1.25rem 0.75rem 2rem;
         box-shadow: -6px 0 32px rgba(0,0,0,0.14);
         transform: translateX(100%);
@@ -394,6 +423,7 @@ const shipLabel: Record<string, string> = {
   <div class="my-page">
 
     <!-- Sidebar / Drawer -->
+    <div class="my-sidebar-clip">
     <aside class="my-sidebar" id="my-sidebar">
       <button class="my-drawer-close" id="my-drawer-close" type="button" aria-label={t.buyerDashboard.closeDrawer}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -432,6 +462,7 @@ const shipLabel: Record<string, string> = {
         </button>
       </nav>
     </aside>
+    </div>
 
     <!-- Content -->
     <div class="my-content-wrap">
@@ -533,16 +564,16 @@ const shipLabel: Record<string, string> = {
                 toolbar takes over once the table collapses to cards on
                 mobile (thead is display:none below 640px). */}
             <div class="table-toolbar" data-mixed-status={String(showMsgStatusControls)}>
-              <button type="button" id="bmsg-sort-trigger" class="table-toolbar-btn" aria-haspopup="listbox" aria-expanded="false">
+              <button type="button" id="bmsg-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
                 <span id="bmsg-sort-label">{t.dashboard.msgSortOptDateDesc}</span>
-                <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
-              <button type="button" id="bmsg-filter-trigger" class="table-toolbar-btn" aria-haspopup="true" aria-expanded="false">
+              <button type="button" id="bmsg-filter-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="true" aria-expanded="false">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                 <span>{t.dashboard.filterByLabel}</span>
-                <span id="bmsg-filter-count" class="filter-count-badge" hidden>0</span>
-                <svg class="table-toolbar-btn__chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                <span id="bmsg-filter-count" class="filter-count-badge inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-primary)] text-white text-[.68rem] font-bold leading-none" hidden>0</span>
+                <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
             </div>
 
@@ -800,13 +831,13 @@ const shipLabel: Record<string, string> = {
     sidebar.classList.add('is-open');
     backdrop.classList.add('is-open');
     menuBtn?.setAttribute('aria-expanded', 'true');
-    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
   }
   function closeDrawer() {
     sidebar.classList.remove('is-open');
     backdrop.classList.remove('is-open');
     menuBtn?.setAttribute('aria-expanded', 'false');
-    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
   }
 
   // Suppress sidebar transition when the breakpoint changes (resize/DevTools toggle)
@@ -1120,7 +1151,7 @@ const shipLabel: Record<string, string> = {
     if (!portal) {
       portal = document.createElement('div');
       portal.id = 'bmsg-toolbar-portal';
-      portal.className = 'toolbar-portal';
+      portal.className = 'toolbar-portal fixed bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] p-[.3rem] z-[300] animate-product-menu-open';
       portal.setAttribute('role', 'menu');
       portal.hidden = true;
       document.body.appendChild(portal);
@@ -1177,7 +1208,7 @@ const shipLabel: Record<string, string> = {
     openBmsgPortal(trigger, '13rem', () => {
       return BMSG_SORT_OPTIONS.map((o) => {
         const selected = o.col === bmsgSortCol && o.dir === bmsgSortDir;
-        return `<button type="button" class="product-menu__item" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="cursor:pointer${selected ? ';font-weight:700;color:var(--color-primary)' : ''}">${escB(o.label())}</button>`;
+        return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escB(o.label())}</button>`;
       }).join('');
     }, (portal) => {
       portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
@@ -1217,13 +1248,13 @@ const shipLabel: Record<string, string> = {
     const selected = bmsgFilters.get(col) ?? new Set<string>();
     const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
     const backHtml = showBack
-      ? `<button type="button" class="product-menu__back" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${escB(label)}</button><div class="product-menu__divider"></div>`
+      ? `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${escB(label)}</button><div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`
       : '';
     return [
       backHtml,
-      ...values.map((v) => `<label class="product-menu__checkbox-item"><input type="checkbox" data-filter-value="${escB(v)}" ${selected.has(v) ? 'checked' : ''}>${escB(v)}</label>`),
-      `<div class="product-menu__divider"></div>`,
-      `<button type="button" class="product-menu__clear" data-filter-clear-col>${escB(bI.filterClearColumn)}</button>`,
+      ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${escB(v)}" ${selected.has(v) ? 'checked' : ''}>${escB(v)}</label>`),
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${escB(bI.filterClearColumn)}</button>`,
     ].join('');
   }
   function wireBmsgFilterValues(portal: HTMLElement, col: string, reopen: () => void, onBack?: () => void): void {
@@ -1256,14 +1287,14 @@ const shipLabel: Record<string, string> = {
     return [
       ...BMSG_FILTER_COLUMNS.map((col) => {
         const active = (bmsgFilters.get(col)?.size ?? 0) > 0;
-        return `<div class="product-menu__item" data-filter-col="${col}" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
-          <input type="checkbox" data-filter-col-toggle="${col}" ${active ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">
+        return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
+          <input type="checkbox" class="cursor-pointer shrink-0" data-filter-col-toggle="${col}" ${active ? 'checked' : ''}>
           <span style="flex:1">${escB(bmsgFilterColumnLabel(col))}</span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
         </div>`;
       }).join(''),
-      `<div class="product-menu__divider"></div>`,
-      `<button type="button" class="product-menu__clear" data-filter-clear-all>${escB(bI.filterClearAll)}</button>`,
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${escB(bI.filterClearAll)}</button>`,
     ].join('');
   }
 

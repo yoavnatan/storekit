@@ -1,5 +1,11 @@
 import { defineMiddleware } from 'astro:middleware';
-import { logError } from './lib/error-log.js';
+import { logError, resolveErrorContext } from './lib/error-log.js';
+import { recordPageView } from './lib/store-pageviews.js';
+
+// Store performance's visitor count (seller dashboard) taps every real GET to
+// a store's own pages here rather than each page component calling it
+// separately — one place to keep in sync as store routes are added/renamed.
+const STORE_PATH_RE = /^\/store\/([^/]+)(?:\/|$)/;
 
 // Pure observability tap — logs unexpected server errors so the admin
 // Alerts tab has something to show, but never changes what the caller
@@ -14,14 +20,21 @@ import { logError } from './lib/error-log.js';
 // carries a real message/stack instead of a content-free "unhandled 500".
 export const onRequest = defineMiddleware(async (context, next) => {
   try {
+    if (context.request.method === 'GET') {
+      const pathname = new URL(context.request.url).pathname;
+      const storeMatch = pathname.match(STORE_PATH_RE);
+      if (storeMatch) recordPageView(storeMatch[1]);
+    }
     return await next();
   } catch (err) {
+    const pathname = new URL(context.request.url).pathname;
     logError({
       source: 'server',
-      route: new URL(context.request.url).pathname,
+      route: pathname,
       message: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
       statusCode: 500,
+      ...resolveErrorContext(pathname, context.cookies),
     });
     throw err;
   }

@@ -267,12 +267,19 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     return json({ orderIds, checkoutRef }, 201);
   } catch (err) {
     for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+    const storeSlugs = Object.keys(storeSubtotals);
     logError({
       source: 'server',
       route: '/api/checkout',
       message: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
       statusCode: 500,
+      actorRole: 'buyer',
+      actorId: userId ?? undefined,
+      actorLabel: typeof buyerEmail === 'string' ? buyerEmail : undefined,
+      storeSlug: storeSlugs.length ? storeSlugs.join(', ') : undefined,
+      storeName: storeSlugs.length ? storeSlugs.map((s) => storeSubtotals[s]!.storeName).join(', ') : undefined,
+      resolutionHint: 'כשל בביצוע ההזמנה; המלאי שוחזר אוטומטית. יש לנסות לבצע את ההזמנה שוב — אם התקלה חוזרת, יש לפנות לתמיכה עם מספר האסמכתא.',
     });
     return json({ error: 'Checkout failed, please try again' }, 500);
   }

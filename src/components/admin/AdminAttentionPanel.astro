@@ -1,10 +1,14 @@
 ---
 import type { AttentionEntry } from '../../lib/admin-stats.js';
+import AdminPager from './AdminPager.astro';
 
 interface Props {
-  entries: AttentionEntry[];
+  entries: AttentionEntry[]; // current page only
+  page: number;
+  totalPages: number;
+  buildUrl: (page: number) => string;
 }
-const { entries } = Astro.props;
+const { entries, page, totalPages, buildUrl } = Astro.props;
 ---
 
 <p class="admin-attention-note">
@@ -14,6 +18,8 @@ const { entries } = Astro.props;
 {entries.length === 0 ? (
   <p class="admin-empty">אין חנויות הדורשות תשומת לב כרגע.</p>
 ) : (
+  <Fragment>
+  <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
   <ul class="admin-attention-list">
     {entries.map(({ store, seller, reasons }) => (
       <li class="admin-attention-item">
@@ -28,4 +34,6 @@ const { entries } = Astro.props;
       </li>
     ))}
   </ul>
+  <AdminPager page={page} totalPages={totalPages} buildUrl={buildUrl} />
+  </Fragment>
 )}

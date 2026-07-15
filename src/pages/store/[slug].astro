@@ -844,6 +844,10 @@ const pmI18n = {
 
   let currentSort = 'default';
   let activeTag = '';
+  // Set true wherever activeTag actually changes; refreshFromServer() consumes
+  // it to decide whether renderCategoryNav() needs to run this time (sort/
+  // search-only refreshes never touch the category, so should skip it).
+  let pendingCategoryNav = false;
   // Set only by the header/general search bar (never by the local, in-filter
   // search box) — the effective query while activeTag === '' due to that
   // search overriding the category filter. preGlobalSearchTag remembers what
@@ -985,7 +989,7 @@ const pmI18n = {
     if (!btn) return;
     clearGlobalSearch();
     activeTag = btn.dataset.categoryId ?? '';
-    renderCategoryNav();
+    pendingCategoryNav = true;
     updateDrawerToggleLabel();
     refreshFromServer();
   });
@@ -1026,23 +1030,55 @@ const pmI18n = {
       `;
     }
 
+    // Tracks whichever chip the open panel is currently anchored to, so a
+    // page scroll can re-read its new position (see repositionOrHideChipDropdown
+    // below) instead of just closing the panel outright.
+    let currentChip: HTMLElement | null = null;
+
+    function positionChipDropdown(chip: HTMLElement): void {
+      if (!chipDropdown) return;
+      const rect = chip.getBoundingClientRect();
+      chipDropdown.style.top = `${rect.bottom + 5}px`;
+      if (isRtl) chipDropdown.style.right = `${window.innerWidth - rect.right}px`;
+      else chipDropdown.style.left = `${rect.left}px`;
+    }
+
     function showChipDropdown(chip: HTMLElement): void {
       clearTimeout(hideTimer);
       const id = chip.dataset.categoryId ?? '';
       const node = flatCategories.find((c) => c.id === id);
       if (!node?.children.length || !chipDropdown) return;
+      // In case a re-hover interrupts an in-progress close (see hideChipDropdown).
+      chipDropdown.classList.remove('dropdown--closing');
       anchorNode = node;
+      currentChip = chip;
       renderChipDropdownLevel(node.children, false);
-      const rect = chip.getBoundingClientRect();
-      chipDropdown.style.top = `${rect.bottom + 5}px`;
-      if (isRtl) chipDropdown.style.right = `${window.innerWidth - rect.right}px`;
-      else chipDropdown.style.left = `${rect.left}px`;
+      positionChipDropdown(chip);
       chipDropdown.hidden = false;
+    }
+
+    // Same fade-out used by the header's own dropdowns (.dropdown--closing,
+    // header.css) — an instant hidden=true read as an abrupt disappearance;
+    // this gives it a brief, consistent exit instead.
+    function hideChipDropdown(): void {
+      if (!chipDropdown || chipDropdown.hidden) return;
+      currentChip = null;
+      if (chipDropdown.classList.contains('dropdown--closing')) return;
+      chipDropdown.classList.add('dropdown--closing');
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        chipDropdown!.classList.remove('dropdown--closing');
+        chipDropdown!.hidden = true;
+      };
+      chipDropdown.addEventListener('animationend', finish, { once: true });
+      setTimeout(finish, 200);
     }
 
     function hideChipDropdownSoon(): void {
       clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => { if (chipDropdown) chipDropdown.hidden = true; }, 150);
+      hideTimer = setTimeout(hideChipDropdown, 150);
     }
 
     categoryFilters?.addEventListener('mouseover', (e) => {
@@ -1056,7 +1092,20 @@ const pmI18n = {
     });
     chipDropdown.addEventListener('mouseenter', () => clearTimeout(hideTimer));
     chipDropdown.addEventListener('mouseleave', hideChipDropdownSoon);
-    categoryFilters?.addEventListener('scroll', () => { chipDropdown!.hidden = true; }, { passive: true });
+    categoryFilters?.addEventListener('scroll', hideChipDropdown, { passive: true });
+    // The panel is position:fixed and JS-positioned once, on open — it never
+    // re-reads the chip's position afterward, so scrolling the *page*
+    // vertically leaves it visually detached from the chip it belongs to.
+    // Track the chip's live position instead of just closing the panel —
+    // the mouse hasn't left it, so an outright close on the very first pixel
+    // of scroll would be wrong. Only close if the chip itself has scrolled
+    // out of the viewport (nothing sensible left to stay anchored to).
+    window.addEventListener('scroll', () => {
+      if (!currentChip || chipDropdown!.hidden) return;
+      const rect = currentChip.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) hideChipDropdown();
+      else positionChipDropdown(currentChip);
+    }, { passive: true });
 
     // Click a node that itself has children → drill into it (replace the
     // panel's content, don't select yet); click "back" → return to the
@@ -1084,7 +1133,18 @@ const pmI18n = {
       // A real leaf selection (no data-back, no data-drill) — let it bubble
       // up to apply the filter as usual, but also close the flyout right
       // away instead of leaving it open until the mouse happens to leave.
-      if (target.closest('[data-category-id]')) chipDropdown!.hidden = true;
+      if (target.closest('[data-category-id]')) hideChipDropdown();
+    });
+
+    // Closing only relied on mouseout/mouseleave until now — a click anywhere
+    // that isn't inside the panel itself should also close it, including a
+    // click on the very chip that opened it (currently: applies the filter
+    // but leaves the flyout hanging open with nothing telling it to close).
+    // composedPath(), not target.contains() — renderChipDropdownLevel rewrites
+    // the panel's innerHTML on drill/back, which can detach e.target mid-bubble.
+    document.addEventListener('click', (e) => {
+      if (chipDropdown!.hidden) return;
+      if (!e.composedPath().includes(chipDropdown!)) hideChipDropdown();
     });
   }
 
@@ -1184,7 +1244,7 @@ const pmI18n = {
     if (selectBtn) {
       clearGlobalSearch();
       activeTag = selectBtn.dataset.select ?? '';
-      renderCategoryNav();
+      pendingCategoryNav = true;
       updateDrawerToggleLabel();
       refreshFromServer();
       closeDrawer();
@@ -1389,12 +1449,37 @@ const pmI18n = {
     syncUrl();
     const token = ++refreshToken;
     if (!productGrid) return;
+    // The old grid is wholesale-replaced by the new result set the instant the
+    // fetch resolves — a different product count, almost always a different
+    // total height (switching to "All", the largest possible set, is the most
+    // dramatic case). That swap is correct, but with nothing marking it as a
+    // deliberate transition, an instant hard-cut between two very different
+    // renderings reads as the layout "resetting" — dimming the outgoing grid
+    // during the fetch and fading the new one in gives the eye a "this is
+    // loading" cue instead of an unexplained snap.
+    productGrid.style.transition = 'opacity 0.15s ease';
+    productGrid.style.opacity = '0.35';
     const { products: page, hasMore } = await fetchProductsPage(0);
     if (token !== refreshToken) return;
+    // renderCategoryNav() used to be called synchronously by the click handler,
+    // immediately — well before this fetch resolves. That meant the breadcrumb/
+    // chip row reflowed at one moment and the grid reflowed at another, separated
+    // by a real network round-trip: two disjointed layout shifts instead of one,
+    // which read as the page "resetting" mid-transition. Calling it here instead
+    // means both changes commit in the same synchronous block, one single reflow.
+    // Gated behind pendingCategoryNav (only true when activeTag actually
+    // changed) — sort/search-only refreshes never touched the category, so
+    // rebuilding the chip/breadcrumb DOM for them would just be needless churn
+    // (and would drop the hover-flyout's currentChip reference for nothing).
+    if (pendingCategoryNav) {
+      renderCategoryNav();
+      pendingCategoryNav = false;
+    }
     productGrid.innerHTML = '';
     loadedCount = 0;
     appendProductCards(page, true);
     updateResultsState(hasMore);
+    requestAnimationFrame(() => { productGrid.style.opacity = '1'; });
   }
 
   loadMoreBtn?.addEventListener('click', async () => {
@@ -1506,7 +1591,7 @@ const pmI18n = {
       preGlobalSearchTag = null;
       globalQuery = '';
     }
-    renderCategoryNav();
+    pendingCategoryNav = true;
     updateDrawerToggleLabel();
     refreshFromServer();
   }) as EventListener);
