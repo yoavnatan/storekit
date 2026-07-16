@@ -165,22 +165,93 @@ function normSearch(s: string): string {
 // name/email/slug fields don't need it) — same rule the tabs' own search
 // boxes already applied client-side before pagination made that need to move
 // server-side.
-export function filterSellerCards(cards: SellerCardData[], q: string): SellerCardData[] {
-  const nq = normSearch(q);
-  if (!nq) return cards;
-  return cards.filter(({ seller, stores }) => {
-    const hay = `${seller.name} ${seller.email} ${stores.map((s) => s.store.name).join(' ')}`.toLowerCase();
-    return hay.includes(nq);
+function sellerSearchMatch(q: string, { seller, stores }: SellerCardData): boolean {
+  const hay = `${seller.name} ${seller.email} ${stores.map((s) => s.store.name).join(' ')}`.toLowerCase();
+  return hay.includes(q);
+}
+
+function storeSearchMatch(q: string, { store, seller }: StoreRow): boolean {
+  const hay = `${store.name} ${store.slug} ${seller?.name ?? ''} ${seller?.email ?? ''}`.toLowerCase();
+  return hay.includes(q);
+}
+
+// Sort/filter dimensions with real signal for a cross-store admin view
+// (same reasoning as admin-orders-filter.ts's own header comment) — join
+// date/revenue/store count for Sellers, name/revenue/product count for
+// Stores, and a single "has a blocked store" status filter since that's the
+// only binary moderation signal either tab actually carries.
+export type AdminSellerSortCol = 'joined' | 'revenue' | 'stores';
+export type AdminStoreSortCol = 'name' | 'revenue' | 'products';
+export type AdminSortDir = 'asc' | 'desc';
+
+export interface AdminSellerQuery {
+  q: string;
+  sortCol: AdminSellerSortCol;
+  sortDir: AdminSortDir;
+  blockedOnly: boolean;
+}
+
+export interface AdminStoreQuery {
+  q: string;
+  sortCol: AdminStoreSortCol;
+  sortDir: AdminSortDir;
+  blockedOnly: boolean;
+}
+
+export function filterAndSortSellerCards(cards: SellerCardData[], query: AdminSellerQuery): SellerCardData[] {
+  const nq = normSearch(query.q);
+  const filtered = cards.filter((c) => {
+    if (nq && !sellerSearchMatch(nq, c)) return false;
+    if (query.blockedOnly && !c.stores.some((s) => s.store.blocked)) return false;
+    return true;
+  });
+
+  const dir = query.sortDir === 'asc' ? 1 : -1;
+  return filtered.sort((a, b) => {
+    const va = query.sortCol === 'revenue' ? a.revenue.totalRevenue : query.sortCol === 'stores' ? a.stores.length : new Date(a.seller.createdAt).getTime();
+    const vb = query.sortCol === 'revenue' ? b.revenue.totalRevenue : query.sortCol === 'stores' ? b.stores.length : new Date(b.seller.createdAt).getTime();
+    return va < vb ? -dir : va > vb ? dir : 0;
   });
 }
 
-export function filterStoreRows(rows: StoreRow[], q: string): StoreRow[] {
-  const nq = normSearch(q);
-  if (!nq) return rows;
-  return rows.filter(({ store, seller }) => {
-    const hay = `${store.name} ${store.slug} ${seller?.name ?? ''} ${seller?.email ?? ''}`.toLowerCase();
-    return hay.includes(nq);
+export function filterAndSortStoreRows(rows: StoreRow[], query: AdminStoreQuery): StoreRow[] {
+  const nq = normSearch(query.q);
+  const filtered = rows.filter((r) => {
+    if (nq && !storeSearchMatch(nq, r)) return false;
+    if (query.blockedOnly && !r.store.blocked) return false;
+    return true;
   });
+
+  const dir = query.sortDir === 'asc' ? 1 : -1;
+  return filtered.sort((a, b) => {
+    if (query.sortCol === 'name') {
+      const cmp = a.store.name.localeCompare(b.store.name, 'he');
+      return dir === 1 ? cmp : -cmp;
+    }
+    const va = query.sortCol === 'revenue' ? a.revenue.totalRevenue : a.productCount;
+    const vb = query.sortCol === 'revenue' ? b.revenue.totalRevenue : b.productCount;
+    return va < vb ? -dir : va > vb ? dir : 0;
+  });
+}
+
+// Only the 5 combos each tab's own sort menu offers are valid — mirrors
+// admin-orders-filter.ts's own VALID_SORT_COMBOS reasoning (a hand-edited
+// query param falls back to the default rather than sorting by a combo the
+// UI has no matching label for).
+const VALID_SELLER_SORT_COMBOS = new Set(['joined:desc', 'joined:asc', 'revenue:desc', 'revenue:asc', 'stores:desc']);
+
+export function parseSellerQuery(sp: URLSearchParams): AdminSellerQuery {
+  const requested = sp.get('ssort') ?? 'joined:desc';
+  const [sortCol, sortDir] = (VALID_SELLER_SORT_COMBOS.has(requested) ? requested : 'joined:desc').split(':') as [AdminSellerSortCol, AdminSortDir];
+  return { q: (sp.get('sq') ?? '').trim(), sortCol, sortDir, blockedOnly: sp.get('sblocked') === '1' };
+}
+
+const VALID_STORE_SORT_COMBOS = new Set(['name:asc', 'name:desc', 'revenue:desc', 'revenue:asc', 'products:desc']);
+
+export function parseStoreQuery(sp: URLSearchParams): AdminStoreQuery {
+  const requested = sp.get('stsort') ?? 'name:asc';
+  const [sortCol, sortDir] = (VALID_STORE_SORT_COMBOS.has(requested) ? requested : 'name:asc').split(':') as [AdminStoreSortCol, AdminSortDir];
+  return { q: (sp.get('stq') ?? '').trim(), sortCol, sortDir, blockedOnly: sp.get('stblocked') === '1' };
 }
 
 export function getStoresNeedingAttention(stores: Store[], sellers: Seller[], productsByStore: Map<string, StoreProduct[]>): AttentionEntry[] {

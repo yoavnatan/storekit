@@ -8,6 +8,8 @@ import { getAllOrders } from '../../lib/orders.js';
 import { getMessagesByBuyer, getMessageReplies } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
+import { filterBuyerOrders, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
+import { paginate, parsePage } from '../../lib/pagination.js';
 
 const userId = getSellerSession(Astro.cookies);
 if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
@@ -23,6 +25,16 @@ const hasStore = getStoresBySellerId(userId).length > 0;
 const orders = getAllOrders()
   .filter((o) => o.buyerId === userId || o.buyerEmail === seller.email)
   .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+const activeOrdersCount = orders.filter((o) => o.shippingStatus !== 'delivered').length;
+const historyOrdersCount = orders.length - activeOrdersCount;
+
+const buyerOrderQuery = parseBuyerOrderQuery(Astro.url.searchParams);
+const filteredOrders = filterBuyerOrders(orders, buyerOrderQuery);
+const ordersPageResult = paginate(filteredOrders, parsePage(Astro.url.searchParams, 'opage'), BUYER_ORDER_PAGE_SIZE);
+const ordersEmptyMessage = buyerOrderQuery.q
+  ? t.buyerDashboard.ordersSearchEmpty
+  : (buyerOrderQuery.history ? t.buyerDashboard.ordersEmptyHistory : t.buyerDashboard.ordersEmptyActive);
 
 const messages = getMessagesByBuyer(userId)
   .filter((m) => !m.replyToId)
@@ -50,11 +62,11 @@ function fmtPrice(n: number) {
 }
 
 const shipLabel: Record<string, string> = {
-  pending: t.dashboard.shippingPending,
-  processing: t.dashboard.shippingProcessing,
-  ready: t.dashboard.shippingReady,
-  shipped: t.dashboard.shippingShipped,
-  delivered: t.dashboard.shippingDelivered,
+  pending: t.buyerDashboard.shippingPending,
+  processing: t.buyerDashboard.shippingProcessing,
+  ready: t.buyerDashboard.shippingReady,
+  shipped: t.buyerDashboard.shippingShipped,
+  delivered: t.buyerDashboard.shippingDelivered,
 };
 ---
 
@@ -66,7 +78,16 @@ const shipLabel: Record<string, string> = {
   hideNav={true}
   showSearch={true}
 >
-  <style>
+  <style is:global>
+    /* is:global — order cards, message rows etc. are rebuilt client-side via
+       innerHTML (pagination/search/sub-tab AJAX, live-poll inserts). Astro's
+       default scoping rewrites every selector here to also require a
+       per-build data-astro-cid-* attribute, which raw innerHTML markup never
+       carries — that mismatch silently drops ALL of this file's styling on
+       any AJAX-rebuilt element (looks like plain unstyled text). Same fix
+       already applied to seller/dashboard.astro's own <style> for the exact
+       same reason. Classnames are file-specific-prefixed (my-/o-/m-/prof-)
+       so global scope doesn't risk colliding with other pages. */
     /* ── Desktop layout ── */
     .my-page {
       max-width: var(--max-width);
@@ -83,7 +104,7 @@ const shipLabel: Record<string, string> = {
        .my-sidebar participates directly as the 220px grid column; it only
        becomes a real (clipping) box inside the mobile media query below. */
     .my-sidebar-clip { display: contents; }
-    .my-sidebar { position: sticky; top: 5rem; }
+    .my-sidebar { position: sticky; top: 5rem; /* fallback estimate; JS below sets the exact fractional px so it doesn't jump when it engages */ }
 
     /* Grid items default to min-width:auto (their content's max-content size).
        .o-items below is white-space:nowrap, so a long order's item list can
@@ -152,7 +173,7 @@ const shipLabel: Record<string, string> = {
     .my-drawer-close { display: none; }
     .my-topbar { display: none; }
 
-    @media (max-width: 640px) {
+    @media (max-width: 768px) {
       .my-page {
         grid-template-columns: 1fr;
         padding: 0 0 3rem;
@@ -271,8 +292,20 @@ const shipLabel: Record<string, string> = {
        enough to signal "clickable" here. */
     .o-card:hover { border-color: color-mix(in srgb, var(--color-text) 20%, var(--color-border)); }
     .o-thumbs { display: flex; flex-direction: row-reverse; margin-inline-end: 0.5rem; flex-shrink: 0; }
-    .o-thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: var(--color-surface); border: 1px solid var(--color-border); margin-inline-start: -12px; }
-    .o-thumbs .o-thumb:last-child { margin-inline-start: 0; }
+    /* Collapsed-card thumbnails are visible immediately (no expand click
+       gating it, unlike .o-item__img-wrap below) so they need their own
+       shimmer-until-decoded wrapper — same o-shimmer keyframe/pattern. */
+    .o-thumb-wrap {
+      position: relative; width: 52px; height: 52px; border-radius: 10px; overflow: hidden;
+      margin-inline-start: -12px;
+      background: linear-gradient(90deg, var(--color-border) 25%, var(--color-bg) 50%, var(--color-border) 75%);
+      background-size: 200% 100%;
+      animation: o-shimmer 1.3s infinite linear;
+    }
+    .o-thumbs .o-thumb-wrap:last-child { margin-inline-start: 0; }
+    .o-thumb-wrap.loaded { background: var(--color-surface); animation: none; }
+    .o-thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; border: 1px solid var(--color-border); opacity: 0; transition: opacity 0.18s; display: block; }
+    .o-thumb-wrap.loaded .o-thumb { opacity: 1; }
     .o-card__hd {
       display: flex; align-items: center; gap: 0.5rem;
       padding: 0.9rem 1rem; cursor: pointer; user-select: none;
@@ -334,6 +367,87 @@ const shipLabel: Record<string, string> = {
     .o-store-sub strong { color: var(--color-text); font-size: 0.875rem; }
     .o-tracking { font-size: 0.8rem; color: var(--color-muted); margin: 0; padding-top: 0.5rem; border-top: 1px solid var(--color-border); }
     .o-section-title { font-size: 0.72rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 0; }
+
+    /* ── Orders toolbar: sub-tabs (active/history) + search ── */
+    .o-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.6rem; }
+    .o-subtabs {
+      display: flex; gap: 2px; background: var(--color-bg);
+      border: 1px solid var(--color-border); border-radius: 999px; padding: 3px;
+    }
+    .o-subtab-btn {
+      border: none; background: none; cursor: pointer; font-family: inherit;
+      font-size: 0.8rem; font-weight: 600; color: var(--color-muted);
+      padding: 0.35rem 0.85rem; border-radius: 999px;
+      display: flex; align-items: center; gap: 0.35rem;
+      transition: background 0.12s, color 0.12s;
+    }
+    .o-subtab-btn:hover { color: var(--color-text); }
+    .o-subtab-btn.is-active { background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-xs); }
+    .o-subtab-count { font-size: 0.68rem; color: var(--color-muted); }
+    .o-subtab-btn.is-active .o-subtab-count { color: var(--color-accent); }
+    .o-search-wrap { position: relative; flex: 1; min-width: 160px; max-width: 280px; }
+    .o-search-icon { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: 0.7rem; color: var(--color-muted); pointer-events: none; }
+    .o-search-input {
+      width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.82rem; color: var(--color-text);
+      background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 999px;
+      padding-block: 0.35rem; padding-inline-start: 1.9rem; padding-inline-end: 1.9rem;
+      outline: none; transition: border-color 0.12s;
+      -webkit-appearance: none; appearance: none;
+    }
+    /* Native browser search decorations (clear "x", magnifier) don't respect
+       our own padding/RTL layout and land misaligned — replaced with our
+       own icon + .o-search-clear button instead. */
+    .o-search-input::-webkit-search-cancel-button,
+    .o-search-input::-webkit-search-decoration { display: none; -webkit-appearance: none; appearance: none; }
+    .o-search-input::-ms-clear, .o-search-input::-ms-reveal { display: none; }
+    .o-search-input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-text) 8%, transparent); }
+    /* Chrome ignores autocomplete="off" for a field it heuristically treats
+       as "identity" data (this page also has a real autocomplete="email"
+       profile field, #edit-email, elsewhere in the same DOM) and force-fills
+       it with the buyer's own email + its own tinted background — neither
+       respects our design tokens. Kills the tint/text-color regardless of
+       why the browser decided to autofill (belt-and-suspenders alongside
+       the readonly-until-focus trick on the input itself). */
+    .o-search-input:-webkit-autofill,
+    .o-search-input:-webkit-autofill:hover,
+    .o-search-input:-webkit-autofill:focus {
+      -webkit-text-fill-color: var(--color-text);
+      box-shadow: 0 0 0 1000px var(--color-surface) inset;
+      -webkit-box-shadow: 0 0 0 1000px var(--color-surface) inset;
+      transition: background-color 5000s ease-in-out 0s;
+    }
+    .o-search-clear {
+      position: absolute; top: 50%; transform: translateY(-50%); inset-inline-end: 0.45rem;
+      width: 1.15rem; height: 1.15rem; border-radius: 50%; padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      border: none; background: var(--color-bg); color: var(--color-muted); cursor: pointer;
+      transition: background 0.1s, color 0.1s;
+    }
+    .o-search-clear:hover { background: var(--color-border); color: var(--color-text); }
+    /* :placeholder-shown is only true while the input is empty — a pure-CSS
+       show/hide with no JS state to keep in sync. */
+    .o-search-wrap:has(.o-search-input:placeholder-shown) .o-search-clear { display: none; }
+
+    /* ── Orders pagination ── */
+    .o-pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: 0.5rem 0 0; }
+    .o-pagination-info { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; }
+
+    /* ── Order-card skeleton (shown while a page/search/tab fetch is in flight) ── */
+    .o-card-skel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 14px; margin-bottom: 0.75rem; padding: 0.9rem 1rem; }
+    .o-card-skel__row { display: flex; align-items: center; gap: 0.6rem; }
+    .o-skel-block {
+      border-radius: 6px;
+      background: linear-gradient(90deg, var(--color-border) 25%, var(--color-bg) 50%, var(--color-border) 75%);
+      background-size: 200% 100%;
+      animation: o-shimmer 1.3s infinite linear;
+    }
+    .o-card-skel__thumb { width: 52px; height: 52px; border-radius: 10px; flex-shrink: 0; }
+    .o-card-skel__lines { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
+    .o-card-skel__line { height: 0.7rem; }
+    .o-card-skel__line--id { width: 35%; }
+    .o-card-skel__line--stores { width: 55%; }
+    .o-card-skel__line--items { width: 80%; }
+    .o-card-skel__line--foot { width: 30%; margin-top: 0.15rem; }
 
     /* ── Message card ── */
     .m-card {
@@ -470,9 +584,44 @@ const shipLabel: Record<string, string> = {
       <!-- Orders -->
       <div id="panel-orders" class="my-panel is-active">
         <h1 class="panel-head">{t.buyerDashboard.ordersTitle}</h1>
-        {orders.length === 0
-          ? <p class="empty">{t.buyerDashboard.noOrders}</p>
-          : orders.map((o) => {
+        {orders.length === 0 ? (
+          <p class="empty">{t.buyerDashboard.noOrders}</p>
+        ) : (
+          <Fragment>
+          <div class="o-toolbar">
+            <div class="o-subtabs" role="tablist" aria-label={t.buyerDashboard.ordersTitle}>
+              <button type="button" class="o-subtab-btn" id="o-subtab-active" data-hist="0" role="tab" aria-selected={!buyerOrderQuery.history} class:list={{ 'is-active': !buyerOrderQuery.history }}>
+                {t.buyerDashboard.ordersTabActive}
+                {activeOrdersCount > 0 && <span class="o-subtab-count">{activeOrdersCount}</span>}
+              </button>
+              <button type="button" class="o-subtab-btn" id="o-subtab-history" data-hist="1" role="tab" aria-selected={buyerOrderQuery.history} class:list={{ 'is-active': buyerOrderQuery.history }}>
+                {t.buyerDashboard.ordersTabHistory}
+                {historyOrdersCount > 0 && <span class="o-subtab-count">{historyOrdersCount}</span>}
+              </button>
+            </div>
+            {/* Plain search field, nothing more. It starts `readonly` (see
+                script) and only becomes editable on the user's first real
+                focus — a readonly field cannot be autofilled by the browser
+                at all, which is the only thing that reliably stops Chrome
+                from treating it as a login field (this page also has real
+                password inputs elsewhere in the DOM, in the hidden Profile
+                panel) and force-suggesting saved username/password into it
+                with its own native blue ring — that ring isn't page CSS,
+                autocomplete="off" alone does not suppress it, and there is
+                no custom dropdown here to fight it with. */}
+            <div class="o-search-wrap">
+              <svg class="o-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="orders-search-input" value={buyerOrderQuery.q} placeholder={t.dashboard.ordersSearchPlaceholder} class="o-search-input" autocomplete="off" readonly />
+              <button type="button" class="o-search-clear" id="orders-search-clear" aria-label={t.buyerDashboard.ordersClearSearch} tabindex="-1">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <p class="empty" id="orders-empty" hidden={ordersPageResult.total > 0}>{ordersEmptyMessage}</p>
+
+          <div id="orders-list">
+            {ordersPageResult.items.map((o) => {
             const stores = [...new Set(o.items.map((i) => i.storeSlug))];
             const storeEntries = stores.map((slug) => ({
               slug,
@@ -484,7 +633,7 @@ const shipLabel: Record<string, string> = {
                   {o.items.some((i) => i.image) && (
                     <div class="o-thumbs">
                       {o.items.filter((i) => i.image).slice(0, 3).map((i) => (
-                        <img src={i.image!} alt={i.productName} width="52" height="52" loading="lazy" class="o-thumb" />
+                        <span class="o-thumb-wrap"><img src={i.image!} alt={i.productName} width="52" height="52" loading="lazy" class="o-thumb" /></span>
                       ))}
                     </div>
                   )}
@@ -547,8 +696,12 @@ const shipLabel: Record<string, string> = {
                 </div>
               </div>
             );
-          })
-        }
+            })}
+          </div>
+
+          <nav id="orders-pagination" class="o-pagination" aria-label={t.buyerDashboard.ordersTitle} data-page={ordersPageResult.page} data-total-pages={ordersPageResult.totalPages} hidden></nav>
+          </Fragment>
+        )}
       </div>
 
       <!-- Messages -->
@@ -738,7 +891,17 @@ const shipLabel: Record<string, string> = {
 
           <p class="prof-section-title">{t.buyerDashboard.profChangePassword}</p>
           <button class="prof-pw-toggle" id="pw-toggle" type="button">{t.buyerDashboard.profShowPw}</button>
-          <div id="pw-fields" hidden>
+          {/* The two type="password" inputs live in a <template> — inert,
+              not part of the live DOM — and only get cloned in on the
+              toggle's first click. Chrome's own password manager scans the
+              whole live document for password fields to decide which text
+              field elsewhere on the page "must be" the username and offers
+              saved logins into it (this is what was making the orders
+              search field suggest saved emails); keeping these out of the
+              DOM entirely until actually needed removes that trigger at
+              the source, instead of fighting it with per-field attributes. */}
+          <div id="pw-fields" hidden></div>
+          <template id="pw-fields-template">
             <div class="prof-field">
               <label class="prof-label" for="edit-cur-pw">{t.buyerDashboard.profCurPw}</label>
               <input class="prof-input" id="edit-cur-pw" type="password" autocomplete="current-password" />
@@ -747,7 +910,7 @@ const shipLabel: Record<string, string> = {
               <label class="prof-label" for="edit-new-pw">{t.buyerDashboard.profNewPw}</label>
               <input class="prof-input" id="edit-new-pw" type="password" autocomplete="new-password" />
             </div>
-          </div>
+          </template>
 
           <p class="prof-error" id="edit-error"></p>
           <p class="prof-success" id="edit-success">{t.buyerDashboard.profSaved}</p>
@@ -777,11 +940,29 @@ const shipLabel: Record<string, string> = {
   data-prof-error-default={t.buyerDashboard.profErrorDefault}
   data-prof-error-network={t.buyerDashboard.profErrorNetwork}
   data-date-locale={dateLocale}
+  data-order-items={t.buyerDashboard.orderItems}
+  data-free-shipping={t.buyerDashboard.freeShipping}
+  data-tracking-number={t.buyerDashboard.trackingNumber}
+  data-shipping-label={t.checkout.shipping}
+  data-ship-pending={t.buyerDashboard.shippingPending}
+  data-ship-processing={t.buyerDashboard.shippingProcessing}
+  data-ship-ready={t.buyerDashboard.shippingReady}
+  data-ship-shipped={t.buyerDashboard.shippingShipped}
+  data-ship-delivered={t.buyerDashboard.shippingDelivered}
+  data-orders-empty-active={t.buyerDashboard.ordersEmptyActive}
+  data-orders-empty-history={t.buyerDashboard.ordersEmptyHistory}
+  data-orders-search-empty={t.buyerDashboard.ordersSearchEmpty}
+  data-orders-load-error={t.buyerDashboard.ordersLoadError}
+  data-pagination-prev={t.dashboard.paginationPrev}
+  data-pagination-next={t.dashboard.paginationNext}
+  data-pagination-page-info={t.dashboard.paginationPageInfo}
 ></div>
 
 <script>
   import { getActiveStoreCarts, getSubtotal } from '../../lib/cart.js';
   import { formatPrice } from '../../config/store.config.js';
+  import { debounce } from '../../lib/admin-nav.js';
+  import { BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
 
   const _i18nEl = document.getElementById('buyer-i18n') as HTMLElement;
   const I = {
@@ -800,6 +981,22 @@ const shipLabel: Record<string, string> = {
     profErrorDefault:_i18nEl.dataset.profErrorDefault ?? 'Error saving',
     profErrorNetwork:_i18nEl.dataset.profErrorNetwork ?? 'Network error, try again',
     dateLocale:      _i18nEl.dataset.dateLocale       ?? 'he-IL',
+    orderItems:      _i18nEl.dataset.orderItems       ?? 'Items',
+    freeShipping:    _i18nEl.dataset.freeShipping     ?? 'Free',
+    trackingNumber:  _i18nEl.dataset.trackingNumber   ?? 'Tracking number',
+    shippingLabel:   _i18nEl.dataset.shippingLabel    ?? 'Shipping',
+    shipPending:     _i18nEl.dataset.shipPending      ?? 'New',
+    shipProcessing:  _i18nEl.dataset.shipProcessing   ?? 'Processing',
+    shipReady:       _i18nEl.dataset.shipReady        ?? 'Awaiting pickup',
+    shipShipped:     _i18nEl.dataset.shipShipped      ?? 'Shipped',
+    shipDelivered:   _i18nEl.dataset.shipDelivered    ?? 'Delivered',
+    ordersEmptyActive: _i18nEl.dataset.ordersEmptyActive ?? 'No active orders right now.',
+    ordersEmptyHistory:_i18nEl.dataset.ordersEmptyHistory ?? 'No orders in your history yet.',
+    ordersSearchEmpty: _i18nEl.dataset.ordersSearchEmpty ?? 'No orders match your search.',
+    ordersLoadError:   _i18nEl.dataset.ordersLoadError  ?? 'Error loading orders. Try again.',
+    paginationPrev:    _i18nEl.dataset.paginationPrev    ?? 'Previous',
+    paginationNext:    _i18nEl.dataset.paginationNext    ?? 'Next',
+    paginationPageInfo:_i18nEl.dataset.paginationPageInfo ?? 'Page {page} of {total}',
   };
 
   const navBtns = document.querySelectorAll<HTMLButtonElement>('.my-nav-btn[data-tab]');
@@ -814,6 +1011,7 @@ const shipLabel: Record<string, string> = {
   const menuBtn   = document.getElementById('my-menu-btn');
   const closeBtn  = document.getElementById('my-drawer-close');
   const topbarTab = document.getElementById('topbar-tab-label');
+  const _mq = window.matchMedia('(max-width: 768px)');
 
   // Sticky topbar's offset must be the real fixed header height, fractional —
   // offsetHeight (or a hardcoded rem guess) rounds to the nearest integer px,
@@ -825,6 +1023,27 @@ const shipLabel: Record<string, string> = {
     updateTopbarOffset();
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(updateTopbarOffset).observe(siteHeaderEl);
     else window.addEventListener('resize', updateTopbarOffset);
+  }
+
+  // Desktop sticky sidebar's `top` had the same class of bug: a bare
+  // `5rem` guess vs. the sidebar's real pre-sticky rest position (site
+  // header's real fractional height + .my-page's own top padding) — the
+  // ~0.3rem gap between the guess and reality made the sidebar visibly
+  // jump up a few px right as it engaged while scrolling. Cleared to ''
+  // on mobile so the media-query's own `position:fixed; top:0` rule
+  // applies — an inline style always wins over a stylesheet rule
+  // regardless of specificity, so this must not stay set at that width.
+  const myPageEl = document.querySelector<HTMLElement>('.my-page');
+  if (siteHeaderEl && myPageEl) {
+    const updateSidebarOffset = () => {
+      if (_mq.matches) { sidebar.style.top = ''; return; }
+      const pageTopPad = parseFloat(getComputedStyle(myPageEl).paddingTop) || 0;
+      sidebar.style.top = `${siteHeaderEl.getBoundingClientRect().height + pageTopPad}px`;
+    };
+    updateSidebarOffset();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(updateSidebarOffset).observe(siteHeaderEl);
+    else window.addEventListener('resize', updateSidebarOffset);
+    _mq.addEventListener('change', updateSidebarOffset);
   }
 
   function openDrawer() {
@@ -841,7 +1060,6 @@ const shipLabel: Record<string, string> = {
   }
 
   // Suppress sidebar transition when the breakpoint changes (resize/DevTools toggle)
-  const _mq = window.matchMedia('(max-width: 640px)');
   _mq.addEventListener('change', () => {
     sidebar.style.transition = 'none';
     if (!_mq.matches) closeDrawer();
@@ -953,22 +1171,32 @@ const shipLabel: Record<string, string> = {
   const pwFields   = document.getElementById('pw-fields')!;
   const nameInput  = document.getElementById('edit-name') as HTMLInputElement;
   const emailInput = document.getElementById('edit-email') as HTMLInputElement;
-  const curPwInput = document.getElementById('edit-cur-pw') as HTMLInputElement;
-  const newPwInput = document.getElementById('edit-new-pw') as HTMLInputElement;
+  let curPwInput: HTMLInputElement | null = null;
+  let newPwInput: HTMLInputElement | null = null;
   const displayName  = document.getElementById('display-name')!;
   const displayEmail = document.getElementById('display-email')!;
+
+  function ensurePwFieldsRendered(): void {
+    if (curPwInput) return; // already cloned in
+    const tpl = document.getElementById('pw-fields-template') as HTMLTemplateElement | null;
+    if (!tpl) return;
+    pwFields.appendChild(tpl.content.cloneNode(true));
+    curPwInput = document.getElementById('edit-cur-pw') as HTMLInputElement;
+    newPwInput = document.getElementById('edit-new-pw') as HTMLInputElement;
+  }
 
   pwToggle.addEventListener('click', () => {
     const isHidden = pwFields.hasAttribute('hidden');
     if (isHidden) {
+      ensurePwFieldsRendered();
       pwFields.removeAttribute('hidden');
       pwToggle.textContent = I.profHidePw;
-      curPwInput.focus();
+      curPwInput?.focus();
     } else {
       pwFields.setAttribute('hidden', '');
       pwToggle.textContent = I.profShowPw;
-      curPwInput.value = '';
-      newPwInput.value = '';
+      if (curPwInput) curPwInput.value = '';
+      if (newPwInput) newPwInput.value = '';
     }
   });
 
@@ -979,9 +1207,9 @@ const shipLabel: Record<string, string> = {
       name: nameInput.value.trim(),
       email: emailInput.value.trim(),
     };
-    if (!pwFields.hasAttribute('hidden') && newPwInput.value) {
-      body.currentPassword = curPwInput.value;
-      body.newPassword = newPwInput.value;
+    if (!pwFields.hasAttribute('hidden') && newPwInput!.value) {
+      body.currentPassword = curPwInput!.value;
+      body.newPassword = newPwInput!.value;
     }
 
     editSave.disabled = true;
@@ -1004,8 +1232,8 @@ const shipLabel: Record<string, string> = {
       if (!pwFields.hasAttribute('hidden')) {
         pwFields.setAttribute('hidden', '');
         pwToggle.textContent = I.profShowPw;
-        curPwInput.value = '';
-        newPwInput.value = '';
+        curPwInput!.value = '';
+        newPwInput!.value = '';
       }
     } catch {
       editError.textContent = I.profErrorNetwork;
@@ -1019,7 +1247,7 @@ const shipLabel: Record<string, string> = {
   function fmtDateBuyer(iso: string) {
     return new Date(iso).toLocaleString(I.dateLocale, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
-  function escB(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escB(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   const currentBuyerId = (document.getElementById('panel-messages') as HTMLElement | null)?.dataset.userId ?? '';
   const buyerThreadLoaders = new Map<string, (markRead: boolean, viaPoll?: boolean) => void>();
@@ -1490,11 +1718,20 @@ const shipLabel: Record<string, string> = {
     });
   });
 
-  /* ── Order card accordion ── */
-  document.querySelectorAll<HTMLElement>('.o-card__hd').forEach((hd) => {
-    const card = hd.closest<HTMLElement>('.o-card')!;
+  /* ── Order card accordion (bindOrderCard is reused after every AJAX rebuild) ── */
+  function bindOrderCard(card: HTMLElement): void {
+    if (card.dataset.bound === '1') return;
+    card.dataset.bound = '1';
+    const hd = card.querySelector<HTMLElement>('.o-card__hd');
     const body = card.querySelector<HTMLElement>('.o-card__body');
-    hd.addEventListener('click', () => {
+    // Collapsed-header thumbnails are visible immediately (unlike the
+    // expanded body's own item images, gated below on first expand), so
+    // they decode-and-reveal as soon as the card is bound.
+    card.querySelectorAll<HTMLElement>('.o-thumb-wrap:not(.loaded)').forEach((wrap) => {
+      const img = wrap.querySelector<HTMLImageElement>('img');
+      if (img) img.decode().then(() => wrap.classList.add('loaded')).catch(() => wrap.classList.add('loaded'));
+    });
+    hd?.addEventListener('click', () => {
       const isOpen = card.classList.contains('o-card--open');
       card.classList.toggle('o-card--open', !isOpen);
       hd.setAttribute('aria-expanded', String(!isOpen));
@@ -1506,10 +1743,225 @@ const shipLabel: Record<string, string> = {
         });
       }
     });
-    hd.addEventListener('keydown', (e: KeyboardEvent) => {
+    hd?.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hd.click(); }
     });
+  }
+  document.querySelectorAll<HTMLElement>('.o-card').forEach(bindOrderCard);
+
+  // ── Orders: server-fetched page/search/sub-tab (AJAX) ──────────────
+  // Mirrors the seller dashboard's own Orders-tab pagination pattern
+  // (buyer-orders-query.ts is the server-side counterpart of
+  // seller-orders-query.ts). No sort here — this tab only needs
+  // search + an active/history split, not a sort menu.
+  interface BuyerOrderJson {
+    id: string; checkoutRef?: string; createdAt: string; totalAmount: number;
+    shippingStatus: string; trackingNumber?: string;
+    items: { storeSlug: string; storeName: string; productName: string; qty: number; price: number; image?: string }[];
+    storeSubtotals: Record<string, { subtotal: number; shipping: number }>;
+  }
+
+  const shipLabelClient: Record<string, string> = {
+    pending: I.shipPending, processing: I.shipProcessing, ready: I.shipReady,
+    shipped: I.shipShipped, delivered: I.shipDelivered,
+  };
+
+  function buildOrderCardHTML(o: BuyerOrderJson): string {
+    const stores = [...new Set(o.items.map((i) => i.storeSlug))];
+    const storeNameBySlug = new Map(o.items.map((i) => [i.storeSlug, i.storeName]));
+    const thumbs = o.items.filter((i) => i.image).slice(0, 3);
+    const thumbsHtml = thumbs.length ? `<div class="o-thumbs">${thumbs.map((i) =>
+      `<span class="o-thumb-wrap"><img src="${escB(i.image!)}" alt="${escB(i.productName)}" width="52" height="52" loading="lazy" class="o-thumb" /></span>`).join('')}</div>` : '';
+    const storesHtml = stores.map((slug, idx) =>
+      `<span>${escB(storeNameBySlug.get(slug) ?? '')}</span>${idx < stores.length - 1 ? '<span aria-hidden="true">, </span>' : ''}`).join('');
+    const itemsLine = o.items.map((i) => `${escB(i.productName)} × ${i.qty}`).join(' · ');
+    const bodyGroups = stores.map((slug) => {
+      const storeItems = o.items.filter((i) => i.storeSlug === slug);
+      const storeName  = storeNameBySlug.get(slug) ?? '';
+      const sub        = o.storeSubtotals[slug];
+      const itemsHtml = storeItems.map((item) => `
+        <li class="o-item">
+          ${item.image
+            ? `<span class="o-item__img-wrap"><img src="${escB(item.image)}" alt="${escB(item.productName)}" width="40" height="40" loading="lazy" class="o-item__img" /></span>`
+            : `<div class="o-item__img-placeholder" aria-hidden="true"></div>`}
+          <span class="o-item__name">${escB(item.productName)}</span>
+          <span class="o-item__qty">×${item.qty}</span>
+          <span class="o-item__price">${fmtPriceBuyer(item.price * item.qty)}</span>
+        </li>`).join('');
+      const subHtml = sub ? `
+        <div class="o-store-sub">
+          <span>${escB(I.shippingLabel)}: ${sub.shipping === 0 ? escB(I.freeShipping) : fmtPriceBuyer(sub.shipping)}</span>
+          <strong>${fmtPriceBuyer(sub.subtotal + sub.shipping)}</strong>
+        </div>` : '';
+      return `
+        <div class="o-store-group">
+          <a href="/store/${encodeURIComponent(slug)}" class="o-store-name" style="text-decoration:none;color:inherit;cursor:pointer">${escB(storeName)}</a>
+          <ul class="o-item-list">${itemsHtml}</ul>
+          ${subHtml}
+        </div>`;
+    }).join('');
+    const trackingHtml = o.trackingNumber
+      ? `<p class="o-tracking">${escB(I.trackingNumber)}: <strong>${escB(o.trackingNumber)}</strong></p>` : '';
+
+    return `<div class="o-card">
+      <div class="o-card__hd" role="button" tabindex="0" aria-expanded="false">
+        ${thumbsHtml}
+        <div class="o-card__hd-main">
+          <div class="o-card__hd-top">
+            <span class="o-id">#${escB(o.checkoutRef ?? o.id.slice(0, 8).toUpperCase())}</span>
+            <span class="o-date">${escB(fmtDateBuyer(o.createdAt))}</span>
+          </div>
+          <div class="o-card__stores">${storesHtml}</div>
+          <div class="o-items">${itemsLine}</div>
+          <div class="o-foot">
+            <span class="o-badge o-badge--ship">${escB(shipLabelClient[o.shippingStatus] ?? o.shippingStatus)}</span>
+            <span class="o-total">${fmtPriceBuyer(o.totalAmount)}</span>
+          </div>
+        </div>
+        <svg class="o-card__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="o-card__body" hidden>
+        <p class="o-section-title">${escB(I.orderItems)}</p>
+        ${bodyGroups}
+        ${trackingHtml}
+      </div>
+    </div>`;
+  }
+
+  function fmtPriceBuyer(n: number): string { return `${n.toLocaleString('he-IL')} ₪`; }
+
+  function renderOrderSkeletons(count: number): string {
+    return Array.from({ length: count }, () => `
+      <div class="o-card-skel" aria-hidden="true">
+        <div class="o-card-skel__row">
+          <div class="o-skel-block o-card-skel__thumb"></div>
+          <div class="o-card-skel__lines">
+            <div class="o-skel-block o-card-skel__line o-card-skel__line--id"></div>
+            <div class="o-skel-block o-card-skel__line o-card-skel__line--stores"></div>
+            <div class="o-skel-block o-card-skel__line o-card-skel__line--items"></div>
+            <div class="o-skel-block o-card-skel__line o-card-skel__line--foot"></div>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  let ordersCurrentPage = 1;
+  let ordersSearchQuery = (document.getElementById('orders-search-input') as HTMLInputElement | null)?.value.trim() ?? '';
+  let ordersHistory = document.getElementById('o-subtab-history')?.classList.contains('is-active') ?? false;
+  // Guards against an out-of-order response (e.g. a fast double-click on
+  // Next, or a quick sub-tab switch) repainting the list with stale data —
+  // only the most recently *fired* request is allowed to render.
+  let ordersRequestSeq = 0;
+
+  async function applyBuyerOrdersPagination(): Promise<void> {
+    const list = document.getElementById('orders-list');
+    if (!list) return;
+    const mySeq = ++ordersRequestSeq;
+
+    // Only show the skeleton if the fetch is actually slow — a local/fast
+    // response swapping content in outright feels instant, but showing it
+    // unconditionally made every keystroke/tab-switch flash a skeleton for
+    // a split second, reading as noise rather than a loading state.
+    const skeletonTimer = setTimeout(() => {
+      if (mySeq === ordersRequestSeq) list.innerHTML = renderOrderSkeletons(BUYER_ORDER_PAGE_SIZE);
+    }, 200);
+
+    const params = new URLSearchParams();
+    params.set('page', String(ordersCurrentPage));
+    if (ordersSearchQuery) params.set('oq', ordersSearchQuery);
+    params.set('ohist', ordersHistory ? '1' : '0');
+
+    let data: { ok: boolean; items?: BuyerOrderJson[]; page?: number; totalPages?: number; total?: number };
+    try {
+      const res = await fetch(`/api/buyer/orders?${params.toString()}`);
+      data = await res.json() as typeof data;
+    } catch {
+      clearTimeout(skeletonTimer);
+      if (mySeq === ordersRequestSeq) list.innerHTML = `<p class="empty">${escB(I.ordersLoadError)}</p>`;
+      return;
+    }
+    clearTimeout(skeletonTimer);
+    if (mySeq !== ordersRequestSeq) return; // a newer request already resolved/is in flight
+    if (!data.ok) { list.innerHTML = `<p class="empty">${escB(I.ordersLoadError)}</p>`; return; }
+
+    ordersCurrentPage = data.page ?? 1;
+    list.innerHTML = (data.items ?? []).map(buildOrderCardHTML).join('');
+    list.querySelectorAll<HTMLElement>('.o-card').forEach(bindOrderCard);
+
+    const total = data.total ?? 0;
+    const emptyEl = document.getElementById('orders-empty');
+    if (emptyEl) {
+      emptyEl.hidden = total !== 0;
+      emptyEl.textContent = ordersSearchQuery
+        ? I.ordersSearchEmpty
+        : (ordersHistory ? I.ordersEmptyHistory : I.ordersEmptyActive);
+    }
+    renderOrdersPaginationControls(data.totalPages ?? 1);
+  }
+
+  function renderOrdersPaginationControls(totalPages: number): void {
+    const nav = document.getElementById('orders-pagination') as HTMLElement | null;
+    if (!nav) return;
+    if (totalPages <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
+    const pageInfo = I.paginationPageInfo.replace('{page}', String(ordersCurrentPage)).replace('{total}', String(totalPages));
+    nav.hidden = false;
+    nav.innerHTML = `
+      <button type="button" class="btn btn--ghost btn--sm" data-page-prev${ordersCurrentPage <= 1 ? ' disabled' : ''}>${escB(I.paginationPrev)}</button>
+      <span class="o-pagination-info">${escB(pageInfo)}</span>
+      <button type="button" class="btn btn--ghost btn--sm" data-page-next${ordersCurrentPage >= totalPages ? ' disabled' : ''}>${escB(I.paginationNext)}</button>
+    `;
+  }
+
+  function initBuyerOrdersPagination(): void {
+    const nav = document.getElementById('orders-pagination') as HTMLElement | null;
+    if (!nav) return;
+    ordersCurrentPage = parseInt(nav.dataset.page ?? '1', 10) || 1;
+    renderOrdersPaginationControls(parseInt(nav.dataset.totalPages ?? '1', 10) || 1);
+    nav.addEventListener('click', (e) => {
+      const btn = (e.target as Element).closest<HTMLButtonElement>('[data-page-prev], [data-page-next]');
+      if (!btn || btn.disabled) return;
+      ordersCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
+      applyBuyerOrdersPagination();
+      document.getElementById('orders-list')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+  initBuyerOrdersPagination();
+
+  const ordersSearchInputEl = document.getElementById('orders-search-input') as HTMLInputElement | null;
+  // Starts `readonly` (see markup) and only becomes editable on the user's
+  // first real focus — a read-only field can't be autofilled, which is the
+  // one thing that reliably stops Chrome from treating it as a login field
+  // and force-suggesting saved username/password (this page also has real
+  // password inputs elsewhere in the DOM, in the hidden Profile panel).
+  ordersSearchInputEl?.addEventListener('focus', () => ordersSearchInputEl.removeAttribute('readonly'), { once: true });
+
+  ordersSearchInputEl?.addEventListener('input', debounce((e: Event) => {
+    ordersSearchQuery = (e.target as HTMLInputElement).value.trim();
+    ordersCurrentPage = 1;
+    applyBuyerOrdersPagination();
+  }, 300));
+
+  document.getElementById('orders-search-clear')?.addEventListener('click', () => {
+    if (!ordersSearchInputEl) return;
+    ordersSearchInputEl.removeAttribute('readonly');
+    ordersSearchInputEl.value = '';
+    ordersSearchInputEl.focus();
+    ordersSearchQuery = '';
+    ordersCurrentPage = 1;
+    applyBuyerOrdersPagination();
   });
+
+  function activateOrdersSubtab(history: boolean): void {
+    ordersHistory = history;
+    ordersCurrentPage = 1;
+    document.getElementById('o-subtab-active')?.classList.toggle('is-active', !history);
+    document.getElementById('o-subtab-active')?.setAttribute('aria-selected', String(!history));
+    document.getElementById('o-subtab-history')?.classList.toggle('is-active', history);
+    document.getElementById('o-subtab-history')?.setAttribute('aria-selected', String(history));
+    applyBuyerOrdersPagination();
+  }
+  document.getElementById('o-subtab-active')?.addEventListener('click', () => activateOrdersSubtab(false));
+  document.getElementById('o-subtab-history')?.addEventListener('click', () => activateOrdersSubtab(true));
 
   function refreshRowPreview(id: string, row: HTMLElement) {
     fetch(`/api/messages?repliesFor=${id}`)

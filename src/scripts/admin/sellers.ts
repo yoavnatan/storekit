@@ -1,6 +1,72 @@
 import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
+import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 
 const PANEL_ID = 'dash-panel-sellers';
+
+// Module-level singleton, not created inside initAdminSellersPanel() — that
+// function re-runs on every AJAX panel swap (see orders-filter.ts's own
+// comment on the same pattern), and createFloatingPortal() wires its own
+// document-level listeners on every call.
+const sellersPortal = createFloatingPortal('admin-sellers-toolbar-portal');
+
+type SellerSortCol = 'joined' | 'revenue' | 'stores';
+const SELLER_SORT_OPTIONS: { col: SellerSortCol; dir: 'asc' | 'desc'; label: string }[] = [
+  { col: 'joined', dir: 'desc', label: 'הצטרפות: חדש — ישן' },
+  { col: 'joined', dir: 'asc', label: 'הצטרפות: ישן — חדש' },
+  { col: 'revenue', dir: 'desc', label: 'הכנסות: גבוה — נמוך' },
+  { col: 'revenue', dir: 'asc', label: 'הכנסות: נמוך — גבוה' },
+  { col: 'stores', dir: 'desc', label: 'מספר חנויות: רב — מעט' },
+];
+
+// Sort dropdown (shared floating portal) + "יש חנות חסומה" toggle — mirrors
+// the Orders tab's own toolbar (admin-orders-filter.ts's header comment)
+// but simpler: Sellers only has one binary filter dimension, so it's a
+// plain toggle button instead of a column→values portal menu.
+function wireSellersToolbar(): void {
+  const root = document.getElementById('admin-sellers-toolbar');
+  if (!root) return; // no sellers at all — nothing to wire
+
+  const state = root.dataset;
+  let sortCol = (state.sortCol as SellerSortCol) || 'joined';
+  let sortDir = (state.sortDir as 'asc' | 'desc') || 'desc';
+  let blockedOnly = state.blockedOnly === '1';
+
+  function buildSellersNavUrl(): string {
+    const searchInput = document.getElementById('admin-seller-search') as HTMLInputElement | null;
+    return buildAdminUrl('sellers', {
+      sq: searchInput?.value.trim() || undefined,
+      ssort: (sortCol !== 'joined' || sortDir !== 'desc') ? `${sortCol}:${sortDir}` : undefined,
+      sblocked: blockedOnly ? '1' : undefined,
+    });
+  }
+
+  function navigate(): void {
+    swapPanel(buildSellersNavUrl(), PANEL_ID, () => initAdminSellersPanel());
+  }
+
+  const sortTrigger = document.getElementById('admin-sellers-sort-trigger') as HTMLButtonElement | null;
+  sortTrigger?.addEventListener('click', () => {
+    if (sellersPortal.currentTrigger() === sortTrigger) { sellersPortal.close(); return; }
+    sellersPortal.open(sortTrigger, '15rem', () => SELLER_SORT_OPTIONS.map((o) => {
+      const selected = o.col === sortCol && o.dir === sortDir;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
+    }).join(''), (p) => {
+      p.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          sortCol = (btn.dataset.sortCol as SellerSortCol) ?? 'joined';
+          sortDir = (btn.dataset.sortDir as 'asc' | 'desc') ?? 'desc';
+          navigate();
+        });
+      });
+    });
+  });
+
+  const blockedToggle = document.getElementById('admin-sellers-blocked-toggle') as HTMLButtonElement | null;
+  blockedToggle?.addEventListener('click', () => {
+    blockedOnly = !blockedOnly;
+    navigate();
+  });
+}
 
 // "Send message" opens a modal right where the seller card already lives
 // (no tab navigation) — posts straight to the admin messages API; the
@@ -74,6 +140,7 @@ function wireSellerSearch(): void {
 export function initAdminSellersPanel(): void {
   wireSellerMessageModal();
   wireSellerSearch();
+  wireSellersToolbar();
   wirePanelLinks(PANEL_ID, () => initAdminSellersPanel());
   wirePopstateReload();
 

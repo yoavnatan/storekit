@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { summarizeAdminThreads, type AdminMessage } from '../src/lib/admin-messages.js';
+import { summarizeAdminThreads, filterAndSortAdminThreads, type AdminMessage, type AdminThreadSummary } from '../src/lib/admin-messages.js';
 
 function msg(overrides: Partial<AdminMessage>): AdminMessage {
   return {
@@ -41,5 +41,44 @@ describe('summarizeAdminThreads', () => {
       msg({ sellerId: 's1', fromRole: 'admin', readByAdmin: false }), // admin's own — never counts
     ]);
     expect(summaries[0]!.unreadForAdmin).toBe(1);
+  });
+});
+
+function thread(overrides: Partial<AdminThreadSummary>): AdminThreadSummary {
+  return {
+    sellerId: 's1',
+    lastMessage: msg({}),
+    unreadForAdmin: 0,
+    ...overrides,
+  };
+}
+
+describe('filterAndSortAdminThreads', () => {
+  it('leaves recency order untouched by default (sortCol: recent)', () => {
+    const threads = [
+      thread({ sellerId: 's1', lastMessage: msg({ createdAt: '2026-01-02T00:00:00.000Z' }) }),
+      thread({ sellerId: 's2', lastMessage: msg({ createdAt: '2026-01-01T00:00:00.000Z' }) }),
+    ];
+    const result = filterAndSortAdminThreads(threads, { sortCol: 'recent', unreadOnly: false });
+    expect(result.map((t) => t.sellerId)).toEqual(['s1', 's2']);
+  });
+
+  it('sorts unread threads before read ones when sortCol is unread', () => {
+    const threads = [
+      thread({ sellerId: 's1', unreadForAdmin: 0, lastMessage: msg({ createdAt: '2026-01-03T00:00:00.000Z' }) }),
+      thread({ sellerId: 's2', unreadForAdmin: 2, lastMessage: msg({ createdAt: '2026-01-01T00:00:00.000Z' }) }),
+      thread({ sellerId: 's3', unreadForAdmin: 0, lastMessage: msg({ createdAt: '2026-01-02T00:00:00.000Z' }) }),
+    ];
+    const result = filterAndSortAdminThreads(threads, { sortCol: 'unread', unreadOnly: false });
+    expect(result.map((t) => t.sellerId)).toEqual(['s2', 's1', 's3']);
+  });
+
+  it('filters to only unread threads when unreadOnly is set', () => {
+    const threads = [
+      thread({ sellerId: 's1', unreadForAdmin: 0 }),
+      thread({ sellerId: 's2', unreadForAdmin: 1 }),
+    ];
+    const result = filterAndSortAdminThreads(threads, { sortCol: 'recent', unreadOnly: true });
+    expect(result.map((t) => t.sellerId)).toEqual(['s2']);
   });
 });

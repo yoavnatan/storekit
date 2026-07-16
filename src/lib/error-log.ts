@@ -105,3 +105,41 @@ export function getRecentErrors(limit = 100): ErrorLogEntry[] {
 export function clearErrorLog(): void {
   writeErrorLog([]);
 }
+
+// Admin Alerts tab's own filter/sort — mirrors admin-orders-filter.ts's
+// filterAndSortOrders (pure, runs over the full already-sorted-desc entry
+// list from getRecentErrors before pagination slices it).
+export type AlertsSortDir = 'asc' | 'desc';
+
+export interface AlertsQuery {
+  sortDir: AlertsSortDir;
+  source: string[]; // 'server' | 'client'
+  storeSlug: string[];
+}
+
+export function filterAndSortErrors(entries: ErrorLogEntry[], query: AlertsQuery): ErrorLogEntry[] {
+  const sourceSet = query.source.length ? new Set(query.source) : null;
+  const storeSet = query.storeSlug.length ? new Set(query.storeSlug) : null;
+
+  const filtered = entries.filter((e) => {
+    if (sourceSet && !sourceSet.has(e.source)) return false;
+    if (storeSet && (!e.storeSlug || !storeSet.has(e.storeSlug))) return false;
+    return true;
+  });
+
+  if (query.sortDir === 'asc') {
+    return [...filtered].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
+  return filtered; // already desc from getRecentErrors
+}
+
+// Every distinct store name that appears in the (unfiltered) error log — the
+// store-filter dropdown needs the full set regardless of the current page,
+// same reasoning as admin-orders-filter.ts's getOrderStoreNames.
+export function getErrorStoreNames(entries: ErrorLogEntry[]): { slug: string; name: string }[] {
+  const bySlug = new Map<string, string>();
+  for (const e of entries) {
+    if (e.storeSlug && !bySlug.has(e.storeSlug)) bySlug.set(e.storeSlug, e.storeName ?? e.storeSlug);
+  }
+  return [...bySlug.entries()].map(([slug, name]) => ({ slug, name })).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+}

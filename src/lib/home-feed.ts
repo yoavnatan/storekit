@@ -73,29 +73,6 @@ function normalizeCategory(raw: string): string {
   return raw.trim();
 }
 
-export interface CategoryCount {
-  category: string;
-  count: number;
-}
-
-/** Every category across the catalog with how many stores carry it, most-populated first —
- *  no minimum threshold (unlike the `categories` shelves below, which need 2+ stores to be
- *  worth a whole row): this is a browse/navigation list, not a content shelf, so even a
- *  category with a single store today is still a legitimate thing to browse by. */
-export function getCategoryCounts(storesWithProducts: FeedStore[]): CategoryCount[] {
-  const counts = new Map<string, number>();
-  for (const fs of storesWithProducts) {
-    for (const raw of fs.store.categories ?? []) {
-      const cat = normalizeCategory(raw);
-      if (!cat) continue;
-      counts.set(cat, (counts.get(cat) ?? 0) + 1);
-    }
-  }
-  return [...counts.entries()]
-    .map(([category, count]) => ({ category, count }))
-    .sort((a, b) => b.count - a.count);
-}
-
 /** `previousStoreSlugs` — the buyer's past-order store slugs, most-recent purchase first
  *  (deduped by the caller); pass `[]` for a guest or a buyer with no order history. Kept as a
  *  plain input here rather than importing orders.ts directly, same reasoning as

@@ -1,19 +1,25 @@
 ---
-import type { ErrorLogEntry } from '../../lib/error-log.js';
+import type { AlertsSortDir, ErrorLogEntry } from '../../lib/error-log.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import AdminPager from './AdminPager.astro';
 
 interface Props {
   errors: ErrorLogEntry[]; // current page only
   totalAll: number;
+  totalFiltered: number;
+  sortDir: AlertsSortDir;
+  source: string[];
+  storeSlug: string[];
+  storeOptions: { slug: string; name: string }[];
   page: number;
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { errors, totalAll, page, totalPages, buildUrl } = Astro.props;
+const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, storeOptions, page, totalPages, buildUrl } = Astro.props;
 
 const sourceLabel: Record<string, string> = { server: 'שרת', client: 'דפדפן' };
 const roleLabel: Record<string, string> = { buyer: 'קונה', seller: 'מוכר' };
+const sortLabels: Record<AlertsSortDir, string> = { desc: 'תאריך: חדש — ישן', asc: 'תאריך: ישן — חדש' };
 
 // Plain-text dump for the "העתק" button — everything a developer would want
 // to paste elsewhere for diagnosis. Built server-side (one source of truth)
@@ -46,6 +52,40 @@ function buildCopyText(e: ErrorLogEntry): string {
   <p class="admin-empty" id="admin-alerts-empty">אין שגיאות רשומות.</p>
 ) : (
   <div id="admin-alerts-wrap">
+  <div
+    class="flex flex-wrap items-center gap-2 mb-4"
+    id="admin-alerts-toolbar-controls"
+    data-sort-dir={sortDir}
+    data-source={source.join(',')}
+    data-store={storeSlug.join(',')}
+    data-store-options={JSON.stringify(storeOptions)}
+  >
+    <button type="button" id="admin-alerts-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+      <span id="admin-alerts-sort-label">{sortLabels[sortDir]}</span>
+      <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    {(['server', 'client'] as const).map((s) => (
+      <button
+        type="button"
+        class="admin-alerts-source-chip table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] border"
+        data-source-value={s}
+        style={source.includes(s) ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
+        aria-pressed={source.includes(s)}
+      >{sourceLabel[s]}</button>
+    ))}
+    {storeOptions.length > 0 && (
+      <button type="button" id="admin-alerts-store-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="true" aria-expanded="false">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        <span>חנות</span>
+        <span id="admin-alerts-store-count" class="filter-count-badge inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-primary)] text-white text-[.68rem] font-bold leading-none" hidden={storeSlug.length === 0}>{storeSlug.length}</span>
+        <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+    )}
+  </div>
+
+  {totalFiltered === 0 && <p class="admin-empty">לא נמצאו שגיאות תואמות.</p>}
+
   <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
   <div class="admin-table-wrap">
     <table class="admin-table" id="admin-alerts-table">

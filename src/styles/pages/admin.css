@@ -97,6 +97,17 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   border-radius: var(--radius);
   padding: 1.1rem 1rem;
   text-align: center;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+/* Cards are <button data-goto-panel> (AdminOverviewPanel.astro) — the hover
+   itself has to live here rather than as a Tailwind hover: utility class,
+   because this file is a plain unlayered import (see main.css's own header
+   comment) and unlayered CSS beats @layer'd Tailwind utilities regardless of
+   specificity or source order, so a Tailwind hover class on the same
+   property this rule already sets would silently never win. */
+.admin-stat-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--color-primary);
 }
 .admin-stat-card dt { font-size: 0.78rem; color: var(--color-muted); font-weight: 500; margin-bottom: 0.4rem; }
 .admin-stat-card dd { font-size: 1.4rem; font-weight: 800; color: var(--color-text); margin: 0; }

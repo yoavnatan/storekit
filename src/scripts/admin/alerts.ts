@@ -1,4 +1,89 @@
+import { buildAdminUrl, encodeList, decodeList, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
+import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+
+const PANEL_ID = 'dash-panel-alerts';
+const alertsPortal = createFloatingPortal('admin-alerts-toolbar-portal');
+
+type SortDir = 'asc' | 'desc';
+const SORT_OPTIONS: { dir: SortDir; label: string }[] = [
+  { dir: 'desc', label: 'תאריך: חדש — ישן' },
+  { dir: 'asc', label: 'תאריך: ישן — חדש' },
+];
+
+function wireAlertsToolbar(): void {
+  const root = document.getElementById('admin-alerts-toolbar-controls');
+  if (!root) return;
+
+  const state = root.dataset;
+  let sortDir = (state.sortDir as SortDir) || 'desc';
+  const sourceSet = new Set((state.source ?? '').split(',').filter(Boolean));
+  const storeSet = new Set(decodeList(state.store ?? ''));
+  const storeOptions: { slug: string; name: string }[] = JSON.parse(state.storeOptions ?? '[]');
+
+  function navigate(): void {
+    const url = buildAdminUrl('alerts', {
+      alsort: sortDir !== 'desc' ? sortDir : undefined,
+      alsource: sourceSet.size ? [...sourceSet].join(',') : undefined,
+      alstore: storeSet.size ? encodeList([...storeSet]) : undefined,
+    });
+    swapPanel(url, PANEL_ID, () => initAdminAlertsPanel());
+  }
+
+  const sortTrigger = document.getElementById('admin-alerts-sort-trigger') as HTMLButtonElement | null;
+  sortTrigger?.addEventListener('click', () => {
+    if (alertsPortal.currentTrigger() === sortTrigger) { alertsPortal.close(); return; }
+    alertsPortal.open(sortTrigger, '13rem', () => SORT_OPTIONS.map((o) => {
+      const selected = o.dir === sortDir;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
+    }).join(''), (p) => {
+      p.querySelectorAll<HTMLButtonElement>('[data-sort-dir]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          sortDir = (btn.dataset.sortDir as SortDir) ?? 'desc';
+          navigate();
+        });
+      });
+    });
+  });
+
+  root.querySelectorAll<HTMLButtonElement>('.admin-alerts-source-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const v = chip.dataset.sourceValue!;
+      if (sourceSet.has(v)) sourceSet.delete(v); else sourceSet.add(v);
+      navigate();
+    });
+  });
+
+  const storeTrigger = document.getElementById('admin-alerts-store-trigger') as HTMLButtonElement | null;
+  storeTrigger?.addEventListener('click', () => {
+    if (alertsPortal.currentTrigger() === storeTrigger) { alertsPortal.close(); return; }
+    alertsPortal.open(storeTrigger, '13rem', () => [
+      ...storeOptions.map((s) => `
+        <label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]">
+          <input type="checkbox" class="cursor-pointer shrink-0" data-store-value="${s.slug}" ${storeSet.has(s.slug) ? 'checked' : ''} />
+          ${s.name}
+        </label>`),
+      `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+      `<div style="display:flex;gap:0.4rem;padding:0.3rem 0.6rem">
+        <button type="button" class="btn btn--ghost btn--sm" data-store-clear style="flex:1">נקה</button>
+        <button type="button" class="btn btn--accent btn--sm" data-store-apply style="flex:1">החל</button>
+      </div>`,
+    ].join(''), (p) => {
+      p.querySelectorAll<HTMLInputElement>('[data-store-value]').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) storeSet.add(cb.dataset.storeValue!); else storeSet.delete(cb.dataset.storeValue!);
+        });
+      });
+      p.querySelector('[data-store-clear]')?.addEventListener('click', () => { storeSet.clear(); navigate(); });
+      p.querySelector('[data-store-apply]')?.addEventListener('click', () => navigate());
+    });
+  });
+}
+
 export function initAdminAlertsPanel(): void {
+  wireAlertsToolbar();
+  wirePanelLinks(PANEL_ID, () => initAdminAlertsPanel());
+  wirePopstateReload();
+
   const table = document.getElementById('admin-alerts-table');
   table?.addEventListener('click', (e) => {
     const detailsBtn = (e.target as HTMLElement).closest('.admin-alerts-details-btn') as HTMLButtonElement | null;

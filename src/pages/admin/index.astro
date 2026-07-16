@@ -3,15 +3,16 @@ export const prerender = false;
 import '../../styles/pages/admin.css';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { isAdminRequest } from '../../lib/admin-auth.js';
-import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductsByStoreMap, getStoreRows, getStoreRevenueMap, filterSellerCards, filterStoreRows } from '../../lib/admin-stats.js';
+import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductsByStoreMap, getStoreRows, getStoreRevenueMap, filterAndSortSellerCards, filterAndSortStoreRows, parseSellerQuery, parseStoreQuery } from '../../lib/admin-stats.js';
 import { getAllSellers } from '../../lib/seller-auth.js';
 import { getAllStores } from '../../lib/stores.js';
 import { getAllOrders } from '../../lib/orders.js';
 import { filterAndSortOrders, getOrderStoreNames, parseOrderQuery } from '../../lib/admin-orders-filter.js';
-import { getAdminThreadSummaries } from '../../lib/admin-messages.js';
-import { getRecentErrors } from '../../lib/error-log.js';
+import { getAdminThreadSummaries, filterAndSortAdminThreads, parseAdminThreadQuery } from '../../lib/admin-messages.js';
+import { getRecentErrors, filterAndSortErrors, getErrorStoreNames } from '../../lib/error-log.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
-import { buildAdminUrl, encodeList } from '../../lib/admin-nav.js';
+import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
+import { getLastViewedAt, recordTabView, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
 import AdminOverviewPanel from '../../components/admin/AdminOverviewPanel.astro';
 import AdminSellersPanel from '../../components/admin/AdminSellersPanel.astro';
 import AdminStoresPanel from '../../components/admin/AdminStoresPanel.astro';
@@ -59,15 +60,15 @@ const overview = getPlatformOverview(sellers, stores, allOrders);
 const revenueByStore = getStoreRevenueMap(allOrders);
 
 // ── Sellers tab ──
-const sq = (sp.get('sq') ?? '').trim();
+const sellerQuery = parseSellerQuery(sp);
 const sellerCardsAll = getSellerCards(sellers, stores, productsByStore, revenueByStore);
-const sellerCardsFiltered = filterSellerCards(sellerCardsAll, sq);
+const sellerCardsFiltered = filterAndSortSellerCards(sellerCardsAll, sellerQuery);
 const sellerPageResult = paginate(sellerCardsFiltered, parsePage(sp, 'spage'));
 
 // ── Stores tab ──
-const stq = (sp.get('stq') ?? '').trim();
+const storeQuery = parseStoreQuery(sp);
 const storeRowsAll = getStoreRows(stores, sellers, productsByStore, revenueByStore);
-const storeRowsFiltered = filterStoreRows(storeRowsAll, stq);
+const storeRowsFiltered = filterAndSortStoreRows(storeRowsAll, storeQuery);
 const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
@@ -76,18 +77,45 @@ const ordersFiltered = filterAndSortOrders(allOrders, { q: oq, sortCol: oSortCol
 const orderPageResult = paginate(ordersFiltered, parsePage(sp, 'opage'));
 const orderStoreNames = getOrderStoreNames(allOrders);
 
-// ── Attention tab (no filters — pagination only) ──
+// ── Attention tab (no filters — pagination only, see CURRENT_TASK.md → סשן ב׳: already a filtered subset) ──
 const attentionAll = getStoresNeedingAttention(stores, sellers, productsByStore);
 const attentionPageResult = paginate(attentionAll, parsePage(sp, 'apage'));
 
-// ── Messages tab (no filters — pagination only) ──
+// ── Messages tab ──
 const messageThreadsAll = getAdminThreadSummaries();
 const unreadMessagesForAdmin = messageThreadsAll.reduce((sum, t) => sum + t.unreadForAdmin, 0);
-const messagePageResult = paginate(messageThreadsAll, parsePage(sp, 'mpage'));
+const threadQuery = parseAdminThreadQuery(sp);
+const messageThreadsFiltered = filterAndSortAdminThreads(messageThreadsAll, threadQuery);
+const messagePageResult = paginate(messageThreadsFiltered, parsePage(sp, 'mpage'));
 
-// ── Alerts tab (no filters — pagination only) ──
+// ── Alerts tab ──
 const errorsAll = getRecentErrors(500); // MAX_ENTRIES cap in error-log.ts is already 500, so this is "all"
-const alertsPageResult = paginate(errorsAll, parsePage(sp, 'alpage'));
+const alSortDir = sp.get('alsort') === 'asc' ? 'asc' : 'desc';
+const alSource = (sp.get('alsource') ?? '').split(',').filter(Boolean);
+const alStore = decodeList(sp.get('alstore') ?? '');
+const errorsFiltered = filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore });
+const alertsPageResult = paginate(errorsFiltered, parsePage(sp, 'alpage'));
+const errorStoreOptions = getErrorStoreNames(errorsAll);
+
+// ── "(N) new since last opened" tab badges (CURRENT_TASK.md → סשן ב׳) ──
+// Messages isn't in this list — unreadMessagesForAdmin above is already an
+// exact per-message signal, more precise than a per-tab timestamp.
+const TRACKED_TABS: TrackedAdminTab[] = ['sellers', 'stores', 'orders', 'alerts'];
+const lastViewed = Object.fromEntries(TRACKED_TABS.map((t) => [t, getLastViewedAt(t)])) as Record<TrackedAdminTab, string>;
+const badgeCounts: Record<string, number> = {
+  sellers: countSince(sellers, lastViewed.sellers, (s) => s.createdAt),
+  stores: countSince(stores, lastViewed.stores, (s) => s.createdAt),
+  orders: countSince(allOrders, lastViewed.orders, (o) => o.createdAt),
+  alerts: countSince(errorsAll, lastViewed.alerts, (e) => e.createdAt),
+  messages: unreadMessagesForAdmin,
+};
+// Only the tab actually being opened counts as "viewed" — the other 6 tabs'
+// data is rendered too (initDashTabs() just toggles `hidden`, see ui.ts) but
+// the admin hasn't looked at them yet. A client-side tab switch (no reload)
+// updates this same store via POST /api/admin/tab-view (src/scripts/admin/tab-nav.ts).
+if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
+  recordTabView(initialPanel as TrackedAdminTab);
+}
 ---
 
 {/* sellerMode=true here isn't "seller dashboard" semantics — reusing the flag
@@ -108,22 +136,22 @@ const alertsPageResult = paginate(errorsAll, parsePage(sp, 'alpage'));
       </div>
 
       <div class="dash-tabs" role="tablist">
-        {tabs.map((tab) => (
-          <button
-            class={`dash-tab${initialPanel === tab.id ? ' dash-tab--active' : ''}`}
-            role="tab"
-            id={`tab-${tab.id}`}
-            data-panel={tab.id}
-            aria-selected={initialPanel === tab.id}
-            tabindex={initialPanel === tab.id ? 0 : -1}
-            style={tab.id === 'messages' ? 'position:relative' : undefined}
-          >
-            {tab.label}
-            {tab.id === 'messages' && unreadMessagesForAdmin > 0 && (
-              <span class="admin-msg-tab-dot" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMessagesForAdmin} הודעות שלא נקראו`}></span>
-            )}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const count = badgeCounts[tab.id] ?? 0;
+          return (
+            <button
+              class={`dash-tab${initialPanel === tab.id ? ' dash-tab--active' : ''}`}
+              role="tab"
+              id={`tab-${tab.id}`}
+              data-panel={tab.id}
+              aria-selected={initialPanel === tab.id}
+              tabindex={initialPanel === tab.id ? 0 : -1}
+            >
+              {tab.label}
+              <span id={`tab-count-${tab.id}`} class="dash-tab__count" style="margin-inline-start:0.25rem" hidden={count === 0}>{count > 0 ? `(${count})` : ''}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div id="dash-panel-overview" class="dash-panel" role="tabpanel" aria-labelledby="tab-overview" hidden={initialPanel !== 'overview'}>
@@ -133,24 +161,40 @@ const alertsPageResult = paginate(errorsAll, parsePage(sp, 'alpage'));
       <div id="dash-panel-sellers" class="dash-panel" role="tabpanel" aria-labelledby="tab-sellers" hidden={initialPanel !== 'sellers'}>
         <AdminSellersPanel
           sellerCards={sellerPageResult.items}
-          q={sq}
+          q={sellerQuery.q}
+          sortCol={sellerQuery.sortCol}
+          sortDir={sellerQuery.sortDir}
+          blockedOnly={sellerQuery.blockedOnly}
           totalAll={sellerCardsAll.length}
           totalFiltered={sellerCardsFiltered.length}
           page={sellerPageResult.page}
           totalPages={sellerPageResult.totalPages}
-          buildUrl={(p) => tabUrl('sellers', { sq: sq || undefined, spage: p > 1 ? String(p) : undefined })}
+          buildUrl={(p) => tabUrl('sellers', {
+            sq: sellerQuery.q || undefined,
+            ssort: (sellerQuery.sortCol !== 'joined' || sellerQuery.sortDir !== 'desc') ? `${sellerQuery.sortCol}:${sellerQuery.sortDir}` : undefined,
+            sblocked: sellerQuery.blockedOnly ? '1' : undefined,
+            spage: p > 1 ? String(p) : undefined,
+          })}
         />
       </div>
 
       <div id="dash-panel-stores" class="dash-panel" role="tabpanel" aria-labelledby="tab-stores" hidden={initialPanel !== 'stores'}>
         <AdminStoresPanel
           storeRows={storePageResult.items}
-          q={stq}
+          q={storeQuery.q}
+          sortCol={storeQuery.sortCol}
+          sortDir={storeQuery.sortDir}
+          blockedOnly={storeQuery.blockedOnly}
           totalAll={storeRowsAll.length}
           totalFiltered={storeRowsFiltered.length}
           page={storePageResult.page}
           totalPages={storePageResult.totalPages}
-          buildUrl={(p) => tabUrl('stores', { stq: stq || undefined, stpage: p > 1 ? String(p) : undefined })}
+          buildUrl={(p) => tabUrl('stores', {
+            stq: storeQuery.q || undefined,
+            stsort: (storeQuery.sortCol !== 'name' || storeQuery.sortDir !== 'asc') ? `${storeQuery.sortCol}:${storeQuery.sortDir}` : undefined,
+            stblocked: storeQuery.blockedOnly ? '1' : undefined,
+            stpage: p > 1 ? String(p) : undefined,
+          })}
         />
       </div>
 
@@ -193,9 +237,17 @@ const alertsPageResult = paginate(errorsAll, parsePage(sp, 'alpage'));
           threads={messagePageResult.items}
           allThreadsForSeed={messageThreadsAll}
           sellers={sellers}
+          sortCol={threadQuery.sortCol}
+          unreadOnly={threadQuery.unreadOnly}
+          totalAll={messageThreadsAll.length}
+          totalFiltered={messageThreadsFiltered.length}
           page={messagePageResult.page}
           totalPages={messagePageResult.totalPages}
-          buildUrl={(p) => tabUrl('messages', { mpage: p > 1 ? String(p) : undefined })}
+          buildUrl={(p) => tabUrl('messages', {
+            msort: threadQuery.sortCol !== 'recent' ? threadQuery.sortCol : undefined,
+            munread: threadQuery.unreadOnly ? '1' : undefined,
+            mpage: p > 1 ? String(p) : undefined,
+          })}
         />
       </div>
 
@@ -203,9 +255,19 @@ const alertsPageResult = paginate(errorsAll, parsePage(sp, 'alpage'));
         <AdminAlertsPanel
           errors={alertsPageResult.items}
           totalAll={errorsAll.length}
+          totalFiltered={errorsFiltered.length}
+          sortDir={alSortDir}
+          source={alSource}
+          storeSlug={alStore}
+          storeOptions={errorStoreOptions}
           page={alertsPageResult.page}
           totalPages={alertsPageResult.totalPages}
-          buildUrl={(p) => tabUrl('alerts', { alpage: p > 1 ? String(p) : undefined })}
+          buildUrl={(p) => tabUrl('alerts', {
+            alsort: alSortDir !== 'desc' ? alSortDir : undefined,
+            alsource: alSource.length ? alSource.join(',') : undefined,
+            alstore: alStore.length ? encodeList(alStore) : undefined,
+            alpage: p > 1 ? String(p) : undefined,
+          })}
         />
       </div>
     </div>
@@ -219,10 +281,12 @@ const alertsPageResult = paginate(errorsAll, parsePage(sp, 'alpage'));
   import { initAdminOrdersFilter } from '../../scripts/admin/orders-filter.js';
   import { initAdminMessagesPanel } from '../../scripts/admin/admin-messages.js';
   import { initAdminAlertsPanel } from '../../scripts/admin/alerts.js';
+  import { initAdminTabNav } from '../../scripts/admin/tab-nav.js';
   initDashTabs();
   initAdminSellersPanel();
   initAdminStoresPanel();
   initAdminOrdersFilter();
   initAdminMessagesPanel();
   initAdminAlertsPanel();
+  initAdminTabNav();
 </script>

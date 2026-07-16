@@ -99,3 +99,32 @@ export function summarizeAdminThreads(messages: AdminMessage[]): AdminThreadSumm
 export function getAdminThreadSummaries(): AdminThreadSummary[] {
   return summarizeAdminThreads(readAdminMessages());
 }
+
+export type AdminThreadSortCol = 'recent' | 'unread';
+
+export interface AdminThreadQuery {
+  sortCol: AdminThreadSortCol;
+  unreadOnly: boolean;
+}
+
+export function parseAdminThreadQuery(sp: URLSearchParams): AdminThreadQuery {
+  const requested = sp.get('msort');
+  return {
+    sortCol: requested === 'unread' ? 'unread' : 'recent',
+    unreadOnly: sp.get('munread') === '1',
+  };
+}
+
+// summarizeAdminThreads already sorts by recency (its own default) — this
+// only re-sorts when the toolbar asks for unread-first, and applies the
+// unread-only filter. Kept separate from summarizeAdminThreads (which stays
+// the pure grouping step) so filtering/sorting can be unit-tested against a
+// plain AdminThreadSummary[] without needing raw AdminMessage[] fixtures.
+export function filterAndSortAdminThreads(threads: AdminThreadSummary[], query: AdminThreadQuery): AdminThreadSummary[] {
+  const filtered = query.unreadOnly ? threads.filter((t) => t.unreadForAdmin > 0) : threads;
+  if (query.sortCol !== 'unread') return filtered;
+  return [...filtered].sort((a, b) => {
+    if (a.unreadForAdmin > 0 !== b.unreadForAdmin > 0) return a.unreadForAdmin > 0 ? -1 : 1;
+    return new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime();
+  });
+}

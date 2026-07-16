@@ -2,6 +2,11 @@ import { escapeHtml } from '../../lib/html-escape.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { initAdminMsgSellerDropdown, resetAdminMsgSellerDropdown } from './admin-msg-seller-dropdown.js';
 import { ADMIN_PAGE_SIZE } from '../../lib/pagination.js';
+import { buildAdminUrl, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
+import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+
+const PANEL_ID = 'dash-panel-messages';
+const messagesPortal = createFloatingPortal('admin-messages-toolbar-portal');
 
 interface AdminMsgSellerInfo { id: string; name: string; email: string }
 interface AdminMsg { id: string; sellerId: string; fromRole: 'admin' | 'seller'; content: string; createdAt: string }
@@ -30,27 +35,23 @@ function updateRowPreview(row: HTMLElement, message: AdminMsg): void {
   if (dateTd) dateTd.textContent = formatHeDateTime(message.createdAt);
 }
 
+// The tab strip's "(N)" badge (see admin/index.astro's tabs.map) is
+// computed server-side on load; this keeps it live as the 15s poll below
+// learns about new/read messages without needing a full reload. All other
+// tabs' badges are static per-page-load (see admin-tab-views.ts) — Messages
+// is the one exception because it already has this poll infrastructure and
+// an exact per-message unread signal.
 function refreshTabDot(known: Map<string, { lastMessageId: string; unreadForAdmin: number }>): void {
   let total = 0;
   for (const v of known.values()) total += v.unreadForAdmin;
-  setTabMessagesDot(total);
+  setTabMessagesCount(total);
 }
 
-function setTabMessagesDot(count: number): void {
-  const tab = document.getElementById('tab-messages');
-  if (!tab) return;
-  let dot = tab.querySelector<HTMLElement>('.admin-msg-tab-dot');
-  if (count > 0) {
-    if (!dot) {
-      dot = document.createElement('span');
-      dot.className = 'admin-msg-tab-dot';
-      dot.style.cssText = 'position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%';
-      tab.appendChild(dot);
-    }
-    dot.setAttribute('aria-label', `${count} הודעות שלא נקראו`);
-  } else {
-    dot?.remove();
-  }
+function setTabMessagesCount(count: number): void {
+  const span = document.getElementById('tab-count-messages');
+  if (!span) return;
+  span.hidden = count === 0;
+  span.textContent = count > 0 ? `(${count})` : '';
 }
 
 function bubbleHtml(m: AdminMsg): string {
@@ -266,7 +267,56 @@ function pollAdminMessages(sellers: Map<string, AdminMsgSellerInfo>, known: Map<
     .catch(() => {});
 }
 
+type ThreadSortCol = 'recent' | 'unread';
+const THREAD_SORT_OPTIONS: { col: ThreadSortCol; label: string }[] = [
+  { col: 'recent', label: 'עדכון אחרון' },
+  { col: 'unread', label: 'לא נקראו קודם' },
+];
+
+function wireMessagesToolbar(): void {
+  const root = document.getElementById('admin-messages-toolbar');
+  if (!root) return;
+
+  const state = root.dataset;
+  let sortCol = (state.sortCol as ThreadSortCol) || 'recent';
+  let unreadOnly = state.unreadOnly === '1';
+
+  function navigate(): void {
+    const url = buildAdminUrl('messages', {
+      msort: sortCol !== 'recent' ? sortCol : undefined,
+      munread: unreadOnly ? '1' : undefined,
+    });
+    swapPanel(url, PANEL_ID, () => initAdminMessagesPanel());
+  }
+
+  const sortTrigger = document.getElementById('admin-messages-sort-trigger') as HTMLButtonElement | null;
+  sortTrigger?.addEventListener('click', () => {
+    if (messagesPortal.currentTrigger() === sortTrigger) { messagesPortal.close(); return; }
+    messagesPortal.open(sortTrigger, '13rem', () => THREAD_SORT_OPTIONS.map((o) => {
+      const selected = o.col === sortCol;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
+    }).join(''), (p) => {
+      p.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          sortCol = (btn.dataset.sortCol as ThreadSortCol) ?? 'recent';
+          navigate();
+        });
+      });
+    });
+  });
+
+  const unreadToggle = document.getElementById('admin-messages-unread-toggle') as HTMLButtonElement | null;
+  unreadToggle?.addEventListener('click', () => {
+    unreadOnly = !unreadOnly;
+    navigate();
+  });
+}
+
 export function initAdminMessagesPanel(): void {
+  wireMessagesToolbar();
+  wirePanelLinks(PANEL_ID, () => initAdminMessagesPanel());
+  wirePopstateReload();
+
   const i18nEl = document.getElementById('admin-msg-i18n');
   const sellerList: AdminMsgSellerInfo[] = i18nEl?.dataset.sellers ? JSON.parse(i18nEl.dataset.sellers) : [];
   const sellers = new Map(sellerList.map((s) => [s.id, s]));

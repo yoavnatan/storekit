@@ -1,6 +1,66 @@
 import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
+import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 
 const PANEL_ID = 'dash-panel-stores';
+
+const storesPortal = createFloatingPortal('admin-stores-toolbar-portal');
+
+type StoreSortCol = 'name' | 'revenue' | 'products';
+const STORE_SORT_OPTIONS: { col: StoreSortCol; dir: 'asc' | 'desc'; label: string }[] = [
+  { col: 'name', dir: 'asc', label: 'שם: א — ת' },
+  { col: 'name', dir: 'desc', label: 'שם: ת — א' },
+  { col: 'revenue', dir: 'desc', label: 'הכנסות: גבוה — נמוך' },
+  { col: 'revenue', dir: 'asc', label: 'הכנסות: נמוך — גבוה' },
+  { col: 'products', dir: 'desc', label: 'מוצרים: רב — מעט' },
+];
+
+// Same pattern as sellers.ts's wireSellersToolbar (sort portal + a single
+// blocked-only toggle button, no column→values filter menu needed).
+function wireStoresToolbar(): void {
+  const root = document.getElementById('admin-stores-toolbar');
+  if (!root) return;
+
+  const state = root.dataset;
+  let sortCol = (state.sortCol as StoreSortCol) || 'name';
+  let sortDir = (state.sortDir as 'asc' | 'desc') || 'asc';
+  let blockedOnly = state.blockedOnly === '1';
+
+  function buildStoresNavUrl(): string {
+    const searchInput = document.getElementById('admin-store-search') as HTMLInputElement | null;
+    return buildAdminUrl('stores', {
+      stq: searchInput?.value.trim() || undefined,
+      stsort: (sortCol !== 'name' || sortDir !== 'asc') ? `${sortCol}:${sortDir}` : undefined,
+      stblocked: blockedOnly ? '1' : undefined,
+    });
+  }
+
+  function navigate(): void {
+    swapPanel(buildStoresNavUrl(), PANEL_ID, () => initAdminStoresPanel());
+  }
+
+  const sortTrigger = document.getElementById('admin-stores-sort-trigger') as HTMLButtonElement | null;
+  sortTrigger?.addEventListener('click', () => {
+    if (storesPortal.currentTrigger() === sortTrigger) { storesPortal.close(); return; }
+    storesPortal.open(sortTrigger, '15rem', () => STORE_SORT_OPTIONS.map((o) => {
+      const selected = o.col === sortCol && o.dir === sortDir;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
+    }).join(''), (p) => {
+      p.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          sortCol = (btn.dataset.sortCol as StoreSortCol) ?? 'name';
+          sortDir = (btn.dataset.sortDir as 'asc' | 'desc') ?? 'asc';
+          navigate();
+        });
+      });
+    });
+  });
+
+  const blockedToggle = document.getElementById('admin-stores-blocked-toggle') as HTMLButtonElement | null;
+  blockedToggle?.addEventListener('click', () => {
+    blockedOnly = !blockedOnly;
+    navigate();
+  });
+}
 
 // Stores tab: flat, top-level list of every store across all sellers (see
 // AdminStoresPanel.astro's header comment). Deliberately does NOT reuse the
@@ -68,6 +128,7 @@ function initStoreBlockToggles(): void {
 export function initAdminStoresPanel(): void {
   initStoreSearch();
   initStoreBlockToggles();
+  wireStoresToolbar();
   wirePanelLinks(PANEL_ID, () => initAdminStoresPanel());
   wirePopstateReload();
 }

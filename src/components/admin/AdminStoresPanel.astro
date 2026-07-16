@@ -7,20 +7,31 @@
 // block/unblock endpoint (/api/admin/moderation) the Sellers tab already
 // calls, wired independently in stores.ts (see that file's header comment
 // for why it doesn't share the Sellers tab's .admin-block-toggle class).
-import type { StoreRow } from '../../lib/admin-stats.js';
+import type { AdminSortDir, AdminStoreSortCol, StoreRow } from '../../lib/admin-stats.js';
 import { formatPrice } from '../../config/store.config.js';
 import AdminPager from './AdminPager.astro';
 
 interface Props {
   storeRows: StoreRow[]; // current page only
   q: string;
+  sortCol: AdminStoreSortCol;
+  sortDir: AdminSortDir;
+  blockedOnly: boolean;
   totalAll: number;
   totalFiltered: number;
   page: number;
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { storeRows, q, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+const { storeRows, q, sortCol, sortDir, blockedOnly, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+
+const sortLabels: Record<string, string> = {
+  'name:asc': 'שם: א — ת',
+  'name:desc': 'שם: ת — א',
+  'revenue:desc': 'הכנסות: גבוה — נמוך',
+  'revenue:asc': 'הכנסות: נמוך — גבוה',
+  'products:desc': 'מוצרים: רב — מעט',
+};
 ---
 
 <div class="admin-orders-search">
@@ -29,10 +40,25 @@ const { storeRows, q, totalAll, totalFiltered, page, totalPages, buildUrl } = As
 
 {totalAll === 0 ? (
   <p class="admin-empty">אין חנויות עדיין.</p>
-) : totalFiltered === 0 ? (
-  <p class="admin-empty">לא נמצאו חנויות תואמות.</p>
 ) : (
   <Fragment>
+    <div class="flex flex-wrap items-center gap-2 mb-4" id="admin-stores-toolbar" data-sort-col={sortCol} data-sort-dir={sortDir} data-blocked-only={blockedOnly ? '1' : ''}>
+      <button type="button" id="admin-stores-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+        <span id="admin-stores-sort-label">{sortLabels[`${sortCol}:${sortDir}`] ?? sortLabels['name:asc']}</span>
+        <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <button
+        type="button"
+        id="admin-stores-blocked-toggle"
+        class="table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] border"
+        style={blockedOnly ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
+        aria-pressed={blockedOnly}
+      >חסומות בלבד</button>
+    </div>
+
+    {totalFiltered === 0 && <p class="admin-empty">לא נמצאו חנויות תואמות.</p>}
+
     <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
     <ul class="admin-store-list" id="admin-store-list">
       {storeRows.map(({ store, seller, productCount, revenue }) => {

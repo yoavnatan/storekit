@@ -1,5 +1,5 @@
 ---
-import type { AdminThreadSummary } from '../../lib/admin-messages.js';
+import type { AdminThreadSortCol, AdminThreadSummary } from '../../lib/admin-messages.js';
 import type { Seller } from '../../lib/seller-auth.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import AdminPager from './AdminPager.astro';
@@ -8,13 +8,22 @@ interface Props {
   threads: AdminThreadSummary[]; // current page only — what actually renders as rows
   allThreadsForSeed: AdminThreadSummary[]; // full unpaginated list — seeds the client's unread-badge tracking so it starts accurate even for threads on other pages
   sellers: Seller[];
+  sortCol: AdminThreadSortCol;
+  unreadOnly: boolean;
+  totalAll: number;
+  totalFiltered: number;
   page: number;
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { threads, allThreadsForSeed, sellers, page, totalPages, buildUrl } = Astro.props;
+const { threads, allThreadsForSeed, sellers, sortCol, unreadOnly, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
 
 const sellerById = new Map(sellers.map((s) => [s.id, s]));
+
+const sortLabels: Record<AdminThreadSortCol, string> = {
+  recent: 'עדכון אחרון',
+  unread: 'לא נקראו קודם',
+};
 ---
 
 <div
@@ -59,9 +68,27 @@ const sellerById = new Map(sellers.map((s) => [s.id, s]));
 
 <h2 class="admin-panel-subtitle">שיחות קיימות</h2>
 
+{totalAll > 0 && (
+  <div class="flex flex-wrap items-center gap-2 mb-4" id="admin-messages-toolbar" data-sort-col={sortCol} data-unread-only={unreadOnly ? '1' : ''}>
+    <button type="button" id="admin-messages-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+      <span id="admin-messages-sort-label">{sortLabels[sortCol]}</span>
+      <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <button
+      type="button"
+      id="admin-messages-unread-toggle"
+      class="table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] border"
+      style={unreadOnly ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
+      aria-pressed={unreadOnly}
+    >לא נקראו בלבד</button>
+  </div>
+)}
+
 <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
 
-{threads.length === 0 && <p class="admin-empty" id="admin-msg-empty">אין שיחות עדיין.</p>}
+{totalFiltered === 0 && totalAll > 0 && <p class="admin-empty">לא נמצאו שיחות תואמות.</p>}
+{threads.length === 0 && totalAll === 0 && <p class="admin-empty" id="admin-msg-empty">אין שיחות עדיין.</p>}
 <div class="msg-table-wrap" hidden={threads.length === 0} id="admin-msg-table-wrap">
     <table class="msg-table" id="admin-msg-table">
       <thead>

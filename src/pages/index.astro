@@ -2,13 +2,14 @@
 export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import HomeShelf from '../components/HomeShelf.astro';
+import HomeTabEmpty from '../components/HomeTabEmpty.astro';
 import StoreAvatar from '../components/StoreAvatar.astro';
 import { store as platform, formatPrice, cdnSrc } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { getAllOrders } from '../lib/orders.js';
-import { buildHomeFeed, getCategoryCounts } from '../lib/home-feed.js';
+import { buildHomeFeed } from '../lib/home-feed.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId    = getSellerSession(Astro.cookies);
@@ -48,19 +49,46 @@ if (sellerId || buyerEmail) {
 // src/lib/home-feed.ts for the shelf-selection strategy (was the site's actual
 // scaling limit once there are hundreds of stores, not just a style choice).
 const feed = buildHomeFeed(storesWithProducts, sellerId, previousStoreSlugs);
-const categoryCounts = getCategoryCounts(storesWithProducts);
 
-// Render order = discovery order. First non-empty shelf's first card gets the
-// eager/high-priority image load (today's real LCP element, now that shelves
-// sit above the old spotlight carousels).
-const shelves = [
-  { id: 'liked', title: t.home.shelfLiked, stores: feed.liked },
-  { id: 'buy-again', title: t.home.shelfBuyAgain, stores: feed.buyAgain },
-  { id: 'new', title: t.home.shelfNew, stores: feed.newStores },
-  ...feed.categories.map((c, i) => ({ id: `cat-${i}`, title: c.category, stores: c.stores })),
+// ── Tabs (CURRENT_TASK.md → סשן ג׳, round 2): the old vertical shelf-stack
+// is now switchable tabs, reusing the seller/admin dashboard's own tab
+// pattern (dash-tabs/.dash-panel + initDashTabs() in scripts/dashboard/ui.ts)
+// — see AI_INSTRUCTIONS.md → Homepage for the reasoning. Category shelves +
+// spotlight fold unchanged into the "discover" tab.
+const TAB_IDS = ['discover', 'liked', 'buy-again', 'new'] as const;
+type TabId = typeof TAB_IDS[number];
+
+const discoverShelves = [
   { id: 'discovery', title: t.home.shelfDiscovery, stores: feed.discovery },
+  ...feed.categories.map((c, i) => ({ id: `cat-${i}`, title: c.category, stores: c.stores })),
 ];
-const firstShelfId = shelves.find((s) => s.stores.length > 0)?.id;
+const discoverHasContent = discoverShelves.some((s) => s.stores.length > 0) || feed.spotlight.length > 0;
+
+// Discover is both the first tab and the default landing tab (round 3
+// feedback) — it's the main browsing surface and always populated whenever
+// any store+product exists, unlike Liked/BuyAgain/New which can be empty
+// for a guest or new buyer.
+const requestedTab = Astro.url.searchParams.get('panel');
+const activeTab: TabId = (TAB_IDS as readonly string[]).includes(requestedTab ?? '')
+  ? (requestedTab as TabId)
+  : 'discover';
+
+const tabs: { id: TabId; label: string }[] = [
+  { id: 'discover', label: t.home.discoverStores },
+  { id: 'liked', label: t.home.shelfLiked },
+  { id: 'buy-again', label: t.home.shelfBuyAgain },
+  { id: 'new', label: t.home.shelfNew },
+];
+
+// The active tab's own first non-empty shelf gets the eager/high-priority
+// image load (today's real LCP element) — every other shelf, including ones
+// in inactive (hidden) panels, stays lazy.
+const activeTabShelves: { id: string; title: string; stores: typeof feed.liked }[] =
+  activeTab === 'liked' ? [{ id: 'liked', title: t.home.shelfLiked, stores: feed.liked }] :
+  activeTab === 'buy-again' ? [{ id: 'buy-again', title: t.home.shelfBuyAgain, stores: feed.buyAgain }] :
+  activeTab === 'new' ? [{ id: 'new', title: t.home.shelfNew, stores: feed.newStores }] :
+  discoverShelves;
+const firstEagerShelfId = activeTabShelves.find((s) => s.stores.length > 0)?.id;
 
 // Fresh per visit: each shelf/spotlight title's small accent dot
 // (home-shelf-dot--0/1/2, see store-card.css) gets a random starting offset,
@@ -75,6 +103,7 @@ const jsonLd = {
   url: platform.url,
   description: platform.description,
 };
+
 ---
 
 <BaseLayout
@@ -89,15 +118,23 @@ const jsonLd = {
   dataLayer={{ event: 'page_view', page_type: 'platform', currency: 'ILS' }}
 >
 
-  <!-- ── Hero: plain white banner, same treatment as a store page's own
-       banner (.store-banner) — brand name (real H1) + one static tagline,
-       then the rest of the page continues on the standard gray background
-       below, exactly like a store page's banner→content structure. ── -->
-  <section class="home-hero">
-    <div class="container home-hero__inner">
-      <h1 class="home-hero__title">{platform.name}</h1>
-      <p class="home-hero__phrase">{t.home.heroTagline}</p>
-      <div class="home-hero__links">
+  <!-- ── Hero: brand name (real H1) + one static tagline, same white-surface
+       treatment as a store page's own banner (.store-banner), then the rest
+       of the page continues on the standard gray background below — same
+       banner→content structure, just roomier/centered instead of a thin
+       strip, plus a dense repeating dot-pattern layer slowly breathing
+       (scale in/out) behind the title (see home.css). ── -->
+  <section class="home-hero relative overflow-hidden bg-[color:var(--color-surface)]">
+    <div
+      class="home-hero__pattern absolute -inset-1/4 w-[150%] h-[150%] z-0 pointer-events-none opacity-60
+             bg-[radial-gradient(circle,var(--color-border)_1.5px,transparent_1.6px)] bg-[length:30px_30px]
+             animate-[home-hero-pattern-breathe_16s_ease-in-out_infinite] motion-reduce:animate-none"
+      aria-hidden="true"
+    ></div>
+    <div class="container relative z-[1] pt-12 pb-10 sm:pt-16 sm:pb-12 min-h-[260px] sm:min-h-[340px] flex flex-col items-center justify-center text-center gap-2">
+      <h1 class="text-[clamp(1.9rem,5.5vw,3rem)] font-extrabold tracking-[-0.02em] text-[color:var(--color-text)] m-0">{platform.name}</h1>
+      <p class="text-[clamp(0.9rem,2vw,1.05rem)] text-[color:var(--color-muted)] m-0">{t.home.heroTagline}</p>
+      <div class="flex flex-wrap items-center justify-center gap-x-[1.1rem] gap-y-[0.6rem] mt-[0.6rem]">
         <a href="/stores" class="btn btn--ghost btn--sm">
           {t.home.viewAllStores}
           <svg class="rtl:-scale-x-100" width="11" height="11" viewBox="0 0 24 24" fill="none"
@@ -120,20 +157,9 @@ const jsonLd = {
 
   <div class="home-body">
 
-  <!-- ── Category browse row — plain pills, not a shelf: a navigation aid
-       (jumps to /stores pre-filtered), not content of its own. ── -->
-  {categoryCounts.length > 0 && (
-    <div class="container home-category-row-wrap">
-      <span class="home-category-row-label">{t.home.categoryRowLabel}</span>
-      <div class="home-category-row edge-fade" role="list" aria-label={t.home.categoryRowLabel}>
-        {categoryCounts.map(({ category }) => (
-          <a href={`/stores?category=${encodeURIComponent(category)}`} class="home-category-pill" role="listitem">
-            {category}
-          </a>
-        ))}
-      </div>
-    </div>
-  )}
+  <!-- ── Category browse pill row removed (felt disconnected from the
+       tabbed UI below it) — category browsing still lives inside the
+       Discover tab's own category shelves. ── -->
 
   {storesWithProducts.length === 0 ? (
     <div class="section container flex flex-col items-center gap-4 py-16 text-center">
@@ -146,111 +172,223 @@ const jsonLd = {
       <a href="/seller/register" class="btn">{t.home.openStoreFree}</a>
     </div>
   ) : (
-    <div id="stores-container">
+    <>
 
-      <!-- ── Personalized/discovery shelves ─────────────────────────── -->
-      {shelves.map((s, i) => (
-        <HomeShelf id={s.id} title={s.title} stores={s.stores} dotIndex={i + bgOffset} eagerFirst={s.id === firstShelfId} />
-      ))}
-
-      <!-- ── Spotlight: full per-store product carousels — a rotating subset, not every store.
-           Title styled exactly like every other shelf header (dot + h2, plain background) —
-           not a distinct boxed section of its own. ── -->
-      {feed.spotlight.length > 0 && (
-        <div class="container" style="padding-top:1.5rem">
-          <div class="home-section-header">
-            <h2 class="home-section-title">
-              <span class={`home-shelf-dot home-shelf-dot--${(shelves.length + bgOffset) % 3}`} aria-hidden="true"></span>
-              {t.home.spotlightTitle}
-            </h2>
-          </div>
+      <!-- ── Tabs: liked / bought-before / new / discover — reuses the seller/
+           admin dashboard's own tab shell (dash-tabs/.dash-panel + initDashTabs()
+           in scripts/dashboard/ui.ts) so the homepage picks up the "app
+           dashboard" underline-tab look for free, no new interaction code.
+           .dash-tabs gets its own gutter here (see home.css); .dash-panel
+           stays flush (padding-inline:0) since every panel's own content —
+           HomeShelf, HomeTabEmpty, the spotlight sections below — already
+           self-pads via its own inner .container, same as it always has. ── -->
+      <div class="container">
+        <div class="dash-tabs !px-0" role="tablist">
+          {tabs.map((tab) => (
+            <button
+              class={`dash-tab${activeTab === tab.id ? ' dash-tab--active' : ''}
+                relative rounded-t-[6px] !border-b-0
+                [transition:color_0.15s,background-color_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
+                hover:bg-[color:var(--color-bg)] active:scale-[0.97]
+                after:content-[''] after:absolute after:inset-x-[0.85rem] after:bottom-0 after:h-[2.5px]
+                after:rounded-t-[2px] after:origin-center
+                after:[transition:transform_0.22s_cubic-bezier(0.22,1,0.36,1),background-color_0.15s]
+                hover:after:scale-x-100
+                ${activeTab === tab.id
+                  ? 'after:scale-x-100 after:bg-[color:var(--color-primary)]'
+                  : 'after:scale-x-0 after:bg-[color:var(--color-muted)]'}`}
+              role="tab"
+              id={`tab-${tab.id}`}
+              data-panel={tab.id}
+              aria-selected={activeTab === tab.id}
+              tabindex={activeTab === tab.id ? 0 : -1}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
-      )}
-      {feed.spotlight.map(({ store: s, products }) => (
-        <section
-          class="home-store-section"
-          data-store-name={s.name.toLowerCase()}
-          data-tagline={(s.tagline || s.description || '').toLowerCase()}
-          aria-labelledby={`sh-${s.slug}`}
-        >
-          <div class="container">
-            <div class="home-section-header">
-              <div class="home-store-section__title-group">
-                <a href={`/store/${s.slug}`} class="flex items-center gap-2.5" style="color:inherit;text-decoration:none">
-                  <StoreAvatar name={s.name} profileImage={s.profileImage} size={36} />
-                  <h2 id={`sh-${s.slug}`} class="home-section-title hover:text-[var(--color-accent)] transition-colors duration-150">{s.name}</h2>
-                </a>
-                {(s.tagline || s.description) && (
-                  <p class="home-store-section__tagline" dir="auto">{s.tagline || s.description}</p>
-                )}
-              </div>
-              <a
-                href={`/store/${s.slug}`}
-                class="btn btn--sm btn--ghost inline-flex items-center gap-1.5 shrink-0"
-              >
-                {t.home.visitStore}
-                <svg class="rtl:-scale-x-100" width="11" height="11" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                  <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-                </svg>
-              </a>
-            </div>
+      </div>
 
-            <div class="home-carousel-wrap">
-              {products.length > 2 && (
-                <>
-                  <button type="button" class="home-carousel-btn home-carousel-btn--prev"
-                          aria-label={lang === 'he' ? 'הקודם' : 'Previous'}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2.5" aria-hidden="true"
-                         style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
-                      <polyline points="15 18 9 12 15 6"/>
-                    </svg>
-                  </button>
-                  <button type="button" class="home-carousel-btn home-carousel-btn--next"
-                          aria-label={lang === 'he' ? 'הבא' : 'Next'}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2.5" aria-hidden="true"
-                         style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                  </button>
-                </>
-              )}
-              <div class="home-carousel" role="list" aria-label={s.name}>
-                {products.map((p) => (
-                  <a
-                    href={`/store/${s.slug}`}
-                    class="home-product-card card"
-                    role="listitem"
-                    aria-label={`${p.name} — ${formatPrice(p.price)}`}
-                  >
-                    <div class={`home-product-card__img-wrap${p.images?.[0] ? ' is-loading' : ''}`}>
-                      {p.images?.[0]
-                        ? <img
-                            data-lazy-src={cdnSrc(p.images[0])}
-                            alt={p.name}
-                            width="300"
-                            height="300"
-                            class="home-product-card__img"
-                          />
-                        : <span class="home-product-card__initial" aria-hidden="true">
-                            {p.name[0]?.toUpperCase() ?? '?'}
-                          </span>
-                      }
+      <div id="dash-panel-liked" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-liked" hidden={activeTab !== 'liked'}>
+        {feed.liked.length > 0
+          ? <HomeShelf id="liked" title={t.home.shelfLiked} stores={feed.liked} dotIndex={bgOffset} eagerFirst={activeTab === 'liked'} hideHeading />
+          : <HomeTabEmpty
+              message={isLoggedIn ? t.home.tabEmptyLiked : t.home.tabEmptyLikedGuest}
+              ctaLabel={isLoggedIn ? t.home.tabEmptyLikedCta : t.home.tabEmptyLikedGuestCta}
+              ctaHref={isLoggedIn ? '/stores' : '/seller/login?next=/'}
+            />
+        }
+      </div>
+
+      <div id="dash-panel-buy-again" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-buy-again" hidden={activeTab !== 'buy-again'}>
+        {feed.buyAgain.length > 0
+          ? <HomeShelf id="buy-again" title={t.home.shelfBuyAgain} stores={feed.buyAgain} dotIndex={bgOffset} eagerFirst={activeTab === 'buy-again'} hideHeading />
+          : <HomeTabEmpty message={t.home.tabEmptyBuyAgain} ctaLabel={t.home.tabEmptyLikedCta} ctaHref="/stores" />
+        }
+      </div>
+
+      <div id="dash-panel-new" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-new" hidden={activeTab !== 'new'}>
+        {feed.newStores.length > 0
+          ? <HomeShelf id="new" title={t.home.shelfNew} stores={feed.newStores} dotIndex={bgOffset} eagerFirst={activeTab === 'new'} hideHeading />
+          : <HomeTabEmpty message={t.home.tabEmptyNew} ctaLabel={t.home.tabEmptyCtaAll} ctaHref="/stores" />
+        }
+      </div>
+
+      <div id="dash-panel-discover" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-discover" hidden={activeTab !== 'discover'}>
+        {discoverHasContent ? (
+          <>
+            <!-- ── Discovery shuffle + category shelves — unchanged from the old
+                 page-level shelf stack, just relocated inside this panel. ── -->
+            {discoverShelves.map((s, i) => (
+              <HomeShelf id={s.id} title={s.title} stores={s.stores} dotIndex={i + bgOffset} eagerFirst={activeTab === 'discover' && s.id === firstEagerShelfId} />
+            ))}
+
+            <!-- ── Spotlight: a horizontal carousel of per-store product
+                 carousels — one store's full section visible at a time,
+                 paged via the compact arrow pair right above the track
+                 (store-level paging; each store's own product carousel still
+                 scrolls independently inside its slide). Round 4: reverted
+                 from a vertical auto-rotating ticker (disliked, no active
+                 paging) back to this — visible working controls, and the
+                 nav row is kept tight/compact (see home.css) rather than the
+                 taller version from round 2 that read as dead space. No
+                 visible heading — the "גלה חנויות" tab itself is already the
+                 heading; spotlightTitle survives only as the track's
+                 accessible name. ── -->
+            {feed.spotlight.length > 0 && (
+              <div class="container" style="padding-top:1rem">
+                {feed.spotlight.length > 1 && (
+                  <div class="home-spotlight-nav flex justify-end gap-[0.4rem] mb-2">
+                    <button
+                      type="button"
+                      class="home-spotlight-arrow home-spotlight-arrow--prev
+                        w-8 h-8 rounded-full border-[1.5px] border-[color:var(--color-border)]
+                        bg-[color:var(--color-surface)] text-[color:var(--color-text)]
+                        flex items-center justify-center cursor-pointer
+                        [transition:box-shadow_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
+                        hover:shadow-[var(--shadow-card-hover)] active:scale-[0.91]"
+                      aria-label={lang === 'he' ? 'החנות הקודמת' : 'Previous store'}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="2.5" aria-hidden="true"
+                           style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                        <polyline points="15 18 9 12 15 6"/>
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="home-spotlight-arrow home-spotlight-arrow--next
+                        w-8 h-8 rounded-full border-[1.5px] border-[color:var(--color-border)]
+                        bg-[color:var(--color-surface)] text-[color:var(--color-text)]
+                        flex items-center justify-center cursor-pointer
+                        [transition:box-shadow_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
+                        hover:shadow-[var(--shadow-card-hover)] active:scale-[0.91]"
+                      aria-label={lang === 'he' ? 'החנות הבאה' : 'Next store'}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="2.5" aria-hidden="true"
+                           style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                <div
+                  class="home-spotlight-track flex overflow-x-auto [scroll-snap-type:x_mandatory]
+                    [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+                  role="list" aria-label={t.home.spotlightTitle}
+                >
+                  {feed.spotlight.map(({ store: s, products }) => (
+                    <div class="home-spotlight-slide flex-[0_0_100%] min-w-0 [scroll-snap-align:start]" role="listitem">
+                      <section
+                        class="home-store-section"
+                        data-store-name={s.name.toLowerCase()}
+                        data-tagline={(s.tagline || s.description || '').toLowerCase()}
+                        aria-labelledby={`sh-${s.slug}`}
+                      >
+                          <div class="home-section-header">
+                            <div class="home-store-section__title-group">
+                              <a href={`/store/${s.slug}`} class="flex items-center gap-2.5" style="color:inherit;text-decoration:none">
+                                <StoreAvatar name={s.name} profileImage={s.profileImage} size={36} />
+                                <h2 id={`sh-${s.slug}`} class="home-section-title hover:text-[var(--color-accent)] transition-colors duration-150">{s.name}</h2>
+                              </a>
+                              {(s.tagline || s.description) && (
+                                <p class="home-store-section__tagline" dir="auto">{s.tagline || s.description}</p>
+                              )}
+                            </div>
+                            <a
+                              href={`/store/${s.slug}`}
+                              class="btn btn--sm btn--ghost inline-flex items-center gap-1.5 shrink-0"
+                            >
+                              {t.home.visitStore}
+                              <svg class="rtl:-scale-x-100" width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                   stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                              </svg>
+                            </a>
+                          </div>
+
+                          <div class="home-carousel-wrap">
+                            {products.length > 2 && (
+                              <>
+                                <button type="button" class="home-carousel-btn home-carousel-btn--prev"
+                                        aria-label={lang === 'he' ? 'הקודם' : 'Previous'}>
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                       stroke-width="2.5" aria-hidden="true"
+                                       style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                                    <polyline points="15 18 9 12 15 6"/>
+                                  </svg>
+                                </button>
+                                <button type="button" class="home-carousel-btn home-carousel-btn--next"
+                                        aria-label={lang === 'he' ? 'הבא' : 'Next'}>
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                       stroke-width="2.5" aria-hidden="true"
+                                       style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                                    <polyline points="9 18 15 12 9 6"/>
+                                  </svg>
+                                </button>
+                              </>
+                            )}
+                            <div class="home-carousel" role="list" aria-label={s.name}>
+                              {products.map((p) => (
+                                <a
+                                  href={`/store/${s.slug}`}
+                                  class="home-product-card card"
+                                  role="listitem"
+                                  aria-label={`${p.name} — ${formatPrice(p.price)}`}
+                                >
+                                  <div class={`home-product-card__img-wrap${p.images?.[0] ? ' is-loading' : ''}`}>
+                                    {p.images?.[0]
+                                      ? <img
+                                          data-lazy-src={cdnSrc(p.images[0])}
+                                          alt={p.name}
+                                          width="300"
+                                          height="300"
+                                          class="home-product-card__img"
+                                        />
+                                      : <span class="home-product-card__initial" aria-hidden="true">
+                                          {p.name[0]?.toUpperCase() ?? '?'}
+                                        </span>
+                                    }
+                                  </div>
+                                  <div class="home-product-card__body">
+                                    <span class="home-product-card__name" dir="auto">{p.name}</span>
+                                    <span class="home-product-card__price">{formatPrice(p.price)}</span>
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                      </section>
                     </div>
-                    <div class="home-product-card__body">
-                      <span class="home-product-card__name" dir="auto">{p.name}</span>
-                      <span class="home-product-card__price">{formatPrice(p.price)}</span>
-                    </div>
-                  </a>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          </div>
-        </section>
-      ))}
-    </div>
+            )}
+          </>
+        ) : (
+          <HomeTabEmpty message={t.home.tabEmptyGeneric} ctaLabel={t.home.tabEmptyCtaAll} ctaHref="/stores" />
+        )}
+      </div>
+    </>
   )}
 
   <!-- ── Seller CTA ─────────────────────────────────────────────────── -->
@@ -304,10 +442,16 @@ const jsonLd = {
   import { spawnRipple } from '../lib/ripple.js';
   import { clearLastStore } from '../lib/last-store.js';
   import { initImageSkeletons } from '../lib/img-skeleton.js';
+  import { initDashTabs } from '../scripts/dashboard/ui.js';
 
   // Landing on the platform home is a deliberate exit from any store context —
   // don't let a stale "back to store" pill follow the buyer into checkout/dashboard afterward.
   clearLastStore();
+
+  // Same tab shell the seller/admin dashboards use (click + arrow-key nav,
+  // hidden-toggling, ?panel= URL sync via history.replaceState) — reused
+  // unchanged, see AI_INSTRUCTIONS.md → Homepage.
+  initDashTabs();
 
   document.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button, a.btn, a.home-product-card, a.store-card');
@@ -377,7 +521,42 @@ const jsonLd = {
   });
 
   document.querySelectorAll<HTMLElement>('.home-shelf').forEach((shelf) => initEdgeFade(shelf));
-  document.querySelectorAll<HTMLElement>('.home-category-row').forEach((row) => initEdgeFade(row));
+
+  // ── Spotlight: carousel of per-store carousels — the outer arrows page by
+  // one whole store slide (the track's own clientWidth), independent of the
+  // per-store product carousels' fixed STEP wired above. Round 4: reverted
+  // from a vertical auto-rotating ticker (disliked, no active paging) back
+  // to this. Only one such track exists on the page, so no forEach needed.
+  {
+    const track    = document.querySelector<HTMLElement>('.home-spotlight-track');
+    const btnPrev  = document.querySelector<HTMLButtonElement>('.home-spotlight-arrow--prev');
+    const btnNext  = document.querySelector<HTMLButtonElement>('.home-spotlight-arrow--next');
+    if (track) {
+      function updateSpotlightArrows(): void {
+        const { atStart, atEnd } = edgeState(track!);
+        if (btnPrev) btnPrev.toggleAttribute('hidden', atStart);
+        if (btnNext) btnNext.toggleAttribute('hidden', atEnd);
+      }
+      track.addEventListener('scroll', updateSpotlightArrows, { passive: true });
+      updateSpotlightArrows();
+      requestAnimationFrame(updateSpotlightArrows);
+
+      btnPrev?.addEventListener('click', () => track.scrollBy({ left: (isRtl ? 1 : -1) * track.clientWidth, behavior: 'smooth' }));
+      btnNext?.addEventListener('click', () => track.scrollBy({ left: (isRtl ? -1 : 1) * track.clientWidth, behavior: 'smooth' }));
+
+      // The Discover tab's panel starts `hidden` (display:none, zero width)
+      // whenever it isn't the default active tab — the measurement above ran
+      // against a zero-width track and both arrows landed on "nothing to
+      // scroll" permanently, since initDashTabs() only toggles `hidden` and
+      // fires no event. Re-measure once the panel actually becomes visible.
+      const discoverPanel = document.getElementById('dash-panel-discover');
+      if (discoverPanel) {
+        new MutationObserver(() => {
+          if (!discoverPanel.hidden) requestAnimationFrame(updateSpotlightArrows);
+        }).observe(discoverPanel, { attributes: true, attributeFilter: ['hidden'] });
+      }
+    }
+  }
 
   // ── Carousel lazy loading (IntersectionObserver) ─────────────────
   {

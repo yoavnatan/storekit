@@ -9,27 +9,34 @@ interface Props {
 const { overview, attentionCount } = Astro.props;
 ---
 
+{/* Each card jumps to its tab (data-goto-panel, wired in tab-nav.ts's
+    initAdminTabNav()) — a <button> reset to look like the existing
+    .admin-stat-card <div> (admin.css); the hover itself lives in admin.css
+    (see that file's comment — a Tailwind hover: utility here would lose to
+    admin.css's own unlayered rules). Revenue links to Orders since that's
+    the only tab revenue is actually derived from — there's no dedicated
+    revenue tab. */}
 <div class="admin-stat-grid">
-  <div class="admin-stat-card">
+  <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="sellers">
     <dt>מוכרים</dt>
     <dd>{overview.totalSellers}</dd>
-  </div>
-  <div class="admin-stat-card">
+  </button>
+  <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="stores">
     <dt>חנויות</dt>
     <dd>{overview.totalStores}</dd>
-  </div>
-  <div class="admin-stat-card">
+  </button>
+  <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="orders">
     <dt>הזמנות</dt>
     <dd>{overview.totalOrders}</dd>
-  </div>
-  <div class="admin-stat-card">
+  </button>
+  <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="orders">
     <dt>סה"כ הכנסות פלטפורמה</dt>
     <dd>{formatPrice(overview.totalRevenue)}</dd>
-  </div>
+  </button>
   {attentionCount > 0 && (
-    <div class="admin-stat-card admin-stat-card--warning">
+    <button type="button" class="admin-stat-card admin-stat-card--warning w-full text-inherit font-inherit cursor-pointer" data-goto-panel="attention">
       <dt>חנויות לתשומת לב</dt>
       <dd>{attentionCount}</dd>
-    </div>
+    </button>
   )}
 </div>

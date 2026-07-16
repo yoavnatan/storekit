@@ -1,43 +1,27 @@
-/* ── Hero — plain white banner, same surface/pattern as a store page's own
-   .store-banner (white background, then the rest of the page continues on
-   the standard gray page background right below it — no border needed
-   between them, the color contrast alone reads as the section break,
-   exactly like every store page already does). */
-.home-hero {
-  background: var(--color-surface);
+/* ── Hero — layout (position/padding/min-height/flex/typography) and the
+   decorative dot-pattern (position/size/gradient/opacity) are Tailwind
+   utility classes directly on the elements in index.astro (Hard rules →
+   Tailwind v4 only). Only the `@keyframes` itself has to live in CSS —
+   Tailwind can't define a keyframe animation as a utility class — applied
+   via the arbitrary-value syntax `animate-[home-hero-pattern-breathe_16s_
+   ease-in-out_infinite]` on the element (same pattern as
+   `ProductQuickView.astro`'s `animate-[skeleton-shimmer_...]`). */
+@keyframes home-hero-pattern-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.22); }
 }
 
-.home-hero__inner {
-  padding-block: 2.5rem 2rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 0.5rem;
-}
-
-.home-hero__title {
-  font-size: clamp(1.9rem, 5.5vw, 3rem);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--color-text);
-  margin: 0;
-}
-
-.home-hero__phrase {
-  font-size: clamp(0.9rem, 2vw, 1.05rem);
-  color: var(--color-muted);
-  margin: 0;
-}
-
-.home-hero__links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem 1.1rem;
-  margin-top: 0.6rem;
-}
+/* ── Tabs — hover/press/underline + the .dash-tabs/.dash-panel padding
+   overrides are all Tailwind utility classes directly on the elements in
+   index.astro now (scoped per-instance, so dashboard/admin's own untouched
+   markup elsewhere is unaffected without needing a `.home-body` ancestor
+   selector). `!`-prefixed utilities (`!px-0`, `!border-b-0`, etc.) force
+   `!important` where the override must reliably beat dashboard.css's own
+   same-specificity single-class rules on the *shared* `.dash-tabs`/
+   `.dash-tab`/`.dash-panel` classes, regardless of Tailwind's vs. that
+   file's compiled output order — the ancestor-selector trick used
+   elsewhere in this codebase for the same problem isn't available here
+   since Tailwind utilities can't be nested under a hand-written selector. */
 
 /* ── Section layout helpers ────────────────────────────────────────── */
 
@@ -163,6 +147,15 @@
   background: var(--color-border);
   opacity: 0.45;
 }
+
+/* ── Spotlight: carousel of carousels — layout/hover/press are Tailwind
+   utility classes directly on the elements in index.astro now. The one
+   line that has to stay CSS: `[hidden]` needs to win over the element's
+   own Tailwind `flex` class regardless of compiled-output order — same
+   attribute-selector-override technique already used by the pre-existing
+   `.home-carousel-btn[hidden]` a few lines below, for the same reason
+   (both are JS-toggled via `toggleAttribute('hidden', …)`). */
+.home-spotlight-arrow[hidden] { display: none; }
 
 /* ── Per-store section ─────────────────────────────────────────────── */
 

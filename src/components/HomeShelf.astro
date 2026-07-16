@@ -8,20 +8,33 @@ interface Props {
   stores: FeedStore[];
   dotIndex?: number;
   eagerFirst?: boolean;
+  /** The Liked/BuyAgain/New tabs each render exactly one shelf whose title
+   *  would just repeat the tab button's own label — hides the h2 in that
+   *  case (the tab itself is already the heading), but the section still
+   *  needs an accessible name, so `aria-label` takes over from
+   *  `aria-labelledby` when there's no heading to point at. */
+  hideHeading?: boolean;
 }
 
-const { id, title, stores, dotIndex = 0, eagerFirst = false } = Astro.props;
+const { id, title, stores, dotIndex = 0, eagerFirst = false, hideHeading = false } = Astro.props;
 ---
 
 {stores.length > 0 && (
-  <section class="home-shelf-section" data-shelf aria-labelledby={`shelf-${id}`}>
+  <section
+    class="home-shelf-section"
+    data-shelf
+    aria-labelledby={hideHeading ? undefined : `shelf-${id}`}
+    aria-label={hideHeading ? title : undefined}
+  >
     <div class="container">
-      <div class="home-section-header">
-        <h2 id={`shelf-${id}`} class="home-section-title">
-          <span class={`home-shelf-dot home-shelf-dot--${dotIndex % 3}`} aria-hidden="true"></span>
-          {title}
-        </h2>
-      </div>
+      {!hideHeading && (
+        <div class="home-section-header">
+          <h2 id={`shelf-${id}`} class="home-section-title">
+            <span class={`home-shelf-dot home-shelf-dot--${dotIndex % 3}`} aria-hidden="true"></span>
+            {title}
+          </h2>
+        </div>
+      )}
       <div class="home-shelf" role="list" aria-label={title}>
         {stores.map(({ store, products }, i) => (
           <StoreCard
