@@ -221,7 +221,9 @@ const strEmpty   = t.store.noProductsFound;
             style="position:relative"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span id="notif-count-badge" class="cart-count cart-count--alert" hidden={initialUnreadCount <= 0} aria-live="polite" aria-atomic="true" aria-label="התראות חדשות" data-ticker-value={initialUnreadCount > 0 ? initialUnreadLabel : undefined}>{initialUnreadCount > 0 ? initialUnreadLabel : ''}</span>
+            <span id="notif-count-badge" class="cart-count cart-count--alert" hidden={initialUnreadCount <= 0} aria-live="polite" aria-atomic="true" aria-label="התראות חדשות" data-ticker-value={initialUnreadCount > 0 ? initialUnreadLabel : undefined}>{initialUnreadCount > 0 && (
+              <span class="badge-ticker__track"><span class="badge-ticker__val">{initialUnreadLabel}</span></span>
+            )}</span>
           </button>
           <div id="notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות">
             <div class="notif-panel-head">
@@ -268,24 +270,46 @@ const strEmpty   = t.store.noProductsFound;
                   var cartItems = c.items ? Object.values(c.items) : [];
                   cartCount += cartItems.length;
                 }
+                // Pre-wrap in the same `.badge-ticker__track`/`.badge-ticker__val`
+                // markup badge-ticker.ts's tickBadge() produces, so the module
+                // script's refresh()/refreshWishlistCount() call right after this
+                // finds a matching value + already-wrapped structure and skips its
+                // rebuild — confirmed via frame-by-frame screen-recording analysis
+                // that the raw-text→wrapped swap was a real, visible ~2px settle
+                // on every refresh (2026-07-16).
                 var cartEl = document.getElementById('cart-count');
-                if (cartEl && cartCount > 0) { cartEl.textContent = String(cartCount); cartEl.dataset.tickerValue = String(cartCount); cartEl.removeAttribute('hidden'); }
+                if (cartEl && cartCount > 0) { cartEl.innerHTML = '<span class="badge-ticker__track"><span class="badge-ticker__val">' + cartCount + '</span></span>'; cartEl.dataset.tickerValue = String(cartCount); cartEl.removeAttribute('hidden'); }
                 var wItems = JSON.parse(localStorage.getItem('wishlist_v1') || '[]');
                 var wCount = Array.isArray(wItems) ? wItems.length : 0;
                 var wEl = document.getElementById('wishlist-count');
-                if (wEl && wCount > 0) { wEl.textContent = String(wCount); wEl.dataset.tickerValue = String(wCount); wEl.removeAttribute('hidden'); }
+                if (wEl && wCount > 0) { wEl.innerHTML = '<span class="badge-ticker__track"><span class="badge-ticker__val">' + wCount + '</span></span>'; wEl.dataset.tickerValue = String(wCount); wEl.removeAttribute('hidden'); }
               } catch (_) {}
             })();
           </script>
         </Fragment>
       )}
 
-      {/* User avatar dropdown — all logged-in users */}
+      {/* User avatar dropdown — all logged-in users. `-ms-1` (-4px): the flex
+         gap to its neighbor is numerically identical to every other
+         icon-to-icon gap, but reads wider since the avatar's circular border
+         is drawn flush to its own box edge while the bare cart/heart/bell
+         glyphs carry built-in empty space inside their viewBox before the ink
+         starts — pulled in a few px so the *visual* rhythm matches the
+         *geometric* one. `flex items-center` (not the div default block) so
+         the button below is sized off its own intrinsic box — otherwise it's
+         an inline-level child sized by the *inherited* line-height instead,
+         which was quietly adding ~1.4px of phantom height on top of the
+         button's real 30.4px (2026-07-16). The `user-menu` classname itself
+         must stay (no CSS left on it) — queried via `.user-menu` in this
+         component's own script below. */}
       {isLoggedIn && (
-        <div class="user-menu" data-has-store={(Astro.props.hasStore || storeMode || sellerMode) ? '1' : ''}>
+        <div class="user-menu relative flex items-center -ms-1" data-has-store={(Astro.props.hasStore || storeMode || sellerMode) ? '1' : ''}>
           <button class="user-btn" id="user-menu-toggle" aria-label={t.nav.userMenu} aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-            <span id="seller-alert-avatar-dot" class="notif-dot" hidden={!initialSellerAlert} aria-hidden="true"></span>
+            {/* Absolute against .user-btn's own padding box (position:relative
+               in header.css) — 0/0 lands it flush in the corner, inset by
+               that button's own 1px border. */}
+            <span id="seller-alert-avatar-dot" class="absolute top-0 end-0 w-2 h-2 bg-[#ef4444] border border-[color:var(--color-border)] rounded-full" hidden={!initialSellerAlert} aria-hidden="true"></span>
           </button>
           <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
             <a href="/" class="user-dropdown__item" role="menuitem">

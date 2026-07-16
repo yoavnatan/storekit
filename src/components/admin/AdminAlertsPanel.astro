@@ -89,31 +89,54 @@ function buildCopyText(e: ErrorLogEntry): string {
   <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
   <div class="admin-table-wrap">
     <table class="admin-table" id="admin-alerts-table">
+      <colgroup>
+        <col style="width:11%" /><col style="width:12%" /><col style="width:12%" />
+        <col style="width:15%" /><col style="width:12%" /><col style="width:23%" /><col style="width:15%" />
+      </colgroup>
       <thead>
-        <tr><th>זמן</th><th>מקור</th><th>חנות</th><th>עבור</th><th>נתיב</th><th>הודעה</th><th class="admin-alerts-th-details"><span class="sr-only">פרטים נוספים</span></th></tr>
+        <tr><th>זמן</th><th class="admin-alerts-th-source">מקור</th><th>חנות</th><th>עבור</th><th>נתיב</th><th>הודעה</th><th class="admin-alerts-th-details"><span class="sr-only">פרטים נוספים</span></th></tr>
       </thead>
       <tbody>
-        {errors.map((e) => (
+        {errors.map((e) => {
+          const actor = e.actorLabel
+            ? `${e.actorLabel}${e.actorRole ? ` (${roleLabel[e.actorRole] ?? e.actorRole})` : ''}`
+            : '—';
+          return (
           <>
-            <tr>
-              <td class="admin-nowrap">{formatHeDateTime(e.createdAt)}</td>
-              <td><span class="admin-badge admin-badge--failed">{sourceLabel[e.source] ?? e.source}</span></td>
-              <td class="admin-nowrap">{e.storeName ?? '—'}</td>
-              <td class="admin-nowrap">
-                {e.actorLabel
-                  ? `${e.actorLabel}${e.actorRole ? ` (${roleLabel[e.actorRole] ?? e.actorRole})` : ''}`
-                  : '—'}
+            <tr data-alert-row class={e.resolved ? 'admin-alerts-row--resolved' : ''}>
+              <td class="admin-nowrap admin-alerts-time">{formatHeDateTime(e.createdAt)}</td>
+              <td class="admin-alerts-source"><span class="admin-badge admin-badge--failed">{sourceLabel[e.source] ?? e.source}</span></td>
+              <td class="admin-nowrap admin-alerts-store" title={e.storeName ?? undefined}>
+                <span class="admin-alerts-field-label">חנות: </span>{e.storeName ?? '—'}
               </td>
-              <td class="admin-nowrap">{e.route ?? '—'}</td>
-              <td>{e.message}</td>
+              <td class="admin-nowrap admin-alerts-actor" title={actor}>
+                <span class="admin-alerts-field-label">עבור: </span>{actor}
+              </td>
+              <td class="admin-nowrap admin-alerts-route" title={e.route ?? undefined}>
+                <span class="admin-alerts-field-label">נתיב: </span>{e.route ?? '—'}
+              </td>
+              <td class="admin-alerts-message" title={e.message}>{e.message}</td>
               <td class="admin-nowrap admin-alerts-actions">
+                <button
+                  type="button"
+                  class="admin-alerts-resolve-btn"
+                  data-id={e.id}
+                  aria-pressed={e.resolved ? 'true' : 'false'}
+                  aria-label={e.resolved ? 'בטל סימון כטופל' : 'סמן כטופל'}
+                  title={e.resolved ? 'בטל סימון כטופל' : 'סמן כטופל'}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   class="admin-alerts-details-btn"
                   aria-expanded="false"
                   aria-controls={`admin-alert-details-${e.id}`}
+                  title="פרטים נוספים"
                 >
-                  <span>פרטים נוספים</span>
+                  <span class="admin-alerts-details-btn__label">פרטים נוספים</span>
                   <svg class="admin-alerts-details-btn__chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                     <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
@@ -135,6 +158,7 @@ function buildCopyText(e: ErrorLogEntry): string {
             <tr id={`admin-alert-details-${e.id}`} class="admin-alerts-details-row" hidden>
               <td colspan="7">
                 <div class="admin-alerts-details-body">
+                  <p><strong>הודעה מלאה:</strong> {e.message}</p>
                   <p><strong>קוד סטטוס:</strong> {e.statusCode ?? '—'}</p>
                   {e.resolutionHint && (
                     <p class="admin-alerts-hint"><strong>הצעת פתרון (טרם נשלחת אוטומטית):</strong> {e.resolutionHint}</p>
@@ -148,7 +172,8 @@ function buildCopyText(e: ErrorLogEntry): string {
               </td>
             </tr>
           </>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   </div>

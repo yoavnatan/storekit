@@ -86,6 +86,38 @@ export function initAdminAlertsPanel(): void {
 
   const table = document.getElementById('admin-alerts-table');
   table?.addEventListener('click', (e) => {
+    const resolveBtn = (e.target as HTMLElement).closest('.admin-alerts-resolve-btn') as HTMLButtonElement | null;
+    if (resolveBtn) {
+      const row = resolveBtn.closest('tr[data-alert-row]');
+      const id = resolveBtn.dataset.id;
+      if (!row || !id) return;
+      const wasResolved = resolveBtn.getAttribute('aria-pressed') === 'true';
+      const nextResolved = !wasResolved;
+
+      const applyState = (resolved: boolean) => {
+        resolveBtn.setAttribute('aria-pressed', String(resolved));
+        const label = resolved ? 'בטל סימון כטופל' : 'סמן כטופל';
+        resolveBtn.setAttribute('aria-label', label);
+        resolveBtn.title = label;
+        row.classList.toggle('admin-alerts-row--resolved', resolved);
+      };
+
+      applyState(nextResolved); // optimistic
+      fetch('/api/admin/errors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resolve', id, resolved: nextResolved }),
+      }).then((res) => {
+        if (!res.ok) throw new Error();
+      }).catch(() => {
+        applyState(wasResolved); // rollback
+        window.dispatchEvent(new CustomEvent('toast:show', {
+          detail: { title: 'לא ניתן היה לעדכן את סטטוס הטיפול', body: '' },
+        }));
+      });
+      return;
+    }
+
     const detailsBtn = (e.target as HTMLElement).closest('.admin-alerts-details-btn') as HTMLButtonElement | null;
     if (detailsBtn) {
       const detailsRow = document.getElementById(detailsBtn.getAttribute('aria-controls') ?? '');

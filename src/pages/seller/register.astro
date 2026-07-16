@@ -45,7 +45,7 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<BaseLayout title={t.auth.openStore} noindex={true} isLoggedIn={false} hasStore={false} sellerMode={true}>
+<BaseLayout title={t.auth.openStore} noindex={true} isLoggedIn={false} hasStore={false} storeMode={true} sellerMode={true}>
   <section class="section container auth-wrap">
     <h1>{t.auth.openStore}</h1>
     <p class="muted">{t.auth.createFree}</p>

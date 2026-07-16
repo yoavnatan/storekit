@@ -1,6 +1,15 @@
 import { formatPrice } from '../../config/store.config.js';
 import { buildBarChartSvg } from '../../lib/chart-svg.js';
 import type { PerformanceSummary } from '../../lib/seller-performance.js';
+import { showTooltip, hideTooltip, initInfoTooltips } from './tooltip.js';
+import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+
+const PRESETS = ['7d', '30d', '90d', 'thisMonth', 'lastMonth'] as const;
+type Preset = typeof PRESETS[number];
+const PRESET_LABEL_KEY: Record<Preset, string> = {
+  '7d': 'perfPreset7d', '30d': 'perfPreset30d', '90d': 'perfPreset90d',
+  thisMonth: 'perfPresetThisMonth', lastMonth: 'perfPresetLastMonth',
+};
 
 function getI18n(): Record<string, string> {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
@@ -8,6 +17,9 @@ function getI18n(): Record<string, string> {
 }
 
 function toISODate(d: Date): string { return d.toISOString().slice(0, 10); }
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+}
 
 function presetRange(preset: string): { from: string; to: string } {
   const today = new Date();
@@ -84,15 +96,44 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
   if (topProducts) renderTopProducts(topProducts, summary, i18n);
 }
 
+// Delegated from the (persistent) chart container, not the individual
+// <rect> bars — renderSummary() replaces the SVG's innerHTML wholesale on
+// every range-picker fetch, which would otherwise silently drop any
+// listener bound to a bar directly.
+function initChartTooltips(): void {
+  ['perf-revenue-chart', 'perf-visitors-chart'].forEach((id) => {
+    const container = document.getElementById(id);
+    if (!container) return;
+    container.addEventListener('mouseover', (e) => {
+      const bar = (e.target as Element).closest('.chart-bar');
+      if (!bar) return;
+      const label = bar.getAttribute('data-label') ?? '';
+      const value = bar.getAttribute('data-value') ?? '';
+      showTooltip(bar, `${label}: ${value}`);
+    });
+    container.addEventListener('mouseout', (e) => {
+      if ((e.target as Element).closest('.chart-bar')) hideTooltip();
+    });
+  });
+}
+
 export function initPerformanceTab(): void {
   const picker = document.getElementById('perf-range-picker');
   if (!picker) return;
+  initChartTooltips();
+  initInfoTooltips();
   const storeSlug = picker.dataset.storeSlug ?? '';
   const fromInput = document.getElementById('perf-from-input') as HTMLInputElement | null;
   const toInput = document.getElementById('perf-to-input') as HTMLInputElement | null;
-  const applyBtn = document.getElementById('perf-apply-btn');
-  const presetBtns = picker.querySelectorAll<HTMLButtonElement>('.perf-preset-btn');
+  const trigger = document.getElementById('perf-range-trigger');
+  const label = document.getElementById('perf-range-label');
   const i18n = getI18n();
+  // Range portal — presets + custom dates used to sit inline as five pills
+  // plus two date inputs, always visible and eating a lot of horizontal
+  // space above the charts (CURRENT_TASK.md). Now folded into one trigger +
+  // the shared floating portal, same pattern as the orders tab's sort/filter
+  // dropdowns (ordersPortal in dashboard.astro).
+  const rangePortal = createFloatingPortal('perf-range-portal');
 
   let loading = false;
   async function loadRange(from: string, to: string): Promise<void> {
@@ -107,23 +148,50 @@ export function initPerformanceTab(): void {
     finally { loading = false; }
   }
 
-  presetBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      presetBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
-      btn.setAttribute('aria-pressed', 'true');
-      const preset = btn.dataset.preset ?? '30d';
-      const { from, to } = presetRange(preset);
-      if (fromInput) fromInput.value = from;
-      if (toInput) toInput.value = to;
-      loadRange(from, to);
-    });
-  });
-
-  applyBtn?.addEventListener('click', () => {
-    const from = fromInput?.value;
-    const to = toInput?.value;
-    if (!from || !to || from > to) return;
-    presetBtns.forEach((b) => b.setAttribute('aria-pressed', 'false'));
+  function applyPreset(preset: Preset): void {
+    picker!.dataset.activePreset = preset;
+    const { from, to } = presetRange(preset);
+    if (fromInput) fromInput.value = from;
+    if (toInput) toInput.value = to;
+    if (label) label.textContent = i18n[PRESET_LABEL_KEY[preset]] ?? preset;
+    rangePortal.close();
     loadRange(from, to);
+  }
+
+  function applyCustomRange(from: string, to: string): void {
+    if (!from || !to || from > to) return;
+    delete picker!.dataset.activePreset;
+    if (fromInput) fromInput.value = from;
+    if (toInput) toInput.value = to;
+    if (label) label.textContent = `${formatShortDate(from)}–${formatShortDate(to)}`;
+    rangePortal.close();
+    loadRange(from, to);
+  }
+
+  function buildPanelHtml(): string {
+    const activePreset = picker!.dataset.activePreset ?? '';
+    const presetsHtml = PRESETS.map((p) => `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p}" style="${p === activePreset ? 'font-weight:700;color:var(--color-primary)' : ''}">${i18n[PRESET_LABEL_KEY[p]] ?? p}</button>`).join('');
+    return `${presetsHtml}
+      <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>
+      <div class="flex items-center gap-1.5 px-3 py-2" dir="ltr">
+        <input type="date" data-range-from value="${fromInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.6rem] outline-none w-full" />
+        <span class="muted text-[0.8rem]">–</span>
+        <input type="date" data-range-to value="${toInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.6rem] outline-none w-full" />
+      </div>
+      <button type="button" class="btn btn--sm btn--ghost" style="width:calc(100% - 1.5rem);margin:0 0.75rem" data-range-apply>${i18n.perfApply ?? 'Apply'}</button>`;
+  }
+
+  trigger?.addEventListener('click', () => {
+    if (rangePortal.currentTrigger() === trigger) { rangePortal.close(); return; }
+    rangePortal.open(trigger, '13rem', buildPanelHtml, (portal) => {
+      portal.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => applyPreset((btn.dataset.preset as Preset) ?? '30d'));
+      });
+      portal.querySelector('[data-range-apply]')?.addEventListener('click', () => {
+        const from = portal.querySelector<HTMLInputElement>('[data-range-from]')?.value ?? '';
+        const to = portal.querySelector<HTMLInputElement>('[data-range-to]')?.value ?? '';
+        applyCustomRange(from, to);
+      });
+    });
   });
 }

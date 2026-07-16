@@ -13,6 +13,16 @@ import { getLang, getDir, getT } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getUnreadCountForUser } from '../lib/notifications.js';
+import heebo400HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-400-normal.woff2?url';
+import heebo500HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-500-normal.woff2?url';
+import heebo600HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-600-normal.woff2?url';
+import heebo700HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-700-normal.woff2?url';
+import heebo800HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-800-normal.woff2?url';
+import heebo400LatinUrl from '@fontsource/heebo/files/heebo-latin-400-normal.woff2?url';
+import heebo500LatinUrl from '@fontsource/heebo/files/heebo-latin-500-normal.woff2?url';
+import heebo600LatinUrl from '@fontsource/heebo/files/heebo-latin-600-normal.woff2?url';
+import heebo700LatinUrl from '@fontsource/heebo/files/heebo-latin-700-normal.woff2?url';
+import heebo800LatinUrl from '@fontsource/heebo/files/heebo-latin-800-normal.woff2?url';
 
 import '../styles/main.css';
 
@@ -58,9 +68,26 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
     <meta name="generator" content={Astro.generator} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="sitemap" href="/sitemap-index.xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" />
+    {/* All 10 weight/script combos preloaded — measured via Playwright's
+       layout-shift observer (2026-07-16) that `font-display:optional` alone
+       still let real text paint in the fallback font and visibly re-flow
+       ~150-300ms later once Heebo finished loading, on *every* load
+       including warm-cache reloads (not just a cold-first-visit edge case).
+       Blocking all font requests in that same test produced zero
+       layout-shift entries, confirming the font swap — not a JS/animation
+       timing coincidence — as the cause. Preloading only 800/latin +
+       400/500/600 hebrew (the weights directly measured on the homepage)
+       first cut the shift ~15x but didn't fully zero it — other pages use
+       the remaining weight/script combos too (e.g. a price string mixes
+       Latin digits with a Hebrew ₪ sign, each resolved from a different
+       @font-face independently, so both scripts need every weight actually
+       used or one half of the string can still swap on its own). Preloading
+       the full matrix removes the race everywhere instead of chasing it
+       page-by-page; each file is ~5-12KB. */}
+    {[heebo400HebrewUrl, heebo500HebrewUrl, heebo600HebrewUrl, heebo700HebrewUrl, heebo800HebrewUrl,
+      heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl].map((href) => (
+      <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
+    ))}
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} productPrice={productPrice} productCurrency={productCurrency} />
     {dlJson && <script is:inline set:html={`window.dataLayer=window.dataLayer||[];window.dataLayer.push(${dlJson});`} />}
     {platformGtm && <script is:inline set:html={gtmHeadScript(platformGtm)} />}

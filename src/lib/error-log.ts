@@ -27,6 +27,9 @@ export interface ErrorLogEntry {
   // the call site when the failure mode is known — not sent anywhere yet,
   // just carried on the entry so a future notifier can relay it as-is.
   resolutionHint?: string;
+  // Manual admin triage — the log itself stays otherwise read-only/automatic
+  // (see clearErrorLog), this is the one deliberate human-toggled field.
+  resolved?: boolean;
 }
 
 // Best-effort identity for an error entry: derives the store from a
@@ -104,6 +107,15 @@ export function getRecentErrors(limit = 100): ErrorLogEntry[] {
 
 export function clearErrorLog(): void {
   writeErrorLog([]);
+}
+
+export function setErrorResolved(id: string, resolved: boolean): boolean {
+  const entries = readErrorLog();
+  const entry = entries.find((e) => e.id === id);
+  if (!entry) return false;
+  entry.resolved = resolved;
+  writeErrorLog(entries);
+  return true;
 }
 
 // Admin Alerts tab's own filter/sort — mirrors admin-orders-filter.ts's

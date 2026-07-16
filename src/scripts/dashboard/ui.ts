@@ -3,6 +3,13 @@ const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" st
 export function initSettingsForm(): void {
   const settingsForm   = document.getElementById('settings-form') as HTMLFormElement | null;
   const settingsStatus = document.getElementById('settings-status') as HTMLElement | null;
+  // A single button pinned to the bottom of the whole Settings tab (below
+  // Categories too), associated via form="settings-form" rather than living
+  // inside the <form> — Categories has its own nested <form> lower down, so
+  // settings-form's own closing tag can't just be moved past it. Not found
+  // with settingsForm.querySelector() because of that, hence the plain
+  // getElementById.
+  const saveBtn = document.getElementById('settings-save-btn') as HTMLButtonElement | null;
   let settingsTimer: ReturnType<typeof setTimeout>;
 
   function showSettingsStatus(msg: string, isError = false) {
@@ -18,14 +25,13 @@ export function initSettingsForm(): void {
 
   settingsForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const submitBtns = Array.from(settingsForm.querySelectorAll<HTMLButtonElement>('[type="submit"]'));
-    const origTexts = submitBtns.map((btn) => btn.textContent ?? '');
+    const origText = saveBtn?.textContent ?? '';
 
-    submitBtns.forEach((btn) => {
-      btn.style.minWidth = `${btn.offsetWidth}px`;
-      btn.disabled = true;
-      btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">שומר<span class="dot-pulse" role="status" aria-label="שומר"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
-    });
+    if (saveBtn) {
+      saveBtn.style.minWidth = `${saveBtn.offsetWidth}px`;
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">שומר<span class="dot-pulse" role="status" aria-label="שומר"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
+    }
 
     const fd = new FormData(settingsForm);
     let data: { ok: boolean; name?: string; error?: string };
@@ -38,7 +44,7 @@ export function initSettingsForm(): void {
 
     if (!data.ok) {
       showSettingsStatus(data.error ?? 'שגיאה בשמירה.', true);
-      submitBtns.forEach((btn, i) => { btn.disabled = false; btn.style.minWidth = ''; btn.textContent = origTexts[i]; });
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.style.minWidth = ''; saveBtn.textContent = origText; }
       return;
     }
 
@@ -46,18 +52,18 @@ export function initSettingsForm(): void {
     const storeNameEl = document.querySelector<HTMLElement>('.dash-store-name');
     if (storeNameEl) storeNameEl.textContent = newName;
 
-    submitBtns.forEach((btn, i) => {
-      btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px">${checkSvg}נשמר</span>`;
-      btn.animate(
+    if (saveBtn) {
+      saveBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px">${checkSvg}נשמר</span>`;
+      saveBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
         { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
       );
       setTimeout(() => {
-        btn.disabled = false;
-        btn.style.minWidth = '';
-        btn.textContent = origTexts[i];
+        saveBtn.disabled = false;
+        saveBtn.style.minWidth = '';
+        saveBtn.textContent = origText;
       }, 1500);
-    });
+    }
   });
 }
 
@@ -190,4 +196,16 @@ export function initDashTabs(): void {
   });
 
   tabs.forEach((tab, i) => tab.setAttribute('tabindex', i === 0 ? '0' : '-1'));
+}
+
+// Overview stat cards ([data-goto-panel], e.g. AdminOverviewPanel.astro / the
+// seller dashboard's overview tab) jump straight to their tab by clicking the
+// matching tab button — reuses initDashTabs()'s own click handler instead of
+// a real navigation, which would flash a full page reload.
+export function initGotoPanelLinks(): void {
+  document.querySelectorAll<HTMLElement>('[data-goto-panel]').forEach((el) => {
+    el.addEventListener('click', () => {
+      document.querySelector<HTMLButtonElement>(`[role="tab"][data-panel="${el.dataset.gotoPanel}"]`)?.click();
+    });
+  });
 }

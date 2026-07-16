@@ -44,7 +44,11 @@ export function buildBarChartSvg(points: BarChartPoint[], opts: BarChartOptions 
     const label = showLabel
       ? `<text x="${(x + barW / 2).toFixed(1)}" y="${height - 6}" font-size="9" text-anchor="middle" fill="var(--color-muted)">${escXml(p.label)}</text>`
       : '';
-    return `<g><rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 1).toFixed(1)}" rx="2.5" fill="${color}"><title>${escXml(p.label)}: ${escXml(fmt(p.value))}</title></rect>${label}</g>`;
+    // class/data-* power the custom hover tooltip (initChartTooltips() in
+    // performance.ts) — the native <title> tooltip alone is too slow/vague
+    // to read a value off ("hard to tell how much revenue/visitors at each
+    // point", CURRENT_TASK.md); kept as an a11y/no-JS fallback.
+    return `<g><rect class="chart-bar animate-bar-grow" style="animation-delay:${Math.min(i * 18, 400)}ms" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 1).toFixed(1)}" rx="2.5" fill="${color}" data-label="${escXml(p.label)}" data-value="${escXml(fmt(p.value))}"><title>${escXml(p.label)}: ${escXml(fmt(p.value))}</title></rect>${label}</g>`;
   }).join('');
 
   return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="xMidYMid meet" dir="ltr">${bars}</svg>`;

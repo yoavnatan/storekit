@@ -35,8 +35,16 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
     const portalRect = portal.getBoundingClientRect();
     let left = isRTL ? anchorRect.right - portalRect.width : anchorRect.left;
     left = Math.max(margin, Math.min(left, window.innerWidth - portalRect.width - margin));
+    // Open below the trigger by default; flip above it when there isn't room
+    // left in the viewport, instead of sliding down and clamping flush
+    // against the bottom edge (reads as "stuck to the bottom of the screen",
+    // CURRENT_TASK.md) — a real order card near the end of a long list
+    // rarely has 320px of room below it.
     let top = anchorRect.bottom + 4;
-    top = Math.min(top, Math.max(margin, window.innerHeight - portalRect.height - margin));
+    if (top + portalRect.height > window.innerHeight - margin) {
+      top = anchorRect.top - portalRect.height - 4;
+    }
+    top = Math.max(margin, top);
     portal.style.left = `${left}px`;
     portal.style.top = `${top}px`;
   }
@@ -75,6 +83,22 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
     close();
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  // The portal is position:fixed and only positioned once, on open — left
+  // alone, it doesn't track the trigger as the page scrolls, so it stays
+  // floating in the same screen spot while the trigger (e.g. an order
+  // card's status button, in a long scrollable list) scrolls away
+  // underneath it. Re-running position() on every scroll keeps it visually
+  // pinned to the trigger instead — only an outside click/Escape should
+  // close it, not scrolling (CURRENT_TASK.md). Capture phase, since a
+  // scrollable container's own scroll doesn't bubble to document; scrolling
+  // *inside* the portal itself (its own overflow:auto content) must not
+  // move it.
+  document.addEventListener('scroll', (e) => {
+    const portal = document.getElementById(portalId);
+    if (!portal || portal.hidden || !trigger) return;
+    if (e.target instanceof Node && portal.contains(e.target)) return;
+    position(portal, trigger);
+  }, true);
 
   return { open, close, currentTrigger: () => trigger };
 }

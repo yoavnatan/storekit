@@ -449,7 +449,11 @@ const jsonLd = {
   // unchanged, see AI_INSTRUCTIONS.md → Homepage.
   initDashTabs();
 
-  document.addEventListener('pointerdown', (e) => {
+  // Scoped to the page's own content (not `document`) so it never reaches
+  // into the shared Header/Footer — same boundary store/[slug].astro's own
+  // ripple listener draws around `.store-page`. Header buttons (avatar,
+  // cart, wishlist, notif bell) are meant to stay ripple-free everywhere.
+  document.getElementById('main-content')?.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button, a.btn, a.home-product-card, a.store-card');
     if (btn) spawnRipple(btn, e.clientX, e.clientY);
   });

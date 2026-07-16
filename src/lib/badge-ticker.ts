@@ -2,6 +2,17 @@
 // no animation library, just a 2-row reel transformed via CSS transition.
 function tickBadge(el: HTMLElement, value: string): void {
   const prev = el.dataset.tickerValue;
+
+  // Server-rendered/inline-seeded badges already paint the final
+  // `.badge-ticker__track`/`.badge-ticker__val` markup with a matching
+  // `data-ticker-value` (see Header.astro) — when a later same-value call
+  // (e.g. the unconditional notif re-fetch on every page load) finds nothing
+  // actually changed, skip the rebuild entirely. Confirmed via frame-by-frame
+  // screen-recording analysis that `replaceChildren` here was re-laying-out
+  // the digit on every navigation even when the count never changed, and the
+  // rebuilt structure isn't pixel-identical to the pre-rebuild one — a real,
+  // visible ~2px settle on every refresh (2026-07-16).
+  if (prev === value && el.firstElementChild?.classList.contains('badge-ticker__track')) return;
   el.dataset.tickerValue = value;
 
   const prevNum = prev != null ? Number(prev.replace('+', '')) : NaN;

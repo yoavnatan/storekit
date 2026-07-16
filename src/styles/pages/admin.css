@@ -227,20 +227,45 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-badge--shipping-shipped { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
 .admin-badge--shipping-delivered { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
 
+/* Alerts table stays a real <table> (table-layout:fixed + the <colgroup>
+   widths in AdminAlertsPanel.astro) down to the card breakpoint below —
+   dense, scannable, more visible per screen, which is the whole point of
+   a table over a card list on an actual desktop-width admin screen. Cells
+   that could overflow their fixed column truncate with an ellipsis
+   (native `title` attr on the cell + the "פרטים נוספים" row still carries
+   the full value) rather than wrapping and making rows uneven height. */
+#admin-alerts-table { table-layout: fixed; }
+.admin-nowrap { white-space: nowrap; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; }
+.admin-alerts-message { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-alerts-field-label { display: none; }
+/* A status pill is much wider than its short "מקור" header label — right-
+   aligning both (like every other column) still leaves the pill's extra
+   width bulging toward the next column, reading as drift even though the
+   two edges are technically flush. Centering both reads correctly instead. */
+th.admin-alerts-th-source, .admin-alerts-source { text-align: center; }
 .admin-alerts-th-details { width: 1%; }
 .admin-alerts-actions { display: flex; align-items: center; gap: 0.2rem; }
 .admin-alerts-details-btn {
-  display: inline-flex; align-items: center; gap: 0.3rem;
-  background: none; border: none; padding: 0.2rem 0.4rem; border-radius: 4px;
-  color: var(--color-muted); font-size: 0.78rem; cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem;
+  background: none; border: none; padding: 0.3rem; border-radius: 4px;
+  color: var(--color-muted); font-size: 0.78rem; cursor: pointer; white-space: nowrap; flex-shrink: 0;
 }
-.admin-alerts-copy-btn {
+.admin-alerts-details-btn__chevron { flex-shrink: 0; }
+.admin-alerts-details-btn__label { display: none; }
+.admin-alerts-copy-btn, .admin-alerts-resolve-btn {
   display: inline-flex; align-items: center; justify-content: center;
   background: none; border: none; padding: 0.3rem; border-radius: 4px;
   color: var(--color-muted); cursor: pointer; flex-shrink: 0;
 }
-.admin-alerts-details-btn:hover, .admin-alerts-copy-btn:hover { background: var(--color-bg); color: var(--color-text); }
+.admin-alerts-details-btn:hover, .admin-alerts-copy-btn:hover, .admin-alerts-resolve-btn:hover { background: var(--color-bg); color: var(--color-text); }
 .admin-alerts-copy-btn.admin-alerts-copy-btn--done { color: var(--color-success); }
+.admin-alerts-resolve-btn[aria-pressed="true"] { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 12%, transparent); }
+.admin-alerts-resolve-btn[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--color-success) 20%, transparent); }
+/* Manual triage state — dims the whole entry + strikes the message so a
+   handled row reads as "done" at a glance without disappearing outright
+   (still view-only elsewhere in this log, see error-log.ts). */
+tr[data-alert-row].admin-alerts-row--resolved { opacity: 0.6; }
+tr[data-alert-row].admin-alerts-row--resolved .admin-alerts-message { text-decoration: line-through; color: var(--color-muted); }
 .admin-alerts-details-btn__chevron { transition: transform 0.13s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .admin-alerts-details-btn[aria-expanded="true"] .admin-alerts-details-btn__chevron { transform: rotate(180deg); }
 .admin-alerts-details-row td { background: var(--color-bg); padding: 0.75rem 0.875rem; }
@@ -253,6 +278,46 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   font-size: 0.72rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
   direction: ltr; text-align: start; color: var(--color-muted); margin: 0;
   max-height: 240px; overflow-y: auto;
+}
+
+/* ── Alerts tab: card layout, mobile only. A real <table> genuinely can't
+   fit 7 columns at phone width — this is the fallback for that case only,
+   not a substitute for the table above (which handles the 641px+ range,
+   including tighter tablet/laptop widths, via table-layout:fixed instead
+   of switching to cards early). ── */
+@media (max-width: 640px) {
+  .admin-table-wrap:has(#admin-alerts-table) { border: none; border-radius: 0; overflow: visible; }
+  #admin-alerts-table thead { display: none; }
+  #admin-alerts-table, #admin-alerts-table tbody { display: block; }
+  #admin-alerts-table tr[data-alert-row] {
+    display: flex; flex-direction: column; gap: 0.35rem;
+    max-width: 720px;
+    padding: 0.85rem; margin-bottom: 0.6rem;
+    border: 1px solid var(--color-border); border-radius: var(--radius);
+    background: var(--color-surface);
+  }
+  #admin-alerts-table tr[data-alert-row]:hover { background: var(--color-surface); }
+  #admin-alerts-table tr[data-alert-row]:hover td { background: none; }
+  #admin-alerts-table td {
+    display: block; padding: 0; border-bottom: none;
+    white-space: normal; overflow: visible; text-overflow: clip;
+  }
+  .admin-alerts-time { order: -2; font-size: 0.78rem; color: var(--color-muted); }
+  .admin-alerts-source { order: -1; text-align: start; }
+  .admin-alerts-message { font-weight: 600; }
+  .admin-alerts-field-label { display: inline; color: var(--color-muted); }
+  .admin-alerts-details-btn__label { display: inline; }
+  .admin-alerts-details-btn { padding: 0.2rem 0.4rem; }
+  .admin-alerts-actions {
+    justify-content: flex-start; margin-top: 0.3rem; padding-top: 0.6rem;
+    border-top: 1px solid var(--color-border);
+  }
+  #admin-alerts-table tr.admin-alerts-details-row {
+    display: block; max-width: 720px;
+    border: 1px solid var(--color-border); border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius); margin-top: -0.6rem; margin-bottom: 0.6rem;
+  }
+  .admin-alerts-details-row td { display: block; }
 }
 
 /* ── Stores tab: flat, top-level store list + search (same row shape as

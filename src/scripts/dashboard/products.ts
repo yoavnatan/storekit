@@ -1800,31 +1800,34 @@ export function initPagination(): void {
     applyPagination();
   }, 300);
   searchInput?.addEventListener('input', debouncedSearch);
-
-  applyPagination();
 }
 
-// Measures the real fixed-header + products-toolbar heights so the sticky
-// toolbar/table-header sit flush regardless of font-loading/wrap differences.
+// Measures the real fixed-header + dash-tabs + products-toolbar heights so
+// the sticky tab bar/panel headers/table-header sit flush regardless of
+// font-loading/wrap differences.
 export function initStickyOffsets(): void {
   const root = document.documentElement;
   const siteHeader = document.querySelector<HTMLElement>('.site-header');
+  const tabs = document.querySelector<HTMLElement>('.dash-tabs');
   const toolbar = document.querySelector<HTMLElement>('.products-header');
-  if (!siteHeader && !toolbar) return;
+  if (!siteHeader && !tabs && !toolbar) return;
 
   // getBoundingClientRect (fractional) instead of offsetHeight (rounds to the
   // nearest integer px) — the rounding alone was enough to leave a 1-2px seam.
   const updateHeaderH = () => { if (siteHeader) root.style.setProperty('--site-header-h', `${siteHeader.getBoundingClientRect().height}px`); };
+  const updateTabsH = () => { if (tabs) root.style.setProperty('--dash-tabs-h', `${tabs.getBoundingClientRect().height}px`); };
   const updateToolbarH = () => { if (toolbar) root.style.setProperty('--products-toolbar-h', `${toolbar.getBoundingClientRect().height}px`); };
 
   updateHeaderH();
+  updateTabsH();
   updateToolbarH();
 
   if (typeof ResizeObserver !== 'undefined') {
     if (siteHeader) new ResizeObserver(updateHeaderH).observe(siteHeader);
+    if (tabs) new ResizeObserver(updateTabsH).observe(tabs);
     if (toolbar) new ResizeObserver(updateToolbarH).observe(toolbar);
   } else {
-    window.addEventListener('resize', () => { updateHeaderH(); updateToolbarH(); });
+    window.addEventListener('resize', () => { updateHeaderH(); updateTabsH(); updateToolbarH(); });
   }
 }
 
