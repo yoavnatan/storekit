@@ -14,9 +14,15 @@ interface Props {
    *  needs an accessible name, so `aria-label` takes over from
    *  `aria-labelledby` when there's no heading to point at. */
   hideHeading?: boolean;
+  /** The Liked/BuyAgain/New tabs each render exactly this one shelf as their whole panel — on a
+   *  narrow viewport a single horizontal-scroll row of cards leaves most of the panel as dead
+   *  space below it. `fillMobile` switches the row to a 2-column grid under 640px so the cards
+   *  actually fill the panel instead. Discover's own shelves (several per panel, already followed
+   *  by more content below) stay the plain horizontal-scroll row — leave this false there. */
+  fillMobile?: boolean;
 }
 
-const { id, title, stores, dotIndex = 0, eagerFirst = false, hideHeading = false } = Astro.props;
+const { id, title, stores, dotIndex = 0, eagerFirst = false, hideHeading = false, fillMobile = false } = Astro.props;
 ---
 
 {stores.length > 0 && (
@@ -35,7 +41,7 @@ const { id, title, stores, dotIndex = 0, eagerFirst = false, hideHeading = false
           </h2>
         </div>
       )}
-      <div class="home-shelf" role="list" aria-label={title}>
+      <div class={`home-shelf${fillMobile ? ' home-shelf--fill-mobile' : ''}`} role="list" aria-label={title}>
         {stores.map(({ store, products }, i) => (
           <StoreCard
             store={store}

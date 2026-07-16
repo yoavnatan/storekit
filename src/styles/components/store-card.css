@@ -222,6 +222,28 @@
   scroll-snap-align: start;
 }
 
+/* ── Mobile-fill variant (CURRENT_TASK.md → סשן א׳) — a single-shelf tab
+   (Liked/BuyAgain/New; see HomeShelf's `fillMobile` prop) had only one
+   horizontal-scroll row of cards on mobile, leaving most of the panel empty
+   below it. Under 640px only, that one row becomes a 2-column grid instead —
+   wraps into as many rows as it takes to actually fill the panel. Discover's
+   own shelves (several per panel, always followed by more content) don't get
+   this class and keep the plain scroll row everywhere. */
+@media (max-width: 640px) {
+  .home-shelf--fill-mobile {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-x: visible;
+    scroll-snap-type: none;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  .home-shelf--fill-mobile .store-card {
+    flex-basis: auto;
+    max-width: none;
+  }
+}
+
 /* The cycling multi-variant "metal" background wash (3 gradient variants,
    see git history if reviving) was tried and reverted — read as heavy/gray
    overall across a full page of sections. Replaced with one flat, lighter
@@ -324,5 +346,24 @@
 .home-category-pill:hover {
   border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
   box-shadow: 0 3px 10px -2px color-mix(in srgb, var(--color-text) 14%, transparent);
+}
+
+/* ── Card entrance animation (CURRENT_TASK.md → סשן א׳) — shared by the
+   homepage (shelves/spotlight) and the /stores directory grid, driven by
+   src/lib/scroll-reveal.ts (`playReveal`/`armBelowFoldReveal`). Same spring
+   language as `product-card-enter` in store.css (its own load-more cards).
+   `.card-reveal-pending` is only ever added by JS to a card confirmed
+   off-screen at that moment — never bakes opacity:0 into the server-rendered
+   markup itself — so nothing visible at load can flash, and a no-JS visit
+   just sees every card in its normal resting state. */
+.card-reveal-pending { opacity: 0; }
+@keyframes card-reveal {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.card-reveal-play { animation: card-reveal 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .card-reveal-pending { opacity: 1; }
+  .card-reveal-play { animation: none; }
 }
 

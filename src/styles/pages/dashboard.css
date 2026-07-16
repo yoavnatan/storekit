@@ -83,54 +83,70 @@ textarea.input { resize: vertical; }
    sticky/fixed-width system, not a quick swap). ── */
 
 .cat-col { font-size: 0.82rem; white-space: nowrap; }
-@media (max-width: 600px) { .cat-col { display: none; } }
 
 .date-col { font-size: 0.78rem; color: var(--color-muted); white-space: nowrap; }
 
-/* SKU is a reference field, not needed at a glance on mobile/tablet — same
-   treatment as wishlist-col/date-col below (hidden ≤999px), so it doesn't
-   compete for room in the tablet width budget documented there. Still fully
-   visible/editable in the add/edit forms and CSV regardless of viewport. */
 .sku-col { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
 
+/* Category chip truncates instead of overflowing once its column gets tight
+   (≤999px table below, and the mobile card) — harmless elsewhere since a
+   short chip never reaches this width anyway. */
+.product-cat-chip { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+/* Stock number has no column header to lean on once thead disappears on the
+   mobile card (≤640px, see below) — a plain number reads as ambiguous, so
+   it gets a "מלאי:" prefix there. Not needed above that width: the real
+   <thead> column label already gives it context. */
+.product-stock-label,
+.cat-col-label,
+.sku-col-label,
+.purchased-col-label,
+.date-col-label { display: none; }
+
 /* Between the 640px mobile-card breakpoint and full desktop width, the real
-   <table> (10 columns, none of which ever wrap under table-layout:auto) can
-   need more room than the viewport has. Two things were already tried and
-   dropped here: (1) hiding wishlist/date alone wasn't reliably enough against
-   real content, and (2) a horizontal-scroll wrapper technically stopped the
-   page from breaking, but the user explicitly didn't want the header
-   "sliding" separately from the page, and it also broke the desktop sticky
-   table-header (overflow-x:auto forces overflow-y:auto too, making the
-   wrapper a competing position:sticky containing block — the header detached
-   and floated mid-table on scroll instead of tracking the page).
-   The actual fix: table-layout:fixed + an explicit width on every column
-   except name — but that width has to be each column's real natural size
-   (measured live at full desktop, not guessed), or the functional columns
-   themselves end up visibly cramped/misaligned, which is exactly what a
-   first pass at this got wrong. Name+description is the one column that's
-   genuinely just a preview (the row expands to the real thing on click), so
-   it's the one allowed to end up narrow — .product-desc already had its own
-   single-line ellipsis truncation from before this breakpoint existed; the
-   fix here must not override that (an earlier version of this rule
-   accidentally did, forcing it to wrap instead of truncate — the opposite of
-   what was wanted). row-num ("#") is dropped outright at this breakpoint,
-   same as it already is on full mobile — purely decorative, not worth the
-   width. */
+   <table> (11 columns, none of which ever wrap under table-layout:auto) can
+   need more room than the viewport has. Previously this hid sku/wishlist/
+   purchased/date-added/category outright — reverted (2026-07-16): that info
+   became genuinely unreachable at this width (no other surface shows it),
+   so instead every column gets an explicit width (`%`, not guessed px —
+   verified live via Playwright at 610–999px that table-layout:fixed
+   proportionally scales *every* declared column, including ones given a
+   plain px value, to exactly fill the table's own width, so px and %
+   columns can mix safely here without overflow) and cell padding shrinks
+   to recover the room. Name is the one column allowed to end up narrow —
+   .product-desc already had its own single-line ellipsis truncation from
+   before this breakpoint existed; the fix here must not override that (an
+   earlier version of this rule accidentally did, forcing it to wrap instead
+   of truncate — the opposite of what was wanted). row-num ("#") is dropped
+   outright at this breakpoint, same as it already is on full mobile —
+   purely decorative, not worth the width. A horizontal-scroll wrapper was
+   also tried and dropped here previously: `overflow-x:auto` also forces
+   `overflow-y:auto` (CSS Overflow spec), making it a new sticky containing
+   block that detaches the table's own sticky header. */
 @media (max-width: 999px) {
-  .wishlist-col, .purchased-col, .date-col, .sku-col { display: none; }
   .products-table { table-layout: fixed; }
+  .products-table td { padding-inline: 0.4rem; padding-block: 0.6rem; }
+  .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 0.4rem; }
+  /* The sort chevron (.sort-icon) has flex-shrink:0 (see base rule) so it
+     never gets squeezed — meaning when the button itself doesn't fit, 100%
+     of the deficit lands on .sort-btn__label, crushing even short labels
+     down to 1 character before the icon gives up any space. The chevron is
+     decorative at this width (row-num, similarly non-essential, is already
+     dropped outright below) — hiding it here hands its ~15px back to the
+     label, which is what actually needs to stay legible. */
+  .products-table .sort-icon { display: none; }
   .products-table .row-num { display: none; }
-  .products-table .check-col  { width: 34px; }
-  .products-table .thumb-col  { width: 60px; }
-  .products-table .cat-col    { width: 100px; }
-  .products-table .price-col  { width: 90px; }
-  .products-table .stock-col  { width: 80px; }
-  .products-table .actions-col { width: 44px; }
-  /* No explicit width on .name-col — table-layout:fixed hands it whatever's
-     left over after the columns above. .product-desc's own base rule
-     already truncates with an ellipsis; .product-name doesn't, so it gets
-     the same single-line treatment here rather than wrapping and inflating
-     row height. */
+  .products-table .check-col     { width: 4%; }
+  .products-table .thumb-col     { width: 7%; }
+  .products-table .name-col      { width: 13%; }
+  .products-table .cat-col       { width: 15%; }
+  .products-table .sku-col       { width: 9%; }
+  .products-table .price-col     { width: 10%; }
+  .products-table .stock-col     { width: 11%; }
+  .products-table .wishlist-col  { width: 6%; }
+  .products-table .purchased-col { width: 8%; }
+  .products-table .date-col      { width: 13%; }
+  .products-table .actions-col   { width: 4%; }
   .products-table .name-col .product-name {
     white-space: nowrap;
     overflow: hidden;
@@ -199,12 +215,22 @@ textarea.input { resize: vertical; }
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
   transition: color 0.1s;
 }
 .sort-btn:hover { color: var(--color-text); }
 .sort-btn[data-active="true"] { color: var(--color-primary); }
 
-.sort-icon { opacity: 0.2; transition: opacity 0.1s, transform 0.15s; }
+/* Real ellipsis truncation needs an actual text-containing element to clip —
+   a header's own overflow:hidden alone can't insert "…" when the thing being
+   clipped is a whole <button> (icon included), it just cuts the box off raw.
+   This label span is the thing that shrinks+ellipsizes; the icon next to it
+   (flex-shrink:0 below) stays fully visible regardless of how tight the
+   column gets. */
+.sort-btn__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+.sort-icon { opacity: 0.2; transition: opacity 0.1s, transform 0.15s; flex-shrink: 0; }
 .sort-btn[data-active="true"] .sort-icon { opacity: 1; }
 .sort-btn[data-active="true"][data-dir="desc"] .sort-icon { transform: rotate(180deg); }
 
@@ -662,20 +688,42 @@ textarea.input { resize: vertical; }
   .products-table thead    { display: none; }
   .products-table tbody    { display: flex; flex-direction: column; }
 
-  /* Each product row → 2-row grid card. "actions" repeats in both rows of
-     the template on purpose, so the kebab button spans the card's full
-     height and reads as "menu for this whole row" — it was previously only
-     in row 1, directly above stock, which visually (mis)read as if stock
-     belonged to the actions button rather than to price right next to it. */
+  /* Each product row → grid card. "actions" repeats in every row of the
+     template on purpose, so the kebab button spans the card's full height
+     and reads as "menu for this whole row" — it was previously only in row
+     1, directly above stock, which visually (mis)read as if stock belonged
+     to the actions button rather than to price right next to it. Price+
+     stock keep sharing one line (unchanged, never part of the complaint).
+     Category/SKU/wishlist/purchased/date-added (2026-07-16) — two earlier
+     passes both got reverted per feedback: hiding them behind a "more
+     details" toggle (unreachable-by-default is what started this whole
+     fix), then one full-width row per field (correct info, but grew the
+     card noticeably taller than before). Pass 3: exactly 3 compact lines
+     right under price/stock — same 2-per-line pairing price/stock itself
+     already uses. **Row order + emphasis (pass 4):** wishlist+purchased sit
+     directly under price/stock, category+SKU below that, date-added alone
+     last — per feedback that likes/purchased/stock read as the genuinely
+     interesting numbers and SKU/date-added as reference-only clutter that
+     shouldn't compete for the same visual weight. Stock/wishlist/purchased
+     get full-contrast, slightly bolder text; category/SKU/date-added stay
+     smaller + muted (see the per-field rules below) — the *order* alone
+     wasn't enough once they were still all the same washed-out gray.
+     SKU is the least important field of all (per feedback) — it shares
+     date-added's row instead of category's, tucked into the one corner
+     slot that would otherwise sit empty; category gets the full-width row
+     to itself now that it isn't sharing. */
   .products-table tbody tr[data-product-display] {
     display: grid;
     grid-template-columns: auto auto 1fr auto auto;
-    grid-template-rows: auto auto;
+    grid-template-rows: auto auto auto auto auto;
     grid-template-areas:
-      "check thumb name  name  actions"
-      "check thumb price stock actions";
+      "check thumb name      name      actions"
+      "check thumb price     stock     actions"
+      "check thumb wishlist  purchased actions"
+      "check thumb cat       cat       actions"
+      "check thumb date      sku       actions";
     column-gap: 0.6rem;
-    row-gap: 0.08rem;
+    row-gap: 0.15rem;
     padding: 0.6rem 0.2rem;
     border-bottom: 1px solid var(--color-border);
     align-items: center;
@@ -683,9 +731,14 @@ textarea.input { resize: vertical; }
   }
   .products-table tbody tr[data-product-display]:hover { background: var(--color-bg); }
 
-  /* Reset td inside grid rows */
+  /* Reset td inside grid rows — width:auto specifically cancels the ≤999px
+     table's own per-column `%` widths (still-cascading media query, not
+     mutually exclusive with this one): a grid item honors its own `width`
+     against its assigned grid area same as any box, so a leftover `%` here
+     was shrinking cells to a sliver of their cell instead of filling it. */
   .products-table tbody tr[data-product-display] td {
     display: block;
+    width: auto;
     padding: 0;
     border-bottom: none;
     background: transparent !important;
@@ -700,7 +753,8 @@ textarea.input { resize: vertical; }
   }
   .products-table tr[data-product-display] .thumb-col {
     grid-area: thumb;
-    display: flex; align-items: center;
+    display: flex; align-items: center; justify-content: center;
+    height: 100%;
   }
   .products-table tr[data-product-display] .name-col {
     grid-area: name;
@@ -718,8 +772,9 @@ textarea.input { resize: vertical; }
   .products-table tr[data-product-display] .product-stock {
     grid-area: stock;
     align-self: start;
-    font-size: 0.76rem;
-    color: var(--color-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text);
     padding-top: 0.08rem;
     white-space: nowrap;
   }
@@ -728,21 +783,63 @@ textarea.input { resize: vertical; }
     align-self: center;
     text-align: end;
   }
+  /* Category/SKU/date-added stay small + muted on purpose — reference info,
+     de-emphasized next to the genuinely interesting stats (stock/wishlist/
+     purchased get full-contrast text below, per feedback 2026-07-16). */
+  .products-table tr[data-product-display] .cat-col {
+    grid-area: cat;
+    align-self: start;
+    font-size: 0.74rem;
+    padding-top: 0.15rem;
+  }
+  .products-table tr[data-product-display] .sku-col {
+    grid-area: sku;
+    align-self: start;
+    font-size: 0.74rem;
+    padding-top: 0.05rem;
+  }
+  /* !important: wishlist-col/purchased-col carry an inline `color:var(
+     --color-muted)` in the markup (shared with the desktop table, where
+     muted is correct) — an inline style always beats any external
+     stylesheet rule regardless of specificity, so only `!important` here
+     can raise them to full-contrast on the card without touching desktop. */
+  .products-table tr[data-product-display] .wishlist-col {
+    grid-area: wishlist;
+    align-self: start;
+    padding-top: 0.05rem;
+    color: var(--color-text) !important;
+    font-weight: 600;
+  }
+  .products-table tr[data-product-display] .purchased-col {
+    grid-area: purchased;
+    align-self: start;
+    padding-top: 0.05rem;
+    color: var(--color-text) !important;
+    font-weight: 600;
+  }
+  .products-table tr[data-product-display] .date-col {
+    grid-area: date;
+    align-self: start;
+    font-size: 0.74rem;
+    padding-top: 0.05rem;
+  }
 
-  /* Hide non-essential columns */
-  .products-table tr[data-product-display] .row-num,
-  .products-table tr[data-product-display] .cat-col,
-  .products-table tr[data-product-display] .wishlist-col,
-  .products-table tr[data-product-display] .purchased-col,
-  .products-table tr[data-product-display] .date-col { display: none; }
+  /* Row-num ("#") is purely decorative, not worth the width on a card */
+  .products-table tr[data-product-display] .row-num { display: none; }
 
   /* Product name smaller, hide description */
   .products-table .product-name { font-size: 0.85rem; }
   .products-table .product-desc { display: none; }
 
-  /* Thumbnail */
-  .products-table .thumb-wrap   { width: 40px; height: 40px; }
-  .products-table .product-thumb { width: 40px !important; height: 40px !important; }
+  /* Thumbnail — grows with the now-taller card (5 stacked lines instead of
+     2) up to a 56px cap instead of staying fixed at the old 40px, which
+     read as oddly tiny once the card grew (feedback 2026-07-16). thumb-col
+     itself already stretches to the card's full height (a grid item's
+     default align-self), so `height:min(100%,56px)` on the wrap resolves
+     against that — `aspect-ratio:1` keeps it square off the resulting
+     height instead of a separately-guessed width. */
+  .products-table .thumb-wrap    { width: auto; height: min(100%, 56px); aspect-ratio: 1; }
+  .products-table .product-thumb { width: 100% !important; height: 100% !important; }
 
   /* Kebab button — bigger tap target */
   .products-table .product-menu__btn { width: 2.2rem; height: 2.2rem; opacity: 1; }
@@ -751,6 +848,15 @@ textarea.input { resize: vertical; }
   .products-table tr.edit-row             { display: block; border-bottom: 1px solid var(--color-border); }
   .products-table tr.edit-row td          { display: block; padding: 0.75rem 0.5rem; border-bottom: none; }
   .products-table tr.edit-row .row-num    { display: none; }
+
+  /* Stock number (and the other stacked-row fields below it) has no column
+     header to lean on once thead disappears at this width — a plain number
+     reads as ambiguous, so every row spells its own label out. */
+  .product-stock-label,
+  .cat-col-label,
+  .sku-col-label,
+  .purchased-col-label,
+  .date-col-label { display: inline; color: var(--color-muted); }
 
   /* The variant-combo grid is a real nested <table> — the blanket "td → block"
      reset above is a descendant selector, so it was also flattening this one,

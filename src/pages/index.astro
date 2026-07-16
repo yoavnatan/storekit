@@ -186,17 +186,10 @@ const jsonLd = {
         <div class="dash-tabs !px-0" role="tablist">
           {tabs.map((tab) => (
             <button
-              class={`dash-tab${activeTab === tab.id ? ' dash-tab--active' : ''}
-                relative rounded-t-[6px] !border-b-0
+              class={`dash-tab home-tab${activeTab === tab.id ? ' dash-tab--active' : ''}
+                rounded-t-[6px] !border-b-0
                 [transition:color_0.15s,background-color_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
-                hover:bg-[color:var(--color-bg)] active:scale-[0.97]
-                after:content-[''] after:absolute after:inset-x-[0.85rem] after:bottom-0 after:h-[2.5px]
-                after:rounded-t-[2px] after:origin-center
-                after:[transition:transform_0.22s_cubic-bezier(0.22,1,0.36,1),background-color_0.15s]
-                hover:after:scale-x-100
-                ${activeTab === tab.id
-                  ? 'after:scale-x-100 after:bg-[color:var(--color-primary)]'
-                  : 'after:scale-x-0 after:bg-[color:var(--color-muted)]'}`}
+                hover:bg-[color:var(--color-bg)] active:scale-[0.97]`}
               role="tab"
               id={`tab-${tab.id}`}
               data-panel={tab.id}
@@ -211,7 +204,7 @@ const jsonLd = {
 
       <div id="dash-panel-liked" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-liked" hidden={activeTab !== 'liked'}>
         {feed.liked.length > 0
-          ? <HomeShelf id="liked" title={t.home.shelfLiked} stores={feed.liked} dotIndex={bgOffset} eagerFirst={activeTab === 'liked'} hideHeading />
+          ? <HomeShelf id="liked" title={t.home.shelfLiked} stores={feed.liked} dotIndex={bgOffset} eagerFirst={activeTab === 'liked'} hideHeading fillMobile />
           : <HomeTabEmpty
               message={isLoggedIn ? t.home.tabEmptyLiked : t.home.tabEmptyLikedGuest}
               ctaLabel={isLoggedIn ? t.home.tabEmptyLikedCta : t.home.tabEmptyLikedGuestCta}
@@ -222,14 +215,14 @@ const jsonLd = {
 
       <div id="dash-panel-buy-again" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-buy-again" hidden={activeTab !== 'buy-again'}>
         {feed.buyAgain.length > 0
-          ? <HomeShelf id="buy-again" title={t.home.shelfBuyAgain} stores={feed.buyAgain} dotIndex={bgOffset} eagerFirst={activeTab === 'buy-again'} hideHeading />
+          ? <HomeShelf id="buy-again" title={t.home.shelfBuyAgain} stores={feed.buyAgain} dotIndex={bgOffset} eagerFirst={activeTab === 'buy-again'} hideHeading fillMobile />
           : <HomeTabEmpty message={t.home.tabEmptyBuyAgain} ctaLabel={t.home.tabEmptyLikedCta} ctaHref="/stores" />
         }
       </div>
 
       <div id="dash-panel-new" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-new" hidden={activeTab !== 'new'}>
         {feed.newStores.length > 0
-          ? <HomeShelf id="new" title={t.home.shelfNew} stores={feed.newStores} dotIndex={bgOffset} eagerFirst={activeTab === 'new'} hideHeading />
+          ? <HomeShelf id="new" title={t.home.shelfNew} stores={feed.newStores} dotIndex={bgOffset} eagerFirst={activeTab === 'new'} hideHeading fillMobile />
           : <HomeTabEmpty message={t.home.tabEmptyNew} ctaLabel={t.home.tabEmptyCtaAll} ctaHref="/stores" />
         }
       </div>
@@ -327,6 +320,8 @@ const jsonLd = {
                           </div>
 
                           <div class="home-carousel-wrap">
+                            <div class="home-carousel-fade home-carousel-fade--start" aria-hidden="true"></div>
+                            <div class="home-carousel-fade home-carousel-fade--end" aria-hidden="true"></div>
                             {products.length > 2 && (
                               <>
                                 <button type="button" class="home-carousel-btn home-carousel-btn--prev"
@@ -443,6 +438,7 @@ const jsonLd = {
   import { clearLastStore } from '../lib/last-store.js';
   import { initImageSkeletons } from '../lib/img-skeleton.js';
   import { initDashTabs } from '../scripts/dashboard/ui.js';
+  import { playReveal, armBelowFoldReveal } from '../lib/scroll-reveal.js';
 
   // Landing on the platform home is a deliberate exit from any store context —
   // don't let a stale "back to store" pill follow the buyer into checkout/dashboard afterward.
@@ -501,12 +497,16 @@ const jsonLd = {
     const carousel = section.querySelector<HTMLElement>('.home-carousel');
     const btnPrev  = section.querySelector<HTMLButtonElement>('.home-carousel-btn--prev');
     const btnNext  = section.querySelector<HTMLButtonElement>('.home-carousel-btn--next');
+    const fadeStart = section.querySelector<HTMLElement>('.home-carousel-fade--start');
+    const fadeEnd   = section.querySelector<HTMLElement>('.home-carousel-fade--end');
     if (!carousel) return;
 
     function updateArrows(): void {
       const { atStart, atEnd } = edgeState(carousel!);
       if (btnPrev) btnPrev.toggleAttribute('hidden', atStart);
       if (btnNext) btnNext.toggleAttribute('hidden', atEnd);
+      fadeStart?.classList.toggle('is-visible', !atStart);
+      fadeEnd?.classList.toggle('is-visible', !atEnd);
     }
 
     carousel.addEventListener('scroll', updateArrows, { passive: true });
@@ -555,6 +555,35 @@ const jsonLd = {
           if (!discoverPanel.hidden) requestAnimationFrame(updateSpotlightArrows);
         }).observe(discoverPanel, { attributes: true, attributeFilter: ['hidden'] });
       }
+
+      // ── Auto-advance (CURRENT_TASK.md → סשן א׳): pages one store at a time,
+      // looping back to the start, every few seconds — until the buyer pages
+      // through it themselves (an arrow click or a direct swipe/drag/wheel on
+      // the track), which stops it for the rest of the visit. Paused (not
+      // just silently drifting) while the tab is backgrounded or the Discover
+      // panel itself isn't the active one, via the same `discoverPanel`/
+      // visibilitychange checks the rest of this block already needs.
+      const slides = Array.from(track.querySelectorAll<HTMLElement>('.home-spotlight-slide'));
+      if (slides.length > 1) {
+        const AUTO_ADVANCE_MS = 4500;
+        let slideIndex = 0;
+        let autoAdvanceTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
+          if (document.visibilityState !== 'visible') return;
+          if (discoverPanel?.hidden) return;
+          slideIndex = (slideIndex + 1) % slides.length;
+          slides[slideIndex]!.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+        }, AUTO_ADVANCE_MS);
+
+        function stopAutoAdvance(): void {
+          if (autoAdvanceTimer === null) return;
+          clearInterval(autoAdvanceTimer);
+          autoAdvanceTimer = null;
+        }
+        track.addEventListener('pointerdown', stopAutoAdvance, { once: true });
+        track.addEventListener('wheel', stopAutoAdvance, { once: true, passive: true });
+        btnPrev?.addEventListener('click', stopAutoAdvance, { once: true });
+        btnNext?.addEventListener('click', stopAutoAdvance, { once: true });
+      }
     }
   }
 
@@ -582,5 +611,24 @@ const jsonLd = {
   // missing image doesn't shimmer forever). ────────────────────────
   initImageSkeletons('.home-product-card__img-wrap');
   initImageSkeletons('.store-card__preview-img-wrap');
+
+  // ── Card entrance animation (CURRENT_TASK.md → סשן א׳, src/lib/scroll-reveal.ts)
+  // — played in two situations: (1) a card still below the fold at load, the
+  // first time it scrolls into view; (2) every dash-tab switch, for whatever
+  // cards the newly-shown panel contains — replays even for a tab that
+  // already played once this visit, since switching tabs is itself a fresh
+  // "arrival" per feedback. Cards in a tab panel that isn't active yet
+  // measure a zero-height rect at load (`display:none`), so case (1) skips
+  // them — case (2) covers them once their tab is actually switched to.
+  const REVEAL_SELECTOR = '.home-shelf .store-card, .home-product-card';
+  armBelowFoldReveal(REVEAL_SELECTOR);
+
+  // Tab switch: `dashtab:show` is dispatched by initDashTabs() (scripts/
+  // dashboard/ui.ts) on the panel element itself right after it's unhidden.
+  document.addEventListener('dashtab:show', (e) => {
+    const panel = e.target as HTMLElement;
+    const cards = Array.from(panel.querySelectorAll<HTMLElement>(REVEAL_SELECTOR));
+    if (cards.length) playReveal(cards);
+  });
 
 </script>

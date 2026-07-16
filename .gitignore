@@ -25,6 +25,9 @@ yarn-error.log*
 # claude code worktree sessions (nested full checkouts, never source)
 .claude/worktrees/
 
+# personal local Claude Code permission overrides — machine-specific, not shared config
+.claude/settings.local.json
+
 # astro
 .astro/
 

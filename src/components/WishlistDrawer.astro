@@ -22,7 +22,7 @@
 </div>
 
 <script>
-  import { removeFromWishlist, addToWishlist, getWishlistByStore, getWishlistCount } from '../lib/wishlist.js';
+  import { removeFromWishlist, addToWishlist, getWishlistByStore } from '../lib/wishlist.js';
   import { addItem, getCartQty } from '../lib/cart.js';
   import { formatPrice, cdnSrc } from '../config/store.config.js';
   import { spawnRipple } from '../lib/ripple.js';
@@ -398,20 +398,12 @@
     }
   });
 
+  // #wishlist-count itself is owned by Header.astro's refreshWishlistCount()
+  // (shared updateBadge()/badge-ticker.ts, with the pop/roll animations) — this
+  // drawer only ever needs to re-render its own item list on the same event.
   window.addEventListener('wishlist:change', () => {
     if (isOpen) render();
-    updateBadge();
   });
-
-  function updateBadge() {
-    const badge = document.getElementById('wishlist-count');
-    const count = getWishlistCount();
-    if (badge) {
-      badge.textContent = String(count);
-      if (count > 0) badge.removeAttribute('hidden');
-      else badge.setAttribute('hidden', '');
-    }
-  }
 
   document.getElementById('wishlist-close')?.addEventListener('click', close);
   window.addEventListener('wishlist:open', () => isOpen ? close() : open());
@@ -422,5 +414,4 @@
     if (btn) spawnRipple(btn, e.clientX, e.clientY);
   });
 
-  updateBadge();
 </script>

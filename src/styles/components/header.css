@@ -56,6 +56,7 @@ nav a:hover { color: var(--color-text); }
   height: 14px;
   padding: 0 3px;
   border-radius: 3px;
+  border: 1px solid var(--color-border);
   background: var(--color-accent);
   color: #fff;
   font-size: 9px;
@@ -66,10 +67,53 @@ nav a:hover { color: var(--color-text); }
   line-height: 1;
   pointer-events: none;
   white-space: nowrap;
+  overflow: hidden;
   z-index: 10;
 }
 
 .cart-count--alert { background: #ef4444; }
+
+/* Odometer-style roll for the count text inside .cart-count — see badge-ticker.ts.
+   Absolutely positioned (against .cart-count's own `position:absolute`) so the
+   2-row track isn't vertically centered by .cart-count's flex `align-items` —
+   centering a track taller than the badge would show the middle of both rows
+   at once instead of one full row at a time. */
+.badge-ticker__track {
+  position: absolute;
+  top: 0;
+  inset-inline-start: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.badge-ticker__val {
+  flex: 0 0 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Badge appearing/disappearing entirely (count 0→1 / 1→0) — separate from the
+   ticker roll above, which only handles a visible badge's number changing.
+   Scale-only (no translate): a badge popping onto its icon corner, unlike a
+   dropdown sliding in from a direction. */
+.badge-count--entering {
+  animation: badge-pop-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.badge-count--closing {
+  animation: badge-pop-out 0.16s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes badge-pop-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes badge-pop-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.4); }
+}
 
 .header-actions {
   display: flex;

@@ -138,7 +138,7 @@ export function getActiveStoreCarts(): ActiveStoreCart[] {
       const cart = JSON.parse(localStorage.getItem(key) ?? 'null') as StoreCart | null;
       if (!cart) continue;
       const items = Object.values(cart.items);
-      const count = items.reduce((s, item) => s + item.qty, 0);
+      const count = items.length;
       if (count > 0) result.push({ storeSlug: cart.storeSlug, storeName: cart.storeName, count, items });
     } catch { /* skip */ }
   }

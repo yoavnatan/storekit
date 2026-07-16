@@ -11,17 +11,56 @@
   50% { transform: scale(1.22); }
 }
 
-/* ── Tabs — hover/press/underline + the .dash-tabs/.dash-panel padding
-   overrides are all Tailwind utility classes directly on the elements in
-   index.astro now (scoped per-instance, so dashboard/admin's own untouched
-   markup elsewhere is unaffected without needing a `.home-body` ancestor
-   selector). `!`-prefixed utilities (`!px-0`, `!border-b-0`, etc.) force
-   `!important` where the override must reliably beat dashboard.css's own
-   same-specificity single-class rules on the *shared* `.dash-tabs`/
-   `.dash-tab`/`.dash-panel` classes, regardless of Tailwind's vs. that
-   file's compiled output order — the ancestor-selector trick used
-   elsewhere in this codebase for the same problem isn't available here
-   since Tailwind utilities can't be nested under a hand-written selector. */
+/* ── Tabs — hover/press + the .dash-tabs/.dash-panel padding overrides are
+   Tailwind utility classes directly on the elements in index.astro (scoped
+   per-instance, so dashboard/admin's own untouched markup elsewhere is
+   unaffected without needing a `.home-body` ancestor selector). `!`-prefixed
+   utilities (`!px-0`, `!border-b-0`, etc.) force `!important` where the
+   override must reliably beat dashboard.css's own same-specificity
+   single-class rules on the *shared* `.dash-tabs`/`.dash-tab`/`.dash-panel`
+   classes, regardless of Tailwind's vs. that file's compiled output order —
+   the ancestor-selector trick used elsewhere in this codebase for the same
+   problem isn't available here since Tailwind utilities can't be nested
+   under a hand-written selector.
+
+   The underline itself (`.home-tab::after`) is real CSS, not Tailwind
+   utilities (fixed 2026-07-16): it used to be a per-render Tailwind
+   `after:scale-x-*`/`after:bg-*` pair picked once from `activeTab === tab.id`
+   at SSR time. `initDashTabs()`'s `activateTab()` (scripts/dashboard/ui.ts)
+   *does* correctly toggle `.dash-tab--active` on click — but nothing in that
+   old markup ever re-read it, so the underline visibly froze at whatever the
+   page loaded with and never moved again after the first click. Keying the
+   rule off `.dash-tab--active` and `:hover` directly means the browser's own
+   class-toggle/hover machinery drives it, same as `.dash-tab--active`'s
+   plain `border-bottom-color` already does for the seller/admin dashboards'
+   own (unstyled-by-this-file) tabs. Hover is a translateY reveal — the bar
+   rises up from just below the tab into its resting place at the bottom
+   edge — not the previous horizontal scaleX-from-center widen. */
+.home-tab { position: relative; }
+.home-tab::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0.85rem;
+  bottom: 0;
+  height: 2.5px;
+  border-radius: 2px 2px 0 0;
+  background: var(--color-muted);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, background-color 0.15s ease;
+}
+.home-tab:hover::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+.home-tab.dash-tab--active::after {
+  opacity: 1;
+  transform: translateY(0);
+  background: var(--color-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-tab::after { transition: opacity 0.15s ease; }
+}
 
 /* ── Section layout helpers ────────────────────────────────────────── */
 
@@ -233,6 +272,32 @@
 
 .home-carousel { scrollbar-width: none; }
 .home-carousel::-webkit-scrollbar { display: none; }
+
+/* ── Per-store carousel edge fade (CURRENT_TASK.md → סשן א׳) — a real gradient
+   overlay pair, not a mask on the scrolling `.home-carousel` itself: an
+   earlier attempt masked that element directly, which forces its own
+   compositing layer and clipped the shared hover-shadow bleed trick used
+   across this file (see AI_INSTRUCTIONS.md → Homepage). Two plain,
+   pointer-events:none divs sitting on top instead, toggled by the exact
+   same edge-state check the prev/next arrows already use (updateArrows()
+   in index.astro), so the scrolling row itself is never touched. */
+.home-carousel-fade {
+  position: absolute;
+  inset-block: 0;
+  width: 28px;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.home-carousel-fade.is-visible { opacity: 1; }
+.home-carousel-fade--start { inset-inline-start: 0; }
+.home-carousel-fade--end { inset-inline-end: 0; }
+
+[dir="ltr"] .home-carousel-fade--start { background: linear-gradient(to right, var(--color-bg), transparent); }
+[dir="ltr"] .home-carousel-fade--end   { background: linear-gradient(to left,  var(--color-bg), transparent); }
+[dir="rtl"] .home-carousel-fade--start { background: linear-gradient(to left,  var(--color-bg), transparent); }
+[dir="rtl"] .home-carousel-fade--end   { background: linear-gradient(to right, var(--color-bg), transparent); }
 
 /* ── Product card (homepage carousel item) ─────────────────────────── */
 

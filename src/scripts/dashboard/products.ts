@@ -78,14 +78,15 @@ function warnIcon(label: string): string {
   return `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="${esc(label)}" style="color:var(--color-danger,#dc2626);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
 }
 
-function stockHtml(stock: number, outOfStockLabel: string): string {
+function stockHtml(stock: number, outOfStockLabel: string, stockLabel: string): string {
+  const label = `<span class="product-stock-label">${esc(stockLabel)}: </span>`;
   if (stock <= 0) {
-    return `<span style="display:inline-flex;align-items:center;gap:0.3rem"><span style="color:var(--color-danger)">0</span>${warnIcon(outOfStockLabel)}</span>`;
+    return `${label}<span style="display:inline-flex;align-items:center;gap:0.3rem"><span style="color:var(--color-danger)">0</span>${warnIcon(outOfStockLabel)}</span>`;
   }
   if (stock <= LOW_STOCK_THRESHOLD) {
-    return `<span style="color:var(--color-danger)">${stock}</span>`;
+    return `${label}<span style="color:var(--color-danger)">${stock}</span>`;
   }
-  return String(stock);
+  return `${label}${stock}`;
 }
 
 // Joins a combo's values for display — color dimensions must go through
@@ -1234,15 +1235,15 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
       <span class="product-name cursor-text">${esc(p.name)}</span>
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
-    <td class="sku-col">${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="cat-col">${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
+    <td class="sku-col"><span class="sku-col-label">${esc(i.skuLabel ?? 'SKU')}: </span>${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
+    <td class="cat-col"><span class="cat-col-label">${esc(i.categoryLabel ?? 'Category')}: </span>${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num product-price price-col group cursor-text">${fmtPrice(p.price)}</td>
-    <td class="num product-stock stock-col group cursor-text"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
+    <td class="num product-stock stock-col group cursor-text"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">${(p.wishlistCount ?? 0) > 0
       ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${p.wishlistCount}</span>`
       : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem">${(p.purchasedCount ?? 0) > 0 ? String(p.purchasedCount) : `<span style="color:var(--color-border)">—</span>`}</td>
-    <td class="date-col">${esc(fmtDateAdded(p.createdAt))}</td>
+    <td class="num purchased-col" style="color:var(--color-muted);font-size:0.82rem"><span class="purchased-col-label">${esc(i.colPurchased ?? 'Purchased')}: </span>${(p.purchasedCount ?? 0) > 0 ? String(p.purchasedCount) : `<span style="color:var(--color-border)">—</span>`}</td>
+    <td class="date-col"><span class="date-col-label">${esc(i.colDateAdded ?? 'Date added')}: </span>${esc(fmtDateAdded(p.createdAt))}</td>
     <td class="actions actions-col">
       <div class="product-menu relative inline-block">
         <button class="product-menu__btn inline-flex items-center justify-center w-7 h-7 bg-transparent border-0 rounded-full cursor-pointer [color:var(--color-muted)] opacity-50 transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] hover:[color:var(--color-text)] hover:opacity-100 aria-expanded:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] aria-expanded:[color:var(--color-text)] aria-expanded:opacity-100 active:scale-90" type="button" aria-label="${esc(i.menuLabel ?? 'אפשרויות')}" aria-expanded="false" aria-haspopup="true">
@@ -1387,18 +1388,18 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
       if (priceCell) priceCell.textContent = fmtPrice(price);
       if (stockCell) {
         const savedVariants = JSON.parse(String(fd.get('variants_json') || '{}')) as { variants?: VariantDimension[]; variantStock?: Record<string, number> };
-        stockCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(stock, i18n.outOfStock ?? 'Out of stock')}${stockBreakdownHtml(savedVariants.variants, savedVariants.variantStock, stock, i18n)}</span>`;
+        stockCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(stock, i18n.outOfStock ?? 'Out of stock', i18n.colStock ?? 'Stock')}${stockBreakdownHtml(savedVariants.variants, savedVariants.variantStock, stock, i18n)}</span>`;
         displayRow.dataset.hasVariants = savedVariants.variants?.length ? '1' : '';
       }
 
       const category = String(fd.get('category') ?? '').trim();
       const catCell = displayRow.querySelector<HTMLElement>('.cat-col');
-      if (catCell) catCell.innerHTML = category ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(category)}</span>` : `<span style="color:var(--color-border)">—</span>`;
+      if (catCell) catCell.innerHTML = `<span class="cat-col-label">${esc(i18n.categoryLabel ?? 'Category')}: </span>` + (category ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(category)}</span>` : `<span style="color:var(--color-border)">—</span>`);
       displayRow.dataset.category = category;
 
       const sku = String(fd.get('sku') ?? '').trim();
       const skuCell = displayRow.querySelector<HTMLElement>('.sku-col');
-      if (skuCell) skuCell.innerHTML = sku ? esc(sku) : `<span style="color:var(--color-border)">—</span>`;
+      if (skuCell) skuCell.innerHTML = `<span class="sku-col-label">${esc(i18n.skuLabel ?? 'SKU')}: </span>` + (sku ? esc(sku) : `<span style="color:var(--color-border)">—</span>`);
 
       displayRow.dataset.sortName = name.toLowerCase();
       displayRow.dataset.sortPrice = String(price);
@@ -2272,7 +2273,7 @@ function activateInlineEdit(
         const editInput = row.nextElementSibling?.querySelector<HTMLInputElement>('[name="price"]');
         if (editInput) editInput.value = String(p.price);
       } else {
-        trigger.innerHTML = stockHtml(p.stock, i.outOfStock ?? 'אזל מהמלאי');
+        trigger.innerHTML = stockHtml(p.stock, i.outOfStock ?? 'אזל מהמלאי', i.colStock ?? 'מלאי');
         row.dataset.sortStock = String(p.stock);
         const editInput = row.nextElementSibling?.querySelector<HTMLInputElement>('[name="stock"]');
         if (editInput) editInput.value = String(p.stock);

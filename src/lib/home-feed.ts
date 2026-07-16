@@ -28,6 +28,9 @@ export interface HomeFeed {
 const SHELF_SIZE = 10;
 const MAX_CATEGORY_SHELVES = 4;
 const SPOTLIGHT_SIZE = 5;
+/** Below this many cards, a shelf reads as sparse/broken rather than a real row (CURRENT_TASK.md
+ *  → סשן א׳: "always enough stores in New Stores to fill the section"). */
+const MIN_SHELF_FILL = 6;
 
 /** Deterministic string hash → 32-bit int, seed for mulberry32 below. */
 function hashSeed(seed: string): number {
@@ -100,6 +103,22 @@ export function buildHomeFeed(storesWithProducts: FeedStore[], userId: string | 
     .slice()
     .sort((a, b) => new Date(b.store.createdAt).getTime() - new Date(a.store.createdAt).getTime())
     .slice(0, SHELF_SIZE);
+
+  // Backfill: a young platform (or a buyer who's already liked/bought-from most of the
+  // catalog) can leave this shelf too sparse to read as a real row — top it up with the next
+  // most-recent stores overall, including ones already shown elsewhere (shelves are allowed to
+  // repeat, same reasoning as the category shelves above), until it looks full or the whole
+  // catalog is exhausted.
+  if (newStores.length < Math.min(MIN_SHELF_FILL, storesWithProducts.length)) {
+    const newStoreSlugsSoFar = new Set(newStores.map((fs) => fs.store.slug));
+    const backfillPool = storesWithProducts
+      .filter((fs) => !newStoreSlugsSoFar.has(fs.store.slug))
+      .sort((a, b) => new Date(b.store.createdAt).getTime() - new Date(a.store.createdAt).getTime());
+    for (const fs of backfillPool) {
+      if (newStores.length >= Math.min(SHELF_SIZE, storesWithProducts.length)) break;
+      newStores.push(fs);
+    }
+  }
   const newSlugs = new Set(newStores.map((fs) => fs.store.slug));
 
   // One shelf per category with enough stores to be worth a whole row — sorted by how many

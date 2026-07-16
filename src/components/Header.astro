@@ -221,7 +221,7 @@ const strEmpty   = t.store.noProductsFound;
             style="position:relative"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span id="notif-count-badge" class="cart-count cart-count--alert" hidden={initialUnreadCount <= 0} aria-live="polite" aria-atomic="true" aria-label="התראות חדשות">{initialUnreadCount > 0 ? initialUnreadLabel : ''}</span>
+            <span id="notif-count-badge" class="cart-count cart-count--alert" hidden={initialUnreadCount <= 0} aria-live="polite" aria-atomic="true" aria-label="התראות חדשות" data-ticker-value={initialUnreadCount > 0 ? initialUnreadLabel : undefined}>{initialUnreadCount > 0 ? initialUnreadLabel : ''}</span>
           </button>
           <div id="notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות">
             <div class="notif-panel-head">
@@ -266,14 +266,14 @@ const strEmpty   = t.store.noProductsFound;
                   if (!k || k.indexOf('store_cart_v2_') !== 0) continue;
                   var c = JSON.parse(localStorage.getItem(k) || 'null') || {};
                   var cartItems = c.items ? Object.values(c.items) : [];
-                  cartCount += cartItems.reduce(function (s, item) { return s + ((item && item.qty) || 0); }, 0);
+                  cartCount += cartItems.length;
                 }
                 var cartEl = document.getElementById('cart-count');
-                if (cartEl && cartCount > 0) { cartEl.textContent = String(cartCount); cartEl.removeAttribute('hidden'); }
+                if (cartEl && cartCount > 0) { cartEl.textContent = String(cartCount); cartEl.dataset.tickerValue = String(cartCount); cartEl.removeAttribute('hidden'); }
                 var wItems = JSON.parse(localStorage.getItem('wishlist_v1') || '[]');
                 var wCount = Array.isArray(wItems) ? wItems.length : 0;
                 var wEl = document.getElementById('wishlist-count');
-                if (wEl && wCount > 0) { wEl.textContent = String(wCount); wEl.removeAttribute('hidden'); }
+                if (wEl && wCount > 0) { wEl.textContent = String(wCount); wEl.dataset.tickerValue = String(wCount); wEl.removeAttribute('hidden'); }
               } catch (_) {}
             })();
           </script>
@@ -340,7 +340,9 @@ const strEmpty   = t.store.noProductsFound;
 
 <script>
   import { getCount } from '../lib/cart.js';
+  import { getWishlistCount } from '../lib/wishlist.js';
   import { getLastStore } from '../lib/last-store.js';
+  import { updateBadge } from '../lib/badge-ticker.js';
 
   // ── Back-to-store pill ────────────────────────────────────────
   {
@@ -372,9 +374,14 @@ const strEmpty   = t.store.noProductsFound;
     const el = document.getElementById('cart-count');
     if (!el) return;
     const count = getCount();
-    el.textContent = String(count);
-    if (count > 0) el.removeAttribute('hidden');
-    else el.setAttribute('hidden', '');
+    updateBadge(el, count > 0 ? String(count) : null);
+  }
+
+  function refreshWishlistCount() {
+    const el = document.getElementById('wishlist-count');
+    if (!el) return;
+    const count = getWishlistCount();
+    updateBadge(el, count > 0 ? String(count) : null);
   }
 
   document.getElementById('wishlist-toggle')?.addEventListener('click', () => {
@@ -394,6 +401,9 @@ const strEmpty   = t.store.noProductsFound;
 
   window.addEventListener('cart:change', refresh);
   refresh();
+
+  window.addEventListener('wishlist:change', refreshWishlistCount);
+  refreshWishlistCount();
 
   // ── User dropdown ─────────────────────────────────────────────
   const userToggle   = document.getElementById('user-menu-toggle') as HTMLButtonElement | null;
@@ -461,12 +471,7 @@ const strEmpty   = t.store.noProductsFound;
   // batch's own small size instead of the true total.
   function setBadge(unreadCount: number) {
     if (notifCountBadge) {
-      if (unreadCount > 0) {
-        notifCountBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
-        notifCountBadge.removeAttribute('hidden');
-      } else {
-        notifCountBadge.setAttribute('hidden', '');
-      }
+      updateBadge(notifCountBadge, unreadCount > 0 ? (unreadCount > 99 ? '99+' : String(unreadCount)) : null);
     }
     document.title = unreadCount > 0 ? `(${unreadCount}) ${originalTitle}` : originalTitle;
   }

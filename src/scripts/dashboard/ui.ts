@@ -159,7 +159,14 @@ export function initDashTabs(): void {
     tab.setAttribute('aria-selected', 'true');
     tab.setAttribute('tabindex', '0');
     const panel = document.getElementById(`dash-panel-${tab.dataset.panel}`);
-    if (panel) panel.hidden = false;
+    if (panel) {
+      panel.hidden = false;
+      // Bubbling + inert unless something listens — lets a page react to its
+      // own panel becoming the active one (e.g. the homepage replaying its
+      // card entrance animation) without this shared tab controller knowing
+      // anything about that page's content.
+      panel.dispatchEvent(new CustomEvent('dashtab:show', { bubbles: true }));
+    }
     const u = new URL(window.location.href);
     u.searchParams.set('panel', tab.dataset.panel ?? '');
     history.replaceState(null, '', u.toString());
