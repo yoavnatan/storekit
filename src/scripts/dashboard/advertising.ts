@@ -1,11 +1,36 @@
 import { formatPrice } from '../../config/store.config.js';
 import { showStatus } from './status.js';
+import { initInfoTooltips } from './tooltip.js';
 
 interface CampaignStats { impressions: number; clicks: number; ctr: number; spend: number; roas: number }
 interface Campaign {
   id: string; scope: 'store' | 'product'; productName?: string;
   platform: 'google' | 'meta'; monthlyBudget: number; status: 'active' | 'paused';
+  durationDays?: 7 | 14 | 30;
+  audience?: { gender: 'all' | 'women' | 'men'; age: 'all' | 'infant' | 'kids' | 'adult' };
   stats: CampaignStats;
+}
+
+// Compact "women · kids · 14 days" targeting summary for a campaign card.
+// Mirrors the SSR version in dashboard.astro / admin advertising.astro.
+function targetingLabel(c: Campaign, i18n: Record<string, string>): string {
+  const ageLabels: Record<string, string> = { infant: i18n.adAgeInfant ?? '', kids: i18n.adAgeKids ?? '', adult: i18n.adAgeAdult ?? '' };
+  const parts: string[] = [];
+  if (c.scope === 'store') {
+    // No single audience — each product self-targets by its own attributes.
+    parts.push(i18n.adAutoPerProduct ?? '');
+  } else {
+    if (c.audience?.gender === 'women') parts.push(i18n.adGenderWomen ?? '');
+    else if (c.audience?.gender === 'men') parts.push(i18n.adGenderMen ?? '');
+    if (c.audience?.age && ageLabels[c.audience.age]) parts.push(ageLabels[c.audience.age]!);
+    if (parts.length === 0) parts.push(i18n.adAudienceAll ?? '');
+  }
+  const dur = c.durationDays === 7 ? (i18n.adDuration7 ?? '')
+    : c.durationDays === 14 ? (i18n.adDuration14 ?? '')
+    : c.durationDays === 30 ? (i18n.adDuration30 ?? '')
+    : (i18n.adDurationOngoing ?? '');
+  parts.push(dur);
+  return parts.filter(Boolean).join(' · ');
 }
 
 function getI18n(): Record<string, string> {
@@ -37,6 +62,7 @@ function campaignCardHtml(c: Campaign, i18n: Record<string, string>): string {
           <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" data-ad-action="delete" data-campaign-id="${c.id}">${i18n.adDeleteCampaign ?? ''}</button>
         </div>
       </div>
+      <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2">${escHtml(targetingLabel(c, i18n))}</p>
       <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-[0.82rem]">
         <div><span class="[color:var(--color-muted)]">${i18n.adBudgetLabel ?? ''}</span><br /><strong>${formatPrice(c.monthlyBudget)}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adImpressions ?? ''}</span><br /><strong>${c.stats.impressions.toLocaleString('he-IL')}</strong></div>
@@ -64,16 +90,70 @@ export function initAdvertisingTab(): void {
   // below (a known limitation for closures over outer `let`/`const`).
   const list = listMaybe as HTMLElement;
   const storeSlug = list.dataset.storeSlug ?? '';
+  // Same script drives the seller's own tab and the admin's per-store control
+  // view (see /admin/store/[slug]/advertising.astro); the admin surface points
+  // at the admin-guarded twin endpoint via data-endpoint. Mirrors how
+  // performance.ts reads data-endpoint for the same dual-surface reuse.
+  const endpoint = list.dataset.endpoint || '/api/seller/ad-campaigns';
   const i18n = getI18n();
+
+  // Bind the static "(i)" info triggers in this tab (e.g. the baseline-impressions
+  // explainer). Idempotent — guarded per-element by dataset.tooltipBound — so the
+  // seller dashboard, where performance.ts also calls this, double-calls safely.
+  initInfoTooltips();
 
   const scopeSelect = document.getElementById('ad-scope-select') as HTMLSelectElement | null;
   const productField = document.getElementById('ad-product-field');
-  scopeSelect?.addEventListener('change', () => {
-    if (productField) productField.hidden = scopeSelect.value !== 'product';
-  });
+  const productSelect = document.getElementById('ad-product-select') as HTMLSelectElement | null;
+  const genderSelect = document.getElementById('ad-gender-select') as HTMLSelectElement | null;
+  const ageSelect = document.getElementById('ad-age-select') as HTMLSelectElement | null;
+  const inferNote = document.getElementById('ad-infer-note');
+
+  // Pre-fill gender + age_group from the selected product's inferred audience
+  // (data-infer-gender / data-infer-age, computed server-side from its
+  // category/name/tags) so a seller who already categorized under "גברים"/
+  // "תינוקות" doesn't re-enter it. Only for a product-scoped boost — a
+  // whole-store campaign has no single product to read from. The seller can
+  // still override (the change handlers below retire the "auto-filled" note).
+  function applyInferredAudience(): void {
+    const isProduct = scopeSelect?.value === 'product';
+    const opt = isProduct ? productSelect?.selectedOptions[0] : undefined;
+    let applied = false;
+    const g = opt?.dataset.inferGender ?? '';
+    if (genderSelect && (g === 'men' || g === 'women')) { genderSelect.value = g; applied = true; }
+    const a = opt?.dataset.inferAge ?? '';
+    if (ageSelect && (a === 'infant' || a === 'kids' || a === 'adult')) { ageSelect.value = a; applied = true; }
+    if (inferNote) inferNote.hidden = !applied;
+  }
+
+  const genderField = document.getElementById('ad-gender-field');
+  const ageField = document.getElementById('ad-age-field');
+  const storeAutoNote = document.getElementById('ad-store-auto-note');
+
+  // A whole-store campaign has no single product, so a single manual gender/age
+  // would wrongly force one demographic on a mixed catalog — instead each
+  // product is targeted automatically by its own inferred feed attributes. So
+  // the manual audience fields exist ONLY for a product-scoped boost; for store
+  // scope they're hidden and replaced by the "auto per product" note.
+  function updateScopeUI(): void {
+    const isProduct = scopeSelect?.value === 'product';
+    if (productField) productField.hidden = !isProduct;
+    if (genderField) genderField.hidden = !isProduct;
+    if (ageField) ageField.hidden = !isProduct;
+    if (storeAutoNote) storeAutoNote.hidden = isProduct;
+    applyInferredAudience();
+  }
+
+  scopeSelect?.addEventListener('change', updateScopeUI);
+  productSelect?.addEventListener('change', applyInferredAudience);
+  // A manual change to either field is a deliberate override — retire the note.
+  const retireNote = () => { if (inferNote) inferNote.hidden = true; };
+  genderSelect?.addEventListener('change', retireNote);
+  ageSelect?.addEventListener('change', retireNote);
+  updateScopeUI(); // sync initial visibility to the default scope
 
   async function refetch(): Promise<void> {
-    const res = await fetch(`/api/seller/ad-campaigns?storeSlug=${encodeURIComponent(storeSlug)}`);
+    const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}`);
     if (!res.ok) return;
     const data = await res.json() as { ok?: boolean; campaigns?: Campaign[] };
     if (data.campaigns) renderCampaigns(list, data.campaigns, i18n);
@@ -87,13 +167,20 @@ export function initAdvertisingTab(): void {
     const platform = String(fd.get('platform') ?? 'google');
     const monthlyBudget = parseFloat(String(fd.get('monthlyBudget') ?? '0'));
     const productId = scope === 'product' ? String(fd.get('productId') ?? '') : undefined;
+    const durationRaw = parseInt(String(fd.get('durationDays') ?? ''), 10);
+    const durationDays = Number.isFinite(durationRaw) ? durationRaw : undefined;
+    // Audience only applies to a product boost — a store campaign self-targets
+    // per product, so it carries no single audience (server enforces this too).
+    const audience = scope === 'product'
+      ? { gender: String(fd.get('gender') ?? 'all'), age: String(fd.get('age') ?? 'all') }
+      : undefined;
 
     if (submitBtn) submitBtn.disabled = true;
     try {
-      const res = await fetch('/api/seller/ad-campaigns', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeSlug, scope, platform, monthlyBudget, productId }),
+        body: JSON.stringify({ storeSlug, scope, platform, monthlyBudget, productId, durationDays, audience }),
       });
       const data = await res.json() as { ok?: boolean; error?: string };
       if (!data.ok) { showStatus(data.error ?? (i18n.errorSaving ?? 'Error saving.'), true); return; }
@@ -122,7 +209,7 @@ export function initAdvertisingTab(): void {
       const nextStatus = currentStatus === 'active' ? 'paused' : 'active';
       btn.disabled = true;
       try {
-        const res = await fetch('/api/seller/ad-campaigns', {
+        const res = await fetch(endpoint, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: campaignId, storeSlug, status: nextStatus }),
@@ -143,7 +230,7 @@ export function initAdvertisingTab(): void {
           okLabel: i18n.delete ?? 'Delete',
           workingLabel: i18n.deleting ?? 'Deleting…',
           onConfirm: async () => {
-            const res = await fetch('/api/seller/ad-campaigns', {
+            const res = await fetch(endpoint, {
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ id: campaignId, storeSlug }),

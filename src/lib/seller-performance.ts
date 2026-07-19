@@ -28,6 +28,14 @@ export interface PerformanceSummary {
   totalViews: number;
   conversionRate: number; // orders / views * 100, 0 when no views
   topProducts: TopProduct[];
+  // Profitability (reporting only — the real deduction happens at the
+  // split-payment processor). commissionRate is echoed back so the client can
+  // label the expense line ("platform commission (10%)") without re-reading
+  // store.config; platformCommission/netProfit are pre-computed server-side so
+  // SSR and the AJAX re-render can never drift on the rounding.
+  commissionRate: number;      // percent, e.g. 10
+  platformCommission: number;  // totalRevenue * commissionRate / 100, the seller's expense
+  netProfit: number;           // totalRevenue - platformCommission, what the seller actually receives
 }
 
 function toISODate(d: Date): string { return d.toISOString().slice(0, 10); }
@@ -53,6 +61,11 @@ export function buildPerformanceSummary(
   fromISO: string,
   toISO: string,
   granularity: PerformanceGranularity,
+  commissionPercent = 0,
+  // How many products to keep in `topProducts`, revenue-sorted. Default 5 for
+  // the tab's "leading products" summary; a value <= 0 returns *all* products
+  // that sold in the range (the breakdown modal's full-composition view).
+  topLimit = 5,
 ): PerformanceSummary {
   const from = new Date(fromISO + 'T00:00:00.000Z');
   const to = new Date(toISO + 'T23:59:59.999Z');
@@ -115,7 +128,11 @@ export function buildPerformanceSummary(
       productMap.set(item.productId, entry);
     }
   }
-  const topProducts = [...productMap.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+  const sortedProducts = [...productMap.values()].sort((a, b) => b.revenue - a.revenue);
+  const topProducts = topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts;
+
+  const platformCommission = Math.round(totalRevenue * commissionPercent) / 100;
+  const netProfit = Math.round((totalRevenue - platformCommission) * 100) / 100;
 
   return {
     granularity,
@@ -126,5 +143,8 @@ export function buildPerformanceSummary(
     totalViews,
     conversionRate: totalViews > 0 ? (totalOrders / totalViews) * 100 : 0,
     topProducts,
+    commissionRate: commissionPercent,
+    platformCommission,
+    netProfit,
   };
 }

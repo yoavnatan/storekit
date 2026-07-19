@@ -22,13 +22,42 @@ export interface AdCampaign {
   productName?: string;
   platform: 'google' | 'meta';
   monthlyBudget: number; // ILS
+  // Seller-chosen run length in days; omitted = ongoing until paused/deleted.
+  durationDays?: 7 | 14 | 30;
+  // Seller-chosen broad audience segment. The platform still manages the fine
+  // targeting + creative automatically (see adBudgetHint) — this only picks the
+  // coarse demographic band. 'all' on a field = no restriction on that field.
+  audience?: { gender: AdGender; age: AdAgeRange };
   status: 'active' | 'paused';
   createdAt: string;
   updatedAt: string;
 }
 
+export type AdGender = 'all' | 'women' | 'men';
+// age = the product's target age_group (who it's FOR), a standard feed attribute
+// — NOT a viewer age band. See audience-infer.ts#inferAgeGroup for why.
+export type AdAgeRange = 'all' | 'infant' | 'kids' | 'adult';
+export const AD_DURATION_OPTIONS: readonly (7 | 14 | 30)[] = [7, 14, 30];
+export const AD_AGE_OPTIONS: readonly AdAgeRange[] = ['all', 'infant', 'kids', 'adult'];
+
 export type CreateCampaignInput = Pick<AdCampaign, 'storeId' | 'storeSlug' | 'scope' | 'platform' | 'monthlyBudget'> &
-  Partial<Pick<AdCampaign, 'productId' | 'productName'>>;
+  Partial<Pick<AdCampaign, 'productId' | 'productName' | 'durationDays' | 'audience'>>;
+
+/** Coerce untrusted request input to a valid duration, or undefined (= ongoing). */
+export function parseDuration(v: unknown): (7 | 14 | 30) | undefined {
+  return AD_DURATION_OPTIONS.includes(v as 7) ? (v as 7 | 14 | 30) : undefined;
+}
+
+/** Coerce untrusted request input to a valid audience segment. A fully-open
+ *  segment (all/all) is treated as no targeting and returns undefined. */
+export function parseAudience(v: unknown): { gender: AdGender; age: AdAgeRange } | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const o = v as { gender?: unknown; age?: unknown };
+  const gender: AdGender = o.gender === 'women' || o.gender === 'men' ? o.gender : 'all';
+  const age: AdAgeRange = AD_AGE_OPTIONS.includes(o.age as AdAgeRange) ? (o.age as AdAgeRange) : 'all';
+  if (gender === 'all' && age === 'all') return undefined;
+  return { gender, age };
+}
 
 function readAll(): AdCampaign[] {
   try { return JSON.parse(fs.readFileSync(CAMPAIGNS_PATH, 'utf8')) as AdCampaign[]; }

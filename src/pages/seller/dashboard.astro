@@ -10,9 +10,9 @@ import {
   updateProduct,
   deleteProduct,
 } from '../../lib/store-products.js';
-import { formatPrice, cdnSrc } from '../../config/store.config.js';
+import { formatPrice, cdnSrc, store as platformConfig } from '../../config/store.config.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
-import { getLang, getT } from '../../i18n/index.js';
+import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
 import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
 import { thumbUrl } from '../../lib/cloudinary.js';
@@ -29,9 +29,10 @@ import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, generateCombos, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath } from '../../lib/store-categories.js';
+import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js';
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
 import { getCampaignsByStoreId, getMockCampaignStats, getMockBaselineImpressions } from '../../lib/ad-campaigns.js';
-import { buildBarChartSvg } from '../../lib/chart-svg.js';
+import { buildBarChartSvg, buildLineChartSvg } from '../../lib/chart-svg.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
 // first rows) so seeding legacy combos never silently changes the sum.
@@ -243,30 +244,58 @@ const msgDistinctProducts = [...new Set(storeMessages.map((m) => m.productRef?.p
 const msgDistinctFrom = [...new Set([...storeMessages.map((m) => m.fromName), 'הודעות מערכת'])].sort((a, b) => a.localeCompare(b, 'he'));
 const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
 
-// Performance tab — SSR renders the default "last 30 days" range so it's
-// never a blank flash before JS runs; range-picker changes re-fetch from
+// Performance tab — SSR renders the default "this month" range so it's never
+// a blank flash before JS runs; range-picker changes re-fetch from
 // /api/seller/performance and re-render client-side (same AJAX pattern as
-// Products/Orders/Messages, no full page nav).
-const PERF_DEFAULT_RANGE_DAYS = 30;
+// Products/Orders/Messages, no full page nav). Default is "this month" to
+// match the range picker's own default preset (performance.ts) — the two must
+// agree or the SSR chart wouldn't match the picker label on first paint.
 const perfToday = new Date();
-const perfToISO = perfToday.toISOString().slice(0, 10);
-const perfFromDate = new Date(perfToday);
-perfFromDate.setUTCDate(perfFromDate.getUTCDate() - (PERF_DEFAULT_RANGE_DAYS - 1));
-const perfFromISO = perfFromDate.toISOString().slice(0, 10);
+// Local-calendar ISO (not toISOString, which is UTC and would shift the 1st of
+// the month back a day in positive-UTC timezones) — must match performance.ts's
+// own toISODate so SSR and the picker's "this month" preset agree exactly.
+const toLocalISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+const perfToISO = toLocalISO(perfToday);
+const perfFromISO = toLocalISO(new Date(perfToday.getFullYear(), perfToday.getMonth(), 1));
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
-const perfSummary = store ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity) : undefined;
+const perfSummary = store ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity, platformConfig.checkout.commissionPercent) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).
 const adCampaigns = store ? getCampaignsByStoreId(store.id).map((c) => ({ ...c, stats: getMockCampaignStats(c) })) : [];
 const adBaselineImpressions = store ? getMockBaselineImpressions(store.id) : 0;
 const adEligibleProducts = store ? products.filter((p) => p.stock > 0) : [];
+// Gender the product's own text (category path it sits under + name + tags)
+// implies — pre-fills the campaign audience so a seller who already categorized
+// under "גברים"/"נשים" never re-enters it (no duplicate input). '' = no signal /
+// ambiguous → leave "all". Resolved server-side because category names live in
+// the fs-backed tree; surfaced to the client form via a data attr per option.
+const adInferTexts = (p: typeof adEligibleProducts[number]) => [productCategoryPaths.get(p.id), p.name, ...(p.tags ?? [])];
+const adProductInferredGender = new Map(adEligibleProducts.map((p) => [p.id, inferAudienceGender(adInferTexts(p)) ?? ''] as const));
+const adProductInferredAge = new Map(adEligibleProducts.map((p) => [p.id, inferAgeGroup(adInferTexts(p)) ?? ''] as const));
+// Compact "women · kids · 14 days" targeting summary — mirrors targetingLabel()
+// in advertising.ts (client card rebuild) and the same helper in admin advertising.astro.
+const adAgeLabels: Record<string, string> = { infant: d.adAgeInfant, kids: d.adAgeKids, adult: d.adAgeAdult };
+const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?: { gender: string; age: string } }): string => {
+  const parts: string[] = [];
+  if (c.scope === 'store') {
+    parts.push(d.adAutoPerProduct);
+  } else {
+    if (c.audience?.gender === 'women') parts.push(d.adGenderWomen);
+    else if (c.audience?.gender === 'men') parts.push(d.adGenderMen);
+    if (c.audience?.age && adAgeLabels[c.audience.age]) parts.push(adAgeLabels[c.audience.age]!);
+    if (parts.length === 0) parts.push(d.adAudienceAll);
+  }
+  parts.push(c.durationDays === 7 ? d.adDuration7 : c.durationDays === 14 ? d.adDuration14 : c.durationDays === 30 ? d.adDuration30 : d.adDurationOngoing);
+  return parts.filter(Boolean).join(' · ');
+};
 
+const perfIsRtl = getDir(lang) === 'rtl';
 const perfRevenueChartSvg = perfSummary
-  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenue })), { color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: d.perfNoData })
+  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })), { color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: d.perfNoData, rtl: perfIsRtl })
   : '';
 const perfVisitorsChartSvg = perfSummary
-  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.views })), { color: 'var(--color-accent)', valueFormatter: (v) => String(v), emptyMessage: d.perfNoData })
+  ? buildLineChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.views })), { color: 'var(--color-accent)', valueFormatter: (v) => String(v), emptyMessage: d.perfNoData, rtl: perfIsRtl })
   : '';
 const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
 // Orders tab pagination — same server-paginated approach as Products above
@@ -648,7 +677,10 @@ const orderStatusColors: Record<string, string> = {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-            <p class="csv-panel__hint muted text-[0.82rem] leading-[1.5] mb-3">{d.csvImportHint}</p>
+            <p class="csv-panel__hint muted text-[0.82rem] leading-[1.5] mb-1">{d.csvImportLead}</p>
+            <ul class="muted text-[0.82rem] leading-[1.5] m-0 mb-3 ps-[1.1rem] flex flex-col gap-1 list-disc marker:[color:var(--color-primary)]">
+              {d.csvImportPoints.map((p) => <li>{p}</li>)}
+            </ul>
             <div class="csv-panel__actions flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:flex-wrap">
               <a class="btn btn--ghost btn--sm sm:!justify-start" id="csv-export-link" href={`/api/store-product/bulk?storeId=${store.id}`} download="products.csv">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -740,7 +772,7 @@ const orderStatusColors: Record<string, string> = {
                 </th>
                 <th class="num wishlist-col">
                   <button type="button" class="sort-btn" data-sort-col="wishlist">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    <svg class="shrink-0 max-w-none" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                     <svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
                   </button>
                 </th>
@@ -817,7 +849,7 @@ const orderStatusColors: Record<string, string> = {
                     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">
                       {(wishlistCounts[p.slug] ?? 0) > 0
                         ? <span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)">
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                            <svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                             {wishlistCounts[p.slug]}
                           </span>
                         : <span style="color:var(--color-border)">—</span>
@@ -1173,7 +1205,7 @@ const orderStatusColors: Record<string, string> = {
             <h2 class="m-0 text-base font-semibold">{d.perfTitle}</h2>
             <p class="muted text-[0.82rem] m-0 mt-1">{d.perfSubtitle}</p>
           </div>
-          <div id="perf-range-picker" data-store-slug={store.slug} data-active-preset="30d">
+          <div id="perf-range-picker" data-store-slug={store.slug} data-active-preset="thisMonth">
           <button
             type="button"
             id="perf-range-trigger"
@@ -1182,7 +1214,7 @@ const orderStatusColors: Record<string, string> = {
             aria-expanded="false"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <span id="perf-range-label">{d.perfPreset30d}</span>
+            <span id="perf-range-label">{d.perfPresetThisMonth}</span>
             <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <input type="hidden" id="perf-from-input" value={perfFromISO} />
@@ -1218,7 +1250,38 @@ const orderStatusColors: Record<string, string> = {
           </div>
         </dl>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+        {/* Profitability breakdown — a compact "receipt": gross revenue less the
+            platform commission (the seller's only platform-side expense in the
+            split-payment model) equals the net the seller actually receives.
+            Reporting only; the real deduction happens at the processor. */}
+        <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-5 [background:color-mix(in_srgb,var(--color-success)_4%,transparent)]">
+          <div class="flex items-center gap-1 mb-3">
+            <h3 class="m-0 text-[0.9rem] font-semibold">{d.perfProfitTitle}</h3>
+            <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfProfitHint} aria-label={d.perfProfitHint}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+            </button>
+          </div>
+          <dl class="m-0 flex flex-col gap-2 text-[0.86rem]">
+            <div class="flex items-center justify-between gap-3">
+              <dt class="[color:var(--color-muted)]">{d.perfGrossRevenue}</dt>
+              <dd class="m-0 font-medium" id="perf-gross">{perfSummary && formatPrice(perfSummary.totalRevenue)}</dd>
+            </div>
+            <div class="flex items-center justify-between gap-3">
+              <dt class="[color:var(--color-muted)]">{d.perfCommission} <span class="text-[0.78rem]">(<span id="perf-commission-rate">{perfSummary?.commissionRate ?? 0}</span>%)</span></dt>
+              <dd class="m-0 font-medium [color:var(--color-danger)]" id="perf-commission">−{perfSummary && formatPrice(perfSummary.platformCommission)}</dd>
+            </div>
+            <div class="flex items-center justify-between gap-3 pt-2 border-t [border-color:var(--color-border)]">
+              <dt class="font-semibold">{d.perfNetProfit}</dt>
+              <dd class="m-0 font-bold text-[1.02rem] [color:var(--color-success)]" id="perf-net">{perfSummary && formatPrice(perfSummary.netProfit)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Initial summary — lets performance.ts re-render both charts at the
+            container's real pixel width (crisp, no downscaled text) once the
+            panel is visible, and again on resize (ResizeObserver). */}
+        <script type="application/json" id="perf-initial-summary" set:html={JSON.stringify(perfSummary ?? null)} />
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5" data-perf-rtl={perfIsRtl ? '1' : '0'}>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
             <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.perfRevenueChartTitle}</h3>
             <div id="perf-revenue-chart" set:html={perfRevenueChartSvg}></div>
@@ -1235,15 +1298,15 @@ const orderStatusColors: Record<string, string> = {
             {perfSummary && perfSummary.topProducts.length === 0 && (
               <p class="muted text-[0.85rem] m-0">{d.perfTopProductsEmpty}</p>
             )}
-            {perfSummary?.topProducts.map((tp) => {
-              const maxRevenue = Math.max(...perfSummary.topProducts.map((x) => x.revenue), 1);
-              const pct = Math.round((tp.revenue / maxRevenue) * 100);
+            {perfSummary?.topProducts.map((tp, tpIdx) => {
+              const totalRevenue = Math.max(perfSummary.topProducts.reduce((s, x) => s + x.revenue, 0), 1);
+              const pct = Math.round((tp.revenue / totalRevenue) * 100);
               return (
                 <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
-                  <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)]" style={`width:${pct}%`}></div>
+                  <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style={`width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(tpIdx * 60, 300)}ms`}></div>
                   <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
                     <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">{tp.name}</span>
-                    <span class="shrink-0 [color:var(--color-muted)]">{tp.units} {d.perfUnitsSold} · <strong class="[color:var(--color-text)]">{formatPrice(tp.revenue)}</strong></span>
+                    <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{pct}%</strong> · {tp.units} {d.perfUnitsSold} · {formatPrice(tp.revenue)}</span>
                   </div>
                 </div>
               );
@@ -1261,13 +1324,23 @@ const orderStatusColors: Record<string, string> = {
 
         <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4 [background:color-mix(in_srgb,var(--color-success)_6%,transparent)]">
           <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBaselineTitle}</h3>
-          <p class="muted text-[0.82rem] m-0 mb-2">{d.adBaselineDesc}</p>
-          <p class="m-0 text-[0.85rem]">{d.adBaselineImpressions}: <strong id="ad-baseline-impressions">{adBaselineImpressions.toLocaleString('he-IL')}</strong></p>
+          <p class="muted text-[0.82rem] m-0 mb-2">{d.adBaselineLead}</p>
+          <ul class="muted text-[0.82rem] m-0 mb-3 ps-[1.1rem] flex flex-col gap-1 list-disc marker:[color:var(--color-success)]">
+            {d.adBaselinePoints.map((p) => <li>{p}</li>)}
+          </ul>
+          <p class="m-0 text-[0.85rem] flex items-center gap-1 flex-wrap">
+            <span>{d.adBaselineImpressions}:</span>
+            <strong id="ad-baseline-impressions">{adBaselineImpressions.toLocaleString('he-IL')}</strong>
+            <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.adBaselineImpTip} aria-label={d.adBaselineImpTip}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+            </button>
+          </p>
         </div>
 
         <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4">
           <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBoostTitle}</h3>
-          <p class="muted text-[0.82rem] m-0 mb-3">{d.adBoostDesc}</p>
+          <p class="muted text-[0.82rem] m-0 mb-2">{d.adBoostDesc}</p>
+          <p class="text-[0.8rem] m-0 mb-3 p-2 rounded-[0.4rem] [background:color-mix(in_srgb,var(--color-primary)_7%,transparent)] [color:var(--color-text)]">{d.adBoostWhySep}</p>
 
           <form id="ad-create-form" class="flex flex-col gap-3" data-store-slug={store.slug}>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1281,7 +1354,7 @@ const orderStatusColors: Record<string, string> = {
               <label class="field" id="ad-product-field" hidden>
                 <span>{d.adSelectProduct}</span>
                 <select id="ad-product-select" name="productId" class="input">
-                  {adEligibleProducts.map((p) => <option value={p.id}>{p.name}</option>)}
+                  {adEligibleProducts.map((p) => <option value={p.id} data-infer-gender={adProductInferredGender.get(p.id)} data-infer-age={adProductInferredAge.get(p.id)}>{p.name}</option>)}
                 </select>
               </label>
               <label class="field">
@@ -1295,7 +1368,35 @@ const orderStatusColors: Record<string, string> = {
                 <span>{d.adBudgetLabel}</span>
                 <input type="number" id="ad-budget-input" name="monthlyBudget" class="input" min="50" step="10" value="200" dir="ltr" />
               </label>
+              <label class="field">
+                <span>{d.adDurationLabel}</span>
+                <select name="durationDays" class="input">
+                  <option value="">{d.adDurationOngoing}</option>
+                  <option value="7">{d.adDuration7}</option>
+                  <option value="14">{d.adDuration14}</option>
+                  <option value="30">{d.adDuration30}</option>
+                </select>
+              </label>
+              <label class="field" id="ad-gender-field" hidden>
+                <span>{d.adAudienceGender}</span>
+                <select id="ad-gender-select" name="gender" class="input">
+                  <option value="all">{d.adGenderAll}</option>
+                  <option value="women">{d.adGenderWomen}</option>
+                  <option value="men">{d.adGenderMen}</option>
+                </select>
+                <small id="ad-infer-note" class="text-[0.72rem] [color:var(--color-success)] mt-1" hidden>{d.adAudienceAutoNote}</small>
+              </label>
+              <label class="field" id="ad-age-field" hidden>
+                <span>{d.adAudienceAge}</span>
+                <select id="ad-age-select" name="age" class="input">
+                  <option value="all">{d.adAgeAll}</option>
+                  <option value="infant">{d.adAgeInfant}</option>
+                  <option value="kids">{d.adAgeKids}</option>
+                  <option value="adult">{d.adAgeAdult}</option>
+                </select>
+              </label>
             </div>
+            <p id="ad-store-auto-note" class="text-[0.78rem] m-0 [color:var(--color-success)]">{d.adStoreAutoNote}</p>
             <p class="muted text-[0.78rem] m-0">{d.adBudgetHint}</p>
             <div>
               <button type="submit" class="btn btn--sm btn--accent">{d.adCreateCampaign}</button>
@@ -1305,6 +1406,17 @@ const orderStatusColors: Record<string, string> = {
 
         <div>
           <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.adYourCampaigns}</h3>
+          <details class="mb-3 border [border-color:var(--color-border)] rounded-[var(--radius)] [background:var(--color-bg)]">
+            <summary class="text-[0.82rem] font-medium px-3 py-2 cursor-pointer select-none [color:var(--color-muted)] hover:[color:var(--color-text)]">{d.adGlossaryTitle}</summary>
+            <dl class="m-0 px-3 pb-3 pt-1 flex flex-col gap-2 text-[0.8rem]">
+              {d.adGlossary.map((g) => (
+                <div>
+                  <dt class="font-semibold [color:var(--color-text)]">{g.t}</dt>
+                  <dd class="m-0 muted">{g.d}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
           <div id="ad-campaigns-list" class="flex flex-col gap-3" data-store-slug={store.slug}>
             {adCampaigns.length === 0 && <p class="muted text-[0.85rem] m-0" id="ad-empty-msg">{d.adNoCampaigns}</p>}
             {adCampaigns.map((c) => (
@@ -1322,6 +1434,7 @@ const orderStatusColors: Record<string, string> = {
                     <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" data-ad-action="delete" data-campaign-id={c.id}>{d.adDeleteCampaign}</button>
                   </div>
                 </div>
+                <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2">{adTargetingLabel(c)}</p>
                 <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-[0.82rem]">
                   <div><span class="[color:var(--color-muted)]">{d.adBudgetLabel}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adImpressions}</span><br /><strong>{c.stats.impressions.toLocaleString('he-IL')}</strong></div>
@@ -1968,6 +2081,27 @@ const orderStatusColors: Record<string, string> = {
       <button class="btn btn--accent btn--sm" type="submit" id="edit-order-save">שמור שינויים</button>
     </div>
   </form>
+</dialog>
+
+{/* Revenue-breakdown modal — opened by clicking a bar in the "revenue over
+    time" chart (performance.ts). Shows a donut of which products made up that
+    day/month's revenue. Content is injected client-side. */}
+<dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:14px;padding:0;width:min(440px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">
+    <div>
+      <h2 id="pbm-title" style="font-size:0.95rem;font-weight:700;margin:0">{d.perfBreakdownTitle}</h2>
+      <p id="pbm-subtitle" class="muted" style="font-size:0.78rem;margin:0.15rem 0 0"></p>
+    </div>
+    <button id="perf-breakdown-close" type="button" aria-label={d.perfBreakdownClose} style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:none;background:none;color:var(--color-muted);cursor:pointer;flex-shrink:0">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  {/* min-height keeps the dialog from resizing/recentering as content swaps
+      (loading/empty ↔ donut), which read as a flicker on open.
+      autofocus + tabindex=-1 catch showModal()'s initial focus here (outline
+      suppressed) instead of on the close button, which otherwise opened with a
+      visible focus ring. Keyboard Tab still reaches the close button normally. */}
+  <div id="perf-breakdown-body" tabindex="-1" autofocus style="padding:1.25rem;min-height:19rem;display:flex;flex-direction:column;justify-content:center;outline:none"></div>
 </dialog>
 
 <script>

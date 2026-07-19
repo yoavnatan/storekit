@@ -1,6 +1,7 @@
 ---
 import type { AdminSellerSortCol, AdminSortDir, SellerCardData } from '../../lib/admin-stats.js';
 import { formatPrice } from '../../config/store.config.js';
+import { buildAdminUrl } from '../../lib/admin-nav.js';
 import AdminPager from './AdminPager.astro';
 
 interface Props {
@@ -87,56 +88,15 @@ const sortLabels: Record<string, string> = {
             <p class="admin-empty">אין חנויות למוכר/ת זה/זו.</p>
           ) : (
             stores.map(({ store, products, revenue }) => (
-              <details class="admin-store-block">
-                <summary class="admin-store-block__summary">
-                  <span class="admin-store-block__name">
-                    {store.name}
-                    {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
-                  </span>
-                  <span class="admin-store-block__nums">{products.length} מוצרים</span>
-                  <span class="admin-store-block__nums">{formatPrice(revenue.totalRevenue)} סה"כ · {formatPrice(revenue.monthRevenue)} החודש</span>
-                  <a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link" onclick="event.stopPropagation()">צפה בחנות</a>
-                  <button
-                    type="button"
-                    class={`btn btn--sm ${store.blocked ? '' : 'btn--ghost'} admin-block-toggle`}
-                    data-kind="store"
-                    data-store-slug={store.slug}
-                    data-blocked={store.blocked ? '1' : ''}
-                    onclick="event.stopPropagation()"
-                  >
-                    {store.blocked ? 'בטל חסימה' : 'חסום חנות'}
-                  </button>
-                </summary>
-                {products.length > 0 && (
-                  <table class="admin-inline-table">
-                    <thead>
-                      <tr><th>מוצר</th><th>מחיר</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                      {products.map((p) => (
-                        <tr>
-                          <td>
-                            {p.name}
-                            {p.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
-                          </td>
-                          <td>{p.price.toFixed(2)} ₪</td>
-                          <td>
-                            <button
-                              type="button"
-                              class={`btn btn--sm ${p.blocked ? '' : 'btn--ghost'} admin-block-toggle`}
-                              data-kind="product"
-                              data-product-id={p.id}
-                              data-blocked={p.blocked ? '1' : ''}
-                            >
-                              {p.blocked ? 'בטל חסימה' : 'חסום מוצר'}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </details>
+              <a class="admin-store-link" href={buildAdminUrl('stores', { stq: store.name })} title={`נהל את "${store.name}" בלשונית החנויות`}>
+                <span class="admin-store-block__name">
+                  {store.name}
+                  {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+                </span>
+                <span class="admin-store-block__nums">{products.length} מוצרים</span>
+                <span class="admin-store-block__nums">{formatPrice(revenue.totalRevenue)} סה"כ · {formatPrice(revenue.monthRevenue)} החודש</span>
+                <svg class="admin-store-link__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+              </a>
             ))
           )}
         </div>

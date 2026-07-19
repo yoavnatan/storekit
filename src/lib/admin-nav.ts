@@ -79,9 +79,17 @@ export function wirePanelLinks(panelId: string, reinit: () => void): void {
   const panel = document.getElementById(panelId);
   if (!panel || panel.dataset.linksWired) return; // container survives every swap — wire once, not per reinit
   panel.dataset.linksWired = '1';
+  const panelTab = panelId.replace(/^dash-panel-/, '');
   panel.addEventListener('click', (e) => {
     const link = (e.target as HTMLElement).closest('a[href^="/admin?"]') as HTMLAnchorElement | null;
     if (!link || link.target) return;
+    // Only intercept links that stay within THIS panel's own tab. A link to a
+    // different tab (e.g. a Sellers-tab store row linking into panel=stores)
+    // must fall through to a real navigation so the active tab actually
+    // switches — swap-ing another tab's URL into this panel would just reload
+    // this same panel and never leave it.
+    const targetPanel = new URL(link.href, location.origin).searchParams.get('panel');
+    if (targetPanel && targetPanel !== panelTab) return;
     e.preventDefault();
     swapPanel(link.href, panelId, reinit);
   });

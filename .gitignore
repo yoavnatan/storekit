@@ -44,3 +44,6 @@ test-*.cjs
 test-*.js
 debug-*.cjs
 debug-*.js
+
+# Claude Code internal memory mirror (never source)
+.claude-memory/

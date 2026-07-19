@@ -1,12 +1,21 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
+import { requireAdmin } from '../../../lib/admin-auth.js';
+import { getStoreBySlug } from '../../../lib/stores.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
 import {
   getCampaignsByStoreId, createCampaign, updateCampaign, deleteCampaign,
   getMockCampaignStats, getMockBaselineImpressions, parseDuration, parseAudience,
 } from '../../../lib/ad-campaigns.js';
+
+// Admin-facing twin of /api/seller/ad-campaigns: identical validation and
+// campaign shape, but gated by the admin cookie (requireAdmin) and able to
+// manage ANY store's boost campaigns by slug — the seller route is scoped to
+// the caller's own session-owned stores, the admin owns none, so the slug is
+// the only key here (mirrors /api/admin/performance). Lets the platform owner
+// launch/pause/retune a store's advertising directly (CURRENT_TASK.md item 2).
+// Still mock data — no real Google/Meta charge happens (see ad-campaigns.ts),
+// so this doesn't fall under the money-moves-need-a-mutex/Vitest rule.
 
 function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -17,13 +26,11 @@ function withStats(campaign: ReturnType<typeof getCampaignsByStoreId>[number]) {
 }
 
 export async function GET({ request, cookies }: APIContext): Promise<Response> {
-  const sellerId = getSellerSession(cookies);
-  if (!sellerId) return json({ error: 'Unauthorized' }, 401);
+  const denied = requireAdmin(cookies);
+  if (denied) return denied;
 
   const url = new URL(request.url);
-  const storeSlug = url.searchParams.get('storeSlug');
-  const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = getStoreBySlug(url.searchParams.get('storeSlug') ?? '');
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const campaigns = getCampaignsByStoreId(store.id).map(withStats);
@@ -31,8 +38,8 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
 }
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
-  const sellerId = getSellerSession(cookies);
-  if (!sellerId) return json({ error: 'Unauthorized' }, 401);
+  const denied = requireAdmin(cookies);
+  if (denied) return denied;
 
   let body: { storeSlug?: unknown; scope?: unknown; productId?: unknown; platform?: unknown; monthlyBudget?: unknown; durationDays?: unknown; audience?: unknown };
   try { body = await request.json() as typeof body; }
@@ -50,8 +57,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     return json({ error: 'Minimum monthly budget is 50 ₪' }, 400);
   }
 
-  const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = getStoreBySlug(storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
   let productName: string | undefined;
@@ -78,8 +84,8 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 }
 
 export async function PATCH({ request, cookies }: APIContext): Promise<Response> {
-  const sellerId = getSellerSession(cookies);
-  if (!sellerId) return json({ error: 'Unauthorized' }, 401);
+  const denied = requireAdmin(cookies);
+  if (denied) return denied;
 
   let body: { id?: unknown; storeSlug?: unknown; monthlyBudget?: unknown; status?: unknown };
   try { body = await request.json() as typeof body; }
@@ -88,8 +94,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   const { id, storeSlug, monthlyBudget, status } = body;
   if (typeof id !== 'string' || typeof storeSlug !== 'string') return json({ error: 'Missing id or storeSlug' }, 400);
 
-  const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = getStoreBySlug(storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const updates: Partial<{ monthlyBudget: number; status: 'active' | 'paused' }> = {};
@@ -103,8 +108,8 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
 }
 
 export async function DELETE({ request, cookies }: APIContext): Promise<Response> {
-  const sellerId = getSellerSession(cookies);
-  if (!sellerId) return json({ error: 'Unauthorized' }, 401);
+  const denied = requireAdmin(cookies);
+  if (denied) return denied;
 
   let body: { id?: unknown; storeSlug?: unknown };
   try { body = await request.json() as typeof body; }
@@ -113,8 +118,7 @@ export async function DELETE({ request, cookies }: APIContext): Promise<Response
   const { id, storeSlug } = body;
   if (typeof id !== 'string' || typeof storeSlug !== 'string') return json({ error: 'Missing id or storeSlug' }, 400);
 
-  const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = getStoreBySlug(storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const ok = deleteCampaign(id, store.id);

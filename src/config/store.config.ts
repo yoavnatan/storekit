@@ -48,6 +48,11 @@ interface PlatformConfig {
     freeShippingOver: number;
     shippingFlat: number;
     provider: string;
+    /** Platform commission taken from each sale via the split-payment provider
+     *  (seller's net = revenue − this %). Reporting/analytics only today — the
+     *  real deduction happens at the processor once split payment is wired
+     *  (see AI_INSTRUCTIONS.md → Payment architecture). */
+    commissionPercent: number;
   };
   social: {
     ogImage: string;
@@ -111,6 +116,7 @@ export const store: PlatformConfig = {
     freeShippingOver: 0,
     shippingFlat: 0,
     provider: 'stripe',
+    commissionPercent: 10,
   },
 
   social: {

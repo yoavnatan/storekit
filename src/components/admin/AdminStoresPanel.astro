@@ -10,6 +10,7 @@
 import type { AdminSortDir, AdminStoreSortCol, StoreRow } from '../../lib/admin-stats.js';
 import { formatPrice } from '../../config/store.config.js';
 import AdminPager from './AdminPager.astro';
+import StoreAvatar from '../StoreAvatar.astro';
 
 interface Props {
   storeRows: StoreRow[]; // current page only
@@ -65,24 +66,48 @@ const sortLabels: Record<string, string> = {
         return (
           <li class="admin-store-row">
             <div class="admin-store-row__info">
-              <span class="admin-store-row__name">
-                {store.name}
-                {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
-              </span>
-              <span class="admin-store-row__seller muted">{seller?.name ?? '—'} · {seller?.email ?? ''}</span>
+              <StoreAvatar name={store.name} profileImage={store.profileImage} size={34} />
+              <div class="admin-store-row__info-text">
+                <span class="admin-store-row__name">
+                  {store.name}
+                  {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+                </span>
+                <span class="admin-store-row__seller muted">{seller?.name ?? '—'} · {seller?.email ?? ''}</span>
+              </div>
             </div>
-            <span class="admin-store-row__count">{productCount} מוצרים</span>
+            {productCount > 0 ? (
+              <button
+                type="button"
+                class="admin-store-row__count admin-store-products-toggle group inline-flex items-center gap-1 bg-transparent border-0 font-[inherit] cursor-pointer hover:[color:var(--color-primary)] transition-colors duration-100"
+                data-store-slug={store.slug}
+                aria-expanded="false"
+                title="הצג/הסתר מוצרים"
+              >
+                {productCount} מוצרים
+                <svg class="shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            ) : (
+              <span class="admin-store-row__count">{productCount} מוצרים</span>
+            )}
             <span class="admin-store-row__revenue">{formatPrice(revenue.totalRevenue)} סה"כ</span>
             <span class="admin-store-row__revenue">{formatPrice(revenue.monthRevenue)} החודש</span>
-            <a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link">צפה בחנות</a>
-            <button
-              type="button"
-              class={`btn btn--sm ${store.blocked ? '' : 'btn--ghost'} admin-store-row-toggle`}
-              data-store-slug={store.slug}
-              data-blocked={store.blocked ? '1' : ''}
-            >
-              {store.blocked ? 'בטל חסימה' : 'חסום חנות'}
-            </button>
+            <div class="admin-store-row__actions">
+              <a href={`/admin/store/${store.slug}/performance`} class="admin-link">ביצועים</a>
+              <a href={`/admin/store/${store.slug}/advertising`} class="admin-link">פרסום</a>
+              <a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link">צפה בחנות</a>
+              <button
+                type="button"
+                class="admin-link admin-link--danger admin-store-row-toggle"
+                data-store-slug={store.slug}
+                data-blocked={store.blocked ? '1' : ''}
+                data-store-name={store.name}
+              >
+                {store.blocked ? 'בטל חסימה' : 'חסום חנות'}
+              </button>
+            </div>
+            {productCount > 0 && (
+              <div class="admin-store-row__products" data-store-slug={store.slug} data-loaded="" hidden></div>
+            )}
           </li>
         );
       })}

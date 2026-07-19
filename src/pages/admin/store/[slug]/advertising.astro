@@ -1,0 +1,224 @@
+---
+export const prerender = false;
+import '../../../../styles/pages/admin.css';
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import { isAdminRequest } from '../../../../lib/admin-auth.js';
+import { getStoreBySlug } from '../../../../lib/stores.js';
+import { getSellerById } from '../../../../lib/seller-auth.js';
+import { getProductsByStoreId } from '../../../../lib/store-products.js';
+import { getCampaignsByStoreId, getMockCampaignStats, getMockBaselineImpressions } from '../../../../lib/ad-campaigns.js';
+import { getCategoriesByStoreId, categoryPath } from '../../../../lib/store-categories.js';
+import { inferAudienceGender, inferAgeGroup } from '../../../../lib/audience-infer.js';
+import { formatPrice } from '../../../../config/store.config.js';
+import { getLang, getT } from '../../../../i18n/index.js';
+
+if (!isAdminRequest(Astro.cookies)) {
+  return Astro.redirect('/admin/login');
+}
+
+const slug = Astro.params.slug ?? '';
+const store = getStoreBySlug(slug);
+// Unknown slug → back to the Stores tab (the entry point), same fallback as
+// the admin per-store performance page.
+if (!store) {
+  return Astro.redirect('/admin?panel=stores');
+}
+const seller = getSellerById(store.sellerId);
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const d = t.dashboard;
+
+// Admin twin of the seller's Advertising tab — same baseline card + boost form
+// + campaign list, but every mutation posts to the admin-guarded twin endpoint
+// (/api/admin/ad-campaigns) so the platform owner can launch/pause/retune any
+// store's campaigns directly (CURRENT_TASK.md item 2). Product names come from
+// Astro expressions (auto-escaped) here and escHtml() in the client re-render,
+// so the cross-tenant view is XSS-safe without a set:html blob.
+const adCampaigns = getCampaignsByStoreId(store.id).map((c) => ({ ...c, stats: getMockCampaignStats(c) }));
+const adBaselineImpressions = getMockBaselineImpressions(store.id);
+const adEligibleProducts = getProductsByStoreId(store.id).filter((p) => p.stock > 0);
+// Gender inferred from each product's category path / name / tags — pre-fills the
+// campaign audience so it isn't re-entered (mirrors seller/dashboard.astro).
+const adStoreCategoryList = getCategoriesByStoreId(store.id);
+const adInferTexts = (p: typeof adEligibleProducts[number]) => [p.categoryId ? categoryPath(adStoreCategoryList, p.categoryId) : '', p.name, ...(p.tags ?? [])];
+const adProductInferredGender = new Map(adEligibleProducts.map((p) => [p.id, inferAudienceGender(adInferTexts(p)) ?? ''] as const));
+const adProductInferredAge = new Map(adEligibleProducts.map((p) => [p.id, inferAgeGroup(adInferTexts(p)) ?? ''] as const));
+// Compact "women · kids · 14 days" targeting summary — mirrors targetingLabel()
+// in advertising.ts and the same helper in seller/dashboard.astro.
+const adAgeLabels: Record<string, string> = { infant: d.adAgeInfant, kids: d.adAgeKids, adult: d.adAgeAdult };
+const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?: { gender: string; age: string } }): string => {
+  const parts: string[] = [];
+  if (c.scope === 'store') {
+    parts.push(d.adAutoPerProduct);
+  } else {
+    if (c.audience?.gender === 'women') parts.push(d.adGenderWomen);
+    else if (c.audience?.gender === 'men') parts.push(d.adGenderMen);
+    if (c.audience?.age && adAgeLabels[c.audience.age]) parts.push(adAgeLabels[c.audience.age]!);
+    if (parts.length === 0) parts.push(d.adAudienceAll);
+  }
+  parts.push(c.durationDays === 7 ? d.adDuration7 : c.durationDays === 14 ? d.adDuration14 : c.durationDays === 30 ? d.adDuration30 : d.adDurationOngoing);
+  return parts.filter(Boolean).join(' · ');
+};
+---
+
+<BaseLayout title={`פרסום · ${store.name}`} noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
+  <main id="main-content" class="section container dash-section">
+    <div id="dash-main-card" class="card">
+      <div class="dash-head">
+        <div class="dash-head__top">
+          <div>
+            <a href="/admin?panel=stores" class="admin-link text-[0.82rem] inline-flex items-center gap-1 mb-1">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+              חזרה לחנויות
+            </a>
+            <h1 class="text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">
+              פרסום · {store.name}
+              {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+            </h1>
+            <p class="muted text-[0.82rem] m-0 mt-1">{seller?.name ?? '—'} · {seller?.email ?? ''}</p>
+          </div>
+          <a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="btn btn--ghost btn--sm">צפה בחנות</a>
+        </div>
+      </div>
+
+      <div class="dash-panel">
+        <div class="mb-4 pb-[0.6rem] border-b [border-color:var(--color-border)]">
+          <h2 class="m-0 text-base font-semibold">{d.adTitle}</h2>
+          <p class="muted text-[0.82rem] m-0 mt-1">ניהול הפרסום של חנות זו — הפעלה, השהיה ועדכון תקציב עבור המוכר/ת.</p>
+        </div>
+
+        <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4 [background:color-mix(in_srgb,var(--color-success)_6%,transparent)]">
+          <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBaselineTitle}</h3>
+          <p class="muted text-[0.82rem] m-0 mb-2">{d.adBaselineLead}</p>
+          <ul class="muted text-[0.82rem] m-0 mb-3 ps-[1.1rem] flex flex-col gap-1 list-disc marker:[color:var(--color-success)]">
+            {d.adBaselinePoints.map((p) => <li>{p}</li>)}
+          </ul>
+          <p class="m-0 text-[0.85rem] flex items-center gap-1 flex-wrap">
+            <span>{d.adBaselineImpressions}:</span>
+            <strong id="ad-baseline-impressions">{adBaselineImpressions.toLocaleString('he-IL')}</strong>
+            <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.adBaselineImpTip} aria-label={d.adBaselineImpTip}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+            </button>
+          </p>
+        </div>
+
+        <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4">
+          <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBoostTitle}</h3>
+          <p class="muted text-[0.82rem] m-0 mb-2">{d.adBoostDesc}</p>
+          <p class="text-[0.8rem] m-0 mb-3 p-2 rounded-[0.4rem] [background:color-mix(in_srgb,var(--color-primary)_7%,transparent)] [color:var(--color-text)]">{d.adBoostWhySep}</p>
+
+          <form id="ad-create-form" class="flex flex-col gap-3" data-store-slug={store.slug}>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label class="field">
+                <span>{d.adScopeStore} / {d.adScopeProduct}</span>
+                <select id="ad-scope-select" name="scope" class="input">
+                  <option value="store">{d.adScopeStore}</option>
+                  <option value="product">{d.adScopeProduct}</option>
+                </select>
+              </label>
+              <label class="field" id="ad-product-field" hidden>
+                <span>{d.adSelectProduct}</span>
+                <select id="ad-product-select" name="productId" class="input">
+                  {adEligibleProducts.map((p) => <option value={p.id} data-infer-gender={adProductInferredGender.get(p.id)} data-infer-age={adProductInferredAge.get(p.id)}>{p.name}</option>)}
+                </select>
+              </label>
+              <label class="field">
+                <span>{d.adPlatform}</span>
+                <select id="ad-platform-select" name="platform" class="input">
+                  <option value="google">{d.adPlatformGoogle}</option>
+                  <option value="meta">{d.adPlatformMeta}</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>{d.adBudgetLabel}</span>
+                <input type="number" id="ad-budget-input" name="monthlyBudget" class="input" min="50" step="10" value="200" dir="ltr" />
+              </label>
+              <label class="field">
+                <span>{d.adDurationLabel}</span>
+                <select name="durationDays" class="input">
+                  <option value="">{d.adDurationOngoing}</option>
+                  <option value="7">{d.adDuration7}</option>
+                  <option value="14">{d.adDuration14}</option>
+                  <option value="30">{d.adDuration30}</option>
+                </select>
+              </label>
+              <label class="field" id="ad-gender-field" hidden>
+                <span>{d.adAudienceGender}</span>
+                <select id="ad-gender-select" name="gender" class="input">
+                  <option value="all">{d.adGenderAll}</option>
+                  <option value="women">{d.adGenderWomen}</option>
+                  <option value="men">{d.adGenderMen}</option>
+                </select>
+                <small id="ad-infer-note" class="text-[0.72rem] [color:var(--color-success)] mt-1" hidden>{d.adAudienceAutoNote}</small>
+              </label>
+              <label class="field" id="ad-age-field" hidden>
+                <span>{d.adAudienceAge}</span>
+                <select id="ad-age-select" name="age" class="input">
+                  <option value="all">{d.adAgeAll}</option>
+                  <option value="infant">{d.adAgeInfant}</option>
+                  <option value="kids">{d.adAgeKids}</option>
+                  <option value="adult">{d.adAgeAdult}</option>
+                </select>
+              </label>
+            </div>
+            <p id="ad-store-auto-note" class="text-[0.78rem] m-0 [color:var(--color-success)]">{d.adStoreAutoNote}</p>
+            <p class="muted text-[0.78rem] m-0">{d.adBudgetHint}</p>
+            <div>
+              <button type="submit" class="btn btn--sm btn--accent">{d.adCreateCampaign}</button>
+            </div>
+          </form>
+        </div>
+
+        <div>
+          <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.adYourCampaigns}</h3>
+          <details class="mb-3 border [border-color:var(--color-border)] rounded-[var(--radius)] [background:var(--color-bg)]">
+            <summary class="text-[0.82rem] font-medium px-3 py-2 cursor-pointer select-none [color:var(--color-muted)] hover:[color:var(--color-text)]">{d.adGlossaryTitle}</summary>
+            <dl class="m-0 px-3 pb-3 pt-1 flex flex-col gap-2 text-[0.8rem]">
+              {d.adGlossary.map((g) => (
+                <div>
+                  <dt class="font-semibold [color:var(--color-text)]">{g.t}</dt>
+                  <dd class="m-0 muted">{g.d}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+          <div id="ad-campaigns-list" class="flex flex-col gap-3" data-store-slug={store.slug} data-endpoint="/api/admin/ad-campaigns">
+            {adCampaigns.length === 0 && <p class="muted text-[0.85rem] m-0" id="ad-empty-msg">{d.adNoCampaigns}</p>}
+            {adCampaigns.map((c) => (
+              <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3" data-campaign-id={c.id} data-status={c.status}>
+                <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-[0.85rem] font-semibold">{c.scope === 'product' ? c.productName : d.adScopeStore}</span>
+                    <span class="text-[0.72rem] font-medium [color:var(--color-muted)]">{c.platform === 'google' ? d.adPlatformGoogle : d.adPlatformMeta}</span>
+                    <span class={`text-[0.68rem] font-bold py-[.1rem] px-[.5rem] rounded-full ${c.status === 'active' ? '[color:var(--color-success)] [background:color-mix(in_srgb,var(--color-success)_14%,transparent)]' : '[color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)]'}`}>
+                      {c.status === 'active' ? d.adStatusActive : d.adStatusPaused}
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn--ghost btn--sm" data-ad-action="toggle" data-campaign-id={c.id}>{c.status === 'active' ? d.adPauseCampaign : d.adResumeCampaign}</button>
+                    <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" data-ad-action="delete" data-campaign-id={c.id}>{d.adDeleteCampaign}</button>
+                  </div>
+                </div>
+                <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2">{adTargetingLabel(c)}</p>
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-[0.82rem]">
+                  <div><span class="[color:var(--color-muted)]">{d.adBudgetLabel}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adImpressions}</span><br /><strong>{c.stats.impressions.toLocaleString('he-IL')}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adClicks}</span><br /><strong>{c.stats.clicks.toLocaleString('he-IL')}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adSpend}</span><br /><strong>{formatPrice(c.stats.spend)}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adRoas}</span><br /><strong>x{c.stats.roas}</strong></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p class="muted text-[0.76rem] mt-3">{d.adDemoDataNote}</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</BaseLayout>
+
+<script>
+  import { initAdvertisingTab } from '../../../../scripts/dashboard/advertising.js';
+  initAdvertisingTab();
+</script>

@@ -14,9 +14,13 @@ function getTooltipEl(): HTMLElement {
   return tooltipEl;
 }
 
-export function showTooltip(anchor: Element, text: string): void {
+// `color` overrides the default dark background (e.g. a chart tooltip tinted to
+// its own series colour). Cleared to '' when omitted so the shared node falls
+// back to the class default for the next unrelated caller (info icons, etc.).
+export function showTooltip(anchor: Element, text: string, color?: string): void {
   const el = getTooltipEl();
   el.textContent = text;
+  el.style.background = color ?? '';
   el.style.opacity = '0';
   el.hidden = false;
   const rect = anchor.getBoundingClientRect();
@@ -31,8 +35,38 @@ export function showTooltip(anchor: Element, text: string): void {
   requestAnimationFrame(() => { el.style.opacity = '1'; });
 }
 
+// Position the tooltip at an arbitrary viewport point (cursor) rather than an
+// element's bounding box — used by the donut slices, whose <circle> bboxes all
+// resolve to the same full-ring rect, so anchoring to the element would stack
+// every slice's tooltip at one spot. Follows the cursor via mousemove.
+export function showTooltipAtPoint(clientX: number, clientY: number, text: string, color?: string): void {
+  const el = getTooltipEl();
+  el.textContent = text;
+  el.style.background = color ?? '';
+  el.hidden = false;
+  const elRect = el.getBoundingClientRect();
+  const margin = 8;
+  let left = clientX - elRect.width / 2;
+  left = Math.max(margin, Math.min(left, window.innerWidth - elRect.width - margin));
+  let top = clientY - elRect.height - 14; // sit just above the cursor
+  if (top < margin) top = clientY + 18;   // no room above — below the cursor
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  requestAnimationFrame(() => { el.style.opacity = '1'; });
+}
+
 export function hideTooltip(): void {
   if (tooltipEl) { tooltipEl.style.opacity = '0'; tooltipEl.hidden = true; }
+}
+
+// Re-parent the shared tooltip. A tooltip triggered from inside a <dialog>
+// opened with showModal() lives in the browser's top layer; a tooltip appended
+// to <body> (a normal layer) paints BEHIND it and is invisible. Callers inside
+// a modal mount the tooltip into the dialog while it's open, and back onto
+// <body> on close. Position stays viewport-fixed (the dialog sets no transform,
+// so it isn't a containing block for the fixed tooltip).
+export function mountTooltipIn(parent: HTMLElement): void {
+  parent.appendChild(getTooltipEl());
 }
 
 // Generic hover/focus wiring for any static "(i)" info trigger — reads its

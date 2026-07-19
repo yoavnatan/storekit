@@ -38,6 +38,9 @@
   --animate-product-menu-open: product-menu-open 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
   --animate-bulk-bar-in: bulk-bar-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   --animate-bar-grow: bar-grow 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-top-bar-grow: top-bar-grow 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-donut-in: donut-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-line-draw: line-draw 0.6s ease-out both;
 }
 @keyframes modal-in {
   from { opacity: 0; transform: translateY(8px) scale(.99); }
@@ -75,12 +78,47 @@
   from { transform: scaleY(0); opacity: 0; }
   to   { transform: scaleY(1); opacity: 1; }
 }
+/* Top-products horizontal bars (performance.ts / dashboard.astro SSR) — the
+   fill grows out from its start edge to the row's own percentage width, held
+   in --tw so the final width persists (fill-mode:both) without a second class. */
+@keyframes top-bar-grow {
+  from { width: 0; }
+  to   { width: var(--tw, 100%); }
+}
+/* Revenue-breakdown donut (chart-svg.ts buildDonutChartSvg) — the whole ring
+   spins + scales into place on render. Applied to the <svg> root only: a CSS
+   transform there composes with the inner <circle>s' own SVG rotate attribute,
+   whereas a CSS transform on the circles themselves would override it. */
+@keyframes donut-in {
+  from { opacity: 0; transform: rotate(-18deg) scale(0.9); }
+  to   { opacity: 1; transform: none; }
+}
+/* Visitors line chart (chart-svg.ts buildLineChartSvg) — the polyline draws
+   itself left-to-right. pathLength="1" normalises the length so one keyframe
+   works for any point count; dasharray:1 (full length) stays after so the line
+   is solid at rest. */
+.chart-line { stroke-dasharray: 1; }
+@keyframes line-draw {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}
+/* Line-chart point highlight — when a point's column is hovered (the same
+   column whose data is in the tooltip), its dot grows a touch and shifts a
+   shade (a color-agnostic brightness change, so it works for any line colour). */
+.line-dot { transition: r 120ms ease, filter 120ms ease; }
+.chart-point:hover .line-dot { r: 4px; filter: brightness(0.78); }
+/* Donut slices (chart-svg.ts buildDonutChartSvg) — brighten the hovered slice
+   as a hover affordance alongside the cursor tooltip. */
+.donut-seg { transition: filter 120ms ease; }
+.donut-seg:hover { filter: brightness(1.12); }
 .chart-bar {
   transform-box: fill-box;
   transform-origin: bottom;
-  cursor: pointer;
   transition: filter 120ms ease;
 }
+/* Pointer only on bars that actually do something on click (revenue bars carry
+   a data-key → open the breakdown modal); visitors-chart bars are inert. */
+.chart-bar[data-key] { cursor: pointer; }
 .chart-bar:hover, .chart-bar:focus-visible {
   filter: brightness(1.18);
 }
