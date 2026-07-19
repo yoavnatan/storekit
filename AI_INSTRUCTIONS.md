@@ -2,6 +2,8 @@
 
 Read this + `CURRENT_TASK.md` at session start. If `CURRENT_TASK.md` has multiple substantial, independent items, check whether to split them across parallel worktree sessions (this session in a worktree + background Agent(s) with `isolation:"worktree"`) before diving in — see memory `feedback_parallel_sessions` for when it's worth it vs. not.
 
+**New-machine bootstrap (do first):** if `.claude-memory/` is missing or memory looks empty (fresh clone), run `bash scripts/setup-claude-memory.sh` — it restores memory from the private `storekit-memory` repo, rebuilds the symlink, and enables the auto-push hook. Tell the user you did it. Memory + auto-backup only work after this runs.
+
 ---
 
 ## What we're building
