@@ -27,7 +27,7 @@ export default defineConfig({
   image: {
     service: passthroughImageService(),
     responsiveStyles: true,
-    domains: ['res.cloudinary.com'],
+    domains: ['res.cloudinary.com', 'cdn.dummyjson.com'],
   },
 
   vite: {
