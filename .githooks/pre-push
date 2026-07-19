@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Auto-push Claude Code memory whenever the main repo is pushed.
+#
+# Memory lives in its own PRIVATE repo, checked out at ./.claude-memory
+# (git-ignored by the main repo). This hook commits any pending memory
+# changes and pushes them, so a `git push` of the code also backs up memory.
+#
+# Failures here only WARN — they never block the code push.
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+MEM="$REPO_ROOT/.claude-memory"
+
+if [ ! -d "$MEM/.git" ]; then
+  echo "[pre-push] .claude-memory is not a git repo — skipping memory backup." >&2
+  echo "[pre-push] Run: bash scripts/setup-claude-memory.sh" >&2
+  exit 0
+fi
+
+cd "$MEM" || exit 0
+
+if [ -n "$(git status --porcelain)" ]; then
+  git add -A
+  git -c user.name="Yoav Natan" -c user.email="yoavnatan.yn@gmail.com" \
+      commit -q -m "Memory sync $(git rev-parse --short HEAD 2>/dev/null || echo)" \
+      || echo "[pre-push] memory commit failed (continuing)" >&2
+fi
+
+# Push only if the local branch is ahead of its remote.
+if ! git push -q origin HEAD 2>/dev/null; then
+  echo "[pre-push] WARNING: memory push failed — code push continues, but memory backup is stale." >&2
+fi
+
+exit 0
