@@ -12,6 +12,13 @@ export interface BarChartPoint {
   // day/month bucket (revenue chart → per-period product breakdown modal,
   // performance.ts) without re-parsing the human label.
   key?: string;
+  // Optional tooltip label overriding `label` in the hover tooltip. Lets the
+  // x-axis carry a short/truncated caption (e.g. a ranked store's short name)
+  // while the tooltip reveals the full name — the admin exposure chart.
+  tipLabel?: string;
+  // Optional per-bar fill overriding the chart's `color` — e.g. the admin
+  // exposure chart tints a store's bar differently when it runs a paid boost.
+  color?: string;
 }
 
 export interface BarChartOptions {
@@ -136,7 +143,7 @@ export function buildBarChartSvg(points: BarChartPoint[], opts: BarChartOptions 
     // days into a dashed line sitting on top of the baseline gridline. A tiny
     // non-zero value still gets a 1px min so it stays visible.
     const barH = p.value === 0 ? 0 : Math.max(h, 1);
-    return `<g><rect class="chart-bar${anim} x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="2.5" fill="${color}" data-label="${escXml(p.label)}" data-value="${escXml(fmt(p.value))}"${keyAttr}></rect>${label}</g>`;
+    return `<g><rect class="chart-bar${anim} x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="2.5" fill="${p.color ?? color}" data-label="${escXml(p.tipLabel ?? p.label)}" data-value="${escXml(fmt(p.value))}"${keyAttr}></rect>${label}</g>`;
   }).join('');
 
   // preserveAspectRatio="none": stretch the viewBox to fill the container box
@@ -209,7 +216,7 @@ export function buildLineChartSvg(points: BarChartPoint[], opts: BarChartOptions
     // always-shown last label so they can't overlap.
     const showLabel = i === n - 1 || (i % labelEvery === 0 && n - 1 - i >= labelEvery);
     const label = showLabel ? xLabelSvg(p.label, pt.x, i, n, height) : '';
-    return `<g class="chart-point"><rect class="chart-bar" x="${rx.toFixed(1)}" y="${AXIS.padTop}" width="${rw.toFixed(1)}" height="${chartH.toFixed(1)}" fill="transparent" data-label="${escXml(p.label)}" data-value="${escXml(fmt(p.value))}"></rect><circle class="line-dot" cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.4" fill="${color}"></circle>${label}</g>`;
+    return `<g class="chart-point"><rect class="chart-bar" x="${rx.toFixed(1)}" y="${AXIS.padTop}" width="${rw.toFixed(1)}" height="${chartH.toFixed(1)}" fill="transparent" data-label="${escXml(p.tipLabel ?? p.label)}" data-value="${escXml(fmt(p.value))}"></rect><circle class="line-dot" cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.4" fill="${color}"></circle>${label}</g>`;
   }).join('');
 
   // preserveAspectRatio="none" + style="direction:ltr" — see buildBarChartSvg.

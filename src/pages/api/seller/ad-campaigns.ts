@@ -5,19 +5,13 @@ import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
 import {
   getCampaignsByStoreId, createCampaign, updateCampaign, deleteCampaign,
-  getMockCampaignStats, getMockBaselineImpressions, parseDuration, parseAudience,
+  parseDuration, parseAudience,
 } from '../../../lib/ad-campaigns.js';
-import { campaignStatsInRange, baselineImpressionsInRange } from '../../../lib/ad-metrics.js';
-import { presetRange, coerceRange, type AdRangePreset, AD_RANGE_PRESETS } from '../../../lib/date-range.js';
+import { withCampaignStats } from '../../../lib/ad-metrics.js';
+import { resolveAdRange } from '../../../lib/date-range.js';
 
 function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
-}
-
-function withStats(campaign: ReturnType<typeof getCampaignsByStoreId>[number], range?: { from: string; to: string }) {
-  // range === undefined → the admin per-store view (no date filter): keep the
-  // original lifetime mock. A range → the seller's date-windowed view.
-  return { ...campaign, stats: range ? campaignStatsInRange(campaign, range.from, range.to) : getMockCampaignStats(campaign) };
 }
 
 export async function GET({ request, cookies }: APIContext): Promise<Response> {
@@ -30,19 +24,13 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const store = stores.find((s) => s.slug === storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
-  // Date range: an explicit preset (or custom from/to) → window the metrics;
-  // no range param at all → lifetime totals (the admin per-store control view).
-  const presetRaw = url.searchParams.get('preset') as AdRangePreset | null;
-  const hasRange = presetRaw !== null || url.searchParams.has('from');
-  let range: { from: string; to: string } | undefined;
-  if (hasRange) {
-    const preset: AdRangePreset = AD_RANGE_PRESETS.includes(presetRaw as AdRangePreset) ? presetRaw! : '7d';
-    range = preset === 'custom' ? coerceRange(url.searchParams.get('from'), url.searchParams.get('to')) : presetRange(preset)!;
-  }
-
-  const campaigns = getCampaignsByStoreId(store.id).map((c) => withStats(c, range));
-  const baselineImpressions = range ? baselineImpressionsInRange(store.id, range.from, range.to) : getMockBaselineImpressions(store.id);
-  return json({ ok: true, campaigns, baselineImpressions, range: range ?? null });
+  // A dated preset (or custom from/to) windows the metrics ("recent activity");
+  // lifetime / no preset → per-campaign lifetime totals (the default). The
+  // baseline exposure card is a separate stable lifetime figure rendered SSR,
+  // so it isn't part of this response.
+  const range = resolveAdRange(url.searchParams);
+  const campaigns = getCampaignsByStoreId(store.id).map((c) => withCampaignStats(c, range));
+  return json({ ok: true, campaigns });
 }
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
@@ -89,7 +77,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     ...(audience ? { audience } : {}),
     ...(resolvedProductId ? { productId: resolvedProductId, productName } : {}),
   });
-  return json({ ok: true, campaign: withStats(campaign) });
+  return json({ ok: true, campaign: withCampaignStats(campaign) });
 }
 
 export async function PATCH({ request, cookies }: APIContext): Promise<Response> {
@@ -114,7 +102,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
 
   const updated = updateCampaign(id, store.id, updates);
   if (!updated) return json({ error: 'Campaign not found' }, 404);
-  return json({ ok: true, campaign: withStats(updated) });
+  return json({ ok: true, campaign: withCampaignStats(updated) });
 }
 
 export async function DELETE({ request, cookies }: APIContext): Promise<Response> {

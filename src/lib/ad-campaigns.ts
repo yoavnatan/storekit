@@ -9,10 +9,11 @@ const CAMPAIGNS_PATH = path.join(process.cwd(), 'data/ad-campaigns.json');
 // (no row here for that — it's not seller-owned). A row here is only the
 // seller-funded "boost" tier — a real Google Ads/Meta Marketing API
 // integration is not wired up yet (no API keys/business accounts), so
-// `monthlyBudget` is a target the seller sets and `getMockCampaignStats()`
-// below fabricates plausible, stable performance numbers from it. No real
-// charge happens — nothing here moves money, so this intentionally skips the
-// money-changes-need-a-mutex/Vitest rule that applies to actual payment code.
+// `monthlyBudget` is a target the seller sets and ad-metrics.ts
+// (campaignLifetimeStats / campaignStatsInRange) fabricates plausible, stable
+// performance numbers from it. No real charge happens — nothing here moves
+// money, so this intentionally skips the money-changes-need-a-mutex/Vitest rule
+// that applies to actual payment code.
 export interface AdCampaign {
   id: string;
   storeId: string;
@@ -21,7 +22,7 @@ export interface AdCampaign {
   productId?: string;
   productName?: string;
   // 'both' = one campaign running on Google + Meta together (the budget is
-  // split across the two networks). See getMockCampaignStats for its blended CPM.
+  // split across the two networks). See ad-metrics.ts for its blended CPM.
   platform: 'google' | 'meta' | 'both';
   monthlyBudget: number; // ILS
   // Seller-chosen run length in days; omitted = ongoing until paused/deleted.
@@ -33,6 +34,11 @@ export interface AdCampaign {
   status: 'active' | 'paused';
   createdAt: string;
   updatedAt: string;
+  // When the campaign was last paused. Pausing FREEZES accrued metrics at this
+  // moment instead of erasing them (CURRENT_TASK.md item 1) — ad-metrics.ts reads
+  // it to bound the run period. Cleared on resume. Absent on legacy rows (they
+  // fall back to updatedAt).
+  pausedAt?: string;
 }
 
 export type AdGender = 'all' | 'women' | 'men';
@@ -100,7 +106,14 @@ export function updateCampaign(id: string, storeId: string, updates: Partial<Pic
   const all = readAll();
   const idx = all.findIndex((c) => c.id === id && c.storeId === storeId);
   if (idx === -1) return undefined;
-  all[idx] = { ...all[idx]!, ...updates, updatedAt: new Date().toISOString() };
+  const prev = all[idx]!;
+  const now = new Date().toISOString();
+  const next: AdCampaign = { ...prev, ...updates, updatedAt: now };
+  // Stamp/clear the pause moment on a real status transition so metrics freeze
+  // at the pause and resume cleanly — but a plain budget edit must not disturb it.
+  if (updates.status === 'paused' && prev.status !== 'paused') next.pausedAt = now;
+  else if (updates.status === 'active') delete next.pausedAt;
+  all[idx] = next;
   writeAll(all);
   return all[idx];
 }
@@ -113,42 +126,13 @@ export function deleteCampaign(id: string, storeId: string): boolean {
   return true;
 }
 
-export interface MockCampaignStats {
-  impressions: number;
-  clicks: number;
-  ctr: number;   // %
-  spend: number; // ILS, <= monthlyBudget (pro-rated by days running this month)
-  roas: number;  // simulated revenue attributed / spend
-}
-
-// Deterministic per-campaign "random" (seeded by id) so numbers stay stable
-// across reloads instead of jumping every render — stands in for a real ad
-// platform's reporting API until one is connected.
+// Deterministic per-entity "random" (seeded by id) so numbers stay stable across
+// reloads instead of jumping every render — stands in for a real ad platform's
+// reporting API until one is connected. Per-campaign metrics live in
+// ad-metrics.ts (range- and lifetime-aware); this only seeds the baseline.
 function seededFraction(seed: string): number {
   const hash = crypto.createHash('sha256').update(seed).digest();
   return hash.readUInt32BE(0) / 0xffffffff;
-}
-
-export function getMockCampaignStats(campaign: AdCampaign): MockCampaignStats {
-  if (campaign.status === 'paused') return { impressions: 0, clicks: 0, ctr: 0, spend: 0, roas: 0 };
-
-  const daysRunning = Math.max(1, Math.min(30, Math.floor((Date.now() - new Date(campaign.createdAt).getTime()) / 86400000) + 1));
-  const dailyBudget = campaign.monthlyBudget / 30;
-  const spend = Math.round(dailyBudget * daysRunning * 100) / 100;
-
-  // Platform-flavored CPM/CTR bands, seeded per campaign for variety without
-  // being random-every-render.
-  const rand = seededFraction(campaign.id);
-  // ILS per 1000 impressions — 'both' blends the two networks' bands.
-  const cpm = campaign.platform === 'google' ? 18 + rand * 14
-    : campaign.platform === 'meta' ? 12 + rand * 10
-    : 15 + rand * 12;
-  const impressions = Math.round((spend / cpm) * 1000);
-  const ctr = Math.round((1.2 + rand * 2.3) * 100) / 100; // %
-  const clicks = Math.round(impressions * (ctr / 100));
-  const roas = Math.round((1.8 + rand * 3.2) * 100) / 100;
-
-  return { impressions, clicks, ctr, spend, roas };
 }
 
 /** Baseline (platform-funded) campaign exposure — every store gets this automatically, seeded by storeId so it stays stable and roughly scales with how long the store has existed isn't modeled (no per-store creation date threaded through here); a flat plausible daily range is enough for a "you're already getting exposure" indicator. */

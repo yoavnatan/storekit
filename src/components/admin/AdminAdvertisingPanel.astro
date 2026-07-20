@@ -11,6 +11,7 @@ import type { PlatformAdOverview } from '../../lib/admin-ads.js';
 import type { BrandCampaign } from '../../lib/brand-campaigns.js';
 import { brandStatsInRange } from '../../lib/ad-metrics.js';
 import type { AdRangePreset } from '../../lib/date-range.js';
+import { buildBarChartSvg, type BarChartPoint } from '../../lib/chart-svg.js';
 import InfoTip from '../dashboard/InfoTip.astro';
 
 interface Props {
@@ -42,8 +43,25 @@ const promoLabels = ['—', 'קידום', 'קידום חזק'];
 const objectiveLabels: Record<string, string> = { buyers: 'משיכת קונים', sellers: 'משיכת מוכרים' };
 const platformLabels: Record<string, string> = { google: 'Google', meta: 'Meta' };
 const brandRows = brandCampaigns.map((c) => ({ campaign: c, stats: brandStatsInRange(c, range.from, range.to) }));
-// Largest exposure drives the bar-chart scale (bars are % of the leader). Guard >0.
-const maxExposure = Math.max(1, ...exposure.topStores.map((s) => s.impressions));
+// Top-store exposure as ONE simple bar chart (CURRENT_TASK.md, replacing the
+// per-store bar-list rows): x = the ranked stores (most-exposed first), y =
+// impressions, hover a bar → tooltip with the full store name (+ boost marker).
+// A store running a paid boost is tinted a different colour (accent) so it
+// stands out from the platform-funded baseline exposure (primary). The x-axis
+// carries a short truncated name; `tipLabel` reveals the full one. The client
+// re-renders at the real container width + binds the tooltips
+// (advertising-platform.ts → initExposureChart), reading the JSON below.
+// Reversed so the most-exposed store sits on the RIGHT (the reading-start on an
+// RTL page) and exposure descends leftward — the bars are laid out left→right by
+// index, so a highest-first array would otherwise put the leader on the left.
+const exposurePoints: BarChartPoint[] = exposure.topStores.map((s) => ({
+  label: s.name.length > 9 ? `${s.name.slice(0, 8)}…` : s.name,
+  tipLabel: `${s.name}${s.hasBoost ? ' · בוסט' : ''}`,
+  value: s.impressions,
+  color: s.hasBoost ? 'var(--color-accent)' : 'var(--color-primary)',
+})).reverse();
+const exposureFmt = (v: number): string => `${v.toLocaleString('en-US')} חשיפות`;
+const exposureChartSvg = buildBarChartSvg(exposurePoints, { rtl: true, height: 220, valueFormatter: exposureFmt, emptyMessage: 'אין עדיין נתוני חשיפה לפי חנות.' });
 const connections = [
   { key: 'gtm', label: 'Google Tag Manager', ok: connection.googleTag, okText: 'מחובר', pendingText: 'לא הוגדר מזהה',
     tip: 'קוד מעקב של גוגל שמוטמע בכל עמוד באתר ומודד מה המבקרים עושים (צפייה במוצר, הוספה לסל, רכישה). דרוש כדי להזין נתונים לקמפייני הפרסום. כרגע ריק — צריך להזין מזהה אמיתי בקובץ ההגדרות.' },
@@ -125,21 +143,15 @@ const feedTip = 'קובץ אחד מרוכז שמכיל את כל המוצרים 
     <p class="admin-empty" style="margin-bottom:1rem">אין עדיין נתוני חשיפה לפי חנות.</p>
   ) : (
     <Fragment>
-      <p class="admin-empty" style="margin-bottom:.75rem">מוצגות עד 10 החנויות המובילות מתוך {exposure.totalStores}. לפירוט חנות בודדת — "ביצועים" בשורת החנות בטאב "חנויות".</p>
-      <ul class="admin-exposure-bars">
-        {exposure.topStores.map((s) => (
-          <li class="admin-exposure-bar">
-            <div class="admin-exposure-bar__label">
-              <a href={`/store/${s.slug}`} target="_blank" rel="noopener" class="admin-exposure-bar__name">{s.name}</a>
-              {s.hasBoost && <span class="admin-badge admin-badge--pending">בוסט</span>}
-              <span class="admin-exposure-bar__val">{s.impressions.toLocaleString('en-US')} חשיפות</span>
-            </div>
-            <div class="admin-exposure-bar__track">
-              <div class="admin-exposure-bar__fill" style={`width:${Math.round((s.impressions / maxExposure) * 100)}%`}></div>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <p class="admin-empty" style="margin-bottom:.75rem">מוצגות עד 10 החנויות המובילות מתוך {exposure.totalStores}, מדורגות לפי חשיפה. ריחוף על עמודה מציג את שם החנות. לפירוט חנות בודדת — "ביצועים" בשורת החנות בטאב "חנויות".</p>
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 mb-4">
+        <div class="flex items-center gap-3 text-[0.72rem] [color:var(--color-muted)] mb-2 flex-wrap">
+          <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm [background:var(--color-primary)]"></span>חשיפה בסיסית</span>
+          <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm [background:var(--color-accent)]"></span>כולל בוסט בתשלום</span>
+        </div>
+        <div id="admin-ads-exposure-chart" set:html={exposureChartSvg}></div>
+      </div>
+      <script type="application/json" id="admin-ads-exposure-data" set:html={JSON.stringify(exposurePoints)} is:inline />
     </Fragment>
   )}
 
@@ -329,7 +341,7 @@ const feedTip = 'קובץ אחד מרוכז שמכיל את כל המוצרים 
   <ul class="admin-ads-promoted" id="admin-ads-promoted-list">
     {promotedStores.map((s) => (
       <li class="admin-ads-promoted__row" data-store-slug={s.slug} data-weight={String(s.weight)}>
-        <a href={`/store/${s.slug}`} target="_blank" rel="noopener" class="admin-ads-promoted__name">{s.name}</a>
+        <a href={`/admin/store/${s.slug}/advertising?from=advertising`} class="admin-ads-promoted__name">{s.name}</a>
         <span class="admin-badge admin-badge--promo" data-promo-badge>{promoLabels[s.weight] ?? promoLabels[1]}</span>
         <div class="admin-ads-promoted__actions">
           <button type="button" class="admin-link admin-ads-promo-tier" data-store-slug={s.slug}>

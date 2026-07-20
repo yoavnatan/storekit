@@ -1,9 +1,10 @@
-import { initInfoTooltips } from '../dashboard/tooltip.js';
+import { initInfoTooltips, showTooltipAtPoint, hideTooltip } from '../dashboard/tooltip.js';
 import { cloudinaryUpload } from '../dashboard/cloudinary.js';
 import { escapeHtml } from '../../lib/html-escape.js';
 import { formatPrice } from '../../config/store.config.js';
 import { createFloatingPortal, type FloatingPortal } from '../../lib/toolbar-portal.js';
 import { buildAdminUrl, swapPanel } from '../../lib/admin-nav.js';
+import { buildBarChartSvg, type BarChartPoint } from '../../lib/chart-svg.js';
 
 // Platform advertising tab (CURRENT_TASK.md → סשן ב׳). Wires three things:
 //  1. the "(i)" info tooltips scattered across the panel (initInfoTooltips),
@@ -39,7 +40,7 @@ function initBaselineForm(): void {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (submitBtn) submitBtn.disabled = true;
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('btn--busy'); }
     if (saved) saved.hidden = true;
     try {
       const res = await fetch('/api/admin/platform-ads', {
@@ -55,7 +56,7 @@ function initBaselineForm(): void {
     } catch {
       alert('השמירה נכשלה, נסו שוב.');
     } finally {
-      if (submitBtn) submitBtn.disabled = false;
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('btn--busy'); }
     }
   });
 }
@@ -298,7 +299,7 @@ function initBrandCreate(): void {
     const budget = Number(fd.get('monthlyBudget')) || 0;
     if (!headline || !body || budget <= 0) { if (errorEl) errorEl.hidden = false; return; }
 
-    if (submitBtn) submitBtn.disabled = true;
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('btn--busy'); }
     try {
       const res = await fetch('/api/admin/brand-campaigns', {
         method: 'POST',
@@ -332,7 +333,7 @@ function initBrandCreate(): void {
     } catch {
       alert('יצירת הקמפיין נכשלה, נסו שוב.');
     } finally {
-      if (submitBtn) submitBtn.disabled = false;
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('btn--busy'); }
     }
   });
 }
@@ -464,6 +465,56 @@ function initAdRangePicker(): void {
   });
 }
 
+// ── Top-store exposure bar chart (CURRENT_TASK.md) ──
+// The SSR renders it at a default viewBox width; here we re-render it at the
+// container's REAL pixel width (crisp text, no preserveAspectRatio stretch) and
+// again on resize — the same approach the performance charts use — then bind the
+// per-bar tooltip that reveals each store's full name. Boosted stores are tinted
+// a different colour (carried per-point in the JSON blob). Data comes from
+// #admin-ads-exposure-data; no refetch needed since a range change re-renders
+// the whole panel server-side (swapPanel).
+const exposureFmt = (v: number): string => `${v.toLocaleString('en-US')} חשיפות`;
+// A range change re-runs initAdminAdvertisingPanel() on freshly-swapped DOM, so
+// the previous observer would keep the detached old container + its render
+// closure + parsed points alive (a growing leak per preset click). Kept module-
+// level and disconnected before each re-init.
+let exposureObserver: ResizeObserver | null = null;
+
+function bindExposureTooltips(container: HTMLElement): void {
+  const show = (e: MouseEvent): void => {
+    const bar = (e.target as Element).closest('.chart-bar');
+    if (!bar) { hideTooltip(); return; }
+    showTooltipAtPoint(e.clientX, e.clientY, `${bar.getAttribute('data-label') ?? ''}: ${bar.getAttribute('data-value') ?? ''}`);
+  };
+  container.addEventListener('mouseover', show);
+  container.addEventListener('mousemove', show);
+  container.addEventListener('mouseleave', () => hideTooltip());
+}
+
+function initExposureChart(): void {
+  const container = document.getElementById('admin-ads-exposure-chart');
+  const dataEl = document.getElementById('admin-ads-exposure-data');
+  if (!container || !dataEl) return;
+  let points: BarChartPoint[] = [];
+  try { points = JSON.parse(dataEl.textContent ?? '[]') as BarChartPoint[]; } catch { return; }
+  if (points.length === 0) return;
+
+  let first = true;
+  const render = (): void => {
+    const width = Math.round(container.getBoundingClientRect().width) || 640;
+    container.innerHTML = buildBarChartSvg(points, { rtl: true, height: 220, width, valueFormatter: exposureFmt, emptyMessage: 'אין עדיין נתוני חשיפה לפי חנות.', animate: first });
+    first = false;
+  };
+  render();
+  bindExposureTooltips(container);
+  if (typeof ResizeObserver !== 'undefined') {
+    exposureObserver?.disconnect(); // drop the observer bound to the previous (now detached) container
+    let raf = 0;
+    exposureObserver = new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); });
+    exposureObserver.observe(container);
+  }
+}
+
 export function initAdminAdvertisingPanel(): void {
   initInfoTooltips();
   initAdRangePicker();
@@ -472,4 +523,5 @@ export function initAdminAdvertisingPanel(): void {
   initBrandImageUpload();
   initBrandCreate();
   initBrandList();
+  initExposureChart();
 }

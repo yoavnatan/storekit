@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { baselineImpressionsInRange, campaignStatsInRange, brandStatsInRange } from '../src/lib/ad-metrics.js';
+import { baselineImpressionsInRange, campaignStatsInRange, campaignLifetimeStats, campaignRunPeriod, brandStatsInRange } from '../src/lib/ad-metrics.js';
 import type { AdCampaign } from '../src/lib/ad-campaigns.js';
 import type { BrandCampaign } from '../src/lib/brand-campaigns.js';
 
@@ -27,15 +27,13 @@ describe('ad-metrics (range-aware mock)', () => {
     expect(long).toBeGreaterThan(a);   // more days → more impressions
   });
 
-  it('campaign: paused → zero, created after range → zero, active → positive', () => {
-    expect(campaignStatsInRange(campaign({ status: 'paused' }), '2026-07-14', '2026-07-20')).toMatchObject({ impressions: 0, spend: 0 });
+  it('campaign: created after range → zero, active → positive, deterministic', () => {
     // Campaign created 2026-08 but range is in July → not yet live → zero.
     expect(campaignStatsInRange(campaign({ createdAt: '2026-08-01T00:00:00.000Z' }), '2026-07-14', '2026-07-20').impressions).toBe(0);
     const live = campaignStatsInRange(campaign(), '2026-07-14', '2026-07-20');
     expect(live.impressions).toBeGreaterThan(0);
     expect(live.spend).toBeGreaterThan(0);
-    // Deterministic.
-    expect(campaignStatsInRange(campaign(), '2026-07-14', '2026-07-20')).toEqual(live);
+    expect(campaignStatsInRange(campaign(), '2026-07-14', '2026-07-20')).toEqual(live); // deterministic
   });
 
   it('campaign spend counts only the days it was live within the range', () => {
@@ -44,6 +42,29 @@ describe('ad-metrics (range-aware mock)', () => {
     const full = campaignStatsInRange(campaign(), '2026-07-14', '2026-07-20');
     expect(partial.spend).toBeLessThan(full.spend);
     expect(partial.spend).toBeGreaterThan(0);
+  });
+
+  it('pausing FREEZES accrued metrics, it does NOT erase them (item 1)', () => {
+    // Active 2026-07-01 → paused 2026-07-10.
+    const paused = campaign({ status: 'paused', createdAt: '2026-07-01T00:00:00.000Z', pausedAt: '2026-07-10T00:00:00.000Z' });
+    // A window INSIDE the active period still reports the days it ran — not zero.
+    expect(campaignStatsInRange(paused, '2026-07-05', '2026-07-08').impressions).toBeGreaterThan(0);
+    // A window entirely AFTER the pause reports zero (it wasn't running then).
+    expect(campaignStatsInRange(paused, '2026-07-12', '2026-07-15').impressions).toBe(0);
+    // Lifetime = exactly the active window 07-01→07-10, frozen at the pause.
+    const lifetime = campaignLifetimeStats(paused, new Date(2026, 6, 20));
+    const activeEquivalent = campaignStatsInRange(campaign({ createdAt: '2026-07-01T00:00:00.000Z' }), '2026-07-01', '2026-07-10');
+    expect(lifetime).toEqual(activeEquivalent);
+    expect(campaignRunPeriod(paused, new Date(2026, 6, 20))).toMatchObject({ start: '2026-07-01', end: '2026-07-10', days: 10 });
+  });
+
+  it('lifetime respects a fixed duration cap', () => {
+    const c = campaign({ createdAt: '2026-07-01T00:00:00.000Z', durationDays: 7 });
+    // Runs 07-01..07-07 (7 days) regardless of how long ago that was.
+    expect(campaignRunPeriod(c, new Date(2026, 6, 20))).toMatchObject({ start: '2026-07-01', end: '2026-07-07', days: 7 });
+    const capped = campaignLifetimeStats(c, new Date(2026, 6, 20));
+    const sevenDays = campaignStatsInRange(campaign({ createdAt: '2026-07-01T00:00:00.000Z' }), '2026-07-01', '2026-07-07');
+    expect(capped).toEqual(sevenDays);
   });
 
   it('brand: conversions never exceed clicks; paused → zero', () => {

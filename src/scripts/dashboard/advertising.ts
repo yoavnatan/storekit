@@ -3,14 +3,26 @@ import { showStatus } from './status.js';
 import { initInfoTooltips } from './tooltip.js';
 import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js';
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
+import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { presetRange, shortDate } from '../../lib/date-range.js';
 
 interface CampaignStats { impressions: number; clicks: number; ctr: number; spend: number; roas: number }
+interface RunPeriod { start: string; end: string; days: number }
 interface Campaign {
   id: string; scope: 'store' | 'product'; productName?: string;
   platform: 'google' | 'meta' | 'both'; monthlyBudget: number; status: 'active' | 'paused';
   durationDays?: 7 | 14 | 30;
   audience?: { gender: 'all' | 'women' | 'men'; age: 'all' | 'infant' | 'kids' | 'adult' };
   stats: CampaignStats;
+  runPeriod?: RunPeriod;
+}
+
+/** "מאז 8.7" while still running, "8.7–17.7" once paused/ended — the label that
+ *  tells the seller which period the (lifetime by default) numbers cover. */
+function runPeriodLabel(c: Campaign, i18n: Record<string, string>): string {
+  if (!c.runPeriod) return '';
+  if (c.status === 'active') return `${i18n.adRunSince ?? ''} ${shortDate(c.runPeriod.start)}`.trim();
+  return `${shortDate(c.runPeriod.start)}–${shortDate(c.runPeriod.end)}`;
 }
 
 // Compact "women · kids · 14 days" targeting summary for a campaign card.
@@ -66,7 +78,10 @@ function campaignCardHtml(c: Campaign, i18n: Record<string, string>): string {
           <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" data-ad-action="delete" data-campaign-id="${c.id}">${i18n.adDeleteCampaign ?? ''}</button>
         </div>
       </div>
-      <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2">${escHtml(targetingLabel(c, i18n))}</p>
+      <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2 flex items-center gap-1.5 flex-wrap">
+        <span>${escHtml(targetingLabel(c, i18n))}</span>
+        ${c.runPeriod ? `<span aria-hidden="true">·</span><span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escHtml(runPeriodLabel(c, i18n))}</span>` : ''}
+      </p>
       <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 text-[0.82rem]">
         <div><span class="[color:var(--color-muted)]">${i18n.adBudgetLabel ?? ''}</span><br /><strong>${formatPrice(c.monthlyBudget)}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adImpressions ?? ''}</span><br /><strong>${c.stats.impressions.toLocaleString('he-IL')}</strong></div>
@@ -162,44 +177,105 @@ export function initAdvertisingTab(): void {
   ageSelect?.addEventListener('change', retireNote);
   updateScopeUI(); // sync initial visibility to the default scope
 
-  // Date-range picker (seller tab only). Absent on the admin per-store control
-  // view → rangeQuery stays '' → the API returns lifetime totals, unchanged.
-  const rangeRoot = document.getElementById('ad-range');
-  let rangeQuery = rangeRoot ? 'preset=7d' : '';
+  // Range picker — one trigger + the shared floating portal, matching the
+  // Performance tab's picker exactly (CURRENT_TASK.md item 2). Windows the
+  // campaign cards to a "recent activity" period; the DEFAULT is `lifetime`
+  // ("מאז ההשקה"), the stable per-campaign totals (item 3). Baseline exposure
+  // is a separate lifetime figure and is NOT touched by this picker.
+  const rangeRoot = document.getElementById('ad-range-picker');
+  // '' → lifetime (no range param → server returns per-campaign lifetime totals).
+  let rangeQuery = '';
 
   async function refetch(): Promise<void> {
     const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}${rangeQuery ? `&${rangeQuery}` : ''}`);
     if (!res.ok) return;
-    const data = await res.json() as { ok?: boolean; campaigns?: Campaign[]; baselineImpressions?: number };
+    const data = await res.json() as { ok?: boolean; campaigns?: Campaign[] };
     if (data.campaigns) renderCampaigns(list, data.campaigns, i18n);
-    if (typeof data.baselineImpressions === 'number') {
-      const el = document.getElementById('ad-baseline-impressions');
-      if (el) el.textContent = data.baselineImpressions.toLocaleString('he-IL');
-    }
   }
 
   function initRangePicker(): void {
     if (!rangeRoot) return;
-    const custom = document.getElementById('ad-range-custom');
-    const setActive = (active: Element): void => {
-      rangeRoot.querySelectorAll('[data-preset]').forEach((c) => c.setAttribute('aria-pressed', String(c === active)));
-    };
-    rangeRoot.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((chip) => {
-      chip.addEventListener('click', () => {
-        const preset = chip.dataset.preset ?? '7d';
-        setActive(chip);
-        if (preset === 'custom') { if (custom) custom.hidden = false; return; }
-        if (custom) custom.hidden = true;
-        rangeQuery = `preset=${preset}`;
-        void refetch();
-      });
-    });
-    document.getElementById('ad-range-apply')?.addEventListener('click', () => {
-      const from = (document.getElementById('ad-range-from') as HTMLInputElement | null)?.value;
-      const to = (document.getElementById('ad-range-to') as HTMLInputElement | null)?.value;
-      if (!from || !to) return;
-      rangeQuery = `preset=custom&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+    const trigger = document.getElementById('ad-range-trigger');
+    const label = document.getElementById('ad-range-label');
+    if (!trigger) return;
+    const rangePortal = createFloatingPortal('ad-range-portal');
+    // The custom date inputs are pre-filled with a sensible default window (last
+    // 30 days) and remember the last applied custom range — so "Apply" always has
+    // valid dates to submit even if the user opens it and clicks straight through
+    // (an empty pair silently no-op'd before, which read as "Apply is broken").
+    const def = presetRange('30d') ?? { from: '', to: '' };
+    let customFrom = def.from;
+    let customTo = def.to;
+
+    // key → i18n label key. The query string is derived (lifetime = no window =
+    // empty query, the default; everything else is just `preset=<key>`).
+    const PRESETS: readonly [string, string][] = [
+      ['lifetime', 'adPresetLifetime'],
+      ['today', 'perfPresetToday'],
+      ['7d', 'perfPreset7d'],
+      ['30d', 'perfPreset30d'],
+      ['thisMonth', 'perfPresetThisMonth'],
+    ];
+    const queryFor = (key: string): string => (key === 'lifetime' ? '' : `preset=${key}`);
+
+    const setLabel = (text: string): void => { if (label) label.textContent = text; };
+
+    function applyPreset(key: string): void {
+      rangeRoot!.dataset.activePreset = key;
+      rangeQuery = queryFor(key);
+      const labelKey = PRESETS.find((p) => p[0] === key)?.[1] ?? 'adPresetLifetime';
+      setLabel(i18n[labelKey] ?? key);
+      rangePortal.close();
       void refetch();
+    }
+
+    function applyCustom(from: string, to: string): void {
+      if (!from || !to || from > to) return;
+      customFrom = from;
+      customTo = to;
+      rangeRoot!.dataset.activePreset = 'custom';
+      rangeQuery = `preset=custom&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      setLabel(`${shortDate(from)}–${shortDate(to)}`);
+      rangePortal.close();
+      void refetch();
+    }
+
+    function buildPanelHtml(): string {
+      const active = rangeRoot!.dataset.activePreset ?? 'lifetime';
+      const presetsHtml = PRESETS.map(([key, labelKey]) =>
+        `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${key}" style="${key === active ? 'font-weight:700;color:var(--color-primary)' : ''}">${i18n[labelKey] ?? key}</button>`).join('');
+      // The custom-range row is a distinct labelled sub-group with its OWN small
+      // "Apply" scoped to the two date fields — a full-width Apply at the very
+      // bottom read as "apply the whole menu" when the presets above already
+      // apply on click (user feedback). The label + inline button make it clear
+      // this button only commits the custom dates.
+      return `${presetsHtml}
+        <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>
+        <div class="px-3 pt-1.5 pb-2">
+          <div class="text-[.72rem] [color:var(--color-muted)] mb-1.5">${i18n.perfPresetCustom ?? 'Custom'}</div>
+          <div class="flex items-center gap-1.5">
+            <input type="date" dir="ltr" data-range-from value="${customFrom}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+            <span class="muted text-[0.8rem] shrink-0">–</span>
+            <input type="date" dir="ltr" data-range-to value="${customTo}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+            <button type="button" class="btn btn--sm btn--accent shrink-0" data-range-apply>${i18n.perfApply ?? 'Apply'}</button>
+          </div>
+        </div>`;
+    }
+
+    trigger.addEventListener('click', () => {
+      if (rangePortal.currentTrigger() === trigger) { rangePortal.close(); return; }
+      // Wider than the perf picker (13rem): the custom row lays both date inputs
+      // AND the inline Apply button on one line, which needs the extra room.
+      rangePortal.open(trigger, '19rem', buildPanelHtml, (portal) => {
+        portal.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((btn) => {
+          btn.addEventListener('click', () => applyPreset(btn.dataset.preset ?? 'lifetime'));
+        });
+        portal.querySelector('[data-range-apply]')?.addEventListener('click', () => {
+          const from = portal.querySelector<HTMLInputElement>('[data-range-from]')?.value ?? '';
+          const to = portal.querySelector<HTMLInputElement>('[data-range-to]')?.value ?? '';
+          applyCustom(from, to);
+        });
+      });
     });
   }
   initRangePicker();
@@ -220,7 +296,7 @@ export function initAdvertisingTab(): void {
       ? { gender: String(fd.get('gender') ?? 'all'), age: String(fd.get('age') ?? 'all') }
       : undefined;
 
-    if (submitBtn) submitBtn.disabled = true;
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('btn--busy'); }
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -234,7 +310,7 @@ export function initAdvertisingTab(): void {
     } catch {
       showStatus(i18n.errorSaving ?? 'Error saving.', true);
     } finally {
-      if (submitBtn) submitBtn.disabled = false;
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('btn--busy'); }
     }
   });
 
@@ -252,7 +328,10 @@ export function initAdvertisingTab(): void {
       const card = btn.closest<HTMLElement>('[data-status]');
       const currentStatus = card?.dataset.status;
       const nextStatus = currentStatus === 'active' ? 'paused' : 'active';
+      // btn--busy: keep the double-submit guard (disabled) but show a "working"
+      // cursor, not the "no-entry" not-allowed, for this brief in-flight moment.
       btn.disabled = true;
+      btn.classList.add('btn--busy');
       try {
         const res = await fetch(endpoint, {
           method: 'PATCH',
@@ -263,7 +342,7 @@ export function initAdvertisingTab(): void {
         if (!data.ok) { showStatus(data.error ?? (i18n.errorSaving ?? 'Error saving.'), true); return; }
         showStatus(i18n.adCampaignUpdated ?? 'Campaign updated.');
         await refetch();
-      } finally { btn.disabled = false; }
+      } finally { btn.disabled = false; btn.classList.remove('btn--busy'); }
       return;
     }
 

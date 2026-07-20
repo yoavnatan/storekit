@@ -31,5 +31,9 @@
 
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn:disabled.btn--confirmed { opacity: 1; cursor: default; }
+/* Briefly disabled while an async action is in flight (e.g. pause/resume a
+   campaign) — the disable prevents a double-submit, but the action is allowed,
+   so show a "working" cursor, not the "no-entry" not-allowed. */
+.btn:disabled.btn--busy { opacity: 0.7; cursor: progress; }
 
 .btn--sm { font-size: 0.78rem; padding: 0.28rem 0.65rem; }

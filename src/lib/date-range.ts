@@ -4,8 +4,8 @@
 // a client-only closure inside a Session-A file) — this is the shared home for
 // the same idea, used by the ad SSR panel, the ad API, and the picker client.
 
-export type AdRangePreset = 'today' | '7d' | '30d' | 'thisMonth' | 'custom';
-export const AD_RANGE_PRESETS: readonly AdRangePreset[] = ['today', '7d', '30d', 'thisMonth', 'custom'];
+export type AdRangePreset = 'today' | '7d' | '30d' | 'thisMonth' | 'custom' | 'lifetime';
+export const AD_RANGE_PRESETS: readonly AdRangePreset[] = ['today', '7d', '30d', 'thisMonth', 'custom', 'lifetime'];
 
 /** Local-calendar ISO (YYYY-MM-DD) — NOT toISOString(), which serialises in UTC
  *  and in a +UTC timezone (Israel) shifts a local-midnight date back a day. */
@@ -40,7 +40,10 @@ export function presetRange(preset: AdRangePreset, today: Date = new Date()): { 
   if (preset === 'thisMonth') {
     return { from: toISODate(new Date(today.getFullYear(), today.getMonth(), 1)), to };
   }
-  return null; // custom
+  // custom → caller supplies dates. lifetime → NOT a shared window: each campaign
+  // reports over its own run period (ad-metrics.ts#campaignLifetimeStats), so
+  // there is no single {from,to} to return here.
+  return null;
 }
 
 /** The equal-length window immediately before [from,to] — for period-over-period comparison. */
@@ -68,4 +71,22 @@ export function coerceRange(fromRaw: unknown, toRaw: unknown, today: Date = new 
     from = toISODate(capped);
   }
   return { from, to };
+}
+
+/** Compact day.month caption from an ISO date, e.g. "2026-07-08" → "8.7". */
+export function shortDate(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${Number(d)}.${Number(m)}`;
+}
+
+/** Resolve the ad range-picker's query params to a concrete window, or undefined
+ *  for the per-campaign lifetime view (no preset, or preset=lifetime). Shared by
+ *  the seller + admin ad-campaign routes so the window-vs-lifetime decision and
+ *  the `7d` fallback live in one place and can't drift between the two. */
+export function resolveAdRange(params: URLSearchParams): { from: string; to: string } | undefined {
+  const presetRaw = params.get('preset') as AdRangePreset | null;
+  const windowed = (presetRaw !== null && presetRaw !== 'lifetime') || params.has('from');
+  if (!windowed) return undefined;
+  const preset: AdRangePreset = AD_RANGE_PRESETS.includes(presetRaw as AdRangePreset) ? presetRaw! : '7d';
+  return preset === 'custom' ? coerceRange(params.get('from'), params.get('to')) : presetRange(preset)!;
 }

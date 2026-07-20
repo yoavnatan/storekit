@@ -19,11 +19,19 @@ if (!isAdminRequest(Astro.cookies)) {
 }
 
 const slug = Astro.params.slug ?? '';
+// Context-aware back link: the admin can reach this page from the Stores tab OR
+// the platform Performance tab's per-store breakdown (?from=performance) — back
+// must return to wherever they came from, not always to Stores.
+const backFrom = Astro.url.searchParams.get('from');
+const back = backFrom === 'performance'
+  ? { href: '/admin?panel=performance', label: 'חזרה לביצועים' }
+  : backFrom === 'advertising'
+    ? { href: '/admin?panel=advertising', label: 'חזרה לפרסום' }
+    : { href: '/admin?panel=stores', label: 'חזרה לחנויות' };
 const store = getStoreBySlug(slug);
-// Unknown slug → back to the Stores tab (the entry point) rather than a bare
-// 404; the admin reached here from that list so that's the natural fallback.
+// Unknown slug → back to the origin tab rather than a bare 404.
 if (!store) {
-  return Astro.redirect('/admin?panel=stores');
+  return Astro.redirect(back.href);
 }
 const seller = getSellerById(store.sellerId);
 
@@ -73,9 +81,9 @@ const visitorsChartSvg = buildMultiLineChartSvg(
       <div class="dash-head">
         <div class="dash-head__top">
           <div>
-            <a href="/admin?panel=stores" class="admin-link text-[0.82rem] inline-flex items-center gap-1 mb-1">
+            <a href={back.href} class="admin-link text-[0.82rem] inline-flex items-center gap-1 mb-1">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-              חזרה לחנויות
+              {back.label}
             </a>
             <h1 class="text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">
               ביצועים · {store.name}

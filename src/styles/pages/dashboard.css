@@ -1110,12 +1110,12 @@ textarea.input { resize: vertical; }
   background: var(--color-surface);
 }
 
-/* Sticky title bar — used only on panels that actually carry a control
-   (Orders/Messages: search+sort+filter; Settings: save button; Performance:
-   the date-range picker; Products keeps its own separate .products-header).
-   The tab bar right above already shows which section you're in, so a bare
-   title with nothing else in it (Overview, Advertising, Categories) stays
-   plain/static instead — sticky was pure redundancy there. */
+/* Sticky title bar — used on panels that carry a control (Orders/Messages:
+   search+sort+filter; Settings: save button; Performance: the date-range picker;
+   Products keeps its own separate .products-header) and on Advertising (its range
+   picker sits lower, above the campaign list, but the header is sticky by request
+   for consistency with the other tabs). Overview/Categories — bare title, no
+   control — stay plain/static (sticky would be pure redundancy there). */
 .seller-dash .dash-panel-head {
   position: sticky;
   top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));

@@ -5,8 +5,10 @@ import { getStoreBySlug } from '../../../lib/stores.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
 import {
   getCampaignsByStoreId, createCampaign, updateCampaign, deleteCampaign,
-  getMockCampaignStats, getMockBaselineImpressions, parseDuration, parseAudience,
+  parseDuration, parseAudience,
 } from '../../../lib/ad-campaigns.js';
+import { withCampaignStats } from '../../../lib/ad-metrics.js';
+import { resolveAdRange } from '../../../lib/date-range.js';
 
 // Admin-facing twin of /api/seller/ad-campaigns: identical validation and
 // campaign shape, but gated by the admin cookie (requireAdmin) and able to
@@ -21,10 +23,6 @@ function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function withStats(campaign: ReturnType<typeof getCampaignsByStoreId>[number]) {
-  return { ...campaign, stats: getMockCampaignStats(campaign) };
-}
-
 export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const denied = requireAdmin(cookies);
   if (denied) return denied;
@@ -33,8 +31,11 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const store = getStoreBySlug(url.searchParams.get('storeSlug') ?? '');
   if (!store) return json({ error: 'Store not found' }, 404);
 
-  const campaigns = getCampaignsByStoreId(store.id).map(withStats);
-  return json({ ok: true, campaigns, baselineImpressions: getMockBaselineImpressions(store.id) });
+  // Same window/lifetime semantics as the seller route (shared resolveAdRange) so
+  // the one picker (advertising.ts) drives both. lifetime/no-preset → lifetime.
+  const range = resolveAdRange(url.searchParams);
+  const campaigns = getCampaignsByStoreId(store.id).map((c) => withCampaignStats(c, range));
+  return json({ ok: true, campaigns });
 }
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
@@ -80,7 +81,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     ...(audience ? { audience } : {}),
     ...(resolvedProductId ? { productId: resolvedProductId, productName } : {}),
   });
-  return json({ ok: true, campaign: withStats(campaign) });
+  return json({ ok: true, campaign: withCampaignStats(campaign) });
 }
 
 export async function PATCH({ request, cookies }: APIContext): Promise<Response> {
@@ -104,7 +105,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
 
   const updated = updateCampaign(id, store.id, updates);
   if (!updated) return json({ error: 'Campaign not found' }, 404);
-  return json({ ok: true, campaign: withStats(updated) });
+  return json({ ok: true, campaign: withCampaignStats(updated) });
 }
 
 export async function DELETE({ request, cookies }: APIContext): Promise<Response> {

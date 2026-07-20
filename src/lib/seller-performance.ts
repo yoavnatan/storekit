@@ -92,6 +92,21 @@ export function pickGranularity(fromISO: string, toISO: string): PerformanceGran
   return days > 62 ? 'month' : 'day';
 }
 
+/** The zero-filled point skeleton for a range — the same x-axis keys/labels
+ *  buildPerformanceSummary produces, but derived purely from the dates (no orders
+ *  or page-view I/O). Lets the platform aggregator start from the empty axis
+ *  without a throwaway summary call over a non-existent store. */
+export function buildZeroPoints(fromISO: string, toISO: string, granularity: PerformanceGranularity): PerformancePoint[] {
+  return rangeKeys(fromISO, toISO, granularity).map((key) => ({
+    key,
+    label: granularity === 'day' ? dayLabel(key) : monthLabel(key),
+    revenue: 0,
+    orders: 0,
+    views: 0,
+    uniqueVisitors: 0,
+  }));
+}
+
 /** Builds the seller-facing "store performance" tab's full data set for one store + date range — revenue/orders (from paid orders' storeSubtotals) and visitor counts (from store-pageviews.ts) bucketed together onto the same day/month axis, plus a top-products-by-revenue breakdown. Pure given its inputs (orders array is the only "money" data; page views are read internally since they're already a cheap aggregate, not per-request data worth threading through every caller). */
 export function buildPerformanceSummary(
   orders: Order[],

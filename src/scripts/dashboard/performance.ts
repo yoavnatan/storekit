@@ -540,6 +540,10 @@ export function initPerformanceTab(): void {
       if (!res.ok) return;
       const data = await res.json() as { ok?: boolean; summary?: PerformanceSummary };
       if (data.summary) renderSummary(data.summary, i18n);
+      // Let a surrounding page augment the same fetch with its own extra data
+      // (the admin platform tab's per-store breakdown + GMV split card read
+      // `stores`/`totalStores` off this response). Harmless where unlistened.
+      document.dispatchEvent(new CustomEvent('perf:loaded', { detail: data }));
     } catch { /* keep last-known data on a transient network failure */ }
     finally { loading = false; }
   }

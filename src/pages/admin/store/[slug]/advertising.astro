@@ -6,7 +6,9 @@ import { isAdminRequest } from '../../../../lib/admin-auth.js';
 import { getStoreBySlug } from '../../../../lib/stores.js';
 import { getSellerById } from '../../../../lib/seller-auth.js';
 import { getProductsByStoreId } from '../../../../lib/store-products.js';
-import { getCampaignsByStoreId, getMockCampaignStats, getMockBaselineImpressions } from '../../../../lib/ad-campaigns.js';
+import { getCampaignsByStoreId, getMockBaselineImpressions } from '../../../../lib/ad-campaigns.js';
+import { campaignLifetimeStats, campaignRunPeriod } from '../../../../lib/ad-metrics.js';
+import { shortDate } from '../../../../lib/date-range.js';
 import { roasTierChipHtml, ctrTierChipHtml } from '../../../../lib/ad-tier.js';
 import { getCategoriesByStoreId, categoryPath } from '../../../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../../../lib/audience-infer.js';
@@ -18,11 +20,19 @@ if (!isAdminRequest(Astro.cookies)) {
 }
 
 const slug = Astro.params.slug ?? '';
+// Context-aware back link: reachable from the Stores tab OR the platform
+// Advertising tab's promoted-stores list (?from=advertising) — back returns to
+// wherever they came from, not always to Stores.
+const backFrom = Astro.url.searchParams.get('from');
+const back = backFrom === 'advertising'
+  ? { href: '/admin?panel=advertising', label: 'חזרה לפרסום' }
+  : backFrom === 'performance'
+    ? { href: '/admin?panel=performance', label: 'חזרה לביצועים' }
+    : { href: '/admin?panel=stores', label: 'חזרה לחנויות' };
 const store = getStoreBySlug(slug);
-// Unknown slug → back to the Stores tab (the entry point), same fallback as
-// the admin per-store performance page.
+// Unknown slug → back to the origin tab rather than a bare 404.
 if (!store) {
-  return Astro.redirect('/admin?panel=stores');
+  return Astro.redirect(back.href);
 }
 const seller = getSellerById(store.sellerId);
 
@@ -36,7 +46,7 @@ const d = t.dashboard;
 // store's campaigns directly (CURRENT_TASK.md item 2). Product names come from
 // Astro expressions (auto-escaped) here and escHtml() in the client re-render,
 // so the cross-tenant view is XSS-safe without a set:html blob.
-const adCampaigns = getCampaignsByStoreId(store.id).map((c) => ({ ...c, stats: getMockCampaignStats(c) }));
+const adCampaigns = getCampaignsByStoreId(store.id).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) }));
 const adBaselineImpressions = getMockBaselineImpressions(store.id);
 const adEligibleProducts = getProductsByStoreId(store.id).filter((p) => p.stock > 0);
 // Gender inferred from each product's category path / name / tags — pre-fills the
@@ -61,6 +71,11 @@ const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?:
   parts.push(c.durationDays === 7 ? d.adDuration7 : c.durationDays === 14 ? d.adDuration14 : c.durationDays === 30 ? d.adDuration30 : d.adDurationOngoing);
   return parts.filter(Boolean).join(' · ');
 };
+// Run-period label — mirrors runPeriodLabel() in advertising.ts + the seller dashboard.
+const adRunPeriodLabel = (c: { status: string; runPeriod?: { start: string; end: string } }): string => {
+  if (!c.runPeriod) return '';
+  return c.status === 'active' ? `${d.adRunSince} ${shortDate(c.runPeriod.start)}` : `${shortDate(c.runPeriod.start)}–${shortDate(c.runPeriod.end)}`;
+};
 ---
 
 <BaseLayout title={`פרסום · ${store.name}`} noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
@@ -69,9 +84,9 @@ const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?:
       <div class="dash-head">
         <div class="dash-head__top">
           <div>
-            <a href="/admin?panel=stores" class="admin-link text-[0.82rem] inline-flex items-center gap-1 mb-1">
+            <a href={back.href} class="admin-link text-[0.82rem] inline-flex items-center gap-1 mb-1">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-              חזרה לחנויות
+              {back.label}
             </a>
             <h1 class="text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">
               פרסום · {store.name}
@@ -173,7 +188,22 @@ const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?:
         </div>
 
         <div>
-          <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.adYourCampaigns}</h3>
+          <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <h3 class="m-0 text-[0.9rem] font-semibold">{d.adYourCampaigns}</h3>
+            <div id="ad-range-picker" data-store-slug={store.slug} data-active-preset="lifetime">
+              <button
+                type="button"
+                id="ad-range-trigger"
+                class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <span id="ad-range-label">{d.adPresetLifetime}</span>
+                <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            </div>
+          </div>
           <details class="mb-3 border [border-color:var(--color-border)] rounded-[var(--radius)] [background:var(--color-bg)]">
             <summary class="text-[0.82rem] font-medium px-3 py-2 cursor-pointer select-none [color:var(--color-muted)] hover:[color:var(--color-text)]">{d.adGlossaryTitle}</summary>
             <dl class="m-0 px-3 pb-3 pt-1 flex flex-col gap-2 text-[0.8rem]">
@@ -202,7 +232,18 @@ const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?:
                     <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" data-ad-action="delete" data-campaign-id={c.id}>{d.adDeleteCampaign}</button>
                   </div>
                 </div>
-                <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2">{adTargetingLabel(c)}</p>
+                <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2 flex items-center gap-1.5 flex-wrap">
+                  <span>{adTargetingLabel(c)}</span>
+                  {c.runPeriod && (
+                    <Fragment>
+                      <span aria-hidden="true">·</span>
+                      <span class="inline-flex items-center gap-1">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        {adRunPeriodLabel(c)}
+                      </span>
+                    </Fragment>
+                  )}
+                </p>
                 <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 text-[0.82rem]">
                   <div><span class="[color:var(--color-muted)]">{d.adBudgetLabel}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adImpressions}</span><br /><strong>{c.stats.impressions.toLocaleString('he-IL')}</strong></div>
