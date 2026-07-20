@@ -50,6 +50,8 @@ for (const s of getVisibleStores()) {
     orderError: c.orderError,
     selectItemAria: c.selectItemAria,
     selectStoreAria: c.selectStoreAria,
+    selectAll: c.selectAll,
+    selectAllAria: c.selectAllAria,
     selectAtLeastOne: c.selectAtLeastOne,
     noItemsSelected: c.noItemsSelected,
   })}></script>
@@ -241,6 +243,15 @@ for (const s of getVisibleStores()) {
 
       let html = '';
 
+      // Global "select all" — only worth showing with more than one store, since a
+      // single store's own row checkbox already selects/deselects everything.
+      if (carts.length > 1) {
+        html += `<div class="flex items-center gap-2.5 mb-4 pb-3 border-b [border-color:var(--color-border)]">
+          ${checkboxHtml('co-select-all-check', '', i18n['selectAllAria'] ?? '', true)}
+          <span class="text-[.9rem] font-semibold [color:var(--color-text)]">${esc(i18n['selectAll'] ?? 'בחר הכל')}</span>
+        </div>`;
+      }
+
       carts.forEach((cart, idx) => {
         // Initial paint only — recalculated precisely (per current selection) by
         // updateSelectionUI() right after this HTML is inserted into the DOM.
@@ -365,6 +376,8 @@ for (const s of getVisibleStores()) {
       const carts = getFilteredCarts();
       let grandTotal = 0;
       let anySelected = false;
+      let totalItems = 0;
+      let totalSelected = 0;
 
       carts.forEach(cart => {
         const block = document.querySelector<HTMLElement>(`.co-store-block[data-store-slug="${CSS.escape(cart.storeSlug)}"]`);
@@ -377,6 +390,8 @@ for (const s of getVisibleStores()) {
           }
         });
         if (selCount > 0) anySelected = true;
+        totalItems += cart.items.length;
+        totalSelected += selCount;
 
         const shipping = selCount > 0 ? calcShipping(cart.storeSlug, subtotal) : 0;
         grandTotal += subtotal + shipping;
@@ -400,6 +415,12 @@ for (const s of getVisibleStores()) {
           storeCheckbox.indeterminate = selCount > 0 && selCount < cart.items.length;
         }
       });
+
+      const selectAllBox = document.querySelector<HTMLInputElement>('.co-select-all-check input');
+      if (selectAllBox) {
+        selectAllBox.checked = totalSelected > 0 && totalSelected === totalItems;
+        selectAllBox.indeterminate = totalSelected > 0 && totalSelected < totalItems;
+      }
 
       const totalEl = document.getElementById('grand-total-amount');
       if (totalEl) totalEl.textContent = formatPrice(grandTotal);
@@ -463,7 +484,17 @@ for (const s of getVisibleStores()) {
 
       const storeSlug = input.dataset['storeSlug'] ?? '';
 
-      if (input.closest('.co-store-check')) {
+      if (input.closest('.co-select-all-check')) {
+        const checked = input.checked;
+        document.querySelectorAll<HTMLInputElement>('.co-item-check input').forEach(itemInput => {
+          const ss = itemInput.dataset['storeSlug'] ?? '';
+          const ck = itemInput.dataset['cartKey'] ?? '';
+          if (checked) selected.add(selKey(ss, ck));
+          else selected.delete(selKey(ss, ck));
+          itemInput.checked = checked;
+          itemInput.closest('.co-card')?.toggleAttribute('data-unselected', !checked);
+        });
+      } else if (input.closest('.co-store-check')) {
         const checked = input.checked;
         const block = input.closest<HTMLElement>('.co-store-block');
         block?.querySelectorAll<HTMLInputElement>('.co-item-check input').forEach(itemInput => {

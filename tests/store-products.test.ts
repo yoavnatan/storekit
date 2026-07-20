@@ -10,7 +10,7 @@ vi.mock('node:fs', () => ({
   },
 }));
 
-const { decrementStock, restockProduct, getEffectiveStock } = await import('../src/lib/store-products.js');
+const { decrementStock, restockProduct, getEffectiveStock, isProductVisible, countStockAlerts } = await import('../src/lib/store-products.js');
 
 beforeEach(() => {
   db = [
@@ -92,5 +92,41 @@ describe('getEffectiveStock', () => {
   it('falls back to the shared stock pool for a combo with no override', () => {
     const product = db.find((p) => p.id === 'p2')!;
     expect(getEffectiveStock(product, { Size: 'M' })).toBe(3);
+  });
+});
+
+describe('isProductVisible', () => {
+  it('is visible for a plain product', () => {
+    expect(isProductVisible({ id: 'x', storeId: 's1', slug: 'x', name: 'X', description: '', price: 1, stock: 1, createdAt: '' })).toBe(true);
+  });
+
+  it('is hidden for an admin-blocked product', () => {
+    expect(isProductVisible({ id: 'x', storeId: 's1', slug: 'x', name: 'X', description: '', price: 1, stock: 1, createdAt: '', blocked: true })).toBe(false);
+  });
+
+  it('is hidden for a seller-hidden product (the new take-down switch)', () => {
+    expect(isProductVisible({ id: 'x', storeId: 's1', slug: 'x', name: 'X', description: '', price: 1, stock: 1, createdAt: '', hidden: true })).toBe(false);
+  });
+});
+
+describe('countStockAlerts', () => {
+  beforeEach(() => {
+    db = [
+      { id: 'a', storeId: 's1', slug: 'a', name: 'A', description: '', price: 1, stock: 0, createdAt: '' },   // out of stock → alert
+      { id: 'b', storeId: 's1', slug: 'b', name: 'B', description: '', price: 1, stock: 2, createdAt: '' },   // low (<=3) → alert
+      { id: 'c', storeId: 's1', slug: 'c', name: 'C', description: '', price: 1, stock: 50, createdAt: '' },  // healthy → no alert
+      { id: 'd', storeId: 's1', slug: 'd', name: 'D', description: '', price: 1, stock: 0, createdAt: '', hidden: true },  // out but hidden → excluded
+      { id: 'e', storeId: 's1', slug: 'e', name: 'E', description: '', price: 1, stock: 0, createdAt: '', blocked: true }, // out but blocked → excluded
+      { id: 'f', storeId: 's2', slug: 'f', name: 'F', description: '', price: 1, stock: 0, createdAt: '' },   // other store → excluded
+    ];
+  });
+
+  it('counts only on-sale products of the store that are out of / low on stock', () => {
+    expect(countStockAlerts('s1', 3)).toBe(2); // a + b
+  });
+
+  it('drops to zero once the low/out products are hidden', () => {
+    db.forEach((p) => { if (p.storeId === 's1' && p.stock <= 3) p.hidden = true; });
+    expect(countStockAlerts('s1', 3)).toBe(0);
   });
 });

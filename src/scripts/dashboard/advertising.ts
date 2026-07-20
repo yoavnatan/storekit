@@ -1,11 +1,13 @@
 import { formatPrice } from '../../config/store.config.js';
 import { showStatus } from './status.js';
 import { initInfoTooltips } from './tooltip.js';
+import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js';
+import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
 
 interface CampaignStats { impressions: number; clicks: number; ctr: number; spend: number; roas: number }
 interface Campaign {
   id: string; scope: 'store' | 'product'; productName?: string;
-  platform: 'google' | 'meta'; monthlyBudget: number; status: 'active' | 'paused';
+  platform: 'google' | 'meta' | 'both'; monthlyBudget: number; status: 'active' | 'paused';
   durationDays?: 7 | 14 | 30;
   audience?: { gender: 'all' | 'women' | 'men'; age: 'all' | 'infant' | 'kids' | 'adult' };
   stats: CampaignStats;
@@ -44,7 +46,9 @@ function escHtml(s: string): string {
 
 function campaignCardHtml(c: Campaign, i18n: Record<string, string>): string {
   const scopeLabel = c.scope === 'product' ? escHtml(c.productName ?? '') : (i18n.adScopeStore ?? '');
-  const platformLabel = c.platform === 'google' ? (i18n.adPlatformGoogle ?? '') : (i18n.adPlatformMeta ?? '');
+  const platformLabel = c.platform === 'google' ? (i18n.adPlatformGoogle ?? '')
+    : c.platform === 'meta' ? (i18n.adPlatformMeta ?? '')
+    : (i18n.adPlatformBoth ?? '');
   const isActive = c.status === 'active';
   const statusClass = isActive
     ? '[color:var(--color-success)] [background:color-mix(in_srgb,var(--color-success)_14%,transparent)]'
@@ -63,12 +67,13 @@ function campaignCardHtml(c: Campaign, i18n: Record<string, string>): string {
         </div>
       </div>
       <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2">${escHtml(targetingLabel(c, i18n))}</p>
-      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-[0.82rem]">
+      <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 text-[0.82rem]">
         <div><span class="[color:var(--color-muted)]">${i18n.adBudgetLabel ?? ''}</span><br /><strong>${formatPrice(c.monthlyBudget)}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adImpressions ?? ''}</span><br /><strong>${c.stats.impressions.toLocaleString('he-IL')}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adClicks ?? ''}</span><br /><strong>${c.stats.clicks.toLocaleString('he-IL')}</strong></div>
+        <div><span class="[color:var(--color-muted)]">${i18n.adCtr ?? ''}</span><br /><strong>${c.stats.ctr}%</strong>${ctrTierChipHtml(c.stats.ctr, { low: i18n.adTierLow ?? '', mid: i18n.adTierMid ?? '', high: i18n.adTierHigh ?? '' })}</div>
         <div><span class="[color:var(--color-muted)]">${i18n.adSpend ?? ''}</span><br /><strong>${formatPrice(c.stats.spend)}</strong></div>
-        <div><span class="[color:var(--color-muted)]">${i18n.adRoas ?? ''}</span><br /><strong>x${c.stats.roas}</strong></div>
+        <div><span class="[color:var(--color-muted)]">${i18n.adRoas ?? ''}</span><br /><strong>x${c.stats.roas}</strong>${roasTierChipHtml(c.stats.roas, { low: i18n.adTierLow ?? '', mid: i18n.adTierMid ?? '', high: i18n.adTierHigh ?? '' })}</div>
       </div>
     </div>`;
 }
@@ -109,6 +114,11 @@ export function initAdvertisingTab(): void {
   const ageSelect = document.getElementById('ad-age-select') as HTMLSelectElement | null;
   const inferNote = document.getElementById('ad-infer-note');
 
+  // Upgrade every native <select> in the create-boost form to the site-design
+  // floating-portal dropdown (viewport-clamped, stays pinned on scroll). The
+  // selects keep holding the value + submitting; only their popup changes.
+  form.querySelectorAll<HTMLSelectElement>('select').forEach((sel) => initSelectDropdown(sel));
+
   // Pre-fill gender + age_group from the selected product's inferred audience
   // (data-infer-gender / data-infer-age, computed server-side from its
   // category/name/tags) so a seller who already categorized under "גברים"/
@@ -120,9 +130,9 @@ export function initAdvertisingTab(): void {
     const opt = isProduct ? productSelect?.selectedOptions[0] : undefined;
     let applied = false;
     const g = opt?.dataset.inferGender ?? '';
-    if (genderSelect && (g === 'men' || g === 'women')) { genderSelect.value = g; applied = true; }
+    if (genderSelect && (g === 'men' || g === 'women')) { genderSelect.value = g; refreshSelectDropdown(genderSelect); applied = true; }
     const a = opt?.dataset.inferAge ?? '';
-    if (ageSelect && (a === 'infant' || a === 'kids' || a === 'adult')) { ageSelect.value = a; applied = true; }
+    if (ageSelect && (a === 'infant' || a === 'kids' || a === 'adult')) { ageSelect.value = a; refreshSelectDropdown(ageSelect); applied = true; }
     if (inferNote) inferNote.hidden = !applied;
   }
 
@@ -152,12 +162,47 @@ export function initAdvertisingTab(): void {
   ageSelect?.addEventListener('change', retireNote);
   updateScopeUI(); // sync initial visibility to the default scope
 
+  // Date-range picker (seller tab only). Absent on the admin per-store control
+  // view → rangeQuery stays '' → the API returns lifetime totals, unchanged.
+  const rangeRoot = document.getElementById('ad-range');
+  let rangeQuery = rangeRoot ? 'preset=7d' : '';
+
   async function refetch(): Promise<void> {
-    const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}`);
+    const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}${rangeQuery ? `&${rangeQuery}` : ''}`);
     if (!res.ok) return;
-    const data = await res.json() as { ok?: boolean; campaigns?: Campaign[] };
+    const data = await res.json() as { ok?: boolean; campaigns?: Campaign[]; baselineImpressions?: number };
     if (data.campaigns) renderCampaigns(list, data.campaigns, i18n);
+    if (typeof data.baselineImpressions === 'number') {
+      const el = document.getElementById('ad-baseline-impressions');
+      if (el) el.textContent = data.baselineImpressions.toLocaleString('he-IL');
+    }
   }
+
+  function initRangePicker(): void {
+    if (!rangeRoot) return;
+    const custom = document.getElementById('ad-range-custom');
+    const setActive = (active: Element): void => {
+      rangeRoot.querySelectorAll('[data-preset]').forEach((c) => c.setAttribute('aria-pressed', String(c === active)));
+    };
+    rangeRoot.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const preset = chip.dataset.preset ?? '7d';
+        setActive(chip);
+        if (preset === 'custom') { if (custom) custom.hidden = false; return; }
+        if (custom) custom.hidden = true;
+        rangeQuery = `preset=${preset}`;
+        void refetch();
+      });
+    });
+    document.getElementById('ad-range-apply')?.addEventListener('click', () => {
+      const from = (document.getElementById('ad-range-from') as HTMLInputElement | null)?.value;
+      const to = (document.getElementById('ad-range-to') as HTMLInputElement | null)?.value;
+      if (!from || !to) return;
+      rangeQuery = `preset=custom&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      void refetch();
+    });
+  }
+  initRangePicker();
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

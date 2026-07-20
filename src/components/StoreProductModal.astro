@@ -1,0 +1,698 @@
+---
+/**
+ * Shared store product quick-modal.
+ *
+ * The single source of truth for the rich product modal that opens from a
+ * store-page product card AND from the "more from this store" related cards on
+ * the full product page. It used to be implemented inline in `store/[slug].astro`
+ * and separately (an older, drifted copy) in the product page — the two fell out
+ * of sync, which is exactly what this component prevents.
+ *
+ * It is self-contained like `ProductQuickView.astro`: it fetches its own product
+ * data from `/api/store-product` by slug, carries its own i18n (root data-*),
+ * and has its own lightbox (unique ids so it never collides with the product
+ * page's own `#lightbox`). It is rendered once, in BaseLayout, and opened by
+ * dispatching `store-product-modal:open` with `{ storeSlug, productSlug,
+ * storeName, flagMissing? }`.
+ *
+ * The `.pm-*` / `.lightbox` classes it uses are styled globally in
+ * `styles/pages/store.css` (part of `main.css`), so no CSS moves with it.
+ */
+import { getLang, getT } from '../i18n/index.js';
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+
+const i18n = {
+  addToCart: t.store.addToCart,
+  addedToCart: t.store.addedToCart,
+  toCheckout: t.store.toCheckout,
+  outOfStock: t.store.outOfStock,
+  inStockLabel: t.store.inStockLabel,
+  addToWishlist: t.wishlist.addLabel,
+  removeFromWishlist: t.wishlist.removeLabel,
+  fullPage: lang === 'he' ? 'לדף המוצר המלא' : 'View full product page',
+  close: lang === 'he' ? 'סגור' : 'Close',
+  showMore: lang === 'he' ? 'עוד' : 'More',
+  showLess: lang === 'he' ? 'פחות' : 'Less',
+};
+---
+
+<!-- Lightbox (own ids — never collides with the product page's #lightbox) -->
+<div id="spm-lightbox" class="lightbox" hidden aria-modal="true" role="dialog" aria-label="Product image viewer">
+  <div class="lightbox__backdrop" id="spm-lb-backdrop"></div>
+  <div class="lightbox__panel">
+    <button class="lightbox__close" id="spm-lb-close" aria-label={i18n.close}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <button class="lightbox__arrow lightbox__arrow--prev" id="spm-lb-prev" aria-label="Previous image">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <img class="lightbox__img" id="spm-lb-img" src="" alt="" />
+    <button class="lightbox__arrow lightbox__arrow--next" id="spm-lb-next" aria-label="Next image">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <div class="lightbox__counter" id="spm-lb-counter" hidden></div>
+  </div>
+</div>
+
+<!-- Product Detail Modal -->
+<div id="product-modal" hidden role="dialog" aria-modal="true" aria-labelledby="pm-name"
+     data-i18n={JSON.stringify(i18n)}
+     style="position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:0.75rem">
+  <div id="pm-backdrop"
+       style="position:absolute;inset:0;background:rgba(0,0,0,0.58);cursor:pointer"></div>
+  <div id="pm-panel"
+       style="position:relative;z-index:1;background:white;border-radius:16px;width:min(100%,680px);max-height:90vh;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.35);display:flex;flex-direction:column">
+    <button id="pm-close" aria-label={i18n.close}
+            style="position:absolute;top:0.65rem;inset-inline-end:0.65rem;z-index:10;width:2rem;height:2rem;border-radius:50%;background:rgba(255,255,255,0.95);color:var(--color-muted);border:1px solid var(--color-border);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div id="pm-scroll" style="overflow-y:auto;flex:1 1 auto;min-height:0">
+      <div id="pm-body"></div>
+    </div>
+    <div id="pm-footer" style="flex-shrink:0;padding:0.875rem 1.25rem 1.125rem;border-top:1px solid var(--color-border);box-shadow:0 -4px 16px rgba(0,0,0,0.06)"></div>
+  </div>
+</div>
+
+<script>
+  import { addItem, getCartQty } from '../lib/cart.js';
+  import { isWishlisted, toggleWishlist } from '../lib/wishlist.js';
+  import { cdnSrc, formatPrice } from '../config/store.config.js';
+  import { spawnRipple } from '../lib/ripple.js';
+  import { trackAddToCart } from '../lib/tracking.js';
+  import { comboKey } from '../lib/variant-combo.js';
+  import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
+  import { initReadMore } from '../lib/read-more.js';
+  import { spawnHeartBurst } from '../lib/burst.js';
+  import { initLiquidDots } from '../lib/carousel-dots.js';
+
+  interface SPMProduct {
+    slug: string; name: string; price: number; description: string;
+    stock: number; images: string[]; category: string;
+    variants: Array<{ name: string; options: string[] }>;
+    variantStock: Record<string, number>;
+    variantImages: Record<string, string>;
+  }
+
+  const productModal = document.getElementById('product-modal') as HTMLDivElement | null;
+  const pmBackdrop   = document.getElementById('pm-backdrop')   as HTMLDivElement | null;
+  const pmClose      = document.getElementById('pm-close')      as HTMLButtonElement | null;
+  const pmBody       = document.getElementById('pm-body')       as HTMLDivElement | null;
+  const pmFooter     = document.getElementById('pm-footer')     as HTMLDivElement | null;
+  const pmPanel      = document.getElementById('pm-panel')      as HTMLDivElement | null;
+
+  const i18n: Record<string, string> = (() => {
+    try { return JSON.parse(productModal?.dataset.i18n ?? '{}') as Record<string, string>; }
+    catch { return {}; }
+  })();
+
+  const checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
+
+  let pmPrevFocus: HTMLElement | null = null;
+  let pmSavedTitle = '';
+
+  function escHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  const resolveColor = resolveVariantColor;
+  const isColorVariantName = isColorVariant;
+
+  function fmtPrice(price: number): string {
+    return formatPrice(price);
+  }
+
+  function getPMFocusable(): HTMLElement[] {
+    return Array.from(
+      pmPanel?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input,[tabindex="0"]') ?? []
+    ).filter(el => el.offsetParent !== null);
+  }
+
+  // ── Lightbox (own, scoped to this modal) ──────────────────────
+  const lightbox   = document.getElementById('spm-lightbox') as HTMLDivElement | null;
+  const lbImg      = document.getElementById('spm-lb-img') as HTMLImageElement | null;
+  const lbPrev     = document.getElementById('spm-lb-prev') as HTMLButtonElement | null;
+  const lbNext     = document.getElementById('spm-lb-next') as HTMLButtonElement | null;
+  const lbClose    = document.getElementById('spm-lb-close') as HTMLButtonElement | null;
+  const lbCounter  = document.getElementById('spm-lb-counter') as HTMLDivElement | null;
+
+  let lbImages: string[] = [];
+  let lbProductName = '';
+  let lbIndex = 0;
+  let touchStartX = 0;
+  let lbPrevFocus: HTMLElement | null = null;
+
+  function getLightboxFocusable(): HTMLButtonElement[] {
+    return [lbClose, lbPrev, lbNext].filter(
+      (el): el is HTMLButtonElement => !!el && !el.hidden
+    );
+  }
+
+  function openLightbox(images: string[], startIndex = 0) {
+    lbImages = images;
+    lbIndex = startIndex;
+    lbPrevFocus = document.activeElement as HTMLElement;
+    showLbImage();
+    lightbox?.removeAttribute('hidden');
+    document.body.style.overflow = 'hidden';
+    lbClose?.focus();
+  }
+
+  function closeLightbox() {
+    lightbox?.setAttribute('hidden', '');
+    document.body.style.overflow = '';
+    lbImages = [];
+    lbPrevFocus?.focus();
+    lbPrevFocus = null;
+  }
+
+  function showLbImage() {
+    const url = lbImages[lbIndex] ?? '';
+    if (lbImg) { lbImg.src = url; lbImg.alt = lbProductName ? `${lbProductName} — ${lbIndex + 1}` : `Image ${lbIndex + 1}`; }
+    const multi = lbImages.length > 1;
+    if (lbPrev) lbPrev.hidden = !multi;
+    if (lbNext) lbNext.hidden = !multi;
+    if (lbCounter) {
+      lbCounter.hidden = !multi;
+      lbCounter.textContent = `${lbIndex + 1} / ${lbImages.length}`;
+    }
+  }
+
+  function prevLbImage() { lbIndex = (lbIndex - 1 + lbImages.length) % lbImages.length; showLbImage(); }
+  function nextLbImage() { lbIndex = (lbIndex + 1) % lbImages.length; showLbImage(); }
+
+  lbClose?.addEventListener('click', closeLightbox);
+  lbPrev?.addEventListener('click', (e) => { e.stopPropagation(); prevLbImage(); });
+  lbNext?.addEventListener('click', (e) => { e.stopPropagation(); nextLbImage(); });
+  lightbox?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest('.lightbox__arrow') && !target.closest('.lightbox__close')) closeLightbox();
+  });
+  lightbox?.addEventListener('touchstart', (e: TouchEvent) => {
+    touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+  lightbox?.addEventListener('touchend', (e: TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) dx < 0 ? nextLbImage() : prevLbImage();
+  }, { passive: true });
+
+  // ── Open by slug: fetch product data, then render ─────────────
+  const cache = new Map<string, SPMProduct>();
+
+  async function openBySlug(storeSlug: string, productSlug: string, storeName: string, flagMissingOnOpen = false): Promise<void> {
+    const key = `${storeSlug}:${productSlug}`;
+    let product = cache.get(key);
+    if (!product) {
+      try {
+        const res = await fetch(`/api/store-product?store=${encodeURIComponent(storeSlug)}&product=${encodeURIComponent(productSlug)}`);
+        if (!res.ok) throw new Error('not found');
+        product = await res.json() as SPMProduct;
+        cache.set(key, product);
+      } catch {
+        return;
+      }
+    }
+    renderModal(product, storeSlug, storeName, flagMissingOnOpen);
+  }
+
+  function renderModal(product: SPMProduct, storeSlug: string, storeName: string, flagMissingOnOpen: boolean) {
+    const images       = product.images ?? [];
+    const name         = product.name;
+    const price        = product.price;
+    const description  = product.description ?? '';
+    const stock        = product.stock;
+    const slug         = product.slug;
+    const category     = product.category ?? '';
+    const pmVariants   = product.variants ?? [];
+    const pmVariantStock  = product.variantStock ?? {};
+    const pmVariantImages = product.variantImages ?? {};
+
+    // No dimension pre-selected — buyer must actively choose before add-to-cart
+    // proceeds (see pmFlagMissingVariants below) — except a single-option
+    // dimension, which has no real choice to make.
+    const pmSelectedVariants: Record<string, string> = {};
+    pmVariants.forEach((v) => { if (v.options.length === 1) pmSelectedVariants[v.name] = v.options[0]; });
+
+    // The combo's real stock — a per-combo variantStock override if the seller
+    // set one, else the product's shared stock pool. Plain `stock` alone is
+    // wrong here: a combo can have its own (lower or higher) override.
+    function pmEffectiveStock(selection: Record<string, string>): number {
+      if (!pmVariants.length || !Object.keys(pmVariantStock).length) return stock;
+      const key = comboKey(selection);
+      return key in pmVariantStock ? pmVariantStock[key]! : stock;
+    }
+
+    // What's actually still addable for this combo — nets out whatever qty of
+    // this exact combo already sits in the cart.
+    function pmRemainingFor(selection: Record<string, string>): number {
+      const copy = Object.keys(selection).length ? selection : undefined;
+      return Math.max(0, pmEffectiveStock(selection) - getCartQty(storeSlug, slug, copy));
+    }
+
+    // Disables (rather than hides) any option whose combo — combined with the
+    // buyer's current picks for every other dimension — is out of stock.
+    function pmUpdateVariantAvailability(): void {
+      pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((b) => {
+        const bName = b.dataset.pvName ?? '';
+        const bValue = b.dataset.pvValue ?? '';
+        const available = pmRemainingFor({ ...pmSelectedVariants, [bName]: bValue }) > 0;
+        b.disabled = !available;
+        b.setAttribute('aria-disabled', String(!available));
+        b.style.opacity = available ? '1' : '0.4';
+        b.style.cursor = available ? 'pointer' : 'not-allowed';
+        b.style.textDecoration = available ? 'none' : 'line-through';
+      });
+    }
+
+    const mainImgUrl  = images[0] ?? '';
+    const hasImages   = images.length > 0;
+    const hasMultiple = images.length > 1;
+    const wishlisted  = isWishlisted(slug);
+    const heartPath   = `<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>`;
+
+    pmPrevFocus  = document.activeElement as HTMLElement;
+    pmSavedTitle = document.title;
+
+    history.pushState({ productModal: true, slug }, '', `/store/${storeSlug}/${slug}`);
+    document.title = `${name} — ${storeName}`;
+
+    const noImgSvg =`<svg style="color:var(--color-border)" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
+
+    const mainImgHtml = hasImages
+      ? `<div id="pm-img-wrap" style="position:relative;padding-top:62%;background:var(--color-surface);border-bottom:1px solid var(--color-border)">
+           <div class="pm-slides" id="pm-slides" role="button" tabindex="0" style="cursor:zoom-in">
+             ${images.map((img) => `<div class="pm-slide is-loading"><img data-src="${escHtml(img)}" alt="${escHtml(name)}" width="680" height="421" class="pm-main-img" decoding="async" /></div>`).join('')}
+           </div>
+           ${hasMultiple ? `<div class="pm-dots" aria-hidden="true">${images.map((_, i) => `<span class="pm-dot" style="width:${i === 0 ? 18 : 6}px;background:${i === 0 ? '#fff' : 'rgba(255,255,255,0.7)'}"></span>`).join('')}</div>` : ''}
+         </div>`
+      : `<div style="padding-top:62%;background:var(--color-surface);position:relative">
+           <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${noImgSvg}</div>
+         </div>`;
+
+    // Wishlist is offered whether or not the item is in stock — a shopper can still
+    // "like" a sold-out product (matches the product grid card + full product page).
+    const pmWishBtnHtml = `<button type="button" class="pm-wishlist-btn"
+                  style="display:flex;align-items:center;justify-content:center;gap:0.4rem;width:100%;background:none;border:1px solid var(--color-border);border-radius:var(--radius);padding:0.4rem 0.85rem;cursor:pointer;font-size:0.8rem;color:${wishlisted ? '#e53e3e' : 'var(--color-muted)'};transition:all 0.15s">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="${wishlisted ? '#e53e3e' : 'none'}" stroke="${wishlisted ? '#e53e3e' : 'currentColor'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${heartPath}</svg>
+            <span class="pm-wish-label">${wishlisted ? (i18n.removeFromWishlist ?? 'הסר') : (i18n.addToWishlist ?? 'הוסף לרשימת משאלות')}</span>
+          </button>`;
+
+    const cartSection = stock > 0
+      ? `<div>
+          <p id="pm-stock-note" class="flex items-center gap-1.5 text-sm" style="margin:0 0 0.6rem">
+            <span id="pm-stock-dot" aria-hidden="true" style="width:7px;height:7px;border-radius:50%;background:var(--color-success);flex-shrink:0;display:inline-block"></span>
+            <svg id="pm-stock-warn" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="display:none">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span id="pm-stock-text"></span>
+          </p>
+          <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.6rem">
+            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
+              <button type="button" class="pm-qty-dec" disabled aria-label="הפחת"
+                      style="width:2rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted);transition:background 0.1s">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <span class="pm-qty-val" aria-live="polite"
+                    style="min-width:2rem;text-align:center;font-weight:600;font-size:0.875rem;color:var(--color-text)">1</span>
+              <button type="button" class="pm-qty-inc" aria-label="הוסף"
+                      style="width:2rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted);transition:background 0.1s">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+            </div>
+            <button type="button" class="btn pm-add-to-cart"
+                    data-slug="${escHtml(slug)}" data-name="${escHtml(name)}" data-price="${price}" data-image="${escHtml(mainImgUrl)}" data-stock="${stock}"
+                    style="flex:1;height:2.25rem;display:flex;align-items:center;justify-content:center;gap:4px">
+              <span class="pm-btn-label">${i18n.addToCart ?? 'הוסף לעגלה'}</span>
+            </button>
+            <a href="/checkout" class="pm-to-checkout btn btn--accent btn--sm"
+               style="display:none;height:2.25rem;white-space:nowrap;align-items:center;gap:0.3rem">
+              ${i18n.toCheckout ?? 'לתשלום'}
+            </a>
+          </div>
+          ${pmWishBtnHtml}
+        </div>`
+      : `<div style="display:flex;flex-direction:column;gap:0.75rem">
+          <span class="badge badge--muted self-start">${i18n.outOfStock ?? 'אזל מהמלאי'}</span>
+          ${pmWishBtnHtml}
+        </div>`;
+
+    const descHtml = description
+      ? `<p dir="auto" class="pm-desc" id="pm-desc">${escHtml(description)}</p>`
+      : '';
+
+    if (pmBody) {
+      pmBody.innerHTML = `
+        ${mainImgHtml}
+        <div style="padding:0.875rem 1.25rem 1.25rem;display:flex;flex-direction:column;gap:0.5rem">
+          <div dir="auto">
+            <h2 id="pm-name" style="font-size:1.2rem;font-weight:700;color:var(--color-text);margin:0 0 0.4rem;line-height:1.35">${escHtml(name)}</h2>
+            <p style="font-size:1.45rem;font-weight:700;color:var(--color-accent);margin:0">${fmtPrice(price)}</p>
+          </div>
+          ${descHtml}
+          ${pmVariants.length ? `<div class="pm-variants" style="display:flex;flex-direction:column;gap:0.75rem">
+            ${pmVariants.map(v => {
+              const isCv = isColorVariantName(v.name);
+              const isSingleOption = v.options.length === 1;
+              return `<div class="variant-group" data-variant-group="${escHtml(v.name)}">
+                <p style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
+                <div style="display:flex;flex-wrap:wrap;gap:0.4rem" role="group" aria-label="${escHtml(v.name)}">
+                  ${v.options.map((opt) => {
+                    const { display, hex } = resolveColor(opt);
+                    const swatch = isCv && hex
+                      ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
+                      : '';
+                    const activeBorder = hex ?? 'var(--color-primary)';
+                    const activeBg = hex ? hex + '18' : 'transparent';
+                    return `<button type="button" class="pm-variant-opt"
+                            data-pv-name="${escHtml(v.name)}" data-pv-value="${escHtml(opt)}"
+                            data-pv-hex="${escHtml(hex ?? '')}"
+                            aria-pressed="${isSingleOption}"
+                            style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isSingleOption ? activeBorder : 'var(--color-border)'};border-radius:var(--radius);padding:${isCv && hex ? '0.26rem 0.6rem' : '0.26rem 0.7rem'};font-size:0.8rem;font-weight:${isSingleOption ? 600 : 500};cursor:pointer;background:${isSingleOption ? activeBg : 'none'};color:var(--color-text);transition:all 0.15s;white-space:nowrap">
+                      ${swatch}${escHtml(display)}
+                    </button>`;
+                  }).join('')}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>` : ''}
+        </div>`;
+    }
+
+    if (pmFooter) {
+      pmFooter.innerHTML = `
+        ${cartSection}
+        <a href="/store/${escHtml(storeSlug)}/${escHtml(slug)}" class="pm-full-link no-underline hover:underline"
+           style="font-size:0.75rem;color:var(--color-muted);text-align:center;display:block;padding-top:0.5rem">
+          ${i18n.fullPage ?? 'לדף המוצר המלא'}
+        </a>`;
+      // The modal's own pushState (above) put a history entry at this exact same
+      // URL. A plain <a> click would stack a *real* navigation on top of it, so
+      // "back" from the full product page lands on that leftover soft entry
+      // first — same URL, no live document to restore — and the browser just
+      // reloads the product page again instead of returning to the store grid.
+      // Collapsing the modal's entry first (history.back()) before navigating
+      // for real means one "back" from the full page goes straight back.
+      const pmFullLink = pmFooter.querySelector<HTMLAnchorElement>('.pm-full-link');
+      pmFullLink?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const href = pmFullLink.href;
+        let navigated = false;
+        const go = () => { if (navigated) return; navigated = true; location.href = href; };
+        window.addEventListener('popstate', go, { once: true });
+        setTimeout(go, 400);
+        history.back();
+      });
+    }
+
+    productModal?.removeAttribute('hidden');
+    document.body.style.overflow = 'hidden';
+
+    pmPanel?.animate(
+      [{ opacity: 0, transform: 'scale(0.95) translateY(12px)' }, { opacity: 1, transform: 'scale(1) translateY(0)' }],
+      { duration: 240, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' }
+    );
+
+    pmClose?.focus();
+
+    // Missing-selection feedback (subtle shake + ring).
+    function pmFlagMissingVariants(): boolean {
+      const groups = pmVariants
+        .filter((v) => !pmSelectedVariants[v.name])
+        .map((v) => pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(v.name)}"]`))
+        .filter((g): g is HTMLElement => !!g);
+      groups.forEach((group) => {
+        group.classList.remove('variant-group--invalid');
+        void group.offsetWidth;
+        group.classList.add('variant-group--invalid');
+        setTimeout(() => group.classList.remove('variant-group--invalid'), 650);
+      });
+      groups[0]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return groups.length > 0;
+    }
+
+    // Opened because the buyer tried to add-to-cart from the card itself (no
+    // picker there to fail against) — surface the same "pick this" nudge.
+    if (flagMissingOnOpen && pmVariants.length) {
+      setTimeout(() => pmFlagMissingVariants(), 260);
+    }
+
+    // Set once the slides carousel is wired up below (only exists with >1 image).
+    let pmGoToImage: ((idx: number) => void) | null = null;
+
+    // ── Modal variant selector ─────────────────────────────────────
+    pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const vName = btn.dataset.pvName ?? '';
+        const vValue = btn.dataset.pvValue ?? '';
+        pmSelectedVariants[vName] = vValue;
+        updatePmQty(1); // this combo may already have a different amount in the cart
+        pmUpdateVariantAvailability(); // picking this dimension may sell out/free up options in the others
+        pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(vName)}"]`)?.classList.remove('variant-group--invalid');
+        pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
+          const active = b === btn;
+          const hex = b.dataset.pvHex || null;
+          b.setAttribute('aria-pressed', String(active));
+          b.style.borderColor = active ? (hex ?? 'var(--color-primary)') : 'var(--color-border)';
+          b.style.background = active ? (hex ? hex + '18' : 'transparent') : 'none';
+          b.style.color = 'var(--color-text)';
+          b.style.fontWeight = active ? '600' : '500';
+        });
+        if (isColorVariantName(vName)) {
+          const url = pmVariantImages[vValue];
+          const idx = url ? images.indexOf(url) : -1;
+          if (idx !== -1) pmGoToImage?.(idx);
+        }
+      });
+    });
+
+    // Track current image index (for lightbox)
+    let pmCurrentIdx = 0;
+
+    // Skeleton: main slide images (data-src + decode, shimmer removed once loaded)
+    const pmSlidesEl = document.getElementById('pm-slides');
+    const pmSlideEls = pmSlidesEl ? Array.from(pmSlidesEl.querySelectorAll<HTMLElement>('.pm-slide')) : [];
+    pmSlideEls.forEach((slide) => {
+      const img = slide.querySelector<HTMLImageElement>('img[data-src]');
+      if (img && img.dataset.src) {
+        img.src = img.dataset.src;
+        img.decode().then(() => slide.classList.remove('is-loading')).catch(() => slide.classList.remove('is-loading'));
+      }
+    });
+
+    const pmDotsEl = pmBody?.querySelector<HTMLElement>('.pm-dots') ?? null;
+    const pmDots   = pmDotsEl ? Array.from(pmDotsEl.querySelectorAll<HTMLElement>('.pm-dot')) : [];
+
+    if (pmSlidesEl && pmSlideEls.length > 1) {
+      const isRtl = getComputedStyle(pmSlidesEl).direction === 'rtl';
+      const getSlideW = () => pmSlidesEl.offsetWidth || 1;
+
+      const { setActive: setPmDots } = initLiquidDots(pmSlidesEl, pmDots, (idx) => { pmCurrentIdx = idx; });
+
+      const scrollPmToIdx = (idx: number) => {
+        pmCurrentIdx = idx;
+        pmSlidesEl.scrollTo({ left: (isRtl ? -1 : 1) * idx * getSlideW(), behavior: 'smooth' });
+      };
+      pmGoToImage = scrollPmToIdx;
+
+      pmDots.forEach((dot, i) => dot.addEventListener('click', () => scrollPmToIdx(i)));
+
+      // Touch — one slide at a time, no momentum skip
+      let pmTStartX = 0, pmTStartScroll = 0;
+      pmSlidesEl.addEventListener('touchstart', (e: TouchEvent) => {
+        pmTStartX = e.touches[0].clientX;
+        pmTStartScroll = pmSlidesEl.scrollLeft;
+        pmSlidesEl.style.scrollSnapType = 'none';
+      }, { passive: true });
+      pmSlidesEl.addEventListener('touchend', (e: TouchEvent) => {
+        const slideW = getSlideW();
+        const dx = e.changedTouches[0].clientX - pmTStartX;
+        const cur = Math.round(Math.abs(pmTStartScroll) / slideW);
+        let tgt = cur;
+        if (dx < -(slideW * 0.08)) tgt = Math.min(cur + 1, pmSlideEls.length - 1);
+        if (dx >  (slideW * 0.08)) tgt = Math.max(cur - 1, 0);
+        const left = (isRtl ? -1 : 1) * tgt * slideW;
+        pmSlidesEl.style.overflow = 'hidden';
+        requestAnimationFrame(() => {
+          pmSlidesEl.style.overflow = '';
+          pmSlidesEl.scrollLeft = left;
+          pmSlidesEl.style.scrollSnapType = '';
+          pmCurrentIdx = tgt;
+          setPmDots(tgt);
+        });
+      }, { passive: true });
+    }
+
+    // Main image click → lightbox
+    pmSlidesEl?.addEventListener('click', () => {
+      if (!images.length) return;
+      lbProductName = name;
+      openLightbox(images, pmCurrentIdx);
+    });
+    pmSlidesEl?.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (pmSlidesEl as HTMLElement).click(); }
+    });
+
+    const pmDescEl = pmBody?.querySelector<HTMLElement>('#pm-desc') ?? null;
+    if (pmDescEl) {
+      initReadMore(pmDescEl, 2, {
+        more: i18n.showMore ?? 'עוד',
+        less: i18n.showLess ?? 'פחות',
+      });
+    }
+
+    // Qty stepper
+    const pmQtyDec = pmFooter?.querySelector<HTMLButtonElement>('.pm-qty-dec');
+    const pmQtyInc = pmFooter?.querySelector<HTMLButtonElement>('.pm-qty-inc');
+    const pmQtyVal = pmFooter?.querySelector<HTMLElement>('.pm-qty-val');
+    let pmQty = 1;
+
+    function pmCeiling(): number {
+      return pmRemainingFor(pmSelectedVariants);
+    }
+
+    function pmUpdateStockNote(cap: number): void {
+      const note = pmFooter?.querySelector<HTMLElement>('#pm-stock-note');
+      const dot  = pmFooter?.querySelector<HTMLElement>('#pm-stock-dot');
+      const warn = pmFooter?.querySelector<HTMLElement>('#pm-stock-warn');
+      const text = pmFooter?.querySelector<HTMLElement>('#pm-stock-text');
+      if (!note || !dot || !warn || !text) return;
+      const outOfStock = cap <= 0;
+      const isLow = !outOfStock && cap <= 5;
+      note.style.fontWeight = outOfStock || isLow ? '600' : '500';
+      dot.style.display = outOfStock || isLow ? 'none' : 'inline-block';
+      warn.style.display = outOfStock || isLow ? 'block' : 'none';
+      if (outOfStock) {
+        note.style.color = 'var(--color-danger)';
+        text.textContent = i18n.outOfStock ?? 'אזל מהמלאי';
+      } else if (isLow) {
+        note.style.color = 'var(--color-warning)';
+        text.textContent = document.documentElement.lang === 'he' ? `נותרו ${cap} בלבד` : `Only ${cap} left`;
+      } else {
+        note.style.color = 'var(--color-muted)';
+        text.textContent = i18n.inStockLabel ?? 'במלאי';
+      }
+    }
+
+    function updatePmQty(n: number) {
+      const cap = pmCeiling();
+      pmQty = cap <= 0 ? 0 : Math.max(1, Math.min(n, cap));
+      if (pmQtyVal) pmQtyVal.textContent = String(pmQty);
+      if (pmQtyDec) pmQtyDec.disabled = pmQty <= 1;
+      if (pmQtyInc) pmQtyInc.disabled = cap <= 0 || pmQty >= cap;
+      if (pmAddBtn) pmAddBtn.disabled = cap <= 0;
+      pmUpdateStockNote(cap);
+    }
+    pmQtyDec?.addEventListener('click', () => updatePmQty(pmQty - 1));
+    pmQtyInc?.addEventListener('click', () => updatePmQty(pmQty + 1));
+
+    // Add to cart
+    const pmAddBtn  = pmFooter?.querySelector<HTMLButtonElement>('.pm-add-to-cart');
+    const pmBtnLbl  = pmFooter?.querySelector<HTMLElement>('.pm-btn-label');
+    const origLabel = pmBtnLbl?.textContent ?? '';
+    if (pmBtnLbl) pmBtnLbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px';
+
+    pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
+    const pmToCheckout = pmFooter?.querySelector<HTMLAnchorElement>('.pm-to-checkout');
+    updatePmQty(1); // reflect already-in-cart state as soon as the modal opens
+    pmUpdateVariantAvailability();
+
+    pmAddBtn?.addEventListener('click', () => {
+      if (pmAddBtn.disabled) return;
+      if (pmVariants.length && pmFlagMissingVariants()) return;
+      const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
+      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock: pmEffectiveStock(pmSelectedVariants) }, pmQty, pmVariantsCopy, false);
+      trackAddToCart({ id: slug, name, price, category }, pmQty);
+      updatePmQty(1);
+      pmAddBtn.disabled = true;
+      pmAddBtn.classList.add('btn--confirmed');
+      if (pmBtnLbl) pmBtnLbl.innerHTML = `${checkSvg}${i18n.addedToCart ?? 'נוסף!'}`;
+      if (pmToCheckout) pmToCheckout.style.display = 'inline-flex';
+      pmAddBtn.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
+        { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+      );
+      setTimeout(() => {
+        if (pmBtnLbl) pmBtnLbl.textContent = origLabel;
+        pmAddBtn.classList.remove('btn--confirmed');
+        updatePmQty(1); // re-enables only if stock remains, not blindly
+      }, 1400);
+    });
+
+    // Wishlist
+    const pmWishBtn  = pmFooter?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
+    const pmWishLbl  = pmFooter?.querySelector<HTMLElement>('.pm-wish-label');
+    pmWishBtn?.addEventListener('click', () => {
+      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl ? cdnSrc(mainImgUrl) : '', storeSlug, storeName, stock });
+      const svg = pmWishBtn.querySelector<SVGElement>('svg');
+      if (svg) { svg.style.fill = nowActive ? '#e53e3e' : 'none'; svg.style.stroke = nowActive ? '#e53e3e' : 'currentColor'; }
+      pmWishBtn.style.color = nowActive ? '#e53e3e' : 'var(--color-muted)';
+      if (pmWishLbl) pmWishLbl.textContent = nowActive ? (i18n.removeFromWishlist ?? 'הסר') : (i18n.addToWishlist ?? 'הוסף');
+      if (nowActive) spawnHeartBurst(pmWishBtn);
+      fetch('/api/wishlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: nowActive ? 'add' : 'remove', productSlug: slug }),
+      });
+    });
+  }
+
+  function closeProductModal(updateHistory = true) {
+    productModal?.setAttribute('hidden', '');
+    document.body.style.overflow = '';
+    if (pmBody) pmBody.innerHTML = '';
+    if (pmFooter) pmFooter.innerHTML = '';
+    if (pmSavedTitle) { document.title = pmSavedTitle; pmSavedTitle = ''; }
+    pmPrevFocus?.focus();
+    pmPrevFocus = null;
+    if (updateHistory) history.back();
+  }
+
+  pmClose?.addEventListener('click', () => closeProductModal());
+  pmBackdrop?.addEventListener('click', () => closeProductModal());
+
+  // Browser back button while modal is open → close modal UI (history already moving back)
+  window.addEventListener('popstate', () => {
+    if (productModal?.hidden === false) closeProductModal(false);
+  });
+
+  // ── Keyboard: Escape + focus traps (modal and its own lightbox) ──
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      if (lightbox?.hidden === false)     { closeLightbox(); return; }
+      if (productModal?.hidden === false) { closeProductModal(); return; }
+    }
+    if (lightbox?.hidden === false) {
+      if (e.key === 'ArrowLeft')  { prevLbImage(); return; }
+      if (e.key === 'ArrowRight') { nextLbImage(); return; }
+    }
+    if (e.key === 'Tab') {
+      if (lightbox?.hidden === false) {
+        const focusable = getLightboxFocusable();
+        if (!focusable.length) return;
+        const first = focusable[0]!;
+        const last  = focusable[focusable.length - 1]!;
+        if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
+        else { if (document.activeElement === last) { e.preventDefault(); first.focus(); } }
+        return;
+      }
+      if (productModal?.hidden === false) {
+        const focusable = getPMFocusable();
+        if (!focusable.length) return;
+        const first = focusable[0]!;
+        const last  = focusable[focusable.length - 1]!;
+        if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
+        else { if (document.activeElement === last) { e.preventDefault(); first.focus(); } }
+      }
+    }
+  });
+
+  // ── Open on event ─────────────────────────────────────────────
+  window.addEventListener('store-product-modal:open', (e: Event) => {
+    const detail = (e as CustomEvent<{ storeSlug: string; productSlug: string; storeName: string; flagMissing?: boolean }>).detail;
+    if (detail?.storeSlug && detail?.productSlug) {
+      openBySlug(detail.storeSlug, detail.productSlug, detail.storeName ?? '', detail.flagMissing ?? false);
+    }
+  });
+</script>

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { APIContext } from 'astro';
 import type { UserCartData } from '../src/lib/user-carts.js';
 
-const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number; blocked?: boolean }> = {
+const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number; blocked?: boolean; hidden?: boolean }> = {
   widget: { id: 'p1', slug: 'widget', name: 'Widget', price: 50, images: ['w.png'], stock: 100 },
 };
 
@@ -40,7 +40,7 @@ vi.mock('../src/lib/store-products.js', () => ({
   getProductBySlug: (_storeId: string, slug: string) => PRODUCTS[slug] ?? null,
   decrementStock: (id: string, qty: number, selectedVariants?: Record<string, string>) => decrementStock(id, qty, selectedVariants),
   restockProduct: (id: string, qty: number, selectedVariants?: Record<string, string>) => restockProduct(id, qty, selectedVariants),
-  isProductVisible: (product: { blocked?: boolean }) => !product.blocked,
+  isProductVisible: (product: { blocked?: boolean; hidden?: boolean }) => !product.blocked && !product.hidden,
   LOW_STOCK_THRESHOLD: 3,
 }));
 vi.mock('../src/lib/orders.js', () => ({ createOrder: (input: Record<string, unknown>) => createOrder(input) }));
@@ -136,6 +136,20 @@ describe('POST /api/checkout — server-side price re-validation', () => {
       expect(createOrder).not.toHaveBeenCalled();
     } finally {
       delete PRODUCTS.widget!.blocked;
+    }
+  });
+
+  it('rejects checkout for a seller-hidden product (the take-down switch keeps it off checkout too)', async () => {
+    PRODUCTS.widget!.hidden = true;
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(res.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+    } finally {
+      delete PRODUCTS.widget!.hidden;
     }
   });
 

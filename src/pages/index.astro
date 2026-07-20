@@ -9,7 +9,9 @@ import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { getAllOrders } from '../lib/orders.js';
-import { buildHomeFeed } from '../lib/home-feed.js';
+import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
+import { getUserCart } from '../lib/user-carts.js';
+import { parseRecentStores, mergeStoreSlugs } from '../lib/recent-stores.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId    = getSellerSession(Astro.cookies);
@@ -58,11 +60,32 @@ const feed = buildHomeFeed(storesWithProducts, sellerId, previousStoreSlugs);
 const TAB_IDS = ['discover', 'liked', 'buy-again', 'new'] as const;
 type TabId = typeof TAB_IDS[number];
 
-const discoverShelves = [
-  { id: 'discovery', title: t.home.shelfDiscovery, stores: feed.discovery },
-  ...feed.categories.map((c, i) => ({ id: `cat-${i}`, title: c.category, stores: c.stores })),
-];
-const discoverHasContent = discoverShelves.some((s) => s.stores.length > 0) || feed.spotlight.length > 0;
+// ── Recently-visited stores (CURRENT_TASK.md → סשן ב׳ 1+3) — rendered SSR as a
+// real StoreCard shelf, same as any other, so it reads exactly like the old
+// "גלה עוד" shelf (the product-card version was dropped — it demanded a product
+// open and left the shelf empty too often; a *store* visit is enough now).
+// Source is the per-browser `sn_recent_stores` cookie, unioned server-side with
+// the logged-in user's account list (recent-stores.ts) so it follows them
+// across devices — cookie first for this-session recency. Resolved against the
+// visible-with-products set, dropping any store since blocked/emptied.
+const recentSlugs = mergeStoreSlugs(
+  parseRecentStores(Astro.cookies.get('sn_recent_stores')?.value),
+  sellerId ? (getUserCart(sellerId).recentStores ?? []) : [],
+);
+const recentStores: FeedStore[] = recentSlugs
+  .map((slug) => storesWithProducts.find((sp) => sp.store.slug === slug))
+  .filter((sp): sp is FeedStore => sp !== undefined);
+
+// Category shelves render above the spotlight; "גלה עוד" (renamed from
+// "עוד לגלות" per סשן ב׳ 3) renders BELOW the big carousel (סשן ב׳ follow-up) —
+// the daily discovery shuffle as a "keep exploring" shelf after the hero
+// carousel, so a first-time visitor with no history still lands on discovery
+// content. Stores already in the recently-visited shelf are filtered out of it
+// to avoid a dupe.
+const categoryShelves = feed.categories.map((c, i) => ({ id: `cat-${i}`, title: c.category, stores: c.stores }));
+const discoveryShelf = { id: 'discovery', title: t.home.shelfDiscovery, stores: feed.discovery.filter((fs) => !recentSlugs.includes(fs.store.slug)) };
+const discoverHasContent = recentStores.length > 0 || categoryShelves.some((s) => s.stores.length > 0)
+  || feed.spotlight.length > 0 || discoveryShelf.stores.length > 0;
 
 // Discover is both the first tab and the default landing tab (round 3
 // feedback) — it's the main browsing surface and always populated whenever
@@ -87,7 +110,7 @@ const activeTabShelves: { id: string; title: string; stores: typeof feed.liked }
   activeTab === 'liked' ? [{ id: 'liked', title: t.home.shelfLiked, stores: feed.liked }] :
   activeTab === 'buy-again' ? [{ id: 'buy-again', title: t.home.shelfBuyAgain, stores: feed.buyAgain }] :
   activeTab === 'new' ? [{ id: 'new', title: t.home.shelfNew, stores: feed.newStores }] :
-  discoverShelves;
+  categoryShelves;
 const firstEagerShelfId = activeTabShelves.find((s) => s.stores.length > 0)?.id;
 
 // Fresh per visit: each shelf/spotlight title's small accent dot
@@ -183,7 +206,7 @@ const jsonLd = {
            HomeShelf, HomeTabEmpty, the spotlight sections below — already
            self-pads via its own inner .container, same as it always has. ── -->
       <div class="container">
-        <div class="dash-tabs !px-0" role="tablist">
+        <div class="dash-tabs !px-0 relative" role="tablist">
           {tabs.map((tab) => (
             <button
               class={`dash-tab home-tab${activeTab === tab.id ? ' dash-tab--active' : ''}
@@ -199,6 +222,7 @@ const jsonLd = {
               {tab.label}
             </button>
           ))}
+          <span class="home-tabs-indicator" aria-hidden="true"></span>
         </div>
       </div>
 
@@ -230,10 +254,19 @@ const jsonLd = {
       <div id="dash-panel-discover" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-discover" hidden={activeTab !== 'discover'}>
         {discoverHasContent ? (
           <>
-            <!-- ── Discovery shuffle + category shelves — unchanged from the old
-                 page-level shelf stack, just relocated inside this panel. ── -->
-            {discoverShelves.map((s, i) => (
-              <HomeShelf id={s.id} title={s.title} stores={s.stores} dotIndex={i + bgOffset} eagerFirst={activeTab === 'discover' && s.id === firstEagerShelfId} />
+            <!-- ── Recently visited stores (CURRENT_TASK.md → סשן ב׳ 1+3) — a
+                 normal SSR StoreCard shelf, resolved server-side from the
+                 recent-stores cookie (+ account for a logged-in user). Sits at
+                 the very top of the tab, where "עוד לגלות" used to be; only
+                 renders when there's history (HomeShelf hides itself on an
+                 empty list). ── -->
+            <HomeShelf id="recent" title={t.home.recentlyViewed} stores={recentStores} dotIndex={bgOffset}
+                       eagerFirst={activeTab === 'discover' && recentStores.length > 0} />
+
+            <!-- ── Category shelves — above the spotlight. "גלה עוד" now renders
+                 BELOW the spotlight instead (see after the carousel block). ── -->
+            {categoryShelves.map((s, i) => (
+              <HomeShelf id={s.id} title={s.title} stores={s.stores} dotIndex={i + 1 + bgOffset} eagerFirst={activeTab === 'discover' && recentStores.length === 0 && s.id === firstEagerShelfId} />
             ))}
 
             <!-- ── Spotlight: a horizontal carousel of per-store product
@@ -252,6 +285,25 @@ const jsonLd = {
               <div class="container" style="padding-top:1rem">
                 {feed.spotlight.length > 1 && (
                   <div class="home-spotlight-nav flex justify-end gap-[0.4rem] mb-2">
+                    <button
+                      type="button"
+                      class="home-spotlight-pause
+                        w-8 h-8 rounded-full border-[1.5px] border-[color:var(--color-border)]
+                        bg-[color:var(--color-surface)] text-[color:var(--color-text)]
+                        flex items-center justify-center cursor-pointer
+                        [transition:box-shadow_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
+                        hover:shadow-[var(--shadow-card-hover)] active:scale-[0.91]"
+                      aria-pressed="false"
+                      aria-label={lang === 'he' ? 'השהה החלפה אוטומטית' : 'Pause auto-rotation'}>
+                      <svg class="home-spotlight-pause__pause" width="13" height="13" viewBox="0 0 24 24"
+                           fill="currentColor" aria-hidden="true">
+                        <rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>
+                      </svg>
+                      <svg class="home-spotlight-pause__play hidden" width="13" height="13" viewBox="0 0 24 24"
+                           fill="currentColor" aria-hidden="true">
+                        <polygon points="7 4 20 12 7 20"/>
+                      </svg>
+                    </button>
                     <button
                       type="button"
                       class="home-spotlight-arrow home-spotlight-arrow--prev
@@ -378,6 +430,12 @@ const jsonLd = {
                 </div>
               </div>
             )}
+
+            <!-- ── "גלה עוד" (renamed from "עוד לגלות") — now BELOW the big
+                 carousel (סשן ב׳ follow-up), as a "keep exploring" shelf after
+                 the hero spotlight. HomeShelf hides itself when empty. ── -->
+            <HomeShelf id={discoveryShelf.id} title={discoveryShelf.title} stores={discoveryShelf.stores}
+                       dotIndex={categoryShelves.length + 1 + bgOffset} />
           </>
         ) : (
           <HomeTabEmpty message={t.home.tabEmptyGeneric} ctaLabel={t.home.tabEmptyCtaAll} ctaHref="/stores" />
@@ -448,6 +506,40 @@ const jsonLd = {
   // hidden-toggling, ?panel= URL sync via history.replaceState) — reused
   // unchanged, see AI_INSTRUCTIONS.md → Homepage.
   initDashTabs();
+
+  // ── Sliding tab underline (CURRENT_TASK.md → סשן ב׳ 2) — one shared bar that
+  // travels the full width of the tab row to whichever tab the pointer is over,
+  // and eases back to the active tab on pointer-leave. Positioning is by
+  // physical rect (left/width), so it's RTL-correct without a dir branch.
+  {
+    const tablist   = document.querySelector<HTMLElement>('.dash-tabs');
+    const indicator = tablist?.querySelector<HTMLElement>('.home-tabs-indicator');
+    const homeTabs  = tablist ? Array.from(tablist.querySelectorAll<HTMLElement>('.home-tab')) : [];
+    if (tablist && indicator && homeTabs.length) {
+      const activeTab = (): HTMLElement =>
+        tablist.querySelector<HTMLElement>('.home-tab.dash-tab--active') ?? homeTabs[0];
+
+      function moveIndicatorTo(tab: HTMLElement): void {
+        const t = tab.getBoundingClientRect();
+        const l = tablist!.getBoundingClientRect();
+        indicator!.style.width = `${t.width}px`;
+        indicator!.style.transform = `translateX(${t.left - l.left}px)`;
+      }
+
+      // Position under the active tab first, *then* reveal — so the bar fades
+      // in already in place instead of sliding out of the left:0/width:0 origin.
+      moveIndicatorTo(activeTab());
+      requestAnimationFrame(() => { moveIndicatorTo(activeTab()); indicator.classList.add('is-ready'); });
+
+      homeTabs.forEach((tab) => tab.addEventListener('pointerenter', () => moveIndicatorTo(tab)));
+      tablist.addEventListener('pointerleave', () => moveIndicatorTo(activeTab()));
+      // Keyboard/click activation (and any programmatic tab switch) re-anchors
+      // to the new active tab — dashtab:show bubbles up from the shown panel.
+      document.addEventListener('dashtab:show', () => moveIndicatorTo(activeTab()));
+      // Width of the tabs can shift on resize / late font load.
+      new ResizeObserver(() => moveIndicatorTo(activeTab())).observe(tablist);
+    }
+  }
 
   // Scoped to the page's own content (not `document`) so it never reaches
   // into the shared Header/Footer — same boundary store/[slug].astro's own
@@ -561,32 +653,100 @@ const jsonLd = {
       }
 
       // ── Auto-advance (CURRENT_TASK.md → סשן א׳): pages one store at a time,
-      // looping back to the start, every few seconds — until the buyer pages
-      // through it themselves (an arrow click or a direct swipe/drag/wheel on
-      // the track), which stops it for the rest of the visit. Paused (not
-      // just silently drifting) while the tab is backgrounded or the Discover
-      // panel itself isn't the active one, via the same `discoverPanel`/
-      // visibilitychange checks the rest of this block already needs.
+      // looping back to the start, every few seconds. Paused (not just silently
+      // drifting) while the tab is backgrounded or the Discover panel itself
+      // isn't the active one, via the same `discoverPanel`/visibilitychange
+      // checks the rest of this block already needs.
+      //
+      // Two extra pause paths (CURRENT_TASK.md → סשן ב׳ 4+5):
+      //   • `userPaused` — persistent, toggled by the explicit pause/play
+      //     button, and also set when the buyer takes manual control (an arrow,
+      //     or a real horizontal scroll of the track / an inner carousel — NOT a
+      //     vertical page scroll). Reflected in the button so it can always be
+      //     resumed — unlike the old model, which tore the timer down for the
+      //     rest of the visit with no way back.
+      //   • `hoverPaused` — momentary, held only while the pointer is over a
+      //     product card, so a card the buyer is reading/aiming at doesn't
+      //     slide out from under them; released on pointer-out.
       const slides = Array.from(track.querySelectorAll<HTMLElement>('.home-spotlight-slide'));
       if (slides.length > 1) {
         const AUTO_ADVANCE_MS = 4500;
         let slideIndex = 0;
-        let autoAdvanceTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
+        let userPaused = false;
+        let hoverPaused = false;
+        // Masks the track's OWN auto-advance scroll from the manual-scroll pause
+        // below, so the timer never pauses itself. Set true right before each
+        // programmatic scroll; cleared once that smooth scroll settles (via the
+        // scroll listener), with a fallback in case the target was already the
+        // current position and no scroll event ever fires.
+        let autoScrolling = false;
+        let autoSettleTimer: ReturnType<typeof setTimeout> | undefined;
+
+        setInterval(() => {
           if (document.visibilityState !== 'visible') return;
           if (discoverPanel?.hidden) return;
+          if (userPaused || hoverPaused) return;
           slideIndex = (slideIndex + 1) % slides.length;
-          slides[slideIndex]!.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+          autoScrolling = true;
+          clearTimeout(autoSettleTimer);
+          autoSettleTimer = setTimeout(() => { autoScrolling = false; }, 900);
+          // Scroll the track *itself* horizontally to the next slide — never
+          // `slide.scrollIntoView()`, which also scrolls the whole page
+          // vertically to pull the section into view and yanks the buyer down
+          // mid-read on every tick.
+          track!.scrollTo({ left: (isRtl ? -1 : 1) * slideIndex * track!.clientWidth, behavior: 'smooth' });
         }, AUTO_ADVANCE_MS);
 
-        function stopAutoAdvance(): void {
-          if (autoAdvanceTimer === null) return;
-          clearInterval(autoAdvanceTimer);
-          autoAdvanceTimer = null;
+        // Item 5 — explicit pause/play toggle sitting next to the arrows.
+        const btnPause = document.querySelector<HTMLButtonElement>('.home-spotlight-pause');
+        const iconPause = btnPause?.querySelector<SVGElement>('.home-spotlight-pause__pause');
+        const iconPlay  = btnPause?.querySelector<SVGElement>('.home-spotlight-pause__play');
+        const isHe = document.documentElement.lang === 'he';
+        function setPaused(paused: boolean): void {
+          userPaused = paused;
+          if (!btnPause) return;
+          btnPause.setAttribute('aria-pressed', String(paused));
+          btnPause.setAttribute('aria-label',
+            paused ? (isHe ? 'הפעל החלפה אוטומטית' : 'Resume auto-rotation')
+                   : (isHe ? 'השהה החלפה אוטומטית' : 'Pause auto-rotation'));
+          iconPause?.classList.toggle('hidden', paused);
+          iconPlay?.classList.toggle('hidden', !paused);
         }
-        track.addEventListener('pointerdown', stopAutoAdvance, { once: true });
-        track.addEventListener('wheel', stopAutoAdvance, { once: true, passive: true });
-        btnPrev?.addEventListener('click', stopAutoAdvance, { once: true });
-        btnNext?.addEventListener('click', stopAutoAdvance, { once: true });
+        btnPause?.addEventListener('click', () => setPaused(!userPaused));
+
+        // Manual paging is a deliberate "I'll drive" signal → persistent pause
+        // (resumable via the button). The arrows are explicit; scroll-driven
+        // paging is detected off the ACTUAL horizontal scroll of the track
+        // (moving between the stores) or of an inner product carousel — never a
+        // vertical page scroll, which moves neither container's scrollLeft and
+        // so fires no scroll event here. (The bug this replaced was a `wheel`
+        // listener that paused on every vertical scroll while merely hovering
+        // the carousel.) The track's own auto-advance scroll is masked via
+        // `autoScrolling`.
+        btnPrev?.addEventListener('click', () => setPaused(true));
+        btnNext?.addEventListener('click', () => setPaused(true));
+        track.addEventListener('scroll', () => {
+          if (autoScrolling) {
+            clearTimeout(autoSettleTimer);
+            autoSettleTimer = setTimeout(() => { autoScrolling = false; }, 160);
+            return;
+          }
+          setPaused(true);
+        }, { passive: true });
+        track.querySelectorAll<HTMLElement>('.home-carousel').forEach((c) =>
+          c.addEventListener('scroll', () => setPaused(true), { passive: true }));
+
+        // Item 4 — momentary hover pause over a product card. pointerenter/
+        // leave don't bubble, so delegate via pointerover/out and confirm the
+        // pointer actually crossed a card boundary (relatedTarget check) rather
+        // than moving between two children of the same card.
+        track.addEventListener('pointerover', (e) => {
+          if ((e.target as HTMLElement).closest('.home-product-card')) hoverPaused = true;
+        });
+        track.addEventListener('pointerout', (e) => {
+          const to = e.relatedTarget as HTMLElement | null;
+          if (!to || !to.closest('.home-product-card')) hoverPaused = false;
+        });
       }
     }
   }

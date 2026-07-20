@@ -811,7 +811,16 @@ const strEmpty   = t.store.noProductsFound;
       return `${n.toLocaleString('he-IL')} ₪`;
     }
 
-    type SiteSearchStore = { name: string; slug: string; tagline: string };
+    // A store row shows its real logo when the seller set one, otherwise an
+    // initial-gradient avatar (mirrors StoreAvatar.astro) — never the generic
+    // house icon, so every store result reads as a distinct brand.
+    function storeAvatarHtml(name: string, image: string): string {
+      if (image) return `<img class="hsd-result-store-img" src="${image}" alt="" width="56" height="56" loading="lazy">`;
+      const initial = escHtml((name.trim()[0] ?? '?').toUpperCase());
+      return `<span class="hsd-result-avatar" aria-hidden="true">${initial}</span>`;
+    }
+
+    type SiteSearchStore = { name: string; slug: string; tagline: string; image: string };
     type SiteSearchProduct = { name: string; slug: string; price: number; image: string; storeSlug: string; storeName: string };
 
     // Guards a slower, earlier fetch (e.g. a fast backspace-retype) from resolving
@@ -841,7 +850,7 @@ const strEmpty   = t.store.noProductsFound;
             ${stores.map(s => `
               <li role="option">
                 <a class="hsd-result-item" href="/store/${s.slug}">
-                  <div class="hsd-result-img-placeholder" aria-hidden="true">${STORE_ICON}</div>
+                  ${storeAvatarHtml(s.name, s.image)}
                   <span class="hsd-result-name">${escHtml(s.name)}</span>
                   ${s.tagline ? `<span class="hsd-result-price" style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.tagline)}</span>` : ''}
                 </a>

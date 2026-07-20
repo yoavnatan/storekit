@@ -2,7 +2,15 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /checkout
+# Block the API surface, but the product feed under it MUST stay fetchable —
+# Google Merchant Center / Meta Catalog crawl it and honour robots.txt. Google
+# resolves the longest matching rule, so this Allow wins for the feed path only.
+Allow: /api/feed/
 Disallow: /api
 
 # Update the host below to your real domain.
+# Two sitemaps (Google merges multiple Sitemap directives): the static one for
+# build-time public routes, and the dynamic one enumerating all store + product
+# pages (SSR — absent from the static sitemap).
 Sitemap: https://example.com/sitemap-index.xml
+Sitemap: https://example.com/sitemap-content.xml

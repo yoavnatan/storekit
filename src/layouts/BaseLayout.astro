@@ -7,6 +7,7 @@ import AddToCartPreview from '../components/AddToCartPreview.astro';
 import WishlistDrawer from '../components/WishlistDrawer.astro';
 import ConfirmModal from '../components/ConfirmModal.astro';
 import ProductQuickView from '../components/ProductQuickView.astro';
+import StoreProductModal from '../components/StoreProductModal.astro';
 import ToastContainer from '../components/ToastContainer.astro';
 import MessageCompose from '../components/MessageCompose.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
@@ -122,6 +123,9 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
       var k=keys[i];
       if(k.indexOf('store_cart_v2_')===0||k==='wishlist_v1')localStorage.removeItem(k);
     }
+    // recently-visited stores live in a cookie (SSR-read); drop it too so a
+    // shared computer doesn't leak one account's history to the next.
+    document.cookie='sn_recent_stores=;path=/;max-age=0;samesite=lax';
   }
   if(uid===''){
     // logout: server already has the latest cart; clear local
@@ -151,6 +155,7 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
     <WishlistDrawer />
     <ConfirmModal />
     <ProductQuickView />
+    <StoreProductModal />
     <ToastContainer />
     <MessageCompose />
     <script>import '../lib/cart-sync.js';</script>

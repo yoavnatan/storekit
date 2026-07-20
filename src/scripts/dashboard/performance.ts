@@ -1,6 +1,6 @@
 import { formatPrice } from '../../config/store.config.js';
-import { buildBarChartSvg, buildLineChartSvg, buildDonutChartSvg, type PieSlice } from '../../lib/chart-svg.js';
-import type { PerformanceSummary } from '../../lib/seller-performance.js';
+import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg, buildDonutChartSvg, type PieSlice } from '../../lib/chart-svg.js';
+import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/seller-performance.js';
 import { showTooltip, showTooltipAtPoint, hideTooltip, mountTooltipIn, initInfoTooltips } from './tooltip.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 
@@ -137,9 +137,14 @@ function paintCharts(summary: PerformanceSummary, i18n: Record<string, string>, 
     );
   }
   if (visitorsChart) {
-    visitorsChart.innerHTML = buildLineChartSvg(
-      summary.points.map((p) => ({ label: p.label, value: p.views })),
-      { width, color: 'var(--color-accent)', valueFormatter: (v) => String(v), emptyMessage: i18n.perfNoData, rtl: chartRtl, animate }
+    visitorsChart.innerHTML = buildMultiLineChartSvg(
+      [
+        // Primary: unique visitors (solid accent + area). Secondary: total visits
+        // (dashed muted envelope above it). The gap between them = returning traffic.
+        { points: summary.points.map((p) => ({ label: p.label, value: p.uniqueVisitors })), color: 'var(--color-accent)', fill: true, label: i18n.perfUniqueVisitors },
+        { points: summary.points.map((p) => ({ label: p.label, value: p.views })), color: 'var(--color-muted)', dashed: true, label: i18n.perfVisitors },
+      ],
+      { width, valueFormatter: (v) => String(v), emptyMessage: i18n.perfNoData, rtl: chartRtl, animate }
     );
   }
 }
@@ -150,11 +155,13 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
   const ordersEl = document.getElementById('perf-kpi-orders');
   const avgEl = document.getElementById('perf-kpi-avg');
   const visitorsEl = document.getElementById('perf-kpi-visitors');
+  const uniqueEl = document.getElementById('perf-kpi-unique');
   const conversionEl = document.getElementById('perf-kpi-conversion');
   if (revenueEl) revenueEl.textContent = formatPrice(summary.totalRevenue);
   if (ordersEl) ordersEl.textContent = String(summary.totalOrders);
   if (avgEl) avgEl.textContent = formatPrice(summary.avgOrderValue);
   if (visitorsEl) visitorsEl.textContent = String(summary.totalViews);
+  if (uniqueEl) uniqueEl.textContent = String(summary.totalUniqueVisitors);
   if (conversionEl) conversionEl.textContent = `${summary.conversionRate.toFixed(1)}%`;
 
   // Profitability breakdown (gross → −commission → net).
@@ -178,12 +185,12 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
 // every range-picker fetch, which would otherwise silently drop any
 // listener bound to a bar directly.
 function initChartTooltips(): void {
-  ['perf-revenue-chart', 'perf-visitors-chart'].forEach((id) => {
+  ['perf-revenue-chart', 'perf-visitors-chart', 'pperf-revenue-chart', 'pperf-views-chart'].forEach((id) => {
     const container = document.getElementById(id);
     if (!container) return;
-    // Tint the visitors (line) tooltip to the chart's own accent colour; the
-    // revenue chart keeps the default dark tooltip.
-    const tipColor = id === 'perf-visitors-chart' ? 'var(--color-accent)' : undefined;
+    // Tint the visits (line) tooltips to the chart's own accent colour; the
+    // revenue (bar) charts keep the default dark tooltip.
+    const tipColor = id === 'perf-visitors-chart' || id === 'pperf-views-chart' ? 'var(--color-accent)' : undefined;
     // The point currently being explained on a line chart, so the tooltip is
     // re-positioned only when you cross to a *different* point — not on every
     // mousemove within the same column (which would flicker showTooltip's fade,
@@ -364,6 +371,130 @@ export function initPerformanceTab(): void {
     if (raw) lastSummary = JSON.parse(raw) as PerformanceSummary;
   } catch { /* leave null — first range fetch will populate it */ }
 
+  // ── Per-product drill-down (סשן א׳) ──────────────────────────────────────
+  // A searchable product picker (the shared floating portal, so it's the same
+  // site-design dropdown as the range picker and stays pinned on scroll) drives
+  // a fetch to the same endpoint with &productId=…, rendering that one product's
+  // sales + page-views over the tab's current range. It reuses #perf-range-picker's
+  // storeSlug/endpoint and the from/to inputs, so it always follows the range.
+  let productList: Array<{ id: string; name: string }> = [];
+  try { productList = JSON.parse(document.getElementById('perf-product-list')?.textContent ?? '[]') as Array<{ id: string; name: string }>; } catch { /* none */ }
+  // Alphabetical (Hebrew-aware) so the picker is scannable, not in raw store order.
+  productList.sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  const productPortal = createFloatingPortal('perf-product-portal');
+  const productTrigger = document.getElementById('perf-product-trigger');
+  const productLabelEl = document.getElementById('perf-product-label');
+  const productEmpty = document.getElementById('perf-product-empty');
+  const productResult = document.getElementById('perf-product-result');
+  let selectedProductId = '';
+  let lastProductSummary: ProductPerformanceSummary | null = null;
+
+  function pProdWidth(id: string): number {
+    const w = document.getElementById(id)?.clientWidth ?? 0;
+    return w > 0 ? Math.round(w) : 320;
+  }
+
+  function paintProductCharts(ps: ProductPerformanceSummary, animate = false): void {
+    const revEl = document.getElementById('pperf-revenue-chart');
+    const viewsEl = document.getElementById('pperf-views-chart');
+    if (revEl) {
+      revEl.innerHTML = buildBarChartSvg(
+        ps.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })),
+        { width: pProdWidth('pperf-revenue-chart'), color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: i18n.perfNoData, rtl: chartRtl, animate },
+      );
+    }
+    if (viewsEl) {
+      viewsEl.innerHTML = buildLineChartSvg(
+        ps.points.map((p) => ({ label: p.label, value: p.views })),
+        { width: pProdWidth('pperf-views-chart'), color: 'var(--color-accent)', valueFormatter: (v) => String(v), emptyMessage: i18n.perfNoData, rtl: chartRtl, animate },
+      );
+    }
+  }
+
+  function renderProductSummary(ps: ProductPerformanceSummary): void {
+    lastProductSummary = ps;
+    const set = (id: string, text: string) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    set('pperf-kpi-views', String(ps.totalViews));
+    set('pperf-kpi-units', String(ps.totalUnits));
+    set('pperf-kpi-revenue', formatPrice(ps.totalRevenue));
+    set('pperf-kpi-conversion', `${ps.conversionRate.toFixed(1)}%`);
+    if (productEmpty) productEmpty.hidden = true;
+    if (productResult) productResult.hidden = false;
+    paintProductCharts(ps, true);
+  }
+
+  async function loadProduct(): Promise<void> {
+    if (!selectedProductId) return;
+    const from = fromInput?.value ?? '';
+    const to = toInput?.value ?? '';
+    try {
+      const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}&from=${from}&to=${to}&productId=${encodeURIComponent(selectedProductId)}`);
+      if (!res.ok) return;
+      const data = await res.json() as { ok?: boolean; product?: ProductPerformanceSummary };
+      if (data.product) renderProductSummary(data.product);
+    } catch { /* keep last-known product data on a transient failure */ }
+  }
+  function refreshSelectedProduct(): void { if (selectedProductId) void loadProduct(); }
+
+  function buildProductMenu(): string {
+    // A "clear" row at the top deselects any product and collapses the section
+    // back to its empty state (data-product-id="" → selectProduct('')).
+    const clear = `<button type="button" role="option" aria-selected="${!selectedProductId}" data-product-id="" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] [color:var(--color-muted)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" style="${!selectedProductId ? 'font-weight:700' : ''}">${escHtml(i18n.perfProductClear ?? '')}</button>
+      <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`;
+    const options = productList.map((p) => {
+      const selected = p.id === selectedProductId;
+      return `<button type="button" role="option" aria-selected="${selected}" data-product-id="${escHtml(p.id)}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escHtml(p.name)}</button>`;
+    }).join('');
+    // The wrapper bleeds over the portal's own 0.3rem padding on all sides
+    // (negative margins, padding restored inside) and its sticky `top` is pulled
+    // up by that same 0.3rem so it stays flush to the portal's TOP edge while
+    // scrolling — otherwise the 0.3rem padding strip above `top:0` is left
+    // uncovered and a row scrolling up peeks through it (the reported bug). Solid
+    // surface background + bottom border so the list is fully hidden underneath.
+    return `<div class="sticky top-[-0.3rem] z-10 [background:var(--color-surface)] -mx-[.3rem] -mt-[.3rem] px-[.3rem] pt-[.3rem] pb-[.4rem] mb-1 border-b [border-color:var(--color-border)]"><input type="search" data-product-search placeholder="${escHtml(i18n.perfProductSearch ?? '')}" class="w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.7rem] outline-none" /></div>
+      ${clear}
+      <div data-product-options>${options}</div>
+      <p data-product-nomatch class="muted text-[0.82rem] m-0 px-3 py-2 text-center" hidden>${escHtml(i18n.perfProductNoMatch ?? '')}</p>`;
+  }
+
+  function selectProduct(id: string, name: string): void {
+    selectedProductId = id;
+    productPortal.close();
+    // Empty id = the "clear" row: collapse the section back to its empty state.
+    if (!id) {
+      if (productLabelEl) productLabelEl.textContent = i18n.perfProductPick ?? '';
+      lastProductSummary = null;
+      if (productResult) productResult.hidden = true;
+      if (productEmpty) productEmpty.hidden = false;
+      return;
+    }
+    if (productLabelEl) productLabelEl.textContent = name;
+    void loadProduct();
+  }
+
+  function wireProductMenu(portal: HTMLElement): void {
+    const searchInput = portal.querySelector<HTMLInputElement>('[data-product-search]');
+    const noMatch = portal.querySelector<HTMLElement>('[data-product-nomatch]');
+    const buttons = [...portal.querySelectorAll<HTMLButtonElement>('[data-product-id]')];
+    searchInput?.addEventListener('input', () => {
+      const q = searchInput.value.trim().toLowerCase();
+      let any = false;
+      buttons.forEach((b) => { const m = (b.textContent ?? '').toLowerCase().includes(q); b.hidden = !m; if (m) any = true; });
+      if (noMatch) noMatch.hidden = any;
+    });
+    portal.addEventListener('click', (e) => {
+      const b = (e.target as Element).closest<HTMLButtonElement>('[data-product-id]');
+      if (b) selectProduct(b.dataset.productId ?? '', b.textContent ?? '');
+    });
+    searchInput?.focus();
+  }
+
+  productTrigger?.addEventListener('click', () => {
+    if (productList.length === 0) return;
+    if (productPortal.currentTrigger() === productTrigger) { productPortal.close(); return; }
+    productPortal.open(productTrigger, '16rem', buildProductMenu, wireProductMenu);
+  });
+
   // Re-paint at the container's true pixel width once it's measurable (the panel
   // may be display:none at load) and whenever it changes. The SSR charts use a
   // fixed 640-unit viewBox that gets downscaled into a narrow 2-column card,
@@ -376,6 +507,9 @@ export function initPerformanceTab(): void {
       rafId = requestAnimationFrame(() => {
         const w = chartPixelWidth();
         if (lastSummary && w > 0 && w !== lastChartWidth) paintCharts(lastSummary, i18n);
+        // Repaint the per-product charts too (if a product is showing) so they
+        // stay crisp at the new width — no re-fetch, same as the store charts.
+        if (lastProductSummary) paintProductCharts(lastProductSummary, false);
       });
     });
     ro.observe(revChart);
@@ -418,6 +552,7 @@ export function initPerformanceTab(): void {
     if (label) label.textContent = i18n[PRESET_LABEL_KEY[preset]] ?? preset;
     rangePortal.close();
     loadRange(from, to);
+    refreshSelectedProduct();
   }
 
   function applyCustomRange(from: string, to: string): void {
@@ -428,6 +563,7 @@ export function initPerformanceTab(): void {
     if (label) label.textContent = `${formatShortDate(from)}–${formatShortDate(to)}`;
     rangePortal.close();
     loadRange(from, to);
+    refreshSelectedProduct();
   }
 
   function buildPanelHtml(): string {

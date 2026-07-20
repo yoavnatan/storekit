@@ -330,6 +330,12 @@ nav a:hover { color: var(--color-text); }
   border-radius: var(--radius);
   box-shadow: 0 8px 32px rgba(0,0,0,0.13);
   padding: 0.3rem;
+  /* Cap to the viewport so a long results list scrolls inside the dropdown
+     instead of running past the bottom edge of the page (dvh accounts for
+     mobile browser chrome). */
+  max-height: calc(100dvh - 4.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .header-search__dropdown:not([hidden]) {
   animation: hsd-open 0.13s cubic-bezier(0.34,1.56,0.64,1);
@@ -427,6 +433,33 @@ nav a:hover { color: var(--color-text); }
   align-items: center;
   justify-content: center;
   color: var(--color-muted);
+}
+
+/* Store logo + initial-fallback avatar are circular (matches StoreAvatar.astro
+   site-wide) — reads as a brand mark, distinct from the square product thumbs. */
+.hsd-result-store-img {
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.hsd-result-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.4rem;
+  color: #fff;
+  background: linear-gradient(135deg, #2a3c40, #3a5260);
+  border: 1px solid var(--color-border);
 }
 
 .hsd-result-store {

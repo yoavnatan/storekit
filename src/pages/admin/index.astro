@@ -10,6 +10,12 @@ import { getAllOrders } from '../../lib/orders.js';
 import { filterAndSortOrders, getOrderStoreNames, parseOrderQuery } from '../../lib/admin-orders-filter.js';
 import { getAdminThreadSummaries, filterAndSortAdminThreads, parseAdminThreadQuery } from '../../lib/admin-messages.js';
 import { getRecentErrors, filterAndSortErrors, getErrorStoreNames } from '../../lib/error-log.js';
+import { buildPlatformAdOverview } from '../../lib/admin-ads.js';
+import { getPlatformAdSettings } from '../../lib/platform-ads.js';
+import { getAllCampaigns } from '../../lib/ad-campaigns.js';
+import { getAllBrandCampaigns } from '../../lib/brand-campaigns.js';
+import { presetRange, coerceRange, previousPeriod, AD_RANGE_PRESETS, type AdRangePreset } from '../../lib/date-range.js';
+import { store as platform } from '../../config/store.config.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
 import { getLastViewedAt, recordTabView, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
@@ -20,6 +26,7 @@ import AdminOrdersPanel from '../../components/admin/AdminOrdersPanel.astro';
 import AdminAttentionPanel from '../../components/admin/AdminAttentionPanel.astro';
 import AdminMessagesPanel from '../../components/admin/AdminMessagesPanel.astro';
 import AdminAlertsPanel from '../../components/admin/AdminAlertsPanel.astro';
+import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.astro';
 
 if (!isAdminRequest(Astro.cookies)) {
   return Astro.redirect('/admin/login');
@@ -31,6 +38,7 @@ const tabs = [
   { id: 'stores', label: 'חנויות' },
   { id: 'orders', label: 'הזמנות' },
   { id: 'attention', label: 'לתשומת לב' },
+  { id: 'advertising', label: 'פרסום' },
   { id: 'messages', label: 'הודעות' },
   { id: 'alerts', label: 'התראות ושגיאות' },
 ] as const;
@@ -80,6 +88,34 @@ const orderStoreNames = getOrderStoreNames(allOrders);
 // ── Attention tab (no filters — pagination only, see CURRENT_TASK.md → סשן ב׳: already a filtered subset) ──
 const attentionAll = getStoresNeedingAttention(stores, sellers, productsByStore);
 const attentionPageResult = paginate(attentionAll, parsePage(sp, 'apage'));
+
+// ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ──
+// Feed = the exact set the product feed exports: visible stores carrying at least
+// one visible product. Reuses the already-fetched stores/productsByStore so this
+// tab adds no extra JSON reads.
+const feedStores = stores.filter((s) => !s.blocked && (productsByStore.get(s.id) ?? []).some((p) => !p.blocked));
+const feedProductCount = feedStores.reduce((sum, s) => sum + (productsByStore.get(s.id) ?? []).filter((p) => !p.blocked).length, 0);
+const brandCampaigns = getAllBrandCampaigns();
+const adCampaigns = getAllCampaigns();
+
+// Date range for all ad metrics (default: last 7 days — the Google/Meta
+// convention). `adpreset` drives it; `custom` reads adfrom/adto. Everything is
+// recomputed over the range, plus the equal-length previous period for a
+// period-over-period comparison on the headline totals.
+const adPresetRaw = sp.get('adpreset') as AdRangePreset | null;
+const adPreset: AdRangePreset = AD_RANGE_PRESETS.includes(adPresetRaw as AdRangePreset) ? adPresetRaw! : '7d';
+const adRange = adPreset === 'custom' ? coerceRange(sp.get('adfrom'), sp.get('adto')) : presetRange(adPreset)!;
+const adPrevRange = previousPeriod(adRange.from, adRange.to);
+
+const adInputBase = { feedStores, feedProductCount, allStores: stores, campaigns: adCampaigns, brandCampaigns, ads: platform.ads, settings: getPlatformAdSettings() };
+const adOverview = buildPlatformAdOverview({ ...adInputBase, range: adRange });
+const adPrevOverview = buildPlatformAdOverview({ ...adInputBase, range: adPrevRange });
+const pctChange = (cur: number, prev: number): number | null => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
+const adCompare = {
+  impressions: pctChange(adOverview.exposure.totalImpressions, adPrevOverview.exposure.totalImpressions),
+  clicks: pctChange(adOverview.exposure.totalClicks, adPrevOverview.exposure.totalClicks),
+  spend: pctChange(adOverview.exposure.totalSpend, adPrevOverview.exposure.totalSpend),
+};
 
 // ── Messages tab ──
 const messageThreadsAll = getAdminThreadSummaries();
@@ -232,6 +268,10 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
         />
       </div>
 
+      <div id="dash-panel-advertising" class="dash-panel" role="tabpanel" aria-labelledby="tab-advertising" hidden={initialPanel !== 'advertising'}>
+        <AdminAdvertisingPanel overview={adOverview} brandCampaigns={brandCampaigns} range={adRange} activePreset={adPreset} compare={adCompare} />
+      </div>
+
       <div id="dash-panel-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
         <AdminMessagesPanel
           threads={messagePageResult.items}
@@ -281,6 +321,7 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
   import { initAdminOrdersFilter } from '../../scripts/admin/orders-filter.js';
   import { initAdminMessagesPanel } from '../../scripts/admin/admin-messages.js';
   import { initAdminAlertsPanel } from '../../scripts/admin/alerts.js';
+  import { initAdminAdvertisingPanel } from '../../scripts/admin/advertising-platform.js';
   import { initAdminTabNav } from '../../scripts/admin/tab-nav.js';
   initDashTabs();
   initAdminSellersPanel();
@@ -288,5 +329,6 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
   initAdminOrdersFilter();
   initAdminMessagesPanel();
   initAdminAlertsPanel();
+  initAdminAdvertisingPanel();
   initAdminTabNav();
 </script>

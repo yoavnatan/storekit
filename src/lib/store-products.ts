@@ -41,6 +41,13 @@ export interface StoreProduct {
    *  but scoped to a single listing when the rest of the store is fine. 404s on its own
    *  product page, excluded from its store's grid/search/checkout. */
   blocked?: boolean;
+  /** Seller-controlled "off the shelf" switch — a product the seller has deliberately
+   *  taken down (e.g. permanently/intentionally out of stock) without deleting it. Same
+   *  storefront effect as `blocked` (hidden from grid/search/product page/checkout/feed/
+   *  sitemap via isProductVisible) but seller-owned, reversible from the dashboard, and —
+   *  unlike a stock shortage — excluded from the Products tab's stock-alert count so an
+   *  intentional take-down never nags (CURRENT_TASK.md, סשן א׳). */
+  hidden?: boolean;
   createdAt: string;
 }
 
@@ -113,13 +120,16 @@ export function getProductsByStoreId(storeId: string): StoreProduct[] {
   return readProducts().filter((p) => p.storeId === storeId);
 }
 
-/** false for an admin-blocked product (see admin-moderation.ts). Every public discovery/
- *  purchase surface must gate through this — not repeat `!product.blocked` inline — so a
- *  future call site can't forget the check the way a few already did (found in review,
- *  2026-07-14: the product page's own header-search suggestions and checkout.astro's
- *  shipping-total map both still leaked a blocked product before this consolidation). */
+/** false for an admin-blocked OR seller-hidden product. Every public discovery/purchase
+ *  surface must gate through this — not repeat `!product.blocked` inline — so a future call
+ *  site can't forget the check the way a few already did (found in review, 2026-07-14: the
+ *  product page's own header-search suggestions and checkout.astro's shipping-total map both
+ *  still leaked a blocked product before this consolidation). `hidden` is the seller's own
+ *  reversible take-down (see the field doc); it rides the same gate so a hidden product is
+ *  off every surface — grid, search, product page, checkout, feed, sitemap — exactly like a
+ *  blocked one, with no new call sites to keep in sync. */
 export function isProductVisible(product: StoreProduct): boolean {
-  return !product.blocked;
+  return !product.blocked && !product.hidden;
 }
 
 /** getProductsByStoreId(), pre-filtered to non-blocked — the version every public listing
@@ -131,6 +141,16 @@ export function getVisibleProductsByStoreId(storeId: string): StoreProduct[] {
 
 export function getProductById(id: string): StoreProduct | null {
   return readProducts().find((p) => p.id === id) ?? null;
+}
+
+/** Count of a store's products that are actually on sale (not seller-hidden, not
+ *  admin-blocked) yet out of / low on stock — the Products tab's stock-alert
+ *  badge number. Single source of truth so the SSR badge and the value each
+ *  mutating API returns to keep it live can never drift. `threshold` is
+ *  variant-combo.ts#LOW_STOCK_THRESHOLD, passed in by callers so this data-layer
+ *  module stays free of the variant helper dependency. */
+export function countStockAlerts(storeId: string, threshold: number): number {
+  return readProducts().filter((p) => p.storeId === storeId && !p.hidden && !p.blocked && p.stock <= threshold).length;
 }
 
 export function updateProduct(id: string, updates: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>>): StoreProduct | null {

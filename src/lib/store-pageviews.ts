@@ -4,13 +4,24 @@ import { Mutex } from './mutex.js';
 
 const PAGEVIEWS_PATH = path.join(process.cwd(), 'data/store-pageviews.json');
 
-// Daily bucket per store — not a per-visit log. Keeps writes/reads O(days),
-// not O(views), so this stays cheap at real traffic volume; a DB swap
-// replaces the bucket map with a `PageView(storeSlug, date, count)` table and
-// an atomic UPDATE ... SET count = count + 1 instead of this mutex.
-// Counts raw page loads (store page + its product pages), not unique
-// visitors — no session/cookie dedup, deliberately simple for a first pass.
-type PageviewStore = Record<string, Record<string, number>>;
+// Daily bucket per store. `total` counts every raw page load (store page + its
+// product pages); `visitors` holds the DISTINCT visitor ids seen that day, so
+// "unique visitors" can be computed exactly across any range (union of the
+// daily sets) — separating "one person entering many times" from "many
+// different people". A repeat load by the same visitor only bumps `total`, so
+// storage stays O(days × unique-visitors-per-day), not O(all loads). A DB swap
+// replaces the bucket map with a `PageView(storeSlug, date, visitorId)` table:
+// `COUNT(*)` gives total loads, `COUNT(DISTINCT visitorId)` the unique
+// visitors, replacing this mutex-guarded read-modify-write with an upsert.
+//
+// Legacy/demo rows may be a bare `number` (total only, no visitor ids) — read
+// coerces those to { total, visitors: [] }, so old data still charts (its
+// unique count is simply 0 until real cookie-backed traffic accrues).
+interface DayBucket { total: number; visitors: string[] }
+type StoredBucket = DayBucket | number;
+type PageviewStore = Record<string, Record<string, StoredBucket>>;
+
+export interface DailyPageView { date: string; views: number; visitors: string[] }
 
 function readAll(): PageviewStore {
   try { return JSON.parse(fs.readFileSync(PAGEVIEWS_PATH, 'utf8')) as PageviewStore; }
@@ -21,19 +32,29 @@ function writeAll(data: PageviewStore): void {
   fs.writeFileSync(PAGEVIEWS_PATH, JSON.stringify(data, null, 2));
 }
 
+/** Coerce a stored bucket (which may be a legacy bare number) into the full shape. */
+function normalizeBucket(v: StoredBucket | undefined): DayBucket {
+  if (v == null) return { total: 0, visitors: [] };
+  if (typeof v === 'number') return { total: v, visitors: [] };
+  return { total: v.total ?? 0, visitors: Array.isArray(v.visitors) ? v.visitors : [] };
+}
+
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
 const pageviewMutex = new Mutex();
 
-/** Fire-and-forget from middleware — increments today's bucket for a store. Never throws (caller must not let analytics failures break page rendering). */
-export function recordPageView(storeSlug: string): void {
+/** Fire-and-forget from middleware — bumps today's total load count for a store and, when a stable visitor id is supplied, records it once (repeat loads by the same visitor never inflate the unique count). Never throws (caller must not let analytics failures break page rendering). */
+export function recordPageView(storeSlug: string, visitorId?: string): void {
   pageviewMutex.run(() => {
     const all = readAll();
     const forStore = all[storeSlug] ?? {};
     const key = todayKey();
-    forStore[key] = (forStore[key] ?? 0) + 1;
+    const bucket = normalizeBucket(forStore[key]);
+    bucket.total += 1;
+    if (visitorId && !bucket.visitors.includes(visitorId)) bucket.visitors.push(visitorId);
+    forStore[key] = bucket;
     all[storeSlug] = forStore;
     writeAll(all);
   }).catch(() => undefined);
@@ -50,10 +71,13 @@ function dateRange(fromISO: string, toISO: string): string[] {
   return dates;
 }
 
-/** Zero-filled daily series across [fromISO, toISO] (both 'YYYY-MM-DD', inclusive) — ready to chart directly, no gaps for days with no traffic. */
-export function getDailyPageViews(storeSlug: string, fromISO: string, toISO: string): { date: string; views: number }[] {
+/** Zero-filled daily series across [fromISO, toISO] (both 'YYYY-MM-DD', inclusive) — ready to bucket/union directly, no gaps for days with no traffic. `views` = total loads that day; `visitors` = the distinct visitor ids seen (empty for legacy/demo rows). */
+export function getDailyPageViews(storeSlug: string, fromISO: string, toISO: string): DailyPageView[] {
   const forStore = readAll()[storeSlug] ?? {};
-  return dateRange(fromISO, toISO).map((date) => ({ date, views: forStore[date] ?? 0 }));
+  return dateRange(fromISO, toISO).map((date) => {
+    const b = normalizeBucket(forStore[date]);
+    return { date, views: b.total, visitors: b.visitors };
+  });
 }
 
 export function getPageViewsInRange(storeSlug: string, fromISO: string, toISO: string): number {

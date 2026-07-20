@@ -48,7 +48,24 @@ export interface Store {
    *  search), so it can't keep damaging the shared platform domain's Google standing
    *  while the seller sorts it out. Never set by anything but an admin action. */
   blocked?: boolean;
+  /** Admin-only "shop-window" curation weight (see /api/admin/promote + CURRENT_TASK.md → סשן ב׳).
+   *  Higher = the store floats higher in the platform's OWN discovery surfaces (homepage
+   *  discovery + spotlight, /stores directory). It only reorders placement in real estate the
+   *  platform itself owns and pays for — it never fabricates ratings/badges/social proof, never
+   *  costs the seller anything, and is never shown to or settable by the seller (the seller store
+   *  update endpoint whitelists fields explicitly, see /api/store.ts). 0/undefined = no boost.
+   *  Deliberately silent: unlike `blocked`, promotion has nothing to disclose or appeal. */
+  promoWeight?: number;
   createdAt: string;
+}
+
+/** Highest curation weight the admin can assign (0 = none, 1 = promoted, 2 = spotlight). */
+export const MAX_PROMO_WEIGHT = 2;
+
+/** Descending curation-weight comparator (0 = unpromoted). Returns 0 for equal weights, so a
+ *  caller can layer it on top of an existing order (a stable sort keeps that order within a tier). */
+export function byPromoWeight(a: Store, b: Store): number {
+  return (b.promoWeight ?? 0) - (a.promoWeight ?? 0);
 }
 
 function readStores(): Store[] {

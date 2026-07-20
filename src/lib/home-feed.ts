@@ -76,6 +76,15 @@ function normalizeCategory(raw: string): string {
   return raw.trim();
 }
 
+/** Float admin-promoted stores (curation weight, see stores.ts#promoWeight) to the front of a
+ *  discovery row without disturbing the order among equal-weight stores — Array.sort is stable,
+ *  so the daily seeded-shuffle order is preserved within each tier. This is the ONLY effect the
+ *  silent "shop-window" promotion has: it reorders placement in the platform's own discovery
+ *  surfaces, nothing more (CURRENT_TASK.md → סשן ב׳). */
+function promoFirst(list: FeedStore[]): FeedStore[] {
+  return list.slice().sort((a, b) => (b.store.promoWeight ?? 0) - (a.store.promoWeight ?? 0));
+}
+
 /** `previousStoreSlugs` — the buyer's past-order store slugs, most-recent purchase first
  *  (deduped by the caller); pass `[]` for a guest or a buyer with no order history. Kept as a
  *  plain input here rather than importing orders.ts directly, same reasoning as
@@ -142,9 +151,9 @@ export function buildHomeFeed(storesWithProducts: FeedStore[], userId: string | 
     .map(([category, stores]) => ({ category, stores: stores.slice(0, SHELF_SIZE) }));
 
   const discoveryPool = storesWithProducts.filter((fs) => !likedSlugs.has(fs.store.slug) && !buyAgainSlugs.has(fs.store.slug) && !newSlugs.has(fs.store.slug));
-  const discovery = seededShuffle(discoveryPool, dailySeed('discovery')).slice(0, SHELF_SIZE);
+  const discovery = promoFirst(seededShuffle(discoveryPool, dailySeed('discovery'))).slice(0, SHELF_SIZE);
 
-  const spotlight = seededShuffle(storesWithProducts, dailySeed('spotlight')).slice(0, SPOTLIGHT_SIZE);
+  const spotlight = promoFirst(seededShuffle(storesWithProducts, dailySeed('spotlight'))).slice(0, SPOTLIGHT_SIZE);
 
   return { liked, buyAgain, newStores, discovery, categories, spotlight };
 }

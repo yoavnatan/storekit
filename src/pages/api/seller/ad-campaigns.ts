@@ -7,13 +7,17 @@ import {
   getCampaignsByStoreId, createCampaign, updateCampaign, deleteCampaign,
   getMockCampaignStats, getMockBaselineImpressions, parseDuration, parseAudience,
 } from '../../../lib/ad-campaigns.js';
+import { campaignStatsInRange, baselineImpressionsInRange } from '../../../lib/ad-metrics.js';
+import { presetRange, coerceRange, type AdRangePreset, AD_RANGE_PRESETS } from '../../../lib/date-range.js';
 
 function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function withStats(campaign: ReturnType<typeof getCampaignsByStoreId>[number]) {
-  return { ...campaign, stats: getMockCampaignStats(campaign) };
+function withStats(campaign: ReturnType<typeof getCampaignsByStoreId>[number], range?: { from: string; to: string }) {
+  // range === undefined → the admin per-store view (no date filter): keep the
+  // original lifetime mock. A range → the seller's date-windowed view.
+  return { ...campaign, stats: range ? campaignStatsInRange(campaign, range.from, range.to) : getMockCampaignStats(campaign) };
 }
 
 export async function GET({ request, cookies }: APIContext): Promise<Response> {
@@ -26,8 +30,19 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const store = stores.find((s) => s.slug === storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
-  const campaigns = getCampaignsByStoreId(store.id).map(withStats);
-  return json({ ok: true, campaigns, baselineImpressions: getMockBaselineImpressions(store.id) });
+  // Date range: an explicit preset (or custom from/to) → window the metrics;
+  // no range param at all → lifetime totals (the admin per-store control view).
+  const presetRaw = url.searchParams.get('preset') as AdRangePreset | null;
+  const hasRange = presetRaw !== null || url.searchParams.has('from');
+  let range: { from: string; to: string } | undefined;
+  if (hasRange) {
+    const preset: AdRangePreset = AD_RANGE_PRESETS.includes(presetRaw as AdRangePreset) ? presetRaw! : '7d';
+    range = preset === 'custom' ? coerceRange(url.searchParams.get('from'), url.searchParams.get('to')) : presetRange(preset)!;
+  }
+
+  const campaigns = getCampaignsByStoreId(store.id).map((c) => withStats(c, range));
+  const baselineImpressions = range ? baselineImpressionsInRange(store.id, range.from, range.to) : getMockBaselineImpressions(store.id);
+  return json({ ok: true, campaigns, baselineImpressions, range: range ?? null });
 }
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
@@ -45,7 +60,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const audience = scope === 'product' ? parseAudience(body.audience) : undefined;
   if (typeof storeSlug !== 'string') return json({ error: 'Missing storeSlug' }, 400);
   if (scope !== 'store' && scope !== 'product') return json({ error: 'Invalid scope' }, 400);
-  if (platform !== 'google' && platform !== 'meta') return json({ error: 'Invalid platform' }, 400);
+  if (platform !== 'google' && platform !== 'meta' && platform !== 'both') return json({ error: 'Invalid platform' }, 400);
   if (typeof monthlyBudget !== 'number' || !isFinite(monthlyBudget) || monthlyBudget < 50) {
     return json({ error: 'Minimum monthly budget is 50 ₪' }, 400);
   }

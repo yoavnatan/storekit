@@ -20,7 +20,9 @@ export interface AdCampaign {
   scope: 'store' | 'product';
   productId?: string;
   productName?: string;
-  platform: 'google' | 'meta';
+  // 'both' = one campaign running on Google + Meta together (the budget is
+  // split across the two networks). See getMockCampaignStats for its blended CPM.
+  platform: 'google' | 'meta' | 'both';
   monthlyBudget: number; // ILS
   // Seller-chosen run length in days; omitted = ongoing until paused/deleted.
   durationDays?: 7 | 14 | 30;
@@ -66,6 +68,11 @@ function readAll(): AdCampaign[] {
 
 function writeAll(campaigns: AdCampaign[]): void {
   fs.writeFileSync(CAMPAIGNS_PATH, JSON.stringify(campaigns, null, 2));
+}
+
+/** Every campaign across all stores — for the admin's platform-wide advertising overview. */
+export function getAllCampaigns(): AdCampaign[] {
+  return readAll();
 }
 
 export function getCampaignsByStoreId(storeId: string): AdCampaign[] {
@@ -132,7 +139,10 @@ export function getMockCampaignStats(campaign: AdCampaign): MockCampaignStats {
   // Platform-flavored CPM/CTR bands, seeded per campaign for variety without
   // being random-every-render.
   const rand = seededFraction(campaign.id);
-  const cpm = campaign.platform === 'google' ? 18 + rand * 14 : 12 + rand * 10; // ILS per 1000 impressions
+  // ILS per 1000 impressions — 'both' blends the two networks' bands.
+  const cpm = campaign.platform === 'google' ? 18 + rand * 14
+    : campaign.platform === 'meta' ? 12 + rand * 10
+    : 15 + rand * 12;
   const impressions = Math.round((spend / cpm) * 1000);
   const ctr = Math.round((1.2 + rand * 2.3) * 100) / 100; // %
   const clicks = Math.round(impressions * (ctr / 100));

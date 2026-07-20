@@ -36,30 +36,34 @@
    own (unstyled-by-this-file) tabs. Hover is a translateY reveal — the bar
    rises up from just below the tab into its resting place at the bottom
    edge — not the previous horizontal scaleX-from-center widen. */
-.home-tab { position: relative; }
-.home-tab::after {
-  content: '';
+/* ── Sliding tab underline (CURRENT_TASK.md → סשן ב׳ 2) ────────────────────
+   One shared bar instead of a per-tab ::after. It travels the *full* distance
+   across the tab row to whichever tab the pointer is over (index.astro sets
+   its width + translateX from each tab's live rect), and eases back to the
+   active tab on pointer-leave. A physical `left:0` anchor + a physical-pixel
+   translateX keeps it correct in RTL too — getBoundingClientRect reports
+   physical coords in either direction. Replaces the old translateY-reveal
+   ::after, which only lit under one tab at a time and never slid between them.
+   `.is-ready` (added by JS once positioned) gates the first fade-in so the bar
+   doesn't animate out of the left:0/width:0 origin on initial paint. */
+.home-tabs-indicator {
   position: absolute;
-  inset-inline: 0.85rem;
+  left: 0;
   bottom: 0;
   height: 2.5px;
+  width: 0;
   border-radius: 2px 2px 0 0;
-  background: var(--color-muted);
-  opacity: 0;
-  transform: translateY(6px);
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, background-color 0.15s ease;
-}
-.home-tab:hover::after {
-  opacity: 1;
-  transform: translateY(0);
-}
-.home-tab.dash-tab--active::after {
-  opacity: 1;
-  transform: translateY(0);
   background: var(--color-primary);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(0);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              width 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.2s ease;
 }
+.home-tabs-indicator.is-ready { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
-  .home-tab::after { transition: opacity 0.15s ease; }
+  .home-tabs-indicator { transition: opacity 0.2s ease; }
 }
 
 /* ── Section layout helpers ────────────────────────────────────────── */

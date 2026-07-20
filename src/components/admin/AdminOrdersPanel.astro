@@ -11,6 +11,7 @@
 import { formatPrice } from '../../config/store.config.js';
 import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
+import { orderAgeChipHtml, orderAgeCardClass } from '../../lib/order-age.js';
 import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
 import AdminPager from './AdminPager.astro';
 
@@ -96,15 +97,16 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
         const uniqueStores = [...new Set(o.items.map((i) => i.storeName))];
         return (
           <div
-            class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]"
+            class={`order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))] ${orderAgeCardClass(o.createdAt, o.shippingStatus)}`}
             data-order-id={o.id}
             data-shipping-status={o.shippingStatus}
             data-payment-status={o.paymentStatus}
           >
             <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
-              <div class="flex flex-col gap-[0.1rem] min-w-20 shrink-0">
+              <div class="flex flex-col items-start gap-[0.2rem] min-w-20 shrink-0">
                 <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#{(o.checkoutRef ?? o.id.slice(0, 8)).toUpperCase()}</span>
                 <span class="text-[0.72rem] text-[color:var(--color-muted)]">{formatHeDateTime(o.createdAt)}</span>
+                <Fragment set:html={orderAgeChipHtml(o.createdAt, o.shippingStatus, 'he', { emphasize: true })} />
               </div>
               <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
                 <span class="text-sm font-semibold text-[color:var(--color-text)]">{o.buyerName}</span>

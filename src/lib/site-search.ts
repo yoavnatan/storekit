@@ -7,6 +7,9 @@ export interface StoreSearchHit {
   name: string;
   slug: string;
   tagline: string;
+  /** Store logo (cdnSrc-transformed) — '' when the seller hasn't set one, so the
+   *  UI falls back to an initial avatar rather than a generic icon. */
+  image: string;
 }
 
 export interface ProductSearchHit {
@@ -55,7 +58,12 @@ export function searchSite(rawQuery: string, options: SiteSearchOptions = {}): {
   const matchedStores: StoreSearchHit[] = stores
     .filter((s) => matchesQueryWords(q, `${s.name} ${s.tagline} ${s.description}`))
     .slice(0, storeLimit)
-    .map((s) => ({ name: s.name, slug: s.slug, tagline: s.tagline }));
+    .map((s) => ({
+      name: s.name,
+      slug: s.slug,
+      tagline: s.tagline,
+      image: s.profileImage ? cdnSrc(s.profileImage, imageWidth) : '',
+    }));
 
   const matchedProducts: ProductSearchHit[] = [];
   for (const p of readProducts()) {

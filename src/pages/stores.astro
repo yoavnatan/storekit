@@ -4,7 +4,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import StoreCard from '../components/StoreCard.astro';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
-import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
+import { getStoreBySellerId, getVisibleStores, byPromoWeight } from '../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { getLang, getT } from '../i18n/index.js';
 
@@ -47,9 +47,14 @@ const filtered = storesWithProducts.filter(({ store }) => {
   return matchesQuery && matchesCategory;
 });
 
-const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+// Admin-promoted stores (curation weight, see stores.ts#promoWeight) float to the front of the
+// directory — the "shop-window" model. Stable sort: stores with equal weight keep their original
+// order, so this only lifts a promoted store, never reshuffles the rest.
+const ordered = filtered.slice().sort((a, b) => byPromoWeight(a.store, b.store));
+
+const totalPages = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE));
 const safePage = Math.min(Math.max(page, 1), totalPages);
-const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+const pageItems = ordered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
 function pageUrl(p: number): string {
   const params = new URLSearchParams();

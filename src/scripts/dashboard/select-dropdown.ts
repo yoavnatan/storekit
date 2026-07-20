@@ -1,0 +1,96 @@
+import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+
+// Upgrades a native <select> into a site-design dropdown backed by the shared
+// floating portal (createFloatingPortal): the menu stays pinned to its trigger
+// on scroll and is viewport-clamped so it never runs off the page — the two
+// things a raw <select>'s native popup can't guarantee inside the dashboard's
+// scrollable panels (CURRENT_TASK.md, advertising tab).
+//
+// The native <select> is kept in the DOM (display:none via [hidden]) as the
+// single source of truth: it still holds the value and still submits with the
+// form, so the existing advertising.ts logic (reads `.value`, listens to
+// `change`) is untouched — a portal pick sets `select.value` and fires a real
+// `change` event. Programmatic value changes (e.g. audience auto-fill) don't
+// fire `change`, so the caller must call refreshSelectDropdown() to re-sync the
+// visible trigger label.
+
+let counter = 0;
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+const SYNC_EVENT = 'select-dropdown:sync';
+
+export function initSelectDropdown(select: HTMLSelectElement): void {
+  if (select.dataset.dropdownBound) return;
+  select.dataset.dropdownBound = '1';
+
+  const portal = createFloatingPortal(`select-portal-${select.id || 'sel'}-${counter++}`);
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className =
+    'group w-full flex items-center justify-between gap-2 py-[0.65rem] px-[0.8rem] border [border-color:var(--color-border)] rounded-[var(--radius)] [background:var(--color-bg)] font-[inherit] text-[inherit] [color:var(--color-text)] cursor-pointer text-start transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-[1px] focus-visible:outline-[color:var(--color-primary)]';
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'overflow-hidden text-ellipsis whitespace-nowrap';
+  trigger.appendChild(labelSpan);
+  trigger.insertAdjacentHTML(
+    'beforeend',
+    '<svg class="shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>',
+  );
+
+  // Native control stays for value + form submission, just visually removed.
+  select.hidden = true;
+  select.setAttribute('aria-hidden', 'true');
+  select.tabIndex = -1;
+  select.insertAdjacentElement('afterend', trigger);
+
+  function syncLabel(): void {
+    labelSpan.textContent = select.selectedOptions[0]?.textContent ?? '';
+  }
+  syncLabel();
+
+  function buildHtml(): string {
+    return Array.from(select.options)
+      .map((o) => {
+        const selected = o.value === select.value;
+        return `<button type="button" role="option" aria-selected="${selected}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-surface)]" data-value="${escHtml(o.value)}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escHtml(o.textContent ?? '')}</button>`;
+      })
+      .join('');
+  }
+
+  function wire(p: HTMLElement): void {
+    p.querySelectorAll<HTMLButtonElement>('[data-value]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const v = b.dataset.value ?? '';
+        portal.close();
+        if (v !== select.value) {
+          select.value = v;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        syncLabel();
+      });
+    });
+  }
+
+  trigger.addEventListener('click', () => {
+    if (portal.currentTrigger() === trigger) { portal.close(); return; }
+    portal.open(trigger, `${Math.max(trigger.offsetWidth, 160)}px`, buildHtml, wire);
+  });
+
+  // Keep the visible label in step with both a real user `change` and a
+  // programmatic value set the caller announces via refreshSelectDropdown().
+  select.addEventListener('change', syncLabel);
+  select.addEventListener(SYNC_EVENT, syncLabel);
+}
+
+/** Re-sync a dropdown's visible trigger after the caller sets `select.value`
+ *  programmatically (which does not fire `change`). No-op if the select was
+ *  never upgraded. */
+export function refreshSelectDropdown(select: HTMLSelectElement | null): void {
+  select?.dispatchEvent(new Event(SYNC_EVENT));
+}

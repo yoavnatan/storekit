@@ -1,0 +1,93 @@
+---
+// Per-product performance drill-down section — shared by the seller dashboard's
+// performance tab and the admin per-store performance page so the two never
+// drift (CURRENT_TASK.md, סשן א׳). Presentational only: the product picker and
+// the KPI/chart rendering are wired client-side by scripts/dashboard/performance.ts,
+// which reads the same #perf-range-picker (storeSlug + data-endpoint + range) the
+// rest of the tab already uses. The picker itself is the shared floating portal
+// (site-design dropdown), so it stays pinned on scroll and never runs off-page.
+import { getLang, getT } from '../../i18n/index.js';
+
+interface Props {
+  // Every product in the store (id + name), incl. hidden ones — a seller may
+  // still want to review a taken-down product's past sales/views.
+  products: Array<{ id: string; name: string }>;
+}
+const { products } = Astro.props;
+const lang = getLang(Astro.cookies);
+const d = getT(lang).dashboard;
+---
+
+<div id="perf-product-section" class="mt-6 pt-5 border-t [border-color:var(--color-border)]">
+  <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+    <div>
+      <h3 class="m-0 text-[0.9rem] font-semibold">{d.perfProductTitle}</h3>
+      <p class="muted text-[0.8rem] m-0 mt-0.5">{d.perfProductSubtitle}</p>
+    </div>
+    <div id="perf-product-picker">
+      <button
+        type="button"
+        id="perf-product-trigger"
+        class="table-toolbar-btn group inline-flex items-center gap-[.4rem] max-w-full font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]"
+        aria-haspopup="listbox"
+        aria-expanded="false"
+        disabled={products.length === 0}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span id="perf-product-label" class="overflow-hidden text-ellipsis whitespace-nowrap">{d.perfProductPick}</span>
+        <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Product list for the picker (id + name); performance.ts builds the searchable dropdown from it. -->
+  <script type="application/json" id="perf-product-list" set:html={JSON.stringify(products.map((p) => ({ id: p.id, name: p.name })))}></script>
+
+  <!-- Empty state until a product is chosen. -->
+  <p id="perf-product-empty" class="muted text-[0.85rem] m-0 py-6 text-center border [border-color:var(--color-border)] border-dashed rounded-[var(--radius)]">
+    {products.length === 0 ? d.perfProductNone : d.perfProductEmpty}
+  </p>
+
+  <!-- Results, painted client-side on selection. -->
+  <div id="perf-product-result" hidden>
+    <dl class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4" aria-live="polite">
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+        <div class="flex items-center gap-1 mb-1">
+          <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfProductViews}</dt>
+          <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfProductViewsHint} aria-label={d.perfProductViewsHint}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+          </button>
+        </div>
+        <dd class="m-0 text-[1.05rem] font-bold" id="pperf-kpi-views">0</dd>
+      </div>
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+        <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfProductUnits}</dt>
+        <dd class="m-0 text-[1.05rem] font-bold" id="pperf-kpi-units">0</dd>
+      </div>
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+        <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfProductRevenue}</dt>
+        <dd class="m-0 text-[1.05rem] font-bold" id="pperf-kpi-revenue">—</dd>
+      </div>
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+        <div class="flex items-center gap-1 mb-1">
+          <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfProductConversion}</dt>
+          <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfProductConversionHint} aria-label={d.perfProductConversionHint}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+          </button>
+        </div>
+        <dd class="m-0 text-[1.05rem] font-bold" id="pperf-kpi-conversion">0%</dd>
+      </div>
+    </dl>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
+        <h4 class="m-0 mb-3 text-[0.85rem] font-semibold">{d.perfProductRevenueChart}</h4>
+        <div id="pperf-revenue-chart"></div>
+      </div>
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
+        <h4 class="m-0 mb-3 text-[0.85rem] font-semibold">{d.perfProductViewsChart}</h4>
+        <div id="pperf-views-chart"></div>
+      </div>
+    </div>
+  </div>
+</div>

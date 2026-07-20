@@ -180,16 +180,23 @@ const pmI18n = {
         <!-- Images column -->
         <div>
           <div id="main-img-wrap"
-               class={`relative overflow-hidden cursor-zoom-in${images[0] ? ' is-loading' : ''}`}
+               class={`relative overflow-hidden${images[0] ? ' is-loading' : ''}`}
                style="aspect-ratio:1/1;border-radius:var(--radius)"
                role={images.length > 0 ? 'button' : undefined}
                tabindex={images.length > 0 ? '0' : undefined}
                aria-label={images.length > 0 ? t.product.clickToZoom : undefined}>
-            {images[0]
-              ? <Image id="main-img" src={cdnSrc(images[0], 800)} alt={product.name}
-                       width={800} height={800}
-                       style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease, opacity 0.18s ease"
-                       loading="eager" fetchpriority="high" />
+            {images.length > 0
+              ? <div id="main-slides"
+                     class="flex w-full h-full overflow-x-scroll overflow-y-hidden cursor-zoom-in [scroll-snap-type:x_mandatory] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [touch-action:pan-x] [overscroll-behavior-inline:contain] [&::-webkit-scrollbar]:hidden">
+                  {images.map((img, i) => (
+                    <div class="relative shrink-0 w-full h-full [scroll-snap-align:start] [scroll-snap-stop:always]">
+                      <Image id={i === 0 ? 'main-img' : undefined} src={cdnSrc(img, 800)} alt={i === 0 ? product.name : ''}
+                             width={800} height={800}
+                             class="w-full h-full object-cover block"
+                             loading={i === 0 ? 'eager' : 'lazy'} fetchpriority={i === 0 ? 'high' : undefined} />
+                    </div>
+                  ))}
+                </div>
               : <div class="absolute inset-0 flex items-center justify-center" style="color:var(--color-border)" aria-hidden="true">
                   <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
@@ -210,7 +217,7 @@ const pmI18n = {
                   data-img-src={cdnSrc(img, 800)}
                   data-img-index={String(i)}
                   class="thumb-btn is-loading flex-shrink-0 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
-                  style={`width:4rem;height:4rem;border-radius:var(--radius);border-color:${i === 0 ? 'var(--color-accent)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
+                  style={`width:4rem;height:4rem;border-radius:var(--radius);border-color:${i === 0 ? 'var(--color-text)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
                   aria-pressed={i === 0 ? 'true' : 'false'}
                   aria-label={`${product.name} ${i + 1}`}
                 >
@@ -223,11 +230,12 @@ const pmI18n = {
         </div>
 
         <!-- Info column -->
-        <div class="flex flex-col gap-3 md:gap-6">
+        <div class="flex flex-col gap-4 md:gap-5">
 
-          <!-- Name + price -->
-          <div class="flex flex-col gap-2">
-            <h1 id="product-name-heading" dir="auto" style="font-size:1.5rem;font-weight:700;line-height:1.25;color:var(--color-text);margin:0">{product.name}</h1>
+          <!-- Name + price — dir=auto on the wrapper so the price aligns to the same
+               side as the (per-language) product name instead of staying pinned right. -->
+          <div class="flex flex-col gap-2" dir="auto">
+            <h1 id="product-name-heading" style="font-size:1.5rem;font-weight:700;line-height:1.25;color:var(--color-text);margin:0">{product.name}</h1>
             <p style="font-size:1.25rem;font-weight:800;line-height:1;color:var(--color-accent);margin:0">{formatPrice(product.price)}</p>
           </div>
 
@@ -313,12 +321,15 @@ const pmI18n = {
             <span id="stock-status-text">{initialStatusText}</span>
           </p>
 
-          <!-- Cart actions -->
-          {product.stock <= 0
-            ? <span class="badge badge--muted self-start">{t.store.outOfStock}</span>
-            : (
-              <div class="flex flex-col gap-3 mt-auto">
-                <!-- Qty + Add to cart — stays inline right below the color picker, on every screen size -->
+          <!-- Cart actions — the wishlist button stays available even when the product is
+               out of stock; only the qty+add-to-cart row is gated behind stock.
+               Top-aligned (no mt-auto): pinning the CTA to the column's bottom made
+               it track the image column's height — extra thumbnails or a variant-less
+               product opened a dead gap between the title and the buttons. -->
+          <div class="flex flex-col gap-3">
+            {product.stock <= 0
+              ? <span class="badge badge--muted self-start">{t.store.outOfStock}</span>
+              : (
                 <div id="product-cta-row" class="flex items-center gap-3">
                   <div dir="ltr" class="qty-stepper flex items-center flex-shrink-0 overflow-hidden"
                        style="border:1px solid var(--color-border);border-radius:var(--radius);height:48px">
@@ -362,8 +373,10 @@ const pmI18n = {
                     {t.store.toCheckout}
                   </a>
                 </div>
+              )
+            }
 
-                <!-- Wishlist -->
+                <!-- Wishlist (available even when out of stock) -->
                 <button type="button" id="wishlist-btn"
                         class="flex items-center gap-2 text-sm font-medium self-start"
                         style="color:var(--color-muted);background:none;border:none;cursor:pointer;padding:0.25rem 0;visibility:hidden"
@@ -403,14 +416,14 @@ const pmI18n = {
                     btn.style.visibility = 'visible';
                   })();
                 </script>
-              </div>
-            )
-          }
+          </div>
         </div>
       </div>
 
-      <!-- Details zone: full-width description / specs / category / tags -->
-      {(product.description || (product.specs?.length ?? 0) > 0 || productCategoryName || (product.tags?.length ?? 0) > 0) && (
+      <!-- Details zone: full-width description / specs / category.
+           Tags are search/discovery metadata only (still emitted in the Product
+           JSON-LD `keywords`) — deliberately not shown to shoppers. -->
+      {(product.description || (product.specs?.length ?? 0) > 0 || productCategoryName) && (
         <div class="details-card"
              style="margin-top:2.5rem;border:1.5px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface);padding:1.75rem;display:flex;flex-direction:column;gap:1.5rem">
 
@@ -454,22 +467,6 @@ const pmI18n = {
             </div>
           )}
 
-          {(product.tags?.length ?? 0) > 0 && (
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
-                {t.product.tagsLabel ?? (lang === 'he' ? 'תגיות' : 'Tags')}
-              </p>
-              <div class="flex flex-wrap gap-1.5" role="list" aria-label={t.product.tagsLabel}>
-                {product.tags!.map((tag) => (
-                  <span role="listitem"
-                        style="border:1px solid var(--color-border);border-radius:9999px;padding:0.18rem 0.65rem;font-size:0.75rem;color:var(--color-muted);line-height:1.5">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
         </div>
       )}
 
@@ -506,20 +503,18 @@ const pmI18n = {
           <p id="related-heading" style="font-size:0.875rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.875rem">
             {t.product.moreFrom}{shopStore.name}
           </p>
-          <div style="display:flex;gap:0.625rem;overflow-x:auto;padding-bottom:0.25rem;scrollbar-width:none">
+          <!-- overflow-x:auto forces overflow-y to compute to `auto`, so the box clips
+               the cards' hover shadow + 2px lift on every side (top/bottom and the
+               first/last card's inline edges). A minimal clearance on all four sides
+               gives the (snug) shadow just enough room; the equal negative margin
+               cancels it out exactly, so the strip's height/position is unchanged
+               from before the shadow existed. -->
+          <div style="display:flex;gap:0.625rem;overflow-x:auto;scrollbar-width:none;padding:0.375rem 0.6rem 0.5rem;margin:-0.375rem -0.6rem -0.5rem">
             {relatedProducts.map((p) => {
               const pImgs = p.images ?? [];
               return (
                 <div class="related-card"
-                     data-images={pImgs.length ? JSON.stringify(pImgs) : undefined}
-                     data-product-name={p.name}
-                     data-price={String(p.price)}
-                     data-description={p.description ?? ''}
-                     data-stock={String(p.stock)}
                      data-slug={p.slug}
-                     data-category={p.categoryId ? categoryPath(storeCategoriesForProduct, p.categoryId) : ''}
-                     data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
-                     data-variant-images={p.variantImages ? JSON.stringify(p.variantImages) : undefined}
                      style="flex:0 0 auto;width:170px;border-radius:var(--radius);overflow:hidden;background:var(--color-surface);cursor:pointer">
                   <a href={`/store/${shopStore.slug}/${p.slug}`}
                      class="related-card-trigger"
@@ -538,8 +533,8 @@ const pmI18n = {
                           </div>
                       }
                     </div>
-                    <div style="padding:0.5rem 0.6rem 0.6rem">
-                      <p style="font-size:0.75rem;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text)" dir="auto">{p.name}</p>
+                    <div dir="auto" style="padding:0.5rem 0.6rem 0.6rem">
+                      <p style="font-size:0.75rem;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text)">{p.name}</p>
                       <p style="font-size:0.75rem;font-weight:700;margin:0.2rem 0 0;color:var(--color-accent)">{formatPrice(p.price)}</p>
                     </div>
                   </a>
@@ -548,21 +543,6 @@ const pmI18n = {
             })}
           </div>
         </section>
-
-      <!-- Product modal (for related cards) -->
-      <div id="product-modal" hidden role="dialog" aria-modal="true" aria-labelledby="pm-name"
-           style="position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:0.75rem">
-        <div id="pm-backdrop"
-             style="position:absolute;inset:0;background:rgba(0,0,0,0.58);cursor:pointer"></div>
-        <div id="pm-panel"
-             style="position:relative;z-index:1;background:white;border-radius:16px;width:min(100%,680px);max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
-          <button id="pm-close" aria-label={lang === 'he' ? 'סגור' : 'Close'}
-                  style="position:absolute;top:0.65rem;inset-inline-end:0.65rem;z-index:10;width:2rem;height:2rem;border-radius:50%;background:rgba(255,255,255,0.95);color:var(--color-muted);border:1px solid var(--color-border);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-          <div id="pm-body"></div>
-        </div>
-      </div>
       )}
 
       <!-- Mobile-only sticky duplicate of the cart actions — fades in once the
@@ -638,13 +618,14 @@ const pmI18n = {
 <script>
   import { addItem, getCartQty } from '../../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../../lib/wishlist.js';
-  import { cdnSrc } from '../../../config/store.config.js';
   import { spawnRipple } from '../../../lib/ripple.js';
   import { trackViewContent, trackAddToCart } from '../../../lib/tracking.js';
   import { comboKey } from '../../../lib/variant-combo.js';
-  import { resolveVariantColor, isColorVariant } from '../../../lib/color-variants.js';
+  import { isColorVariant } from '../../../lib/color-variants.js';
   import { initReadMore } from '../../../lib/read-more.js';
   import { saveLastStore } from '../../../lib/last-store.js';
+  import { spawnHeartBurst } from '../../../lib/burst.js';
+  import { recordStoreVisit } from '../../../lib/recent-stores.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
@@ -694,6 +675,15 @@ const pmI18n = {
         category: addBtnEl.dataset.category,
       });
     }
+  }
+
+  // ── Recently visited stores (CURRENT_TASK.md → סשן ב׳ 1+3): landing on any
+  // product counts as visiting its store — records the store into the
+  // per-browser cookie the homepage's "ביקרת לאחרונה" shelf reads (SSR). Only
+  // fires the account-sync event when the cookie actually changed (a repeat
+  // visit to the store already at the front is a no-op).
+  if (storeSlug && recordStoreVisit(storeSlug)) {
+    window.dispatchEvent(new CustomEvent('recent-stores:change'));
   }
 
   // ── Variant selector ───────────────────────────────────────────
@@ -788,19 +778,20 @@ const pmI18n = {
     });
   });
 
-  // ── Thumbnail switcher ─────────────────────────────────────────────
-  const mainImg = document.getElementById('main-img') as HTMLImageElement | null;
+  // ── Main image carousel + thumbnails ───────────────────────────────
+  const mainSlides = document.getElementById('main-slides');
   const thumbBtns = document.querySelectorAll<HTMLButtonElement>('.thumb-btn');
   let activeIndex = 0;
 
   // ── Skeleton: remove shimmer once the initial images load ───────────
   const mainImgWrapEl = document.getElementById('main-img-wrap');
-  if (mainImg && mainImgWrapEl) {
+  const firstMainImg = document.getElementById('main-img') as HTMLImageElement | null;
+  if (firstMainImg && mainImgWrapEl) {
     const doneMain = () => mainImgWrapEl.classList.remove('is-loading');
-    if (mainImg.complete && mainImg.naturalWidth > 0) doneMain();
+    if (firstMainImg.complete && firstMainImg.naturalWidth > 0) doneMain();
     else {
-      mainImg.addEventListener('load', doneMain, { once: true });
-      mainImg.addEventListener('error', doneMain, { once: true });
+      firstMainImg.addEventListener('load', doneMain, { once: true });
+      firstMainImg.addEventListener('error', doneMain, { once: true });
     }
   }
   document.querySelectorAll<HTMLImageElement>('.thumb-btn img').forEach((img) => {
@@ -819,39 +810,41 @@ const pmI18n = {
       const isActive = Number(b.dataset.imgIndex) === idx;
       b.setAttribute('aria-pressed', String(isActive));
       b.style.opacity = isActive ? '1' : '0.55';
-      b.style.borderColor = isActive ? 'var(--color-accent)' : 'transparent';
+      b.style.borderColor = isActive ? 'var(--color-text)' : 'transparent';
     });
   }
 
-  // ── Main image hover zoom ──────────────────────────────────────────
-  if (mainImg) {
-    mainImg.closest<HTMLElement>('#main-img-wrap')?.addEventListener('mouseenter', () => {
-      mainImg.style.transform = 'scale(1.04)';
-    });
-    mainImg.closest<HTMLElement>('#main-img-wrap')?.addEventListener('mouseleave', () => {
-      mainImg.style.transform = 'scale(1)';
-    });
-  }
+  // The main image is a native horizontal scroll-snap carousel — swipe or
+  // trackpad-scroll horizontally to move one image at a time, exactly like the
+  // product-card / quick-view carousels but with no dot overlay (the thumbnail
+  // strip is the indicator). Vertical scroll is never captured, so the page
+  // scrolls normally over the image, and `overscroll-behavior-inline:contain`
+  // (on #main-slides) stops an edge swipe from triggering browser back.
+  const slidesRtl = mainSlides ? getComputedStyle(mainSlides).direction === 'rtl' : false;
+  const getMainSlideW = () => mainSlides?.offsetWidth || 1;
 
-  // Shared by the thumbnail-click handler and a color-variant click whose
-  // chip has its own linked photo (see the `.variant-opt` listener above) —
-  // a `function` declaration so it's hoisted and safe to call from there
-  // despite being defined later in this module.
+  // Hoisted `function` so the color-variant handler above can call it before
+  // its definition here — scrolls the carousel to a linked image.
   function switchMainImage(idx: number): void {
-    if (idx === activeIndex) return;
+    if (!mainSlides) return;
     activeIndex = idx;
-    const nextSrc = thumbBtns[idx]?.dataset.imgSrc || (images[idx] ? cdnSrc(images[idx], 800) : '');
-    if (mainImg && nextSrc) {
-      // Reveal only once the new image has actually loaded — swapping the
-      // src and un-hiding on a fixed timer let the still-rendered old image
-      // flash back into view if decoding took longer than the timeout.
-      const reveal = () => { mainImg.style.opacity = '1'; };
-      mainImg.style.opacity = '0';
-      mainImg.addEventListener('load', reveal, { once: true });
-      mainImg.addEventListener('error', reveal, { once: true });
-      mainImg.src = nextSrc;
-    }
+    mainSlides.scrollTo({ left: (slidesRtl ? -1 : 1) * idx * getMainSlideW(), behavior: 'smooth' });
     setThumbActive(idx);
+  }
+
+  if (mainSlides) {
+    // Update the active thumbnail live (rAF-throttled) so its highlight flips
+    // the instant the scroll crosses the halfway point into the next image,
+    // rather than only after scrolling has settled.
+    let scrollRaf: number | undefined;
+    mainSlides.addEventListener('scroll', () => {
+      if (scrollRaf !== undefined) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = undefined;
+        const idx = Math.min(Math.round(Math.abs(mainSlides.scrollLeft) / getMainSlideW()), images.length - 1);
+        if (idx !== activeIndex) { activeIndex = idx; setThumbActive(idx); }
+      });
+    }, { passive: true });
   }
 
   thumbBtns.forEach((btn) => {
@@ -859,6 +852,12 @@ const pmI18n = {
       switchMainImage(Number(btn.dataset.imgIndex ?? 0));
     });
   });
+
+  // Note: the main image intentionally does NOT hijack wheel/scroll to cycle
+  // gallery images — that trapped normal page scrolling and, past the last
+  // image, a horizontal trackpad swipe fell through to the browser's own
+  // back-navigation. Images are switched via the thumbnail strip and the
+  // lightbox arrows; the page scrolls normally over the image.
 
   // Warm the browser cache for the other gallery images at the same width
   // the main image uses, once the page is idle — so by the time a thumbnail
@@ -909,22 +908,32 @@ const pmI18n = {
     document.body.style.overflow = '';
   }
 
+  // The lightbox navigates independently — moving between enlarged images must
+  // NOT drive the gallery behind it (that "controls the images in the back"
+  // effect the user flagged). The main image only changes via its own thumbnails.
   function goLightbox(dir: 1 | -1) {
     lbIndex = (lbIndex + dir + images.length) % images.length;
-    if (lbImg) {
-      lbImg.style.opacity = '0';
-      setTimeout(() => {
-        if (lbImg) { lbImg.src = images[lbIndex] ?? ''; lbImg.style.opacity = '1'; }
-        updateLbCounter();
-        activeIndex = lbIndex;
-        setThumbActive(lbIndex);
-        if (mainImg) mainImg.src = images[lbIndex] ?? '';
-      }, 100);
-    }
+    updateLbCounter();
+    if (!lbImg) return;
+    // Decode the next image first, then swap it in place — the current image
+    // stays put until the new one is ready, so there's no blank/opacity flash
+    // (the "screen jumps, image vanishes then returns" the user reported).
+    const nextSrc = images[lbIndex] ?? '';
+    const pre = new Image();
+    pre.src = nextSrc;
+    const swap = () => { if (lbImg) lbImg.src = nextSrc; };
+    pre.decode().then(swap).catch(swap);
   }
 
   const mainWrap = document.getElementById('main-img-wrap');
-  mainWrap?.addEventListener('click', () => openLightbox(activeIndex));
+  // Ignore the click that ends a horizontal drag-scroll through the carousel —
+  // only a genuine tap (no scroll movement) should open the lightbox.
+  let mainPressScroll = 0;
+  mainSlides?.addEventListener('pointerdown', () => { mainPressScroll = mainSlides.scrollLeft; });
+  mainWrap?.addEventListener('click', () => {
+    if (mainSlides && Math.abs(mainSlides.scrollLeft - mainPressScroll) > 3) return;
+    openLightbox(activeIndex);
+  });
   mainWrap?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLightbox(activeIndex); }
   });
@@ -1200,10 +1209,7 @@ const pmI18n = {
       wishlistBtn.setAttribute('aria-label', nowActive ? (wi['removeLabel'] ?? '') : (wi['addLabel'] ?? ''));
       if (wishlistLabel) wishlistLabel.textContent = nowActive ? (wi['removeLabel'] ?? '') : (wi['addLabel'] ?? '');
       setWishlistStyle(nowActive);
-      wishlistBtn.animate(
-        [{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }],
-        { duration: 300, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
-      );
+      if (nowActive) spawnHeartBurst(wishlistBtn);
       fetch('/api/wishlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1212,334 +1218,24 @@ const pmI18n = {
     });
   }
 
-  // ── Related cards: product modal ──────────────────────────────────
-  const productModal = document.getElementById('product-modal') as HTMLDivElement | null;
-  const pmBackdrop   = document.getElementById('pm-backdrop')   as HTMLDivElement | null;
-  const pmClose      = document.getElementById('pm-close')      as HTMLButtonElement | null;
-  const pmBody       = document.getElementById('pm-body')       as HTMLDivElement | null;
-  const pmPanel      = document.getElementById('pm-panel')      as HTMLDivElement | null;
-
-  let pmPrevFocus: HTMLElement | null = null;
-  let pmSavedTitle = '';
-
-  function escHtml(s: string): string {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
+  // ── Stock-status i18n (read from the server-embedded #pm-i18n blob) ──
   function getPMI18n(): Record<string, string> {
     try { return JSON.parse(document.getElementById('pm-i18n')?.textContent ?? '{}') as Record<string, string>; }
     catch { return {}; }
   }
 
-  const pmResolveColor = resolveVariantColor;
-  const pmIsColorVariant = isColorVariant;
-
-  function fmtPrice(price: number): string {
-    return new Intl.NumberFormat('he-IL', { style:'currency', currency:'ILS', minimumFractionDigits:0 }).format(price);
-  }
-
-  function getPMFocusable(): HTMLElement[] {
-    return Array.from(
-      pmPanel?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input,[tabindex="0"]') ?? []
-    ).filter(el => el.offsetParent !== null);
-  }
-
-  function openProductModal(card: HTMLElement) {
-    const cardImages: string[] = card.dataset.images ? (JSON.parse(card.dataset.images) as string[]) : [];
-    const name        = card.dataset.productName ?? '';
-    const price       = Number(card.dataset.price ?? 0);
-    const description = card.dataset.description ?? '';
-    const stock       = Number(card.dataset.stock ?? 0);
-    const slug        = card.dataset.slug ?? '';
-    const category    = card.dataset.category ?? '';
-    const pmVariants: Array<{ name: string; options: string[] }> = card.dataset.variants
-      ? (JSON.parse(card.dataset.variants) as Array<{ name: string; options: string[] }>)
-      : [];
-    const pmVariantImages: Record<string, string> = card.dataset.variantImages
-      ? (JSON.parse(card.dataset.variantImages) as Record<string, string>)
-      : {};
-    // No dimension pre-selected — same "must actively choose" rule as the main
-    // product page's add-to-cart (see flagMissingVariants below) — except a
-    // single-option dimension, which has no real choice to make.
-    const pmSelectedVariants: Record<string, string> = {};
-    pmVariants.forEach((v) => { if (v.options.length === 1) pmSelectedVariants[v.name] = v.options[0]; });
-
-    const i18n       = getPMI18n();
-    const mainImgUrl = cardImages[0] ?? '';
-    const wishlisted = isWishlisted(slug);
-    const heartPath  = `<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>`;
-
-    pmPrevFocus  = document.activeElement as HTMLElement;
-    pmSavedTitle = document.title;
-    history.pushState({ productModal: true, slug }, '', `/store/${storeSlug}/${slug}`);
-    document.title = `${name} — ${storeName}`;
-
-    const thumbsHtml = cardImages.length > 1
-      ? `<div style="display:flex;gap:0.375rem;padding:0.5rem 1.25rem;overflow-x:auto;scrollbar-width:none;background:var(--color-bg)">
-          ${cardImages.map((img, i) => `
-            <button type="button" class="pm-thumb" data-idx="${i}"
-                    style="flex:0 0 52px;width:52px;height:52px;padding:0;border:2px solid ${i === 0 ? 'var(--color-accent)' : 'var(--color-border)'};border-radius:6px;overflow:hidden;cursor:pointer;background:none;transition:border-color 0.15s">
-              <img src="${escHtml(img)}" alt="" width="52" height="52" style="width:100%;height:100%;object-fit:cover" loading="lazy" decoding="async" />
-            </button>`).join('')}
-        </div>`
-      : '';
-
-    const noImgSvg = `<svg style="color:var(--color-border)" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
-
-    const mainImgHtml = mainImgUrl
-      ? `<div id="pm-img-wrap" style="position:relative;padding-top:62%;background:var(--color-bg)">
-           <img id="pm-main-img" src="${escHtml(mainImgUrl)}" alt="${escHtml(name)}" width="680" height="421"
-                style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" loading="eager" decoding="async" />
-         </div>`
-      : `<div style="padding-top:62%;background:var(--color-bg);position:relative">
-           <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${noImgSvg}</div>
-         </div>`;
-
-    const cartSection = stock > 0
-      ? `<div>
-          <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:0.6rem;width:100%">
-            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
-              <button type="button" class="pm-qty-dec" disabled aria-label="${pageLang === 'he' ? 'הפחת' : 'Decrease'}"
-                      style="width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              </button>
-              <span class="pm-qty-val" aria-live="polite"
-                    style="min-width:2.25rem;text-align:center;font-weight:600;font-size:0.875rem;color:var(--color-text)">1</span>
-              <button type="button" class="pm-qty-inc" aria-label="${pageLang === 'he' ? 'הוסף' : 'Increase'}"
-                      style="width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted)">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              </button>
-            </div>
-            <button type="button" class="btn pm-add-to-cart"
-                    data-slug="${escHtml(slug)}" data-name="${escHtml(name)}" data-price="${price}" data-image="${escHtml(mainImgUrl)}" data-stock="${stock}"
-                    style="flex:1 1 auto;height:2.25rem;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:4px">
-              <span class="pm-btn-label">${i18n.addToCart ?? (pageLang === 'he' ? 'הוסף לעגלה' : 'Add to cart')}</span>
-            </button>
-          </div>
-          <button type="button" class="pm-wishlist-btn"
-                  style="display:flex;align-items:center;justify-content:center;gap:0.4rem;width:100%;background:none;border:1px solid var(--color-border);border-radius:var(--radius);padding:0.4rem 0.85rem;cursor:pointer;font-size:0.8rem;color:${wishlisted ? '#e53e3e' : 'var(--color-muted)'};transition:all 0.15s">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="${wishlisted ? '#e53e3e' : 'none'}" stroke="${wishlisted ? '#e53e3e' : 'currentColor'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${heartPath}</svg>
-            <span class="pm-wish-label">${wishlisted ? (i18n.removeFromWishlist ?? '') : (i18n.addToWishlist ?? '')}</span>
-          </button>
-        </div>`
-      : `<span class="badge badge--muted">${i18n.outOfStock ?? (pageLang === 'he' ? 'אזל מהמלאי' : 'Out of stock')}</span>`;
-
-    const variantsHtml = pmVariants.length
-      ? `<div style="display:flex;flex-direction:column;gap:0.75rem">
-          ${pmVariants.map(v => {
-            const isCv = pmIsColorVariant(v.name);
-            const isSingleOption = v.options.length === 1;
-            return `<div class="variant-group" data-variant-group="${escHtml(v.name)}">
-              <p style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-muted);margin:0 0 0.4rem">${escHtml(v.name)}</p>
-              <div style="display:flex;flex-wrap:wrap;gap:0.4rem" role="group" aria-label="${escHtml(v.name)}">
-                ${v.options.map((opt) => {
-                  const { display, hex } = pmResolveColor(opt);
-                  const swatch = isCv && hex
-                    ? `<span aria-hidden="true" style="width:11px;height:11px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;display:inline-block"></span>`
-                    : '';
-                  const activeBorder = hex ?? 'var(--color-primary)';
-                  const activeBg = hex ? hex + '18' : 'transparent';
-                  return `<button type="button" class="pm-variant-opt"
-                    data-pv-name="${escHtml(v.name)}" data-pv-value="${escHtml(opt)}" data-pv-hex="${escHtml(hex ?? '')}"
-                    aria-pressed="${isSingleOption}"
-                    style="display:inline-flex;align-items:center;gap:0.3rem;border:1.5px solid ${isSingleOption ? activeBorder : 'var(--color-border)'};border-radius:var(--radius);padding:0.3rem 0.7rem;font-size:0.82rem;font-weight:${isSingleOption ? 600 : 500};cursor:pointer;background:${isSingleOption ? activeBg : 'none'};color:var(--color-text);transition:all 0.15s;white-space:nowrap">
-                    ${swatch}${escHtml(display)}
-                  </button>`;
-                }).join('')}
-              </div>
-            </div>`;
-          }).join('')}
-        </div>`
-      : '';
-
-    if (pmBody) {
-      pmBody.innerHTML = `
-        ${mainImgHtml}
-        ${thumbsHtml}
-        <div style="padding:1.25rem;display:flex;flex-direction:column;gap:0.875rem">
-          <div style="padding-inline-end:1.75rem">
-            <h2 id="pm-name" dir="auto" style="font-size:1.2rem;font-weight:700;color:var(--color-text);margin:0 0 0.4rem;line-height:1.35">${escHtml(name)}</h2>
-            <p style="font-size:1.45rem;font-weight:700;color:var(--color-accent);margin:0">${fmtPrice(price)}</p>
-          </div>
-          ${description ? `<p dir="auto" style="font-size:0.875rem;color:var(--color-muted);line-height:1.65;margin:0">${escHtml(description)}</p>` : ''}
-          ${variantsHtml}
-          <hr style="border:none;border-top:1px solid var(--color-border);margin:0" />
-          ${cartSection}
-          <a href="/store/${escHtml(storeSlug)}/${escHtml(slug)}"
-             style="font-size:0.75rem;color:var(--color-muted);text-decoration:none;text-align:center;display:block;padding-top:0.125rem">
-            ${i18n.fullPage ?? (pageLang === 'he' ? 'לדף המוצר המלא' : 'View full product page')}
-          </a>
-        </div>`;
-    }
-
-    productModal?.removeAttribute('hidden');
-    document.body.style.overflow = 'hidden';
-    pmPanel?.animate(
-      [{ opacity: 0, transform: 'scale(0.95) translateY(12px)' }, { opacity: 1, transform: 'scale(1) translateY(0)' }],
-      { duration: 240, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'forwards' }
-    );
-    pmClose?.focus();
-
-    // Missing-selection feedback (subtle shake + ring), same pattern as the
-    // main product page's flagMissingVariants — scoped to this modal's own DOM.
-    function pmFlagMissingVariants(): boolean {
-      // A `let` reassigned inside a forEach closure then read with a type
-      // guard right after the loop is a known TS control-flow limitation —
-      // narrows to `never` at the read site regardless of `if`/`?.` form.
-      // Building the list functionally instead sidesteps it entirely.
-      const groups = pmVariants
-        .filter((v) => !pmSelectedVariants[v.name])
-        .map((v) => pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(v.name)}"]`))
-        .filter((g): g is HTMLElement => !!g);
-      groups.forEach((group) => {
-        group.classList.remove('variant-group--invalid');
-        void group.offsetWidth;
-        group.classList.add('variant-group--invalid');
-        setTimeout(() => group.classList.remove('variant-group--invalid'), 650);
-      });
-      groups[0]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      return groups.length > 0;
-    }
-
-    // Swaps the modal's single main image + syncs the thumbnail strip's active
-    // border — shared by a thumbnail click and a color-variant click whose
-    // chip carries its own linked photo (see pmVariantImages below). A plain
-    // `function` so it's hoisted within this closure and safe to reference
-    // from the variant-click handler wired just above it.
-    function switchPmImage(idx: number): void {
-      const mainEl = document.getElementById('pm-main-img') as HTMLImageElement | null;
-      if (mainEl) mainEl.src = cardImages[idx] ?? '';
-      pmBody?.querySelectorAll<HTMLButtonElement>('.pm-thumb').forEach((t) => {
-        t.style.borderColor = Number(t.dataset.idx) === idx ? 'var(--color-accent)' : 'var(--color-border)';
-      });
-    }
-
-    // Variant clicks
-    pmBody?.querySelectorAll<HTMLButtonElement>('.pm-variant-opt').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const vName = btn.dataset.pvName ?? '';
-        const vValue = btn.dataset.pvValue ?? '';
-        pmSelectedVariants[vName] = vValue;
-        updatePmQty(1); // this combo may already have a different amount in the cart
-        pmBody?.querySelector<HTMLElement>(`.variant-group[data-variant-group="${CSS.escape(vName)}"]`)?.classList.remove('variant-group--invalid');
-        pmBody?.querySelectorAll<HTMLButtonElement>(`.pm-variant-opt[data-pv-name="${CSS.escape(vName)}"]`).forEach((b) => {
-          const active = b === btn;
-          const hex = b.dataset.pvHex || null;
-          b.setAttribute('aria-pressed', String(active));
-          b.style.borderColor = active ? (hex ?? 'var(--color-primary)') : 'var(--color-border)';
-          b.style.background  = active ? (hex ? hex + '18' : 'transparent') : 'none';
-          b.style.color       = 'var(--color-text)';
-          b.style.fontWeight  = active ? '600' : '500';
-        });
-        if (pmIsColorVariant(vName)) {
-          const url = pmVariantImages[vValue];
-          const idx = url ? cardImages.indexOf(url) : -1;
-          if (idx !== -1) switchPmImage(idx);
-        }
-      });
-    });
-
-    // Thumbnails
-    pmBody?.querySelectorAll<HTMLButtonElement>('.pm-thumb').forEach((thumb) => {
-      thumb.addEventListener('click', () => {
-        switchPmImage(Number(thumb.dataset.idx ?? 0));
-      });
-    });
-
-    // Qty stepper
-    const pmQtyDec = pmBody?.querySelector<HTMLButtonElement>('.pm-qty-dec');
-    const pmQtyInc = pmBody?.querySelector<HTMLButtonElement>('.pm-qty-inc');
-    const pmQtyVal = pmBody?.querySelector<HTMLElement>('.pm-qty-val');
-    let pmQty = 1;
-
-    // Ceiling accounts for whatever quantity of this exact combo is already in
-    // the cart (added here, from the main page, or elsewhere) — not just the
-    // combo's raw stock — so repeated clicks can't exceed real stock once every
-    // unit is already in it.
-    function pmCeiling(): number {
-      const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
-      return Math.max(0, stock - getCartQty(storeSlug, slug, pmVariantsCopy));
-    }
-
-    function updatePmQty(n: number) {
-      const cap = pmCeiling();
-      pmQty = cap <= 0 ? 0 : Math.max(1, Math.min(n, cap));
-      if (pmQtyVal) pmQtyVal.textContent = String(pmQty);
-      if (pmQtyDec) pmQtyDec.disabled = pmQty <= 1;
-      if (pmQtyInc) pmQtyInc.disabled = cap <= 0 || pmQty >= cap;
-      if (pmAddBtn) pmAddBtn.disabled = cap <= 0;
-    }
-    pmQtyDec?.addEventListener('click', () => updatePmQty(pmQty - 1));
-    pmQtyInc?.addEventListener('click', () => updatePmQty(pmQty + 1));
-
-    // Add to cart
-    const pmAddBtn = pmBody?.querySelector<HTMLButtonElement>('.pm-add-to-cart');
-    const pmBtnLbl = pmBody?.querySelector<HTMLElement>('.pm-btn-label');
-    const origLabel = pmBtnLbl?.textContent ?? '';
-    const checkSvgSm = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
-    pmAddBtn?.addEventListener('pointerdown', (e) => spawnRipple(pmAddBtn, e.clientX, e.clientY));
-    updatePmQty(1); // reflect already-in-cart state as soon as the modal opens
-    pmAddBtn?.addEventListener('click', () => {
-      if (pmAddBtn.disabled) return;
-      if (pmVariants.length && pmFlagMissingVariants()) return;
-      const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price, image: mainImgUrl, stock }, pmQty, pmVariantsCopy, false);
-      trackAddToCart({ id: slug, name, price, category }, pmQty);
-      updatePmQty(1);
-      pmAddBtn.disabled = true;
-      pmAddBtn.classList.add('btn--confirmed');
-      if (pmBtnLbl) pmBtnLbl.innerHTML = `${checkSvgSm}${i18n.addedToCart ?? ''}`;
-      pmAddBtn.animate(
-        [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
-        { duration: 280, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
-      );
-      setTimeout(() => {
-        if (pmBtnLbl) pmBtnLbl.textContent = origLabel;
-        pmAddBtn.classList.remove('btn--confirmed');
-        updatePmQty(1); // re-enables only if stock remains, not blindly
-      }, 1400);
-    });
-
-    // Wishlist
-    const pmWishBtn = pmBody?.querySelector<HTMLButtonElement>('.pm-wishlist-btn');
-    const pmWishLbl = pmBody?.querySelector<HTMLElement>('.pm-wish-label');
-    pmWishBtn?.addEventListener('click', () => {
-      const nowActive = toggleWishlist({ slug, name, price, image: mainImgUrl ? cdnSrc(mainImgUrl) : '', storeSlug, storeName, stock });
-      const svg = pmWishBtn.querySelector<SVGElement>('svg');
-      if (svg) { svg.style.fill = nowActive ? '#e53e3e' : 'none'; svg.style.stroke = nowActive ? '#e53e3e' : 'currentColor'; }
-      pmWishBtn.style.color = nowActive ? '#e53e3e' : 'var(--color-muted)';
-      if (pmWishLbl) pmWishLbl.textContent = nowActive ? (i18n.removeFromWishlist ?? '') : (i18n.addToWishlist ?? '');
-      fetch('/api/wishlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: nowActive ? 'add' : 'remove', productSlug: slug }),
-      });
-    });
-  }
-
-  function closeProductModal(updateHistory = true) {
-    productModal?.setAttribute('hidden', '');
-    document.body.style.overflow = '';
-    if (pmBody) pmBody.innerHTML = '';
-    if (pmSavedTitle) { document.title = pmSavedTitle; pmSavedTitle = ''; }
-    pmPrevFocus?.focus();
-    pmPrevFocus = null;
-    if (updateHistory) history.back();
-  }
-
-  pmClose?.addEventListener('click', () => closeProductModal());
-  pmBackdrop?.addEventListener('click', () => closeProductModal());
-
-  window.addEventListener('popstate', () => {
-    if (productModal && !productModal.hidden) closeProductModal(false);
-  });
-
-  // Related card clicks → open modal
-  document.querySelectorAll<HTMLAnchorElement>('.related-card-trigger').forEach((link) => {
-    link.addEventListener('click', (e) => {
+  // ── Related cards → shared store product modal ────────────────────
+  // Opens the exact same modal a store-page product card opens (the shared
+  // StoreProductModal, rendered in BaseLayout) — one source of truth, so it
+  // can't drift into an outdated look again. The modal fetches its own data
+  // from /api/store-product by slug, so the card only needs a slug; the
+  // <a href> stays a real link, so middle/ctrl-click still opens the full page.
+  document.querySelectorAll<HTMLElement>('.related-card').forEach((card) => {
+    const link = card.querySelector<HTMLAnchorElement>('.related-card-trigger');
+    link?.addEventListener('click', (e) => {
       e.preventDefault();
-      const card = link.closest<HTMLElement>('.related-card');
-      if (card) openProductModal(card);
+      const slug = card.dataset.slug ?? '';
+      if (slug) window.dispatchEvent(new CustomEvent('store-product-modal:open', { detail: { storeSlug, productSlug: slug, storeName } }));
     });
   });
 
@@ -1582,24 +1278,5 @@ const pmI18n = {
         },
       },
     }));
-  });
-
-  // Keyboard: Escape closes modal, Tab traps focus
-  document.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && productModal && !productModal.hidden) {
-      closeProductModal();
-      return;
-    }
-    if (e.key === 'Tab' && productModal && !productModal.hidden) {
-      const focusable = getPMFocusable();
-      if (!focusable.length) return;
-      const first = focusable[0]!;
-      const last  = focusable[focusable.length - 1]!;
-      if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-      } else {
-        if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
-      }
-    }
   });
 </script>

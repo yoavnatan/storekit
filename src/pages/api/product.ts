@@ -2,7 +2,8 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
-import { createProduct, updateProduct, deleteProduct, getProductById, isSkuTaken, type StoreProduct } from '../../lib/store-products.js';
+import { createProduct, updateProduct, deleteProduct, getProductById, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
+import { LOW_STOCK_THRESHOLD } from '../../lib/variant-combo.js';
 import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseVariantsPayload } from '../../lib/product-form.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
@@ -65,7 +66,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
       variantImages: Object.keys(variantImages).length ? variantImages : undefined,
     });
-    return json({ ok: true, product });
+    return json({ ok: true, product, stockAlerts: countStockAlerts(storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'edit-product') {
@@ -113,7 +114,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // alert for it, same as an order's status change clearing its own notification.
     deleteNotificationsByRelatedIds([productId], sellerId);
     const categoryPathStr = updated.categoryId ? categoryPath(getCategoriesByStoreId(product.storeId), updated.categoryId) : '';
-    return json({ ok: true, images: updated.images ?? [], categoryId: updated.categoryId ?? '', categoryPath: categoryPathStr });
+    return json({ ok: true, images: updated.images ?? [], categoryId: updated.categoryId ?? '', categoryPath: categoryPathStr, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'patch-product-fields') {
@@ -153,7 +154,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Only clear when the stock cell itself was the one edited — a name/price/sku
     // inline edit shouldn't silently dismiss an unrelated low-stock alert.
     if ('stock' in patch) deleteNotificationsByRelatedIds([productId], sellerId);
-    return json({ ok: true, product: { name: updated.name, price: updated.price, stock: updated.stock, sku: updated.sku ?? '' } });
+    return json({ ok: true, product: { name: updated.name, price: updated.price, stock: updated.stock, sku: updated.sku ?? '' }, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'patch-product-images') {
@@ -168,6 +169,24 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return json({ ok: true, images: updated?.images ?? [] });
   }
 
+  if (action === 'set-product-visibility') {
+    const productId = String(form.get('productId') || '');
+    const product = getProductById(productId);
+    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
+    const stores = getStoresBySellerId(sellerId);
+    if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    // A seller can only flip their own take-down flag; an admin `blocked` product
+    // stays hidden regardless (isProductVisible gates on both).
+    const hidden = String(form.get('hidden') || '') === '1';
+    const updated = updateProduct(productId, { hidden });
+    if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
+    // Taking a product off the shelf resolves any outstanding stock alert for it —
+    // the seller has consciously decided it's not for sale, so nagging about its
+    // stock would be exactly the noise this feature removes.
+    if (hidden) deleteNotificationsByRelatedIds([productId], sellerId);
+    return json({ ok: true, hidden: updated.hidden === true, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+  }
+
   if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
     const product = getProductById(productId);
@@ -175,7 +194,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stores = getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
     deleteProduct(productId);
-    return json({ ok: true });
+    return json({ ok: true, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   return json({ ok: false, error: 'Unknown action.' }, 400);

@@ -50,11 +50,17 @@ export function parseStoreHoursForm(form: FormData): StoreHours {
   return hours;
 }
 
-/** Groups consecutive weekdays that share the same hours into readable rows, e.g. "א׳–ה׳ 09:00–18:00". */
-export function formatStoreHours(hours: StoreHours, dayLabels: Record<StoreWeekday, string>, closedLabel: string): string[] {
+/** A single displayable hours row split into its day-range label and its time (or "closed")
+ *  value, so the UI can align the two to opposite edges of the box instead of running them
+ *  together as one string. */
+export interface StoreHoursRow { label: string; value: string }
+
+/** Groups consecutive weekdays that share the same hours into readable rows, each split into
+ *  a day-range label (e.g. "א׳–ה׳") and its value (e.g. "09:00–18:00" or the closed label). */
+export function formatStoreHours(hours: StoreHours, dayLabels: Record<StoreWeekday, string>, closedLabel: string): StoreHoursRow[] {
   return groupConsecutiveDays(hours).map(({ startDay, endDay, hours: dayHours }) => {
     const label = startDay === endDay ? dayLabels[startDay] : `${dayLabels[startDay]}–${dayLabels[endDay]}`;
-    return dayHours.closed ? `${label}: ${closedLabel}` : `${label} ${dayHours.open}–${dayHours.close}`;
+    return { label, value: dayHours.closed ? closedLabel : `${dayHours.open}–${dayHours.close}` };
   });
 }
 

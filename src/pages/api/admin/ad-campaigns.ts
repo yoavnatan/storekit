@@ -52,7 +52,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const audience = scope === 'product' ? parseAudience(body.audience) : undefined;
   if (typeof storeSlug !== 'string') return json({ error: 'Missing storeSlug' }, 400);
   if (scope !== 'store' && scope !== 'product') return json({ error: 'Invalid scope' }, 400);
-  if (platform !== 'google' && platform !== 'meta') return json({ error: 'Invalid platform' }, 400);
+  if (platform !== 'google' && platform !== 'meta' && platform !== 'both') return json({ error: 'Invalid platform' }, 400);
   if (typeof monthlyBudget !== 'number' || !isFinite(monthlyBudget) || monthlyBudget < 50) {
     return json({ error: 'Minimum monthly budget is 50 ₪' }, 400);
   }

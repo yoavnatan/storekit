@@ -7,6 +7,7 @@ import { getStoreBySlug } from '../../../../lib/stores.js';
 import { getSellerById } from '../../../../lib/seller-auth.js';
 import { getProductsByStoreId } from '../../../../lib/store-products.js';
 import { getCampaignsByStoreId, getMockCampaignStats, getMockBaselineImpressions } from '../../../../lib/ad-campaigns.js';
+import { roasTierChipHtml, ctrTierChipHtml } from '../../../../lib/ad-tier.js';
 import { getCategoriesByStoreId, categoryPath } from '../../../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../../../lib/audience-infer.js';
 import { formatPrice } from '../../../../config/store.config.js';
@@ -126,6 +127,7 @@ const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?:
               <label class="field">
                 <span>{d.adPlatform}</span>
                 <select id="ad-platform-select" name="platform" class="input">
+                  <option value="both">{d.adPlatformBoth}</option>
                   <option value="google">{d.adPlatformGoogle}</option>
                   <option value="meta">{d.adPlatformMeta}</option>
                 </select>
@@ -190,7 +192,7 @@ const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?:
                 <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
                   <div class="flex items-center gap-2">
                     <span class="text-[0.85rem] font-semibold">{c.scope === 'product' ? c.productName : d.adScopeStore}</span>
-                    <span class="text-[0.72rem] font-medium [color:var(--color-muted)]">{c.platform === 'google' ? d.adPlatformGoogle : d.adPlatformMeta}</span>
+                    <span class="text-[0.72rem] font-medium [color:var(--color-muted)]">{c.platform === 'google' ? d.adPlatformGoogle : c.platform === 'meta' ? d.adPlatformMeta : d.adPlatformBoth}</span>
                     <span class={`text-[0.68rem] font-bold py-[.1rem] px-[.5rem] rounded-full ${c.status === 'active' ? '[color:var(--color-success)] [background:color-mix(in_srgb,var(--color-success)_14%,transparent)]' : '[color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)]'}`}>
                       {c.status === 'active' ? d.adStatusActive : d.adStatusPaused}
                     </span>
@@ -201,12 +203,13 @@ const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?:
                   </div>
                 </div>
                 <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2">{adTargetingLabel(c)}</p>
-                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-[0.82rem]">
+                <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 text-[0.82rem]">
                   <div><span class="[color:var(--color-muted)]">{d.adBudgetLabel}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adImpressions}</span><br /><strong>{c.stats.impressions.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adClicks}</span><br /><strong>{c.stats.clicks.toLocaleString('he-IL')}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adCtr}</span><br /><strong>{c.stats.ctr}%</strong><Fragment set:html={ctrTierChipHtml(c.stats.ctr, { low: d.adTierLow, mid: d.adTierMid, high: d.adTierHigh })} /></div>
                   <div><span class="[color:var(--color-muted)]">{d.adSpend}</span><br /><strong>{formatPrice(c.stats.spend)}</strong></div>
-                  <div><span class="[color:var(--color-muted)]">{d.adRoas}</span><br /><strong>x{c.stats.roas}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adRoas}</span><br /><strong>x{c.stats.roas}</strong><Fragment set:html={roasTierChipHtml(c.stats.roas, { low: d.adTierLow, mid: d.adTierMid, high: d.adTierHigh })} /></div>
                 </div>
               </div>
             ))}

@@ -3,7 +3,8 @@ import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug } from '../../../lib/orders.js';
-import { buildPerformanceSummary, pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
+import { getProductById } from '../../../lib/store-products.js';
+import { buildPerformanceSummary, buildProductPerformance, pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
 import { store as platformConfig } from '../../../config/store.config.js';
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -45,6 +46,19 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
 
   const orders = getOrdersByStoreSlug(storeSlug);
+
+  // ?productId=… → single-product drill-down (sales + views for that product,
+  // same range/axis). The product must belong to THIS store, else a crafted id
+  // could read another store's product views/sales. Returned alongside the store
+  // summary so the tab can render both from one fetch.
+  const productId = url.searchParams.get('productId');
+  if (productId) {
+    const product = getProductById(productId);
+    if (!product || product.storeId !== store.id) return json({ error: 'Product not found' }, 404);
+    const productSummary = buildProductPerformance(orders, storeSlug, productId, from, to, granularity);
+    return json({ ok: true, product: productSummary, productName: product.name });
+  }
+
   const summary = buildPerformanceSummary(orders, storeSlug, from, to, granularity, platformConfig.checkout.commissionPercent, topLimit);
   return json({ ok: true, summary });
 }

@@ -1,6 +1,7 @@
 ---
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, STORE_WEEKDAYS } from '../../lib/stores.js';
 import { DEFAULT_STORE_HOURS } from '../../lib/store-hours.js';
@@ -9,6 +10,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  countStockAlerts,
 } from '../../lib/store-products.js';
 import { formatPrice, cdnSrc, store as platformConfig } from '../../config/store.config.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
@@ -31,8 +33,12 @@ import { comboKey, generateCombos, LOW_STOCK_THRESHOLD, type VariantDimension } 
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath } from '../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js';
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
-import { getCampaignsByStoreId, getMockCampaignStats, getMockBaselineImpressions } from '../../lib/ad-campaigns.js';
-import { buildBarChartSvg, buildLineChartSvg } from '../../lib/chart-svg.js';
+import { getCampaignsByStoreId } from '../../lib/ad-campaigns.js';
+import { campaignStatsInRange, baselineImpressionsInRange } from '../../lib/ad-metrics.js';
+import { presetRange } from '../../lib/date-range.js';
+import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
+import { orderAgeChipHtml } from '../../lib/order-age.js';
+import { buildBarChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
 // first rows) so seeding legacy combos never silently changes the sum.
@@ -190,6 +196,15 @@ const storeFavoriteCount = store ? getFavoriteStoreCount(store.slug) : 0;
 const productCount = products.length;
 const inStockCount = products.filter((p) => p.stock > 0).length;
 const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
+// Products-tab stock-alert badge count — products that are actually on sale
+// (not seller-hidden, not admin-blocked) yet are out of / low on stock. A
+// deliberately taken-down product (hidden) is intentionally excluded so it
+// never nags, which is the whole point of the hidden switch (CURRENT_TASK.md,
+// סשן א׳). Mirrors the per-row danger indicator's own `stock <= threshold` rule
+// so the badge count and the red rows always agree. countStockAlerts() is the
+// shared definition each mutating /api/product action also returns, so the badge
+// stays live after an inline stock edit / hide without a full reload.
+const stockAlertCount = store ? countStockAlerts(store.id, LOW_STOCK_THRESHOLD) : 0;
 // Products tab pagination — mirrors the admin dashboard's server-paginated
 // list tabs (src/lib/pagination.ts) so /api/seller/products (AJAX page/sort/
 // filter/search) and this initial SSR render never drift. `products` above
@@ -262,9 +277,15 @@ const perfSummary = store ? buildPerformanceSummary(storeOrders, store.slug, per
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).
-const adCampaigns = store ? getCampaignsByStoreId(store.id).map((c) => ({ ...c, stats: getMockCampaignStats(c) })) : [];
-const adBaselineImpressions = store ? getMockBaselineImpressions(store.id) : 0;
-const adEligibleProducts = store ? products.filter((p) => p.stock > 0) : [];
+// Ad metrics default to the last 7 days (Google/Meta convention); the range
+// picker in the panel re-fetches over other windows (see advertising.ts).
+const adRange = presetRange('7d')!;
+const adCampaigns = store ? getCampaignsByStoreId(store.id).map((c) => ({ ...c, stats: campaignStatsInRange(c, adRange.from, adRange.to) })) : [];
+const adBaselineImpressions = store ? baselineImpressionsInRange(store.id, adRange.from, adRange.to) : 0;
+// A boost only makes sense for a product a shopper can actually reach and buy —
+// so exclude anything off the storefront (seller-hidden or admin-blocked), not
+// just out-of-stock items.
+const adEligibleProducts = store ? products.filter((p) => p.stock > 0 && !p.hidden && !p.blocked) : [];
 // Gender the product's own text (category path it sits under + name + tags)
 // implies — pre-fills the campaign audience so a seller who already categorized
 // under "גברים"/"נשים" never re-enters it (no duplicate input). '' = no signal /
@@ -295,7 +316,10 @@ const perfRevenueChartSvg = perfSummary
   ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })), { color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: d.perfNoData, rtl: perfIsRtl })
   : '';
 const perfVisitorsChartSvg = perfSummary
-  ? buildLineChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.views })), { color: 'var(--color-accent)', valueFormatter: (v) => String(v), emptyMessage: d.perfNoData, rtl: perfIsRtl })
+  ? buildMultiLineChartSvg([
+      { points: perfSummary.points.map((p) => ({ label: p.label, value: p.uniqueVisitors })), color: 'var(--color-accent)', fill: true, label: d.perfUniqueVisitors },
+      { points: perfSummary.points.map((p) => ({ label: p.label, value: p.views })), color: 'var(--color-muted)', dashed: true, label: d.perfVisitors },
+    ], { valueFormatter: (v) => String(v), emptyMessage: d.perfNoData, rtl: perfIsRtl })
   : '';
 const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
 // Orders tab pagination — same server-paginated approach as Products above
@@ -440,7 +464,11 @@ const orderStatusColors: Record<string, string> = {
           data-panel="products"
           aria-selected={initialPanel === 'products'}
           tabindex={initialPanel === 'products' ? 0 : -1}
-        >{d.tabProducts}</button>
+          style="position:relative"
+        >
+          {d.tabProducts}
+          <span id="products-stock-badge" class="dash-tab-badge ![background:var(--color-warning)]" data-tooltip={d.stockAlertBadge} aria-label={d.stockAlertBadge} hidden={stockAlertCount === 0}>{stockAlertCount}</span>
+        </button>
         <button
           class={`dash-tab${initialPanel === 'orders' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -794,7 +822,7 @@ const orderStatusColors: Record<string, string> = {
                 const pStockFieldValue = pHasVariants ? pVariantCombos.reduce((s, c) => s + c.value, 0) : p.stock;
                 return (
                 <>
-                  <tr data-product-display={p.id} data-store-id={store.id} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
+                  <tr data-product-display={p.id} data-store-id={store.id} data-hidden={p.hidden ? '1' : ''} class={p.hidden ? 'is-product-hidden' : undefined} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
                     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
                     <td class="num row-num pe-[0.2rem]">{(productsPage.page - 1) * productsPageSize + idx + 1}</td>
                     <td class="thumb-col">
@@ -802,6 +830,10 @@ const orderStatusColors: Record<string, string> = {
                     </td>
                     <td class="name-col">
                       <span class="product-name cursor-text">{p.name}</span>
+                      <span class="product-hidden-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1" hidden={!p.hidden}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        {d.productHiddenChip}
+                      </span>
                       {p.description && <span class="product-desc">{p.description}</span>}
                     </td>
                     <td class="sku-col"><span class="sku-col-label">{d.skuLabel}: </span>{p.sku || <span style="color:var(--color-border)">—</span>}</td>
@@ -866,8 +898,13 @@ const orderStatusColors: Record<string, string> = {
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                         </button>
                         <ul class="product-menu__dropdown absolute top-[calc(100%+0.3rem)] end-0 min-w-[130px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 list-none m-0 p-[0.3rem] animate-product-menu-open" hidden role="menu">
-                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>{d.viewProduct}</button></li>
+                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product={p.id} role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>{d.viewProduct}</button></li>
                           <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{d.edit}</button></li>
+                          <li role="none"><button class="product-menu__item product-menu__item--visibility flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-visibility={p.id} data-hidden={p.hidden ? '1' : ''} role="menuitem">
+                            <svg class="menu-icon-hide shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            <svg class="menu-icon-show shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <span class="menu-visibility-label">{p.hidden ? d.productShow : d.productHide}</span>
+                          </button></li>
                           <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product={p.id} data-store-id={store.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>{d.delete}</button></li>
                         </ul>
                       </div>
@@ -1102,7 +1139,7 @@ const orderStatusColors: Record<string, string> = {
               return (
                 <div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
                   <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
-                    <div class="flex flex-col gap-[0.1rem] min-w-20 shrink-0">
+                    <div class="flex flex-col items-start gap-[0.2rem] min-w-20 shrink-0">
                       <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">
                         #{shortId}
                         {order.shippingStatus === 'pending' && (
@@ -1110,6 +1147,7 @@ const orderStatusColors: Record<string, string> = {
                         )}
                       </span>
                       <span class="text-[0.72rem] text-[color:var(--color-muted)]">{fmtDate(order.createdAt)}</span>
+                      <Fragment set:html={orderAgeChipHtml(order.createdAt, order.shippingStatus, lang)} />
                     </div>
                     <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
                       <span class="text-sm font-semibold text-[color:var(--color-text)]">{order.buyerName}</span>
@@ -1222,7 +1260,7 @@ const orderStatusColors: Record<string, string> = {
           </div>
         </div>
 
-        <dl id="perf-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5" aria-live="polite">
+        <dl id="perf-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5" aria-live="polite">
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfRevenue}</dt>
             <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue">{perfSummary && formatPrice(perfSummary.totalRevenue)}</dd>
@@ -1236,8 +1274,22 @@ const orderStatusColors: Record<string, string> = {
             <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg">{perfSummary && formatPrice(perfSummary.avgOrderValue)}</dd>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
-            <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfVisitors}</dt>
+            <div class="flex items-center gap-1 mb-1">
+              <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfVisitors}</dt>
+              <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfVisitsHint} aria-label={d.perfVisitsHint}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+              </button>
+            </div>
             <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-visitors">{perfSummary?.totalViews ?? 0}</dd>
+          </div>
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+            <div class="flex items-center gap-1 mb-1">
+              <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfUniqueVisitors}</dt>
+              <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfUniqueVisitorsHint} aria-label={d.perfUniqueVisitorsHint}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+              </button>
+            </div>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-unique">{perfSummary?.totalUniqueVisitors ?? 0}</dd>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
             <div class="flex items-center gap-1 mb-1">
@@ -1287,7 +1339,13 @@ const orderStatusColors: Record<string, string> = {
             <div id="perf-revenue-chart" set:html={perfRevenueChartSvg}></div>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
-            <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.perfVisitorsChartTitle}</h3>
+            <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+              <h3 class="m-0 text-[0.9rem] font-semibold">{d.perfVisitorsChartTitle}</h3>
+              <div class="flex items-center gap-3 text-[0.72rem] [color:var(--color-muted)]">
+                <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-[3px] rounded-full [background:var(--color-accent)]"></span>{d.perfUniqueVisitors}</span>
+                <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-0 border-t-2 border-dashed [border-color:var(--color-muted)]"></span>{d.perfVisitors}</span>
+              </div>
+            </div>
             <div id="perf-visitors-chart" set:html={perfVisitorsChartSvg}></div>
           </div>
         </div>
@@ -1313,6 +1371,8 @@ const orderStatusColors: Record<string, string> = {
             })}
           </div>
         </div>
+
+        {store && <PerfProductSection products={products} />}
       </div>
 
       <!-- ── Panel: Advertising ── -->
@@ -1320,6 +1380,23 @@ const orderStatusColors: Record<string, string> = {
         <div class="mb-4 pb-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0 text-base font-semibold">{d.adTitle}</h2>
           <p class="muted text-[0.82rem] m-0 mt-1">{d.adSubtitle}</p>
+        </div>
+
+        {/* Date-range picker — windows every metric on this tab (default 7 days).
+            Active state is driven by aria-pressed so the client only toggles the
+            attribute (Tailwind aria-pressed: variants restyle it). */}
+        <div id="ad-range" class="flex flex-wrap items-center gap-2 mb-4" data-from={adRange.from} data-to={adRange.to} data-preset="7d">
+          <div class="flex flex-wrap gap-1.5" role="group" aria-label={d.adTitle}>
+            {(([['today', d.perfPresetToday], ['7d', d.perfPreset7d], ['30d', d.perfPreset30d], ['thisMonth', d.perfPresetThisMonth], ['custom', d.perfPresetCustom]]) as [string, string][]).map(([key, label]) => (
+              <button type="button" data-preset={key} aria-pressed={key === '7d'} class="font-[inherit] text-[0.8rem] font-semibold rounded-full py-[.3rem] px-[.8rem] border cursor-pointer transition-colors duration-100 [color:var(--color-text)] bg-[color:var(--color-surface)] [border-color:var(--color-border)] hover:[border-color:var(--color-primary)] aria-pressed:bg-[color:var(--color-primary)] aria-pressed:[border-color:var(--color-primary)] aria-pressed:text-white">{label}</button>
+            ))}
+          </div>
+          <div id="ad-range-custom" class="flex items-center gap-1.5" hidden>
+            <input type="date" id="ad-range-from" class="input !w-auto !py-[.3rem] !px-[.5rem] text-[0.8rem]" value={adRange.from} aria-label="מתאריך" />
+            <span class="muted">—</span>
+            <input type="date" id="ad-range-to" class="input !w-auto !py-[.3rem] !px-[.5rem] text-[0.8rem]" value={adRange.to} aria-label="עד תאריך" />
+            <button type="button" id="ad-range-apply" class="btn btn--sm btn--accent">{d.perfApply}</button>
+          </div>
         </div>
 
         <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4 [background:color-mix(in_srgb,var(--color-success)_6%,transparent)]">
@@ -1360,6 +1437,7 @@ const orderStatusColors: Record<string, string> = {
               <label class="field">
                 <span>{d.adPlatform}</span>
                 <select id="ad-platform-select" name="platform" class="input">
+                  <option value="both">{d.adPlatformBoth}</option>
                   <option value="google">{d.adPlatformGoogle}</option>
                   <option value="meta">{d.adPlatformMeta}</option>
                 </select>
@@ -1424,7 +1502,7 @@ const orderStatusColors: Record<string, string> = {
                 <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
                   <div class="flex items-center gap-2">
                     <span class="text-[0.85rem] font-semibold">{c.scope === 'product' ? c.productName : d.adScopeStore}</span>
-                    <span class="text-[0.72rem] font-medium [color:var(--color-muted)]">{c.platform === 'google' ? d.adPlatformGoogle : d.adPlatformMeta}</span>
+                    <span class="text-[0.72rem] font-medium [color:var(--color-muted)]">{c.platform === 'google' ? d.adPlatformGoogle : c.platform === 'meta' ? d.adPlatformMeta : d.adPlatformBoth}</span>
                     <span class={`text-[0.68rem] font-bold py-[.1rem] px-[.5rem] rounded-full ${c.status === 'active' ? '[color:var(--color-success)] [background:color-mix(in_srgb,var(--color-success)_14%,transparent)]' : '[color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)]'}`}>
                       {c.status === 'active' ? d.adStatusActive : d.adStatusPaused}
                     </span>
@@ -1435,12 +1513,13 @@ const orderStatusColors: Record<string, string> = {
                   </div>
                 </div>
                 <p class="text-[0.74rem] [color:var(--color-muted)] m-0 mb-2">{adTargetingLabel(c)}</p>
-                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-[0.82rem]">
+                <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 text-[0.82rem]">
                   <div><span class="[color:var(--color-muted)]">{d.adBudgetLabel}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adImpressions}</span><br /><strong>{c.stats.impressions.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adClicks}</span><br /><strong>{c.stats.clicks.toLocaleString('he-IL')}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adCtr}</span><br /><strong>{c.stats.ctr}%</strong><Fragment set:html={ctrTierChipHtml(c.stats.ctr, { low: d.adTierLow, mid: d.adTierMid, high: d.adTierHigh })} /></div>
                   <div><span class="[color:var(--color-muted)]">{d.adSpend}</span><br /><strong>{formatPrice(c.stats.spend)}</strong></div>
-                  <div><span class="[color:var(--color-muted)]">{d.adRoas}</span><br /><strong>x{c.stats.roas}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adRoas}</span><br /><strong>x{c.stats.roas}</strong><Fragment set:html={roasTierChipHtml(c.stats.roas, { low: d.adTierLow, mid: d.adTierMid, high: d.adTierHigh })} /></div>
                 </div>
               </div>
             ))}
@@ -1880,6 +1959,20 @@ const orderStatusColors: Record<string, string> = {
   .eom-dtype-btn { background: var(--color-surface); color: var(--color-muted); }
   .eom-dtype-btn--active { background: var(--color-text); color: var(--color-surface); }
 
+  /* A seller-hidden product stays fully interactive (so it can be un-hidden)
+     but its thumbnail + name read dimmed, signalling "off the shelf" at a glance
+     alongside the "מוסתר" chip. */
+  .is-product-hidden .product-thumb,
+  .is-product-hidden .product-name { opacity: 0.5; }
+
+  /* The visibility menu item shows the "hide" icon+label for a visible product
+     and the "show" icon for a hidden one — driven purely off the button's own
+     data-hidden so a toggle only has to flip that one attribute (no per-icon JS,
+     works identically for SSR and AJAX-built rows). */
+  .product-menu__item--visibility .menu-icon-show { display: none; }
+  .product-menu__item--visibility[data-hidden="1"] .menu-icon-hide { display: none; }
+  .product-menu__item--visibility[data-hidden="1"] .menu-icon-show { display: inline; }
+
   .dash-tab-badge {
     display: inline-flex;
     align-items: center;
@@ -2108,13 +2201,14 @@ const orderStatusColors: Record<string, string> = {
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
   import { initCleanupModal } from '../../scripts/dashboard/cleanup-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
-  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductMenus, initProductsToolbar, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
+  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductVisibilityToggle, initProductMenus, initProductsToolbar, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
   import { initCsvImport } from '../../scripts/dashboard/csv-import.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks } from '../../scripts/dashboard/ui.js';
   import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
   import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
   import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
   import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+  import { orderAgeChipHtml } from '../../lib/order-age.js';
   import { encodeList, debounce } from '../../lib/admin-nav.js';
   import { initPerformanceTab } from '../../scripts/dashboard/performance.js';
   import { initAdvertisingTab } from '../../scripts/dashboard/advertising.js';
@@ -2197,6 +2291,7 @@ const orderStatusColors: Record<string, string> = {
   initAddProduct(CLOUD, PRESET);
   initProductMenus();
   initDeleteProduct();
+  initProductVisibilityToggle();
   initSettingsForm();
   initStoreHours();
   initCategoryTreeEditor();
@@ -2466,9 +2561,10 @@ const orderStatusColors: Record<string, string> = {
 
     return `<div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
       <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
-        <div class="flex flex-col gap-[0.1rem] min-w-20 shrink-0">
+        <div class="flex flex-col items-start gap-[0.2rem] min-w-20 shrink-0">
           <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? '<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="הזמנה חדשה"></span>' : ''}</span>
           <span class="text-[0.72rem] text-[color:var(--color-muted)]">${esc(fmtOrderDate(o.createdAt))}</span>
+          ${orderAgeChipHtml(o.createdAt, o.shippingStatus, 'he')}
         </div>
         <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
           <span class="text-sm font-semibold text-[color:var(--color-text)]">${esc(o.buyerName)}</span>

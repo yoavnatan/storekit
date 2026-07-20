@@ -219,8 +219,18 @@ async function main() {
       });
       storeN++;
 
+      // Daily bucket = { total loads, distinct visitor ids }. A per-store pool
+      // of ids is re-sampled each day so the same visitor recurs across days —
+      // making unique-over-the-month meaningfully lower than the summed daily
+      // visits, which is exactly the split the performance tab now shows.
       const pv = {};
-      for (let d = 0; d < 30; d++) if (rnd() < 0.8) pv[iso(NOW - d * DAY).slice(0, 10)] = int(2, 220);
+      const visitorPool = Array.from({ length: int(250, 1200) }, () => uuid().replace(/-/g, '').slice(0, 20));
+      for (let d = 0; d < 30; d++) {
+        if (rnd() >= 0.8) continue;
+        const total = int(2, 220);
+        const unique = Math.max(1, Math.min(total, Math.round(total * (0.5 + rnd() * 0.35))));
+        pv[iso(NOW - d * DAY).slice(0, 10)] = { total, visitors: shuffle(visitorPool).slice(0, unique) };
+      }
       pageviews[storeSlug] = pv;
       favCounts[storeSlug] = int(0, 180);
       for (const p of storeProducts) if (rnd() < 0.5) wishCounts[p.slug] = int(1, 40);

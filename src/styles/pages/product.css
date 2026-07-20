@@ -104,7 +104,12 @@
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 .product-detail-page .related-card:hover {
-  box-shadow: var(--shadow-card-hover);
+  /* A tighter hover shadow than the shared --shadow-card-hover: these related
+     cards are small (170px) and sit in a horizontal scroller whose overflow
+     clips the shadow, so the room needed on the track scales with the shadow's
+     depth. A snug shadow keeps that clearance tiny — so the track's height
+     stays as it was before this shadow was ever added. */
+  box-shadow: 0 3px 10px -3px rgba(23, 27, 38, 0.16);
   transform: translateY(-2px);
 }
 

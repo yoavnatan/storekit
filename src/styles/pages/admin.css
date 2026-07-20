@@ -12,6 +12,12 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
    button. A <button> reset (no bg/border/padding) keeps it visually a link. */
 .admin-link--danger { color: var(--color-danger); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
 .admin-link--danger:disabled { opacity: 0.55; cursor: default; }
+/* Silent "shop-window" promotion control (Stores tab, CURRENT_TASK.md → סשן ב׳):
+   a <button> that flows inline like its .admin-link siblings — muted at rest
+   (unpromoted), accent once the store carries a curation weight. */
+.admin-store-row-promote { background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; color: var(--color-muted); }
+.admin-store-row-promote:disabled { opacity: 0.55; cursor: default; }
+.admin-link--promo { color: var(--color-accent); }
 .admin-panel-subtitle { font-size: 0.95rem; font-weight: 600; margin: 1.5rem 0 1rem; }
 
 /* ── Messages tab: new-conversation composer ── */
@@ -243,6 +249,139 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-badge--paid { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
 .admin-badge--pending { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); }
 .admin-badge--failed { background: color-mix(in srgb, var(--color-danger) 15%, transparent); color: var(--color-danger); }
+.admin-badge--promo { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
+
+/* ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ── */
+.admin-ads-conn { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.admin-ads-conn__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  padding: 0.7rem 0.9rem; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+}
+.admin-ads-conn__label { font-size: 0.9rem; font-weight: 600; color: var(--color-text); }
+.admin-ads-conn__row code { font-size: 0.8rem; background: var(--color-bg); padding: 0.1rem 0.35rem; border-radius: 4px; }
+
+.admin-ads-progress { position: relative; height: 1.5rem; background: var(--color-bg); border-radius: 999px; margin: 1rem 0 0.25rem; overflow: hidden; }
+.admin-ads-progress__bar { height: 100%; background: var(--color-accent); border-radius: 999px; transition: width 0.3s ease; }
+.admin-ads-progress__label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 600; color: var(--color-text); }
+
+.admin-ads-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; margin-top: 1rem; }
+.admin-ads-form__field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; font-weight: 600; color: var(--color-muted); }
+.admin-ads-form__field .input { max-width: 12rem; }
+.admin-ads-form__saved { font-size: 0.82rem; align-self: center; }
+
+.admin-ads-promoted { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.admin-ads-promoted__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  padding: 0.6rem 0.9rem; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+}
+.admin-ads-promoted__name { font-size: 0.9rem; font-weight: 600; color: var(--color-accent); text-decoration: none; }
+.admin-ads-promoted__name:hover { text-decoration: underline; }
+
+.admin-ads-heading { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+
+/* Second value under a stat-card's headline number (e.g. "חשיפות · ₪ הוצאה"). */
+.admin-stat-card__sub { display: block; font-size: 0.72rem; font-weight: 500; color: var(--color-muted); margin-top: 0.2rem; }
+
+/* Divider between the insights zone and the management zone. */
+.admin-ads-zone { margin: 2.5rem 0 0; padding-top: 1.25rem; border-top: 2px solid var(--color-border); font-size: 1.05rem; font-weight: 800; color: var(--color-text); }
+
+/* Ad dashboard date-range picker. */
+.admin-ads-range { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
+.admin-ads-range__chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.admin-ads-range__chip { font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 999px; padding: 0.35rem 0.85rem; cursor: pointer; transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease; }
+.admin-ads-range__chip:hover { border-color: var(--color-primary); }
+.admin-ads-range__chip.is-active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.admin-ads-range__custom { display: flex; align-items: center; gap: 0.4rem; }
+.admin-ads-range__custom .input { width: auto; padding: 0.4rem 0.55rem; font-size: 0.85rem; }
+
+/* Period-over-period delta under a headline total. */
+.admin-delta { display: block; font-size: 0.72rem; font-weight: 600; margin-top: 0.3rem; }
+.admin-delta--up { color: var(--color-success); }
+.admin-delta--down { color: var(--color-danger); }
+
+/* "Data is a demo estimate, no date range" clarifier line. */
+.admin-ads-period { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--color-muted); background: var(--color-bg); border-radius: var(--radius); padding: 0.5rem 0.75rem; margin: 0 0 1.5rem; }
+.admin-ads-period svg { flex-shrink: 0; }
+
+/* Per-store exposure as a horizontal bar chart (bounded top-N; bars = % of leader). */
+.admin-exposure-bars { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+.admin-exposure-bar__label { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+.admin-exposure-bar__name { font-size: 0.85rem; font-weight: 600; color: var(--color-accent); text-decoration: none; }
+.admin-exposure-bar__name:hover { text-decoration: underline; }
+.admin-exposure-bar__val { margin-inline-start: auto; font-size: 0.8rem; font-weight: 700; color: var(--color-text); }
+.admin-exposure-bar__track { height: 0.6rem; background: var(--color-bg); border-radius: 999px; overflow: hidden; }
+.admin-exposure-bar__fill { height: 100%; min-width: 2px; background: var(--color-accent); border-radius: 999px; }
+
+/* ── Brand campaign manager ── */
+.admin-brand-create { border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); margin-bottom: 1rem; }
+.admin-brand-create > summary { cursor: pointer; padding: 0.75rem 0.9rem; font-size: 0.9rem; font-weight: 700; color: var(--color-primary); }
+.admin-brand-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; padding: 0 0.9rem 1rem; }
+.admin-brand-form__field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; font-weight: 600; color: var(--color-muted); }
+.admin-brand-form__field--wide { grid-column: 1 / -1; }
+.admin-brand-form__field > span { display: flex; align-items: center; gap: 0.35rem; }
+.admin-brand-form textarea.input { resize: vertical; font-family: inherit; }
+.admin-brand-form__submit { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.75rem; }
+/* Styled single-select — the site's dropdown design language (see AI_INSTRUCTIONS
+   → Dropdown design system), backed by the shared floating portal. Visually
+   mirrors .input, with a chevron that flips when the menu is open. */
+.admin-select {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  width: 100%; padding: 0.65rem 0.8rem; font: inherit; font-size: 0.9rem;
+  color: var(--color-text); background: var(--color-bg);
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+  cursor: pointer; text-align: start; transition: border-color 0.12s ease;
+}
+.admin-select:hover, .admin-select[aria-expanded="true"] { border-color: var(--color-primary); }
+.admin-select__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-select__chevron { flex-shrink: 0; color: var(--color-muted); transition: transform 0.15s ease; }
+.admin-select[aria-expanded="true"] .admin-select__chevron { transform: rotate(180deg); }
+
+.admin-brand-image { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.admin-brand-image__preview { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border); }
+
+.admin-brand-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.admin-brand-card { display: flex; gap: 0.9rem; padding: 0.85rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.admin-brand-card[data-status="paused"] { opacity: 0.72; }
+.admin-brand-card__img { width: 120px; height: 68px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border); flex-shrink: 0; }
+.admin-brand-card__body { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; flex: 1; }
+.admin-brand-card__meta { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.admin-brand-card__headline { font-size: 0.95rem; color: var(--color-text); }
+.admin-brand-card__text { margin: 0; font-size: 0.82rem; color: var(--color-muted); }
+.admin-brand-card__dest { font-size: 0.78rem; color: var(--color-accent); text-decoration: none; word-break: break-all; }
+.admin-brand-card__dest:hover { text-decoration: underline; }
+.admin-brand-card__stats { display: flex; flex-wrap: wrap; gap: 0.15rem 1rem; font-size: 0.78rem; color: var(--color-muted); margin-top: 0.15rem; }
+.admin-brand-card__stats b { color: var(--color-text); font-weight: 700; }
+.admin-brand-card__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.85rem; margin-top: 0.25rem; }
+.admin-brand-card__budget { display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; color: var(--color-muted); font-weight: 600; }
+.admin-brand-card__budget .input { width: 6rem; padding: 0.25rem 0.4rem; }
+.admin-brand-card__actions [data-brand-save], .admin-brand-card__actions [data-brand-toggle], .admin-brand-card__actions [data-brand-delete] { background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+@media (max-width: 560px) {
+  .admin-brand-form { grid-template-columns: 1fr; }
+  .admin-brand-card { flex-direction: column; }
+  .admin-brand-card__img { width: 100%; height: 120px; }
+}
+.admin-ads-promoted__row .admin-ads-promoted__name { margin-inline-end: auto; }
+.admin-ads-promoted__actions { display: flex; align-items: center; gap: 0.85rem; flex-shrink: 0; }
+.admin-ads-promo-tier, .admin-ads-promo-cancel { background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+.admin-ads-promo-tier:disabled, .admin-ads-promo-cancel:disabled { opacity: 0.55; cursor: default; }
+
+.admin-ads-glossary { margin-top: 1.5rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }
+.admin-ads-glossary > summary { cursor: pointer; padding: 0.75rem 0.9rem; font-size: 0.85rem; font-weight: 600; color: var(--color-text); }
+.admin-ads-glossary[open] > summary { border-bottom: 1px solid var(--color-border); }
+.admin-ads-glossary dl { margin: 0; padding: 0.75rem 0.9rem; display: grid; grid-template-columns: minmax(9rem, auto) 1fr; gap: 0.45rem 1rem; font-size: 0.85rem; }
+.admin-ads-glossary dt { font-weight: 700; color: var(--color-text); }
+.admin-ads-glossary dd { margin: 0; color: var(--color-muted); }
+@media (max-width: 560px) {
+  .admin-ads-glossary dl { grid-template-columns: 1fr; gap: 0.1rem 0; }
+  .admin-ads-glossary dd { margin-bottom: 0.5rem; }
+}
+
+.admin-ads-legend { list-style: none; margin: 0 0 1rem; padding: 0.75rem 0.9rem; background: var(--color-bg); border-radius: var(--radius); display: flex; flex-direction: column; gap: 0.5rem; }
+.admin-ads-legend > li { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: var(--color-text); }
+.admin-ads-legend > li > .admin-badge { flex-shrink: 0; }
+.admin-ads-legend__note { display: block !important; font-size: 0.8rem !important; color: var(--color-muted) !important; }
 .admin-badge--warning { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); }
 .admin-badge--shipping-pending { background: color-mix(in srgb, var(--color-danger) 15%, transparent); color: var(--color-danger); }
 .admin-badge--shipping-processing { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }

@@ -15,6 +15,7 @@ export interface UserCartData {
   cart: Record<string, UserStoreCart>;
   wishlist: WishlistItem[];
   favoriteStores?: string[];
+  recentStores?: string[]; // recently-visited store slugs, newest-first (see recent-stores.ts)
 }
 
 type UserCartsFile = Record<string, UserCartData>;
@@ -30,7 +31,7 @@ function write(data: UserCartsFile): void {
 
 export function getUserCart(sellerId: string): UserCartData {
   const data = read()[sellerId];
-  return data ?? { cart: {}, wishlist: [], favoriteStores: [] };
+  return data ?? { cart: {}, wishlist: [], favoriteStores: [], recentStores: [] };
 }
 
 export function getFavoriteStoresForUser(userId: string): string[] {

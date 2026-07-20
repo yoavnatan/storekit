@@ -23,7 +23,11 @@ const {
 } = Astro.props;
 
 const fullTitle = title ? `${title} | ${store.name}` : `${store.name} — ${store.tagline}`;
-const canonical = new URL(Astro.url.pathname, store.url).href;
+// Canonical is always the query-stripped, trailing-slash-free path (root stays "/"),
+// so filtered/sorted views (?category=&sort=) and any slash variant all consolidate
+// to one indexable URL — matches the site's trailingSlash:'never' policy.
+const canonicalPath = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const canonical = new URL(canonicalPath, store.url).href;
 const ogImage = image ? new URL(image, store.url).href : '';
 ---
 

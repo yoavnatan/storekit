@@ -75,6 +75,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
   import { formatPrice } from '../config/store.config.js';
   import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
   import { initReadMore } from '../lib/read-more.js';
+  import { initLiquidDots } from '../lib/carousel-dots.js';
 
   const pqvDialog = document.getElementById('pqv-dialog') as HTMLDialogElement | null;
   const pqvBody   = document.getElementById('pqv-body');
@@ -176,7 +177,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
       }).join('');
 
       const descHtml = p.description
-        ? `<p class="text-sm text-[color:var(--color-muted)] leading-[1.65] mb-2 whitespace-pre-line" id="pqv-desc">${pqvEsc(p.description)}</p>`
+        ? `<p dir="auto" class="text-sm text-[color:var(--color-muted)] leading-[1.65] mb-2 whitespace-pre-line" id="pqv-desc">${pqvEsc(p.description)}</p>`
         : '';
 
       pqvBody!.innerHTML = `<div class="animate-fade-in flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -184,8 +185,10 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
           ${imgAreaHtml}
           <div class="pt-3.5 px-5 pb-5">
             <a href="/store/${pqvEsc(storeSlug)}" class="text-xs font-bold text-[color:var(--color-muted)] no-underline tracking-[.05em] uppercase inline-block mb-1.5 transition-colors duration-[140ms] hover:text-[color:var(--color-text)]">${pqvEsc(storeName)}</a>
-            <h2 class="text-[1.2rem] font-bold text-[color:var(--color-text)] mb-1.5" id="pqv-name">${pqvEsc(p.name)}</h2>
-            <p class="text-[1.125rem] font-extrabold text-[color:var(--color-accent)] mb-2">${formatPrice(p.price)}</p>
+            <div dir="auto">
+              <h2 class="text-[1.2rem] font-bold text-[color:var(--color-text)] mb-1.5" id="pqv-name">${pqvEsc(p.name)}</h2>
+              <p class="text-[1.125rem] font-extrabold text-[color:var(--color-accent)] mb-2">${formatPrice(p.price)}</p>
+            </div>
             ${descHtml}
             ${variantsHtml}
           </div>
@@ -232,25 +235,15 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
         const isRtl = getComputedStyle(slidesEl).direction === 'rtl';
         const getSlideW = () => slidesEl.offsetWidth || 1;
 
-        function setActive(idx: number): void {
-          pqvImgIdx = idx;
-          dots.forEach((d, i) => { d.toggleAttribute('data-active', i === idx); });
-        }
+        // Same "liquid" dot flow as the product-card carousel; the scroll drives
+        // the dots, we only track the settled index for the lightbox.
+        const { setActive } = initLiquidDots(slidesEl, dots, (idx) => { pqvImgIdx = idx; });
 
         function scrollToIdx(idx: number): void {
+          pqvImgIdx = idx;
           slidesEl!.scrollTo({ left: (isRtl ? -1 : 1) * idx * getSlideW(), behavior: 'smooth' });
-          setActive(idx);
         }
         pqvGoToImage = scrollToIdx;
-
-        let snapTimer: ReturnType<typeof setTimeout> | undefined;
-        slidesEl.addEventListener('scroll', () => {
-          clearTimeout(snapTimer);
-          snapTimer = setTimeout(() => {
-            const idx = Math.min(Math.round(Math.abs(slidesEl!.scrollLeft) / getSlideW()), slideEls.length - 1);
-            setActive(idx);
-          }, 80);
-        }, { passive: true });
 
         dots.forEach((dot, i) => dot.addEventListener('click', () => scrollToIdx(i)));
 
@@ -274,6 +267,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
             slidesEl!.style.overflow = '';
             slidesEl!.scrollLeft = left;
             slidesEl!.style.scrollSnapType = '';
+            pqvImgIdx = tgt;
             setActive(tgt);
           });
         }, { passive: true });

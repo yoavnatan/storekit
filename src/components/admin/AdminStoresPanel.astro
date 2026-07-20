@@ -33,6 +33,12 @@ const sortLabels: Record<string, string> = {
   'revenue:asc': 'הכנסות: נמוך — גבוה',
   'products:desc': 'מוצרים: רב — מעט',
 };
+
+// Silent "shop-window" curation weight (see stores.ts#promoWeight). The label
+// mirrors the store's current tier; the button cycles 0→1→2→0 (client-side,
+// see scripts/admin/stores.ts). Kept in sync with promoLabel() there.
+const promoLabels = ['קדם חנות', 'קידום', 'קידום חזק'];
+const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w))] ?? promoLabels[0]!;
 ---
 
 <div class="admin-orders-search">
@@ -63,6 +69,7 @@ const sortLabels: Record<string, string> = {
     <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
     <ul class="admin-store-list" id="admin-store-list">
       {storeRows.map(({ store, seller, productCount, revenue }) => {
+        const promoWeight = store.promoWeight ?? 0;
         return (
           <li class="admin-store-row">
             <div class="admin-store-row__info">
@@ -71,6 +78,7 @@ const sortLabels: Record<string, string> = {
                 <span class="admin-store-row__name">
                   {store.name}
                   {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+                  {promoWeight > 0 && <span class="admin-badge admin-badge--promo" data-promo-badge>{promoLabel(promoWeight)}</span>}
                 </span>
                 <span class="admin-store-row__seller muted">{seller?.name ?? '—'} · {seller?.email ?? ''}</span>
               </div>
@@ -95,6 +103,16 @@ const sortLabels: Record<string, string> = {
               <a href={`/admin/store/${store.slug}/performance`} class="admin-link">ביצועים</a>
               <a href={`/admin/store/${store.slug}/advertising`} class="admin-link">פרסום</a>
               <a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link">צפה בחנות</a>
+              <button
+                type="button"
+                class={`admin-link admin-store-row-promote${promoWeight > 0 ? ' admin-link--promo' : ''}`}
+                data-store-slug={store.slug}
+                data-weight={String(promoWeight)}
+                data-store-name={store.name}
+                title="קידום שקט בעמודי הגילוי — לחיצה מחליפה רמה (המוכר/ת לא רואה זאת)"
+              >
+                {promoLabel(promoWeight)}
+              </button>
               <button
                 type="button"
                 class="admin-link admin-link--danger admin-store-row-toggle"

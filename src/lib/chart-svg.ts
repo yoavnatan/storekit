@@ -219,6 +219,86 @@ export function buildLineChartSvg(points: BarChartPoint[], opts: BarChartOptions
   return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr">${axis}${areaPath}${line}${pointGroups}</svg>`;
 }
 
+export interface LineSeries {
+  points: BarChartPoint[]; // x-aligned across series (same labels + length)
+  color: string;
+  fill?: boolean;   // soft area under this series (use for the primary/lower line)
+  dashed?: boolean; // dashed static stroke for a secondary/envelope series
+  label?: string;   // short name shown in the combined per-point tooltip
+}
+
+// Multi-series variant of buildLineChartSvg (same options + tooltip contract) —
+// overlays N x-aligned series on one shared y-axis (e.g. total visits vs unique
+// visitors, where the gap between the two lines is itself the insight). One
+// hover column per x-index carries a combined data-value listing every series'
+// value, so the EXISTING initChartTooltips() wiring (performance.ts) shows both
+// at once with no extra code. series[0] is the primary: its dot is the tooltip
+// anchor and it paints on top; a `dashed` series reads as the secondary
+// envelope. All series are assumed the same length (callers pass summary.points
+// mapped twice).
+export function buildMultiLineChartSvg(series: LineSeries[], opts: BarChartOptions = {}): string {
+  const width = opts.width ?? 640;
+  const height = opts.height ?? 200;
+  const fmt = opts.valueFormatter ?? ((v: number) => String(v));
+  const clean = series.filter((s) => s.points.length > 0);
+  const n = clean[0]?.points.length ?? 0;
+  if (n === 0 || clean.every((s) => s.points.every((p) => p.value === 0))) {
+    return `<p class="muted" style="font-size:0.85rem;text-align:center;padding:2.5rem 0;margin:0">${escXml(opts.emptyMessage ?? '')}</p>`;
+  }
+
+  const max = Math.max(1, ...clean.flatMap((s) => s.points.map((p) => p.value)));
+  const rtl = opts.rtl ?? false;
+  const animate = opts.animate ?? true;
+  const chartH = height - AXIS.padTop - AXIS.padBottom;
+  const gutter = yGutter(max);
+  const geom = plotGeom(width, rtl, gutter);
+  const step = n > 1 ? geom.w / (n - 1) : 0;
+  const baseline = AXIS.padTop + chartH;
+  const labelEvery = Math.max(1, Math.ceil(n / 8));
+  const axis = yAxisSvg(max, width, chartH, rtl, gutter);
+
+  const xOf = (i: number): number => (n > 1 ? geom.left + i * step : geom.left + geom.w / 2);
+  const yOf = (v: number): number => AXIS.padTop + (chartH - (v / max) * chartH);
+
+  // Paint reversed so series[0] (the primary) ends up visually on top.
+  const layers = [...clean].reverse().map((s) => {
+    const xy = s.points.map((p, i) => ({ x: xOf(i), y: yOf(p.value) }));
+    const linePts = xy.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ');
+    const area = s.fill && n > 1
+      ? `<path d="M${xy[0].x.toFixed(1)},${baseline.toFixed(1)} L${linePts.replace(/ /g, ' L')} L${xy[n - 1].x.toFixed(1)},${baseline.toFixed(1)} Z" fill="${s.color}" fill-opacity="0.08" stroke="none"/>`
+      : '';
+    // A dashed secondary skips the .chart-line class (whose CSS forces
+    // stroke-dasharray:1 for the draw animation) so its inline dash survives —
+    // AND skips pathLength="1" (which normalises the whole path to length 1, so
+    // a "4 3" dasharray would cover the entire path and render solid). The
+    // primary keeps pathLength="1" because the draw keyframe animates its
+    // dashoffset across that normalised length.
+    const cls = s.dashed ? '' : `chart-line${animate ? ' animate-line-draw' : ''}`;
+    const dash = s.dashed ? ' stroke-dasharray="4 3" stroke-opacity="0.75"' : ' pathLength="1"';
+    const line = n > 1
+      ? `<polyline class="${cls}"${dash} points="${linePts}" fill="none" stroke="${s.color}" stroke-width="${s.dashed ? 1.5 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`
+      : '';
+    return area + line;
+  }).join('');
+
+  const primary = clean[0];
+  const half = n > 1 ? step / 2 : geom.w / 2;
+  const pointGroups = Array.from({ length: n }, (_, i) => {
+    const px = xOf(i);
+    const rx = Math.max(geom.left, px - half);
+    const rw = Math.min(geom.right, px + half) - rx;
+    // Combined tooltip value: "<label> <value> · <label> <value>" for every series.
+    const combined = clean.map((s) => `${s.label ? s.label + ' ' : ''}${fmt(s.points[i]?.value ?? 0)}`).join(' · ');
+    const showLabel = i === n - 1 || (i % labelEvery === 0 && n - 1 - i >= labelEvery);
+    const label = showLabel ? xLabelSvg(primary.points[i].label, px, i, n, height) : '';
+    // One dot per series; primary first so it's initChartTooltips' anchor.
+    const dots = clean.map((s) => `<circle class="line-dot" cx="${px.toFixed(1)}" cy="${yOf(s.points[i]?.value ?? 0).toFixed(1)}" r="2.4" fill="${s.color}"></circle>`).join('');
+    return `<g class="chart-point"><rect class="chart-bar" x="${rx.toFixed(1)}" y="${AXIS.padTop}" width="${rw.toFixed(1)}" height="${chartH.toFixed(1)}" fill="transparent" data-label="${escXml(primary.points[i].label)}" data-value="${escXml(combined)}"></rect>${dots}${label}</g>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr">${axis}${layers}${pointGroups}</svg>`;
+}
+
 export interface PieSlice { label: string; value: number; color: string }
 
 // Donut chart via the stroke-dasharray-on-circle technique (no arc-path math,

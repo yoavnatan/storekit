@@ -19,6 +19,7 @@ export interface ProductData {
   variants?: VariantDimension[];
   variantStock?: Record<string, number>;
   variantImages?: Record<string, string>;
+  hidden?: boolean;
   createdAt?: string;
   // Only set on rows fetched via /api/seller/products (a brand-new product
   // from the add-product form naturally has 0 of both, buildRows' defaults
@@ -28,6 +29,19 @@ export interface ProductData {
 }
 
 function fmtPrice(n: number) { return formatPrice(n); }
+
+// Live-updates the Products-tab stock-alert badge from a store-wide count the
+// server returns after any stock/visibility mutation (or a list re-fetch). The
+// count is store-wide, never page-scoped — the DOM only ever holds one page of
+// rows, so it can't be recomputed locally. Skips no-ops when the count is
+// undefined (a response that didn't carry it).
+function updateStockBadge(count: number | undefined): void {
+  if (typeof count !== 'number') return;
+  const badge = document.getElementById('products-stock-badge');
+  if (!badge) return;
+  badge.textContent = String(count);
+  badge.hidden = count === 0;
+}
 
 const SPINNER_SVG = `<span class="dot-pulse" role="status" aria-label="טוען"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span>`;
 
@@ -1227,12 +1241,15 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   display.dataset.storeSlug = resolvedStoreSlug;
   display.dataset.storeName = resolvedStoreName;
   display.dataset.hasVariants = p.variants?.length ? '1' : '';
+  display.dataset.hidden = p.hidden ? '1' : '';
+  if (p.hidden) display.classList.add('is-product-hidden');
   display.innerHTML = `
     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check="${p.id}" aria-label="${esc(p.name)}" style="cursor:pointer;width:15px;height:15px"></td>
     <td class="num row-num pe-[0.2rem]"></td>
     <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap"><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy"></span>` : ''}</td>
     <td class="name-col">
       <span class="product-name cursor-text">${esc(p.name)}</span>
+      <span class="product-hidden-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1"${p.hidden ? '' : ' hidden'}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>${esc(i.productHiddenChip ?? 'מוסתר')}</span>
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
     <td class="sku-col"><span class="sku-col-label">${esc(i.skuLabel ?? 'SKU')}: </span>${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
@@ -1250,8 +1267,9 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
         </button>
         <ul class="product-menu__dropdown absolute top-[calc(100%+0.3rem)] end-0 min-w-[130px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 list-none m-0 p-[0.3rem] animate-product-menu-open" hidden role="menu">
-          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>${esc(i.viewProduct ?? 'צפה במוצר')}</button></li>
+          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product="${p.id}" role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>${esc(i.viewProduct ?? 'צפה במוצר')}</button></li>
           <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>${esc(i.edit ?? 'Edit')}</button></li>
+          <li role="none"><button class="product-menu__item product-menu__item--visibility flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-visibility="${p.id}" data-hidden="${p.hidden ? '1' : ''}" role="menuitem"><svg class="menu-icon-hide shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><svg class="menu-icon-show shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span class="menu-visibility-label">${esc(p.hidden ? (i.productShow ?? 'הצג בחנות') : (i.productHide ?? 'הסתר מהחנות'))}</span></button></li>
           <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>${esc(i.delete ?? 'Delete')}</button></li>
         </ul>
       </div>
@@ -1325,12 +1343,13 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
     const fd = new FormData(form);
     fd.set('variants_json', JSON.stringify(collectVariantsPayload(form)));
     const res = await fetch('/api/product', { method: 'POST', body: fd });
-    const data = await res.json() as { ok: boolean; images?: string[]; categoryId?: string; categoryPath?: string; error?: string };
+    const data = await res.json() as { ok: boolean; images?: string[]; categoryId?: string; categoryPath?: string; stockAlerts?: number; error?: string };
     if (!data.ok) {
       submitBtns.forEach(btn => { btn.disabled = false; btn.textContent = origText; });
       showStatus(data.error ?? (i18n.errorSaving ?? 'Error saving.'), true);
       return;
     }
+    updateStockBadge(data.stockAlerts);
 
     const savedImages = data.images ?? [];
     const savedImage = savedImages[0] ?? null;
@@ -1676,6 +1695,51 @@ export function initDeleteProduct(): void {
   });
 }
 
+// Reflects a product's new hidden state across its row: the "מוסתר" chip, the
+// dimmed-row class, the row's data-hidden flag, and the menu toggle's own
+// label/icons (so re-opening the menu offers the opposite action). One place so
+// SSR rows and AJAX-built rows behave identically after a toggle.
+function applyProductHiddenState(productId: string, hidden: boolean, i18n: Record<string, string>): void {
+  const row = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
+  if (row) {
+    row.dataset.hidden = hidden ? '1' : '';
+    row.classList.toggle('is-product-hidden', hidden);
+    const chip = row.querySelector<HTMLElement>('.product-hidden-chip');
+    if (chip) chip.hidden = !hidden;
+    const btn = row.querySelector<HTMLElement>('[data-toggle-visibility]');
+    if (btn) {
+      // The icon swap is pure CSS off this data-hidden (see dashboard.astro).
+      btn.dataset.hidden = hidden ? '1' : '';
+      const label = btn.querySelector<HTMLElement>('.menu-visibility-label');
+      if (label) label.textContent = hidden ? (i18n.productShow ?? 'הצג בחנות') : (i18n.productHide ?? 'הסתר מהחנות');
+    }
+  }
+}
+
+export function initProductVisibilityToggle(): void {
+  document.addEventListener('click', async (e) => {
+    const btn = (e.target as Element).closest<HTMLButtonElement>('[data-toggle-visibility]');
+    if (!btn) return;
+    const productId = btn.dataset.toggleVisibility ?? '';
+    const i18n = getDashI18n();
+    // Currently visible (data-hidden !== '1') → this click hides it, and vice versa.
+    const nextHidden = btn.dataset.hidden !== '1';
+    btn.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.set('_action', 'set-product-visibility');
+      fd.set('productId', productId);
+      fd.set('hidden', nextHidden ? '1' : '0');
+      const res = await fetch('/api/product', { method: 'POST', body: fd });
+      const data = await res.json() as { ok: boolean; hidden?: boolean; stockAlerts?: number; error?: string };
+      if (!data.ok) { showStatus(data.error ?? (i18n.errorSaving ?? 'שגיאה בשמירה.'), true); return; }
+      applyProductHiddenState(productId, data.hidden === true, i18n);
+      updateStockBadge(data.stockAlerts);
+      showStatus(data.hidden ? (i18n.productHiddenToast ?? 'המוצר הוסתר מהחנות.') : (i18n.productShownToast ?? 'המוצר חזר לחנות.'));
+    } finally { btn.disabled = false; }
+  });
+}
+
 export function initThumbs(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>('.thumb-wrap').forEach(wrap => {
     if (wrap.classList.contains('loaded')) return;
@@ -1737,7 +1801,7 @@ export async function applyPagination(): Promise<void> {
     params.set('pcat', encodeList([...catValues].map((v) => (v === noCatLabel ? '' : v))));
   }
 
-  let data: { ok: boolean; items?: ProductData[]; page?: number; totalPages?: number; total?: number };
+  let data: { ok: boolean; items?: ProductData[]; page?: number; totalPages?: number; total?: number; stockAlerts?: number };
   try {
     const res = await fetch(`/api/seller/products?${params.toString()}`);
     data = await res.json() as typeof data;
@@ -1745,6 +1809,7 @@ export async function applyPagination(): Promise<void> {
   if (!data.ok) return;
 
   productsCurrentPage = data.page ?? 1;
+  updateStockBadge(data.stockAlerts);
 
   const cloud = uploadCfg?.dataset.cloud ?? '';
   const preset = uploadCfg?.dataset.preset ?? '';
@@ -2250,7 +2315,7 @@ function activateInlineEdit(
 
     try {
       const res = await fetch('/api/product', { method: 'POST', body: fd });
-      const data = await res.json() as { ok: boolean; product?: { name: string; price: number; stock: number }; error?: string };
+      const data = await res.json() as { ok: boolean; product?: { name: string; price: number; stock: number }; stockAlerts?: number; error?: string };
 
       if (!data.ok) {
         showStatus(data.error ?? (i.errorSaving ?? 'שגיאה בשמירה.'), true);
@@ -2259,6 +2324,7 @@ function activateInlineEdit(
       }
 
       const p = data.product!;
+      updateStockBadge(data.stockAlerts);
       delete trigger.dataset.inlineActive;
 
       if (field === 'name') {

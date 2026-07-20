@@ -4,6 +4,7 @@
 import type { CartItem } from './cart.js';
 import type { WishlistItem } from './wishlist.js';
 import type { UserCartData, UserStoreCart } from './user-carts.js';
+import { readRecentStores, setRecentStores, mergeStoreSlugs } from './recent-stores.js';
 
 declare const window: Window & {
   __sessionUserId: string;
@@ -81,6 +82,8 @@ function mergeData(
   for (const item of server.wishlist) wishlistMap.set(item.slug, item);
   for (const item of localWishlist) if (!wishlistMap.has(item.slug)) wishlistMap.set(item.slug, item);
 
+  // recentStores isn't merged here — it lives in a cookie (not localStorage) and
+  // is reconciled separately in loadAndApply, since the homepage renders it SSR.
   return { cart: merged, wishlist: Array.from(wishlistMap.values()) };
 }
 
@@ -91,7 +94,7 @@ async function saveToServer(): Promise<void> {
     await fetch('/api/user-cart', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cart: readLocalCart(), wishlist: readLocalWishlist() }),
+      body: JSON.stringify({ cart: readLocalCart(), wishlist: readLocalWishlist(), recentStores: readRecentStores() }),
     });
   } catch { /* ignore network errors */ }
 }
@@ -109,6 +112,16 @@ async function loadAndApply(mode: 'merge' | 'replace'): Promise<void> {
 
     writeLocalCart(finalData.cart);
     writeLocalWishlist(finalData.wishlist);
+    // recentStores cookie: on 'replace' (switch user) adopt the server list; on
+    // 'merge' (guest→login) union it with whatever this browser already had, so
+    // this device's cookie now carries the cross-device history too. (The
+    // homepage shelf itself is SSR — it already unions account+cookie at render
+    // time, so no client re-render is needed here.)
+    setRecentStores(
+      mode === 'merge'
+        ? mergeStoreSlugs(serverData.recentStores ?? [], readRecentStores())
+        : (serverData.recentStores ?? []),
+    );
 
     // If we merged, push the merged result back to server
     if (mode === 'merge') await saveToServer();
@@ -135,4 +148,7 @@ if (uid) {
   };
   window.addEventListener('cart:change', debouncedSave);
   window.addEventListener('wishlist:change', debouncedSave);
+  // Fired by a store/product page after recording a store visit — persists this
+  // browser's recent-stores cookie to the account so another device picks it up.
+  window.addEventListener('recent-stores:change', debouncedSave);
 }

@@ -2,7 +2,8 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
-import { getProductsByStoreId } from '../../../lib/store-products.js';
+import { getProductsByStoreId, countStockAlerts } from '../../../lib/store-products.js';
+import { LOW_STOCK_THRESHOLD } from '../../../lib/variant-combo.js';
 import { getCategoriesByStoreId, categoryPath } from '../../../lib/store-categories.js';
 import { getAllWishlistCounts } from '../../../lib/wishlist-counts.js';
 import { getPurchasedCountsByStoreSlug } from '../../../lib/orders.js';
@@ -53,5 +54,8 @@ export const GET: APIRoute = async ({ url, cookies }) => {
     page,
     totalPages,
     total,
+    // Store-wide count (not page-scoped) so the Products-tab stock badge stays
+    // accurate after any list re-fetch — add/delete/bulk all flow through here.
+    stockAlerts: countStockAlerts(store.id, LOW_STOCK_THRESHOLD),
   });
 };

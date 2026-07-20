@@ -146,6 +146,60 @@ function initStoreBlockToggles(): void {
   });
 }
 
+// ── Silent "shop-window" promotion (CURRENT_TASK.md → סשן ב׳) ─────────────
+// A store's admin-only curation weight (stores.ts#promoWeight): higher = it
+// floats higher in the platform's own discovery surfaces (homepage + /stores).
+// Cycled 0→1→2→0 by clicking the row's promote link. NOT confirm-gated (it's
+// non-destructive, reversible, and costs nothing) and — unlike a block — never
+// notifies the seller: it's the platform spending its own discovery budget, so
+// there's nothing to disclose. Label kept in sync with AdminStoresPanel.astro.
+const PROMO_LABELS = ['קדם חנות', 'קידום', 'קידום חזק'];
+const MAX_PROMO = 2;
+const promoLabel = (w: number): string => PROMO_LABELS[Math.max(0, Math.min(MAX_PROMO, w))] ?? PROMO_LABELS[0]!;
+
+async function runPromoCycle(btn: HTMLButtonElement): Promise<void> {
+  const current = Number(btn.dataset.weight) || 0;
+  const next = current >= MAX_PROMO ? 0 : current + 1;
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/admin/promote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeSlug: btn.dataset.storeSlug, weight: next }),
+    });
+    if (!res.ok) throw new Error('request failed');
+    const { weight } = await res.json() as { weight: number };
+    btn.dataset.weight = String(weight);
+    btn.textContent = promoLabel(weight);
+    btn.classList.toggle('admin-link--promo', weight > 0);
+
+    // Mirror the state in the name badge next to the store title.
+    const nameEl = btn.closest('.admin-store-row')?.querySelector('.admin-store-row__name');
+    let badge = nameEl?.querySelector<HTMLElement>('[data-promo-badge]');
+    if (weight > 0) {
+      if (!badge && nameEl) {
+        badge = document.createElement('span');
+        badge.className = 'admin-badge admin-badge--promo';
+        badge.dataset.promoBadge = '';
+        nameEl.appendChild(badge);
+      }
+      if (badge) badge.textContent = promoLabel(weight);
+    } else if (badge) {
+      badge.remove();
+    }
+  } catch {
+    alert('הפעולה נכשלה, נסו שוב.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function initStorePromoToggles(): void {
+  document.querySelectorAll<HTMLButtonElement>('.admin-store-row-promote').forEach((btn) => {
+    btn.addEventListener('click', () => void runPromoCycle(btn));
+  });
+}
+
 // ── Per-store product-block list (owner request 2026-07-19) ──────────────
 // The Sellers tab already nests a product-block table three levels deep; this
 // brings the same capability to the flat Stores tab, expanded by clicking the
@@ -366,6 +420,7 @@ function initStoresFilterAutoReset(): void {
 export function initAdminStoresPanel(): void {
   initStoreSearch();
   initStoreBlockToggles();
+  initStorePromoToggles();
   initStoreProductLists();
   wireStoresToolbar();
   initStoresFilterAutoReset();

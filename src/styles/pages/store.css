@@ -183,8 +183,37 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  margin-bottom: 1.5rem;
+  /* Sticks just below the fixed site header (body padding-top:3.3rem) so the
+     category chips + sort stay reachable while scrolling a long grid. A solid
+     page-bg background + vertical padding hide the cards passing underneath;
+     no transform/will-change here so the chip hover-flyout's position:fixed
+     still resolves against the viewport rather than this element. */
+  position: sticky;
+  top: 3.3rem;
+  z-index: 40;
+  background: var(--color-bg);
+  padding-block: 0.7rem;
+  margin-bottom: 1rem;
 }
+
+/* Soft "fade" tying the bar to the page once it's stuck: a bg→transparent
+   gradient just below the bar, so a card scrolling underneath dissolves into
+   the bar instead of hard-cutting at its bottom edge. Only shown while stuck
+   (.is-stuck, toggled from JS via an IntersectionObserver sentinel) — at rest,
+   sitting under the banner, nothing scrolls under it so no fade is needed.
+   pointer-events:none so it never intercepts clicks on the cards below. */
+.store-controls::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  height: 1.25rem;
+  background: linear-gradient(to bottom, var(--color-bg), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.store-controls.is-stuck::after { opacity: 1; }
 
 /* Breadcrumb + local-search icon share one line — both only exist while a
    category filter is active, so they appear/disappear together. */
@@ -738,6 +767,20 @@
   box-shadow: var(--shadow-xs);
   transition: box-shadow 0.22s ease, border-color 0.22s ease;
   cursor: pointer;
+}
+
+/* Off-screen cards in the (vertical) store grid skip layout+paint work until
+   they're near the viewport — a real scroll-perf win once the grid grows past
+   the first page via "load more". `auto` in contain-intrinsic-size lets the
+   browser remember each card's real rendered height, so the scrollbar stays
+   accurate instead of jumping. Scoped to .product-grid on purpose: the bare
+   card size mustn't be virtualised inside any horizontal carousel (there the
+   intrinsic width would collapse the track). The card's own box-shadow (incl.
+   the hover shadow) is unaffected — paint containment clips descendants, not
+   the element's own outset shadow. */
+.product-grid > .product-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 360px;
 }
 
 .product-card:hover {
