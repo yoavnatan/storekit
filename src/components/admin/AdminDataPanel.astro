@@ -1,0 +1,214 @@
+---
+// Admin "data" tab (CURRENT_TASK.md item 2) — first-party traffic analytics for
+// business insights: the buyer funnel (site → product → cart → checkout →
+// purchase) with drop-off, the headline abandonment/conversion rates, the most
+// added-vs-abandoned products, and the SELLER onboarding funnel (where a would-be
+// seller gets stuck opening a store). Buyer-funnel data accrues from LIVE traffic
+// (captured in middleware / checkout, see analytics.ts) so it's empty until real
+// visitors flow; the seller funnel is derived from existing records and is
+// populated from day one. All range-windowed metrics recompute SSR per
+// ?datapreset via the panel-swap AJAX (data-panel.ts).
+import type { AnalyticsOverview, FunnelStage } from '../../lib/analytics.js';
+import type { SellerFunnel } from '../../lib/seller-funnel.js';
+import type { AdRangePreset } from '../../lib/date-range.js';
+import InfoTip from '../dashboard/InfoTip.astro';
+
+interface Props {
+  overview: AnalyticsOverview;
+  sellerFunnel: SellerFunnel;
+  range: { from: string; to: string };
+  activePreset: AdRangePreset;
+  productNames: Map<string, string>;
+  buildUrl: (preset: AdRangePreset) => string;
+}
+const { overview, sellerFunnel, range, activePreset, productNames, buildUrl } = Astro.props;
+const { funnel, rates, topAdded, topAbandoned } = overview;
+
+const rangePresets: { key: AdRangePreset; label: string }[] = [
+  { key: 'today', label: 'היום' },
+  { key: '7d', label: '7 ימים' },
+  { key: '30d', label: '30 יום' },
+  { key: 'thisMonth', label: 'החודש' },
+];
+const activeLabel = (rangePresets.find((p) => p.key === activePreset) ?? rangePresets[2]!).label;
+// Preset key → its panel-swap URL, handed to the client dropdown (data-panel.ts)
+// so choosing a preset navigates via swapPanel exactly like the range pickers on
+// the performance/advertising tabs, instead of a chip row.
+const rangeOptions = rangePresets.map((p) => ({ key: p.key, label: p.label, url: buildUrl(p.key) }));
+const fmtDate = (iso: string): string => iso.split('-').reverse().join('/');
+const pct = (n: number): string => `${n.toFixed(1)}%`;
+const productLabel = (id: string): string => productNames.get(id) ?? id;
+
+// A funnel step's bar width is measured against the WIDEST stage (not blindly
+// against the first), so the shape stays readable even when the top stage is
+// under-counted — the seller funnel's top ("visited the register page") comes
+// from live analytics that only started recently, while its lower stages are
+// derived from all-time records, so the top can legitimately be the *smallest*
+// number. Normalizing against the first stage then made every lower bar overflow
+// to a flat 100% (the "bars never narrow" bug). `fromPrev` is the stage-to-stage
+// conversion — the number that tells the owner where people drop off — shown
+// only when it's actually meaningful (previous stage has data and isn't smaller
+// than this one, so no misleading ">100%"/divide-by-zero figure on that top gap).
+interface FunnelRow { label: string; value: number; barPct: number; fromPrev: number | null }
+function toRows(stages: { label: string; value: number }[]): FunnelRow[] {
+  const max = Math.max(...stages.map((s) => s.value), 1);
+  return stages.map((s, i) => {
+    const prev = stages[i - 1]?.value ?? 0;
+    return {
+      label: s.label,
+      value: s.value,
+      barPct: Math.round((s.value / max) * 100),
+      fromPrev: i > 0 && prev > 0 && s.value <= prev ? (s.value / prev) * 100 : null,
+    };
+  });
+}
+
+const BUYER_LABELS: Record<FunnelStage['event'], string> = {
+  page_view: 'כניסות לאתר',
+  view_item: 'צפייה במוצר',
+  add_to_cart: 'הוספה לעגלה',
+  begin_checkout: 'התחלת תשלום',
+  purchase: 'רכישה',
+};
+const buyerRows = toRows(funnel.map((s) => ({ label: BUYER_LABELS[s.event], value: s.sessions })));
+const buyerHasData = (funnel[0]?.sessions ?? 0) > 0;
+
+const sellerRows = toRows([
+  { label: 'ביקור בעמוד הרשמה', value: sellerFunnel.registerViews },
+  { label: 'נרשמו כמוכרים', value: sellerFunnel.registered },
+  { label: 'פתחו חנות', value: sellerFunnel.withStore },
+  { label: 'הוסיפו מוצר', value: sellerFunnel.withProduct },
+  { label: 'מכירה ראשונה', value: sellerFunnel.withSale },
+]);
+
+const rateCards = [
+  { label: 'שיעור המרה', value: rates.conversionRate, hint: 'מתוך כלל הכניסות לאתר — כמה הסתיימו ברכישה.', tone: 'var(--color-success)' },
+  { label: 'נטישת עגלה', value: rates.cartAbandonmentRate, hint: 'הוסיפו לעגלה אך לא רכשו.', tone: 'var(--color-danger)' },
+  { label: 'נטישת תשלום', value: rates.checkoutAbandonmentRate, hint: 'הגיעו לעמוד התשלום אך לא השלימו.', tone: 'var(--color-danger)' },
+  { label: 'נטישה מיידית', value: rates.bounceRate, hint: 'נכנסו לאתר ולא צפו באף מוצר.', tone: 'var(--color-muted)' },
+];
+---
+
+<div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
+  <div>
+    <h2 class="m-0 text-base font-semibold">נתונים ותנועה באתר</h2>
+    <p class="muted text-[0.82rem] m-0 mt-1">משפך הקנייה, נטישות ותובנות על התנהגות המבקרים.</p>
+  </div>
+  <div id="data-range-picker" data-active-preset={activePreset}>
+    <button
+      type="button"
+      id="data-range-trigger"
+      class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]"
+      aria-haspopup="true"
+      aria-expanded="false"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span id="data-range-label">{activeLabel}</span>
+      <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <script type="application/json" id="data-range-presets" set:html={JSON.stringify(rangeOptions)} />
+  </div>
+</div>
+
+<p class="muted text-[0.78rem] m-0 mb-4">מציג נתונים לטווח {fmtDate(range.from)}–{fmtDate(range.to)}. נתוני התנועה נאספים מתעבורה חיה — הם מתמלאים ככל שמבקרים גולשים באתר.</p>
+
+{/* ── Headline rates ── */}
+<dl class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+  {rateCards.map((c) => (
+    <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+      <div class="flex items-center gap-1 mb-1">
+        <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{c.label}</dt>
+        <InfoTip text={c.hint} />
+      </div>
+      <dd class="m-0 text-[1.25rem] font-bold" style={`color:${c.tone}`}>{pct(c.value)}</dd>
+    </div>
+  ))}
+</dl>
+
+{/* ── Buyer funnel ── */}
+<section class="mb-6">
+  <div class="flex items-center gap-1 mb-3">
+    <h3 class="m-0 text-[0.95rem] font-semibold">משפך הקנייה</h3>
+    <InfoTip text="כמה מבקרים (סשנים ייחודיים) הגיעו לכל שלב. האחוז ליד כל שלב = כמה עברו אליו מהשלב הקודם — שם מזהים היכן נופלים." />
+  </div>
+  {buyerHasData ? (
+    <div class="flex flex-col gap-2">
+      {buyerRows.map((r) => (
+        <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
+          <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_14%,transparent)]" style={`width:${r.barPct}%`}></div>
+          <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
+            <span class="font-medium">{r.label}</span>
+            <span class="shrink-0 [color:var(--color-muted)] flex items-center gap-2">
+              {r.fromPrev !== null && <span class="text-[0.75rem] [color:var(--color-primary)] font-semibold">{pct(r.fromPrev)} המשיכו</span>}
+              <strong class="[color:var(--color-text)] text-[0.95rem]">{r.value.toLocaleString('he-IL')}</strong>
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <p class="muted text-[0.85rem] m-0 border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 text-center">עדיין לא נאספו נתוני תנועה לטווח זה. הנתונים יופיעו כאן ברגע שמבקרים יתחילו לגלוש.</p>
+  )}
+</section>
+
+{/* ── Top added vs abandoned products ── */}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+  <section>
+    <div class="flex items-center gap-1 mb-3">
+      <h3 class="m-0 text-[0.95rem] font-semibold">הכי נוספו לעגלה</h3>
+      <InfoTip text="המוצרים עם הכי הרבה הוספות לעגלה בטווח — אות ביקוש חזק." />
+    </div>
+    {topAdded.length > 0 ? (
+      <ol class="list-none m-0 p-0 flex flex-col gap-1.5">
+        {topAdded.map((p, i) => (
+          <li class="flex items-center justify-between gap-3 py-1.5 px-3 border [border-color:var(--color-border)] rounded-[var(--radius)] text-[0.85rem]">
+            <span class="overflow-hidden text-ellipsis whitespace-nowrap"><span class="[color:var(--color-muted)] me-1.5">{i + 1}.</span>{productLabel(p.productId)}</span>
+            <strong class="shrink-0">{p.count.toLocaleString('he-IL')}</strong>
+          </li>
+        ))}
+      </ol>
+    ) : (
+      <p class="muted text-[0.82rem] m-0">אין עדיין נתונים.</p>
+    )}
+  </section>
+  <section>
+    <div class="flex items-center gap-1 mb-3">
+      <h3 class="m-0 text-[0.95rem] font-semibold">הכי ננטשו בעגלה</h3>
+      <InfoTip text="נוספו לעגלה אך לא נרכשו (הוספות פחות רכישות). מועמדים לתזכורת/הנחה או בדיקת מחיר." />
+    </div>
+    {topAbandoned.length > 0 ? (
+      <ol class="list-none m-0 p-0 flex flex-col gap-1.5">
+        {topAbandoned.map((p, i) => (
+          <li class="flex items-center justify-between gap-3 py-1.5 px-3 border [border-color:var(--color-border)] rounded-[var(--radius)] text-[0.85rem]">
+            <span class="overflow-hidden text-ellipsis whitespace-nowrap"><span class="[color:var(--color-muted)] me-1.5">{i + 1}.</span>{productLabel(p.productId)}</span>
+            <span class="shrink-0 [color:var(--color-muted)] text-[0.78rem]"><strong class="[color:var(--color-danger)] text-[0.9rem]">{p.abandoned.toLocaleString('he-IL')}</strong> מתוך {p.added.toLocaleString('he-IL')}</span>
+          </li>
+        ))}
+      </ol>
+    ) : (
+      <p class="muted text-[0.82rem] m-0">אין עדיין נתונים.</p>
+    )}
+  </section>
+</div>
+
+{/* ── Seller onboarding funnel ── */}
+<section>
+  <div class="flex items-center gap-1 mb-3">
+    <h3 class="m-0 text-[0.95rem] font-semibold">משפך הצטרפות מוכרים</h3>
+    <InfoTip text="מספר מצטבר (לכל הזמן, לא לפי הטווח) — מכלל מי שהתחיל בתהליך פתיחת חנות, כמה הגיעו לכל שלב. האחוז ליד כל שלב = כמה מהשלב הקודם המשיכו אליו. שם מזהים היכן מוכרים נתקעים. (״ביקור בעמוד הרשמה״ נמדד רק מתעבורה חדשה, לכן עשוי להיות נמוך משאר השלבים שנספרים מכל הזמן.)" />
+  </div>
+  <div class="flex flex-col gap-2">
+    {sellerRows.map((r) => (
+      <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
+        <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-accent)_16%,transparent)]" style={`width:${r.barPct}%`}></div>
+        <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
+          <span class="font-medium">{r.label}</span>
+          <span class="shrink-0 [color:var(--color-muted)] flex items-center gap-2">
+            {r.fromPrev !== null && <span class="text-[0.75rem] [color:var(--color-accent)] font-semibold">{pct(r.fromPrev)} המשיכו</span>}
+            <strong class="[color:var(--color-text)] text-[0.95rem]">{r.value.toLocaleString('he-IL')}</strong>
+          </span>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>

@@ -56,6 +56,11 @@ vi.mock('../src/lib/user-carts.js', () => ({
 // entry that looked like a real production incident.
 vi.mock('../src/lib/error-log.js', () => ({ logError: (entry: Record<string, unknown>) => logError(entry) }));
 
+// Same reasoning as error-log above: the real recordAnalyticsEvent does an
+// fs.writeFileSync into the dev data/analytics-events.json on every purchase, so
+// stub it out — the funnel-capture side effect isn't what these tests exercise.
+vi.mock('../src/lib/analytics.js', () => ({ recordAnalyticsEvent: () => {} }));
+
 const { POST } = await import('../src/pages/api/checkout.js');
 
 function makeContext(body: unknown): APIContext {

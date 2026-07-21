@@ -287,14 +287,9 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 /* Divider between the insights zone and the management zone. */
 .admin-ads-zone { margin: 2.5rem 0 0; padding-top: 1.25rem; border-top: 2px solid var(--color-border); font-size: 1.05rem; font-weight: 800; color: var(--color-text); }
 
-/* Ad dashboard date-range picker. */
-.admin-ads-range { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
-.admin-ads-range__chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.admin-ads-range__chip { font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 999px; padding: 0.35rem 0.85rem; cursor: pointer; transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease; }
-.admin-ads-range__chip:hover { border-color: var(--color-primary); }
-.admin-ads-range__chip.is-active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
-.admin-ads-range__custom { display: flex; align-items: center; gap: 0.4rem; }
-.admin-ads-range__custom .input { width: auto; padding: 0.4rem 0.55rem; font-size: 0.85rem; }
+/* Ad dashboard date-range picker — just holds the trigger button now; the
+   presets/custom row moved into a floating-portal dropdown (advertising-platform.ts). */
+.admin-ads-range { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
 
 /* Period-over-period delta under a headline total. */
 .admin-delta { display: block; font-size: 0.72rem; font-weight: 600; margin-top: 0.3rem; }

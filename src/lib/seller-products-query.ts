@@ -1,6 +1,7 @@
 import type { StoreProduct } from './store-products.js';
 import { matchesQueryWords } from './product-listing.js';
 import { decodeList } from './admin-nav.js';
+import { LOW_STOCK_THRESHOLD } from './store-products.js';
 
 // Server-side counterpart of the seller dashboard's Products tab toolbar
 // (src/scripts/dashboard/products.ts) — pagination means the toolbar can no
@@ -9,6 +10,15 @@ import { decodeList } from './admin-nav.js';
 // same way admin-orders-filter.ts already does for the admin Orders tab.
 export type SellerProductSortCol = 'createdAt' | 'name' | 'price' | 'stock' | 'wishlist' | 'category' | 'purchased';
 export type SellerProductSortDir = 'asc' | 'desc';
+
+// Stock-status buckets (CURRENT_TASK.md item 3) — lets a seller isolate just the
+// problem inventory. Thresholds mirror LOW_STOCK_THRESHOLD, the same rule the
+// products-tab stock-alert badge counts on.
+export type StockStatus = 'out' | 'low' | 'ok';
+const VALID_STOCK_STATUSES = new Set<string>(['out', 'low', 'ok']);
+export function stockBucket(stock: number): StockStatus {
+  return stock <= 0 ? 'out' : stock <= LOW_STOCK_THRESHOLD ? 'low' : 'ok';
+}
 
 export interface SellerProductQuery {
   q: string;
@@ -19,6 +29,9 @@ export interface SellerProductQuery {
   // product row's data-category carries), so matching on path here avoids a
   // separate id round-trip. Multiple = OR, same as the toolbar's checkboxes.
   categoryPaths: string[];
+  // Selected stock buckets (out/low/ok). Empty = no stock restriction; multiple
+  // = OR (same semantics as the category filter).
+  stockStatuses: StockStatus[];
 }
 
 const VALID_SORT_COLS = new Set<string>(['createdAt', 'name', 'price', 'stock', 'wishlist', 'category', 'purchased']);
@@ -36,6 +49,7 @@ export function parseSellerProductQuery(sp: URLSearchParams): SellerProductQuery
     sortCol,
     sortDir,
     categoryPaths: decodeList(sp.get('pcat') ?? ''), // paths may contain commas (nested category names)
+    stockStatuses: (sp.get('pstock') ?? '').split(',').map((s) => s.trim()).filter((s): s is StockStatus => VALID_STOCK_STATUSES.has(s)),
   };
 }
 
@@ -47,8 +61,10 @@ export function filterAndSortSellerProducts(
   query: SellerProductQuery,
 ): StoreProduct[] {
   const catSet = query.categoryPaths.length ? new Set(query.categoryPaths) : null;
+  const stockSet = query.stockStatuses.length ? new Set<string>(query.stockStatuses) : null;
   const filtered = products.filter((p) => {
     if (catSet && !catSet.has(categoryPaths.get(p.id) ?? '')) return false;
+    if (stockSet && !stockSet.has(stockBucket(p.stock))) return false;
     return matchesQueryWords(query.q, `${p.name} ${p.sku ?? ''} ${categoryPaths.get(p.id) ?? ''}`);
   });
 

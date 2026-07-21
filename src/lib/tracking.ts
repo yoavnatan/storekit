@@ -37,4 +37,14 @@ export function trackAddToCart(item: TrackItem, qty: number): void {
     currency: 'ILS',
     content_name: item.name,
   });
+  // First-party funnel capture (separate from the third-party dataLayer/fbq
+  // above, which store nothing we can query). One central call here covers every
+  // add-to-cart surface — product page, store card, quick-view modal. The session
+  // id is read server-side from the httpOnly sn_vid cookie, never sent from here.
+  void fetch('/api/analytics/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'add_to_cart', productId: item.id }),
+    keepalive: true,
+  }).catch(() => undefined);
 }

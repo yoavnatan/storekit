@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { logError, resolveErrorContext } from './lib/error-log.js';
 import { recordPageView } from './lib/store-pageviews.js';
 import { recordProductView } from './lib/product-pageviews.js';
+import { recordAnalyticsEvent } from './lib/analytics.js';
 import { getStoreBySlug } from './lib/stores.js';
 import { getProductBySlug } from './lib/store-products.js';
 
@@ -43,23 +44,47 @@ function resolveVisitorId(cookies: AstroCookies): string {
 // carries a real message/stack instead of a content-free "unhandled 500".
 export const onRequest = defineMiddleware(async (context, next) => {
   try {
-    if (context.request.method === 'GET') {
-      const pathname = new URL(context.request.url).pathname;
-      const storeMatch = pathname.match(STORE_PATH_RE);
-      if (storeMatch) recordPageView(storeMatch[1], resolveVisitorId(context.cookies));
-      // A product page also counts one product-level view. Resolve slug→id so
-      // history keys on the immutable product id (a rename changes the slug).
-      // Wrapped so a lookup miss/failure never affects the response — analytics.
-      const productMatch = pathname.match(PRODUCT_PATH_RE);
-      if (productMatch) {
-        try {
-          const st = getStoreBySlug(productMatch[1]!);
-          const prod = st ? getProductBySlug(st.id, productMatch[2]!) : null;
-          if (prod) recordProductView(prod.id);
-        } catch { /* analytics tap must never break the request */ }
-      }
+    const isGet = context.request.method === 'GET';
+    const pathname = new URL(context.request.url).pathname;
+    // A navigable page — the only kind we count in the first-party funnel and
+    // resolve a visitor id for. Excludes API calls, static assets (any path with
+    // a file extension), and the admin backend (the owner's own browsing must not
+    // pollute the shopper funnel). The definitive HTML check happens after next().
+    const isPageCandidate = isGet
+      && !pathname.startsWith('/api/')
+      && !pathname.startsWith('/admin')
+      && !/\.[a-z0-9]+$/i.test(pathname);
+    const vid = isPageCandidate ? resolveVisitorId(context.cookies) : '';
+
+    const storeMatch = isGet ? pathname.match(STORE_PATH_RE) : null;
+    if (storeMatch) recordPageView(storeMatch[1], vid || resolveVisitorId(context.cookies));
+    // A product page also counts one product-level view. Resolve slug→id so
+    // history keys on the immutable product id (a rename changes the slug).
+    // Wrapped so a lookup miss/failure never affects the response — analytics.
+    const productMatch = isGet ? pathname.match(PRODUCT_PATH_RE) : null;
+    let viewedProductId = '';
+    if (productMatch) {
+      try {
+        const st = getStoreBySlug(productMatch[1]!);
+        const prod = st ? getProductBySlug(st.id, productMatch[2]!) : null;
+        if (prod) { recordProductView(prod.id); viewedProductId = prod.id; }
+      } catch { /* analytics tap must never break the request */ }
     }
-    return await next();
+
+    const response = await next();
+
+    // First-party funnel capture — only on a real HTML page response so redirects
+    // and asset 200s never inflate the numbers. Each call is fire-and-forget and
+    // never throws (see analytics.ts). page_view = a session touched the site;
+    // the narrower stages map product pages → view_item, the checkout page →
+    // begin_checkout, and the seller register page → the seller-funnel top.
+    if (isPageCandidate && (response.headers.get('content-type') ?? '').includes('text/html')) {
+      recordAnalyticsEvent('page_view', { vid });
+      if (viewedProductId) recordAnalyticsEvent('view_item', { vid, productIds: [viewedProductId] });
+      else if (pathname === '/checkout') recordAnalyticsEvent('begin_checkout', { vid });
+      else if (pathname === '/seller/register') recordAnalyticsEvent('seller_register_view', { vid });
+    }
+    return response;
   } catch (err) {
     const pathname = new URL(context.request.url).pathname;
     logError({

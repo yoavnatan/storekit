@@ -15,8 +15,13 @@ function frac(seed: string): number {
   return crypto.createHash('sha256').update(seed).digest().readUInt32BE(0) / 0xffffffff;
 }
 
-export interface RangeStat { impressions: number; clicks: number; ctr: number; spend: number; conversions: number; roas: number }
-const ZERO: RangeStat = { impressions: 0, clicks: 0, ctr: 0, spend: 0, conversions: 0, roas: 0 };
+export interface RangeStat { impressions: number; clicks: number; ctr: number; spend: number; cpc: number; conversions: number; roas: number }
+const ZERO: RangeStat = { impressions: 0, clicks: 0, ctr: 0, spend: 0, cpc: 0, conversions: 0, roas: 0 };
+
+/** Cost per click from spend/clicks, guarded against divide-by-zero (₪, 2dp). */
+function cpcOf(spend: number, clicks: number): number {
+  return clicks > 0 ? Math.round((spend / clicks) * 100) / 100 : 0;
+}
 
 /** Click-through rate % from impressions/clicks, guarded against divide-by-zero. */
 function ctrOf(impressions: number, clicks: number): number {
@@ -91,7 +96,10 @@ function accrue(campaign: AdCampaign, days: number): RangeStat {
   const ctr = 1.2 + rand * 2.3; // %
   const clicks = Math.round(imp * (ctr / 100));
   const roas = Math.round((1.8 + rand * 3.2) * 100) / 100; // simulated revenue / spend
-  return { impressions: imp, clicks, ctr: ctrOf(imp, clicks), spend: Math.round(spend * 100) / 100, conversions: 0, roas };
+  const spendR = Math.round(spend * 100) / 100;
+  // Sales attributed to the campaign — a seeded ~1.5%–5.5% of clicks convert.
+  const conversions = Math.round(clicks * (0.015 + rand * 0.04));
+  return { impressions: imp, clicks, ctr: ctrOf(imp, clicks), spend: spendR, cpc: cpcOf(spendR, clicks), conversions, roas };
 }
 
 /** Metrics accrued during the overlap of the picked window [from,to] with the
@@ -140,11 +148,13 @@ export function brandStatsInRange(campaign: BrandCampaign, from: string, to: str
   const ctr = 0.7 + rand * 1.6; // %
   const imp = Math.round(impressions);
   const clicks = Math.round(impressions * (ctr / 100));
+  const spendR = Math.round(spend * 100) / 100;
   return {
     impressions: imp,
     clicks,
     ctr: ctrOf(imp, clicks),
-    spend: Math.round(spend * 100) / 100,
+    spend: spendR,
+    cpc: cpcOf(spendR, clicks),
     conversions: Math.round(clicks * (0.02 + rand * 0.05)), // 2%–7% of clicks act
     roas: 0, // brand/awareness has no direct revenue attribution modelled
   };

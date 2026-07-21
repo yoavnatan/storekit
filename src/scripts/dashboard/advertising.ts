@@ -6,7 +6,7 @@ import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { presetRange, shortDate } from '../../lib/date-range.js';
 
-interface CampaignStats { impressions: number; clicks: number; ctr: number; spend: number; roas: number }
+interface CampaignStats { impressions: number; clicks: number; ctr: number; spend: number; cpc: number; conversions: number; roas: number }
 interface RunPeriod { start: string; end: string; days: number }
 interface Campaign {
   id: string; scope: 'store' | 'product'; productName?: string;
@@ -47,6 +47,14 @@ function targetingLabel(c: Campaign, i18n: Record<string, string>): string {
   return parts.filter(Boolean).join(' · ');
 }
 
+/** Budget label reflecting the campaign's billing mode: a fixed-duration boost
+ *  is a one-time TOTAL budget; an ongoing boost is a recurring MONTHLY budget.
+ *  (CURRENT_TASK.md item 2 — the old flat "monthly budget" label on a 7-day
+ *  campaign was the source of the confusion.) */
+function budgetLabel(c: Campaign, i18n: Record<string, string>): string {
+  return c.durationDays ? (i18n.adBudgetTotal ?? '') : (i18n.adBudgetMonthly ?? '');
+}
+
 function getI18n(): Record<string, string> {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
   catch { return {}; }
@@ -67,13 +75,14 @@ function campaignCardHtml(c: Campaign, i18n: Record<string, string>): string {
     : '[color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)]';
   return `
     <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3" data-campaign-id="${c.id}" data-status="${c.status}">
-      <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
-        <div class="flex items-center gap-2">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-2">
+        <div class="flex items-center gap-2 flex-wrap min-w-0">
           <span class="text-[0.85rem] font-semibold">${scopeLabel}</span>
           <span class="text-[0.72rem] font-medium [color:var(--color-muted)]">${platformLabel}</span>
           <span class="text-[0.68rem] font-bold py-[.1rem] px-[.5rem] rounded-full ${statusClass}">${isActive ? (i18n.adStatusActive ?? '') : (i18n.adStatusPaused ?? '')}</span>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" class="btn btn--ghost btn--sm" data-ad-action="edit-budget" data-campaign-id="${c.id}">${i18n.adEditBudget ?? ''}</button>
           <button type="button" class="btn btn--ghost btn--sm" data-ad-action="toggle" data-campaign-id="${c.id}">${isActive ? (i18n.adPauseCampaign ?? '') : (i18n.adResumeCampaign ?? '')}</button>
           <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" data-ad-action="delete" data-campaign-id="${c.id}">${i18n.adDeleteCampaign ?? ''}</button>
         </div>
@@ -82,12 +91,14 @@ function campaignCardHtml(c: Campaign, i18n: Record<string, string>): string {
         <span>${escHtml(targetingLabel(c, i18n))}</span>
         ${c.runPeriod ? `<span aria-hidden="true">·</span><span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escHtml(runPeriodLabel(c, i18n))}</span>` : ''}
       </p>
-      <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 text-[0.82rem]">
-        <div><span class="[color:var(--color-muted)]">${i18n.adBudgetLabel ?? ''}</span><br /><strong>${formatPrice(c.monthlyBudget)}</strong></div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[0.82rem]">
+        <div data-budget-cell data-budget="${c.monthlyBudget}"><span class="[color:var(--color-muted)]">${budgetLabel(c, i18n)}</span><br /><strong>${formatPrice(c.monthlyBudget)}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adImpressions ?? ''}</span><br /><strong>${c.stats.impressions.toLocaleString('he-IL')}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adClicks ?? ''}</span><br /><strong>${c.stats.clicks.toLocaleString('he-IL')}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adCtr ?? ''}</span><br /><strong>${c.stats.ctr}%</strong>${ctrTierChipHtml(c.stats.ctr, { low: i18n.adTierLow ?? '', mid: i18n.adTierMid ?? '', high: i18n.adTierHigh ?? '' })}</div>
         <div><span class="[color:var(--color-muted)]">${i18n.adSpend ?? ''}</span><br /><strong>${formatPrice(c.stats.spend)}</strong></div>
+        <div><span class="[color:var(--color-muted)]">${i18n.adCpc ?? ''}</span><br /><strong>${formatPrice(c.stats.cpc)}</strong></div>
+        <div><span class="[color:var(--color-muted)]">${i18n.adConversions ?? ''}</span><br /><strong>${c.stats.conversions.toLocaleString('he-IL')}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adRoas ?? ''}</span><br /><strong>x${c.stats.roas}</strong>${roasTierChipHtml(c.stats.roas, { low: i18n.adTierLow ?? '', mid: i18n.adTierMid ?? '', high: i18n.adTierHigh ?? '' })}</div>
       </div>
     </div>`;
@@ -168,6 +179,21 @@ export function initAdvertisingTab(): void {
     if (storeAutoNote) storeAutoNote.hidden = isProduct;
     applyInferredAudience();
   }
+
+  // Billing-mode clarity (CURRENT_TASK.md item 2): the budget the seller enters
+  // means different things per duration — a fixed period (7/14/30) is a one-time
+  // TOTAL, "ongoing" is a recurring MONTHLY charge. Reflect that live in the
+  // field label + a plain-language note so nobody has to guess whether it renews.
+  const durationSelect = document.getElementById('ad-duration-select') as HTMLSelectElement | null;
+  const budgetLabelEl = document.getElementById('ad-budget-label');
+  const budgetModeNote = document.getElementById('ad-budget-mode-note');
+  function updateBudgetMode(): void {
+    const ongoing = !durationSelect?.value; // '' = ongoing
+    if (budgetLabelEl) budgetLabelEl.textContent = ongoing ? (i18n.adBudgetMonthlyFieldLabel ?? '') : (i18n.adBudgetTotalFieldLabel ?? '');
+    if (budgetModeNote) budgetModeNote.textContent = ongoing ? (i18n.adBudgetMonthlyHint ?? '') : (i18n.adBudgetTotalHint ?? '');
+  }
+  durationSelect?.addEventListener('change', updateBudgetMode);
+  updateBudgetMode();
 
   scopeSelect?.addEventListener('change', updateScopeUI);
   productSelect?.addEventListener('change', applyInferredAudience);
@@ -280,6 +306,20 @@ export function initAdvertisingTab(): void {
   }
   initRangePicker();
 
+  // ── Lazy first-load (CURRENT_TASK item 1) ────────────────────────────────
+  // When Advertising isn't the seller dashboard's landing tab, the server skips
+  // the per-campaign mock-stats pass and renders an empty list marked
+  // data-ssr-loaded="0" (a skeleton placeholder). Fetch the campaigns the first
+  // time the panel is revealed. Any other value (the landing tab = "1", or the
+  // admin per-store page where the attribute is absent) means the cards are
+  // already server-rendered — no fetch needed.
+  if (list.dataset.ssrLoaded === '0') {
+    const advPanel = document.getElementById('dash-panel-advertising');
+    const lazyLoad = () => { void refetch(); };
+    if (!advPanel || !advPanel.hidden) lazyLoad();
+    else advPanel.addEventListener('dashtab:show', lazyLoad, { once: true });
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
@@ -343,6 +383,58 @@ export function initAdvertisingTab(): void {
         showStatus(i18n.adCampaignUpdated ?? 'Campaign updated.');
         await refetch();
       } finally { btn.disabled = false; btn.classList.remove('btn--busy'); }
+      return;
+    }
+
+    if (action === 'edit-budget') {
+      // Inline top-up/adjust for an existing campaign (CURRENT_TASK.md item 2 —
+      // there was no way to change a live campaign's budget before). Swaps the
+      // budget cell into a small input; Save PATCHes monthlyBudget and refetches
+      // (server recomputes the mock spend/stats), Cancel restores the cell as-is.
+      // Match on '[data-status]' (the CARD), NOT '[data-campaign-id]' — the
+      // button itself also carries data-campaign-id, so .closest() would return
+      // the button and never find the budget cell (the "does nothing" bug).
+      const card = btn.closest<HTMLElement>('[data-status]');
+      const cell = card?.querySelector<HTMLElement>('[data-budget-cell]');
+      if (!cell || cell.dataset.editing) return;
+      cell.dataset.editing = '1';
+      const original = cell.innerHTML;
+      cell.innerHTML = `
+        <div class="flex items-center gap-1 flex-wrap">
+          <input type="number" min="50" step="10" value="${escHtml(cell.dataset.budget ?? '')}" dir="ltr" data-budget-input class="input !py-[.2rem] !px-[.4rem] !w-[6.5rem] text-[0.82rem]" aria-label="${escHtml(i18n.adEditBudget ?? '')}" />
+          <button type="button" data-budget-save class="btn btn--accent btn--sm !py-[.2rem] !px-[.5rem]">${escHtml(i18n.save ?? 'Save')}</button>
+          <button type="button" data-budget-cancel class="btn btn--ghost btn--sm !py-[.2rem] !px-[.5rem]">${escHtml(i18n.cancel ?? 'Cancel')}</button>
+        </div>`;
+      const input = cell.querySelector<HTMLInputElement>('[data-budget-input]');
+      const restore = (): void => { cell.innerHTML = original; delete cell.dataset.editing; };
+      input?.focus();
+      input?.select();
+      const save = async (): Promise<void> => {
+        const saveBtn = cell.querySelector<HTMLButtonElement>('[data-budget-save]');
+        const val = parseFloat(input?.value ?? '');
+        if (!Number.isFinite(val) || val < 50) { showStatus(i18n.adBudgetInvalid ?? 'Invalid budget.', true); return; }
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.classList.add('btn--busy'); }
+        try {
+          const res = await fetch(endpoint, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: campaignId, storeSlug, monthlyBudget: val }),
+          });
+          const data = await res.json() as { ok?: boolean; error?: string };
+          if (!data.ok) { showStatus(data.error ?? (i18n.errorSaving ?? 'Error saving.'), true); if (saveBtn) { saveBtn.disabled = false; saveBtn.classList.remove('btn--busy'); } return; }
+          showStatus(i18n.adBudgetSaved ?? 'Budget updated.');
+          await refetch();
+        } catch {
+          showStatus(i18n.errorSaving ?? 'Error saving.', true);
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.classList.remove('btn--busy'); }
+        }
+      };
+      cell.querySelector('[data-budget-cancel]')?.addEventListener('click', restore);
+      cell.querySelector('[data-budget-save]')?.addEventListener('click', () => void save());
+      input?.addEventListener('keydown', (ev: KeyboardEvent) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); void save(); }
+        else if (ev.key === 'Escape') { ev.preventDefault(); restore(); }
+      });
       return;
     }
 

@@ -1800,6 +1800,11 @@ export async function applyPagination(): Promise<void> {
     const noCatLabel = getDashI18n().filterNoCategory ?? 'ללא קטגוריה';
     params.set('pcat', encodeList([...catValues].map((v) => (v === noCatLabel ? '' : v))));
   }
+  const stockValues = productsFilters.get('stock');
+  if (stockValues?.size) {
+    const i = getDashI18n();
+    params.set('pstock', [...stockValues].map((v) => stockKeyFromLabel(v, i)).join(','));
+  }
 
   let data: { ok: boolean; items?: ProductData[]; page?: number; totalPages?: number; total?: number; stockAlerts?: number };
   try {
@@ -1903,10 +1908,28 @@ export function initStickyOffsets(): void {
 // funnel, its continuous stock column only gets sort). Add more column keys
 // here (and a matching case in getDistinctFilterValues + filterAndSortSellerProducts
 // in seller-products-query.ts) if a future column turns out to warrant it.
-const PRODUCT_FILTER_COLUMNS = ['category'] as const;
+const PRODUCT_FILTER_COLUMNS = ['category', 'stock'] as const;
+
+// Stock-status filter (CURRENT_TASK.md item 3): three synthetic buckets over the
+// numeric stock column so a seller can isolate just the problem inventory.
+// Values are stored/displayed as labels (like every other filter column) and
+// mapped to stable keys ('out'/'low'/'ok') for the query string; the server
+// (seller-products-query.ts#stockBucket) applies the matching thresholds.
+const STOCK_FILTER_KEYS = ['out', 'low', 'ok'] as const;
+function stockFilterLabel(key: string, i: Record<string, string>): string {
+  return key === 'out' ? (i.filterStockOut ?? 'אזל מהמלאי')
+    : key === 'low' ? (i.filterStockLow ?? 'מלאי נמוך')
+    : (i.filterStockOk ?? 'מלאי תקין');
+}
+function stockKeyFromLabel(label: string, i: Record<string, string>): string {
+  if (label === stockFilterLabel('out', i)) return 'out';
+  if (label === stockFilterLabel('low', i)) return 'low';
+  return 'ok';
+}
 
 function productFilterColumnLabel(col: string, i: Record<string, string>): string {
   if (col === 'category') return i.categoryLabel ?? 'קטגוריה';
+  if (col === 'stock') return i.colStock ?? 'מלאי';
   return col;
 }
 
@@ -2072,8 +2095,10 @@ function refreshFilterUI(): void {
 }
 
 function getDistinctFilterValues(col: string): string[] {
-  if (col !== 'category') return [];
-  return [...allCategoryPaths().sort(), getDashI18n().filterNoCategory ?? 'ללא קטגוריה'];
+  const i = getDashI18n();
+  if (col === 'category') return [...allCategoryPaths().sort(), i.filterNoCategory ?? 'ללא קטגוריה'];
+  if (col === 'stock') return STOCK_FILTER_KEYS.map((k) => stockFilterLabel(k, i));
+  return [];
 }
 
 function filterValuesHtml(col: string, showBack: boolean): string {

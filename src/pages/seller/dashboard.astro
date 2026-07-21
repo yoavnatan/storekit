@@ -217,6 +217,16 @@ const productsPageSize = PRODUCTS_PAGE_SIZE_OPTIONS.includes(requestedPageSize) 
 const filteredSortedProducts = filterAndSortSellerProducts(products, productCategoryPaths, wishlistCounts, purchasedCounts, sellerProductQuery);
 const productsPage = paginate(filteredSortedProducts, parsePage(Astro.url.searchParams, 'ppage'), productsPageSize);
 const initialPanel = Astro.url.searchParams.get('panel') ?? 'overview';
+// Performance + Advertising are the two heaviest tabs to render server-side —
+// buildPerformanceSummary() reads the page-view buckets and aggregates every
+// order, and the ad cards each run a seeded mock-metrics pass. They're rarely
+// the tab a seller lands on, so their data is computed SSR ONLY when deep-linked
+// (?panel=performance/advertising) and otherwise left empty; the client
+// (performance.ts / advertising.ts) lazy-fetches it the first time the tab is
+// actually revealed. This keeps the common landing (overview/products) off that
+// cost while tab switches for the light tabs stay instant. (CURRENT_TASK item 1)
+const perfIsInitial = initialPanel === 'performance';
+const advIsInitial = initialPanel === 'advertising';
 const storeMessages = store
   ? getMessagesBySeller(sellerId)
       .filter((m) => !m.replyToId && m.toStoreId === store.id)
@@ -273,7 +283,7 @@ const toLocalISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1
 const perfToISO = toLocalISO(perfToday);
 const perfFromISO = toLocalISO(new Date(perfToday.getFullYear(), perfToday.getMonth(), 1));
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
-const perfSummary = store ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity, platformConfig.checkout.commissionPercent) : undefined;
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity, platformConfig.checkout.commissionPercent) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).
@@ -281,7 +291,7 @@ const perfSummary = store ? buildPerformanceSummary(storeOrders, store.slug, per
 // "what did this specific campaign achieve" figure (CURRENT_TASK.md item 3),
 // which pausing FREEZES rather than erases (item 1). The range picker above the
 // list re-fetches a windowed "recent activity" view over other periods.
-const adCampaigns = store ? getCampaignsByStoreId(store.id).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) })) : [];
+const adCampaigns = (store && advIsInitial) ? getCampaignsByStoreId(store.id).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) })) : [];
 // Baseline is the platform-funded free exposure the store has accrued to date —
 // a stable lifetime total, deliberately NOT windowed by the campaign picker.
 const adBaselineImpressions = store ? getMockBaselineImpressions(store.id) : 0;
@@ -313,6 +323,9 @@ const adTargetingLabel = (c: { scope?: string; durationDays?: number; audience?:
   parts.push(c.durationDays === 7 ? d.adDuration7 : c.durationDays === 14 ? d.adDuration14 : c.durationDays === 30 ? d.adDuration30 : d.adDurationOngoing);
   return parts.filter(Boolean).join(' · ');
 };
+// Budget label reflecting billing mode (mirrors budgetLabel() in advertising.ts):
+// a fixed-duration boost is a one-time TOTAL, ongoing is a recurring MONTHLY.
+const adBudgetLabelFor = (c: { durationDays?: number }): string => (c.durationDays ? d.adBudgetTotal : d.adBudgetMonthly);
 // Run-period label (mirrors runPeriodLabel() in advertising.ts): "מאז 8.7" while
 // running, "8.7–17.7" once paused/ended — the period the lifetime numbers cover.
 const adRunPeriodLabel = (c: { status: string; runPeriod?: { start: string; end: string } }): string => {
@@ -330,6 +343,10 @@ const perfVisitorsChartSvg = perfSummary
       { points: perfSummary.points.map((p) => ({ label: p.label, value: p.views })), color: 'var(--color-muted)', dashed: true, label: d.perfVisitors },
     ], { valueFormatter: (v) => String(v), emptyMessage: d.perfNoData, rtl: perfIsRtl })
   : '';
+// Shown in the chart slots while the tab is lazy-loading its data (perfSummary
+// undefined because this wasn't the landing tab). Replaced wholesale by
+// performance.ts#paintCharts once the fetch resolves on first reveal.
+const perfChartSkeleton = '<div class="skeleton-shimmer" style="height:180px;border-radius:var(--radius)"></div>';
 const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending').length;
 // Orders tab pagination — same server-paginated approach as Products above
 // (src/lib/seller-orders-query.ts mirrors admin-orders-filter.ts), fixed at
@@ -805,7 +822,12 @@ const orderStatusColors: Record<string, string> = {
                   <button type="button" class="sort-btn" data-sort-col="price"><span class="sort-btn__label">{d.colPrice}</span><svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                 </th>
                 <th class="stock-col">
-                  <button type="button" class="sort-btn" data-sort-col="stock"><span class="sort-btn__label">{d.colStock}</span><svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                  <div style="display:flex;align-items:center;gap:0.25rem;min-width:0">
+                    <button type="button" class="sort-btn" data-sort-col="stock"><span class="sort-btn__label">{d.colStock}</span><svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
+                    <button type="button" class="combo-filter-btn" data-filter-funnel-col="stock" aria-expanded="false" aria-haspopup="true" aria-label={`${d.filterByLabel ?? 'סנן לפי'} ${d.colStock}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    </button>
+                  </div>
                 </th>
                 <th class="num wishlist-col">
                   <button type="button" class="sort-btn" data-sort-col="wishlist">
@@ -1345,7 +1367,7 @@ const orderStatusColors: Record<string, string> = {
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5" data-perf-rtl={perfIsRtl ? '1' : '0'}>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
             <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.perfRevenueChartTitle}</h3>
-            <div id="perf-revenue-chart" set:html={perfRevenueChartSvg}></div>
+            <div id="perf-revenue-chart" set:html={perfRevenueChartSvg || perfChartSkeleton}></div>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
             <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
@@ -1355,7 +1377,7 @@ const orderStatusColors: Record<string, string> = {
                 <span class="inline-flex items-center gap-1.5"><span class="inline-block w-3 h-0 border-t-2 border-dashed [border-color:var(--color-muted)]"></span>{d.perfVisitors}</span>
               </div>
             </div>
-            <div id="perf-visitors-chart" set:html={perfVisitorsChartSvg}></div>
+            <div id="perf-visitors-chart" set:html={perfVisitorsChartSvg || perfChartSkeleton}></div>
           </div>
         </div>
 
@@ -1435,18 +1457,19 @@ const orderStatusColors: Record<string, string> = {
                 </select>
               </label>
               <label class="field">
-                <span>{d.adBudgetLabel}</span>
+                <span id="ad-budget-label">{d.adBudgetMonthlyFieldLabel}</span>
                 <input type="number" id="ad-budget-input" name="monthlyBudget" class="input" min="50" step="10" value="200" dir="ltr" />
               </label>
               <label class="field">
                 <span>{d.adDurationLabel}</span>
-                <select name="durationDays" class="input">
+                <select id="ad-duration-select" name="durationDays" class="input">
                   <option value="">{d.adDurationOngoing}</option>
                   <option value="7">{d.adDuration7}</option>
                   <option value="14">{d.adDuration14}</option>
                   <option value="30">{d.adDuration30}</option>
                 </select>
               </label>
+              <p id="ad-budget-mode-note" class="sm:col-span-2 muted text-[0.76rem] m-0 -mt-1">{d.adBudgetMonthlyHint}</p>
               <label class="field" id="ad-gender-field" hidden>
                 <span>{d.adAudienceGender}</span>
                 <select id="ad-gender-select" name="gender" class="input">
@@ -1468,6 +1491,8 @@ const orderStatusColors: Record<string, string> = {
             </div>
             <p id="ad-store-auto-note" class="text-[0.78rem] m-0 [color:var(--color-success)]">{d.adStoreAutoNote}</p>
             <p class="muted text-[0.78rem] m-0">{d.adBudgetHint}</p>
+            <p class="muted text-[0.72rem] m-0">{d.adBudgetPlatformFeeNote}</p>
+            <p class="muted text-[0.72rem] m-0">{d.adBillingTimingNote}</p>
             <div>
               <button type="submit" class="btn btn--sm btn--accent">{d.adCreateCampaign}</button>
             </div>
@@ -1506,19 +1531,21 @@ const orderStatusColors: Record<string, string> = {
               ))}
             </dl>
           </details>
-          <div id="ad-campaigns-list" class="flex flex-col gap-3" data-store-slug={store.slug}>
-            {adCampaigns.length === 0 && <p class="muted text-[0.85rem] m-0" id="ad-empty-msg">{d.adNoCampaigns}</p>}
+          <div id="ad-campaigns-list" class="flex flex-col gap-3" data-store-slug={store.slug} data-ssr-loaded={advIsInitial ? '1' : '0'}>
+            {!advIsInitial && <div class="skeleton-shimmer" style="height:88px;border-radius:var(--radius)"></div>}
+            {advIsInitial && adCampaigns.length === 0 && <p class="muted text-[0.85rem] m-0" id="ad-empty-msg">{d.adNoCampaigns}</p>}
             {adCampaigns.map((c) => (
               <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3" data-campaign-id={c.id} data-status={c.status}>
-                <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
-                  <div class="flex items-center gap-2">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-2">
+                  <div class="flex items-center gap-2 flex-wrap min-w-0">
                     <span class="text-[0.85rem] font-semibold">{c.scope === 'product' ? c.productName : d.adScopeStore}</span>
                     <span class="text-[0.72rem] font-medium [color:var(--color-muted)]">{c.platform === 'google' ? d.adPlatformGoogle : c.platform === 'meta' ? d.adPlatformMeta : d.adPlatformBoth}</span>
                     <span class={`text-[0.68rem] font-bold py-[.1rem] px-[.5rem] rounded-full ${c.status === 'active' ? '[color:var(--color-success)] [background:color-mix(in_srgb,var(--color-success)_14%,transparent)]' : '[color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)]'}`}>
                       {c.status === 'active' ? d.adStatusActive : d.adStatusPaused}
                     </span>
                   </div>
-                  <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-2 shrink-0">
+                    <button type="button" class="btn btn--ghost btn--sm" data-ad-action="edit-budget" data-campaign-id={c.id}>{d.adEditBudget}</button>
                     <button type="button" class="btn btn--ghost btn--sm" data-ad-action="toggle" data-campaign-id={c.id}>{c.status === 'active' ? d.adPauseCampaign : d.adResumeCampaign}</button>
                     <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" data-ad-action="delete" data-campaign-id={c.id}>{d.adDeleteCampaign}</button>
                   </div>
@@ -1535,12 +1562,14 @@ const orderStatusColors: Record<string, string> = {
                     </Fragment>
                   )}
                 </p>
-                <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 text-[0.82rem]">
-                  <div><span class="[color:var(--color-muted)]">{d.adBudgetLabel}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[0.82rem]">
+                  <div data-budget-cell data-budget={c.monthlyBudget}><span class="[color:var(--color-muted)]">{adBudgetLabelFor(c)}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adImpressions}</span><br /><strong>{c.stats.impressions.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adClicks}</span><br /><strong>{c.stats.clicks.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adCtr}</span><br /><strong>{c.stats.ctr}%</strong><Fragment set:html={ctrTierChipHtml(c.stats.ctr, { low: d.adTierLow, mid: d.adTierMid, high: d.adTierHigh })} /></div>
                   <div><span class="[color:var(--color-muted)]">{d.adSpend}</span><br /><strong>{formatPrice(c.stats.spend)}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adCpc}</span><br /><strong>{formatPrice(c.stats.cpc)}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adConversions}</span><br /><strong>{c.stats.conversions.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adRoas}</span><br /><strong>x{c.stats.roas}</strong><Fragment set:html={roasTierChipHtml(c.stats.roas, { low: d.adTierLow, mid: d.adTierMid, high: d.adTierHigh })} /></div>
                 </div>
               </div>

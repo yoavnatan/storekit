@@ -164,6 +164,11 @@ export function initDashTabs(): void {
     tab.classList.add('dash-tab--active');
     tab.setAttribute('aria-selected', 'true');
     tab.setAttribute('tabindex', '0');
+    // Keep the just-activated tab in view when the strip overflows — a
+    // keyboard/click user landing on an off-screen tab (e.g. "settings" on a
+    // narrow window) should see it, not a clipped strip. block:'nearest' so it
+    // never yanks the page vertically (feedback_subtle_scroll).
+    tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const panel = document.getElementById(`dash-panel-${tab.dataset.panel}`);
     if (panel) {
       panel.hidden = false;
@@ -196,6 +201,51 @@ export function initDashTabs(): void {
   });
 
   tabs.forEach((tab, i) => tab.setAttribute('tabindex', i === 0 ? '0' : '-1'));
+
+  // A section-tab strip (.dash-tabs) scrolls horizontally when it overflows, but
+  // a mouse-only user with no sideways scroll wheel can't reach the hidden tabs
+  // (the scrollbar is hidden) and the tabs aren't draggable — the exact gap
+  // flagged in CURRENT_TASK.md item 1. So translate a vertical wheel into
+  // horizontal scroll, and flag an overflowing strip so CSS fades its edges as a
+  // "there's more" hint. Keyboard (arrow keys above) + touch already work.
+  document.querySelectorAll<HTMLElement>('.dash-tabs').forEach((strip) => {
+    // Inject the two white edge-fade overlays once (sticky flex children pinned
+    // to each edge — see .dash-tab-fade in dashboard.css). aria-hidden + no role
+    // so the [role="tab"] queries never treat them as tabs.
+    if (!strip.querySelector('.dash-tab-fade')) {
+      for (const edge of ['start', 'end'] as const) {
+        const fade = document.createElement('span');
+        fade.className = `dash-tab-fade dash-tab-fade--${edge}`;
+        fade.setAttribute('aria-hidden', 'true');
+        if (edge === 'start') strip.prepend(fade); else strip.append(fade);
+      }
+    }
+    const syncEdges = (): void => {
+      const scrollable = strip.scrollWidth > strip.clientWidth + 1;
+      strip.classList.toggle('is-scrollable', scrollable);
+      const max = strip.scrollWidth - strip.clientWidth;
+      const sl = Math.abs(strip.scrollLeft); // RTL can report scrollLeft negative
+      // Hide the fade on whichever end is fully reached, so a resting end tab
+      // isn't dimmed; show it when there's still content that way.
+      strip.classList.toggle('at-start', !scrollable || sl <= 1);
+      strip.classList.toggle('at-end', !scrollable || sl >= max - 1);
+    };
+    syncEdges();
+    strip.addEventListener('scroll', syncEdges, { passive: true });
+    if ('ResizeObserver' in window) new ResizeObserver(syncEdges).observe(strip);
+    // Wheel-down should advance the tabs start → end (intuitive direction). In
+    // RTL the strip's start is on the right and scrollLeft runs negative toward
+    // the end, so wheel-down must DECREASE scrollLeft there — hence the sign flip
+    // (without it, scrolling down walked back toward the start).
+    const rtl = getComputedStyle(strip).direction === 'rtl';
+    strip.addEventListener('wheel', (e: WheelEvent) => {
+      if (!e.deltaY || strip.scrollWidth <= strip.clientWidth) return;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; // a real horizontal gesture — leave it
+      strip.scrollLeft += rtl ? -e.deltaY : e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+    strip.querySelector<HTMLElement>('.dash-tab--active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
 }
 
 // Overview stat cards ([data-goto-panel], e.g. AdminOverviewPanel.astro / the

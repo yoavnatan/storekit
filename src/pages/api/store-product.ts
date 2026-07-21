@@ -4,6 +4,7 @@ import { getStoreBySlug, isStoreVisible } from '../../lib/stores.js';
 import { getProductBySlug, isProductVisible } from '../../lib/store-products.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { recordProductView } from '../../lib/product-pageviews.js';
+import { recordAnalyticsEvent } from '../../lib/analytics.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -12,7 +13,7 @@ function json(data: unknown, status = 200) {
   });
 }
 
-export const GET: APIRoute = ({ url }) => {
+export const GET: APIRoute = ({ url, cookies }) => {
   const storeSlug   = url.searchParams.get('store') ?? '';
   const productSlug = url.searchParams.get('product') ?? '';
 
@@ -30,6 +31,11 @@ export const GET: APIRoute = ({ url }) => {
   // middleware), so the per-product metric reflects modal opens too, not only
   // page loads (CURRENT_TASK.md, סשן א׳). Fire-and-forget; never blocks the read.
   recordProductView(product.id);
+  // Same open also counts as a funnel view_item (keyed to the session cookie set
+  // in middleware) so a modal/quick-view open advances the buyer funnel, not just
+  // full page loads. No sn_vid yet (pre-first-page API hit) → recorded without a
+  // session id, still counting toward raw view volume.
+  recordAnalyticsEvent('view_item', { vid: cookies.get('sn_vid')?.value, productIds: [product.id] });
 
   return json({
     slug:        product.slug,

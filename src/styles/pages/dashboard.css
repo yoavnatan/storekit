@@ -657,7 +657,7 @@ textarea.input { resize: vertical; }
   /* #dash-main-card prefix bumps specificity: .dash-tabs/.dash-panel have
      unscoped base rules later in this file (same specificity) that would
      otherwise win over this media query purely on source order. */
-  #dash-main-card .dash-tabs { padding-inline: 0.65rem; }
+  #dash-main-card .dash-tabs { --dash-tab-pad: 0.65rem; }
   #dash-main-card .dash-panel { padding-inline: 0.65rem; }
 
   /* Keep title + actions on one row; when the buttons don't all fit, the
@@ -1063,9 +1063,13 @@ textarea.input { resize: vertical; }
 
 /* ── Section tabs ── */
 .dash-tabs {
+  /* Exposed as a var so the edge-fade overlays can extend across this padding to
+     reach the strip's true edge (see .dash-tab-fade). Overridden per breakpoint. */
+  --dash-tab-pad: 1.5rem;
   display: flex;
   border-bottom: 1px solid var(--color-border);
-  padding: 0 1.5rem;
+  padding-block: 0;
+  padding-inline: var(--dash-tab-pad);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -1109,6 +1113,35 @@ textarea.input { resize: vertical; }
   z-index: 7;
   background: var(--color-surface);
 }
+
+/* An overflowing tab strip can't be dragged or wheel-scrolled sideways by a
+   mouse-only user without help (CURRENT_TASK.md item 1). An earlier mask faded
+   the edges to TRANSPARENT, which let the scrolling page content show through
+   the sticky bar (user-reported); a black scroll-shadow read as dark. Instead:
+   two WHITE (surface-colour) fade overlays, injected by ui.ts as sticky flex
+   children pinned to each edge, so a tab dissolves into the bar's own colour as
+   it reaches the edge — an opaque "there's more" hint, no see-through, no dark.
+   A negative margin removes their layout footprint so they overlay, not push,
+   the tabs. Each hides (opacity 0) once the strip is scrolled to that end. */
+.dash-tab-fade {
+  position: sticky;
+  align-self: stretch;
+  flex: 0 0 auto;
+  /* Also span the strip's own inline padding, so the fade reaches the true edge
+     of the bar instead of sitting `--dash-tab-pad` inside it — that inset gap was
+     letting tabs peek out beside the fade on the admin dashboard (CURRENT_TASK).
+     1.8rem of visible fade + the padding it has to cover. */
+  width: calc(1.8rem + var(--dash-tab-pad, 0px));
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity 0.15s;
+}
+.dash-tab-fade--start { inset-inline-start: calc(-1 * var(--dash-tab-pad, 0px)); margin-inline-end: calc(-1.8rem - var(--dash-tab-pad, 0px)); background: linear-gradient(to right, var(--color-surface), transparent); }
+.dash-tab-fade--end   { inset-inline-end: calc(-1 * var(--dash-tab-pad, 0px));   margin-inline-start: calc(-1.8rem - var(--dash-tab-pad, 0px)); background: linear-gradient(to left, var(--color-surface), transparent); }
+[dir="rtl"] .dash-tab-fade--start { background: linear-gradient(to left, var(--color-surface), transparent); }
+[dir="rtl"] .dash-tab-fade--end   { background: linear-gradient(to right, var(--color-surface), transparent); }
+.dash-tabs.at-start .dash-tab-fade--start,
+.dash-tabs.at-end .dash-tab-fade--end { opacity: 0; }
 
 /* Sticky title bar — used on panels that carry a control (Orders/Messages:
    search+sort+filter; Settings: save button; Performance: the date-range picker;

@@ -26,7 +26,8 @@ export function initSelectDropdown(select: HTMLSelectElement): void {
   if (select.dataset.dropdownBound) return;
   select.dataset.dropdownBound = '1';
 
-  const portal = createFloatingPortal(`select-portal-${select.id || 'sel'}-${counter++}`);
+  const portalId = `select-portal-${select.id || 'sel'}-${counter++}`;
+  const portal = createFloatingPortal(portalId);
 
   const trigger = document.createElement('button');
   trigger.type = 'button';
@@ -58,7 +59,7 @@ export function initSelectDropdown(select: HTMLSelectElement): void {
     return Array.from(select.options)
       .map((o) => {
         const selected = o.value === select.value;
-        return `<button type="button" role="option" aria-selected="${selected}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-surface)]" data-value="${escHtml(o.value)}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escHtml(o.textContent ?? '')}</button>`;
+        return `<button type="button" role="option" aria-selected="${selected}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-surface)]" data-value="${escHtml(o.value)}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}"><span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(o.textContent ?? '')}</span></button>`;
       })
       .join('');
   }
@@ -79,7 +80,24 @@ export function initSelectDropdown(select: HTMLSelectElement): void {
 
   trigger.addEventListener('click', () => {
     if (portal.currentTrigger() === trigger) { portal.close(); return; }
-    portal.open(trigger, `${Math.max(trigger.offsetWidth, 160)}px`, buildHtml, wire);
+    const w = trigger.offsetWidth;
+    portal.open(trigger, `${w}px`, buildHtml, wire);
+    // open() measures the menu at its INTRINSIC width first — a long option (e.g.
+    // "רציף (עד עצירה ידנית)") stretches it wider than the trigger despite the
+    // min-width — and positions against that, so it opens offset to the side and
+    // only the next scroll's reposition snapped it back (user-reported). Pin the
+    // width to the trigger and re-align the start edge right now (mirroring the
+    // portal's own RTL-aware left math), so it's correct on open. The ellipsis on
+    // each option keeps the text inside this pinned width.
+    const el = document.getElementById(portalId);
+    if (!el) return;
+    el.style.width = `${w}px`;
+    const a = trigger.getBoundingClientRect();
+    const rtl = getComputedStyle(document.documentElement).direction === 'rtl';
+    const margin = 8;
+    let left = rtl ? a.right - w : a.left;
+    left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+    el.style.left = `${left}px`;
   });
 
   // Keep the visible label in step with both a real user `change` and a

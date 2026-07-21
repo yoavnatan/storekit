@@ -6,6 +6,14 @@ interface NavLink {
 interface AdsConfig {
   googleTagId?: string;
   metaPixelId?: string;
+  /** Platform margin taken from a seller-funded BOOST campaign's actual ad spend
+   *  (the seller pays for what runs; this % is the platform's cut, the rest buys
+   *  real Google/Meta ads — see memory project_boost_billing_model). Disclosed to
+   *  the seller as "דמי פלטפורמה". PLACEHOLDER — the real % is not decided yet;
+   *  `null` = undecided (no margin applied). When set, remember this is a
+   *  reporting/model value only until the real ad + split-payment integration
+   *  computes the actual capture (see GO_LIVE_CHECKLIST.md). */
+  boostCommissionPercent?: number | null;
 }
 
 interface PlatformConfig {
@@ -129,6 +137,10 @@ export const store: PlatformConfig = {
   ads: {
     googleTagId: '',
     metaPixelId: '',
+    // TODO(pricing): set the platform's boost ad margin % once decided, then
+    // surface the number in the seller boost UI's "דמי פלטפורמה" note. null =
+    // undecided. See memory project_business_model_pricing + GO_LIVE_CHECKLIST.md.
+    boostCommissionPercent: null,
   },
 };
 

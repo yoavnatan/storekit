@@ -184,36 +184,52 @@
   flex-direction: column;
   gap: 0.6rem;
   /* Sticks just below the fixed site header (body padding-top:3.3rem) so the
-     category chips + sort stay reachable while scrolling a long grid. A solid
-     page-bg background + vertical padding hide the cards passing underneath;
-     no transform/will-change here so the chip hover-flyout's position:fixed
-     still resolves against the viewport rather than this element. */
+     category chips + sort stay reachable while scrolling a long grid.
+     IMPORTANT: never put transform/filter/backdrop-filter/will-change directly
+     on this element — the chip hover-flyout is position:fixed and must resolve
+     against the viewport, and any of those would make THIS its containing block
+     and break it. The frosted-glass look therefore lives on ::before (a sibling
+     of the content, never an ancestor of the flyout), not here. */
   position: sticky;
+  /* Pins flush under the fixed header (body padding-top:3.3rem) — a gap below it
+     was tried and read as odd (2026-07-21), so keep it butted against the header. */
   top: 3.3rem;
   z-index: 40;
-  background: var(--color-bg);
   padding-block: 0.7rem;
+  /* Full-bleed: break out of the container so the pinned glass spans the whole
+     viewport width. A contained, content-width panel read as awkwardly clipped
+     at the sides against the cards (2026-07-21) — a full-width band avoids sides
+     entirely. The content is pushed back to the grid's edges via padding-inline,
+     so the chips still line up with the cards. (html has overflow-x:hidden, so
+     the vw-vs-scrollbar hairline overflow is clipped, no horizontal scroll.) */
+  margin-inline: calc(50% - 50vw);
+  padding-inline: calc(50vw - 50%);
   margin-bottom: 1rem;
 }
 
-/* Soft "fade" tying the bar to the page once it's stuck: a bg→transparent
-   gradient just below the bar, so a card scrolling underneath dissolves into
-   the bar instead of hard-cutting at its bottom edge. Only shown while stuck
-   (.is-stuck, toggled from JS via an IntersectionObserver sentinel) — at rest,
-   sitting under the banner, nothing scrolls under it so no fade is needed.
-   pointer-events:none so it never intercepts clicks on the cards below. */
-.store-controls::after {
+/* Frosted glass appears ONLY once the bar pins to the header (.is-stuck,
+   toggled from JS via an IntersectionObserver sentinel). At rest — sitting
+   under the banner with nothing scrolling behind it — glass is meaningless, so
+   the bar is just its controls on the page. A subtle, near-page-bg tint (not a
+   heavy dark panel): it should barely separate from the background, only enough
+   to keep the chips legible over the blurred cards dissolving underneath.
+   Lives on ::before at z-index:-1 within .store-controls' existing sticky
+   stacking context, so the backdrop-filter never lands on .store-controls
+   itself — see the containing-block note above. */
+.store-controls::before {
   content: "";
   position: absolute;
-  inset-inline: 0;
-  top: 100%;
-  height: 1.25rem;
-  background: linear-gradient(to bottom, var(--color-bg), transparent);
-  pointer-events: none;
+  inset: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--color-bg) 50%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  backdrop-filter: blur(14px) saturate(1.05);
+  -webkit-backdrop-filter: blur(14px) saturate(1.05);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
   opacity: 0;
-  transition: opacity 0.22s ease;
+  transition: opacity 0.2s ease;
 }
-.store-controls.is-stuck::after { opacity: 1; }
+.store-controls.is-stuck::before { opacity: 1; }
 
 /* Breadcrumb + local-search icon share one line — both only exist while a
    category filter is active, so they appear/disappear together. */

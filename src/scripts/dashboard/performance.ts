@@ -573,19 +573,31 @@ export function initPerformanceTab(): void {
   function buildPanelHtml(): string {
     const activePreset = picker!.dataset.activePreset ?? '';
     const presetsHtml = PRESETS.map((p) => `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p}" style="${p === activePreset ? 'font-weight:700;color:var(--color-primary)' : ''}">${i18n[PRESET_LABEL_KEY[p]] ?? p}</button>`).join('');
+    // Custom-range row mirrors the advertising picker: both date fields AND the
+    // inline Apply sit on ONE line (so the button never falls below the fold,
+    // forcing a scroll — CURRENT_TASK item 1). A labelled sub-group makes clear
+    // this Apply commits only the custom dates, not "the whole menu".
     return `${presetsHtml}
       <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>
-      <div class="flex items-center gap-1.5 px-3 py-2" dir="ltr">
-        <input type="date" data-range-from value="${fromInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.6rem] outline-none w-full" />
-        <span class="muted text-[0.8rem]">–</span>
-        <input type="date" data-range-to value="${toInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.6rem] outline-none w-full" />
-      </div>
-      <button type="button" class="btn btn--sm btn--ghost" style="width:calc(100% - 1.5rem);margin:0 0.75rem" data-range-apply>${i18n.perfApply ?? 'Apply'}</button>`;
+      <div class="px-3 pt-1.5 pb-2">
+        <div class="text-[.72rem] [color:var(--color-muted)] mb-1.5">${i18n.perfPresetCustom ?? 'Custom'}</div>
+        <div class="flex items-center gap-1.5" dir="ltr">
+          <input type="date" data-range-from value="${fromInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+          <span class="muted text-[0.8rem] shrink-0">–</span>
+          <input type="date" data-range-to value="${toInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+          <button type="button" class="btn btn--sm btn--ghost shrink-0" data-range-apply>${i18n.perfApply ?? 'Apply'}</button>
+        </div>
+      </div>`;
   }
 
   trigger?.addEventListener('click', () => {
     if (rangePortal.currentTrigger() === trigger) { rangePortal.close(); return; }
-    rangePortal.open(trigger, '13rem', buildPanelHtml, (portal) => {
+    rangePortal.open(trigger, '19rem', buildPanelHtml, (portal) => {
+      // Show the whole picker (7 presets + the custom row with Apply) without an
+      // inner scrollbar — the shared portal caps at 320px, which cut off Apply
+      // and forced a scroll (CURRENT_TASK item 1). 30rem clears the full content;
+      // min() still guards a very short viewport.
+      portal.style.maxHeight = 'min(80vh, 30rem)';
       portal.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((btn) => {
         btn.addEventListener('click', () => applyPreset((btn.dataset.preset as Preset) ?? '30d'));
       });
@@ -596,4 +608,19 @@ export function initPerformanceTab(): void {
       });
     });
   });
+
+  // ── Lazy first-load (CURRENT_TASK item 1) ────────────────────────────────
+  // When Performance isn't the seller dashboard's landing tab, the server skips
+  // buildPerformanceSummary() entirely, so #perf-initial-summary is null and
+  // lastSummary stays unseeded above. Fetch the default range the first time the
+  // panel is actually revealed (or immediately when there's no tab gating — e.g.
+  // the admin per-store page — or the panel is already visible via deep-link). A
+  // seeded lastSummary means the server already rendered it, so there's nothing
+  // to do.
+  if (!lastSummary) {
+    const perfPanel = document.getElementById('dash-panel-performance');
+    const lazyLoad = () => { void loadRange(fromInput?.value ?? '', toInput?.value ?? ''); };
+    if (!perfPanel || !perfPanel.hidden) lazyLoad();
+    else perfPanel.addEventListener('dashtab:show', lazyLoad, { once: true });
+  }
 }

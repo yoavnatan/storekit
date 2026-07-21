@@ -31,6 +31,9 @@ import AdminMessagesPanel from '../../components/admin/AdminMessagesPanel.astro'
 import AdminAlertsPanel from '../../components/admin/AdminAlertsPanel.astro';
 import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.astro';
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
+import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
+import { getAnalyticsOverview } from '../../lib/analytics.js';
+import { getSellerFunnel } from '../../lib/seller-funnel.js';
 
 if (!isAdminRequest(Astro.cookies)) {
   return Astro.redirect('/admin/login');
@@ -38,6 +41,7 @@ if (!isAdminRequest(Astro.cookies)) {
 
 const tabs = [
   { id: 'overview', label: 'סקירה כללית' },
+  { id: 'data', label: 'נתונים' },
   { id: 'sellers', label: 'מוכרים' },
   { id: 'stores', label: 'חנויות' },
   { id: 'orders', label: 'הזמנות' },
@@ -158,6 +162,19 @@ const platformPerf = buildPlatformPerformance(
   platform.checkout.commissionPercent,
 );
 
+// ── Data tab (first-party analytics — CURRENT_TASK.md item 2) ──
+// The buyer-funnel window recomputes per ?datapreset via the panel-swap AJAX
+// (data-panel.ts); the seller onboarding funnel is a lifetime snapshot. Reuses
+// the already-read productsByStore for the top-product names (no extra reads).
+const DATA_PRESETS: AdRangePreset[] = ['today', '7d', '30d', 'thisMonth'];
+const dataPresetRaw = sp.get('datapreset') as AdRangePreset | null;
+const dataPreset: AdRangePreset = DATA_PRESETS.includes(dataPresetRaw as AdRangePreset) ? dataPresetRaw! : '30d';
+const dataRange = presetRange(dataPreset)!;
+const analyticsOverview = getAnalyticsOverview(dataRange.from, dataRange.to);
+const sellerFunnel = getSellerFunnel();
+const productNames = new Map<string, string>();
+for (const list of productsByStore.values()) for (const p of list) productNames.set(p.id, p.name);
+
 // ── "(N) new since last opened" tab badges (CURRENT_TASK.md → סשן ב׳) ──
 // Messages isn't in this list — unreadMessagesForAdmin above is already an
 // exact per-message signal, more precise than a per-tab timestamp.
@@ -217,6 +234,17 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
 
       <div id="dash-panel-overview" class="dash-panel" role="tabpanel" aria-labelledby="tab-overview" hidden={initialPanel !== 'overview'}>
         <AdminOverviewPanel overview={overview} attentionCount={attentionAll.length} />
+      </div>
+
+      <div id="dash-panel-data" class="dash-panel" role="tabpanel" aria-labelledby="tab-data" hidden={initialPanel !== 'data'}>
+        <AdminDataPanel
+          overview={analyticsOverview}
+          sellerFunnel={sellerFunnel}
+          range={dataRange}
+          activePreset={dataPreset}
+          productNames={productNames}
+          buildUrl={(preset) => tabUrl('data', { datapreset: preset !== '30d' ? preset : undefined })}
+        />
       </div>
 
       <div id="dash-panel-sellers" class="dash-panel" role="tabpanel" aria-labelledby="tab-sellers" hidden={initialPanel !== 'sellers'}>
@@ -363,6 +391,7 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
   import { initAdminTabNav } from '../../scripts/admin/tab-nav.js';
   import { initPerformanceTab } from '../../scripts/dashboard/performance.js';
   import { initAdminPlatformPerformance } from '../../scripts/admin/platform-performance.js';
+  import { initAdminDataPanel } from '../../scripts/admin/data-panel.js';
   initDashTabs();
   initAdminSellersPanel();
   initAdminStoresPanel();
@@ -373,4 +402,5 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
   initAdminTabNav();
   initPerformanceTab();
   initAdminPlatformPerformance();
+  initAdminDataPanel();
 </script>

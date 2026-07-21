@@ -76,6 +76,8 @@ const adRunPeriodLabel = (c: { status: string; runPeriod?: { start: string; end:
   if (!c.runPeriod) return '';
   return c.status === 'active' ? `${d.adRunSince} ${shortDate(c.runPeriod.start)}` : `${shortDate(c.runPeriod.start)}–${shortDate(c.runPeriod.end)}`;
 };
+// Budget label reflecting billing mode — mirrors budgetLabel() in advertising.ts.
+const adBudgetLabelFor = (c: { durationDays?: number }): string => (c.durationDays ? d.adBudgetTotal : d.adBudgetMonthly);
 ---
 
 <BaseLayout title={`פרסום · ${store.name}`} noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
@@ -148,18 +150,19 @@ const adRunPeriodLabel = (c: { status: string; runPeriod?: { start: string; end:
                 </select>
               </label>
               <label class="field">
-                <span>{d.adBudgetLabel}</span>
+                <span id="ad-budget-label">{d.adBudgetMonthlyFieldLabel}</span>
                 <input type="number" id="ad-budget-input" name="monthlyBudget" class="input" min="50" step="10" value="200" dir="ltr" />
               </label>
               <label class="field">
                 <span>{d.adDurationLabel}</span>
-                <select name="durationDays" class="input">
+                <select id="ad-duration-select" name="durationDays" class="input">
                   <option value="">{d.adDurationOngoing}</option>
                   <option value="7">{d.adDuration7}</option>
                   <option value="14">{d.adDuration14}</option>
                   <option value="30">{d.adDuration30}</option>
                 </select>
               </label>
+              <p id="ad-budget-mode-note" class="sm:col-span-2 muted text-[0.76rem] m-0 -mt-1">{d.adBudgetMonthlyHint}</p>
               <label class="field" id="ad-gender-field" hidden>
                 <span>{d.adAudienceGender}</span>
                 <select id="ad-gender-select" name="gender" class="input">
@@ -181,6 +184,8 @@ const adRunPeriodLabel = (c: { status: string; runPeriod?: { start: string; end:
             </div>
             <p id="ad-store-auto-note" class="text-[0.78rem] m-0 [color:var(--color-success)]">{d.adStoreAutoNote}</p>
             <p class="muted text-[0.78rem] m-0">{d.adBudgetHint}</p>
+            <p class="muted text-[0.72rem] m-0">{d.adBudgetPlatformFeeNote}</p>
+            <p class="muted text-[0.72rem] m-0">{d.adBillingTimingNote}</p>
             <div>
               <button type="submit" class="btn btn--sm btn--accent">{d.adCreateCampaign}</button>
             </div>
@@ -219,15 +224,16 @@ const adRunPeriodLabel = (c: { status: string; runPeriod?: { start: string; end:
             {adCampaigns.length === 0 && <p class="muted text-[0.85rem] m-0" id="ad-empty-msg">{d.adNoCampaigns}</p>}
             {adCampaigns.map((c) => (
               <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3" data-campaign-id={c.id} data-status={c.status}>
-                <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
-                  <div class="flex items-center gap-2">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-2">
+                  <div class="flex items-center gap-2 flex-wrap min-w-0">
                     <span class="text-[0.85rem] font-semibold">{c.scope === 'product' ? c.productName : d.adScopeStore}</span>
                     <span class="text-[0.72rem] font-medium [color:var(--color-muted)]">{c.platform === 'google' ? d.adPlatformGoogle : c.platform === 'meta' ? d.adPlatformMeta : d.adPlatformBoth}</span>
                     <span class={`text-[0.68rem] font-bold py-[.1rem] px-[.5rem] rounded-full ${c.status === 'active' ? '[color:var(--color-success)] [background:color-mix(in_srgb,var(--color-success)_14%,transparent)]' : '[color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)]'}`}>
                       {c.status === 'active' ? d.adStatusActive : d.adStatusPaused}
                     </span>
                   </div>
-                  <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-2 shrink-0">
+                    <button type="button" class="btn btn--ghost btn--sm" data-ad-action="edit-budget" data-campaign-id={c.id}>{d.adEditBudget}</button>
                     <button type="button" class="btn btn--ghost btn--sm" data-ad-action="toggle" data-campaign-id={c.id}>{c.status === 'active' ? d.adPauseCampaign : d.adResumeCampaign}</button>
                     <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" data-ad-action="delete" data-campaign-id={c.id}>{d.adDeleteCampaign}</button>
                   </div>
@@ -244,12 +250,14 @@ const adRunPeriodLabel = (c: { status: string; runPeriod?: { start: string; end:
                     </Fragment>
                   )}
                 </p>
-                <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 text-[0.82rem]">
-                  <div><span class="[color:var(--color-muted)]">{d.adBudgetLabel}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[0.82rem]">
+                  <div data-budget-cell data-budget={c.monthlyBudget}><span class="[color:var(--color-muted)]">{adBudgetLabelFor(c)}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adImpressions}</span><br /><strong>{c.stats.impressions.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adClicks}</span><br /><strong>{c.stats.clicks.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adCtr}</span><br /><strong>{c.stats.ctr}%</strong><Fragment set:html={ctrTierChipHtml(c.stats.ctr, { low: d.adTierLow, mid: d.adTierMid, high: d.adTierHigh })} /></div>
                   <div><span class="[color:var(--color-muted)]">{d.adSpend}</span><br /><strong>{formatPrice(c.stats.spend)}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adCpc}</span><br /><strong>{formatPrice(c.stats.cpc)}</strong></div>
+                  <div><span class="[color:var(--color-muted)]">{d.adConversions}</span><br /><strong>{c.stats.conversions.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adRoas}</span><br /><strong>x{c.stats.roas}</strong><Fragment set:html={roasTierChipHtml(c.stats.roas, { low: d.adTierLow, mid: d.adTierMid, high: d.adTierHigh })} /></div>
                 </div>
               </div>

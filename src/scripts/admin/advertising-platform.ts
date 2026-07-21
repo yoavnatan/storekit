@@ -424,44 +424,68 @@ function initBrandList(): void {
 }
 
 // ── Date-range picker ──
-// Presets re-render the whole advertising panel over the chosen window via the
-// admin's existing in-panel AJAX (buildAdminUrl + swapPanel) — the SSR panel
+// A floating-portal dropdown, same as every other range picker in the app
+// (CURRENT_TASK.md) — replaced the earlier inline chips + always-visible custom
+// row. Presets re-render the whole advertising panel over the chosen window via
+// the admin's existing in-panel AJAX (buildAdminUrl + swapPanel); the SSR panel
 // reads ?adpreset/adfrom/adto and recomputes, so there's no client-side markup
-// to keep in sync. "custom" just reveals the date inputs; "הצג" applies them.
+// to keep in sync. The trigger's label reflects the applied range (SSR-set).
 const AD_PANEL_ID = 'dash-panel-advertising';
+const AD_RANGE_PRESETS: { key: string; label: string }[] = [
+  { key: 'today', label: 'היום' },
+  { key: '7d', label: '7 ימים' },
+  { key: '30d', label: '30 יום' },
+  { key: 'thisMonth', label: 'החודש' },
+];
+// Cached once — initAdminAdvertisingPanel() re-runs on every panel swap, and
+// createFloatingPortal registers document-level listeners per call, so building
+// a fresh portal each time would leak them.
+let adRangePortal: FloatingPortal | null = null;
 
 function initAdRangePicker(): void {
   const root = document.getElementById('admin-ads-range');
-  if (!root) return;
-  const custom = document.getElementById('admin-ads-range-custom');
+  const trigger = document.getElementById('admin-ads-range-trigger');
+  if (!root || !trigger) return;
+  if (!adRangePortal) adRangePortal = createFloatingPortal('admin-ads-range-portal');
+  const portal = adRangePortal;
 
   function navigate(params: Record<string, string | undefined>): void {
+    portal.close();
     swapPanel(buildAdminUrl('advertising', params), AD_PANEL_ID, () => initAdminAdvertisingPanel());
   }
 
-  root.querySelectorAll<HTMLButtonElement>('.admin-ads-range__chip').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      const preset = chip.dataset.preset ?? '7d';
-      if (preset === 'custom') {
-        // Reveal the date inputs; don't navigate until "הצג".
-        root.querySelectorAll('.admin-ads-range__chip').forEach((c) => {
-          const on = c === chip;
-          c.classList.toggle('is-active', on);
-          c.setAttribute('aria-pressed', String(on));
-        });
-        if (custom) custom.hidden = false;
-        return;
-      }
-      navigate({ adpreset: preset });
-    });
-  });
+  function buildPanelHtml(): string {
+    const active = root!.dataset.preset ?? '7d';
+    const from = root!.dataset.from ?? '';
+    const to = root!.dataset.to ?? '';
+    const presetsHtml = AD_RANGE_PRESETS.map((p) =>
+      `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p.key}" style="${p.key === active ? 'font-weight:700;color:var(--color-primary)' : ''}">${p.label}</button>`).join('');
+    return `${presetsHtml}
+      <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>
+      <div class="px-3 pt-1.5 pb-2">
+        <div class="text-[.72rem] [color:var(--color-muted)] mb-1.5">מותאם</div>
+        <div class="flex items-center gap-1.5" dir="ltr">
+          <input type="date" data-ad-from value="${from}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+          <span class="muted text-[0.8rem] shrink-0">–</span>
+          <input type="date" data-ad-to value="${to}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+          <button type="button" class="btn btn--sm btn--accent shrink-0" data-ad-apply>הצג</button>
+        </div>
+      </div>`;
+  }
 
-  const apply = document.getElementById('admin-ads-apply');
-  apply?.addEventListener('click', () => {
-    const from = (document.getElementById('admin-ads-from') as HTMLInputElement | null)?.value;
-    const to = (document.getElementById('admin-ads-to') as HTMLInputElement | null)?.value;
-    if (!from || !to) return;
-    navigate({ adpreset: 'custom', adfrom: from, adto: to });
+  trigger.addEventListener('click', () => {
+    if (portal.currentTrigger() === trigger) { portal.close(); return; }
+    portal.open(trigger, '19rem', buildPanelHtml, (p) => {
+      p.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => navigate({ adpreset: btn.dataset.preset }));
+      });
+      p.querySelector('[data-ad-apply]')?.addEventListener('click', () => {
+        const from = p.querySelector<HTMLInputElement>('[data-ad-from]')?.value;
+        const to = p.querySelector<HTMLInputElement>('[data-ad-to]')?.value;
+        if (!from || !to) return;
+        navigate({ adpreset: 'custom', adfrom: from, adto: to });
+      });
+    });
   });
 }
 

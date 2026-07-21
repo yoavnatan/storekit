@@ -10,6 +10,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 import { getUserCart, saveUserCart } from '../../lib/user-carts.js';
 import { makeCartKey } from '../../lib/cart.js';
 import { logError } from '../../lib/error-log.js';
+import { recordAnalyticsEvent } from '../../lib/analytics.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -263,6 +264,15 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       }
       saveUserCart(userId, { cart, wishlist: existing.wishlist, favoriteStores: existing.favoriteStores ?? [] });
     }
+
+    // First-party funnel: the purchase stage. Recorded server-side after the
+    // order commits (never client-side) so an ad-blocker or a closed tab can't
+    // drop it; the sn_vid session ties it back to this shopper's earlier
+    // add_to_cart for the cart-abandonment math. Fire-and-forget, never throws.
+    recordAnalyticsEvent('purchase', {
+      vid: cookies.get('sn_vid')?.value,
+      productIds: decremented.map((d) => d.productId),
+    });
 
     return json({ orderIds, checkoutRef }, 201);
   } catch (err) {
