@@ -8,6 +8,7 @@ import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseVar
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
+import { pingProductChange } from '../../lib/indexnow.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -34,7 +35,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (action === 'add-product') {
     const storeId = String(form.get('storeId') || '');
     const stores = getStoresBySellerId(sellerId);
-    if (!stores.find((s) => s.id === storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
+    const ownerStore = stores.find((s) => s.id === storeId);
+    if (!ownerStore) return json({ ok: false, error: 'Not authorized' }, 403);
 
     const name = String(form.get('name') || '').trim();
     const description = String(form.get('description') || '').trim();
@@ -66,6 +68,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
       variantImages: Object.keys(variantImages).length ? variantImages : undefined,
     });
+    // A brand-new public page — the highest-value IndexNow signal (fire-and-forget).
+    pingProductChange(ownerStore.slug, product.slug);
     return json({ ok: true, product, stockAlerts: countStockAlerts(storeId, LOW_STOCK_THRESHOLD) });
   }
 
@@ -174,12 +178,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const product = getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
     const stores = getStoresBySellerId(sellerId);
-    if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const visStore = stores.find((s) => s.id === product.storeId);
+    if (!visStore) return json({ ok: false, error: 'Not authorized.' }, 403);
     // A seller can only flip their own take-down flag; an admin `blocked` product
     // stays hidden regardless (isProductVisible gates on both).
     const hidden = String(form.get('hidden') || '') === '1';
     const updated = updateProduct(productId, { hidden });
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
+    // Indexability just changed (show → wants indexing / hide → drop) — notify.
+    pingProductChange(visStore.slug, updated.slug);
     // Taking a product off the shelf resolves any outstanding stock alert for it —
     // the seller has consciously decided it's not for sale, so nagging about its
     // stock would be exactly the noise this feature removes.

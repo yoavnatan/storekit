@@ -455,6 +455,7 @@ export const translations = {
       adTierHigh: 'גבוה',
       adBaselineImpressions: 'חשיפות ב-30 הימים האחרונים (הערכה)',
       adBaselineImpTip: 'חשיפה = כמה פעמים מוצר שלך הופיע בפרסומת ב-Google או Meta. זו ספירת הופעות מול עיניים — לא קליקים ולא מספר אנשים, ולכן המספר גבוה יחסית.',
+      adAioNote: 'טכנולוגיה מובנית: כל מוצר שלך אופטם אוטומטית גם למנועי חיפוש וגם למנועי ה-AI החדשים (ChatGPT, Perplexity, Gemini) — נתונים מובְנים, תוויות חכמות ופיד קטלוג מרוכז, בלי שתגדיר כלום.',
       adGlossaryTitle: 'מה המספרים אומרים? (למי שלא מכיר פרסום דיגיטלי)',
       adGlossary: [
         { t: 'חשיפות', d: 'כמה פעמים המודעה שלך הוצגה. הופעה מול עיניים — לא בהכרח קליק.' },
@@ -1227,6 +1228,7 @@ export const translations = {
       adTierHigh: 'High',
       adBaselineImpressions: 'Impressions in the last 30 days (estimate)',
       adBaselineImpTip: 'An impression = how many times one of your products appeared in a Google or Meta ad. It counts appearances in front of eyes — not clicks and not unique people — which is why the number is relatively high.',
+      adAioNote: 'Built-in tech: every product is automatically optimized for both search engines and the new AI answer engines (ChatGPT, Perplexity, Gemini) — structured data, smart labels and a unified catalog feed, with zero setup on your side.',
       adGlossaryTitle: 'What do the numbers mean? (for anyone new to digital ads)',
       adGlossary: [
         { t: 'Impressions', d: 'How many times your ad was shown. An appearance in front of eyes — not necessarily a click.' },

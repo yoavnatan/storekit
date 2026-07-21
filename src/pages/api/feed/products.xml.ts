@@ -42,6 +42,7 @@ export async function GET(_ctx: APIContext): Promise<Response> {
         baseUrl,
         categoryPath: cPath,
         purchasedUnits: purchased[product.id],
+        storeTags: store.categories,
       }));
     }
   }

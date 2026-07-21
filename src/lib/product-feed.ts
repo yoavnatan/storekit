@@ -1,5 +1,6 @@
 import type { StoreProduct } from './store-products.js';
 import { inferAudienceGender, inferAgeGroup } from './audience-infer.js';
+import { deriveProductLabels } from './product-labels.js';
 import { generateCombos, comboKey, canonicalDimName } from './variant-combo.js';
 import { isColorVariant } from './color-variants.js';
 
@@ -20,8 +21,9 @@ import { isColorVariant } from './color-variants.js';
 //   mpn                 → the seller SKU; gtin stays optional (many SKUs have
 //                         no barcode — identifierExists then rides on brand+mpn)
 //   product_type        → the category path the product sits under
-//   custom_labels       → derived grouping buckets for campaign strategy
-//                         (price tier + bestseller), from data we already have
+//   custom_labels       → five stable, positional campaign-segmentation buckets
+//                         (price / performance / availability / audience / store
+//                         type), all auto-derived — see product-labels.ts
 
 export interface FeedAttributes {
   id: string;
@@ -43,15 +45,12 @@ export interface FeedAttributes {
 export interface FeedContext {
   storeName: string;
   categoryPath?: string;
-  /** Units sold — drives the "bestseller" custom label. */
+  /** Units sold — drives the performance custom label. */
   purchasedUnits?: number;
-  bestsellerThreshold?: number;
-}
-
-function priceTier(price: number): string {
-  if (price < 100) return 'budget';
-  if (price < 500) return 'mid';
-  return 'premium';
+  /** The store's flat category tags (Store.categories) — the store-scope label. */
+  storeTags?: string[];
+  /** ms epoch for the "new" recency window; defaults to now. Pass a fixed value in tests. */
+  nowMs?: number;
 }
 
 export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedContext): FeedAttributes {
@@ -66,9 +65,16 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
   const gtin = undefined; // no barcode field yet — optional in the feed spec
   const identifierExists = Boolean(gtin || (mpn && brand));
 
-  const customLabels = [priceTier(product.price)];
-  const threshold = ctx.bestsellerThreshold ?? 10;
-  if ((ctx.purchasedUnits ?? 0) >= threshold) customLabels.push('bestseller');
+  // Five stable, positional segmentation labels — all zero-touch (product-labels.ts).
+  const customLabels = deriveProductLabels({
+    price: product.price,
+    stock: product.stock,
+    createdAt: product.createdAt,
+    purchasedUnits: ctx.purchasedUnits,
+    audienceTexts: inferText,
+    storeTags: ctx.storeTags,
+    nowMs: ctx.nowMs,
+  });
 
   return {
     id: product.id,

@@ -43,11 +43,14 @@ describe('buildProductFeedAttributes', () => {
     expect(buildProductFeedAttributes(product({ stock: 3 }), { storeName: 'x' }).availability).toBe('in_stock');
   });
 
-  it('derives custom labels: price tier always, bestseller past the threshold', () => {
-    const budget = buildProductFeedAttributes(product({ price: 40 }), { storeName: 'x' });
-    expect(budget.customLabels).toEqual(['budget']);
-    const hot = buildProductFeedAttributes(product({ price: 900 }), { storeName: 'x', purchasedUnits: 25 });
-    expect(hot.customLabels).toEqual(['premium', 'bestseller']);
+  it('emits the five stable positional custom-label slots', () => {
+    // Fixed nowMs so the "new" recency window is deterministic (product is created 2026-01-01).
+    const nowMs = Date.parse('2026-06-01T00:00:00.000Z'); // > 30d after creation → not "new"
+    const f = buildProductFeedAttributes(product({ price: 40, stock: 2 }), {
+      storeName: 'x', storeTags: ['אופנה'], purchasedUnits: 25, nowMs,
+    });
+    // [price_tier, performance, availability, audience, store_type]
+    expect(f.customLabels).toEqual(['budget', 'platform_bestseller', 'low_stock', 'unisex', 'אופנה']);
   });
 });
 

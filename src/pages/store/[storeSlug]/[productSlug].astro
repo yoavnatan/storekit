@@ -72,6 +72,10 @@ const jsonLd = {
   name: product.name,
   ...(product.description ? { description: product.description } : {}),
   ...(images.length ? { image: images } : {}),
+  // brand/sku/mpn enrich both Google rich results and AI-answer comprehension
+  // (AIO) — a small business is its own brand; the SKU doubles as the mpn.
+  brand: { '@type': 'Brand', name: shopStore.name },
+  ...(product.sku ? { sku: product.sku, mpn: product.sku } : {}),
   ...(productCategoryPathStr ? { category: productCategoryPathStr } : {}),
   ...(product.tags?.length ? { keywords: product.tags.join(', ') } : {}),
   ...(product.specs?.length ? {
@@ -86,6 +90,7 @@ const jsonLd = {
     '@type': 'Offer',
     price: String(product.price),
     priceCurrency: 'ILS',
+    itemCondition: 'https://schema.org/NewCondition',
     availability: isProductInStock(product.stock, product.variants, product.variantStock)
       ? 'https://schema.org/InStock'
       : 'https://schema.org/OutOfStock',

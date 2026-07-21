@@ -16,6 +16,16 @@ interface AdsConfig {
   boostCommissionPercent?: number | null;
 }
 
+interface SeoConfig {
+  /** IndexNow key — a self-chosen 8-128 hex string the owner generates once.
+   *  When set (and the domain is real, not example.com), publishing/updating a
+   *  store or product pushes the URL to Bing's IndexNow endpoint so it — and
+   *  ChatGPT/Copilot, which retrieve from Bing's index — pick it up within
+   *  minutes instead of waiting for a crawl. Also served as the ownership file
+   *  at /{key}.txt. Empty = disabled. See GO_LIVE_CHECKLIST.md. */
+  indexNowKey?: string;
+}
+
 interface PlatformConfig {
   name: string;
   url: string;
@@ -69,6 +79,7 @@ interface PlatformConfig {
     instagram: string;
   };
   ads?: AdsConfig;
+  seo?: SeoConfig;
 }
 
 export const store: PlatformConfig = {
@@ -141,6 +152,12 @@ export const store: PlatformConfig = {
     // surface the number in the seller boost UI's "דמי פלטפורמה" note. null =
     // undecided. See memory project_business_model_pricing + GO_LIVE_CHECKLIST.md.
     boostCommissionPercent: null,
+  },
+
+  seo: {
+    // Generate a key (e.g. a random 32-char hex) and paste it here at go-live to
+    // enable active IndexNow submission. Empty = disabled. See GO_LIVE_CHECKLIST.md.
+    indexNowKey: '',
   },
 };
 

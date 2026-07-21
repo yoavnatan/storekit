@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, updateStore } from '../../lib/stores.js';
+import { pingStoreChange } from '../../lib/indexnow.js';
 import { parseStoreHoursForm } from '../../lib/store-hours.js';
 
 function json(data: unknown, status = 200) {
@@ -43,6 +44,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       bannerImage: bannerImage || undefined, profileImage: profileImage || undefined,
       address: address || undefined, addressVisible, hours, hoursVisible,
     });
+    // Store page content changed — notify the index (fire-and-forget, no-op in dev).
+    pingStoreChange(target.slug);
     return json({ ok: true, name });
   }
 
