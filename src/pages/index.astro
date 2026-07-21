@@ -337,7 +337,7 @@ const jsonLd = {
                   </div>
                 )}
                 <div
-                  class="home-spotlight-track flex overflow-x-auto [scroll-snap-type:x_mandatory]
+                  class="home-spotlight-track flex overflow-x-auto [overflow-y:clip] [scroll-snap-type:x_mandatory]
                     [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
                   role="list" aria-label={t.home.spotlightTitle}
                 >
@@ -561,11 +561,20 @@ const jsonLd = {
   // negative scrollLeft). No content behind you → no fade at start; no
   // content ahead → no fade at end; nothing to scroll at all → no fade on
   // either side (guards a shelf that already fits without overflowing).
+  //
+  // EDGE_SLOP must clear the largest resting scroll offset any of these rows
+  // parks at, not just sub-pixel rounding: `.home-shelf` carries an 8px
+  // `padding-inline` (shadow-bleed room), and scroll-snap rests it at
+  // scrollLeft ≈ ±8 even at the true start — a 4px slop read that as "already
+  // scrolled" and lit the start fade the moment the page loaded (and, by the
+  // mirror check, kept the end fade lit at the true end). 12px clears the 8px
+  // park with margin; harmless for the padding-less `.home-carousel`/track.
+  const EDGE_SLOP = 12;
   function edgeState(el: HTMLElement): { atStart: boolean; atEnd: boolean } {
     const { scrollLeft, scrollWidth, clientWidth } = el;
     return {
-      atStart: Math.abs(scrollLeft) < 4,
-      atEnd: Math.abs(scrollLeft) + clientWidth >= scrollWidth - 4,
+      atStart: Math.abs(scrollLeft) < EDGE_SLOP,
+      atEnd: Math.abs(scrollLeft) + clientWidth >= scrollWidth - EDGE_SLOP,
     };
   }
 

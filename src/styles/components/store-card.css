@@ -164,6 +164,13 @@
   display: flex;
   gap: 0.75rem;
   overflow-x: auto;
+  /* overflow-y:clip, not the implicit `auto` overflow-x forces on this axis —
+     otherwise the row becomes a vertical scroll container that traps page
+     wheel over it and intermittently clips the card hover-lift (see the same
+     note on .home-carousel in home.css). Clips at the same padding-box edge
+     the implicit auto already did, so the shadow-bleed padding trick below is
+     unaffected. */
+  overflow-y: clip;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;

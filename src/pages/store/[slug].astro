@@ -1582,6 +1582,38 @@ const pmI18n = {
   // whatever local search was active before/after this episode survives intact).
   // An empty q means the header search was cleared (native "x" or backspaced to
   // empty) — restore whatever filter was active right before the override began.
+  // RTL-safe programmatic scroll (rAF + explicit `window.scrollTo(0, y)` each
+  // frame) — a native smooth `scrollTo`/`scrollIntoView` drifts scrollX off 0
+  // mid-animation on this RTL page (off-thread, un-correctable), so we self-
+  // animate. Mirrors animateScrollTo() in scripts/dashboard/products.ts.
+  function animateScrollTo(targetY: number, duration = 380): void {
+    const startY = window.scrollY;
+    const delta = targetY - startY;
+    if (Math.abs(delta) < 1) { window.scrollTo(0, targetY); return; }
+    const start = performance.now();
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+    function step(now: number): void {
+      const t = Math.min(1, (now - start) / duration);
+      window.scrollTo(0, startY + delta * ease(t));
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // After a whole-store header search the grid is wholesale-replaced, but the
+  // scroll stayed wherever the buyer was — mid-page or at the bottom — so the
+  // fresh results sat off-screen above them. Bring the top of the results
+  // region (the .store-controls bar + first row) up to just under the fixed
+  // header. Guarded to only ever scroll UP (scrollY past the anchor) so a
+  // search made while already at the top doesn't yank the buyer downward.
+  function scrollToResults(): void {
+    const section = controlsBar?.closest<HTMLElement>('.section');
+    if (!section) return;
+    const headerH = document.querySelector<HTMLElement>('.site-header')?.getBoundingClientRect().height ?? 0;
+    const target = Math.max(0, section.getBoundingClientRect().top + window.scrollY - headerH - 8);
+    if (window.scrollY > target + 1) animateScrollTo(target);
+  }
+
   window.addEventListener('store-search:global', ((e: CustomEvent<{ q: string }>) => {
     clearTimeout(searchDebounceTimer);
     const q = e.detail?.q ?? '';
@@ -1597,6 +1629,9 @@ const pmI18n = {
     pendingCategoryNav = true;
     updateDrawerToggleLabel();
     refreshFromServer();
+    // Only on a real search (non-empty q) — clearing it restores the prior
+    // filter in place and shouldn't move the buyer.
+    if (q) scrollToResults();
   }) as EventListener);
 
   // ── Init from URL params (q / sort / category) ────────────────

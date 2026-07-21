@@ -1021,6 +1021,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  /* Pin the price/cart block to the bottom of the card body. In an equal-height
+     grid row a single 2-line product name used to push only ITS OWN button
+     down while 1-line neighbours kept theirs up near the name — buttons at
+     mismatched heights across the row. Pinning the footer sends every card's
+     button to the same baseline; the slack from a shorter name now sits above
+     the price (only in rows that actually contain a taller card), so ordinary
+     rows keep their original tight spacing untouched. */
+  margin-top: auto;
 }
 
 .product-card__price {

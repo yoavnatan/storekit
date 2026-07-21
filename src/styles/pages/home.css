@@ -265,6 +265,17 @@
   display: flex;
   gap: 0.75rem;
   overflow-x: auto;
+  /* `overflow-x:auto` alone leaves overflow-y computing to `auto` (the CSS
+     spec forbids one axis scrolling while the other stays `visible`), which
+     silently turns this row into a VERTICAL scroll container too. That trapped
+     the page's vertical wheel whenever the pointer sat over the carousel,
+     fired spurious `scroll` events that paused the auto-advance on a plain
+     page scroll, and let a stray scrollTop eat into the padding-top below so
+     the card hover-lift clipped intermittently. `clip` keeps horizontal
+     scrolling, kills the vertical scroll container (wheel passes through to
+     the page), and clips at the exact same padding-box edge `auto` did — no
+     visual change to the shadow-bleed budget. */
+  overflow-y: clip;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   /* padding + negative margin: room for card lift + shadow without clipping on all sides */
