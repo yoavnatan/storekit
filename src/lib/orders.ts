@@ -41,7 +41,7 @@ export interface Order {
   totalAmount: number;
   paymentRef?: string;
   paymentStatus: 'pending' | 'paid' | 'failed';
-  shippingStatus: 'pending' | 'processing' | 'ready' | 'shipped' | 'delivered';
+  shippingStatus: 'pending' | 'processing' | 'ready' | 'shipped' | 'delivered' | 'cancelled';
   trackingNumber?: string;
   createdAt: string;
   updatedAt: string;

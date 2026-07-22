@@ -4,6 +4,8 @@ import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug, getOrderById, updateOrder } from '../../../lib/orders.js';
 import type { StoreSubtotal } from '../../../lib/orders.js';
+import { notifyOrderStatusChanged } from '../../../lib/order-notify.js';
+import { restockProduct } from '../../../lib/store-products.js';
 import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../../lib/seller-orders-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
 
@@ -68,7 +70,10 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   const store = stores.find((s) => s.slug === storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
-  const validStatuses = ['pending', 'processing', 'ready', 'shipped', 'delivered'];
+  const validStatuses = ['pending', 'processing', 'ready', 'shipped', 'delivered', 'cancelled'];
+  // A cancellation may only happen before the parcel is on its way — restocking
+  // an order that's already shipped/delivered would inflate inventory.
+  const CANCELLABLE_FROM = ['pending', 'processing', 'ready'];
   const updates: Record<string, unknown> = {};
 
   if (typeof shippingStatus === 'string' && validStatuses.includes(shippingStatus)) {
@@ -147,8 +152,41 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     return json({ error: 'No valid fields to update' }, 400);
   }
 
+  // Capture the pre-change status so the automation layer can tell whether the
+  // shipping status actually moved (read only when a status change is in play).
+  const changingStatus = typeof updates['shippingStatus'] === 'string';
+  const prevStatus = changingStatus ? (getOrderById(orderId)?.shippingStatus ?? '') : '';
+
+  if (changingStatus && prevStatus) {
+    // 'cancelled' is terminal — no status change out of it (the stock has been
+    // returned; re-activating would ship an order whose units are gone).
+    if (prevStatus === 'cancelled' && updates['shippingStatus'] !== 'cancelled') {
+      return json({ error: 'Order is cancelled and cannot change status' }, 409);
+    }
+    // A cancellation is only valid before the parcel is on its way.
+    if (updates['shippingStatus'] === 'cancelled' && !CANCELLABLE_FROM.includes(prevStatus)) {
+      return json({ error: 'Order can no longer be cancelled' }, 409);
+    }
+  }
+
   const updated = updateOrder(orderId, updates as Parameters<typeof updateOrder>[1]);
   if (!updated) return json({ error: 'Order not found' }, 404);
+
+  if (prevStatus && updated.shippingStatus !== prevStatus) {
+    // Cancelling returns every reserved unit to stock. Each order is single-store
+    // (checkout creates one order per store), so all items belong to this seller —
+    // safe to restock the lot. Guarded by the prev!==new check above, so a repeat
+    // request can't double-restock.
+    if (updated.shippingStatus === 'cancelled') {
+      for (const item of updated.items) {
+        await restockProduct(item.productId, item.qty, item.selectedVariants);
+      }
+    }
+    // Source-agnostic status pipeline: whoever moved the status (seller today,
+    // carrier webhook later), the buyer gets told. No-op if no buyer account —
+    // see order-notify.ts.
+    notifyOrderStatusChanged(updated, prevStatus, { storeName: store.name, storeSlug: store.slug });
+  }
 
   return json({ ok: true, order: updated });
 }

@@ -1,13 +1,24 @@
 // Order-age chip for the seller's Orders tab. Every order that isn't finished
-// (i.e. not 'delivered') shows how long it's been open. An order the seller has
-// not yet acted on (still 'pending') ESCALATES by age — calm → amber → red — so
-// a backlog of neglected orders is impossible to miss; an order already in
-// progress (processing/ready/shipped) just shows its age calmly, no color
-// pressure, since the seller is already on it. No blink/pulse — colour alone.
+// (i.e. not 'delivered'/'cancelled') shows how long it's been open. Any order
+// that still OWES the seller a shipping action — 'pending' (not started),
+// 'processing' or 'ready' (started but not yet shipped) — ESCALATES by age,
+// calm → amber → red, so nothing falls through the cracks: a fresh order that
+// sits unhandled AND an order the seller began but never shipped both light up.
+// Once 'shipped' it's out of the seller's hands (waiting on the carrier/buyer),
+// so it just shows its age calmly, no colour pressure. Age is measured from
+// createdAt throughout — the buyer's clock — so a stalled order reads as late
+// regardless of when the seller happened to touch it. No blink/pulse on the
+// seller's own tab — colour alone (admin's emphasize adds the pulse).
 // Pure + isomorphic (no node deps) so the same result renders SSR and inside
 // the client card builder — import from both.
 
 export type OrderAgeLevel = 'fresh' | 'aging' | 'overdue';
+
+// States where the seller still owes a shipping action → these escalate by age.
+// 'shipped'/'delivered'/'cancelled' are done from the seller's side.
+const OWES_ACTION: readonly string[] = ['pending', 'processing', 'ready'];
+// Terminal for the chip — nothing to nudge.
+const NO_CHIP: readonly string[] = ['delivered', 'cancelled'];
 
 // Untouched past a day → amber; past three days → red/urgent. Tuned for the
 // "ship within 1–2 business days" expectation of a marketplace order.
@@ -25,30 +36,40 @@ export function orderAgeLevel(hours: number): OrderAgeLevel {
   return 'fresh';
 }
 
-// Chip text. An unhandled ('pending') order reads "ממתינה…" (waiting — it needs
-// action); an in-progress order reads a neutral "לפני…" (placed N ago). Only
-// he/en exist in this app.
-function ageLabel(hours: number, lang: 'he' | 'en', unhandled: boolean): string {
-  if (hours < 1) {
-    if (unhandled) return lang === 'he' ? 'התקבלה זה עתה' : 'Just received';
-    return lang === 'he' ? 'לפני רגע' : 'Just now';
-  }
+// The three chip tones:
+//   unhandled  — a 'pending' order not yet started → "ממתינה…" (waiting for you)
+//   stalled    — started ('processing'/'ready') but overdue/aging, not shipped
+//                → "טרם נשלחה…" (still not shipped) — the second escalation
+//   inProgress — otherwise (started & on-time, or 'shipped') → neutral "לפני…"
+// Only he/en exist in this app.
+type AgeTone = 'unhandled' | 'stalled' | 'inProgress';
+
+// Bare human duration, no framing verb ("שעה" / "3 ימים" / "3h" / "3 days").
+function durationStr(hours: number, lang: 'he' | 'en'): string {
+  if (hours < 1) return lang === 'he' ? 'זה עתה' : 'moments';
   if (hours < 24) {
     const h = Math.round(hours);
-    if (unhandled) {
-      if (lang === 'he') return h === 1 ? 'ממתינה שעה' : `ממתינה ${h} שעות`;
-      return `Waiting ${h}h`;
-    }
-    if (lang === 'he') return h === 1 ? 'לפני שעה' : `לפני ${h} שעות`;
-    return `${h}h ago`;
+    if (lang === 'he') return h === 1 ? 'שעה' : `${h} שעות`;
+    return `${h}h`;
   }
   const days = Math.floor(hours / 24);
-  if (unhandled) {
-    if (lang === 'he') return days === 1 ? 'ממתינה יממה' : `ממתינה ${days} ימים`;
-    return days === 1 ? 'Waiting 1 day' : `Waiting ${days} days`;
+  if (lang === 'he') return days === 1 ? 'יום' : `${days} ימים`;
+  return days === 1 ? '1 day' : `${days} days`;
+}
+
+function ageLabel(hours: number, lang: 'he' | 'en', tone: AgeTone): string {
+  if (tone === 'unhandled') {
+    if (hours < 1) return lang === 'he' ? 'התקבלה זה עתה' : 'Just received';
+    const dur = durationStr(hours, lang);
+    return lang === 'he' ? `ממתינה ${dur}` : `Waiting ${dur}`;
   }
-  if (lang === 'he') return days === 1 ? 'לפני יום' : `לפני ${days} ימים`;
-  return days === 1 ? '1 day ago' : `${days} days ago`;
+  if (tone === 'stalled') {
+    const dur = durationStr(hours, lang);
+    return lang === 'he' ? `טרם נשלחה · ${dur}` : `Not shipped · ${dur}`;
+  }
+  if (hours < 1) return lang === 'he' ? 'לפני רגע' : 'Just now';
+  const dur = durationStr(hours, lang);
+  return lang === 'he' ? `לפני ${dur}` : `${dur} ago`;
 }
 
 const CLOCK_ICON =
@@ -81,25 +102,33 @@ export function orderAgeChipHtml(
   lang: 'he' | 'en',
   opts: { now?: number; emphasize?: boolean } = {},
 ): string {
-  if (shippingStatus === 'delivered') return '';
-  const unhandled = shippingStatus === 'pending';
+  if (NO_CHIP.includes(shippingStatus)) return '';
+  const owes = OWES_ACTION.includes(shippingStatus);
   const hours = orderAgeHours(createdAt, opts.now ?? Date.now());
-  // Only an un-acted order escalates; anything in progress is just informational.
-  const level = unhandled ? orderAgeLevel(hours) : 'fresh';
-  const text = ageLabel(hours, lang, unhandled);
+  // Only an order that still owes a shipping action escalates; a 'shipped' one
+  // is out of the seller's hands, so it stays calm/informational.
+  const level = owes ? orderAgeLevel(hours) : 'fresh';
+  const tone: AgeTone = shippingStatus === 'pending'
+    ? 'unhandled'
+    : (owes && level !== 'fresh' ? 'stalled' : 'inProgress');
+  const text = ageLabel(hours, lang, tone);
   const icon = level === 'overdue' ? ALERT_ICON : CLOCK_ICON;
   const pulse = opts.emphasize && level === 'overdue' ? ' animate-pulse motion-reduce:animate-none' : '';
   return `<span class="inline-flex items-center gap-[0.2rem] text-[0.66rem] font-bold px-[0.45rem] py-[0.1rem] rounded-full ${CHIP_CLASSES[level]}${pulse}" title="${text}">${icon}${text}</span>`;
 }
 
 /**
- * Card-level emphasis class for a badly-overdue order (a 'pending' order past
- * the overdue threshold) — a red border + faint red fill so the whole row jumps
- * out in a long list. Empty for anything else. Used on the admin platform-wide
- * orders view; `!` overrides the card's own base + hover border/bg utilities.
+ * Card-level emphasis class for a badly-overdue order — any order still owing a
+ * shipping action ('pending'/'processing'/'ready') past the overdue threshold —
+ * a red border + faint red fill so the whole row jumps out in a long list.
+ * Empty for anything else. Used on BOTH the seller's own Orders tab and the
+ * admin platform-wide view; `!` overrides the card's own base + hover border
+ * utilities. A thicker RED BORDER only — no background fill, so the card jumps
+ * out in a long list without tinting (and hurting the legibility of) the text
+ * inside it.
  */
 export function orderAgeCardClass(createdAt: string, shippingStatus: string, now = Date.now()): string {
-  if (shippingStatus !== 'pending') return '';
+  if (!OWES_ACTION.includes(shippingStatus)) return '';
   if (orderAgeLevel(orderAgeHours(createdAt, now)) !== 'overdue') return '';
-  return '!border-[color:var(--color-danger)] !bg-[color:color-mix(in_srgb,var(--color-danger)_6%,var(--color-surface))]';
+  return '!border-2 !border-[color:var(--color-danger)]';
 }

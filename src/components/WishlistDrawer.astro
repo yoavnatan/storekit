@@ -171,7 +171,7 @@
       ${gi > 0 ? '<hr style="border:none;border-top:1px solid var(--color-border);margin:0.25rem 0">' : ''}
       <div>
         <div style="display:flex;align-items:center;padding:0.5rem 0 0.25rem">
-          <a href="/store/${esc(storeSlug)}" style="font-weight:700;font-size:0.82rem;color:var(--color-primary);text-decoration:none;flex:1">${esc(storeName)}</a>
+          <a href="/store/${esc(storeSlug)}" class="wl-store-link" style="font-weight:700;font-size:0.82rem;color:var(--color-primary);flex:1">${esc(storeName)}</a>
           <span style="font-size:0.72rem;color:var(--color-muted)">${items.length}</span>
         </div>
         ${items.map((item, idx) => {

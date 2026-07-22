@@ -4,6 +4,8 @@
   padding: 0 0.5rem;
 }
 .wl-item:hover { background: var(--color-bg); }
+.wl-store-link { text-decoration: none; }
+.wl-store-link:hover { text-decoration: underline; }
 
 .cart-overlay {
   position: fixed;
@@ -77,6 +79,50 @@
 }
 
 .cart-drawer__head { padding: 1rem; border-bottom: 1px solid var(--color-border); }
+.cart-drawer__title-wrap { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+
+/* CSS-only info tooltip — the dashboard's InfoTip depends on a dashboard-only
+   floating-tooltip script, but the cart drawer is global (BaseLayout), so this
+   is self-contained (no JS, revealed on hover/focus). Matches the dash-tooltip
+   look: dark bubble, white text, 6px radius. */
+.cart-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+  cursor: help;
+  transition: color 0.1s;
+}
+.cart-info:hover,
+.cart-info:focus-visible { color: var(--color-primary); outline: none; }
+.cart-info__bubble {
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-start: 0;
+  width: max-content;
+  max-width: 15rem;
+  background: var(--color-text);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1.35;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px) scale(0.97);
+  transform-origin: top var(--tooltip-origin, left);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 5;
+}
+[dir="rtl"] .cart-info__bubble { --tooltip-origin: right; }
+.cart-info:hover .cart-info__bubble,
+.cart-info:focus-within .cart-info__bubble {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
 #cart-close { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; }
 /* No bottom padding here — a scroll container's own padding-bottom is fixed
    trailing space that a sticky descendant (.cart-grand-total) can never
@@ -153,10 +199,30 @@
 .cart-store-group__items { display: flex; flex-direction: column; }
 .cart-store-group__items .cart-line:last-child { border-bottom: none; }
 .cart-store-group__foot {
-  display: grid;
-  gap: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   padding: 0.75rem 0 0.5rem;
   border-top: 1px solid var(--color-border);
+}
+.cart-store-group__subtotal {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+}
+.cart-store-group__subtotal span { color: var(--color-muted); }
+/* Compact per-store CTA sitting at the row's end — the sitewide .cart-checkout
+   is full-width (kept for the grand-total "pay all" button); here it shrinks to
+   fit just "לתשלום" so the drawer's per-store rows read cleanly. */
+.cart-store-group__foot .cart-checkout {
+  width: auto;
+  flex-shrink: 0;
+  padding: 0.4rem 0.95rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .cart-grand-total {

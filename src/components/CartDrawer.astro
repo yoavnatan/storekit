@@ -5,7 +5,13 @@
 <div id="cart-overlay" class="cart-overlay"></div>
 <aside id="cart-drawer" class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title" aria-hidden="true">
   <header class="cart-drawer__head flex between">
-    <h2 id="cart-drawer-title">Cart</h2>
+    <div class="cart-drawer__title-wrap">
+      <h2 id="cart-drawer-title">Cart</h2>
+      <span id="cart-info" class="cart-info" tabindex="0" role="note" hidden>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+        <span id="cart-info-bubble" class="cart-info__bubble" role="tooltip"></span>
+      </span>
+    </div>
     <button id="cart-close" aria-label="Close cart">
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
@@ -27,6 +33,8 @@
   const overlay = document.getElementById('cart-overlay') as HTMLElement | null;
   const lines   = document.getElementById('cart-lines') as HTMLElement | null;
   const titleEl = document.getElementById('cart-drawer-title') as HTMLElement | null;
+  const infoEl     = document.getElementById('cart-info') as HTMLElement | null;
+  const infoBubble = document.getElementById('cart-info-bubble') as HTMLElement | null;
 
   const esc = (s: unknown) =>
     String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -105,6 +113,13 @@
     const closeBtn = document.getElementById('cart-close');
     if (closeBtn) closeBtn.setAttribute('aria-label', i18n.closeCart ?? 'Close cart');
 
+    // The "pay separately / together" note only makes sense with 2+ stores.
+    if (infoBubble) infoBubble.textContent = i18n.payInfo ?? '';
+    if (infoEl) {
+      infoEl.setAttribute('aria-label', i18n.payInfo ?? '');
+      infoEl.hidden = carts.length <= 1;
+    }
+
     if (!carts.length) {
       lines.innerHTML = `<p class="cart-empty">${i18n.empty ?? 'Your cart is empty'}</p>`;
       return;
@@ -149,12 +164,12 @@
             }).join('')}
         </div>
         <div class="cart-store-group__foot">
-          <div class="flex between" style="font-size:0.88rem">
+          <div class="cart-store-group__subtotal">
             <span>${singleStore ? (i18n.cartTotal ?? 'Cart total') : (i18n.subtotal ?? 'Subtotal')}</span>
             <strong>${formatPrice(getSubtotal(c.storeSlug))}</strong>
           </div>
           <a href="/checkout?store=${esc(c.storeSlug)}" class="btn btn--accent cart-checkout">
-            ${singleStore ? (i18n.checkout ?? 'Checkout') : `${i18n.checkout ?? 'Checkout'} — ${esc(c.storeName)}`}
+            ${i18n.checkout ?? 'Checkout'}
           </a>
         </div>
       </div>`).join('<hr class="cart-store-divider">') +
@@ -224,7 +239,7 @@
         const freshCart = getActiveStoreCarts().find((c) => c.storeSlug === store);
         if (freshCart) countEl.textContent = `${freshCart.count} ${freshCart.count !== 1 ? (i18n.items ?? 'items') : (i18n.item ?? 'item')}`;
       }
-      const subtotalEl = storeGroup?.querySelector<HTMLElement>('.cart-store-group__foot .flex.between strong');
+      const subtotalEl = storeGroup?.querySelector<HTMLElement>('.cart-store-group__subtotal strong');
       if (subtotalEl) subtotalEl.textContent = formatPrice(getSubtotal(store));
       const grandEl = lines?.querySelector<HTMLElement>('.cart-grand-total__row strong');
       if (grandEl) grandEl.textContent = formatPrice(getGrandTotal());

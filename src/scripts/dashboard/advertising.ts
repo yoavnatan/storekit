@@ -5,6 +5,7 @@ import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js'
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { presetRange, shortDate } from '../../lib/date-range.js';
+import { animateScrollTo } from './scroll-utils.js';
 
 interface CampaignStats { impressions: number; clicks: number; ctr: number; spend: number; cpc: number; conversions: number; roas: number }
 interface RunPeriod { start: string; end: string; days: number }
@@ -144,6 +145,35 @@ export function initAdvertisingTab(): void {
   // floating-portal dropdown (viewport-clamped, stays pinned on scroll). The
   // selects keep holding the value + submitting; only their popup changes.
   form.querySelectorAll<HTMLSelectElement>('select').forEach((sel) => initSelectDropdown(sel));
+
+  // Baseline card's boost CTA jumps down to the boost card (seller tab only —
+  // null-safe on the admin per-store view where the CTA is absent). Manual
+  // window scroll rather than scrollIntoView: the seller dashboard stacks THREE
+  // sticky layers — fixed site header (--site-header-h) + sticky tab strip
+  // (--dash-tabs-h) + the sticky panel head ("פרסום ושיווק", .dash-panel-head,
+  // no CSS var so it's measured live). The card must clear all three or it lands
+  // hidden beneath the pinned panel head. Land its top just below them + a small
+  // margin so the whole boost section sits clear, matching the intended level.
+  document.getElementById('ad-boost-jump')?.addEventListener('click', () => {
+    const target = document.getElementById('ad-boost-card') ?? form;
+    const root = getComputedStyle(document.documentElement);
+    const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const toPx = (v: string, fallback: number): number => {
+      const n = parseFloat(v);
+      if (!Number.isFinite(n)) return fallback;
+      return v.trim().endsWith('rem') ? n * remPx : n;
+    };
+    const headerH = toPx(root.getPropertyValue('--site-header-h'), 3.3 * remPx);
+    const tabsH = toPx(root.getPropertyValue('--dash-tabs-h'), 2.9 * remPx);
+    const panelHeadH = document
+      .querySelector<HTMLElement>('#dash-panel-advertising .dash-panel-head')
+      ?.getBoundingClientRect().height ?? 0;
+    const margin = 0.75 * remPx; // small breathing room; kept below the baseline card's mb (1rem) so its green tint doesn't peek above
+    const top = target.getBoundingClientRect().top + window.scrollY - headerH - tabsH - panelHeadH - margin;
+    // animateScrollTo (not native smooth-scroll) — the latter drifts scrollX on
+    // this RTL site (AI_INSTRUCTIONS → Scroll; shared impl in scroll-utils.ts).
+    animateScrollTo(Math.max(0, top));
+  });
 
   // Pre-fill gender + age_group from the selected product's inferred audience
   // (data-infer-gender / data-infer-age, computed server-side from its

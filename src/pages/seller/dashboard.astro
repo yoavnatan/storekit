@@ -37,7 +37,7 @@ import { getCampaignsByStoreId, getMockBaselineImpressions } from '../../lib/ad-
 import { campaignLifetimeStats, campaignRunPeriod } from '../../lib/ad-metrics.js';
 import { shortDate } from '../../lib/date-range.js';
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
-import { orderAgeChipHtml } from '../../lib/order-age.js';
+import { orderAgeChipHtml, orderAgeCardClass } from '../../lib/order-age.js';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
@@ -295,6 +295,12 @@ const adCampaigns = (store && advIsInitial) ? getCampaignsByStoreId(store.id).ma
 // Baseline is the platform-funded free exposure the store has accrued to date —
 // a stable lifetime total, deliberately NOT windowed by the campaign picker.
 const adBaselineImpressions = store ? getMockBaselineImpressions(store.id) : 0;
+// Budget-fee note: show the real management-fee % once it's set in the config;
+// until then (null = undecided) fall back to the rate-less phrasing.
+const adBudgetFeePct = platformConfig.ads?.boostCommissionPercent;
+const adBudgetFeeTipText = adBudgetFeePct != null
+  ? d.adBudgetFeeTipRate.replace('{pct}', String(adBudgetFeePct))
+  : d.adBudgetFeeTip;
 // A boost only makes sense for a product a shopper can actually reach and buy —
 // so exclude anything off the storefront (seller-hidden or admin-blocked), not
 // just out-of-stock items.
@@ -372,6 +378,7 @@ const orderShippingLabels: Record<string, string> = {
   ready: d.shippingReady,
   shipped: d.shippingShipped,
   delivered: d.shippingDelivered,
+  cancelled: d.shippingCancelled,
 };
 
 const orderStatusColors: Record<string, string> = {
@@ -380,6 +387,7 @@ const orderStatusColors: Record<string, string> = {
   ready: '#f59e0b',
   shipped: '#8b5cf6',
   delivered: '#16a34a',
+  cancelled: '#6b7280',
 };
 
 ---
@@ -1168,7 +1176,7 @@ const orderStatusColors: Record<string, string> = {
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               return (
-                <div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
+                <div class={`order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))] ${orderAgeCardClass(order.createdAt, order.shippingStatus)}`} data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
                   <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     <div class="flex flex-col items-start gap-[0.2rem] min-w-20 shrink-0">
                       <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">
@@ -1239,7 +1247,15 @@ const orderStatusColors: Record<string, string> = {
                       )}
                     </div>
                     <div class="bg-[color:var(--color-bg)] rounded-b-[11px] p-[0.875rem] overflow-visible">
-                      <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">{d.orderShippingStatus}</h3>
+                      <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">{d.orderTracking}</h3>
+                      <div class="relative">
+                        <input type="text" class="order-tracking-input input w-full !pe-10" data-field="trackingNumber" value={order.trackingNumber ?? ''} placeholder={d.orderTrackingPlaceholder} />
+                        <button class="order-copy-track absolute end-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-8 h-8 rounded-md bg-transparent border-0 cursor-pointer [color:var(--color-muted)] hover:[color:var(--color-primary)] hover:bg-[color:var(--color-bg)] transition-colors duration-100" type="button" aria-label={d.orderCopyTracking} title={d.orderCopyTracking} data-copied-label={d.orderCopiedTracking}>
+                          <svg class="order-copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                          <svg class="order-copy-check hidden [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                        </button>
+                      </div>
+                      <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mt-3 mb-2">{d.orderShippingStatus}</h3>
                       <div class="flex gap-2 items-center flex-wrap">
                         <div class="order-status-dropdown">
                           <button class="order-status-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
@@ -1249,13 +1265,15 @@ const orderStatusColors: Record<string, string> = {
                           </button>
                           <input type="hidden" class="order-status-select" data-field="shippingStatus" value={order.shippingStatus} />
                         </div>
-                      </div>
-                      <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mt-3 mb-2">{d.orderTracking}</h3>
-                      <div class="flex gap-2 items-center flex-wrap">
-                        <input type="text" class="order-tracking-input input" data-field="trackingNumber" value={order.trackingNumber ?? ''} placeholder={d.orderTrackingPlaceholder} style="flex:1" />
-                        <button class="order-save-btn btn btn--sm btn--accent" type="button">{d.orderSave}</button>
+                        <button class="order-save-btn btn btn--sm btn--accent ms-auto" type="button">{d.orderSave}</button>
                       </div>
                       <p class="order-save-status text-[0.8rem] font-semibold text-[color:var(--color-success)] mt-[0.4rem]" hidden aria-live="polite">{d.orderSaved}</p>
+                      {['pending', 'processing', 'ready'].includes(order.shippingStatus) && (
+                        <button class="order-cancel-btn mt-3 inline-flex items-center gap-[0.3rem] bg-transparent border-0 p-0 cursor-pointer text-[0.78rem] font-semibold text-[color:var(--color-danger)] hover:underline" type="button" data-order-id={order.id} data-store-slug={store!.slug}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                          {d.orderCancel}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1414,30 +1432,44 @@ const orderStatusColors: Record<string, string> = {
         </div>
 
         <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4 [background:color-mix(in_srgb,var(--color-success)_6%,transparent)]">
-          <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBaselineTitle}</h3>
-          <p class="muted text-[0.82rem] m-0 mb-2">{d.adBaselineLead}</p>
-          <ul class="muted text-[0.82rem] m-0 mb-3 ps-[1.1rem] flex flex-col gap-1 list-disc marker:[color:var(--color-success)]">
-            {d.adBaselinePoints.map((p) => <li>{p}</li>)}
-          </ul>
-          <p class="m-0 text-[0.85rem] flex items-center gap-1 flex-wrap">
-            <span>{d.adBaselineImpressions}:</span>
-            <strong id="ad-baseline-impressions">{adBaselineImpressions.toLocaleString('he-IL')}</strong>
-            <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.adBaselineImpTip} aria-label={d.adBaselineImpTip}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
-            </button>
-          </p>
-          <p class="m-0 mt-3 pt-3 border-t [border-color:color-mix(in_srgb,var(--color-success)_20%,transparent)] text-[0.8rem] flex items-start gap-1.5 [color:var(--color-text)]">
-            <svg class="shrink-0 mt-[1px]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 7.7 8 9 4.6-1.3 8-4 8-9V5l-8-3z"/><path d="m9 12 2 2 4-4"/></svg>
-            <span>{d.adAioNote}</span>
+          <div class="flex items-center gap-2 flex-wrap mb-2">
+            <h3 class="m-0 text-[0.9rem] font-semibold inline-flex items-center gap-1.5">
+              <svg class="shrink-0 [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 7.7 8 9 4.6-1.3 8-4 8-9V5l-8-3z"/><path d="m9 12 2 2 4-4"/></svg>
+              {d.adBaselineTitle}
+            </h3>
+            <span class="inline-flex items-center gap-1.5 text-[0.72rem] font-bold [color:var(--color-success)] py-[.15rem] px-[.5rem] rounded-full [background:color-mix(in_srgb,var(--color-success)_14%,transparent)]">
+              <span class="w-[7px] h-[7px] rounded-full [background:var(--color-success)]"></span>
+              {d.adBaselineActive}
+            </span>
+          </div>
+          {/* One clear explanation, in one place only (CURRENT_TASK): the baseline
+              is part of the platform-wide campaign across Google/Meta/AI engines
+              and guarantees no per-product priority — followed by a single pointer
+              to the boost. No duplicate info tooltips or extra notes. */}
+          <p class="text-[0.85rem] leading-relaxed m-0 [color:var(--color-text)]">{d.adBaselineLead}</p>
+          {/* Clickable CTA — scrolls to the boost form below (initAdvertisingTab
+              in advertising.ts). Button (not link): it triggers an in-page scroll,
+              not navigation. Underline appears on hover only. */}
+          <button type="button" id="ad-boost-jump" class="text-start bg-transparent border-0 p-0 cursor-pointer text-[0.85rem] leading-relaxed mt-2 font-bold [color:var(--color-text)] flex items-center gap-2 group">
+            <svg class="shrink-0 [color:var(--color-accent)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
+            <span class="group-hover:underline underline-offset-4 decoration-[color:var(--color-accent)]">{d.adBaselineBoostHint}</span>
+          </button>
+          <p class="m-0 mt-3 pt-3 border-t [border-color:color-mix(in_srgb,var(--color-success)_20%,transparent)] text-[0.82rem]">
+            <span class="muted">{d.adBaselineImpressions}:</span>
+            <strong id="ad-baseline-impressions" class="ms-1">{adBaselineImpressions.toLocaleString('he-IL')}</strong>
           </p>
         </div>
 
-        <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4">
-          <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBoostTitle}</h3>
-          <p class="muted text-[0.82rem] m-0 mb-2">{d.adBoostDesc}</p>
-          <p class="text-[0.8rem] m-0 mb-3 p-2 rounded-[0.4rem] [background:color-mix(in_srgb,var(--color-primary)_7%,transparent)] [color:var(--color-text)]">{d.adBoostWhySep}</p>
+        <div id="ad-boost-card" class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4">
+          <div class="flex items-center gap-1 mb-1">
+            <h3 class="m-0 text-[0.9rem] font-semibold">{d.adBoostTitle}</h3>
+            <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.adBoostWhySep} aria-label={d.adBoostWhySep}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+            </button>
+          </div>
+          <p class="muted text-[0.82rem] m-0 mb-3">{d.adBoostDesc}</p>
 
-          <form id="ad-create-form" class="flex flex-col gap-3" data-store-slug={store.slug}>
+          <form id="ad-create-form" class="flex flex-col gap-3 [&_.field>span]:text-[0.8rem]" data-store-slug={store.slug}>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label class="field">
                 <span>{d.adScopeStore} / {d.adScopeProduct}</span>
@@ -1461,7 +1493,12 @@ const orderStatusColors: Record<string, string> = {
                 </select>
               </label>
               <label class="field">
-                <span id="ad-budget-label">{d.adBudgetMonthlyFieldLabel}</span>
+                <span class="inline-flex items-center">
+                  <span id="ad-budget-label">{d.adBudgetMonthlyFieldLabel}</span>
+                  <button type="button" class="ms-[5px] inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={adBudgetFeeTipText} aria-label={adBudgetFeeTipText}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.7" r="0.6" fill="currentColor" stroke="none"/></svg>
+                  </button>
+                </span>
                 <input type="number" id="ad-budget-input" name="monthlyBudget" class="input" min="50" step="10" value="200" dir="ltr" />
               </label>
               <label class="field">
@@ -1494,11 +1531,11 @@ const orderStatusColors: Record<string, string> = {
               </label>
             </div>
             <p id="ad-store-auto-note" class="text-[0.78rem] m-0 [color:var(--color-success)]">{d.adStoreAutoNote}</p>
-            <p class="muted text-[0.78rem] m-0">{d.adBudgetHint}</p>
-            <p class="muted text-[0.72rem] m-0">{d.adBudgetPlatformFeeNote}</p>
-            <p class="muted text-[0.72rem] m-0">{d.adBillingTimingNote}</p>
-            <div>
-              <button type="submit" class="btn btn--sm btn--accent">{d.adCreateCampaign}</button>
+            <div class="flex justify-end pt-1">
+              <button type="submit" class="btn btn--accent gap-1.5">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
+                {d.adCreateCampaign}
+              </button>
             </div>
           </form>
         </div>
@@ -2282,7 +2319,7 @@ const orderStatusColors: Record<string, string> = {
   import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
   import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
   import { createFloatingPortal } from '../../lib/toolbar-portal.js';
-  import { orderAgeChipHtml } from '../../lib/order-age.js';
+  import { orderAgeChipHtml, orderAgeCardClass } from '../../lib/order-age.js';
   import { encodeList, debounce } from '../../lib/admin-nav.js';
   import { initPerformanceTab } from '../../scripts/dashboard/performance.js';
   import { initAdvertisingTab } from '../../scripts/dashboard/advertising.js';
@@ -2382,8 +2419,8 @@ const orderStatusColors: Record<string, string> = {
   initViewProduct();
 
   // ── Order cards: accordion + save status/tracking ────────────
-  const colorMap = { pending:'#ef4444', processing:'#3b82f6', ready:'#f59e0b', shipped:'#8b5cf6', delivered:'#16a34a' } as Record<string, string>;
-  const labelMap = { pending:'חדשה', processing:'בטיפול', ready:'ממתין לאיסוף', shipped:'נשלח', delivered:'נמסר' } as Record<string, string>;
+  const colorMap = { pending:'#ef4444', processing:'#3b82f6', ready:'#f59e0b', shipped:'#8b5cf6', delivered:'#16a34a', cancelled:'#6b7280' } as Record<string, string>;
+  const labelMap = { pending:'חדשה', processing:'בטיפול', ready:'ממתין לאיסוף', shipped:'נשלח', delivered:'נמסר', cancelled:'בוטלה' } as Record<string, string>;
 
   // Body-anchored (position:fixed, clamped to viewport) instead of the old
   // in-card position:absolute — an order near the bottom of a long list
@@ -2466,8 +2503,22 @@ const orderStatusColors: Record<string, string> = {
     const statusInput   = card.querySelector<HTMLInputElement>('.order-status-select');
     const statusTrigger = card.querySelector<HTMLButtonElement>('.order-status-trigger');
     const trackInput    = card.querySelector<HTMLInputElement>('.order-tracking-input');
+    const copyBtn       = card.querySelector<HTMLButtonElement>('.order-copy-track');
     const orderId       = card.dataset.orderId ?? '';
     const storeSlug     = card.dataset.storeSlug ?? '';
+
+    // copy tracking number to clipboard — brief icon→check swap as confirmation
+    copyBtn?.addEventListener('click', async () => {
+      const value = trackInput?.value.trim() ?? '';
+      if (!value) { trackInput?.focus(); return; }
+      try { await navigator.clipboard.writeText(value); }
+      catch { trackInput?.select(); document.execCommand('copy'); }
+      const icon = copyBtn.querySelector<HTMLElement>('.order-copy-icon');
+      const check = copyBtn.querySelector<HTMLElement>('.order-copy-check');
+      icon?.classList.add('hidden');
+      check?.classList.remove('hidden');
+      setTimeout(() => { check?.classList.add('hidden'); icon?.classList.remove('hidden'); }, 1400);
+    });
 
     // status dropdown — opened in the shared floating portal (fixed position,
     // clamped to viewport) rather than an in-card absolute menu, so it can
@@ -2476,7 +2527,11 @@ const orderStatusColors: Record<string, string> = {
       e.stopPropagation();
       if (orderStatusPortal.currentTrigger() === statusTrigger) { orderStatusPortal.close(); return; }
       const currentVal = statusInput?.value ?? '';
-      orderStatusPortal.open(statusTrigger, '11rem', () => Object.entries(labelMap).map(([v, l]) =>
+      // Seller's manual states only: בטיפול → נשלח → נמסר. 'pending' is the
+      // auto initial state, 'cancelled' is the confirm-gated button, and 'ready'
+      // (ממתין לאיסוף שליח) returns as a CARRIER-driven state once Sendit is
+      // wired — not a manual toggle with nothing behind it (see GO_LIVE §5).
+      orderStatusPortal.open(statusTrigger, '11rem', () => Object.entries(labelMap).filter(([v]) => ['processing', 'shipped', 'delivered'].includes(v)).map(([v, l]) =>
         `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.84rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${v}" style="${currentVal === v ? 'font-weight:700' : ''}"><span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>${l}</button>`
       ).join(''), (portal) => {
         portal.querySelectorAll<HTMLButtonElement>('[data-value]').forEach((opt) => {
@@ -2568,6 +2623,52 @@ const orderStatusColors: Record<string, string> = {
         saveBtn.disabled = false;
       }
     });
+
+    // Cancel order — a confirm-gated escape hatch (out-of-stock, buyer changed
+    // their mind, …). Restock + buyer notification happen server-side; here we
+    // just reflect the terminal state. Only rendered for a still-cancellable
+    // order (pending/processing/ready), so no need to re-check status here.
+    const cancelBtn = card.querySelector<HTMLButtonElement>('.order-cancel-btn');
+    async function runOrderCancel(): Promise<void> {
+      if (!orderId) return;
+      const res = await fetch('/api/seller/orders', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, storeSlug, shippingStatus: 'cancelled' }),
+      });
+      if (!res.ok) return;
+      const badge = card.querySelector<HTMLElement>('.order-card__status-badge');
+      if (badge) {
+        badge.style.background = `${colorMap.cancelled ?? '#6b7280'}1a`;
+        badge.style.color = colorMap.cancelled ?? '#6b7280';
+        badge.textContent = labelMap.cancelled ?? 'בוטלה';
+      }
+      card.dataset.shippingStatus = 'cancelled';
+      // No longer an actionable "new order" — drop the dot + its notification.
+      card.querySelector('.order-new-dot')?.remove();
+      fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-by-related', relatedId: orderId }),
+      }).catch(() => {});
+      window.dispatchEvent(new CustomEvent('notif-refreshed'));
+      // A cancelled order owes nothing — drop the overdue red-card emphasis.
+      card.classList.remove('!border-2', '!border-[color:var(--color-danger)]');
+      cancelBtn?.remove();
+      updateOrderTabBadge();
+      if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
+    }
+    cancelBtn?.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: 'לבטל את ההזמנה?',
+          message: 'הפריטים יוחזרו למלאי והקונה יקבל על כך הודעה. הפעולה אינה הפיכה.',
+          okLabel: 'בטל הזמנה',
+          workingLabel: 'מבטל…',
+          onConfirm: () => runOrderCancel(),
+        },
+      }));
+    });
   }
 
   document.querySelectorAll<HTMLElement>('.order-card').forEach(bindOrderCard);
@@ -2581,7 +2682,7 @@ const orderStatusColors: Record<string, string> = {
   // ready for more columns later without restructuring). Default selection
   // replicates the old "active" preset.
   const ACTIVE_STATUSES = new Set(['pending', 'processing', 'ready', 'shipped']);
-  const ORDER_STATUSES = ['pending', 'processing', 'ready', 'shipped', 'delivered'];
+  const ORDER_STATUSES = ['pending', 'processing', 'ready', 'shipped', 'delivered', 'cancelled'];
   const ORDER_FILTER_COLUMNS = ['status']; // add more column keys here (+ a case in getOrderFilterValue) if warranted later
   const ordersFilters = new Map<string, Set<string>>([['status', new Set(ACTIVE_STATUSES)]]);
   let ordersSortCol: 'date' | 'amount' | 'status' = 'date';
@@ -2633,7 +2734,7 @@ const orderStatusColors: Record<string, string> = {
       <input type="hidden" class="order-status-select" data-field="shippingStatus" value="${esc(o.shippingStatus)}" />
     </div>`;
 
-    return `<div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
+    return `<div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))] ${orderAgeCardClass(o.createdAt, o.shippingStatus)}" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
       <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
         <div class="flex flex-col items-start gap-[0.2rem] min-w-20 shrink-0">
           <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? '<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="הזמנה חדשה"></span>' : ''}</span>
@@ -2689,6 +2790,7 @@ const orderStatusColors: Record<string, string> = {
             <button class="order-save-btn btn btn--sm btn--accent" type="button">שמור</button>
           </div>
           <p class="order-save-status text-[0.8rem] font-semibold text-[color:var(--color-success)] mt-[0.4rem]" hidden aria-live="polite">נשמר ✓</p>
+          ${['pending', 'processing', 'ready'].includes(o.shippingStatus) ? `<button class="order-cancel-btn mt-3 inline-flex items-center gap-[0.3rem] bg-transparent border-0 p-0 cursor-pointer text-[0.78rem] font-semibold text-[color:var(--color-danger)] hover:underline" type="button" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>ביטול הזמנה</button>` : ''}
         </div>
       </div>
     </div>`;

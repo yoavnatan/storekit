@@ -96,7 +96,7 @@ for (const s of getVisibleStores()) {
         <!-- Grand total + CTA (revealed after render) -->
         <div id="co-footer" class="hidden">
           <div class="flex justify-between items-center pt-4 pb-[1.125rem] border-t-2 [border-color:var(--color-border)] mt-1">
-            <span class="text-base font-medium [color:var(--color-text)]">{c.total}</span>
+            <span class="text-base font-medium [color:var(--color-text)]">{c.total} <span id="grand-total-count" class="text-[.82em] font-normal [color:var(--color-muted)]"></span></span>
             <strong class="text-[1.35rem] font-extrabold [color:var(--color-text)]" id="grand-total-amount"></strong>
           </div>
           <button id="to-payment-btn" class="btn btn--accent group w-full py-[.9rem] px-6 text-[1.0625rem] flex items-center justify-center gap-2 mb-2" type="button"
@@ -249,6 +249,7 @@ for (const s of getVisibleStores()) {
         html += `<div class="flex items-center gap-2.5 mb-4 pb-3 border-b [border-color:var(--color-border)]">
           ${checkboxHtml('co-select-all-check', '', i18n['selectAllAria'] ?? '', true)}
           <span class="text-[.9rem] font-semibold [color:var(--color-text)]">${esc(i18n['selectAll'] ?? 'בחר הכל')}</span>
+          <span class="co-select-all-count text-xs font-normal [color:var(--color-muted)]" dir="ltr"></span>
         </div>`;
       }
 
@@ -264,6 +265,7 @@ for (const s of getVisibleStores()) {
         html += `<div class="flex items-center gap-2.5 ${idx === 0 ? 'mt-0' : 'mt-5'} mb-2.5">
           ${checkboxHtml('co-store-check', `data-store-slug="${esc(cart.storeSlug)}"`, `${i18n['selectStoreAria'] ?? ''} ${cart.storeName}`, true)}
           <a href="/store/${esc(cart.storeSlug)}" class="inline-block text-xs font-bold [color:var(--color-muted)] tracking-[.06em] uppercase no-underline transition-colors duration-[140ms] hover:underline">${esc(cart.storeName)}</a>
+          <span class="co-store-count text-xs font-normal [color:var(--color-muted)]"></span>
         </div>`;
 
         // One card per item
@@ -374,6 +376,7 @@ for (const s of getVisibleStores()) {
     // total, each store's select-all checkbox state, and the pay button.
     function updateSelectionUI(): void {
       const carts = getFilteredCarts();
+      const itemWord = (n: number) => n !== 1 ? (i18n['items'] ?? 'items') : (i18n['item'] ?? 'item');
       let grandTotal = 0;
       let anySelected = false;
       let totalItems = 0;
@@ -414,6 +417,9 @@ for (const s of getVisibleStores()) {
           storeCheckbox.checked = selCount > 0 && selCount === cart.items.length;
           storeCheckbox.indeterminate = selCount > 0 && selCount < cart.items.length;
         }
+
+        const storeCountEl = block?.querySelector<HTMLElement>('.co-store-count');
+        if (storeCountEl) storeCountEl.textContent = `(${selCount} ${itemWord(selCount)})`;
       });
 
       const selectAllBox = document.querySelector<HTMLInputElement>('.co-select-all-check input');
@@ -421,9 +427,13 @@ for (const s of getVisibleStores()) {
         selectAllBox.checked = totalSelected > 0 && totalSelected === totalItems;
         selectAllBox.indeterminate = totalSelected > 0 && totalSelected < totalItems;
       }
+      const selectAllCountEl = document.querySelector<HTMLElement>('.co-select-all-count');
+      if (selectAllCountEl) selectAllCountEl.textContent = `(${totalSelected}/${totalItems})`;
 
       const totalEl = document.getElementById('grand-total-amount');
       if (totalEl) totalEl.textContent = formatPrice(grandTotal);
+      const totalCountEl = document.getElementById('grand-total-count');
+      if (totalCountEl) totalCountEl.textContent = `(${totalSelected} ${itemWord(totalSelected)})`;
 
       const toPaymentBtn = document.getElementById('to-payment-btn') as HTMLButtonElement | null;
       if (toPaymentBtn) toPaymentBtn.disabled = !anySelected;
