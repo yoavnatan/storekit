@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, updateStore } from '../../lib/stores.js';
+import { getStoresBySellerId, updateStore, addStoreBgColor } from '../../lib/stores.js';
 import { pingStoreChange } from '../../lib/indexnow.js';
 import { parseStoreHoursForm } from '../../lib/store-hours.js';
 
@@ -47,6 +47,17 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Store page content changed — notify the index (fire-and-forget, no-op in dev).
     pingStoreChange(target.slug);
     return json({ ok: true, name });
+  }
+
+  if (action === 'add-bg-color') {
+    const storeId = String(form.get('storeId') || '');
+    const color = String(form.get('color') || '').trim().toLowerCase();
+    // Only a 6-digit hex is ever stored — never trust the client-sent value.
+    if (!/^#[0-9a-f]{6}$/.test(color)) return json({ ok: false, error: 'Invalid color.' }, 400);
+    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
+    const colors = addStoreBgColor(target.id, color);
+    return json({ ok: true, colors });
   }
 
   return json({ ok: false, error: 'Unknown action.' }, 400);

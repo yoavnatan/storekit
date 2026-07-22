@@ -407,7 +407,7 @@ const orderStatusColors: Record<string, string> = {
     </section>
   ) : store ? (
   <Fragment>
-  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-seller-id={sellerId} hidden></div>
+  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
   <section class="section container dash-section">
     <div id="dash-main-card" class="card seller-dash" style="margin-bottom:1.5rem">
 
@@ -2124,6 +2124,25 @@ const orderStatusColors: Record<string, string> = {
         {d.cleanupBrushSize}
         <input type="range" class="cleanup-brush-input" id="cleanup-brush-size" min="6" max="80" step="1" value="24" />
       </label>
+    </div>
+    <div class="cleanup-finish">
+      <div class="cleanup-bg-group" role="group" aria-label={d.cleanupBackground}>
+        <span class="cleanup-brush-label">{d.cleanupBackground}</span>
+        <div class="cleanup-swatches" id="cleanup-swatches">
+          <button type="button" class="cleanup-swatch cleanup-swatch--transparent cleanup-swatch--active" data-bg="transparent" title={d.cleanupBgTransparent} aria-label={d.cleanupBgTransparent}></button>
+          <button type="button" class="cleanup-swatch" data-bg="#f1f2f4" style="background:#f1f2f4" title={d.cleanupBgGray} aria-label={d.cleanupBgGray}></button>
+          <button type="button" class="cleanup-swatch" data-bg="#f3ece1" style="background:#f3ece1" title={d.cleanupBgBeige} aria-label={d.cleanupBgBeige}></button>
+          <button type="button" class="cleanup-swatch" data-bg="#1a1a1a" style="background:#1a1a1a" title={d.cleanupBgBlack} aria-label={d.cleanupBgBlack}></button>
+          <span class="cleanup-custom-swatches" id="cleanup-custom-swatches"></span>
+          <label class="cleanup-swatch cleanup-swatch--custom" title={d.cleanupBgCustom}>
+            <input type="color" id="cleanup-bg-custom" value="#3b82f6" aria-label={d.cleanupBgCustom} />
+          </label>
+        </div>
+      </div>
+      <button type="button" class="cleanup-shadow-toggle" id="cleanup-shadow" aria-pressed="false">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="10" r="6"/><ellipse cx="12" cy="20" rx="7" ry="2" fill="currentColor" stroke="none" opacity="0.5"/></svg>
+        {d.cleanupShadow}
+      </button>
     </div>
     <div class="cleanup-actions">
       <button class="btn btn--sm" id="cleanup-apply" type="button">

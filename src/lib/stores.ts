@@ -56,8 +56,15 @@ export interface Store {
    *  update endpoint whitelists fields explicitly, see /api/store.ts). 0/undefined = no boost.
    *  Deliberately silent: unlike `blocked`, promotion has nothing to disclose or appeal. */
   promoWeight?: number;
+  /** Seller's saved image-editor background colours (hex), most-recent first. A per-store
+   *  preference so it follows the store across devices, not the browser. Capped, see
+   *  addStoreBgColor. */
+  bgColors?: string[];
   createdAt: string;
 }
+
+/** Most saved background colours kept per store (newest-first, older ones fall off). */
+export const MAX_STORE_BG_COLORS = 12;
 
 /** Highest curation weight the admin can assign (0 = none, 1 = promoted, 2 = spotlight). */
 export const MAX_PROMO_WEIGHT = 2;
@@ -149,4 +156,17 @@ export function updateStore(storeId: string, updates: Partial<Omit<Store, 'id' |
   stores[idx] = { ...stores[idx]!, ...updates };
   writeStores(stores);
   return stores[idx]!;
+}
+
+/** Prepends a background colour to the store's saved palette (deduped, newest-first, capped),
+ *  returning the resulting list — the caller must have already validated the hex + ownership. */
+export function addStoreBgColor(storeId: string, hex: string): string[] | null {
+  const stores = readStores();
+  const idx = stores.findIndex((s) => s.id === storeId);
+  if (idx === -1) return null;
+  const current = stores[idx]!.bgColors ?? [];
+  const next = [hex, ...current.filter((c) => c.toLowerCase() !== hex.toLowerCase())].slice(0, MAX_STORE_BG_COLORS);
+  stores[idx] = { ...stores[idx]!, bgColors: next };
+  writeStores(stores);
+  return next;
 }

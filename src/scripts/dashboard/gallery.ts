@@ -1,5 +1,5 @@
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
-import { removeBackgroundInWorker, cancelBgWorker } from './bg-worker.js';
+import { removeBackgroundInWorker, cancelBgWorker, warmBgWorker } from './bg-worker.js';
 import { cloudinaryUpload } from './cloudinary.js';
 import { openCropModal } from './crop-modal.js';
 import { openCleanupModal } from './cleanup-modal.js';
@@ -35,11 +35,20 @@ export function initGalleryWidget(gallery: Element): void {
   const cancelBtn      = gallery.querySelector<HTMLButtonElement>('.gallery-cancel-btn');
   const doneBtn        = gallery.querySelector<HTMLButtonElement>('.gallery-done-btn');
   const sharedFileInput = gallery.querySelector<HTMLInputElement>('.gallery-shared-file-input');
+  const batchBar       = gallery.querySelector<HTMLElement>('.gallery-batch');
+  const batchStartBtn  = gallery.querySelector<HTMLButtonElement>('.gallery-batch-start');
+  const batchRunBtn    = gallery.querySelector<HTMLButtonElement>('.gallery-batch-run');
+  const batchRunLabel  = gallery.querySelector<HTMLElement>('.gallery-batch-run__label');
+  const batchCancelBtn = gallery.querySelector<HTMLButtonElement>('.gallery-batch-cancel');
+  const batchBaseLabel = batchRunLabel?.textContent ?? 'Remove background';
   const form           = gallery.closest<HTMLFormElement>('form');
   const submitBtn      = form?.querySelector<HTMLButtonElement>('[type="submit"]');
 
   let activeSlot: Element | null = null;
   let pendingPickSlot: Element | null = null;
+  let selecting = false;      // batch-selection mode active
+  let batchRunning = false;   // a batch bg-removal pass is in flight
+  const batchSelected = new Set<Element>();
 
   function getState(): WidgetState | null {
     return activeSlot ? (wState.get(activeSlot) ?? null) : null;
@@ -68,7 +77,10 @@ export function initGalleryWidget(gallery: Element): void {
     const hasProcessed = !!st.processed;
     const showingProcessed = hasProcessed && st.useProcessed;
     const isProcessing = st.processing;
-    removeBgBtn?.toggleAttribute('hidden', hasProcessed || isProcessing);
+    // Kept visible (disabled) while processing so its label can carry the live percentage,
+    // rather than vanishing behind the overlay.
+    removeBgBtn?.toggleAttribute('hidden', hasProcessed);
+    if (removeBgBtn) removeBgBtn.disabled = isProcessing;
     restoreBgBtn?.toggleAttribute('hidden', !hasProcessed || showingProcessed || isProcessing);
     keepBgBtn?.toggleAttribute('hidden', !showingProcessed && !isProcessing);
     cleanupBtn?.toggleAttribute('hidden', !showingProcessed || isProcessing);
@@ -94,6 +106,7 @@ export function initGalleryWidget(gallery: Element): void {
       st.pristineOriginal = undefined; st.pristineProcessed = undefined;
       st.croppedOriginal = false; st.croppedProcessed = false;
     }
+    batchSelected.delete(slot); markSelected(slot, false);
     const slotImg   = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
     const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
     const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
@@ -102,6 +115,7 @@ export function initGalleryWidget(gallery: Element): void {
     empty?.removeAttribute('hidden');
     filled?.setAttribute('hidden', '');
     if (urlInput) urlInput.value = '';
+    updateBatchAvailability();
   }
 
   // Discards whatever was picked/cropped/bg-removed for this ONE slot in this editing session,
@@ -119,13 +133,18 @@ export function initGalleryWidget(gallery: Element): void {
     const empty     = slot.querySelector<HTMLElement>('.gallery-slot__empty');
     const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
     const urlInput  = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
+    batchSelected.delete(slot); markSelected(slot, false);
     if (urlInput) urlInput.value = initialUrl;
     if (slotImg) slotImg.src = initialUrl;
     empty?.toggleAttribute('hidden', !!initialUrl);
     filled?.toggleAttribute('hidden', !initialUrl);
+    updateBatchAvailability();
   }
 
   function activateSlot(slot: Element) {
+    // Opening an image to edit is a strong signal a bg-removal is coming — start the model
+    // download now so the (large, one-time) fetch is done or underway before the click.
+    warmBgWorker();
     activeSlot = slot;
     gallery.querySelectorAll<Element>('.gallery-slot').forEach(s => s.classList.remove('gallery-slot--active'));
     slot.classList.add('gallery-slot--active');
@@ -155,6 +174,114 @@ export function initGalleryWidget(gallery: Element): void {
     return !slot.querySelector<HTMLElement>('.gallery-slot__empty')?.hasAttribute('hidden');
   }
 
+  function filledSlots(): Element[] {
+    return allSlots.filter((s) => !isSlotEmpty(s));
+  }
+
+  function setSlotLoading(slot: Element, active: boolean) {
+    slot.querySelector<HTMLElement>('.gallery-slot__loading')?.toggleAttribute('hidden', !active);
+  }
+
+  // The batch bar only makes sense with two or more images to choose between — hide it
+  // otherwise (a single image is faster to cut out via its own panel button).
+  function updateBatchAvailability() {
+    if (!batchBar || selecting) return;
+    batchBar.hidden = filledSlots().length < 2;
+  }
+
+  function updateBatchRunLabel() {
+    if (batchRunLabel) batchRunLabel.textContent = `${batchBaseLabel} (${batchSelected.size})`;
+    if (batchRunBtn) batchRunBtn.disabled = batchSelected.size === 0 || batchRunning;
+  }
+
+  function markSelected(slot: Element, on: boolean) {
+    slot.classList.toggle('gallery-slot--batch-selected', on);
+    slot.querySelector<HTMLElement>('.gallery-slot__check')?.toggleAttribute('hidden', !on);
+  }
+
+  function toggleBatchSelect(slot: Element) {
+    if (batchSelected.has(slot)) batchSelected.delete(slot);
+    else batchSelected.add(slot);
+    markSelected(slot, batchSelected.has(slot));
+    updateBatchRunLabel();
+  }
+
+  // Enter selection: every filled photo starts selected (the common case is "cut them all
+  // out"), and the seller taps to exclude any that should keep their background.
+  function enterSelecting() {
+    if (activeSlot) closePanel();
+    selecting = true;
+    gallery.classList.add('gallery--selecting');
+    batchSelected.clear();
+    filledSlots().forEach((s) => { batchSelected.add(s); markSelected(s, true); });
+    batchStartBtn?.setAttribute('hidden', '');
+    batchRunBtn?.removeAttribute('hidden');
+    batchCancelBtn?.removeAttribute('hidden');
+    updateBatchRunLabel();
+  }
+
+  function exitSelecting() {
+    selecting = false;
+    gallery.classList.remove('gallery--selecting');
+    allSlots.forEach((s) => markSelected(s, false));
+    batchSelected.clear();
+    if (batchRunLabel) batchRunLabel.textContent = batchBaseLabel;
+    batchStartBtn?.removeAttribute('hidden');
+    batchRunBtn?.setAttribute('hidden', '');
+    batchCancelBtn?.setAttribute('hidden', '');
+    updateBatchAvailability();
+  }
+
+  // Loads a slot's source blob — either the in-session upload/edit, or (for an already-saved
+  // product image) fetched back from its stored URL, same as the single "remove background".
+  async function ensureOriginalBlob(slot: Element): Promise<Blob | null> {
+    const st = wState.get(slot);
+    if (!st) return null;
+    if (st.original) return st.original;
+    const url = slot.querySelector<HTMLInputElement>('.gallery-slot__url')?.value;
+    if (!url) return null;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const blob = await resp.blob();
+      st.original = blob; st.pristineOriginal = blob;
+      return blob;
+    } catch { return null; }
+  }
+
+  // Processes the selected slots one at a time — the segmentation model is CPU-bound, so a
+  // sequential queue is no slower than firing them in parallel and won't blow up memory. The
+  // run-button doubles as the progress readout (n/total); a failed image is skipped, not fatal.
+  async function runBatch() {
+    if (batchRunning || batchSelected.size === 0) return;
+    const slots = filledSlots().filter((s) => batchSelected.has(s)); // keep visual order
+    batchRunning = true;
+    if (batchCancelBtn) batchCancelBtn.disabled = true;
+    if (batchRunBtn) batchRunBtn.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i]!;
+      if (batchRunLabel) batchRunLabel.textContent = `${batchBaseLabel} (${i + 1}/${slots.length})`;
+      setSlotLoading(slot, true);
+      try {
+        const original = await ensureOriginalBlob(slot);
+        if (original) {
+          const processed = await removeBackgroundInWorker(original, (p) => {
+            if (batchRunLabel) batchRunLabel.textContent = `${batchBaseLabel} (${i + 1}/${slots.length} · ${Math.round(p * 100)}%)`;
+          });
+          const st = wState.get(slot)!;
+          st.processed = processed; st.pristineProcessed = processed; st.useProcessed = true; st.croppedProcessed = false;
+          setSlotThumbnail(slot, URL.createObjectURL(processed));
+        }
+      } catch { /* skip a failed image, keep going */ }
+      finally { setSlotLoading(slot, false); }
+    }
+    batchRunning = false;
+    if (batchCancelBtn) batchCancelBtn.disabled = false;
+    if (submitBtn) submitBtn.disabled = false;
+    exitSelecting();
+  }
+
   function assignFileToSlot(slot: Element, file: File) {
     const st = wState.get(slot);
     if (!st) return;
@@ -175,6 +302,7 @@ export function initGalleryWidget(gallery: Element): void {
     const startIdx = allSlots.indexOf(startSlot);
     const targets = [startSlot, ...allSlots.slice(startIdx + 1).filter(isSlotEmpty)];
     imageFiles.slice(0, targets.length).forEach((file, i) => assignFileToSlot(targets[i]!, file));
+    updateBatchAvailability();
     activateSlot(startSlot);
   }
 
@@ -226,7 +354,20 @@ export function initGalleryWidget(gallery: Element): void {
       const files = (e as DragEvent).dataTransfer?.files;
       if (files?.length) handleFiles(files, slot);
     });
+
+    // In batch-selection mode a tap toggles the photo in/out of the set — captured before
+    // the edit/remove overlay buttons so it wins over their own handlers.
+    slot.addEventListener('click', (e) => {
+      if (!selecting || batchRunning || isSlotEmpty(slot)) return;
+      e.preventDefault(); e.stopPropagation();
+      toggleBatchSelect(slot);
+    }, true);
   });
+
+  batchStartBtn?.addEventListener('click', enterSelecting);
+  batchCancelBtn?.addEventListener('click', () => { if (!batchRunning) exitSelecting(); });
+  batchRunBtn?.addEventListener('click', runBatch);
+  updateBatchAvailability();
 
   removeBgBtn?.addEventListener('click', async () => {
     if (!activeSlot) return;
@@ -245,14 +386,24 @@ export function initGalleryWidget(gallery: Element): void {
     }
     setLoading(true);
     updatePanelButtons();
+    const baseMsg = getRemovingBgMsg().replace(/[.…]+$/, '');
+    const removeBgLabel = removeBgBtn?.querySelector<HTMLElement>('.gallery-remove-bg-btn__label');
+    const removeBgBaseText = removeBgLabel?.textContent ?? '';
     try {
-      const processed = await removeBackgroundInWorker(st.original!);
+      const processed = await removeBackgroundInWorker(st.original!, (p) => {
+        // Live percentage on the button itself — a bar that sweeps twice (first-run fetch,
+        // then the removal) still beats a blind wait with no sense of progress.
+        if (removeBgLabel) removeBgLabel.textContent = `${baseMsg} ${Math.round(p * 100)}%`;
+      });
       st.processed = processed; st.pristineProcessed = processed; st.useProcessed = true; st.croppedProcessed = false;
       if (panelImg) panelImg.src = URL.createObjectURL(processed);
       if (activeSlot) setSlotThumbnail(activeSlot, URL.createObjectURL(processed));
     } catch (err) {
       if (err instanceof Error && err.message === 'cancelled') return;
-    } finally { setLoading(false); updatePanelButtons(); }
+    } finally {
+      if (removeBgLabel) removeBgLabel.textContent = removeBgBaseText;
+      setLoading(false); updatePanelButtons();
+    }
   });
 
   keepBgBtn?.addEventListener('click', () => {

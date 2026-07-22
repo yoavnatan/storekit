@@ -10,6 +10,63 @@ const modePanBtn     = document.getElementById('cleanup-mode-pan') as HTMLButton
 const applyBtn       = document.getElementById('cleanup-apply') as HTMLButtonElement | null;
 const resetBtn       = document.getElementById('cleanup-reset') as HTMLButtonElement | null;
 const cancelBtn      = document.getElementById('cleanup-cancel') as HTMLButtonElement | null;
+const shadowToggle   = document.getElementById('cleanup-shadow') as HTMLButtonElement | null;
+const bgCustomInput  = document.getElementById('cleanup-bg-custom') as HTMLInputElement | null;
+const swatchesEl     = document.getElementById('cleanup-swatches') as HTMLElement | null;
+const customSwatchesEl = document.getElementById('cleanup-custom-swatches') as HTMLElement | null;
+
+// Saved background colours are a per-STORE preference held on the server, so they follow the
+// store even if the seller uploads from another device — not a per-browser localStorage list.
+// The current store's palette is embedded on the page (#upload-config); adding one POSTs to the
+// store API, which returns the authoritative list we then mirror.
+const uploadConfig = document.getElementById('upload-config');
+let customColors: string[] = readEmbeddedColors();
+
+// The four fixed presets never need saving — only a genuinely new picked colour does.
+const PRESET_BGS = new Set(['transparent', '#f1f2f4', '#f3ece1', '#1a1a1a']);
+function isCustomBg(c: string): boolean {
+  return /^#[0-9a-f]{6}$/i.test(c) && !PRESET_BGS.has(c.toLowerCase());
+}
+
+function readEmbeddedColors(): string[] {
+  try {
+    const raw = JSON.parse(uploadConfig?.dataset.bgColors ?? '[]');
+    return Array.isArray(raw) ? raw.filter((c): c is string => typeof c === 'string') : [];
+  } catch { return []; }
+}
+
+function renderCustomSwatches(): void {
+  if (!customSwatchesEl) return;
+  customSwatchesEl.textContent = '';
+  for (const color of customColors) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cleanup-swatch';
+    btn.dataset.bg = color;
+    btn.style.background = color;
+    btn.title = color;
+    btn.setAttribute('aria-label', color);
+    customSwatchesEl.appendChild(btn);
+  }
+}
+
+// Persists a just-picked colour to the store. Optimistically shows it right away, then
+// reconciles with the server's returned list (dedup/cap/ordering are decided server-side).
+async function persistCustomColor(hex: string): Promise<void> {
+  const storeId = uploadConfig?.dataset.storeId ?? '';
+  if (!storeId) return;
+  try {
+    const body = new URLSearchParams({ _action: 'add-bg-color', storeId, color: hex });
+    const resp = await fetch('/api/store', { method: 'POST', body });
+    const data = await resp.json();
+    if (data?.ok && Array.isArray(data.colors)) {
+      customColors = data.colors.filter((c: unknown): c is string => typeof c === 'string');
+      if (uploadConfig) uploadConfig.dataset.bgColors = JSON.stringify(customColors);
+      renderCustomSwatches();
+      syncFinishControls();
+    }
+  } catch { /* offline / failed — the optimistic swatch stays for this session */ }
+}
 
 type Mode = 'erase' | 'restore' | 'pan';
 
@@ -26,6 +83,50 @@ let baseFitScale = 1; // scale that fits the full image inside FIT_BOX at zoom=1
 let zoom = 1;
 let panX = 0, panY = 0;
 let panStartX = 0, panStartY = 0, panStartOffsetX = 0, panStartOffsetY = 0;
+
+// Output finishing options, baked into the saved cutout (not the editing surface).
+let bgColor: 'transparent' | string = 'transparent';
+let shadow = false;
+
+// Mirrors the chosen background + shadow onto the live editing viewport so the seller sees
+// the final look. The checkerboard (transparent) is the default CSS background, so an empty
+// inline value falls back to it; a solid color overrides it.
+function updateFinishPreview(): void {
+  if (viewport) viewport.style.background = bgColor === 'transparent' ? '' : bgColor;
+  if (canvas) canvas.style.filter = shadow ? 'drop-shadow(0 6px 10px rgba(0,0,0,0.28))' : '';
+}
+
+// Reflects the current bgColor/shadow state onto the swatch + toggle controls.
+function syncFinishControls(): void {
+  document.querySelectorAll<HTMLButtonElement>('.cleanup-swatch').forEach((sw) => {
+    sw.classList.toggle('cleanup-swatch--active', (sw.dataset.bg ?? '') === bgColor);
+  });
+  shadowToggle?.setAttribute('aria-pressed', String(shadow));
+}
+
+// Bakes the chosen background fill + soft drop shadow into a copy of the edited cutout.
+// Shadow blur/offset scale with image size so they read the same on a 300px or 3000px photo.
+function buildOutputBlob(cb: (blob: Blob | null) => void): void {
+  if (!canvas) { cb(null); return; }
+  const w = canvas.width, h = canvas.height;
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const octx = out.getContext('2d');
+  if (!octx) { cb(null); return; }
+  if (bgColor !== 'transparent') { octx.fillStyle = bgColor; octx.fillRect(0, 0, w, h); }
+  if (shadow) {
+    const s = Math.max(w, h);
+    octx.save();
+    octx.shadowColor = 'rgba(0,0,0,0.32)';
+    octx.shadowBlur = s * 0.03;
+    octx.shadowOffsetY = s * 0.02;
+    octx.drawImage(canvas, 0, 0);
+    octx.restore();
+  } else {
+    octx.drawImage(canvas, 0, 0);
+  }
+  out.toBlob(cb, 'image/png');
+}
 
 // Fixed on-screen radius, independent of zoom — zooming in shrinks the *actual* area a stroke covers.
 function brushRadiusScreen(): number {
@@ -72,6 +173,10 @@ export function openCleanupModal(originalBlob: Blob, processedBlob: Blob, onAppl
   applyCallback = onApply;
   setMode('erase');
   panX = 0; panY = 0;
+  bgColor = 'transparent'; shadow = false;
+  renderCustomSwatches();
+  syncFinishControls();
+  updateFinishPreview();
   Promise.all([createImageBitmap(processedBlob), createImageBitmap(originalBlob)]).then(([procBmp, origBmp]) => {
     const w = procBmp.width, h = procBmp.height;
     canvas.width = w; canvas.height = h;
@@ -92,6 +197,20 @@ export function openCleanupModal(originalBlob: Blob, processedBlob: Blob, onAppl
     updateBrushCursorSize();
     modal!.hidden = false;
   });
+}
+
+// Swaps the Apply button into a busy dot-pulse (design rule: disable + dot-pulse, not a
+// spinner) and locks the other actions so a slow PNG encode can't be interrupted mid-flight.
+let applyBtnHtml = '';
+function setApplyBusy(busy: boolean): void {
+  if (!applyBtn) return;
+  if (busy && !applyBtnHtml) applyBtnHtml = applyBtn.innerHTML;
+  applyBtn.disabled = busy;
+  if (resetBtn) resetBtn.disabled = busy;
+  if (cancelBtn) cancelBtn.disabled = busy;
+  applyBtn.innerHTML = busy
+    ? '<span class="dot-pulse" role="status" aria-label="loading"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span>'
+    : applyBtnHtml;
 }
 
 function closeCleanupModal(): void {
@@ -183,15 +302,59 @@ export function initCleanupModal(): void {
   modeEraseBtn?.addEventListener('click', () => setMode('erase'));
   modeRestoreBtn?.addEventListener('click', () => setMode('restore'));
   modePanBtn?.addEventListener('click', () => setMode('pan'));
+  // Delegated so it also covers the dynamically-rendered saved-colour swatches. The rainbow
+  // add-button is a <label> (no data-bg), so it's naturally skipped here.
+  swatchesEl?.addEventListener('click', (e) => {
+    const sw = (e.target as HTMLElement).closest<HTMLElement>('.cleanup-swatch[data-bg]');
+    if (!sw || !swatchesEl.contains(sw)) return;
+    bgColor = sw.dataset.bg ?? 'transparent';
+    syncFinishControls();
+    updateFinishPreview();
+  });
+  shadowToggle?.addEventListener('click', () => {
+    shadow = !shadow;
+    syncFinishControls();
+    updateFinishPreview();
+  });
+  // `input` fires continuously while dragging in the picker — use it only for live preview,
+  // never to save (that was adding a swatch on every drag tick). `change` fires once, when the
+  // seller commits a colour (picker closed with a new value) — that's when we persist it.
+  bgCustomInput?.addEventListener('input', () => {
+    bgColor = bgCustomInput.value;
+    updateFinishPreview();
+  });
+  bgCustomInput?.addEventListener('change', () => {
+    bgColor = bgCustomInput.value.toLowerCase();
+    // Show the swatch for reuse within this editing session only — NOT persisted to the store
+    // yet. It's saved server-side only if the seller actually applies the edit (see applyBtn),
+    // so abandoned colours never clutter the saved palette.
+    if (!customColors.some((c) => c.toLowerCase() === bgColor)) {
+      customColors = [bgColor, ...customColors];
+      renderCustomSwatches();
+    }
+    syncFinishControls();
+    updateFinishPreview();
+  });
   resetBtn?.addEventListener('click', () => {
     if (ctx && pristineProcessed) ctx.putImageData(pristineProcessed, 0, 0);
   });
   applyBtn?.addEventListener('click', () => {
-    if (!canvas) return;
-    canvas.toBlob((blob) => {
-      if (blob && applyCallback) applyCallback(blob);
-      closeCleanupModal();
-    }, 'image/png');
+    if (!canvas || applyBtn.disabled) return;
+    // PNG-encoding a full-resolution cutout (toBlob) can take a few seconds and briefly
+    // hitches the main thread — without a visible busy state the modal just sat there
+    // frozen. Disable the button + show the dot-pulse, then defer the encode one frame so
+    // that busy state actually paints before the (blocking) encode starts.
+    // The edit is being saved — now (and only now) persist a newly-picked background colour to
+    // the store, so an abandoned pick never reaches the saved palette.
+    if (isCustomBg(bgColor)) void persistCustomColor(bgColor);
+    setApplyBusy(true);
+    requestAnimationFrame(() => {
+      buildOutputBlob((blob) => {
+        if (blob && applyCallback) applyCallback(blob);
+        setApplyBusy(false);
+        closeCleanupModal();
+      });
+    });
   });
 
   cancelBtn?.addEventListener('click', closeCleanupModal);

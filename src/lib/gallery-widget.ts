@@ -14,6 +14,9 @@ export interface GalleryLabels {
   done?: string;
   cancel?: string;
   removingBg?: string;
+  batchStart?: string;
+  batchRun?: string;
+  batchCancel?: string;
 }
 
 export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels = {}): string {
@@ -29,6 +32,9 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
     done:          labels.done          ?? 'Done',
     cancel:        labels.cancel        ?? 'Cancel',
     removingBg:    labels.removingBg    ?? 'Removing background…',
+    batchStart:    labels.batchStart    ?? 'Remove background from several',
+    batchRun:      labels.batchRun      ?? 'Remove background',
+    batchCancel:   labels.batchCancel   ?? 'Cancel',
   };
 
   const uploadIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
@@ -59,6 +65,7 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
             <button type="button" class="gallery-slot__action gallery-slot__action--remove" aria-label="Remove image">${removeIcon}</button>
           </div>
           <div class="gallery-slot__loading" hidden><div class="spinner spinner--sm"></div></div>
+          <span class="gallery-slot__check" hidden aria-hidden="true">${checkIcon}</span>
         </div>
         <input type="hidden" name="images" class="gallery-slot__url" value="${esc(url)}">
       </div>`;
@@ -67,6 +74,17 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
   return `
     <div class="gallery-widget">
       <div class="gallery-grid">${slots.join('')}</div>
+      <!-- Batch bg-removal: hidden until ≥2 filled slots exist (shown by gallery.ts). "Start"
+           enters a selection mode where the seller taps the photos to cut out — not every
+           product photo should lose its background, so nothing is processed without an
+           explicit pick — then "Remove background" runs them through the worker one at a
+           time (the model is CPU-bound, so a sequential queue with per-slot progress is both
+           simpler and no slower than true parallelism). -->
+      <div class="gallery-batch" hidden>
+        <button type="button" class="btn btn--ghost btn--sm gallery-batch-start">${wandIcon}${esc(l.batchStart)}</button>
+        <button type="button" class="btn btn--sm gallery-batch-run" hidden>${wandIcon}<span class="gallery-batch-run__label">${esc(l.batchRun)}</span></button>
+        <button type="button" class="btn btn--ghost btn--sm gallery-batch-cancel" hidden>${esc(l.batchCancel)}</button>
+      </div>
       <!-- One shared file input per widget, positioned off-screen (not just visually-hidden) —
            a real OS drag-drop can never physically land on it since it's nowhere near any
            drop-zone's visible/hit-testable area, structurally ruling out the browser's own
@@ -85,7 +103,7 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
           </div>
           <div class="img-preview__actions">
             <div class="img-preview__actions-group">
-              <button type="button" class="btn btn--sm gallery-remove-bg-btn">${wandIcon}${esc(l.removeBg)}</button>
+              <button type="button" class="btn btn--sm gallery-remove-bg-btn">${wandIcon}<span class="gallery-remove-bg-btn__label">${esc(l.removeBg)}</span></button>
               <button type="button" class="btn btn--ghost btn--sm gallery-restore-bg-btn" hidden>${wandIcon}${esc(l.restoreBg)}</button>
               <button type="button" class="btn btn--ghost btn--sm gallery-keep-bg-btn" hidden>${undoIcon}${esc(l.keepOriginal)}</button>
               <button type="button" class="btn btn--ghost btn--sm gallery-cleanup-btn" hidden>${brushIcon}${esc(l.cleanup)}</button>
