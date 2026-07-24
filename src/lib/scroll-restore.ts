@@ -1,4 +1,14 @@
 const PREFIX = 'store_scroll_';
+const RETURN_FLAG = 'store_scroll_return';
+
+// Set by the store quick-view modal right before it force-reloads the store when
+// a refreshed product URL is dismissed with Back. That scripted reload's referrer
+// can't be trusted (it isn't a genuine product→store navigation), so this flag
+// tells the restore path the return is legit anyway. Consumed once, then cleared,
+// so it can't leak into an unrelated later visit.
+export function markStoreScrollReturn(slug: string): void {
+  try { sessionStorage.setItem(RETURN_FLAG, slug); } catch { /* noop */ }
+}
 
 interface StoreScrollState {
   scrollY: number;
@@ -25,6 +35,8 @@ export function saveStoreScroll(slug: string, search: string, loadedCount: numbe
 // sessionStorage from an earlier, unrelated visit this same tab session.
 function isLegitReturn(slug: string): boolean {
   try {
+    // Modal quick-view refresh→Back (referrer unreliable, see markStoreScrollReturn).
+    if (sessionStorage.getItem(RETURN_FLAG) === slug) return true;
     const ref = new URL(document.referrer);
     if (ref.origin !== location.origin) return false;
     return ref.pathname.startsWith(`/store/${slug}/`) || ref.pathname.startsWith('/checkout');
@@ -66,13 +78,49 @@ export function peekStoreScrollState(slug: string): StoreScrollState | null {
 export function restoreStoreScroll(slug: string): void {
   try {
     const raw = sessionStorage.getItem(PREFIX + slug);
-    if (raw === null) return;
+    if (raw === null) { sessionStorage.removeItem(RETURN_FLAG); return; }
     sessionStorage.removeItem(PREFIX + slug);
-    if (!isLegitReturn(slug)) return;
+    const legit = isLegitReturn(slug);
+    sessionStorage.removeItem(RETURN_FLAG); // consumed — never leak to a later visit
+    if (!legit) return;
     const { scrollY } = JSON.parse(raw) as StoreScrollState;
-    // Explicit 'instant', not 'auto' — the site sets a global `scroll-behavior:
-    // smooth` on <html> (reset.css), and 'auto' just defers to that CSS value,
-    // so it would animate here too instead of snapping to place.
-    window.scrollTo({ top: scrollY, behavior: 'instant' });
+    scrollToStable(scrollY);
   } catch {}
+}
+
+// A single scrollTo often can't reach the saved offset: at restore time the grid
+// is laid out but its images haven't decoded, so the document is still shorter
+// than it will be and the browser silently clamps us near the top (measured
+// landing at 297 for a saved 2500). Land as close as possible immediately, then
+// re-assert every frame until the target is actually reached or the page stops
+// growing — never a deferred single jump, which would show the page at the top
+// first and only snap into place once the grid finished growing. Bails the
+// moment the user scrolls, so a restore can never fight a deliberate gesture.
+function scrollToStable(target: number, timeoutMs = 1500): void {
+  // Explicit 'instant', not 'auto' — the site sets a global `scroll-behavior:
+  // smooth` on <html> (reset.css), and 'auto' just defers to that CSS value,
+  // so it would animate here too instead of snapping to place.
+  const jump = () => window.scrollTo({ top: target, behavior: 'instant' });
+  jump();
+  if (Math.abs(window.scrollY - target) < 1) return;
+
+  let done = false;
+  const stop = () => {
+    done = true;
+    window.removeEventListener('wheel', stop);
+    window.removeEventListener('touchstart', stop);
+    window.removeEventListener('keydown', stop);
+  };
+  window.addEventListener('wheel', stop, { passive: true });
+  window.addEventListener('touchstart', stop, { passive: true });
+  window.addEventListener('keydown', stop);
+
+  const started = performance.now();
+  const step = () => {
+    if (done) return;
+    jump();
+    if (Math.abs(window.scrollY - target) < 1 || performance.now() - started > timeoutMs) { stop(); return; }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }

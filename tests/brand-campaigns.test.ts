@@ -32,7 +32,7 @@ describe('brand-campaigns input coercion', () => {
 
   it('sanitizeDestination blocks unsafe schemes, allows path + http(s)', () => {
     expect(sanitizeDestination('/stores', 'buyers')).toBe('/stores');
-    expect(sanitizeDestination('https://shopnest.co.il/x', 'buyers')).toBe('https://shopnest.co.il/x');
+    expect(sanitizeDestination('https://dezabin.co.il/x', 'buyers')).toBe('https://dezabin.co.il/x');
     // Unsafe / non-URL → falls back to the objective default, never passes through.
     expect(sanitizeDestination('javascript:alert(1)', 'buyers')).toBe('/');
     expect(sanitizeDestination('javascript:alert(1)', 'sellers')).toBe('/seller/register');
@@ -55,7 +55,7 @@ describe('brand-campaigns input coercion', () => {
     const ok = parseCreateInput({
       objective: 'sellers',
       headline: '  Open a store  ',
-      body: 'Join ShopNest',
+      body: 'Join Dezabin',
       monthlyBudget: '500',
       platform: 'meta',
       durationDays: '14',

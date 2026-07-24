@@ -6,7 +6,7 @@ const CAMPAIGNS_PATH = path.join(process.cwd(), 'data/brand-campaigns.json');
 
 // Platform BRAND campaigns (CURRENT_TASK.md → סשן ב׳). Distinct from the two
 // product-based ad tiers (baseline feed + seller boosts, see ad-campaigns.ts):
-// these advertise the PLATFORM ITSELF — "open a store on ShopNest" / "shop
+// these advertise the PLATFORM ITSELF — "open a store on Dezabin" / "shop
 // across many stores" — so unlike a product ad they need creative the owner
 // uploads (headline, body, image, destination), because there's no product feed
 // to render. Owner-managed only, from the admin advertising tab.

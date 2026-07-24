@@ -90,7 +90,7 @@ describe('buildFeedItems', () => {
 });
 
 describe('toMerchantXml', () => {
-  const meta = { title: 'ShopNest', link: 'https://shop.example', description: 'feed', currency: 'ILS' };
+  const meta = { title: 'Dezabin', link: 'https://shop.example', description: 'feed', currency: 'ILS' };
 
   it('produces a Google RSS 2.0 document with the g: namespace and priced items', () => {
     const rows = buildFeedItems(product({ name: 'חולצה', price: 120, images: ['https://cdn/x.jpg'] }), CTX);

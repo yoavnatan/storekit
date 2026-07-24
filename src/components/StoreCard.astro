@@ -33,6 +33,7 @@ const extraCategoryCount = categories.length - shownCategories.length;
 
 <a
   href={`/store/${store.slug}`}
+  data-astro-prefetch
   class={`store-card ${className}`}
   data-store-name={store.name.toLowerCase()}
   data-tagline={(store.tagline || store.description || '').toLowerCase()}

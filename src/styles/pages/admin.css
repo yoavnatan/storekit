@@ -375,6 +375,11 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-badge--shipping-shipped { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
 .admin-badge--shipping-delivered { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
 
+/* Status colour dot in the orders filter dropdown (orders-filter.ts). Same 8px
+   dot the seller dashboard uses; defined here because admin.css is split out of
+   dashboard.css, so the seller's scoped rule never reaches the admin page. */
+.order-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
 /* Alerts table stays a real <table> (table-layout:fixed + the <colgroup>
    widths in AdminAlertsPanel.astro) down to the card breakpoint below —
    dense, scannable, more visible per screen, which is the whole point of

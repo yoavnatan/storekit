@@ -7,8 +7,10 @@
 // Once 'shipped' it's out of the seller's hands (waiting on the carrier/buyer),
 // so it just shows its age calmly, no colour pressure. Age is measured from
 // createdAt throughout — the buyer's clock — so a stalled order reads as late
-// regardless of when the seller happened to touch it. No blink/pulse on the
-// seller's own tab — colour alone (admin's emphasize adds the pulse).
+// regardless of when the seller happened to touch it. Colour + icon on the age
+// chip alone signal escalation — no blink/pulse and no card border, on either
+// the seller's own Orders tab or the admin platform-wide view (the chip is
+// enough; a red card border/fill was tried and read as too loud, dropped).
 // Pure + isomorphic (no node deps) so the same result renders SSR and inside
 // the client card builder — import from both.
 
@@ -91,16 +93,16 @@ const CHIP_CLASSES: Record<OrderAgeLevel, string> = {
  * Shown on every not-yet-delivered order. A 'pending' (unhandled) order
  * escalates by age (calm → amber → red); an in-progress order stays calm/muted
  * regardless of age (the seller is already on it). Returns '' once delivered.
- * `opts.emphasize` makes an overdue pill pulse — used on the admin platform-wide
- * orders view where a neglected order needs to jump out (the seller's own tab
- * keeps it calm, no blink). Text is fixed i18n copy + the order's own age — no
+ * Same calm rendering on both the seller's own Orders tab and the admin
+ * platform-wide view — the coloured chip is the only escalation signal (no
+ * pulse, no card border). Text is fixed i18n copy + the order's own age — no
  * user-supplied data — so it is safe to inject via set:html / innerHTML.
  */
 export function orderAgeChipHtml(
   createdAt: string,
   shippingStatus: string,
   lang: 'he' | 'en',
-  opts: { now?: number; emphasize?: boolean } = {},
+  opts: { now?: number } = {},
 ): string {
   if (NO_CHIP.includes(shippingStatus)) return '';
   const owes = OWES_ACTION.includes(shippingStatus);
@@ -113,22 +115,5 @@ export function orderAgeChipHtml(
     : (owes && level !== 'fresh' ? 'stalled' : 'inProgress');
   const text = ageLabel(hours, lang, tone);
   const icon = level === 'overdue' ? ALERT_ICON : CLOCK_ICON;
-  const pulse = opts.emphasize && level === 'overdue' ? ' animate-pulse motion-reduce:animate-none' : '';
-  return `<span class="inline-flex items-center gap-[0.2rem] text-[0.66rem] font-bold px-[0.45rem] py-[0.1rem] rounded-full ${CHIP_CLASSES[level]}${pulse}" title="${text}">${icon}${text}</span>`;
-}
-
-/**
- * Card-level emphasis class for a badly-overdue order — any order still owing a
- * shipping action ('pending'/'processing'/'ready') past the overdue threshold —
- * a red border + faint red fill so the whole row jumps out in a long list.
- * Empty for anything else. Used on BOTH the seller's own Orders tab and the
- * admin platform-wide view; `!` overrides the card's own base + hover border
- * utilities. A thicker RED BORDER only — no background fill, so the card jumps
- * out in a long list without tinting (and hurting the legibility of) the text
- * inside it.
- */
-export function orderAgeCardClass(createdAt: string, shippingStatus: string, now = Date.now()): string {
-  if (!OWES_ACTION.includes(shippingStatus)) return '';
-  if (orderAgeLevel(orderAgeHours(createdAt, now)) !== 'overdue') return '';
-  return '!border-2 !border-[color:var(--color-danger)]';
+  return `<span class="inline-flex items-center gap-[0.2rem] text-[0.66rem] font-bold px-[0.45rem] py-[0.1rem] rounded-full ${CHIP_CLASSES[level]}" title="${text}">${icon}${text}</span>`;
 }

@@ -37,7 +37,7 @@ import { getCampaignsByStoreId, getMockBaselineImpressions } from '../../lib/ad-
 import { campaignLifetimeStats, campaignRunPeriod } from '../../lib/ad-metrics.js';
 import { shortDate } from '../../lib/date-range.js';
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
-import { orderAgeChipHtml, orderAgeCardClass } from '../../lib/order-age.js';
+import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
@@ -1176,7 +1176,7 @@ const orderStatusColors: Record<string, string> = {
               const fmtDate    = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               return (
-                <div class={`order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))] ${orderAgeCardClass(order.createdAt, order.shippingStatus)}`} data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
+                <div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
                   <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     <div class="flex flex-col items-start gap-[0.2rem] min-w-20 shrink-0">
                       <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">
@@ -1191,13 +1191,14 @@ const orderStatusColors: Record<string, string> = {
                     <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
                       <span class="text-sm font-semibold text-[color:var(--color-text)]">{order.buyerName}</span>
                       <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(storeSub ? storeSub.subtotal + storeSub.shipping : 0)}</span>
-                      <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px]" style={`background:${orderStatusColors[order.shippingStatus] ?? '#888'}1a;color:${orderStatusColors[order.shippingStatus] ?? '#888'};`}>
-                        {orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}
-                      </span>
+                      <button type="button" class="order-card__status-badge inline-flex items-center gap-1 text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95" style={`background:${orderStatusColors[order.shippingStatus] ?? '#888'}1a;color:${orderStatusColors[order.shippingStatus] ?? '#888'};`} aria-haspopup="listbox" aria-expanded="false" aria-label={`${d.orderShippingStatus}: ${orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}`}>
+                        <span class="order-status-badge-label">{orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}</span>
+                        <svg class="order-status-badge-chevron shrink-0" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                      </button>
                     </div>
                     <svg class="shrink-0 text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                   </div>
-                  <div class="order-card__body border-t border-[color:var(--color-border)] p-4 flex flex-col gap-4" hidden>
+                  <div class="order-card__body border-t border-[color:var(--color-border)] p-4 flex flex-col gap-4 animate-product-menu-open" hidden>
                     <div>
                       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
                         <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em]">{d.orderBuyer}</h3>
@@ -2319,7 +2320,7 @@ const orderStatusColors: Record<string, string> = {
   import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
   import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
   import { createFloatingPortal } from '../../lib/toolbar-portal.js';
-  import { orderAgeChipHtml, orderAgeCardClass } from '../../lib/order-age.js';
+  import { orderAgeChipHtml } from '../../lib/order-age.js';
   import { encodeList, debounce } from '../../lib/admin-nav.js';
   import { initPerformanceTab } from '../../scripts/dashboard/performance.js';
   import { initAdvertisingTab } from '../../scripts/dashboard/advertising.js';
@@ -2502,6 +2503,7 @@ const orderStatusColors: Record<string, string> = {
     const saveStatus    = card.querySelector<HTMLElement>('.order-save-status');
     const statusInput   = card.querySelector<HTMLInputElement>('.order-status-select');
     const statusTrigger = card.querySelector<HTMLButtonElement>('.order-status-trigger');
+    const statusBadge   = card.querySelector<HTMLButtonElement>('.order-card__status-badge');
     const trackInput    = card.querySelector<HTMLInputElement>('.order-tracking-input');
     const copyBtn       = card.querySelector<HTMLButtonElement>('.order-copy-track');
     const orderId       = card.dataset.orderId ?? '';
@@ -2567,61 +2569,118 @@ const orderStatusColors: Record<string, string> = {
       }
     });
     header?.addEventListener('keydown', (e: KeyboardEvent) => {
+      // Only the header itself toggles on Enter/Space — not a keystroke bubbling
+      // up from the focusable status badge button nested inside it.
+      if (e.target !== header) return;
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); header.click(); }
     });
 
-    saveBtn?.addEventListener('click', async () => {
-      if (!orderId) return;
-      saveBtn.disabled = true;
-      const hadDot   = !!card.querySelector('.order-new-dot');
-      const newStatus = statusInput?.value ?? '';
+    // Persist a shipping-status change and reflect it everywhere the status is
+    // shown — header badge (label + colour), the in-body dropdown trigger, the
+    // hidden select, the "new order" dot + its notification, the row's filter
+    // visibility, and the tab badge — so the result is identical whether the
+    // seller used the in-card Save button or the quick menu on the collapsed
+    // header. Returns false on a failed request so callers can restore their UI.
+    async function applyStatusSave(newStatus: string): Promise<boolean> {
+      if (!orderId || !newStatus) return false;
+      const hadDot = !!card.querySelector('.order-new-dot');
       try {
         const res = await fetch('/api/seller/orders', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderId, storeSlug, shippingStatus: newStatus, trackingNumber: trackInput?.value ?? '' }),
         });
-        if (res.ok) {
-          if (saveStatus) { saveStatus.hidden = false; setTimeout(() => { saveStatus.hidden = true; }, 2500); }
-          // update status badge color
-          const badge = card.querySelector<HTMLElement>('.order-card__status-badge');
-          if (badge && newStatus) {
-            badge.style.background = `${colorMap[newStatus] ?? '#888'}1a`;
-            badge.style.color = colorMap[newStatus] ?? '#888';
-            badge.textContent = labelMap[newStatus] ?? newStatus;
-          }
-          // moving AWAY from pending → remove dot + delete notification
-          if (hadDot && newStatus !== 'pending') {
-            card.querySelector('.order-new-dot')?.remove();
-            fetch('/api/notifications', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'delete-by-related', relatedId: orderId }),
-            }).catch(() => {});
-            window.dispatchEvent(new CustomEvent('notif-refreshed'));
-          }
-          // update data attribute + hide locally if it no longer matches the
-          // active filter (e.g. moving to "delivered" while "active" is on) —
-          // a single-card check against state already known client-side, no
-          // need to re-fetch the whole page just for this.
-          card.dataset.shippingStatus = newStatus;
-          if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
-          // moving BACK to pending → re-add dot
-          if (!hadDot && newStatus === 'pending') {
-            const idSpan = card.querySelector('.order-card__id');
-            if (idSpan && !idSpan.querySelector('.order-new-dot')) {
-              const dot = document.createElement('span');
-              dot.className = 'order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0';
-              dot.setAttribute('aria-label', 'הזמנה חדשה');
-              idSpan.appendChild(dot);
-            }
-          }
-          updateOrderTabBadge();
-          setTimeout(closeCard, 700);
+        if (!res.ok) return false;
+        const col = colorMap[newStatus] ?? '#888';
+        const lbl = labelMap[newStatus] ?? newStatus;
+        // keep the in-body editor in sync (it may never have been opened)
+        if (statusInput) statusInput.value = newStatus;
+        const trigDot = statusTrigger?.querySelector<HTMLElement>('.order-status-dot');
+        const trigLbl = statusTrigger?.querySelector<HTMLElement>('.order-status-label');
+        if (trigDot) trigDot.style.background = col;
+        if (trigLbl) trigLbl.textContent = lbl;
+        // header badge — update only the label span, never textContent (the
+        // badge now also holds a chevron icon that must survive).
+        if (statusBadge) {
+          statusBadge.style.background = `${col}1a`;
+          statusBadge.style.color = col;
+          const badgeLbl = statusBadge.querySelector<HTMLElement>('.order-status-badge-label');
+          if (badgeLbl) badgeLbl.textContent = lbl;
         }
-      } catch { /* ignore */ } finally {
-        saveBtn.disabled = false;
+        // moving AWAY from pending → remove dot + delete notification
+        if (hadDot && newStatus !== 'pending') {
+          card.querySelector('.order-new-dot')?.remove();
+          fetch('/api/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'delete-by-related', relatedId: orderId }),
+          }).catch(() => {});
+          window.dispatchEvent(new CustomEvent('notif-refreshed'));
+        }
+        card.dataset.shippingStatus = newStatus;
+        // moving BACK to pending → re-add dot
+        if (!hadDot && newStatus === 'pending') {
+          const idSpan = card.querySelector('.order-card__id');
+          if (idSpan && !idSpan.querySelector('.order-new-dot')) {
+            const dot = document.createElement('span');
+            dot.className = 'order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0';
+            dot.setAttribute('aria-label', 'הזמנה חדשה');
+            idSpan.appendChild(dot);
+          }
+        }
+        updateOrderTabBadge();
+        // hide locally if it no longer matches the active filter (e.g. moving to
+        // "delivered" while "active" is on) — a single-card check against state
+        // already known client-side, no need to re-fetch the whole page.
+        if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
+        return true;
+      } catch { return false; }
+    }
+
+    saveBtn?.addEventListener('click', async () => {
+      if (!orderId) return;
+      saveBtn.disabled = true;
+      const ok = await applyStatusSave(statusInput?.value ?? '');
+      if (ok) {
+        if (saveStatus) { saveStatus.hidden = false; setTimeout(() => { saveStatus.hidden = true; }, 2500); }
+        setTimeout(closeCard, 700);
       }
+      saveBtn.disabled = false;
+    });
+
+    // Quick status change straight from the collapsed header — click the status
+    // badge to open the same status menu with an inline Save, so a seller can
+    // advance an order without expanding the card. stopPropagation keeps the
+    // click from toggling the card open; the portal manages aria-expanded and
+    // outside-click/Escape close on its own.
+    statusBadge?.addEventListener('click', (e: MouseEvent) => {
+      e.stopPropagation();
+      if (orderStatusPortal.currentTrigger() === statusBadge) { orderStatusPortal.close(); return; }
+      let pending = card.dataset.shippingStatus ?? statusInput?.value ?? '';
+      const MANUAL = ['processing', 'shipped', 'delivered'];
+      orderStatusPortal.open(statusBadge, '12rem', () => [
+        ...MANUAL.map((v) =>
+          `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.84rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${v}" style="${pending === v ? 'font-weight:700' : ''}"><span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>${labelMap[v] ?? v}</button>`
+        ),
+        `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
+        `<div class="px-2 pb-1"><button type="button" class="btn btn--accent btn--sm w-full order-quick-save">${ordersDashI18n.orderSave ?? 'שמור'}</button></div>`,
+      ].join(''), (portal) => {
+        portal.querySelectorAll<HTMLButtonElement>('[data-value]').forEach((opt) => {
+          opt.addEventListener('click', () => {
+            pending = opt.dataset.value ?? pending;
+            portal.querySelectorAll<HTMLButtonElement>('[data-value]').forEach((o2) => {
+              o2.style.fontWeight = o2.dataset.value === pending ? '700' : '';
+            });
+          });
+        });
+        const saveQuick = portal.querySelector<HTMLButtonElement>('.order-quick-save');
+        saveQuick?.addEventListener('click', async () => {
+          saveQuick.disabled = true;
+          const ok = await applyStatusSave(pending);
+          if (ok) orderStatusPortal.close();
+          else saveQuick.disabled = false;
+        });
+      });
     });
 
     // Cancel order — a confirm-gated escape hatch (out-of-stock, buyer changed
@@ -2641,7 +2700,8 @@ const orderStatusColors: Record<string, string> = {
       if (badge) {
         badge.style.background = `${colorMap.cancelled ?? '#6b7280'}1a`;
         badge.style.color = colorMap.cancelled ?? '#6b7280';
-        badge.textContent = labelMap.cancelled ?? 'בוטלה';
+        const badgeLbl = badge.querySelector<HTMLElement>('.order-status-badge-label');
+        if (badgeLbl) badgeLbl.textContent = labelMap.cancelled ?? 'בוטלה';
       }
       card.dataset.shippingStatus = 'cancelled';
       // No longer an actionable "new order" — drop the dot + its notification.
@@ -2652,8 +2712,6 @@ const orderStatusColors: Record<string, string> = {
         body: JSON.stringify({ action: 'delete-by-related', relatedId: orderId }),
       }).catch(() => {});
       window.dispatchEvent(new CustomEvent('notif-refreshed'));
-      // A cancelled order owes nothing — drop the overdue red-card emphasis.
-      card.classList.remove('!border-2', '!border-[color:var(--color-danger)]');
       cancelBtn?.remove();
       updateOrderTabBadge();
       if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
@@ -2681,8 +2739,13 @@ const orderStatusColors: Record<string, string> = {
   // (ORDER_FILTER_COLUMNS today only has 'status', but the mechanism is
   // ready for more columns later without restructuring). Default selection
   // replicates the old "active" preset.
-  const ACTIVE_STATUSES = new Set(['pending', 'processing', 'ready', 'shipped']);
-  const ORDER_STATUSES = ['pending', 'processing', 'ready', 'shipped', 'delivered', 'cancelled'];
+  // 'ready' (ממתין לאיסוף) is intentionally omitted from the filter — no seller can
+  // set it today; it returns as a carrier-driven state once Sendit is wired
+  // (GO_LIVE §5). Same omission as the admin orders filter, keeping the filter in
+  // sync with the states orders actually reach. (OWES_ACTION still lists it so a
+  // future 'ready' order stays cancellable — that's business logic, not the UI.)
+  const ACTIVE_STATUSES = new Set(['pending', 'processing', 'shipped']);
+  const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
   const ORDER_FILTER_COLUMNS = ['status']; // add more column keys here (+ a case in getOrderFilterValue) if warranted later
   const ordersFilters = new Map<string, Set<string>>([['status', new Set(ACTIVE_STATUSES)]]);
   let ordersSortCol: 'date' | 'amount' | 'status' = 'date';
@@ -2734,7 +2797,7 @@ const orderStatusColors: Record<string, string> = {
       <input type="hidden" class="order-status-select" data-field="shippingStatus" value="${esc(o.shippingStatus)}" />
     </div>`;
 
-    return `<div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))] ${orderAgeCardClass(o.createdAt, o.shippingStatus)}" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
+    return `<div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
       <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
         <div class="flex flex-col items-start gap-[0.2rem] min-w-20 shrink-0">
           <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? '<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="הזמנה חדשה"></span>' : ''}</span>
@@ -2744,11 +2807,11 @@ const orderStatusColors: Record<string, string> = {
         <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
           <span class="text-sm font-semibold text-[color:var(--color-text)]">${esc(o.buyerName)}</span>
           <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] ms-auto">${fmtPrice(total)}</span>
-          <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px]" style="background:${esc(color)}1a;color:${esc(color)}">${esc(label)}</span>
+          <button type="button" class="order-card__status-badge inline-flex items-center gap-1 text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95" style="background:${esc(color)}1a;color:${esc(color)}" aria-haspopup="listbox" aria-expanded="false"><span class="order-status-badge-label">${esc(label)}</span><svg class="order-status-badge-chevron shrink-0" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
         </div>
         <svg class="shrink-0 text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
-      <div class="order-card__body border-t border-[color:var(--color-border)] p-4 flex flex-col gap-4" hidden>
+      <div class="order-card__body border-t border-[color:var(--color-border)] p-4 flex flex-col gap-4 animate-product-menu-open" hidden>
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
             <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em]">לקוח</h3>
@@ -2780,7 +2843,7 @@ const orderStatusColors: Record<string, string> = {
           </div>
         </div>
         <div class="bg-[color:var(--color-bg)] rounded-b-[11px] p-[0.875rem] overflow-visible">
-          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס משלוח</h3>
+          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">${ordersDashI18n.orderShippingStatus ?? 'סטטוס הזמנה'}</h3>
           <div class="flex gap-2 items-center flex-wrap">
             ${statusDropdown}
           </div>

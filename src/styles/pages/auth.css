@@ -1,5 +1,58 @@
+/* Auth screens (seller login + register). Noindex, auth-only — a dedicated
+   shared stylesheet keeps both pages visually identical without duplicating
+   ~40 utilities across two files. Tactile-depth "lone/hero surface": a single
+   branded card, border 1.5px + --shadow-card. */
+
 .auth-wrap {
-  max-width: 460px;
+  max-width: 27rem;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1.25rem;
+}
+
+.auth-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: calc(var(--radius) * 2);
+  box-shadow: var(--shadow-card);
+  padding: 2rem 1.75rem 1.75rem;
+}
+/* Brand accent — the exact site .btn gradient across the top edge. */
+.auth-card::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(135deg, #2a3c40, #3a5260);
+}
+
+.auth-head { text-align: center; margin-bottom: 1.5rem; }
+
+.auth-brand {
+  display: inline-block;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--color-primary);
+  margin-bottom: 0.9rem;
+}
+
+.auth-head h1 {
+  font-size: clamp(1.4rem, 4vw, 1.7rem);
+  line-height: 1.2;
+  margin: 0;
+}
+
+.auth-subtitle {
+  margin: 0.4rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
 }
 
 .auth-error {
@@ -8,21 +61,21 @@
   padding: 0.6rem 0.9rem;
   border-radius: var(--radius);
   font-size: 0.9rem;
-  margin-top: 0.75rem;
+  margin-bottom: 1rem;
 }
 
-.auth-form { margin-top: 1.5rem; }
-.auth-switch { margin-top: 1rem; font-size: 0.9rem; }
+.auth-form { margin-top: 0; }
+.auth-form .btn { width: 100%; padding: 0.7rem 1rem; font-size: 0.95rem; }
+.auth-switch { margin-top: 1.1rem; text-align: center; font-size: 0.9rem; }
 
 .btn-google {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.6rem;
-  margin-top: 1.5rem;
   width: 100%;
   padding: 0.7rem 1rem;
-  background: #fff;
+  background: var(--color-surface);
   color: #3c4043;
   border: 1px solid #dadce0;
   border-radius: var(--radius);
@@ -34,7 +87,7 @@
 }
 .btn-google:hover {
   background: #f8f9fa;
-  box-shadow: 0 1px 6px rgba(60,64,67,0.15);
+  box-shadow: 0 1px 6px rgba(60, 64, 67, 0.15);
 }
 .btn-google:active {
   transform: scale(0.97);
@@ -45,8 +98,8 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-top: 1.25rem;
-  color: var(--color-muted, #888);
+  margin: 1.25rem 0;
+  color: var(--color-muted);
   font-size: 0.85rem;
 }
 .auth-divider::before,
@@ -54,5 +107,27 @@
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--color-border, #e0e0e0);
+  background: var(--color-border);
+}
+
+/* Trust strip under the card — makes the screen feel alive without clutter. */
+.auth-benefits {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.auth-benefits li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-muted);
+  font-size: 0.83rem;
+}
+.auth-benefits svg {
+  flex-shrink: 0;
+  color: var(--color-success);
 }

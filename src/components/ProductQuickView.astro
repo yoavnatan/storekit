@@ -18,9 +18,15 @@ const strShowMore  = lang === 'he' ? 'עוד' : 'More';
 const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
 ---
 
-<!-- Lightbox (native dialog → top-layer, opens above pqv-dialog) -->
+<!-- Lightbox (native dialog → top-layer, opens above pqv-dialog).
+     While it's open the PQV modal CARD is hidden (data-lightbox=open → opacity-0,
+     set in openLightbox) so its white surface doesn't show through as a lighter
+     patch. Only two full-viewport black layers remain — this bg-black/80 over the
+     modal's still-painted ::backdrop (bg-black/50; opacity-0 doesn't touch a
+     ::backdrop) — compositing to a UNIFORM 1−(1−0.8)(1−0.5)=0.9, identical to the
+     full product page's single rgba(0,0,0,0.9) lightbox. -->
 <dialog id="co-lightbox" aria-label={strEnlarged}
-  class="border-0 p-0 m-0 w-screen h-screen max-w-[100vw] max-h-[100vh] bg-transparent overflow-hidden [&::backdrop]:bg-black/90 [&::backdrop]:cursor-zoom-out">
+  class="border-0 p-0 m-0 w-screen h-screen max-w-[100vw] max-h-[100vh] bg-transparent overflow-hidden [&::backdrop]:bg-black/80 [&::backdrop]:cursor-zoom-out">
   <div class="relative flex items-center justify-center w-full h-full py-12 px-20 box-border pointer-events-none max-[600px]:py-14 max-[600px]:px-10">
     <button id="co-lb-close" aria-label={strClose}
       class="absolute top-4 right-5 z-[2] w-9 h-9 rounded-[var(--radius)] border-0 bg-white/10 text-white cursor-pointer flex items-center justify-center transition-colors duration-100 [pointer-events:all] hover:bg-white/20">
@@ -54,7 +60,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
   data-str-error={strError}
   data-str-show-more={strShowMore}
   data-str-show-less={strShowLess}
-  class="border-0 rounded-2xl p-0 w-[min(540px,94vw)] max-h-[90dvh] overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,.22)] [overscroll-behavior:contain] fixed inset-0 m-auto will-change-transform contain-layout open:animate-modal-in [&::backdrop]:bg-black/50"
+  class="border-0 rounded-2xl p-0 w-[min(540px,94vw)] max-h-[90dvh] overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,.22)] [overscroll-behavior:contain] fixed inset-0 m-auto will-change-transform contain-layout open:animate-modal-in [&::backdrop]:bg-black/50 transition-opacity duration-150 data-[lightbox=open]:opacity-0"
 >
   <div class="relative max-h-[90dvh] flex flex-col overflow-hidden">
     <button id="pqv-close" aria-label={strClose} type="button"
@@ -352,12 +358,16 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
     lbImages = images; lbIdx = startIdx; lbName = name;
     lbPrevFocus = document.activeElement as HTMLElement;
     showLbImg();
+    // Hide the modal card beneath so it doesn't show through the lightbox
+    // backdrop as a lighter patch — leaves a uniform dim over the page.
+    pqvDialog?.setAttribute('data-lightbox', 'open');
     colb?.showModal();
     colbClose?.focus();
   }
 
   function closeLightbox() {
     colb?.close();
+    pqvDialog?.removeAttribute('data-lightbox');
     lbImages = [];
     lbPrevFocus?.focus();
     lbPrevFocus = null;

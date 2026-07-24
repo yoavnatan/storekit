@@ -48,7 +48,10 @@ export function initAdminOrdersFilter(): void {
   const storeNames: string[] = JSON.parse(state.storeNames ?? '[]');
 
   const FILTER_COLUMNS: FilterColumnDef[] = [
-    { col: 'shippingStatus', label: 'סטטוס משלוח', values: ['pending', 'processing', 'ready', 'shipped', 'delivered'], labels: SHIPPING_LABELS, colors: SHIPPING_COLORS },
+    // 'ready' (ממתין לאיסוף) is intentionally omitted — no seller can set it today;
+    // it returns as a carrier-driven state once Sendit is wired (GO_LIVE §5). Keeping
+    // it out keeps the admin filter in sync with the states orders actually reach.
+    { col: 'shippingStatus', label: 'סטטוס הזמנה', values: ['pending', 'processing', 'shipped', 'delivered'], labels: SHIPPING_LABELS, colors: SHIPPING_COLORS },
     { col: 'paymentStatus', label: 'סטטוס תשלום', values: ['pending', 'paid', 'failed'], labels: PAYMENT_LABELS, colors: PAYMENT_COLORS },
     { col: 'store', label: 'חנות', values: storeNames, labels: Object.fromEntries(storeNames.map((s) => [s, s])), colors: {} },
   ];

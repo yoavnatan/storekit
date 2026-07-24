@@ -8,6 +8,7 @@ import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '.
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath } from '../../lib/store-categories.js';
+import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
 import { store as platform, formatPrice, cdnSrc } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
@@ -122,6 +123,16 @@ const pmI18n = {
       try {
         var m = location.pathname.match(/^\/store\/([^/]+)\/?$/);
         if (m && sessionStorage.getItem('store_scroll_' + m[1])) {
+          // Only on the quick-view-refresh return (the scripted reload that sets
+          // this flag) does the browser's own restore have to be switched off:
+          // that entry's remembered offset is stale (measured: 0) and lands
+          // *after* ours, visibly animating the page away from the restored
+          // position (`html` is `scroll-behavior:smooth`). Every other return —
+          // notably Back from a real product-page navigation — keeps native
+          // restoration, which is better timed than any script.
+          if (sessionStorage.getItem('store_scroll_return') === m[1] && 'scrollRestoration' in history) {
+            history.scrollRestoration = 'manual';
+          }
           document.documentElement.style.visibility = 'hidden';
           setTimeout(function () { document.documentElement.style.visibility = ''; }, 500);
         }
@@ -408,7 +419,19 @@ const pmI18n = {
                       {hasImages
                         ? p.images!.map((img, imgIdx) => (
                             <div class="product-card__slide">
-                              <Image src={cdnSrc(img)} alt={p.name} class="product-card__img" width={400} height={400} loading={idx < 4 && imgIdx === 0 ? 'eager' : 'lazy'} fetchpriority={idx < 2 && imgIdx === 0 ? 'high' : undefined} />
+                              {imgIdx === 0
+                                ? <Image src={cdnSrc(img)} alt={p.name} class="product-card__img" width={400} height={400} loading={idx < 4 ? 'eager' : 'lazy'} fetchpriority={idx < 2 ? 'high' : undefined} />
+                                : (
+                                  /* Slides past the first carry the URL in data-src and are
+                                     fetched only once the shopper engages that card's carousel
+                                     (hydrateCardSlides below). `loading="lazy"` still downloaded
+                                     them for every card the browser considered near the
+                                     viewport — measured 20 of 36 images on a first paint that
+                                     showed 4 cards. Not <Image /> because it renders the real
+                                     URL into src, which is exactly what's being deferred;
+                                     alt/width/height are set by hand instead. */
+                                  <img src={BLANK_PIXEL} data-src={cdnSrc(img)} alt={p.name} class="product-card__img" width="400" height="400" loading="lazy" decoding="async" />
+                                )}
                             </div>
                           ))
                         : <div class="product-card__slide">
@@ -539,6 +562,7 @@ const pmI18n = {
   import { saveStoreScroll, applyStoreScrollQuery, restoreStoreScroll, peekStoreScrollState } from '../../lib/scroll-restore.js';
   import type { StoreProduct as StoreProductDTO } from '../../lib/store-products.js';
   import { PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
+  import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     // Heart/wishlist buttons are excluded — their own heart-burst is the click
@@ -563,7 +587,16 @@ const pmI18n = {
     // shelf (SSR-read cookie). Sync to the account only when the list changed.
     if (recordStoreVisit(storeSlug)) window.dispatchEvent(new CustomEvent('recent-stores:change'));
     applyStoreScrollQuery(storeSlug);
-    window.addEventListener('pagehide', () => saveStoreScroll(storeSlug, lastQueryString, loadedCount));
+    window.addEventListener('pagehide', () => {
+      saveStoreScroll(storeSlug, lastQueryString, loadedCount);
+      // Leave the entry on native restoration (see the head script above) — a
+      // Back that comes from bfcache re-runs no JS, so nothing would be left to
+      // restore scroll if this entry stayed 'manual'. Skipped while a quick-view
+      // entry is the current one: that entry is deliberately 'manual' so a
+      // refresh opens the full product page at the top, not at the store's offset.
+      const onModalEntry = !!(history.state && (history.state as { productModal?: boolean }).productModal);
+      if (!onModalEntry && 'scrollRestoration' in history) history.scrollRestoration = 'auto';
+    });
   }
 
   // ── Sync cart images ──────────────────────────────────────────
@@ -1289,9 +1322,11 @@ const pmI18n = {
     const hasImages = !!(p.images && p.images.length);
     const firstImg = p.images?.[0] ? cdnSrc(p.images[0]) : '';
 
+    // Same deferral as the server-rendered cards above: only the first slide gets
+    // a real src; the rest hold the blank pixel until hydrateCardSlides() runs.
     const slidesHtml = hasImages
-      ? p.images!.map((img) =>
-          `<div class="product-card__slide"><img src="${escHtml(cdnSrc(img))}" alt="${escHtml(p.name)}" class="product-card__img" width="400" height="400" loading="lazy" /></div>`
+      ? p.images!.map((img, i) =>
+          `<div class="product-card__slide"><img src="${i === 0 ? escHtml(cdnSrc(img)) : BLANK_PIXEL}"${i === 0 ? '' : ` data-src="${escHtml(cdnSrc(img))}"`} alt="${escHtml(p.name)}" class="product-card__img" width="400" height="400" loading="lazy" decoding="async" /></div>`
         ).join('')
       : `<div class="product-card__slide"><div class="product-card__img-placeholder" aria-hidden="true"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div></div>`;
 
@@ -1482,6 +1517,13 @@ const pmI18n = {
     loadedCount = 0;
     appendProductCards(page, true);
     updateResultsState(hasMore);
+    // Every refresh replaces the grid with a different result set, so whatever
+    // the buyer was scrolled to no longer exists — leaving them mid-page means
+    // landing in the middle of results they've never seen, with the first ones
+    // off-screen above. Applies to category, sort and search alike (this is the
+    // single funnel for all three); scrollToResults only ever scrolls UP, so a
+    // filter used from the top of the page doesn't yank anyone downward.
+    scrollToResults();
     requestAnimationFrame(() => { productGrid.style.opacity = '1'; });
   }
 
@@ -1628,10 +1670,7 @@ const pmI18n = {
     }
     pendingCategoryNav = true;
     updateDrawerToggleLabel();
-    refreshFromServer();
-    // Only on a real search (non-empty q) — clearing it restores the prior
-    // filter in place and shouldn't move the buyer.
-    if (q) scrollToResults();
+    refreshFromServer(); // scrolls the results into view itself — see there
   }) as EventListener);
 
   // ── Init from URL params (q / sort / category) ────────────────
@@ -1698,8 +1737,11 @@ const pmI18n = {
   }
 
   // ── Skeleton: remove shimmer when image loads ─────────────────
+  // Deferred slides are skipped: they hold a 1x1 blank pixel, which reports
+  // itself as fully loaded the moment it parses and would clear the shimmer off
+  // the whole wrap while the real (first) image is still on the wire.
   function initImageSkeleton(card: HTMLElement): void {
-    card.querySelectorAll<HTMLImageElement>('.product-card__img').forEach((img) => {
+    card.querySelectorAll<HTMLImageElement>('.product-card__img:not([data-src])').forEach((img) => {
       const wrap = img.closest<HTMLElement>('.product-card__img-wrap');
       if (!wrap) return;
       const done = () => wrap.classList.remove('is-loading');
@@ -1724,6 +1766,19 @@ const pmI18n = {
   }
 
 
+  // Give this card's deferred slides (everything past the first image) their src.
+  // Wired to every way a second slide can be reached — hovering the image, any
+  // pointer/touch on it, a wheel/trackpad sideways scroll of the strip, the dots,
+  // keyboard focus — because a slide that arrives un-hydrated shows a blank
+  // pixel. The strip's own `scroll` is the catch-all backstop; the rest just get
+  // the fetch started earlier, before the slide has finished travelling in.
+  function hydrateCardSlides(card: HTMLElement): void {
+    card.querySelectorAll<HTMLImageElement>('.product-card__img[data-src]').forEach((img) => {
+      img.src = img.dataset.src ?? '';
+      delete img.dataset.src;
+    });
+  }
+
   // ── Carousel dots ─────────────────────────────────────────────
   function initCarouselDots(card: HTMLElement): void {
     const slides = card.querySelector<HTMLElement>('.product-card__slides');
@@ -1732,6 +1787,15 @@ const pmI18n = {
 
     const dots = Array.from(dotsEl.querySelectorAll<HTMLElement>('.product-card__dot'));
     if (dots.length < 2) return;
+
+    const hydrate = () => hydrateCardSlides(card);
+    const wrap = card.querySelector<HTMLElement>('.product-card__img-wrap') ?? slides;
+    wrap.addEventListener('pointerenter', hydrate, { once: true });
+    wrap.addEventListener('focusin', hydrate, { once: true });
+    slides.addEventListener('pointerdown', hydrate, { once: true, passive: true });
+    slides.addEventListener('touchstart', hydrate, { once: true, passive: true });
+    slides.addEventListener('scroll', hydrate, { once: true, passive: true });
+    dotsEl.addEventListener('pointerenter', hydrate, { once: true });
 
     dotsEl.addEventListener('click', (e) => e.stopPropagation());
 

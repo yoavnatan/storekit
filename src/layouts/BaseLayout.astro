@@ -67,6 +67,16 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
+    {/* Runs before the browser restores scroll. A store quick-view modal pushes a
+        product URL while the store is scrolled; if that URL is later reloaded, the
+        browser would restore the STORE's scroll here (product opens scrolled down).
+        Only in that case — history.state.productModal set — open at the top. A
+        normal product/page load keeps its own restoration. */}
+    <script is:inline>
+      if (history.state && history.state.productModal && 'scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     {/* All 10 weight/script combos preloaded — measured via Playwright's

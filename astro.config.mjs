@@ -39,6 +39,14 @@ export default defineConfig({
 
   devToolbar: { enabled: false },
 
+  // Astro's own prefetch (no ClientRouter, no soft navigation) — opt-in per link
+  // via `data-astro-prefetch`, never site-wide: prefetching every link on a
+  // product-dense page would download store pages nobody asked for. Marked links
+  // fetch their HTML on hover/touch-start, so the click that follows renders from
+  // cache instead of waiting on the server. Genuine navigations only — Back keeps
+  // using bfcache, which is still the one path that restores with zero work.
+  prefetch: { prefetchAll: false, defaultStrategy: 'hover' },
+
   // Passthrough: Cloudinary handles optimization via URL transforms (f_auto,q_auto,w_N).
   // Astro <Image /> enforces alt/width/height and adds loading/decoding attrs.
   image: {

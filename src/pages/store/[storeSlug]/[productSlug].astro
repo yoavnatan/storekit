@@ -158,6 +158,7 @@ const pmI18n = {
     <!-- Back link + checkout link -->
     <nav class="container pt-4 pb-2 flex items-center justify-between" aria-label="breadcrumb">
       <a href={`/store/${shopStore.slug}`}
+         data-astro-prefetch
          class="inline-flex items-center gap-1.5 text-sm transition-colors duration-150 hover:[color:var(--color-text)]"
          style="color:var(--color-muted);text-decoration:none">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"

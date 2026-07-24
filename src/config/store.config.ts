@@ -83,17 +83,17 @@ interface PlatformConfig {
 }
 
 export const store: PlatformConfig = {
-  name: 'ShopNest',
-  url: 'https://example.com',
+  name: 'Dezabin',
+  url: 'https://dezabin.com',
   tagline: 'Your store, open today',
-  description: 'ShopNest is an online marketplace where anyone can open a store and start selling in minutes — no code, no complexity.',
-  language: 'en',
-  direction: 'ltr',
-  locale: 'en_US',
+  description: 'Dezabin is an online marketplace where anyone can open a store and start selling in minutes — no code, no complexity.',
+  language: 'he',
+  direction: 'rtl',
+  locale: 'he_IL',
 
   business: {
-    legalName: 'ShopNest',
-    email: 'hello@example.com',
+    legalName: 'Dezabin',
+    email: 'hello@dezabin.com',
     phone: '',
     address: '',
     currency: 'ILS',
@@ -102,7 +102,7 @@ export const store: PlatformConfig = {
 
   logo: {
     type: 'text',
-    text: 'ShopNest',
+    text: 'Dezabin',
     image: '/logo.svg',
   },
 
@@ -124,7 +124,7 @@ export const store: PlatformConfig = {
   ],
 
   footer: {
-    note: 'ShopNest — the online marketplace for independent sellers.',
+    note: 'Dezabin — the online marketplace for independent sellers.',
     links: [
       { label: 'Terms', href: '/terms' },
       { label: 'Contact', href: '/contact' },

@@ -7,45 +7,19 @@
 // downstream communication is what's automated. Wiring a carrier later means
 // its webhook calls notifyOrderStatusChanged() too — nothing here changes.
 //
-// Reach today: in-app notification for REGISTERED buyers (order.buyerId set).
-// Guest buyers have no account to notify — they'll be reached by email once the
-// email channel lands (GO_LIVE_CHECKLIST §4). Copy is Hebrew-first literal,
-// matching the rest of the notifications subsystem (checkout.ts / messages.ts).
+// Reach: in-app notification for REGISTERED buyers (order.buyerId set) AND an
+// email to EVERY buyer, guests included (email/order-status-email.ts) — the two
+// channels share one copy source (order-status-copy.ts) so their wording can't
+// drift. Wiring a carrier later means its webhook calls notifyOrderStatusChanged()
+// too — both channels fire, nothing here changes.
 //
 // buildOrderStatusNotification is PURE (no I/O) so it's unit-testable; the thin
-// notifyOrderStatusChanged wrapper does the actual write.
+// notifyOrderStatusChanged wrapper does the actual writes/sends.
 
 import type { Order } from './orders.js';
 import { createNotification, type Notification } from './notifications.js';
-
-export type NotifiableStatus = 'processing' | 'ready' | 'shipped' | 'delivered' | 'cancelled';
-
-// Only these transitions carry a buyer-facing message. 'pending' is the initial
-// state (no transition into it worth announcing).
-const BUYER_MESSAGES: Record<NotifiableStatus, { title: string; body: (o: Order) => string }> = {
-  processing: {
-    title: 'ההזמנה שלך בטיפול',
-    body: () => 'המוכר קיבל את הזמנתך ומתחיל להכין אותה.',
-  },
-  ready: {
-    title: 'ההזמנה שלך מוכנה',
-    body: () => 'ההזמנה נארזה ומוכנה לשליחה.',
-  },
-  shipped: {
-    title: 'ההזמנה שלך נשלחה',
-    body: (o) => o.trackingNumber
-      ? `ההזמנה בדרך אליך. מספר מעקב: ${o.trackingNumber}`
-      : 'ההזמנה יצאה לדרך אליך.',
-  },
-  delivered: {
-    title: 'ההזמנה שלך נמסרה',
-    body: () => 'ההזמנה הגיעה ליעדה. מקווים שתיהנה!',
-  },
-  cancelled: {
-    title: 'ההזמנה שלך בוטלה',
-    body: () => 'ההזמנה בוטלה. אם בוצע חיוב, יינתן החזר כספי.',
-  },
-};
+import { STATUS_MESSAGES, type NotifiableStatus } from './order-status-copy.js';
+import { sendOrderStatusEmail } from './email/order-status-email.js';
 
 type BuyerNotificationInput = Omit<Notification, 'id' | 'read' | 'createdAt'>;
 
@@ -61,8 +35,8 @@ export function buildOrderStatusNotification(
   opts: { storeName?: string; storeSlug?: string } = {},
 ): BuyerNotificationInput | null {
   if (order.shippingStatus === prevStatus) return null;   // no real change
-  if (!order.buyerId) return null;                         // guest → email later
-  const msg = BUYER_MESSAGES[order.shippingStatus as NotifiableStatus];
+  if (!order.buyerId) return null;                         // guest → email only
+  const msg = STATUS_MESSAGES[order.shippingStatus as NotifiableStatus];
   if (!msg) return null;                                   // e.g. back to 'pending'
   return {
     userId: order.buyerId,
@@ -87,6 +61,14 @@ export function notifyOrderStatusChanged(
   prevStatus: string,
   opts: { storeName?: string; storeSlug?: string } = {},
 ): void {
+  // In-app notification — registered buyers only (guests have no account).
   const input = buildOrderStatusNotification(order, prevStatus, opts);
   if (input) createNotification(input);
+
+  // Email — reaches EVERY buyer including guests (the majority, no account). Only
+  // on a real status change; fire-and-forget + internally resilient so a mail
+  // failure never affects the status update that triggered it.
+  if (order.shippingStatus !== prevStatus) {
+    void sendOrderStatusEmail(order, order.shippingStatus).catch(() => { /* handled inside */ });
+  }
 }

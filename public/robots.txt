@@ -37,5 +37,5 @@ Disallow: /api
 # Two sitemaps (Google merges multiple Sitemap directives): the static one for
 # build-time public routes, and the dynamic one enumerating all store + product
 # pages (SSR — absent from the static sitemap).
-Sitemap: https://example.com/sitemap-index.xml
-Sitemap: https://example.com/sitemap-content.xml
+Sitemap: https://dezabin.com/sitemap-index.xml
+Sitemap: https://dezabin.com/sitemap-content.xml

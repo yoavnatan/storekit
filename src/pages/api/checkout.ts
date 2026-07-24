@@ -4,7 +4,8 @@ import type { APIContext } from 'astro';
 import { getStoreBySlug, isStoreVisible } from '../../lib/stores.js';
 import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD, isProductVisible } from '../../lib/store-products.js';
 import { createOrder } from '../../lib/orders.js';
-import type { OrderItem, StoreSubtotal } from '../../lib/orders.js';
+import type { Order, OrderItem, StoreSubtotal } from '../../lib/orders.js';
+import { sendOrderConfirmationEmails } from '../../lib/email/order-confirmation.js';
 import { createNotification } from '../../lib/notifications.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getUserCart, saveUserCart } from '../../lib/user-carts.js';
@@ -197,6 +198,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   try {
     // Create one order per store so each seller owns a separate, isolated order
     const orderIds: string[] = [];
+    const createdOrders: Order[] = [];
     for (const [storeSlug, sub] of Object.entries(storeSubtotals)) {
       const storeItems = orderItems.filter((i) => i.storeSlug === storeSlug);
       const storeTotalAmount = sub.subtotal + sub.shipping;
@@ -209,6 +211,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         totalAmount:    storeTotalAmount,
       });
       orderIds.push(storeOrder.id);
+      createdOrders.push(storeOrder);
 
       const store = getStoreBySlug(storeSlug);
       if (store) {
@@ -273,6 +276,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       vid: cookies.get('sn_vid')?.value,
       productIds: decremented.map((d) => d.productId),
     });
+
+    // Order-confirmation emails — the one channel that reaches GUEST buyers (no
+    // in-app account). Fire-and-forget: the order is already committed, so a
+    // slow/failed provider must not delay or fail the checkout response. Every
+    // send is internally resilient (never throws) and logs its own failures.
+    void sendOrderConfirmationEmails(createdOrders).catch(() => { /* fully handled inside */ });
 
     return json({ orderIds, checkoutRef }, 201);
   } catch (err) {

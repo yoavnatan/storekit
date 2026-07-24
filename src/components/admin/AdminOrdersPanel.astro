@@ -11,7 +11,7 @@
 import { formatPrice } from '../../config/store.config.js';
 import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
-import { orderAgeChipHtml, orderAgeCardClass } from '../../lib/order-age.js';
+import { orderAgeChipHtml } from '../../lib/order-age.js';
 import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
 import AdminPager from './AdminPager.astro';
 
@@ -94,10 +94,13 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
 
     <div class="flex flex-col gap-3" id="admin-orders-list">
       {orders.map((o) => {
-        const uniqueStores = [...new Set(o.items.map((i) => i.storeName))];
+        // Unique by slug so each store links to its storefront; an order can span
+        // several stores (platform-wide cart), so this is a list, not a single value.
+        const uniqueStores = [...new Map(o.items.map((i) => [i.storeSlug, i.storeName] as const)).entries()]
+          .map(([slug, name]) => ({ slug, name }));
         return (
           <div
-            class={`order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))] ${orderAgeCardClass(o.createdAt, o.shippingStatus)}`}
+            class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]"
             data-order-id={o.id}
             data-shipping-status={o.shippingStatus}
             data-payment-status={o.paymentStatus}
@@ -106,7 +109,7 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
               <div class="flex flex-col items-start gap-[0.2rem] min-w-20 shrink-0">
                 <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#{(o.checkoutRef ?? o.id.slice(0, 8)).toUpperCase()}</span>
                 <span class="text-[0.72rem] text-[color:var(--color-muted)]">{formatHeDateTime(o.createdAt)}</span>
-                <Fragment set:html={orderAgeChipHtml(o.createdAt, o.shippingStatus, 'he', { emphasize: true })} />
+                <Fragment set:html={orderAgeChipHtml(o.createdAt, o.shippingStatus, 'he')} />
               </div>
               <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
                 <span class="text-sm font-semibold text-[color:var(--color-text)]">{o.buyerName}</span>
@@ -126,14 +129,24 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
                 <p class="text-sm text-[color:var(--color-text)] my-[0.1rem]">{o.buyerAddress.street}, {o.buyerAddress.city}{o.buyerAddress.zip ? ` ${o.buyerAddress.zip}` : ''}</p>
               </div>
               <div>
-                <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">פריטים {uniqueStores.length > 1 ? `(${uniqueStores.length} חנויות)` : `(${uniqueStores[0] ?? ''})`}</h3>
+                <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2 flex items-center gap-1 flex-wrap">
+                  <span>פריטים</span>
+                  {uniqueStores.length === 1 ? (
+                    <a href={`/store/${uniqueStores[0].slug}`} target="_blank" rel="noopener noreferrer" class="normal-case font-semibold [color:var(--color-primary)] hover:underline inline-flex items-center gap-1">
+                      {uniqueStores[0].name}
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                  ) : (
+                    <span class="normal-case">({uniqueStores.length} חנויות)</span>
+                  )}
+                </h3>
                 <ul class="order-card__items list-none p-0 flex flex-col gap-2">
                   {o.items.map((item) => (
                     <li class="flex items-center gap-2.5 text-sm">
                       {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-md shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
                       <span class="flex-1 text-[color:var(--color-text)]">
                         {item.productName}
-                        {uniqueStores.length > 1 && <span class="text-[color:var(--color-muted)] text-xs"> · {item.storeName}</span>}
+                        {uniqueStores.length > 1 && <> · <a href={`/store/${item.storeSlug}`} target="_blank" rel="noopener noreferrer" class="text-xs [color:var(--color-primary)] hover:underline">{item.storeName}</a></>}
                       </span>
                       <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
                       <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(item.price * item.qty)}</span>
@@ -148,8 +161,14 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
               <div>
                 <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס</h3>
                 <div class="flex gap-2 items-center flex-wrap">
-                  <span class={`admin-badge admin-badge--${o.paymentStatus}`}>תשלום: {paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span>
-                  <span class={`admin-badge admin-badge--shipping-${o.shippingStatus}`}>משלוח: {shippingLabel[o.shippingStatus] ?? o.shippingStatus}</span>
+                  <span class={`admin-badge admin-badge--shipping-${o.shippingStatus}`}>הזמנה: {shippingLabel[o.shippingStatus] ?? o.shippingStatus}</span>
+                  {/* Payment is 'paid' on every order today (stub — real split-payment
+                      not wired yet), so a "שולם" badge is pure noise. Surface it only
+                      when it actually needs attention — pending/failed — which becomes
+                      meaningful once the payment webhook lands (CURRENT_TASK #2). */}
+                  {o.paymentStatus !== 'paid' && (
+                    <span class={`admin-badge admin-badge--${o.paymentStatus}`}>תשלום: {paymentLabel[o.paymentStatus] ?? o.paymentStatus}</span>
+                  )}
                 </div>
               </div>
             </div>

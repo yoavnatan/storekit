@@ -84,6 +84,7 @@ const i18n = {
   import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
   import { initReadMore } from '../lib/read-more.js';
   import { spawnHeartBurst } from '../lib/burst.js';
+  import { markStoreScrollReturn } from '../lib/scroll-restore.js';
   import { initLiquidDots } from '../lib/carousel-dots.js';
 
   interface SPMProduct {
@@ -108,8 +109,24 @@ const i18n = {
 
   const checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>';
 
+  // The path this document was actually served for. A modal open pushes a
+  // same-document entry at the product URL; after a reload of that URL the entry
+  // BELOW it (the store) is still a same-document sibling, so browser-Back fires
+  // a popstate that swaps the URL without ever loading the store. Comparing
+  // against this lets the popstate handler detect that and force a real load.
+  const pageLoadPath = location.pathname;
+
   let pmPrevFocus: HTMLElement | null = null;
   let pmSavedTitle = '';
+  // Whether THIS modal session added a history entry (so close knows whether to
+  // history.back()). Only true when we actually pushed — see the guard in
+  // renderModal that skips pushing when we're already at the product URL, which
+  // prevents piling a duplicate entry on top of an identical one (that dupe is
+  // what made browser-Back land on the same product URL instead of the store).
+  let pmPushedHistory = false;
+  // Set when we navigate to the full product page with the modal deliberately left
+  // on screen — only then may a bfcache restore find it open and need it closed.
+  let pmLeftForFullPage = false;
 
   function escHtml(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -153,6 +170,10 @@ const i18n = {
     lbIndex = startIndex;
     lbPrevFocus = document.activeElement as HTMLElement;
     showLbImage();
+    // Hide the modal (white panel + its backdrop) beneath the lightbox so it
+    // doesn't show through the 0.9 backdrop as a lighter patch — leaves a
+    // uniform dim over the page, matching the full product page's lightbox.
+    if (productModal) productModal.style.opacity = '0';
     lightbox?.removeAttribute('hidden');
     document.body.style.overflow = 'hidden';
     lbClose?.focus();
@@ -160,6 +181,7 @@ const i18n = {
 
   function closeLightbox() {
     lightbox?.setAttribute('hidden', '');
+    if (productModal) productModal.style.opacity = '';
     document.body.style.overflow = '';
     lbImages = [];
     lbPrevFocus?.focus();
@@ -273,7 +295,27 @@ const i18n = {
     pmPrevFocus  = document.activeElement as HTMLElement;
     pmSavedTitle = document.title;
 
-    history.pushState({ productModal: true, slug }, '', `/store/${storeSlug}/${slug}`);
+    // Push a history entry ONLY if we're not already at this product URL. Without
+    // the guard a repeated/duplicate open (e.g. one click reaching two handlers)
+    // stacked a second identical entry, so browser-Back popped to the same URL
+    // and looked like it never returned to the store. Track whether we pushed so
+    // close() knows whether a history.back() is owed.
+    const pmTargetPath = `/store/${storeSlug}/${slug}`;
+    if (location.pathname !== pmTargetPath) {
+      // `productModal:true` lets the product page (if this URL is later reloaded)
+      // detect it was opened from a quick-view and open at the top instead of the
+      // store's baked-in scroll — see the head script in BaseLayout.
+      history.pushState({ productModal: true, slug }, '', pmTargetPath);
+      // Same goal, but decided HERE rather than on the reloaded product page:
+      // Chrome fixes a reload's scroll-restoration mode from the value stored on
+      // the entry *before* the reload, so BaseLayout's head script (which runs in
+      // the new document) is too late on its own — measured landing the product
+      // page at the store's scroll offset anyway. Marking the entry manual at
+      // push time is what actually makes the refreshed product page open at top.
+      // Scroll restoration is per-entry, so the store's own entry keeps 'auto'.
+      if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+      pmPushedHistory = true;
+    }
     document.title = `${name} — ${storeName}`;
 
     const noImgSvg =`<svg style="color:var(--color-border)" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
@@ -392,17 +434,26 @@ const i18n = {
       // "back" from the full product page lands on that leftover soft entry
       // first — same URL, no live document to restore — and the browser just
       // reloads the product page again instead of returning to the store grid.
-      // Collapsing the modal's entry first (history.back()) before navigating
-      // for real means one "back" from the full page goes straight back.
+      // So the real navigation REPLACES the modal's entry (location.replace)
+      // instead of stacking on top of it: same URL, so the entry simply becomes
+      // the live product document, and one Back still lands on the store.
+      // Not history.back()-then-navigate (until 2026-07-23): that traversal fires
+      // popstate, which closes the modal, leaving the bare store page on screen
+      // for the whole length of the navigation — the visible "flash back to the
+      // store". And not replaceState-to-the-store-URL either: that leaves the
+      // store sitting in history twice, so Back has to be pressed twice to leave
+      // it. Here the modal deliberately stays up until the product page paints.
       const pmFullLink = pmFooter.querySelector<HTMLAnchorElement>('.pm-full-link');
       pmFullLink?.addEventListener('click', (e) => {
+        if (!pmPushedHistory) return; // we never pushed — let the link navigate normally
         e.preventDefault();
-        const href = pmFullLink.href;
-        let navigated = false;
-        const go = () => { if (navigated) return; navigated = true; location.href = href; };
-        window.addEventListener('popstate', go, { once: true });
-        setTimeout(go, 400);
-        history.back();
+        pmPushedHistory = false;
+        pmLeftForFullPage = true;
+        // The entry stops being a quick-view the moment a real document takes it
+        // over, so hand scroll restoration back (it was made manual at push time
+        // to keep a refreshed quick-view URL opening at the top).
+        if ('scrollRestoration' in history) history.scrollRestoration = 'auto';
+        location.replace(pmFullLink.href);
       });
     }
 
@@ -639,6 +690,12 @@ const i18n = {
   }
 
   function closeProductModal(updateHistory = true) {
+    // The lightbox lives on top of this modal, and browser-Back closes the modal
+    // from under it — leaving the lightbox stranded over the store AND the modal
+    // stuck at the opacity:0 that openLightbox set (only closeLightbox clears it,
+    // so the next open would render invisible). Escape already unwinds them in
+    // order; Back has to do the same.
+    if (lightbox?.hidden === false) closeLightbox();
     productModal?.setAttribute('hidden', '');
     document.body.style.overflow = '';
     if (pmBody) pmBody.innerHTML = '';
@@ -646,15 +703,49 @@ const i18n = {
     if (pmSavedTitle) { document.title = pmSavedTitle; pmSavedTitle = ''; }
     pmPrevFocus?.focus();
     pmPrevFocus = null;
-    if (updateHistory) history.back();
+    // Only unwind history if THIS session actually pushed an entry (see the
+    // guard in renderModal). On a browser-Back close (updateHistory=false) the
+    // browser already moved, so we never call history.back() ourselves.
+    if (updateHistory && pmPushedHistory) history.back();
+    pmPushedHistory = false;
   }
 
   pmClose?.addEventListener('click', () => closeProductModal());
   pmBackdrop?.addEventListener('click', () => closeProductModal());
 
+  // Back from the full product page can restore this very document from bfcache —
+  // with the quick-view still open, since we left it up on the way out. The URL is
+  // the store's again, so the modal isn't what should greet the buyer.
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted || !pmLeftForFullPage) return;
+    pmLeftForFullPage = false;
+    if (productModal?.hidden === false) closeProductModal(false);
+  });
+
   // Browser back button while modal is open → close modal UI (history already moving back)
   window.addEventListener('popstate', () => {
-    if (productModal?.hidden === false) closeProductModal(false);
+    if (productModal?.hidden === false) {
+      closeProductModal(false);
+      // Back onto the store's own entry — hand scroll restoration back to the
+      // browser. The manual mode set at push time belongs to the modal's entry
+      // only; resetting here keeps the normal product-link → Back path (bfcache,
+      // browser-restored scroll) untouched even on an engine that scopes the
+      // flag per-document rather than per-entry.
+      if ('scrollRestoration' in history) history.scrollRestoration = 'auto';
+      return;
+    }
+    // No modal open, yet the URL moved off the path this document was served for.
+    // This is the pushState+reload quirk: after refreshing a modal-pushed product
+    // URL, Back to the store is a same-document popstate that swaps the URL but
+    // never loads it — leaving us stuck on the product page. Force the real load,
+    // and mark it a legit store return so the store's own scroll-restore fires
+    // (identical to clicking "view full product" then Back) — the store already
+    // saved its scroll on this refresh's pagehide.
+    if (location.pathname !== pageLoadPath) {
+      const returningSlug = location.pathname.split('/')[2];
+      if (returningSlug) markStoreScrollReturn(returningSlug);
+      location.reload();
+    }
   });
 
   // ── Keyboard: Escape + focus traps (modal and its own lightbox) ──
