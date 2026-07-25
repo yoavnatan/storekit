@@ -28,5 +28,7 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   const filtered = filterBuyerOrders(orders, query);
   const page = paginate(filtered, parsePage(url.searchParams, 'page'), BUYER_ORDER_PAGE_SIZE);
 
-  return json({ ok: true, items: page.items, page: page.page, totalPages: page.totalPages, total: page.total });
+  // Strip the sellers' private per-store notes — they must never reach the buyer.
+  const items = page.items.map(({ sellerNotes, ...rest }) => rest);
+  return json({ ok: true, items, page: page.page, totalPages: page.totalPages, total: page.total });
 };

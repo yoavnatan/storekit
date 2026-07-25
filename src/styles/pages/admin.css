@@ -12,12 +12,6 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
    button. A <button> reset (no bg/border/padding) keeps it visually a link. */
 .admin-link--danger { color: var(--color-danger); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
 .admin-link--danger:disabled { opacity: 0.55; cursor: default; }
-/* Silent "shop-window" promotion control (Stores tab, CURRENT_TASK.md → סשן ב׳):
-   a <button> that flows inline like its .admin-link siblings — muted at rest
-   (unpromoted), accent once the store carries a curation weight. */
-.admin-store-row-promote { background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; color: var(--color-muted); }
-.admin-store-row-promote:disabled { opacity: 0.55; cursor: default; }
-.admin-link--promo { color: var(--color-accent); }
 .admin-panel-subtitle { font-size: 0.95rem; font-weight: 600; margin: 1.5rem 0 1rem; }
 
 /* ── Messages tab: new-conversation composer ── */
@@ -135,7 +129,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 }
 .admin-seller-card__summary {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) 30.5rem auto;
+  grid-template-columns: minmax(160px, 1fr) 23.6rem auto;
   align-items: center;
   gap: 0.75rem;
   padding: 0.9rem 1.1rem;
@@ -146,26 +140,47 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-seller-card__identity { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .admin-seller-card__name { font-weight: 700; color: var(--color-text); }
 .admin-seller-card__email { font-size: 0.82rem; color: var(--color-muted); }
+/* Join date sits under the email (CURRENT_TASK admin item 2) — identity context
+   belongs with the identity, not mixed into the numeric stats column. */
+.admin-seller-card__joined { font-size: 0.78rem; color: var(--color-muted); }
 /* Fixed sub-columns (not content-sized) so every card's stats line up into
    the same vertical columns regardless of that row's own digit count or
    identity-column width — see CURRENT_TASK.md "not aligned" feedback
    (2026-07-15): a plain flex row let the columns drift per row. */
 .admin-seller-card__nums {
   display: grid;
-  grid-template-columns: 4.2rem 4.6rem 7.4rem 7.4rem 7rem;
+  grid-template-columns: 3.6rem 4rem 6.4rem 6.4rem;
+  gap: 0 0.9rem;
   font-size: 0.82rem;
   color: var(--color-text);
 }
-.admin-seller-card__nums > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.admin-seller-card__revenue { font-weight: 700; color: var(--color-success); }
+/* Each metric is a label-above-value mini stat-tile ("what am I looking at?"
+   owner feedback) — same clarity as the Stores tab's labelled revenue. */
+.admin-seller-card__stat { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
+.admin-seller-card__stat-label { font-size: 0.68rem; font-weight: 500; color: var(--color-muted); white-space: nowrap; }
+.admin-seller-card__stat-value { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.admin-seller-card__stat--rev .admin-seller-card__stat-value { color: var(--color-success); }
+/* Desktop: kebab centred against the identity block (owner confirmed this was
+   already good — do NOT top-pin it here). The top-corner placement is a
+   mobile-only need (see media query below). */
 .admin-seller-card__actions { display: flex; align-items: center; justify-self: start; }
 
 @media (max-width: 900px) {
-  .admin-seller-card__summary { grid-template-columns: 1fr auto; }
+  .admin-seller-card__summary { grid-template-columns: 1fr auto; align-items: start; }
   .admin-seller-card__nums {
     grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(8rem, 1fr));
-    gap: 0.3rem 1rem;
+    grid-template-columns: repeat(2, minmax(7rem, 1fr));
+    gap: 0.6rem 1rem;
+  }
+  /* Mobile: pin the three-dots kebab to the top-inline-end corner (CURRENT_TASK
+     admin item 2). Explicit grid placement (col 2, row 1) — auto-flow otherwise
+     drops it below the full-width stats row into the card's bottom-left. */
+  .admin-seller-card__actions {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    align-items: flex-start;
+    justify-content: flex-end;
   }
 }
 .admin-seller-card__body {
@@ -483,7 +498,9 @@ tr[data-alert-row].admin-alerts-row--resolved .admin-alerts-message { text-decor
    aligned" feedback, 2026-07-15). */
 .admin-store-row {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) 5.8rem 7.2rem 7.2rem auto;
+  /* Revenue columns widened (the kebab freed the space the 5 inline actions used)
+     so each figure can carry a clear label — "סה"כ הכנסות:" / "הכנסות החודש:". */
+  grid-template-columns: minmax(180px, 1fr) 6rem 10rem 10rem auto;
   align-items: center;
   gap: 0.75rem;
   background: var(--color-surface);
@@ -499,6 +516,7 @@ tr[data-alert-row].admin-alerts-row--resolved .admin-alerts-message { text-decor
 .admin-store-row__count { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 button.admin-store-row__count { padding: 0; text-align: start; }
 .admin-store-row__revenue { font-size: 0.82rem; font-weight: 700; color: var(--color-success); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.admin-store-row__revenue-label { color: var(--color-muted); font-weight: 500; }
 /* All row actions (performance/view/block) flow together as one inline group so
    they never split across rows — on the mobile card they stay a single wrapping
    line at the end, not a stray full-width button (owner feedback). */
@@ -521,7 +539,9 @@ button.admin-store-row__count { padding: 0; text-align: start; }
 @media (max-width: 780px) {
   .admin-store-row { grid-template-columns: 1fr auto; }
   .admin-store-row__count, .admin-store-row__revenue { grid-column: 1 / -1; }
-  .admin-store-row__actions { grid-column: 1 / -1; justify-content: flex-start; }
+  /* Kebab stays pinned to the card's top-inline-end corner (row 1, col 2) instead
+     of dropping to a full-width row beneath the data — the info sits in col 1. */
+  .admin-store-row__actions { grid-column: 2; grid-row: 1; align-self: start; justify-content: flex-end; }
 }
 
 /* ── Attention list ── */
@@ -541,5 +561,5 @@ button.admin-store-row__count { padding: 0; text-align: start; }
 .admin-attention-item__reasons { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 
 @media (max-width: 640px) {
-  .admin-seller-card__nums { gap: 0.75rem; }
+  .admin-seller-card__nums { gap: 0.6rem 1rem; }
 }

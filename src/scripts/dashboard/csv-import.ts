@@ -1,7 +1,9 @@
 import { esc } from '../../lib/gallery-widget.js';
 import { showStatus } from './status.js';
+import { scrollProductsPanelIntoView } from './scroll-utils.js';
 import { applyPagination, type ProductData } from './products.js';
-import { templateCsv, type BulkRowResult } from '../../lib/csv-bulk.js';
+import { templateCsv } from '../../lib/csv-bulk.js';
+import type { MergedRowResult } from '../../lib/variant-csv.js';
 import { csvErrorMessage, buildPreviewHtml } from './csv-preview.js';
 
 function getDashI18n(): Record<string, string> {
@@ -43,7 +45,8 @@ export function initCsvImport(): void {
     if (!panel.hidden) {
       document.getElementById('add-product-form')?.setAttribute('hidden', '');
       document.getElementById('toggle-add-form')?.removeAttribute('hidden');
-      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      document.getElementById('feed-panel')?.setAttribute('hidden', '');
+      scrollProductsPanelIntoView(panelEl);
     }
   });
   closeBtn?.addEventListener('click', () => { panel.hidden = true; });
@@ -67,7 +70,7 @@ export function initCsvImport(): void {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, csv: pendingCsv, commit: false }),
       });
-      const data = await res.json() as { ok: boolean; results?: Array<BulkRowResult & { currentName?: string }>; error?: string };
+      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult>; error?: string };
       if (!data.ok) {
         previewEl!.innerHTML = `<p class="csv-error [color:var(--color-danger)] text-[0.85rem]">${esc(csvErrorMessage(i, data.error))}</p>`;
         return;
@@ -78,7 +81,7 @@ export function initCsvImport(): void {
     }
   }
 
-  function renderPreview(results: Array<BulkRowResult & { currentName?: string }>): void {
+  function renderPreview(results: Array<MergedRowResult>): void {
     previewEl!.innerHTML = buildPreviewHtml(results, i);
 
     document.getElementById('csv-cancel-btn')?.addEventListener('click', () => {
@@ -103,7 +106,7 @@ export function initCsvImport(): void {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, csv: pendingCsv, commit: true }),
       });
-      const data = await res.json() as { ok: boolean; results?: Array<BulkRowResult & { product?: ProductData }> };
+      const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult & { product?: ProductData }> };
       if (!data.ok) { showStatus(i.csvImportFailed ?? 'Import failed.', true); return; }
 
       applyResults(data.results ?? []);
@@ -122,7 +125,7 @@ export function initCsvImport(): void {
     }
   }
 
-  function applyResults(results: Array<BulkRowResult & { product?: ProductData }>): void {
+  function applyResults(results: Array<MergedRowResult & { product?: ProductData }>): void {
     // A CSV batch can touch products scattered across many server pages, so
     // patching individual DOM rows in place (the pre-pagination approach) no
     // longer makes sense — just re-fetch whatever page/search/sort/filter

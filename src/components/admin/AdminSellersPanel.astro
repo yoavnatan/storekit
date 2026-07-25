@@ -65,22 +65,48 @@ const sortLabels: Record<string, string> = {
           <div class="admin-seller-card__identity">
             <span class="admin-seller-card__name">{seller.name}</span>
             <span class="admin-seller-card__email">{seller.email}</span>
+            <span class="admin-seller-card__joined">הצטרף/ה {fmtDate(seller.createdAt)}</span>
           </div>
+          {/* Labelled mini stat-tiles (label above value) — the bare "₪0 סה"כ"
+              suffixes read as "what am I looking at?" (owner feedback). Same
+              clarity as the Stores tab's labelled revenue, arranged as a fixed
+              grid so every card's tiles line up into the same columns. */}
           <div class="admin-seller-card__nums">
-            <span>{stores.length} חנויות</span>
-            <span>{totalProducts} מוצרים</span>
-            <span class="admin-seller-card__revenue">{formatPrice(revenue.totalRevenue)} סה"כ</span>
-            <span class="admin-seller-card__revenue">{formatPrice(revenue.monthRevenue)} החודש</span>
-            <span class="muted">הצטרף/ה {fmtDate(seller.createdAt)}</span>
+            <span class="admin-seller-card__stat">
+              <span class="admin-seller-card__stat-label">חנויות</span>
+              <span class="admin-seller-card__stat-value">{stores.length}</span>
+            </span>
+            <span class="admin-seller-card__stat">
+              <span class="admin-seller-card__stat-label">מוצרים</span>
+              <span class="admin-seller-card__stat-value">{totalProducts}</span>
+            </span>
+            <span class="admin-seller-card__stat admin-seller-card__stat--rev">
+              <span class="admin-seller-card__stat-label">הכנסות סה"כ</span>
+              <span class="admin-seller-card__stat-value">{formatPrice(revenue.totalRevenue)}</span>
+            </span>
+            <span class="admin-seller-card__stat admin-seller-card__stat--rev">
+              <span class="admin-seller-card__stat-label">הכנסות החודש</span>
+              <span class="admin-seller-card__stat-value">{formatPrice(revenue.monthRevenue)}</span>
+            </span>
           </div>
+          {/* Actions moved into a three-dot kebab menu (CURRENT_TASK admin item) —
+              consistent with the Stores tab, and ready to hold more per-seller
+              actions without crowding the card. onclick stops the click from
+              toggling the parent <summary>'s <details>. */}
           <div class="admin-seller-card__actions">
             <button
               type="button"
-              class="btn btn--sm btn--ghost admin-msg-open-modal"
+              class="admin-seller-card__kebab inline-flex items-center justify-center w-8 h-8 rounded-full border-0 bg-transparent cursor-pointer [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)] aria-expanded:bg-[color:var(--color-bg)] aria-expanded:[color:var(--color-text)]"
               data-seller-id={seller.id}
               data-seller-name={seller.name}
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-label="פעולות מוכר/ת"
+              title="פעולות"
               onclick="event.stopPropagation()"
-            >שלח הודעה</button>
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+            </button>
           </div>
         </summary>
         <div class="admin-seller-card__body">

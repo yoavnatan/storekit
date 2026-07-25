@@ -1,9 +1,11 @@
 export const prerender = false;
+import crypto from 'node:crypto';
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, updateStore, addStoreBgColor } from '../../lib/stores.js';
 import { pingStoreChange } from '../../lib/indexnow.js';
 import { parseStoreHoursForm } from '../../lib/store-hours.js';
+import { CSV_FIELDS } from '../../lib/csv-bulk.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -47,6 +49,44 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Store page content changed — notify the index (fire-and-forget, no-op in dev).
     pingStoreChange(target.slug);
     return json({ ok: true, name });
+  }
+
+  if (action === 'save-feed-config') {
+    const storeId = String(form.get('storeId') || '');
+    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
+
+    // Empty = clear the saved URL. A non-empty value must at least be an http(s) URL — the deep
+    // SSRF/reachability validation happens at pull time (feed-fetch.ts), not here.
+    const url = String(form.get('feedUrl') ?? '').trim();
+    if (url && !/^https?:\/\//i.test(url)) return json({ ok: false, error: 'invalid-url' }, 400);
+
+    // Only keep entries whose target is a real canonical field — never trust the client-sent key.
+    const validKeys = new Set<string>(CSV_FIELDS.map((f) => f.key));
+    const mapping: Record<string, string> = {};
+    try {
+      const raw = JSON.parse(String(form.get('mapping') ?? '{}')) as Record<string, unknown>;
+      for (const [src, key] of Object.entries(raw)) {
+        if (typeof key === 'string' && validKeys.has(key)) mapping[String(src)] = key;
+      }
+    } catch { /* malformed mapping → save just the URL */ }
+
+    updateStore(target.id, {
+      feedSync: { ...target.feedSync, url: url || undefined, mapping },
+    });
+    return json({ ok: true });
+  }
+
+  if (action === 'gen-export-token' || action === 'clear-export-token') {
+    const storeId = String(form.get('storeId') || '');
+    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
+    // 192-bit random — the token is the only credential guarding the outbound feed, so it must be
+    // long enough to be unguessable. Regenerating (gen on an existing token) rotates it, instantly
+    // invalidating the URL the seller shared before.
+    const token = action === 'gen-export-token' ? crypto.randomBytes(24).toString('hex') : undefined;
+    updateStore(target.id, { feedExportToken: token });
+    return json({ ok: true, token });
   }
 
   if (action === 'add-bg-color') {

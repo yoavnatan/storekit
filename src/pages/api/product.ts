@@ -3,8 +3,8 @@ import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
 import { createProduct, updateProduct, deleteProduct, getProductById, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
-import { LOW_STOCK_THRESHOLD } from '../../lib/variant-combo.js';
-import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseVariantsPayload } from '../../lib/product-form.js';
+import { LOW_STOCK_THRESHOLD, generateCombos, comboKey } from '../../lib/variant-combo.js';
+import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload } from '../../lib/product-form.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
@@ -47,6 +47,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const tags = parseTags(form);
     const sku = parseSku(form);
     const specs = parseSpecs(form);
+    const sellerNote = parseSellerNote(form);
     const { variants, variantStock, variantImages } = parseVariantsPayload(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
@@ -64,6 +65,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       tags: tags.length ? tags : undefined,
       sku: sku || undefined,
       specs: specs.length ? specs : undefined,
+      sellerNote: sellerNote || undefined,
       variants: variants.length ? variants : undefined,
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
       variantImages: Object.keys(variantImages).length ? variantImages : undefined,
@@ -89,6 +91,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const tags = parseTags(form);
     const sku = parseSku(form);
     const specs = parseSpecs(form);
+    const sellerNote = parseSellerNote(form);
     const { variants, variantStock, variantImages } = parseVariantsPayload(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
@@ -99,6 +102,14 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stuffingHit = findKeywordStuffing(name, description, ...tags);
     if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
+    // Per-combo SKUs are set only via CSV import; the editor doesn't render them, so preserve the
+    // product's existing ones — but drop any whose combo no longer exists after an options edit
+    // (a renamed/removed option changes the comboKey), so a stale code can't leak onto a new combo.
+    const validComboKeys = new Set(generateCombos(variants).map(comboKey));
+    const keptVariantSku = Object.fromEntries(
+      Object.entries(product.variantSku ?? {}).filter(([key]) => validComboKeys.has(key)),
+    );
+
     const updates: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {
       name, description, price, stock: isNaN(stock) ? 0 : stock,
       images,
@@ -106,8 +117,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       tags: tags.length ? tags : [],
       sku: sku || undefined,
       specs: specs.length ? specs : [],
+      sellerNote: sellerNote || undefined,
       variants: variants.length ? variants : [],
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
+      variantSku: Object.keys(keptVariantSku).length ? keptVariantSku : undefined,
       variantImages: Object.keys(variantImages).length ? variantImages : undefined,
     };
 

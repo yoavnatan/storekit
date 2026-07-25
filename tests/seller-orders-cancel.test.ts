@@ -31,6 +31,14 @@ vi.mock('../src/lib/orders.js', () => ({
   getOrdersByStoreSlug: () => [],
   getOrderById: (id: string) => getOrderById(id),
   updateOrder: (id: string, u: Partial<OrderFixture>) => updateOrder(id, u),
+  // Faithful stand-in for the real pure reader (orders.ts) — the seller orders API scopes each
+  // order's per-store notes through it, so the mock must export it too.
+  orderStoreNotes: (o: OrderFixture, slug: string): string[] => {
+    const v = (o as { sellerNotes?: Record<string, unknown> }).sellerNotes?.[slug];
+    if (Array.isArray(v)) return v.filter((s): s is string => typeof s === 'string' && s.trim() !== '');
+    if (typeof v === 'string' && v.trim() !== '') return [v];
+    return [];
+  },
 }));
 vi.mock('../src/lib/order-notify.js', () => ({
   notifyOrderStatusChanged: (...args: unknown[]) => notifyOrderStatusChanged(...args),

@@ -13,6 +13,11 @@ export function parseSku(form: FormData): string {
   return String(form.get('sku') ?? '').trim();
 }
 
+/** Private seller-only note. Capped to keep a runaway paste out of the JSON store. */
+export function parseSellerNote(form: FormData): string {
+  return String(form.get('sellerNote') ?? '').trim().slice(0, 2000);
+}
+
 export function parseTags(form: FormData): string[] {
   return String(form.get('tags') ?? '').split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
 }

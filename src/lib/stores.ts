@@ -60,6 +60,20 @@ export interface Store {
    *  preference so it follows the store across devices, not the browser. Capped, see
    *  addStoreBgColor. */
   bgColors?: string[];
+  /** External-inventory sync config (see feed-mapping.ts / feed-fetch.ts). A store that manages its
+   *  stock in another system (POS/ERP/Shopify/Woo/spreadsheet) saves its feed URL once plus the
+   *  column mapping from that feed's headers to our canonical fields; "sync now" (and, once a
+   *  scheduler exists, an automatic pull) re-fetches and re-applies them, matching products by sku.
+   *  All optional/additive — absent = feature unused. `mapping` is sourceHeader → canonical CSV key. */
+  feedSync?: {
+    url?: string;
+    mapping?: Record<string, string>;
+    lastSyncAt?: string;
+  };
+  /** Outbound-feed credential: when set, another system can pull THIS store's live catalog (incl.
+   *  stock) as CSV/JSON from a tokenized, login-free URL (/api/store-feed/[token]). Absent = the
+   *  store shares nothing out. Rotating or clearing it instantly invalidates the old URL. */
+  feedExportToken?: string;
   createdAt: string;
 }
 
@@ -130,6 +144,15 @@ export function getStoreBySlug(slug: string): Store | null {
 
 export function getStoreById(id: string): Store | null {
   return readStores().find((s) => s.id === id) ?? null;
+}
+
+/** Resolves the unguessable per-store export token to its store (the outbound-feed counterpart to the
+ *  inbound sync — another system pulls this store's live catalog from a tokenized URL, no login). The
+ *  token IS the credential, so it must be long/random (see /api/store.ts gen-export-token). Linear
+ *  scan today; an indexed lookup at DB-migration time (same signature). */
+export function getStoreByExportToken(token: string): Store | null {
+  if (!token) return null;
+  return readStores().find((s) => s.feedExportToken === token) ?? null;
 }
 
 export function getAllStores(): Store[] {

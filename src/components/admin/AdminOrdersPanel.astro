@@ -98,6 +98,9 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
         // several stores (platform-wide cart), so this is a list, not a single value.
         const uniqueStores = [...new Map(o.items.map((i) => [i.storeSlug, i.storeName] as const)).entries()]
           .map(([slug, name]) => ({ slug, name }));
+        const itemCount = o.items.length;
+        const productsLabel = itemCount === 1 ? 'מוצר אחד' : `${itemCount} מוצרים`;
+        const storesLabel = uniqueStores.length === 1 ? 'חנות אחת' : `${uniqueStores.length} חנויות`;
         return (
           <div
             class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]"
@@ -106,17 +109,35 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
             data-payment-status={o.paymentStatus}
           >
             <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
-              <div class="flex flex-col items-start gap-[0.2rem] min-w-20 shrink-0">
+              {/* Fixed width (not min-width) so the buyer name in the next column
+                  always starts at the same x across every card — id/date only;
+                  the age chip lives in the status cluster below so its variable
+                  length can't squeeze this column (owner feedback). */}
+              <div class="flex flex-col items-start gap-[0.2rem] w-20 sm:w-28 shrink-0">
                 <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#{(o.checkoutRef ?? o.id.slice(0, 8)).toUpperCase()}</span>
                 <span class="text-[0.72rem] text-[color:var(--color-muted)]">{formatHeDateTime(o.createdAt)}</span>
-                <Fragment set:html={orderAgeChipHtml(o.createdAt, o.shippingStatus, 'he')} />
               </div>
-              <div class="flex-1 flex items-center flex-wrap gap-2 min-w-0">
-                <span class="text-sm font-semibold text-[color:var(--color-text)]">{o.buyerName}</span>
-                <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(o.totalAmount)}</span>
-                <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px]" style={`background:${shippingColor[o.shippingStatus] ?? '#888'}1a;color:${shippingColor[o.shippingStatus] ?? '#888'}`}>
-                  {shippingLabel[o.shippingStatus] ?? o.shippingStatus}
-                </span>
+              <div class="flex-1 flex items-center gap-3 min-w-0">
+                <div class="flex flex-col min-w-0 flex-1 gap-[0.15rem]">
+                  <span class="text-sm font-semibold text-[color:var(--color-text)] truncate">{o.buyerName}</span>
+                  <span class="text-[0.72rem] text-[color:var(--color-muted)] truncate">{productsLabel} · {storesLabel}</span>
+                </div>
+                {/* Trailing on desktop: price at a FIXED x on every card, then the
+                    age chip pulled right up against the status badge in one shared,
+                    fixed-width slot (they read as a single status cluster). The slot's
+                    fixed width is what keeps the price aligned across all cards; the
+                    status stays full-width and only the age chip yields (clips) in the
+                    rare case both are at their longest. Stacks on mobile. Matches the
+                    seller dashboard (admin↔seller parity). */}
+                <div class="flex flex-col items-end gap-1.5 shrink-0 sm:flex-row sm:items-center sm:gap-4">
+                  <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] w-[6rem] text-end">{formatPrice(o.totalAmount)}</span>
+                  <span class="flex items-center justify-end gap-1.5 min-w-0 sm:w-[12rem]">
+                    <span class="order-age-chip-slot flex items-center shrink-0 empty:hidden" set:html={orderAgeChipHtml(o.createdAt, o.shippingStatus, 'he')} />
+                    <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] whitespace-nowrap shrink-0" style={`background:${shippingColor[o.shippingStatus] ?? '#888'}1a;color:${shippingColor[o.shippingStatus] ?? '#888'}`}>
+                      {shippingLabel[o.shippingStatus] ?? o.shippingStatus}
+                    </span>
+                  </span>
+                </div>
               </div>
               <svg class="shrink-0 text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
             </div>

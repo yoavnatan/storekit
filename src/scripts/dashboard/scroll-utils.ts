@@ -24,3 +24,29 @@ export function animateScrollTo(targetY: number, duration = 380): void {
   }
   requestAnimationFrame(step);
 }
+
+/** Scroll a products-tab panel (CSV import, external-inventory sync) so its top sits just below the
+ *  three stacked sticky layers — fixed site header (--site-header-h) + sticky tab strip
+ *  (--dash-tabs-h) + the sticky products toolbar (--products-toolbar-h). Plain scrollIntoView ignores
+ *  those, landing the panel's title hidden beneath the pinned toolbar when the user opens it from far
+ *  down the list. Mirrors advertising.ts's boost-jump offset math. */
+export function scrollProductsPanelIntoView(el: HTMLElement): void {
+  const rootStyle = getComputedStyle(document.documentElement);
+  const remPx = parseFloat(rootStyle.fontSize) || 16;
+  const toPx = (v: string, fallback: number): number => {
+    const n = parseFloat(v);
+    if (!Number.isFinite(n)) return fallback;
+    return v.trim().endsWith('rem') ? n * remPx : n;
+  };
+  const headerH = toPx(rootStyle.getPropertyValue('--site-header-h'), 3.3 * remPx);
+  const tabsH = toPx(rootStyle.getPropertyValue('--dash-tabs-h'), 2.9 * remPx);
+  const toolbarH = toPx(rootStyle.getPropertyValue('--products-toolbar-h'), 3.4 * remPx);
+  const stack = headerH + tabsH + toolbarH;
+  const rectTop = el.getBoundingClientRect().top;
+  // Only scroll when the panel's TOP is actually hidden — tucked under the sticky stack (scrolled
+  // past it) or below the fold. If it's already visible in the viewport (e.g. the user was near the
+  // top of the list), leave the scroll position alone rather than yanking the page down.
+  if (rectTop >= stack && rectTop < window.innerHeight) return;
+  const margin = 0.5 * remPx; // small breathing room below the pinned toolbar
+  animateScrollTo(Math.max(0, rectTop + window.scrollY - stack - margin));
+}

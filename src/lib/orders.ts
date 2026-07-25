@@ -43,8 +43,23 @@ export interface Order {
   paymentStatus: 'pending' | 'paid' | 'failed';
   shippingStatus: 'pending' | 'processing' | 'ready' | 'shipped' | 'delivered' | 'cancelled';
   trackingNumber?: string;
+  /** Private seller-only handling notes, keyed by storeSlug so each seller's notes on a
+   *  (possibly multi-store) order stay private from the other stores' sellers. A LIST per
+   *  store (a seller can jot several notes). Never exposed to the buyer or leaked
+   *  cross-store: /api/seller/orders returns only the requesting store's own list as a
+   *  scoped `notes` array, never this whole map. Legacy data may hold a single string per
+   *  store — read it through orderStoreNotes(), which coerces string → one-item list. */
+  sellerNotes?: Record<string, string[]>;
   createdAt: string;
   updatedAt: string;
+}
+
+/** This store's private notes on an order as a list, coercing legacy single-string data. */
+export function orderStoreNotes(o: Order, storeSlug: string): string[] {
+  const v = o.sellerNotes?.[storeSlug] as unknown;
+  if (Array.isArray(v)) return v.filter((s): s is string => typeof s === 'string' && s.trim() !== '');
+  if (typeof v === 'string' && v.trim() !== '') return [v];
+  return [];
 }
 
 export type CreateOrderInput = Omit<Order, 'id' | 'paymentStatus' | 'shippingStatus' | 'createdAt' | 'updatedAt'>;

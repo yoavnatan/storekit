@@ -144,6 +144,9 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
   return generateCombos(variants).map((combo) => {
     const key = comboKey(combo);
     const stock = product.variantStock?.[key] ?? product.stock;
+    // A per-combo SKU is this variant's own mpn — more specific than the product-level one, and it
+    // makes identifierExists true (brand + mpn) even when the product itself carries no top sku.
+    const comboMpn = product.variantSku?.[key];
     return {
       ...base,
       id: comboRowId(product.id, key),
@@ -152,6 +155,7 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
       link,
       imageLink,
       additionalImageLinks,
+      ...(comboMpn ? { mpn: comboMpn, identifierExists: Boolean(base.brand) } : {}),
       ...(colorDim && combo[colorDim.name] ? { color: combo[colorDim.name] } : {}),
       ...(sizeDim && combo[sizeDim.name] ? { size: combo[sizeDim.name] } : {}),
     } as FeedItem;

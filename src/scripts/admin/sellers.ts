@@ -8,6 +8,10 @@ const PANEL_ID = 'dash-panel-sellers';
 // comment on the same pattern), and createFloatingPortal() wires its own
 // document-level listeners on every call.
 const sellersPortal = createFloatingPortal('admin-sellers-toolbar-portal');
+// Separate singleton for the per-card actions kebab (see stores.ts for the same split).
+const sellersActionsPortal = createFloatingPortal('admin-sellers-actions-portal');
+const MENU_ITEM =
+  'product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
 
 type SellerSortCol = 'joined' | 'revenue' | 'stores';
 const SELLER_SORT_OPTIONS: { col: SellerSortCol; dir: 'asc' | 'desc'; label: string }[] = [
@@ -72,24 +76,50 @@ function wireSellersToolbar(): void {
 // (no tab navigation) — posts straight to the admin messages API; the
 // seller sees it as a normal message in their own merged messages tab
 // (see CURRENT_TASK.md → סשן א׳), no separate reply UI needed here.
-function wireSellerMessageModal(): void {
+// Shared modal opener — reused by the per-card kebab menu item. Re-queries the
+// dialog each call (stable IDs, one modal per panel) so it works regardless of
+// which card triggered it.
+function openSellerMsgModal(sellerId: string, sellerName: string): void {
   const dialog = document.getElementById('admin-seller-msg-modal') as HTMLDialogElement | null;
   const title = document.getElementById('admin-seller-msg-modal-title');
+  const sellerIdInput = document.getElementById('admin-seller-msg-modal-seller-id') as HTMLInputElement | null;
+  const textarea = document.getElementById('admin-seller-msg-modal-textarea') as HTMLTextAreaElement | null;
+  if (!dialog || !sellerIdInput || !textarea) return;
+  sellerIdInput.value = sellerId;
+  if (title) title.textContent = `הודעה חדשה ל${sellerName}`;
+  textarea.value = '';
+  dialog.showModal();
+  textarea.focus();
+}
+
+// Per-card kebab menu (Sellers tab) — currently one action (send message), in a
+// dropdown for consistency with the Stores tab and room to grow.
+function initSellerCardActions(): void {
+  document.querySelectorAll<HTMLButtonElement>('.admin-seller-card__kebab').forEach((trigger) => {
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (sellersActionsPortal.currentTrigger() === trigger) { sellersActionsPortal.close(); return; }
+      const id = trigger.dataset.sellerId ?? '';
+      const name = trigger.dataset.sellerName ?? '';
+      sellersActionsPortal.open(trigger, '12rem',
+        () => `<button type="button" class="${MENU_ITEM}" data-action="message">שלח הודעה</button>`,
+        (p) => {
+          p.querySelector('[data-action="message"]')?.addEventListener('click', () => {
+            sellersActionsPortal.close();
+            openSellerMsgModal(id, name);
+          });
+        });
+    });
+  });
+}
+
+function wireSellerMessageModal(): void {
+  const dialog = document.getElementById('admin-seller-msg-modal') as HTMLDialogElement | null;
   const sellerIdInput = document.getElementById('admin-seller-msg-modal-seller-id') as HTMLInputElement | null;
   const textarea = document.getElementById('admin-seller-msg-modal-textarea') as HTMLTextAreaElement | null;
   const sendBtn = document.getElementById('admin-seller-msg-modal-send') as HTMLButtonElement | null;
   const closeBtn = document.getElementById('admin-seller-msg-modal-close');
   if (!dialog || !sellerIdInput || !textarea || !sendBtn) return;
-
-  document.querySelectorAll<HTMLButtonElement>('.admin-msg-open-modal').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      sellerIdInput.value = btn.dataset.sellerId ?? '';
-      if (title) title.textContent = `הודעה חדשה ל${btn.dataset.sellerName ?? ''}`;
-      textarea.value = '';
-      dialog.showModal();
-      textarea.focus();
-    });
-  });
 
   closeBtn?.addEventListener('click', () => dialog.close());
   dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
@@ -140,6 +170,7 @@ function wireSellerSearch(): void {
 // place for moderation instead of duplicating it three levels deep here.
 export function initAdminSellersPanel(): void {
   wireSellerMessageModal();
+  initSellerCardActions();
   wireSellerSearch();
   wireSellersToolbar();
   wirePanelLinks(PANEL_ID, () => initAdminSellersPanel());

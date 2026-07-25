@@ -1,5 +1,5 @@
 import { esc } from '../../lib/gallery-widget.js';
-import type { BulkRowResult } from '../../lib/csv-bulk.js';
+import type { MergedRowResult } from '../../lib/variant-csv.js';
 
 export function csvErrorMessage(i: Record<string, string>, error?: string): string {
   if (error === 'missing-columns') return i.csvMissingColumns ?? 'Missing required columns.';
@@ -18,36 +18,49 @@ function rowErrorLabel(i: Record<string, string>, code: string): string {
     case 'category-orphan-subcategory': return i.csvErrCategoryOrphan ?? 'A subcategory column is filled in without the category level above it';
     case 'spam-keyword': return i.csvErrSpamKeyword ?? 'The text contains a term flagged as spam';
     case 'keyword-stuffing': return i.csvErrKeywordStuffing ?? 'A word repeats far more than natural writing (keyword stuffing)';
+    case 'variant-missing-option': return i.csvErrVariantMissingOption ?? 'A grouped row has no color or size';
+    case 'variant-inconsistent-dimensions': return i.csvErrVariantInconsistent ?? 'Rows in the group disagree on which of color/size they use';
+    case 'variant-duplicate-combo': return i.csvErrVariantDuplicateCombo ?? 'Two rows in the group have the same color+size';
+    case 'variant-group-mixed-id': return i.csvErrVariantMixedId ?? 'Rows in the group point at different products (id)';
     default: return code;
   }
 }
 
-/** Builds the whole preview panel's innerHTML (summary counts, per-row error list, and — for
- *  updates — the current→new product name so a seller can visually confirm the internal id
- *  column resolved to the right product before committing). Caller still owns wiring the
- *  confirm/cancel button listeners, since those need callbacks this pure function shouldn't. */
-export function buildPreviewHtml(results: Array<BulkRowResult & { currentName?: string }>, i: Record<string, string>): string {
+/** "Line 5" for a plain product, "Lines 5–7" for a variant group (its whole row span). */
+function lineLabel(i: Record<string, string>, lines: number[]): string {
+  const single = i.csvLine ?? 'Line';
+  if (lines.length <= 1) return `${single} ${lines[0] ?? ''}`;
+  return `${i.csvLines ?? single} ${lines[0]}–${lines[lines.length - 1]}`;
+}
+
+/** Builds the whole preview panel's innerHTML (summary counts, per-product error list, and — for
+ *  updates — the current→new product name so a seller can visually confirm the internal id column
+ *  resolved to the right product before committing). A variant group shows as one entry with a
+ *  "N variants" badge. Caller still owns wiring the confirm/cancel button listeners. */
+export function buildPreviewHtml(results: Array<MergedRowResult>, i: Record<string, string>): string {
   const creates = results.filter((r) => r.action === 'create');
   const updates = results.filter((r) => r.action === 'update');
   const errors  = results.filter((r) => r.action === 'error');
 
+  const variantBadge = (r: MergedRowResult): string =>
+    r.variantCount ? ` <span class="csv-row__variants [color:var(--color-muted)]">(${r.variantCount} ${esc(i.csvVariants ?? 'variants')})</span>` : '';
+
   const errorRows = errors.map((r) => `
     <div class="csv-row csv-row--error flex flex-col gap-[0.15rem] border [border-color:var(--color-danger)] rounded-[0.4rem] px-[0.6rem] py-[0.45rem] bg-[color:var(--color-surface)] text-[0.8rem]">
-      <span class="csv-row__line font-semibold [color:var(--color-muted)]">${esc(i.csvLine ?? 'Line')} ${r.line}</span>
+      <span class="csv-row__line font-semibold [color:var(--color-muted)]">${esc(lineLabel(i, r.lines))}</span>
       <span class="csv-row__msg [color:var(--color-danger)]">${esc(r.errors.map((e) => rowErrorLabel(i, e)).join(', '))}</span>
     </div>`).join('');
 
-  // The id column is an internal UUID the seller has no reason to trust blindly — showing
-  // which real product each update row currently resolves to (and the name it'll become, if
-  // changed) lets them visually catch a scrambled/wrong row before anything is written. A
-  // plain CSV can't protect this any other way (no cell-locking in the format).
+  // The id column is an internal UUID the seller has no reason to trust blindly — showing which
+  // real product each update row currently resolves to (and the name it'll become, if changed) lets
+  // them visually catch a scrambled/wrong row before anything is written.
   const updateRows = updates.map((r) => {
     const newName = r.input?.name;
     const changed = newName && newName !== r.currentName;
     return `
     <div class="csv-row csv-row--update [border-color:var(--color-border)]">
-      <span class="csv-row__line font-semibold [color:var(--color-muted)]">${esc(i.csvLine ?? 'Line')} ${r.line}</span>
-      <span class="csv-row__msg [color:var(--color-text)]">${esc(r.currentName ?? '')}${changed ? ` → ${esc(newName!)}` : ''}</span>
+      <span class="csv-row__line font-semibold [color:var(--color-muted)]">${esc(lineLabel(i, r.lines))}</span>
+      <span class="csv-row__msg [color:var(--color-text)]">${esc(r.currentName ?? '')}${changed ? ` → ${esc(newName!)}` : ''}${variantBadge(r)}</span>
     </div>`;
   }).join('');
 

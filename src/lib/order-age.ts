@@ -79,13 +79,13 @@ const CLOCK_ICON =
 const ALERT_ICON =
   '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
+// Text colour only — no background pill. A filled tint read as a second badge
+// stacked under the status pill (owner feedback, 2026-07); the colour + icon
+// alone carry the escalation, lighter and cleaner in the collapsed card row.
 const CHIP_CLASSES: Record<OrderAgeLevel, string> = {
-  fresh:
-    'text-[color:var(--color-muted)] bg-[color:color-mix(in_srgb,var(--color-muted)_12%,transparent)]',
-  aging:
-    'text-[color:var(--color-warning)] bg-[color:color-mix(in_srgb,var(--color-warning)_15%,transparent)]',
-  overdue:
-    'text-[color:var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_15%,transparent)]',
+  fresh: 'text-[color:var(--color-muted)]',
+  aging: 'text-[color:var(--color-warning)]',
+  overdue: 'text-[color:var(--color-danger)]',
 };
 
 /**
@@ -115,5 +115,5 @@ export function orderAgeChipHtml(
     : (owes && level !== 'fresh' ? 'stalled' : 'inProgress');
   const text = ageLabel(hours, lang, tone);
   const icon = level === 'overdue' ? ALERT_ICON : CLOCK_ICON;
-  return `<span class="inline-flex items-center gap-[0.2rem] text-[0.66rem] font-bold px-[0.45rem] py-[0.1rem] rounded-full ${CHIP_CLASSES[level]}" title="${text}">${icon}${text}</span>`;
+  return `<span class="inline-flex items-center gap-[0.2rem] text-[0.66rem] font-semibold whitespace-nowrap ${CHIP_CLASSES[level]}" title="${text}">${icon}${text}</span>`;
 }

@@ -17,6 +17,7 @@ export interface ProductData {
   description: string; price: number; stock: number; images?: string[];
   categoryId?: string; tags?: string[]; sku?: string;
   specs?: Array<{ label: string; value: string }>;
+  sellerNote?: string;
   variants?: VariantDimension[];
   variantStock?: Record<string, number>;
   variantImages?: Record<string, string>;
@@ -208,6 +209,18 @@ function skuFieldHtml(sku: string, i18n: Record<string, string>): string {
   return `<label class="field max-w-[280px]">
     <span>${esc(i18n.skuLabel ?? 'SKU')}</span>
     <input class="input" name="sku" value="${esc(sku)}" placeholder="${esc(i18n.skuPlaceholder ?? '')}">
+  </label>`;
+}
+
+// Private seller-only handling note (never shown to buyers). A small eye-off icon
+// + hint make the "only you see this" contract explicit right in the form.
+function sellerNoteFieldHtml(note: string, i18n: Record<string, string>): string {
+  return `<label class="field max-w-none">
+    <span class="inline-flex items-center gap-[0.35rem]">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;color:var(--color-muted)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+      ${esc(i18n.sellerNoteLabel ?? 'Private note')}
+    </span>
+    <textarea class="input resize-none" name="sellerNote" rows="2" maxlength="2000" placeholder="${esc(i18n.sellerNotePlaceholder ?? '')}">${esc(note)}</textarea>
   </label>`;
 }
 
@@ -1250,6 +1263,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
     <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap"><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy"></span>` : ''}</td>
     <td class="name-col">
       <span class="product-name cursor-text">${esc(p.name)}</span>
+      <span class="product-note-chip inline-flex items-center align-middle ms-1 [color:var(--color-muted)]"${p.sellerNote ? ` title="${esc(p.sellerNote)}"` : ' hidden'} aria-label="${esc(i.sellerNoteLabel ?? 'Private note')}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg></span>
       <span class="product-hidden-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1"${p.hidden ? '' : ' hidden'}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>${esc(i.productHiddenChip ?? 'מוסתר')}</span>
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
     </td>
@@ -1304,6 +1318,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
         ${tagsFieldHtml(p.tags ?? [], i)}
         ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i, p.variantImages ?? {})}
         ${specsEditorHtml(p.specs ?? [], i)}
+        ${sellerNoteFieldHtml(p.sellerNote ?? '', i)}
         <div class="field">
           <span class="field-label">${i.productImages ?? 'Product images'}</span>
           ${galleryWidgetHtml(p.images ?? [], g)}
@@ -1402,6 +1417,15 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
         if (!descEl) { descEl = document.createElement('span'); descEl.className = 'product-desc'; nameEl?.after(descEl); }
         descEl.textContent = description;
       } else { descEl?.remove(); }
+
+      // Keep the private-note chip in sync — it only patches cells, never rebuilds
+      // the row, so a note added/edited/cleared must be reflected here too.
+      const noteChip = displayRow.querySelector<HTMLElement>('.product-note-chip');
+      const noteVal = String(fd.get('sellerNote') ?? '').trim();
+      if (noteChip) {
+        if (noteVal) { noteChip.hidden = false; noteChip.title = noteVal; }
+        else { noteChip.hidden = true; noteChip.removeAttribute('title'); }
+      }
 
       const priceCell = displayRow.querySelector<HTMLElement>('.product-price');
       const stockCell = displayRow.querySelector<HTMLElement>('.product-stock');
@@ -2072,6 +2096,20 @@ function refreshFilterUI(): void {
     badge.hidden = activeCols === 0;
     badge.textContent = String(activeCols);
   }
+}
+
+// Programmatic entry point for the overview tab's "stock needs attention" card:
+// isolate the products list to the out-of-stock + low-stock buckets and reflect
+// the active funnel, exactly as if the seller had ticked those two boxes in the
+// stock filter themselves. Clears any other active filter so the jump lands on a
+// clean "only what needs attention" view.
+export function applyStockAttentionFilter(): void {
+  const i = getDashI18n();
+  productsFilters.clear();
+  productsFilters.set('stock', new Set([stockFilterLabel('out', i), stockFilterLabel('low', i)]));
+  productsCurrentPage = 1;
+  applyPagination();
+  refreshFilterUI();
 }
 
 function getDistinctFilterValues(col: string): string[] {

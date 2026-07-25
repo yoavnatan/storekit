@@ -2,12 +2,21 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
-import { getOrdersByStoreSlug, getOrderById, updateOrder } from '../../../lib/orders.js';
+import { getOrdersByStoreSlug, getOrderById, updateOrder, orderStoreNotes } from '../../../lib/orders.js';
 import type { StoreSubtotal } from '../../../lib/orders.js';
 import { notifyOrderStatusChanged } from '../../../lib/order-notify.js';
 import { restockProduct } from '../../../lib/store-products.js';
 import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../../lib/seller-orders-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
+import type { Order } from '../../../lib/orders.js';
+
+// Never ship the whole per-store sellerNotes map to the client — on a multi-store
+// order that would expose another store's seller's private notes. Replace it with
+// just THIS store's own list, scoped as a `notes` array.
+function scopeOrder(o: Order, storeSlug: string): Omit<Order, 'sellerNotes'> & { notes: string[] } {
+  const { sellerNotes, ...rest } = o;
+  return { ...rest, notes: orderStoreNotes(o, storeSlug) };
+}
 
 function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -33,12 +42,12 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // No ?page → the original unfiltered/unpaginated shape, used by the
   // 15s new-order poll (it needs to see every order regardless of the
   // seller's current page/filter/search to reliably detect brand-new ones).
-  if (!url.searchParams.has('page')) return json({ orders });
+  if (!url.searchParams.has('page')) return json({ orders: orders.map((o) => scopeOrder(o, storeSlug)) });
 
   const query = parseSellerOrderQuery(url.searchParams);
   const filtered = filterAndSortSellerOrders(orders, storeSlug, query);
   const page = paginate(filtered, parsePage(url.searchParams, 'page'), 15);
-  return json({ ok: true, items: page.items, page: page.page, totalPages: page.totalPages, total: page.total });
+  return json({ ok: true, items: page.items.map((o) => scopeOrder(o, storeSlug)), page: page.page, totalPages: page.totalPages, total: page.total });
 }
 
 export async function PATCH({ request, cookies }: APIContext): Promise<Response> {
@@ -53,6 +62,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     itemDeletes?: unknown;
     shippingOverride?: unknown;
     discount?: unknown;
+    sellerNotes?: unknown;
   };
   try {
     body = await request.json() as typeof body;
@@ -60,7 +70,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     return json({ error: 'Invalid JSON' }, 400);
   }
 
-  const { orderId, storeSlug, shippingStatus, trackingNumber, buyerName, buyerEmail, buyerPhone, buyerAddress, itemDeletes, shippingOverride, discount } = body;
+  const { orderId, storeSlug, shippingStatus, trackingNumber, buyerName, buyerEmail, buyerPhone, buyerAddress, itemDeletes, shippingOverride, discount, sellerNotes } = body;
 
   if (typeof orderId !== 'string' || typeof storeSlug !== 'string') {
     return json({ error: 'Missing orderId or storeSlug' }, 400);
@@ -100,6 +110,21 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
         ...(typeof addr['zip'] === 'string' ? { zip: addr['zip'].trim() } : {}),
       };
     }
+  }
+  // Private seller-only notes (a LIST), scoped under this store's slug so they never
+  // touch another store's notes on a shared multi-store order. The client sends the
+  // full replacement list for this store; an empty list clears just this store's key.
+  // Each note trimmed + capped like the product note; the list itself is bounded.
+  if (Array.isArray(sellerNotes)) {
+    const current = getOrderById(orderId);
+    if (!current) return json({ error: 'Order not found' }, 404);
+    const cleaned = (sellerNotes as unknown[])
+      .map((n) => (typeof n === 'string' ? n.trim().slice(0, 2000) : ''))
+      .filter((n) => n !== '')
+      .slice(0, 50);
+    const notes = { ...(current.sellerNotes ?? {}) } as Record<string, string[]>;
+    if (cleaned.length) notes[storeSlug] = cleaned; else delete notes[storeSlug];
+    updates['sellerNotes'] = notes;
   }
 
   // Item deletes + shipping override + discount — all require recalculating subtotals
@@ -188,5 +213,5 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     notifyOrderStatusChanged(updated, prevStatus, { storeName: store.name, storeSlug: store.slug });
   }
 
-  return json({ ok: true, order: updated });
+  return json({ ok: true, order: scopeOrder(updated, storeSlug) });
 }

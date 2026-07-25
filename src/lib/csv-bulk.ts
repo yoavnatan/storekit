@@ -1,13 +1,18 @@
 import { findSpamKeyword, findKeywordStuffing } from './spam-filter.js';
 
 export interface CsvField {
-  key: 'id' | 'sku' | 'name' | 'price' | 'stock' | 'category' | 'subcategory1' | 'subcategory2' | 'tags' | 'description';
+  key: 'id' | 'sku' | 'name' | 'price' | 'stock' | 'category' | 'subcategory1' | 'subcategory2' | 'tags' | 'description' | 'group' | 'variantColor' | 'variantSize';
   he: string;
   en: string;
 }
 
 // Three separate columns (not one "ביגוד > גברים" path string) — much easier for a seller to
 // fill in a spreadsheet correctly than a delimiter syntax, and maps 1:1 onto MAX_CATEGORY_DEPTH.
+// The last three columns (group/color/size) are appended, never inserted mid-list, so a seller's
+// older files (and every existing fixture) with only the first ten columns still import cleanly —
+// missing trailing columns just read blank. Rows sharing a non-empty `group` merge into one
+// product with variants; see variant-csv.ts#mergeVariantGroups. On those rows the `sku`/`stock`
+// columns describe the individual combo (blue-L), not the product as a whole.
 export const CSV_FIELDS: CsvField[] = [
   { key: 'id',           he: 'מזהה (אל תשנה/תמחקי)', en: 'ID (do not edit/remove)' },
   { key: 'sku',          he: 'מק"ט',                  en: 'SKU' },
@@ -19,6 +24,9 @@ export const CSV_FIELDS: CsvField[] = [
   { key: 'subcategory2', he: 'תת קטגוריה 2',          en: 'Subcategory 2' },
   { key: 'tags',         he: 'תגיות (מופרדות בפסיק)', en: 'Tags (comma-separated)' },
   { key: 'description',  he: 'תיאור',                  en: 'Description' },
+  { key: 'group',        he: 'קבוצת גרסאות',          en: 'Variant group' },
+  { key: 'variantColor', he: 'צבע',                   en: 'Color' },
+  { key: 'variantSize',  he: 'מידה',                  en: 'Size' },
 ];
 
 export const BOM = '﻿';
@@ -69,23 +77,36 @@ export function toCsvCell(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-// Deliberately no size/color in the name — those are variants (edited only on the individual
-// product, never via CSV, see BulkProductInput) and don't belong baked into the name string.
-const TEMPLATE_EXAMPLE_ROW: Record<'he' | 'en', string[]> = {
-  he: ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'גברים', '', 'קיץ, מבצע', 'חולצת כותנה איכותית'],
-  en: ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'Men', '', 'summer, sale', 'High quality cotton shirt'],
+// A plain product leaves group/color/size blank; a variant product is several rows sharing one
+// `group` value, each carrying one color/size combo with its own sku + stock (the last three
+// columns). The three sweatshirt rows below are exactly the "blue-L / blue-S / orange-L" shape a
+// seller expects — one after another — so the format is self-documenting from the template alone.
+// Columns: id, sku, name, price, stock, category, subcategory1, subcategory2, tags, description, group, color, size
+const TEMPLATE_EXAMPLE_ROWS: Record<'he' | 'en', string[][]> = {
+  he: [
+    ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'גברים', '', 'קיץ, מבצע', 'חולצת כותנה איכותית', '', '', ''],
+    ['', 'SW-BL-L', 'סווטשירט', '129.9', '5', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'כחול', 'L'],
+    ['', 'SW-BL-S', 'סווטשירט', '129.9', '8', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'כחול', 'S'],
+    ['', 'SW-OR-L', 'סווטשירט', '129.9', '3', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'כתום', 'L'],
+  ],
+  en: [
+    ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'Men', '', 'summer, sale', 'High quality cotton shirt', '', '', ''],
+    ['', 'SW-BL-L', 'Sweatshirt', '129.9', '5', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Blue', 'L'],
+    ['', 'SW-BL-S', 'Sweatshirt', '129.9', '8', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Blue', 'S'],
+    ['', 'SW-OR-L', 'Sweatshirt', '129.9', '3', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Orange', 'L'],
+  ],
 };
 
-/** A fixed sample file (header + one example row) — always the same regardless of the store's
- *  own catalog, so a brand-new seller with zero products still has a concrete example of the
- *  expected format to start from (productsToCsv below would give them just a bare header). The
- *  example row's "id" column is blank, exactly like a real new-product row, so filling in real
- *  values and importing it as-is works correctly (creates one product) rather than needing to be
+/** A fixed sample file (header + example rows) — always the same regardless of the store's own
+ *  catalog, so a brand-new seller with zero products still has a concrete example of both the plain
+ *  and the variant format to start from (productsToCsv below would give them just a bare header).
+ *  Every example row's "id" column is blank, exactly like a real new-product row, so filling in
+ *  real values and importing as-is works correctly (creates the products) rather than needing rows
  *  deleted first. */
 export function templateCsv(lang: 'he' | 'en'): string {
   const header = CSV_FIELDS.map((f) => toCsvCell(f[lang])).join(',');
-  const example = TEMPLATE_EXAMPLE_ROW[lang].map(toCsvCell).join(',');
-  return BOM + [header, example].join('\r\n');
+  const examples = TEMPLATE_EXAMPLE_ROWS[lang].map((row) => row.map(toCsvCell).join(','));
+  return BOM + [header, ...examples].join('\r\n');
 }
 
 export interface RawImportRow {
@@ -99,7 +120,9 @@ export function mapHeader(headerRow: string[]): { map: Map<number, CsvField['key
   for (const f of CSV_FIELDS) {
     byLabel.set(f.he.replace('*', '').trim().toLowerCase(), f.key);
     byLabel.set(f.en.replace('*', '').trim().toLowerCase(), f.key);
-    byLabel.set(f.key, f.key);
+    // Lowercased so a header written as the literal key still matches (the lookup lowercases too);
+    // camelCase keys like `variantColor` would otherwise never resolve.
+    byLabel.set(f.key.toLowerCase(), f.key);
   }
   const map = new Map<number, CsvField['key']>();
   headerRow.forEach((raw, idx) => {
@@ -119,6 +142,35 @@ export function toRawRows(rows: string[][], headerMap: Map<number, CsvField['key
   }).filter((r) => Object.values(r.cells).some((v) => v));
 }
 
+export interface SkuMatchTarget {
+  id: string;
+  name: string;
+  price: number;
+}
+
+/** External-feed sync only (matchBySku): a store managing inventory elsewhere exports rows keyed by
+ *  its OWN sku, never our internal UUID — so a row whose sku already exists in the catalog IS an
+ *  update to that product. This resolves each such row's sku to the existing product's id (and
+ *  backfills a blank name/price from it, so an inventory feed can legitimately carry only sku+stock)
+ *  BEFORE validation — after which the whole downstream pipeline treats it as an ordinary id-matched
+ *  update, no other code path changed. A row whose sku is unknown is left untouched, so it flows
+ *  through as a create (name/price then required, as usual). An explicit id column always wins over
+ *  sku matching. Mutates and returns the same rows (a cheap in-place pre-pass, like toRawRows' output
+ *  is only ever consumed once). Never used by the normal UUID import — that path never sets the flag. */
+export function resolveSkuMatches(rows: RawImportRow[], catalogBySku: Map<string, SkuMatchTarget>): RawImportRow[] {
+  for (const r of rows) {
+    if (r.cells.id?.trim()) continue;
+    const sku = r.cells.sku?.trim();
+    if (!sku) continue;
+    const target = catalogBySku.get(sku);
+    if (!target) continue;
+    r.cells.id = target.id;
+    if (!r.cells.name?.trim()) r.cells.name = target.name;
+    if (!r.cells.price?.trim()) r.cells.price = String(target.price);
+  }
+  return rows;
+}
+
 export interface BulkProductInput {
   name: string;
   price: number;
@@ -128,8 +180,13 @@ export interface BulkProductInput {
   categoryPath?: string[];
   tags?: string[];
   description?: string;
-  /** Not used to match/find rows (only the id column is) — a plain data field like category/tags, kept in sync with the single-product editor. Uniqueness IS validated here (unlike other bulk fields) — see validateRows' sku-duplicate check — to match the same guarantee the single-product add/edit form enforces via isSkuTaken(). */
+  /** Not used to match/find rows (only the id column is) — a plain data field like category/tags, kept in sync with the single-product editor. Uniqueness IS validated here (unlike other bulk fields) — see validateRows' sku-duplicate check — to match the same guarantee the single-product add/edit form enforces via isSkuTaken(). On a variant-group row this is the individual combo's sku. */
   sku?: string;
+  /** Raw variant columns, consumed only by variant-csv.ts#mergeVariantGroups (which assembles the
+   *  product's variant matrix). Left on the per-row input so grouping stays a separate, testable
+   *  pass over already-validated rows rather than tangled into per-row validation. */
+  variantColor?: string;
+  variantSize?: string;
 }
 
 export interface BulkRowResult {
@@ -137,6 +194,9 @@ export interface BulkRowResult {
   action: 'create' | 'update' | 'error';
   id?: string;
   input?: BulkProductInput;
+  /** The row's raw `group` cell, kept even on error rows so mergeVariantGroups can still bucket a
+   *  broken row with its siblings (one bad row fails the whole variant product, not silently drops). */
+  group?: string;
   errors: string[];
 }
 
@@ -147,6 +207,7 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
   const skuClaimedInBatch = new Map<string, number>(); // sku → line that already claimed it in this same import
   return rawRows.map((raw): BulkRowResult => {
     const errors: string[] = [];
+    const group = raw.cells.group?.trim() || undefined;
     const id = raw.cells.id?.trim() || undefined;
     if (id && !existingIds.has(id)) errors.push('id-not-found');
 
@@ -188,7 +249,7 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
     if (findSpamKeyword(name, raw.cells.description, ...tagsForSpamCheck)) errors.push('spam-keyword');
     if (findKeywordStuffing(name, raw.cells.description, ...tagsForSpamCheck)) errors.push('keyword-stuffing');
 
-    if (errors.length) return { line: raw.line, action: 'error', id, errors };
+    if (errors.length) return { line: raw.line, action: 'error', id, group, errors };
 
     const categoryPath = categorySegments.filter(Boolean);
     const tags = raw.cells.tags ? raw.cells.tags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean) : undefined;
@@ -198,7 +259,9 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
       tags: tags?.length ? tags : undefined,
       description: raw.cells.description?.trim() || undefined,
       sku,
+      variantColor: raw.cells.variantColor?.trim() || undefined,
+      variantSize: raw.cells.variantSize?.trim() || undefined,
     };
-    return { line: raw.line, action: id ? 'update' : 'create', id, input, errors: [] };
+    return { line: raw.line, action: id ? 'update' : 'create', id, group, input, errors: [] };
   });
 }

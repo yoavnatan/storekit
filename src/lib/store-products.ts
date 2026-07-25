@@ -35,6 +35,13 @@ export interface StoreProduct {
   variants?: ProductVariant[];
   /** Optional per-combination stock override, keyed by variant-combo.ts#comboKey(). Combos with no entry fall back to `stock`. */
   variantStock?: Record<string, number>;
+  /** Optional per-combination SKU (Stock Keeping Unit), keyed by variant-combo.ts#comboKey().
+   *  A real store gives each purchasable combo (blue-L vs blue-S) its own code — that's literally
+   *  what a SKU is. The product-level `sku` still names the product as a whole; per-combo entries
+   *  take precedence in the feed (mpn). Set only via CSV bulk import today (item_group_id rows);
+   *  the single-product editor preserves but doesn't yet edit them. Uniqueness enforced per store
+   *  across BOTH `sku` and every `variantSku` value. */
+  variantSku?: Record<string, string>;
   /** Optional image override per color-variant option value (e.g. "אדום" → one of `images`) — lets the storefront swap the main photo when that color is picked instead of showing a generic gallery. Keyed by the raw option value, not a comboKey — a color choice implies the photo regardless of other dimensions (size, etc). */
   variantImages?: Record<string, string>;
   /** Admin-only kill switch (see admin-moderation.ts) — same purpose as Store.blocked
@@ -48,6 +55,11 @@ export interface StoreProduct {
    *  unlike a stock shortage — excluded from the Products tab's stock-alert count so an
    *  intentional take-down never nags (CURRENT_TASK.md, סשן א׳). */
   hidden?: boolean;
+  /** Private seller-only note ("things that help me handle this product"). Never
+   *  rendered on any public/storefront surface — dashboard/edit-form only, and never
+   *  leaked through /api/store-product, the feed, or JSON-LD (CURRENT_TASK.md, seller
+   *  dashboard item 2). Free text, length-capped on write. */
+  sellerNote?: string;
   createdAt: string;
 }
 
@@ -75,8 +87,10 @@ interface CreateProductInput {
   tags?: string[];
   sku?: string;
   specs?: ProductSpec[];
+  sellerNote?: string;
   variants?: ProductVariant[];
   variantStock?: Record<string, number>;
+  variantSku?: Record<string, string>;
   variantImages?: Record<string, string>;
 }
 
@@ -85,7 +99,7 @@ export function isSkuTaken(storeId: string, sku: string, excludeId?: string): bo
   return readProducts().some((p) => p.storeId === storeId && p.sku === sku && p.id !== excludeId);
 }
 
-export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, categoryId, tags, sku, specs, variants, variantStock, variantImages }: CreateProductInput): StoreProduct {
+export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, categoryId, tags, sku, specs, sellerNote, variants, variantStock, variantSku, variantImages }: CreateProductInput): StoreProduct {
   const products = readProducts();
   const storeProducts = products.filter((p) => p.storeId === storeId);
   const base = slugify(name) || 'product';
@@ -106,8 +120,10 @@ export function createProduct(storeId: string, { name, description = '', price, 
     ...(tags?.length ? { tags } : {}),
     ...(sku ? { sku } : {}),
     ...(specs?.length ? { specs } : {}),
+    ...(sellerNote ? { sellerNote } : {}),
     ...(variants?.length ? { variants } : {}),
     ...(variantStock && Object.keys(variantStock).length ? { variantStock } : {}),
+    ...(variantSku && Object.keys(variantSku).length ? { variantSku } : {}),
     ...(variantImages && Object.keys(variantImages).length ? { variantImages } : {}),
     createdAt: new Date().toISOString(),
   };

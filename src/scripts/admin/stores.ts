@@ -5,6 +5,25 @@ import { escapeHtml } from '../../lib/html-escape.js';
 const PANEL_ID = 'dash-panel-stores';
 
 const storesPortal = createFloatingPortal('admin-stores-toolbar-portal');
+// Separate module-level singleton for the per-row actions kebab (the sort
+// portal above is a different trigger; sharing one would fight over currentTrigger).
+const storesActionsPortal = createFloatingPortal('admin-stores-actions-portal');
+
+// Shared item chrome for the kebab menu — the site's dropdown design system
+// (same product-menu__item styling the sort dropdowns above use). Colour is left
+// off the base so each action can carry its own (accent links, red block) the way
+// the old inline row links did — set it per item, never alongside another colour.
+const MENU_ITEM_BASE =
+  'product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+const MENU_ITEM = `${MENU_ITEM_BASE} [color:var(--color-text)]`;
+const MENU_DIVIDER = 'product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]';
+const CHEVRON_DRILL = '<svg class="ms-auto shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>';
+const CHEVRON_BACK = '<svg class="shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
+
+// Promotion-weight levels, chosen directly from a sub-menu (not cycled a step at
+// a time). Index = the weight stored server-side. Kept in sync with the name
+// badge label in AdminStoresPanel.astro / promoLabel below.
+const PROMO_LEVEL_LABELS = ['ללא קידום', 'קידום', 'קידום חזק'];
 
 type StoreSortCol = 'name' | 'revenue' | 'products';
 const STORE_SORT_OPTIONS: { col: StoreSortCol; dir: 'asc' | 'desc'; label: string }[] = [
@@ -64,13 +83,11 @@ function wireStoresToolbar(): void {
 }
 
 // Stores tab: flat, top-level list of every store across all sellers (see
-// AdminStoresPanel.astro's header comment). Deliberately does NOT reuse the
-// Sellers tab's `.admin-block-toggle` class/selector — AdminSellersPanel's
-// own initAdminSellersPanel() wires that class document-wide regardless of
-// which tab is visible (both panels' markup is always in the DOM, just
-// hidden), so sharing the class would double-bind a click handler to the
-// same button and fire the moderation request twice. This file owns its own
-// class (`.admin-store-row-toggle`) and DOM-update logic instead.
+// AdminStoresPanel.astro's header comment). Block/unblock lives in this file's
+// own per-row kebab menu (initStoreRowActions) with its own DOM-update logic —
+// deliberately NOT sharing the Sellers tab's moderation wiring, since both
+// panels' markup is always in the DOM (just hidden) and a shared selector would
+// double-bind and fire the moderation request twice.
 // Search round-trips to the server (see admin-stats.ts#filterStoreRows) so it
 // stays correct once pagination means most stores aren't in the DOM at all.
 function initStoreSearch(): void {
@@ -91,22 +108,24 @@ function initStoreSearch(): void {
 // (ConfirmModal.astro, `confirm:open`) rather than firing on a single click.
 // The fetch runs inside onConfirm — the dialog keeps its busy dot-pulse until
 // it resolves. Optimistic DOM update on success, same as before.
-async function runBlockToggle(btn: HTMLButtonElement): Promise<void> {
-  const wasBlocked = btn.dataset.blocked === '1';
+// `trigger` is the row's kebab button — it now carries the block state
+// (data-blocked) the removed inline button used to hold, and its .admin-store-row
+// ancestor still hosts the name badge to keep in sync.
+async function runBlockToggle(trigger: HTMLElement): Promise<void> {
+  const wasBlocked = trigger.dataset.blocked === '1';
   const action = wasBlocked ? 'unblock-store' : 'block-store';
   try {
     const res = await fetch('/api/admin/moderation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, storeSlug: btn.dataset.storeSlug }),
+      body: JSON.stringify({ action, storeSlug: trigger.dataset.storeSlug }),
     });
     if (!res.ok) throw new Error('request failed');
     const { blocked } = await res.json() as { blocked: boolean };
-    btn.dataset.blocked = blocked ? '1' : '';
-    btn.textContent = blocked ? 'בטל חסימה' : 'חסום חנות';
+    trigger.dataset.blocked = blocked ? '1' : '';
 
-    const nameEl = btn.closest('.admin-store-row')?.querySelector('.admin-store-row__name');
-    const existingBadge = nameEl?.querySelector('.admin-badge');
+    const nameEl = trigger.closest('.admin-store-row')?.querySelector('.admin-store-row__name');
+    const existingBadge = nameEl?.querySelector('.admin-badge--failed');
     if (blocked && !existingBadge) {
       const badge = document.createElement('span');
       badge.className = 'admin-badge admin-badge--failed';
@@ -120,30 +139,26 @@ async function runBlockToggle(btn: HTMLButtonElement): Promise<void> {
   }
 }
 
-function initStoreBlockToggles(): void {
-  document.querySelectorAll<HTMLButtonElement>('.admin-store-row-toggle').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const wasBlocked = btn.dataset.blocked === '1';
-      const name = btn.dataset.storeName ?? '';
-      window.dispatchEvent(new CustomEvent('confirm:open', {
-        detail: wasBlocked
-          ? {
-              title: 'לבטל את חסימת החנות?',
-              message: `"${name}" תחזור להיות גלויה באתר.`,
-              okLabel: 'בטל חסימה',
-              workingLabel: 'מבטל…',
-              onConfirm: () => runBlockToggle(btn),
-            }
-          : {
-              title: 'לחסום את החנות?',
-              message: `"${name}" תוסתר מכל האתר והמוכר/ת יקבל/תקבל על כך התראה.`,
-              okLabel: 'חסום חנות',
-              workingLabel: 'חוסם…',
-              onConfirm: () => runBlockToggle(btn),
-            },
-      }));
-    });
-  });
+function openStoreBlockConfirm(trigger: HTMLElement): void {
+  const wasBlocked = trigger.dataset.blocked === '1';
+  const name = trigger.dataset.storeName ?? '';
+  window.dispatchEvent(new CustomEvent('confirm:open', {
+    detail: wasBlocked
+      ? {
+          title: 'לבטל את חסימת החנות?',
+          message: `"${name}" תחזור להיות גלויה באתר.`,
+          okLabel: 'בטל חסימה',
+          workingLabel: 'מבטל…',
+          onConfirm: () => runBlockToggle(trigger),
+        }
+      : {
+          title: 'לחסום את החנות?',
+          message: `"${name}" תוסתר מכל האתר והמוכר/ת יקבל/תקבל על כך התראה.`,
+          okLabel: 'חסום חנות',
+          workingLabel: 'חוסם…',
+          onConfirm: () => runBlockToggle(trigger),
+        },
+  }));
 }
 
 // ── Silent "shop-window" promotion (CURRENT_TASK.md → סשן ב׳) ─────────────
@@ -157,46 +172,100 @@ const PROMO_LABELS = ['קדם חנות', 'קידום', 'קידום חזק'];
 const MAX_PROMO = 2;
 const promoLabel = (w: number): string => PROMO_LABELS[Math.max(0, Math.min(MAX_PROMO, w))] ?? PROMO_LABELS[0]!;
 
-async function runPromoCycle(btn: HTMLButtonElement): Promise<void> {
-  const current = Number(btn.dataset.weight) || 0;
-  const next = current >= MAX_PROMO ? 0 : current + 1;
-  btn.disabled = true;
+// `trigger` is the row's kebab button — it carries data-weight. Sets the promo
+// weight to the level the admin picked directly (no cycling) and mirrors it in
+// the name badge; the menu label refreshes from data-weight on its next open.
+async function runPromoSet(trigger: HTMLElement, weight: number): Promise<void> {
+  const clamped = Math.max(0, Math.min(MAX_PROMO, weight));
+  if (clamped === (Number(trigger.dataset.weight) || 0)) return; // no-op on re-pick
   try {
     const res = await fetch('/api/admin/promote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storeSlug: btn.dataset.storeSlug, weight: next }),
+      body: JSON.stringify({ storeSlug: trigger.dataset.storeSlug, weight: clamped }),
     });
     if (!res.ok) throw new Error('request failed');
-    const { weight } = await res.json() as { weight: number };
-    btn.dataset.weight = String(weight);
-    btn.textContent = promoLabel(weight);
-    btn.classList.toggle('admin-link--promo', weight > 0);
+    const { weight: saved } = await res.json() as { weight: number };
+    trigger.dataset.weight = String(saved);
 
     // Mirror the state in the name badge next to the store title.
-    const nameEl = btn.closest('.admin-store-row')?.querySelector('.admin-store-row__name');
+    const nameEl = trigger.closest('.admin-store-row')?.querySelector('.admin-store-row__name');
     let badge = nameEl?.querySelector<HTMLElement>('[data-promo-badge]');
-    if (weight > 0) {
+    if (saved > 0) {
       if (!badge && nameEl) {
         badge = document.createElement('span');
         badge.className = 'admin-badge admin-badge--promo';
         badge.dataset.promoBadge = '';
         nameEl.appendChild(badge);
       }
-      if (badge) badge.textContent = promoLabel(weight);
+      if (badge) badge.textContent = promoLabel(saved);
     } else if (badge) {
       badge.remove();
     }
   } catch {
     alert('הפעולה נכשלה, נסו שוב.');
-  } finally {
-    btn.disabled = false;
   }
 }
 
-function initStorePromoToggles(): void {
-  document.querySelectorAll<HTMLButtonElement>('.admin-store-row-promote').forEach((btn) => {
-    btn.addEventListener('click', () => void runPromoCycle(btn));
+// Per-row kebab: opens the shared floating-portal menu holding every action that
+// used to crowd the row inline. Each action keeps its old colour (accent links,
+// red block). "רמת קידום" drills into a sub-menu to pick a level directly rather
+// than cycling one step per click. Content is rebuilt from the trigger's own
+// dataset each open, so a just-changed promo weight / block state shows right.
+function storeActionsMenuHtml(t: HTMLElement): string {
+  const slug = encodeURIComponent(t.dataset.storeSlug ?? '');
+  const weight = Number(t.dataset.weight) || 0;
+  const blocked = t.dataset.blocked === '1';
+  const link = `${MENU_ITEM_BASE} [color:var(--color-accent)]`;
+  return [
+    `<a class="${link}" href="/admin/store/${slug}/performance">ביצועים</a>`,
+    `<a class="${link}" href="/admin/store/${slug}/advertising">פרסום</a>`,
+    `<a class="${link}" href="/store/${slug}" target="_blank" rel="noopener">צפה בחנות</a>`,
+    `<div class="${MENU_DIVIDER}"></div>`,
+    `<button type="button" class="${MENU_ITEM_BASE} [color:var(--color-accent)]" data-action="promote-menu"><span>רמת קידום${weight > 0 ? `: ${PROMO_LEVEL_LABELS[weight]}` : ''}</span>${CHEVRON_DRILL}</button>`,
+    `<button type="button" class="${MENU_ITEM_BASE} [color:var(--color-danger)]" data-action="block">${blocked ? 'בטל חסימה' : 'חסום חנות'}</button>`,
+  ].join('');
+}
+
+// Sub-menu: the three promo levels, current one marked, + a back row.
+function storePromoLevelsHtml(t: HTMLElement): string {
+  const weight = Number(t.dataset.weight) || 0;
+  const back = `<button type="button" class="${MENU_ITEM}" data-promo-back>${CHEVRON_BACK}<span>רמת קידום</span></button><div class="${MENU_DIVIDER}"></div>`;
+  const levels = PROMO_LEVEL_LABELS.map((lbl, w) =>
+    `<button type="button" class="${MENU_ITEM_BASE} ${w === weight ? '[color:var(--color-accent)] font-bold' : '[color:var(--color-text)]'}" data-promo-level="${w}">${lbl}</button>`
+  ).join('');
+  return back + levels;
+}
+
+function openStoreActionsMenu(trigger: HTMLElement): void {
+  storesActionsPortal.open(trigger, '13rem', () => storeActionsMenuHtml(trigger), (p) => {
+    p.querySelector('[data-action="promote-menu"]')?.addEventListener('click', () => openStorePromoLevels(trigger));
+    p.querySelector('[data-action="block"]')?.addEventListener('click', () => {
+      storesActionsPortal.close();
+      openStoreBlockConfirm(trigger);
+    });
+    // Links navigate on their own (full page loads, not same-tab /admin? links).
+  });
+}
+
+function openStorePromoLevels(trigger: HTMLElement): void {
+  storesActionsPortal.open(trigger, '13rem', () => storePromoLevelsHtml(trigger), (p) => {
+    p.querySelector('[data-promo-back]')?.addEventListener('click', () => openStoreActionsMenu(trigger));
+    p.querySelectorAll<HTMLButtonElement>('[data-promo-level]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        storesActionsPortal.close();
+        void runPromoSet(trigger, Number(btn.dataset.promoLevel) || 0);
+      });
+    });
+  });
+}
+
+function initStoreRowActions(): void {
+  document.querySelectorAll<HTMLButtonElement>('.admin-store-row__kebab').forEach((trigger) => {
+    trigger.addEventListener('click', () => {
+      if (storesActionsPortal.currentTrigger() === trigger) { storesActionsPortal.close(); return; }
+      openStoreActionsMenu(trigger);
+    });
   });
 }
 
@@ -419,8 +488,7 @@ function initStoresFilterAutoReset(): void {
 
 export function initAdminStoresPanel(): void {
   initStoreSearch();
-  initStoreBlockToggles();
-  initStorePromoToggles();
+  initStoreRowActions();
   initStoreProductLists();
   wireStoresToolbar();
   initStoresFilterAutoReset();

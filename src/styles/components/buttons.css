@@ -29,6 +29,13 @@
 }
 .btn--accent:hover { background: linear-gradient(135deg, var(--color-accent-dark), #4f78c8); }
 
+/* Solid danger fill. Defined here (not left to a per-button `!bg-*` utility) because .btn sets a
+   gradient background-IMAGE — a utility that only overrides background-COLOR leaves the gradient on
+   top, hiding the red. The `background` shorthand here resets that image. Later source order than
+   .btn (same specificity) wins. Used by the bulk-delete button + ConfirmModal's confirm. */
+.btn--danger { background: var(--color-danger); color: #fff; }
+.btn--danger:hover { background: color-mix(in srgb, var(--color-danger) 88%, #000); }
+
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn:disabled.btn--confirmed { opacity: 1; cursor: default; }
 /* Briefly disabled while an async action is in flight (e.g. pause/resume a

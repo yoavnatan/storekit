@@ -7,10 +7,18 @@ import { decodeList } from './admin-nav.js';
 // search+sort+filter have to run here over the full order list before
 // slicing to a page, the same way admin-orders-filter.ts already does for
 // the admin dashboard's own Orders tab.
-export type SellerOrderSortCol = 'date' | 'amount' | 'status';
+export type SellerOrderSortCol = 'date' | 'amount' | 'urgency';
 export type SellerOrderSortDir = 'asc' | 'desc';
 
-const STATUS_RANK: Record<string, number> = { pending: 0, processing: 1, ready: 2, shipped: 3, delivered: 4 };
+// Urgency grouping for the "לפי דחיפות" sort. Group 0 = the seller still owes a
+// shipping action (pending/processing/ready) → these float to the very top and,
+// within the group, sort OLDEST-FIRST so the most overdue (escalated red/amber
+// by order-age.ts) sit above fresh new ones. Then shipped (out of the seller's
+// hands), then delivered (done — only present if the user explicitly filtered
+// them in), then cancelled. Mirrors the order-age escalation model.
+const URGENCY_GROUP: Record<string, number> = {
+  pending: 0, processing: 0, ready: 0, shipped: 1, delivered: 2, cancelled: 3,
+};
 export const ORDER_ACTIVE_STATUSES = ['pending', 'processing', 'ready', 'shipped'];
 
 export interface SellerOrderQuery {
@@ -20,7 +28,7 @@ export interface SellerOrderQuery {
   shippingStatus: string[];
 }
 
-const VALID_SORT_COLS = new Set<string>(['date', 'amount', 'status']);
+const VALID_SORT_COLS = new Set<string>(['date', 'amount', 'urgency']);
 
 export function parseSellerOrderQuery(sp: URLSearchParams): SellerOrderQuery {
   const [rawCol, rawDir] = (sp.get('osort') ?? 'date:desc').split(':');
@@ -65,7 +73,16 @@ export function filterAndSortSellerOrders(orders: Order[], storeSlug: string, qu
     let cmp: number;
     switch (query.sortCol) {
       case 'amount': cmp = orderAmount(a, storeSlug) - orderAmount(b, storeSlug); break;
-      case 'status': cmp = (STATUS_RANK[a.shippingStatus] ?? 99) - (STATUS_RANK[b.shippingStatus] ?? 99); break;
+      case 'urgency': {
+        const ga = URGENCY_GROUP[a.shippingStatus] ?? 9;
+        const gb = URGENCY_GROUP[b.shippingStatus] ?? 9;
+        if (ga !== gb) { cmp = ga - gb; break; }
+        // Same group: owe-action (group 0) → oldest first (most overdue on top);
+        // every other group → newest first.
+        const older = a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
+        cmp = ga === 0 ? older : -older;
+        break;
+      }
       default:       cmp = a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
     }
     return cmp * dir;

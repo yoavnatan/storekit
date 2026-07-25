@@ -44,16 +44,19 @@ textarea.input { resize: vertical; }
 
 .products-header__actions {
   display: flex;
-  align-items: center;
+  /* stretch (not center) so the icon-only toggles match the height of the
+     text "add product" button — a shorter icon button next to it looks off. */
+  align-items: stretch;
   gap: 0.35rem;
   flex-wrap: wrap;
 }
 
-.add-product-btn__icon { font-size: 1rem; line-height: 1; font-weight: 700; }
+.add-product-btn__icon { display: inline-flex; flex-shrink: 0; }
 
 .products-header__sep {
   width: 1px;
   height: 1.15rem;
+  align-self: center; /* keep the fixed-height divider centred in the stretched row */
   background: var(--color-border);
   flex-shrink: 0;
   margin-inline: 0.1rem;
@@ -124,6 +127,30 @@ textarea.input { resize: vertical; }
    `overflow-y:auto` (CSS Overflow spec), making it a new sticky containing
    block that detaches the table's own sticky header. */
 @media (max-width: 999px) {
+  /* Toolbar stays ONE line across the whole table range (tablet + small desktop),
+     the zone where the buttons' text would otherwise wrap to a 2nd line: it scrolls
+     instead of wrapping, and once products are selected every button drops its label
+     to icon-only so all six fit comfortably. (True mobile ≤640 additionally keeps
+     CSV/sync icon-only even when idle — see that block.) */
+  .products-header { flex-wrap: nowrap; }
+  .products-header__title { flex-shrink: 0; }
+  .products-header__actions {
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .products-header__actions::-webkit-scrollbar { display: none; }
+  .products-header__actions > * { flex-shrink: 0; }
+  /* Intermediate/tablet — step 1 of the compaction: while selecting, only the three
+     ALWAYS-present buttons (add, CSV, sync) drop their labels. That reclaims enough room
+     for the bulk-action buttons (edit/upload/delete) to keep their text here, where clarity
+     on a destructive action matters most. Those compact only at the mobile step below. */
+  .products-header--selecting #toggle-add-form .add-product-btn__label,
+  .products-header--selecting #toggle-csv-panel .bulk-btn__label,
+  .products-header--selecting #toggle-feed-panel .bulk-btn__label { display: none; }
+
   .products-table { table-layout: fixed; }
   .products-table td { padding-inline: 0.4rem; padding-block: 0.6rem; }
   .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-inline: 0.4rem; }
@@ -136,8 +163,13 @@ textarea.input { resize: vertical; }
      label, which is what actually needs to stay legible. */
   .products-table .sort-icon { display: none; }
   .products-table .row-num { display: none; }
-  .products-table .check-col     { width: 4%; }
-  .products-table .thumb-col     { width: 7%; }
+  /* Fixed width + never clip: 4% shrank below the 15px checkbox at the narrow end of this range,
+     and the th `overflow:hidden` above then erased part of it. The select-all must always be visible. */
+  .products-table .check-col     { width: 2.25rem; overflow: visible; }
+  /* Fixed width, not a %: the thumbnail (.thumb-wrap) is a fixed 42px, so a percentage column
+     that shrinks below ~55px (thumb + cell padding) let the image overflow into the name cell and
+     ride over the product title. A fixed width sized to the thumb keeps it in its own lane. */
+  .products-table .thumb-col     { width: 3.6rem; }
   .products-table .name-col      { width: 13%; }
   .products-table .cat-col       { width: 15%; }
   .products-table .sku-col       { width: 9%; }
@@ -690,28 +722,18 @@ textarea.input { resize: vertical; }
   #dash-main-card .dash-tabs { --dash-tab-pad: 0.65rem; }
   #dash-main-card .dash-panel { padding-inline: 0.65rem; }
 
-  /* Keep title + actions on one row; when the buttons don't all fit, the
-     actions strip scrolls horizontally instead of wrapping the whole
-     toolbar to a 2nd line (which caused a jarring layout jump on select). */
-  .products-header { flex-wrap: nowrap; }
-  .products-header__title { flex-shrink: 0; }
-  .products-header__actions {
-    flex-wrap: nowrap;
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-  .products-header__actions::-webkit-scrollbar { display: none; }
-  .products-header__actions > * { flex-shrink: 0; }
+  /* Mobile idle: CSV + external-sync go icon-only even when nothing's selected — their
+     labels are the main idle-state space hog. Add-product keeps its label (primary action). */
+  #toggle-csv-panel .bulk-btn__label,
+  #toggle-feed-panel .bulk-btn__label { display: none; }
 
-  /* Selecting products → icon-only buttons so the toolbar keeps its single
-     line; keep the same button height as the text version, just bigger,
-     easier-to-tap icons instead of squeezing the padding down. */
+  /* Mobile — step 2 of the compaction: while selecting, the bulk-action buttons
+     (edit/upload/delete) now join add/CSV/sync as icon-only, with bigger tap targets, so
+     the whole six-button strip fits one line at phone widths. */
   .products-header--selecting .add-product-btn__label,
   .products-header--selecting .bulk-btn__label { display: none; }
-  .products-header--selecting .bulk-btn svg { width: 17px; height: 17px; }
-  .products-header--selecting .add-product-btn__icon { font-size: 1.3rem; }
+  .products-header--selecting .bulk-btn svg,
+  .products-header--selecting .add-product-btn svg { width: 17px; height: 17px; }
 
   /* Table → block list */
   .products-table          { display: block; }

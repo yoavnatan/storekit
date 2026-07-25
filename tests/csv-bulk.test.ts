@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseCsv, mapHeader, toRawRows, validateRows, templateCsv, CSV_FIELDS } from '../src/lib/csv-bulk.js';
-import { productsToCsv } from '../src/lib/store-products-bulk.js';
+import { productsToCsv, productsToFeedJson } from '../src/lib/store-products-bulk.js';
 import type { StoreProduct } from '../src/lib/store-products.js';
 import type { StoreCategory } from '../src/lib/store-categories.js';
 
@@ -220,23 +220,53 @@ describe('productsToCsv formula-injection sanitization', () => {
 });
 
 describe('templateCsv', () => {
-  it('produces a header + one example row that parses as a valid, importable create (both languages)', () => {
+  it('produces a header + example rows (one standalone product + a 3-row variant group) that all validate cleanly (both languages)', () => {
     for (const lang of ['he', 'en'] as const) {
       const rows = parseCsv(templateCsv(lang));
-      expect(rows.length).toBe(2);
+      expect(rows.length).toBe(5); // header + standalone + 3 variant rows
       const { map, missing } = mapHeader(rows[0]!);
       expect(missing).toEqual([]);
       const raw = toRawRows(rows, map);
-      expect(raw.length).toBe(1);
-      const [result] = validateRows(raw, new Set());
-      expect(result!.action).toBe('create');
-      expect(result!.errors).toEqual([]);
-      expect(result!.input?.name).toBeTruthy();
-      expect(result!.input?.price).toBeGreaterThan(0);
+      expect(raw.length).toBe(4);
+      const results = validateRows(raw, new Set());
+      expect(results.every((r) => r.action === 'create' && r.errors.length === 0)).toBe(true);
+      // The three variant rows share one non-empty group value; the standalone one has none.
+      const groups = results.map((r) => r.group).filter(Boolean);
+      expect(groups.length).toBe(3);
+      expect(new Set(groups).size).toBe(1);
+      expect(results[0]!.group).toBeUndefined();
     }
   });
 });
 
+describe('productsToFeedJson (outbound feed)', () => {
+  const categories: StoreCategory[] = [
+    { id: 'c1', storeId: 's1', name: 'Clothing', parentId: null, order: 0, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'c2', storeId: 's1', name: 'Men', parentId: 'c1', order: 0, createdAt: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  it('serializes a plain product with a nested category path and current stock', () => {
+    const products: StoreProduct[] = [{
+      id: 'p1', storeId: 's1', slug: 'shirt', name: 'Shirt', description: 'nice', price: 49.9, stock: 7,
+      categoryId: 'c2', tags: ['summer'], sku: 'SH-1', createdAt: '2026-01-01T00:00:00.000Z',
+    }];
+    expect(productsToFeedJson(products, categories)).toEqual([{
+      id: 'p1', sku: 'SH-1', name: 'Shirt', price: 49.9, stock: 7,
+      categoryPath: ['Clothing', 'Men'], tags: ['summer'], description: 'nice',
+    }]);
+  });
+
+  it('includes the variant matrix (options + per-combo stock/sku) when present', () => {
+    const products: StoreProduct[] = [{
+      id: 'p2', storeId: 's1', slug: 'tee', name: 'Tee', description: '', price: 30, stock: 5,
+      variants: [{ name: 'צבע', options: ['כחול'] }],
+      variantStock: { 'צבע:כחול': 5 }, variantSku: { 'צבע:כחול': 'TEE-BL' },
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }];
+    const [json] = productsToFeedJson(products, categories);
+    expect(json!.variants).toEqual([{ name: 'צבע', options: ['כחול'], stock: { 'צבע:כחול': 5 }, sku: { 'צבע:כחול': 'TEE-BL' } }]);
+  });
+});
 describe('productsToCsv round trip', () => {
   it('re-parses to the same field values, including tags with embedded commas and sku', () => {
     const categories: StoreCategory[] = [{
