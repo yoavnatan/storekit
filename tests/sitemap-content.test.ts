@@ -26,10 +26,10 @@ describe('/sitemap-content.xml', () => {
 
     const xml = await res.text();
     expect(xml).toContain('<urlset');
-    // The store page must be present…
-    expect(xml).toMatch(/<loc>https?:\/\/[^<]*\/store\/acme<\/loc>/);
+    // The store page must be present… (root-level store URL: /<slug>)
+    expect(xml).toMatch(/<loc>https?:\/\/[^<]*\/acme<\/loc>/);
     // …and its product page (nested under the store slug) — the whole point.
-    expect(xml).toMatch(/<loc>https?:\/\/[^<]*\/store\/acme\/blue-widget<\/loc>/);
+    expect(xml).toMatch(/<loc>https?:\/\/[^<]*\/acme\/blue-widget<\/loc>/);
     // lastmod is derived from createdAt (date part only).
     expect(xml).toContain('<lastmod>2026-03-04</lastmod>');
   });

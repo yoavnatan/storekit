@@ -25,7 +25,7 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   const storeLines = shown
     .map((s) => {
       const note = (s.tagline || s.description || '').trim().replace(/\s+/g, ' ').slice(0, 120);
-      return `- [${s.name}](${baseUrl}/store/${s.slug})${note ? `: ${note}` : ''}`;
+      return `- [${s.name}](${baseUrl}/${s.slug})${note ? `: ${note}` : ''}`;
     })
     .join('\n');
 

@@ -39,7 +39,7 @@ function isLegitReturn(slug: string): boolean {
     if (sessionStorage.getItem(RETURN_FLAG) === slug) return true;
     const ref = new URL(document.referrer);
     if (ref.origin !== location.origin) return false;
-    return ref.pathname.startsWith(`/store/${slug}/`) || ref.pathname.startsWith('/checkout');
+    return ref.pathname.startsWith(`/${slug}/`) || ref.pathname.startsWith('/checkout');
   } catch {
     return false;
   }

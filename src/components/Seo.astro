@@ -20,14 +20,18 @@ const {
   jsonLd = null,
   productPrice,
   productCurrency = 'ILS',
+  canonical: canonicalOverride,
 } = Astro.props;
 
 const fullTitle = title ? `${title} | ${store.name}` : `${store.name} — ${store.tagline}`;
 // Canonical is always the query-stripped, trailing-slash-free path (root stays "/"),
 // so filtered/sorted views (?category=&sort=) and any slash variant all consolidate
 // to one indexable URL — matches the site's trailingSlash:'never' policy.
+// A page may pass an explicit `canonical` to point elsewhere — a store/product with an active
+// custom domain sets it to the seller's own domain (see custom-domain.ts → storeCanonicalUrl), so
+// the SEO credit consolidates there instead of on the platform path.
 const canonicalPath = Astro.url.pathname.replace(/\/+$/, '') || '/';
-const canonical = new URL(canonicalPath, store.url).href;
+const canonical = canonicalOverride ?? new URL(canonicalPath, store.url).href;
 const ogImage = image ? new URL(image, store.url).href : '';
 ---
 

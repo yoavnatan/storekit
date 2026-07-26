@@ -69,7 +69,7 @@ const strEmpty   = t.store.noProductsFound;
     <!-- Logo / store home -->
     <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
       {storeMode && storeName && storeSlug
-        ? <a href={`/store/${storeSlug}`} class="logo store-name-link" aria-label={storeName}>
+        ? <a href={`/${storeSlug}`} class="logo store-name-link" aria-label={storeName}>
             <span class="store-name-text">{storeName}</span>
           </a>
         : <a href="/" class="logo" aria-label={store.name}>
@@ -851,7 +851,7 @@ const strEmpty   = t.store.noProductsFound;
           <ul class="hsd-results" role="listbox">
             ${stores.map(s => `
               <li role="option">
-                <a class="hsd-result-item" href="/store/${s.slug}">
+                <a class="hsd-result-item" href="/${s.slug}">
                   ${storeAvatarHtml(s.name, s.image)}
                   <span class="hsd-result-name">${escHtml(s.name)}</span>
                   ${s.tagline ? `<span class="hsd-result-price" style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.tagline)}</span>` : ''}
@@ -863,7 +863,7 @@ const strEmpty   = t.store.noProductsFound;
           <ul class="hsd-results" role="listbox">
             ${products.map(p => `
               <li role="option">
-                <a class="hsd-result-item" href="/store/${p.storeSlug}/${p.slug}">
+                <a class="hsd-result-item" href="/${p.storeSlug}/${p.slug}">
                   ${p.image
                     ? `<img class="hsd-result-img" src="${p.image}" alt="${escHtml(p.name)}" width="56" height="56" loading="lazy">`
                     : `<div class="hsd-result-img-placeholder" aria-hidden="true">${STORE_ICON}</div>`
@@ -965,7 +965,7 @@ const strEmpty   = t.store.noProductsFound;
 
     function navigateToProduct(slug: string, query: string) {
       saveRecent(query);
-      window.location.href = `/store/${storeSlug}/${slug}`;
+      window.location.href = `/${storeSlug}/${slug}`;
     }
 
     function applySearch(q: string) {
@@ -978,7 +978,7 @@ const strEmpty   = t.store.noProductsFound;
         window.dispatchEvent(new CustomEvent('store-search:global', { detail: { q } }));
         hideDropdown();
       } else {
-        window.location.href = `/store/${storeSlug}?q=${encodeURIComponent(q)}`;
+        window.location.href = `/${storeSlug}?q=${encodeURIComponent(q)}`;
       }
     }
 
@@ -1034,7 +1034,7 @@ const strEmpty   = t.store.noProductsFound;
         dropdown.innerHTML = `<ul class="hsd-results" role="listbox">
           ${hits.map((p) => `
             <li role="option">
-              <a class="hsd-result-item" href="/store/${storeSlug}/${p.slug}" data-slug="${p.slug}">
+              <a class="hsd-result-item" href="/${storeSlug}/${p.slug}" data-slug="${p.slug}">
                 ${p.image
                   ? `<img class="hsd-result-img" src="${p.image}" alt="${escH(p.name)}" width="56" height="56" loading="lazy">`
                   : `<div class="hsd-result-img-placeholder" aria-hidden="true">${PLACEHOLDER_SVG}</div>`
@@ -1070,7 +1070,7 @@ const strEmpty   = t.store.noProductsFound;
           // was active before this search bar overrode it, see store-search:global.
           window.dispatchEvent(new CustomEvent('store-search:global', { detail: { q: '' } }));
         } else {
-          window.location.href = `/store/${storeSlug}`;
+          window.location.href = `/${storeSlug}`;
           return;
         }
         renderRecents();

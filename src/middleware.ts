@@ -5,17 +5,16 @@ import { logError, resolveErrorContext } from './lib/error-log.js';
 import { recordPageView } from './lib/store-pageviews.js';
 import { recordProductView } from './lib/product-pageviews.js';
 import { recordAnalyticsEvent } from './lib/analytics.js';
-import { getStoreBySlug } from './lib/stores.js';
+import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/stores.js';
+import { resolveCustomDomainRewrite, isUnclaimedCustomHost } from './lib/custom-domain.js';
 import { getProductBySlug } from './lib/store-products.js';
 
-// Store performance's visitor count (seller dashboard) taps every real GET to
-// a store's own pages here rather than each page component calling it
-// separately — one place to keep in sync as store routes are added/renamed.
-const STORE_PATH_RE = /^\/store\/([^/]+)(?:\/|$)/;
-// A product page is exactly `/store/<storeSlug>/<productSlug>` (trailing slash
-// tolerated). The per-product drill-down (seller performance tab) taps its views
-// here for the same single-source-of-truth reason as the store counter above.
-const PRODUCT_PATH_RE = /^\/store\/([^/]+)\/([^/]+)\/?$/;
+// Stores live at the platform ROOT now — a store home is `/<slug>` and a product page is
+// `/<slug>/<product>` (no `/store/` prefix). So we can't tell a store path from a real platform
+// route (/checkout, /search, …) by shape alone: the first segment is resolved against the store
+// registry (getStoreBySlug), and reserved routes are skipped up front. This single tap keeps the
+// seller dashboard's visitor + per-product view counts in one place.
+const STORE_PATH_RE = /^\/([^/]+)(?:\/([^/]+))?\/?$/;
 
 // Stable first-party visitor id — analytics only, httpOnly so it never reaches
 // client JS or a third party. Lets store performance tell unique visitors apart
@@ -45,7 +44,30 @@ function resolveVisitorId(cookies: AstroCookies): string {
 export const onRequest = defineMiddleware(async (context, next) => {
   try {
     const isGet = context.request.method === 'GET';
-    const pathname = new URL(context.request.url).pathname;
+    const reqUrl = new URL(context.request.url);
+    const pathname = reqUrl.pathname;
+
+    // Custom-domain routing (see custom-domain.ts). A seller's own domain (shop.mybrand.co.il),
+    // once verified, serves their store from the root. Cloudflare-for-SaaS proxies the request to
+    // this origin preserving the original Host, so we resolve Host → store here and rewrite the
+    // path to the internal /<slug> route. Only page-like requests (no file extension) are
+    // even considered, so assets skip the lookup entirely; /api and deep paths pass
+    // through untouched (resolver returns null), which also prevents a rewrite loop on re-entry.
+    // The platform's own host never matches a customDomain (normalizeHostname forbids claiming it),
+    // so this block is a no-op for all normal platform traffic.
+    if (!/\.[a-z0-9]+$/i.test(pathname)) {
+      const host = context.request.headers.get('host') ?? reqUrl.host;
+      const cdStore = host ? getStoreByCustomDomain(host) : null;
+      if (cdStore) {
+        const target = resolveCustomDomainRewrite(cdStore.slug, pathname);
+        if (target) return context.rewrite(target + reqUrl.search);
+      } else if (host && isUnclaimedCustomHost(host, false)) {
+        // A real external domain is pointed at us but no active store claims it (removed, or DNS set
+        // up before the store connected). Answer 404 rather than serve the platform homepage on a
+        // stranger's domain — a random domain must never render as if it were ours.
+        return new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+      }
+    }
     // A navigable page — the only kind we count in the first-party funnel and
     // resolve a visitor id for. Excludes API calls, static assets (any path with
     // a file extension), and the admin backend (the owner's own browsing must not
@@ -56,18 +78,23 @@ export const onRequest = defineMiddleware(async (context, next) => {
       && !/\.[a-z0-9]+$/i.test(pathname);
     const vid = isPageCandidate ? resolveVisitorId(context.cookies) : '';
 
-    const storeMatch = isGet ? pathname.match(STORE_PATH_RE) : null;
-    if (storeMatch) recordPageView(storeMatch[1], vid || resolveVisitorId(context.cookies));
-    // A product page also counts one product-level view. Resolve slug→id so
-    // history keys on the immutable product id (a rename changes the slug).
-    // Wrapped so a lookup miss/failure never affects the response — analytics.
-    const productMatch = isGet ? pathname.match(PRODUCT_PATH_RE) : null;
+    // Resolve the first path segment to a store (root-level routing). A one-segment path that
+    // resolves to a store counts a store visit; a two-segment path additionally counts a product
+    // view. Reserved routes and asset paths never reach getStoreBySlug. All wrapped so an analytics
+    // lookup miss/failure can never affect the response.
+    const pathMatch = isGet ? pathname.match(STORE_PATH_RE) : null;
     let viewedProductId = '';
-    if (productMatch) {
+    if (pathMatch && !isReservedSlug(pathMatch[1]!) && !pathMatch[1]!.includes('.')) {
       try {
-        const st = getStoreBySlug(productMatch[1]!);
-        const prod = st ? getProductBySlug(st.id, productMatch[2]!) : null;
-        if (prod) { recordProductView(prod.id); viewedProductId = prod.id; }
+        const st = getStoreBySlug(pathMatch[1]!);
+        if (st) {
+          recordPageView(st.slug, vid || resolveVisitorId(context.cookies));
+          // A product page also counts one product-level view. Resolve slug→id so history keys on
+          // the immutable product id (a rename changes the slug).
+          const productSlug = pathMatch[2];
+          const prod = productSlug ? getProductBySlug(st.id, productSlug) : null;
+          if (prod) { recordProductView(prod.id); viewedProductId = prod.id; }
+        }
       } catch { /* analytics tap must never break the request */ }
     }
 

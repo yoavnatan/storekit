@@ -15,7 +15,7 @@ const decrementStock = vi.fn(async (id: string, qty: number, _selectedVariants?:
 });
 const restockProduct = vi.fn(async (_id: string, _qty: number, _selectedVariants?: Record<string, string>): Promise<StockAdjustResult> => ({ ok: true, before: 0, after: 0 }));
 
-const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; shipping?: { flatRate: number; freeAbove: number | null; processingDays: number }; blocked?: boolean }> = {
+const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; shipping?: { flatRate: number; freeAbove: number | null; processingDays: number }; blocked?: boolean; previousSlugs?: string[] }> = {
   'test-store': {
     id: 's1',
     slug: 'test-store',
@@ -34,6 +34,8 @@ const logError = vi.fn();
 
 vi.mock('../src/lib/stores.js', () => ({
   getStoreBySlug: (slug: string) => STORES[slug] ?? null,
+  getStoreBySlugOrPrevious: (slug: string) =>
+    STORES[slug] ?? Object.values(STORES).find((s) => s.previousSlugs?.includes(slug)) ?? null,
   isStoreVisible: (store: { blocked?: boolean }) => !store.blocked,
 }));
 vi.mock('../src/lib/store-products.js', () => ({
@@ -95,6 +97,24 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     // real price (50) + flat shipping (20), never the spoofed price of 1
     expect(order.storeSubtotals['test-store']!.subtotal).toBe(50);
     expect(order.totalAmount).toBe(70);
+  });
+
+  it('SEO-safe rename: a cart item sent with the store\'s OLD slug still checks out (resolves via previousSlugs, records the current slug)', async () => {
+    STORES['test-store']!.previousSlugs = ['old-slug'];
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'old-slug', productSlug: 'widget', qty: 1 }], // buyer's cart predates the rename
+      }));
+      expect(res.status).toBe(201); // purchase succeeds — not a 400 "store not found"
+      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotal: number }>; items: { storeSlug: string }[] };
+      // subtotals + order items key off the CURRENT slug, never the stale one
+      expect(order.storeSubtotals['test-store']!.subtotal).toBe(50);
+      expect(order.storeSubtotals['old-slug']).toBeUndefined();
+      expect(order.items[0]!.storeSlug).toBe('test-store');
+    } finally {
+      delete STORES['test-store']!.previousSlugs;
+    }
   });
 
   it('waives shipping once the store subtotal reaches its freeAbove threshold', async () => {

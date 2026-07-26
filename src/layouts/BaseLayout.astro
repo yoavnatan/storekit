@@ -28,7 +28,7 @@ import heebo800LatinUrl from '@fontsource/heebo/files/heebo-latin-800-normal.wof
 import '../styles/main.css';
 
 const {
-  title, description, image, type, noindex, jsonLd,
+  title, description, image, type, noindex, jsonLd, canonical,
   isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode, hideNav, showSearch, isHome,
   dataLayer, productPrice, productCurrency,
 } = Astro.props;
@@ -99,7 +99,7 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
       heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
-    <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} productPrice={productPrice} productCurrency={productCurrency} />
+    <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} />
     {dlJson && <script is:inline set:html={`window.dataLayer=window.dataLayer||[];window.dataLayer.push(${dlJson});`} />}
     {platformGtm && <script is:inline set:html={gtmHeadScript(platformGtm)} />}
     {platformPixel && <script is:inline set:html={metaPixelScript(platformPixel)} />}

@@ -375,7 +375,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     row.setAttribute('role', 'button');
     row.setAttribute('aria-expanded', 'false');
     const productTd = msg.productRef
-      ? `<a href="/store/${escMsg(msg.productRef.storeSlug)}/${escMsg(msg.productRef.productSlug)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${escMsg(msg.productRef.productName)}</a>`
+      ? `<a href="/${escMsg(msg.productRef.storeSlug)}/${escMsg(msg.productRef.productSlug)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${escMsg(msg.productRef.productName)}</a>`
       : `<span style="color:var(--color-muted)">—</span>`;
     row.innerHTML = `
       <td class="msg-table__td msg-table__td--status"></td>

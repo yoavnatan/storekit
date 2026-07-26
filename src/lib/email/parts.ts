@@ -11,7 +11,7 @@ import { esc, emailColors as C } from './template.js';
 export const SITE = store.url.replace(/\/$/, '');
 
 export function storefrontUrl(slug: string): string {
-  return `${SITE}/store/${encodeURIComponent(slug)}`;
+  return `${SITE}/${encodeURIComponent(slug)}`;
 }
 
 /** A single-store order's display name + slug (an order = one store post-checkout). */

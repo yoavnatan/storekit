@@ -7,7 +7,7 @@
 // build time and they must be enumerated from live data at request time instead.
 
 export interface SitemapEntry {
-  /** Absolute URL, e.g. "https://example.com/store/acme". */
+  /** Absolute URL, e.g. "https://example.com/acme". */
   loc: string;
   /** W3C date (YYYY-MM-DD) or full ISO datetime; omitted if unknown. */
   lastmod?: string;

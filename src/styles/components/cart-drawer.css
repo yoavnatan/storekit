@@ -114,6 +114,9 @@
   pointer-events: none;
   transform: translateY(-4px) scale(0.97);
   transform-origin: top var(--tooltip-origin, left);
+  /* Horizontal on-screen clamp, set by CartDrawer's clampBubble() — a separate
+     property so it composes with the reveal transform above instead of fighting it. */
+  translate: var(--cart-tip-shift, 0px) 0;
   transition: opacity 0.12s ease, transform 0.12s ease;
   z-index: 5;
 }

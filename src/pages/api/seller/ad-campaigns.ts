@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
+import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
 import {
   getCampaignsByStoreId, createCampaign, updateCampaign, deleteCampaign,
@@ -21,7 +21,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const url = new URL(request.url);
   const storeSlug = url.searchParams.get('storeSlug');
   const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = findStoreBySlugOrPrevious(stores, storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
   // A dated preset (or custom from/to) windows the metrics ("recent activity");
@@ -54,7 +54,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   }
 
   const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = findStoreBySlugOrPrevious(stores, storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
   let productName: string | undefined;
@@ -92,7 +92,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   if (typeof id !== 'string' || typeof storeSlug !== 'string') return json({ error: 'Missing id or storeSlug' }, 400);
 
   const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = findStoreBySlugOrPrevious(stores, storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const updates: Partial<{ monthlyBudget: number; status: 'active' | 'paused' }> = {};
@@ -117,7 +117,7 @@ export async function DELETE({ request, cookies }: APIContext): Promise<Response
   if (typeof id !== 'string' || typeof storeSlug !== 'string') return json({ error: 'Missing id or storeSlug' }, 400);
 
   const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = findStoreBySlugOrPrevious(stores, storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const ok = deleteCampaign(id, store.id);

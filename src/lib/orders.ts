@@ -108,6 +108,27 @@ export function getOrdersByStoreSlug(storeSlug: string): Order[] {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+/** Repoint the denormalized storeSlug on every order (item-level + the storeSubtotals key) from
+ *  oldSlug→newSlug when a store's URL is renamed. Without this a seller LOSES all pre-rename orders
+ *  from their dashboard/revenue (getOrdersByStoreSlug matches by slug) and buyer order-history links
+ *  would need a 301. Historical prices/names/quantities are untouched — only the URL identifier. */
+export function renameStoreSlugInOrders(oldSlug: string, newSlug: string): void {
+  if (!oldSlug || oldSlug === newSlug) return;
+  const orders = readOrders();
+  let changed = false;
+  for (const o of orders) {
+    for (const it of o.items) {
+      if (it.storeSlug === oldSlug) { it.storeSlug = newSlug; changed = true; }
+    }
+    if (o.storeSubtotals?.[oldSlug]) {
+      o.storeSubtotals[newSlug] = o.storeSubtotals[oldSlug]!; // a single order never has one store under two slugs
+      delete o.storeSubtotals[oldSlug];
+      changed = true;
+    }
+  }
+  if (changed) writeOrders(orders);
+}
+
 export function getOrdersBySellerStores(storeSlugs: string[]): Order[] {
   const slugSet = new Set(storeSlugs);
   return readOrders()

@@ -2,7 +2,11 @@ export const prerender = false;
 import crypto from 'node:crypto';
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, updateStore, addStoreBgColor } from '../../lib/stores.js';
+import { getStoresBySellerId, updateStore, addStoreBgColor, isCustomDomainTaken, renameStoreSlug, isSlugTaken, isReservedSlug, normalizeSlug } from '../../lib/stores.js';
+import { renameStoreSlugInPageviews } from '../../lib/store-pageviews.js';
+import { renameStoreSlugInUserData } from '../../lib/user-carts.js';
+import { renameStoreSlugInOrders } from '../../lib/orders.js';
+import { getCustomDomainProvider, normalizeHostname } from '../../lib/custom-domain.js';
 import { pingStoreChange } from '../../lib/indexnow.js';
 import { parseStoreHoursForm } from '../../lib/store-hours.js';
 import { CSV_FIELDS } from '../../lib/csv-bulk.js';
@@ -98,6 +102,66 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
     const colors = addStoreBgColor(target.id, color);
     return json({ ok: true, colors });
+  }
+
+  // ── Custom domain (see custom-domain.ts + middleware.ts) — seller connects/verifies/removes their
+  //    own domain. The local /<slug> path is unaffected throughout: it stays live + canonical. ──
+  if (action === 'set-custom-domain' || action === 'check-custom-domain' || action === 'remove-custom-domain') {
+    const storeId = String(form.get('storeId') || '');
+    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
+    const provider = getCustomDomainProvider();
+
+    if (action === 'remove-custom-domain') {
+      if (target.customDomain) await provider.remove(target.customDomain.hostname);
+      updateStore(target.id, { customDomain: undefined });
+      return json({ ok: true });
+    }
+
+    if (action === 'check-custom-domain') {
+      if (!target.customDomain) return json({ ok: false, error: 'no-domain' }, 400);
+      const { status } = await provider.checkStatus(target.customDomain.hostname);
+      if (status !== target.customDomain.status) {
+        updateStore(target.id, { customDomain: { ...target.customDomain, status } });
+      }
+      return json({ ok: true, status });
+    }
+
+    // set-custom-domain — normalize + validate (rejects the platform's own domain), then register
+    // with the provider so it can issue SSL. Stored as 'pending' until verification confirms it.
+    const hostname = normalizeHostname(String(form.get('hostname') || ''));
+    if (!hostname) return json({ ok: false, error: 'invalid-domain' }, 400);
+    // A custom domain must be globally unique — another store already claiming it would make routing
+    // ambiguous (getStoreByCustomDomain is first-match). Reject before registering with the provider.
+    if (isCustomDomainTaken(hostname, target.id)) return json({ ok: false, error: 'domain-taken' }, 409);
+    const { ok, verification, error } = await provider.register(hostname);
+    if (!ok) return json({ ok: false, error: error || 'register-failed' }, 502);
+    updateStore(target.id, { customDomain: { hostname, status: 'pending', addedAt: new Date().toISOString() } });
+    return json({ ok: true, hostname, verification });
+  }
+
+  // ── Change store URL (slug) — SEO-safe: the old slug is remembered and 301-redirects to the new
+  //    one (see stores.ts renameStoreSlug + the store/product routes), and slug-keyed data is migrated. ──
+  if (action === 'change-store-url') {
+    const storeId = String(form.get('storeId') || '');
+    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
+
+    const newSlug = normalizeSlug(String(form.get('slug') || ''));
+    if (!newSlug) return json({ ok: false, error: 'invalid-slug' }, 400);
+    if (newSlug === target.slug) return json({ ok: true, slug: newSlug });        // no-op
+    if (isReservedSlug(newSlug)) return json({ ok: false, error: 'reserved-slug' }, 409);
+    if (isSlugTaken(newSlug, target.id)) return json({ ok: false, error: 'slug-taken' }, 409);
+
+    const oldSlug = target.slug;
+    const updated = renameStoreSlug(target.id, newSlug);
+    if (!updated) return json({ ok: false, error: 'Store not found.' }, 404);
+    // Migrate the durable slug-keyed data (analytics + saved favorites/recent) and notify the index.
+    await renameStoreSlugInPageviews(oldSlug, newSlug);
+    renameStoreSlugInUserData(oldSlug, newSlug);
+    renameStoreSlugInOrders(oldSlug, newSlug);
+    pingStoreChange(newSlug);
+    return json({ ok: true, slug: newSlug });
   }
 
   return json({ ok: false, error: 'Unknown action.' }, 400);

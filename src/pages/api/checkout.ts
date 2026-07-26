@@ -1,7 +1,7 @@
 export const prerender = false;
 import crypto from 'node:crypto';
 import type { APIContext } from 'astro';
-import { getStoreBySlug, isStoreVisible } from '../../lib/stores.js';
+import { getStoreBySlug, getStoreBySlugOrPrevious, isStoreVisible } from '../../lib/stores.js';
 import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD, isProductVisible } from '../../lib/store-products.js';
 import { createOrder } from '../../lib/orders.js';
 import type { Order, OrderItem, StoreSubtotal } from '../../lib/orders.js';
@@ -93,7 +93,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       return json({ error: `Invalid item: storeSlug=${storeSlug} productSlug=${productSlug} qty=${qty}` }, 400);
     }
 
-    const store = getStoreBySlug(storeSlug);
+    // Tolerate a previous slug: if the seller renamed the store URL after this item entered the
+    // cart, the client still sends the OLD slug — resolve it so the purchase never fails. Everything
+    // downstream keys off store.slug (the current one) for consistency with the order records.
+    const store = getStoreBySlugOrPrevious(storeSlug);
     if (!store) return json({ error: `Store not found: ${storeSlug}` }, 400);
     // Admin-blocked store (see admin-moderation.ts) — reject the whole
     // checkout rather than silently drop the item, same as "not found". Rolls
@@ -157,10 +160,13 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       ...(selectedVariants ? { selectedVariants } : {}),
     });
 
-    if (!storeSubtotals[storeSlug]) {
-      storeSubtotals[storeSlug] = { storeName: store.name, subtotal: 0, shipping: 0 };
+    // Key by store.slug (the CURRENT slug), not the client-sent one — so if the item entered the
+    // cart under an old slug, the subtotals/shipping/order grouping all stay consistent with the
+    // order items (which also record store.slug).
+    if (!storeSubtotals[store.slug]) {
+      storeSubtotals[store.slug] = { storeName: store.name, subtotal: 0, shipping: 0 };
     }
-    storeSubtotals[storeSlug]!.subtotal += product.price * qty;
+    storeSubtotals[store.slug]!.subtotal += product.price * qty;
   }
 
   // Calculate shipping per store (server-side, from store config)

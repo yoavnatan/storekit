@@ -7,7 +7,7 @@
 // mail failure is logged, never thrown back into checkout.
 
 import type { Order } from '../orders.js';
-import { getStoreBySlug } from '../stores.js';
+import { getStoreBySlugOrPrevious } from '../stores.js';
 import { getSellerById } from '../seller-auth.js';
 import { logError } from '../error-log.js';
 import { sendEmail } from './index.js';
@@ -58,7 +58,7 @@ async function deliver(orders: Order[]): Promise<void> {
   // Sellers — one email each, to the account email behind the order's store.
   for (const order of orders) {
     const storeSlug = order.items[0]?.storeSlug;
-    const store = storeSlug ? getStoreBySlug(storeSlug) : null;
+    const store = storeSlug ? getStoreBySlugOrPrevious(storeSlug) : null;
     const seller = store ? getSellerById(store.sellerId) : null;
     if (!seller?.email) continue;
     const result = await sendEmail(buildSellerOrderNotification(order, seller.email));

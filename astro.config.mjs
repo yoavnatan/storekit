@@ -10,8 +10,8 @@ import { store } from './src/config/store.config.js';
 export default defineConfig({
   site: store.url,
 
-  // One canonical URL shape site-wide (no trailing slash) so /store/x and
-  // /store/x/ never split into duplicate-content variants. Keeps the static
+  // One canonical URL shape site-wide (no trailing slash) so /<store> and
+  // /<store>/ never split into duplicate-content variants. Keeps the static
   // sitemap, the dynamic sitemap, canonical tags, and internal links all in the
   // same form. Root ("/") is unaffected.
   trailingSlash: 'never',
@@ -59,6 +59,12 @@ export default defineConfig({
     plugins: [tailwindcss()],
     optimizeDeps: {
       exclude: ['@imgly/background-removal'],
+    },
+    // Dev-only: let a fake `*.test` hostname reach the dev server (Vite otherwise blocks unknown
+    // Hosts as DNS-rebinding protection). This is purely for locally testing the custom-domain
+    // routing (map `demo-shop.test` → 127.0.0.1 in /etc/hosts). Ignored by the production build.
+    server: {
+      allowedHosts: ['.test'],
     },
   },
 });

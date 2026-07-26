@@ -3,7 +3,8 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, createStore, updateStore, STORE_WEEKDAYS } from '../../lib/stores.js';
+import { getStoresBySellerId, createStore, updateStore, normalizeSlug, STORE_WEEKDAYS } from '../../lib/stores.js';
+import { cnameTarget, storeHomeHref } from '../../lib/custom-domain.js';
 import { DEFAULT_STORE_HOURS } from '../../lib/store-hours.js';
 import {
   getProductsByStoreId,
@@ -113,12 +114,15 @@ if (Astro.request.method === 'POST') {
     }
   } else if (action === 'create-store') {
     const name = String(form.get('name') || '').trim();
+    const slug = normalizeSlug(String(form.get('slug') || ''));
     const tagline = String(form.get('tagline') || '').trim();
     const description = String(form.get('description') || '').trim();
     if (!name) {
       error = d.storeNameRequired;
+    } else if (!slug) {
+      error = d.storeUrlRequired;
     } else {
-      const { id: newStoreId } = createStore(sellerId, { name, tagline, description });
+      const { id: newStoreId } = createStore(sellerId, { name, slug, tagline, description });
       return Astro.redirect(`/seller/dashboard?store=${newStoreId}`);
     }
   } else if (action === 'add-product') {
@@ -416,10 +420,32 @@ const orderStatusColors: Record<string, string> = {
             <span>{d.storeNameReq}</span>
             <input class="input" name="name" required placeholder={d.storeNamePlaceholder} autofocus />
           </label>
+          <label class="field">
+            <span>{d.storeUrlLabel}</span>
+            <input class="input" name="slug" id="create-store-slug" required placeholder="my-store" dir="ltr" autocomplete="off" spellcheck="false" data-host={new URL(platformConfig.url).hostname} />
+            <p class="muted text-[0.78rem] mt-1" style="text-align:start">{d.storeUrlHint} · <span id="create-store-url-preview" dir="ltr" class="font-mono [color:var(--color-text)]">{`${new URL(platformConfig.url).hostname}/my-store`}</span></p>
+          </label>
           <button class="btn btn--accent" type="submit" style="width:100%;margin-top:0.25rem">{d.createStoreBtn}</button>
         </form>
       </div>
     </section>
+    <script>
+      // Live-sanitize the store-URL field to a valid slug + preview the full address as the seller
+      // types. Server re-normalizes on submit (see normalizeSlug), so this is only a nicety.
+      const slugInput = document.getElementById('create-store-slug') as HTMLInputElement | null;
+      const preview = document.getElementById('create-store-url-preview');
+      if (slugInput) {
+        const host = slugInput.dataset.host ?? '';
+        const clean = (v: string) => v.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+        const update = () => {
+          const pos = slugInput.selectionStart;
+          slugInput.value = clean(slugInput.value);
+          try { slugInput.setSelectionRange(pos, pos); } catch { /* ignore */ }
+          if (preview) preview.textContent = `${host}/${slugInput.value.replace(/^-+|-+$/g, '') || 'my-store'}`;
+        };
+        slugInput.addEventListener('input', update);
+      }
+    </script>
   ) : store ? (
   <Fragment>
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
@@ -477,11 +503,12 @@ const orderStatusColors: Record<string, string> = {
               </ul>
             </div>
           )}
-          <a href={`/store/${store.slug}`} class="btn btn--sm" target="_blank" rel="noopener">
+          <a id="dash-view-store" href={storeHomeHref(store)} class="btn btn--sm" target="_blank" rel="noopener">
             {d.viewLive}
           </a>
         </div>
-        <p class="muted" style="margin:0.25rem 0 0;font-size:0.82rem">{d.storeSubtitle} · <code style="font-size:0.78rem">/store/{store.slug}</code></p>
+        {/* The store's public address — the seller's own domain once verified, else the platform path. */}
+        <p class="muted" style="margin:0.25rem 0 0;font-size:0.82rem">{d.storeSubtitle} · <code id="dash-store-address" data-has-custom-domain={store.customDomain?.status === 'active' ? '1' : ''} style="font-size:0.78rem">{store.customDomain?.status === 'active' ? store.customDomain.hostname : `/${store.slug}`}</code></p>
 
         {settingsSuccess && <p class="dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm" style="margin-top:1rem;margin-bottom:0">{d.settingsSaved}</p>}
         {productSuccess && <p class="dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm" style="margin-top:1rem;margin-bottom:0">{d.productAdded}</p>}
@@ -497,7 +524,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="overview"
           aria-selected={initialPanel === 'overview'}
           tabindex={initialPanel === 'overview' ? 0 : -1}
-        >{d.tabOverview}</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>{d.tabOverview}</button>
         <button
           class={`dash-tab${initialPanel === 'products' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -507,7 +534,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'products' ? 0 : -1}
           style="position:relative"
         >
-          {d.tabProducts}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>{d.tabProducts}
           <span id="products-stock-badge" class="dash-tab-badge ![background:var(--color-warning)]" data-tooltip={d.stockAlertBadge} aria-label={d.stockAlertBadge} hidden={stockAlertCount === 0}>{stockAlertCount}</span>
         </button>
         <button
@@ -519,7 +546,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'orders' ? 0 : -1}
           style="position:relative"
         >
-          {d.tabOrders}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>{d.tabOrders}
           {newOrdersCount > 0 && (
             <span class="dash-tab-badge" aria-label={`${newOrdersCount} הזמנות חדשות`}>{newOrdersCount}</span>
           )}
@@ -531,7 +558,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="performance"
           aria-selected={initialPanel === 'performance'}
           tabindex={initialPanel === 'performance' ? 0 : -1}
-        >{d.tabPerformance}</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>{d.tabPerformance}</button>
         <button
           class={`dash-tab${initialPanel === 'advertising' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -539,7 +566,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="advertising"
           aria-selected={initialPanel === 'advertising'}
           tabindex={initialPanel === 'advertising' ? 0 : -1}
-        >{d.tabAdvertising}</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>{d.tabAdvertising}</button>
         <button
           class={`dash-tab${initialPanel === 'messages' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -549,7 +576,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'messages' ? 0 : -1}
           style="position:relative"
         >
-          הודעות
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>הודעות
           {(unreadMessagesCount + unreadAdminMsgCount) > 0 && (
             <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMessagesCount + unreadAdminMsgCount} הודעות שלא נקראו`}></span>
           )}
@@ -561,7 +588,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="settings"
           aria-selected={initialPanel === 'settings'}
           tabindex={initialPanel === 'settings' ? 0 : -1}
-        >{d.tabSettings}</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>{d.tabSettings}</button>
       </div>
 
       <!-- ── Panel: Overview ── -->
@@ -1938,7 +1965,7 @@ const orderStatusColors: Record<string, string> = {
                         </td>
                         <td class="msg-table__td msg-table__td--product">
                           {msg.productRef
-                            ? <a href={`/store/${msg.productRef.storeSlug}/${msg.productRef.productSlug}`} target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">{msg.productRef.productName}</a>
+                            ? <a href={`/${msg.productRef.storeSlug}/${msg.productRef.productSlug}`} target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">{msg.productRef.productName}</a>
                             : <span style="color:var(--color-muted)">—</span>
                           }
                         </td>
@@ -1996,6 +2023,10 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Settings ── -->
       <div id="dash-panel-settings" class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden={initialPanel !== 'settings'}>
+        {/* Head stays INSIDE the form on purpose: its sticky scope is the form, so the
+            "save changes" bar rides only over the fields it actually saves and releases
+            at the form's end — the categories tree + custom-domain below save live per
+            action (own APIs), so the button must not appear to govern them. */}
         <form method="POST" action="/api/store" class="mt-4" id="settings-form" style="margin-top:0">
           <input type="hidden" name="_action" value="save-settings" />
           <input type="hidden" name="storeId" value={store.id} />
@@ -2117,8 +2148,12 @@ const orderStatusColors: Record<string, string> = {
 
         </form>
 
-        <div class="mt-8 mb-5 pb-[.875rem] border-b border-[color:var(--color-border)]">
+        <div class="mt-8 mb-5 pb-[.875rem] border-b border-[color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
           <h2 class="text-base font-semibold text-[color:var(--color-text)] m-0">{d.categoriesTitle}</h2>
+          <span class="inline-flex items-center gap-1 text-[0.7rem] font-medium text-[color:var(--color-muted)] bg-[color:var(--color-bg)] border border-[color:var(--color-border)] rounded-full py-[0.15rem] px-[0.5rem]">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            {d.settingsAutoSaved}
+          </span>
         </div>
         <p class="muted" style="margin:0 0 1rem;font-size:0.85rem">{d.categoriesHint}</p>
 
@@ -2135,6 +2170,105 @@ const orderStatusColors: Record<string, string> = {
           </div>
         )}
         <script type="application/json" id="category-tree-data" set:html={JSON.stringify(categoryTree)} />
+
+        {store && (
+        <div id="store-url" class="mt-8" data-store-id={store.id} data-host={new URL(platformConfig.url).hostname} data-current-slug={store.slug}>
+          <div class="mb-4 pb-[.875rem] border-b border-[color:var(--color-border)]">
+            <h2 class="text-base font-semibold text-[color:var(--color-text)] m-0">{d.storeUrlTitle}</h2>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <code id="store-url-current" class="font-mono text-[0.85rem] [color:var(--color-text)]">{`${new URL(platformConfig.url).hostname}/${store.slug}`}</code>
+            <button type="button" id="store-url-edit" class="btn btn--ghost btn--sm">{d.edit}</button>
+          </div>
+          <p class="muted text-[0.8rem] leading-[1.5]">{d.storeUrlEditHint}</p>
+
+          <div id="store-url-editor" hidden class="flex flex-col gap-2 mt-3 max-w-[30rem]">
+            <input id="store-url-input" class="input" dir="ltr" autocomplete="off" spellcheck="false" value={store.slug} />
+            <p class="muted text-[0.78rem]" dir="ltr" style="text-align:start"><span id="store-url-preview" class="font-mono [color:var(--color-text)]">{`${new URL(platformConfig.url).hostname}/${store.slug}`}</span></p>
+            <div class="flex gap-2">
+              <button type="button" id="store-url-save" class="btn btn--sm">{d.save}</button>
+              <button type="button" id="store-url-cancel" class="btn btn--ghost btn--sm">{d.cancel}</button>
+            </div>
+            <p id="store-url-msg" role="status" aria-live="polite" hidden class="text-[0.82rem] mt-1 py-2 px-[.85rem] rounded-[var(--radius)]"></p>
+          </div>
+        </div>
+        )}
+
+        {store && (() => {
+          const cd = store.customDomain;
+          const cdTarget = cnameTarget();
+          const cdActive = cd?.status === 'active';
+          return (
+        <div id="custom-domain" class="mt-8" data-store-id={store.id} data-store-slug={store.slug} data-platform-url={platformConfig.url} data-cname-target={cdTarget} data-cd-status={cd?.status ?? ''}>
+          <div class="mb-4 pb-[.875rem] border-b border-[color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
+            <h2 class="text-base font-semibold text-[color:var(--color-text)] m-0">{d.cdTitle}</h2>
+            <span class="inline-flex items-center gap-1 text-[0.7rem] font-medium text-[color:var(--color-muted)] bg-[color:var(--color-bg)] border border-[color:var(--color-border)] rounded-full py-[0.15rem] px-[0.5rem]">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              {d.settingsAutoSaved}
+            </span>
+          </div>
+          <p class="muted text-[0.85rem] leading-[1.6] mb-3" set:html={d.cdLead}></p>
+
+          {/* The always-live local address — the point of the whole feature: a custom domain never replaces it. */}
+          <div class="flex flex-col gap-1 mb-4 text-[0.82rem]">
+            <span class="muted">{d.cdLocalLabel}</span>
+            <code id="cd-local-addr" class="font-mono text-[0.8rem] [color:var(--color-text)] bg-[color:var(--color-bg)] border [border-color:var(--color-border)] rounded-[0.4rem] py-[.35rem] px-[.6rem] w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{`${platformConfig.url}/${store.slug}`}</code>
+          </div>
+
+          {/* State A — no domain connected yet */}
+          <div id="cd-setup" hidden={!!cd} class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center max-w-[30rem]">
+            <input type="text" id="cd-input" inputmode="url" autocomplete="off" spellcheck="false" placeholder={d.cdInputPlaceholder}
+              class="flex-1 min-w-0 font-mono text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[0.4rem] py-[.5rem] px-[.6rem] outline-none focus:[border-color:var(--color-accent)]" />
+            <button type="button" class="btn btn--sm shrink-0" id="cd-connect">{d.cdConnect}</button>
+          </div>
+
+          {/* State B/C — a domain exists (pending or active) */}
+          <div id="cd-connected" hidden={!cd} class="flex flex-col gap-3">
+            <div class="flex items-center gap-2 flex-wrap">
+              <code id="cd-hostname" class="font-mono text-[0.85rem] font-semibold [color:var(--color-text)]">{cd?.hostname ?? ''}</code>
+              <span id="cd-badge" class={`inline-flex items-center gap-[.35rem] text-[0.75rem] font-semibold py-[.2rem] px-[.55rem] rounded-full ${cdActive ? 'bg-[#f0fdf4] text-[#166534]' : 'bg-[#fffbeb] text-[#92400e]'}`}>
+                <span class={`w-[7px] h-[7px] rounded-full ${cdActive ? 'bg-[#16a34a]' : 'bg-[#d97706]'}`}></span>
+                <span id="cd-badge-text">{cdActive ? d.cdStatusActive : d.cdStatusPending}</span>
+              </span>
+            </div>
+
+            {/* When verified: the custom domain is now the store's primary public address. */}
+            <div id="cd-primary" hidden={!cdActive} class="flex items-start gap-2 text-[0.82rem] leading-[1.5] bg-[#f0fdf4] border border-[#bbf7d0] rounded-[var(--radius)] py-2 px-3">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 mt-[0.1rem]" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+              <span class="[color:#166534]">{d.cdPrimaryNote} <code id="cd-primary-host" class="font-mono font-semibold">{cd?.hostname ?? ''}</code></span>
+            </div>
+
+            {/* DNS instructions — meaningful until verified; kept visible so a seller can re-check the record. */}
+            <div id="cd-dns" hidden={cdActive}>
+              <p class="muted text-[0.82rem] leading-[1.5] mb-2">{d.cdDnsHint}</p>
+              <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-[.4rem] items-center text-[0.8rem] max-w-[34rem]">
+                <span class="muted">{d.cdDnsType}</span>
+                <code class="font-mono [color:var(--color-text)]">CNAME</code>
+                <span class="muted">{d.cdDnsName}</span>
+                <code class="font-mono [color:var(--color-text)] overflow-hidden text-ellipsis whitespace-nowrap">{cd?.hostname ?? ''}</code>
+                <span class="muted">{d.cdDnsValue}</span>
+                <span class="flex items-center gap-2 min-w-0">
+                  <code id="cd-cname-value" class="font-mono [color:var(--color-text)] bg-[color:var(--color-bg)] border [border-color:var(--color-border)] rounded-[0.4rem] py-[.3rem] px-[.5rem] overflow-hidden text-ellipsis whitespace-nowrap">{cdTarget}</code>
+                  <button type="button" class="btn btn--ghost btn--sm shrink-0" id="cd-copy" aria-label={d.cdCopy}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </span>
+              </div>
+              <p class="muted text-[0.78rem] leading-[1.5] mt-2">{d.cdPendingNote}</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <a id="cd-visit" href={cd ? `https://${cd.hostname}` : '#'} target="_blank" rel="noopener" hidden={!cdActive} class="btn btn--ghost btn--sm">{d.cdVisit}</a>
+              <button type="button" class="btn btn--ghost btn--sm" id="cd-check" hidden={cdActive}>{d.cdCheck}</button>
+              <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" id="cd-remove">{d.cdRemove}</button>
+            </div>
+            <p class="muted text-[0.78rem] leading-[1.5]">{d.cdCanonicalNote}</p>
+          </div>
+
+          <p id="cd-msg" role="status" aria-live="polite" hidden class="text-[0.82rem] mt-3 py-2 px-[.85rem] rounded-[var(--radius)]"></p>
+        </div>
+          );
+        })()}
       </div>
 
     </div>
@@ -2494,6 +2628,8 @@ const orderStatusColors: Record<string, string> = {
   import { bindExistingRows, initAddProduct, initDeleteProduct, initProductVisibilityToggle, initProductMenus, initProductsToolbar, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initViewProduct, initPagination, initStickyOffsets, applyStockAttentionFilter } from '../../scripts/dashboard/products.js';
   import { initCsvImport } from '../../scripts/dashboard/csv-import.js';
   import { initFeedSync } from '../../scripts/dashboard/feed-sync.js';
+  import { initCustomDomain } from '../../scripts/dashboard/custom-domain.js';
+  import { initStoreUrl } from '../../scripts/dashboard/store-url.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks } from '../../scripts/dashboard/ui.js';
   import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
   import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
@@ -2596,6 +2732,8 @@ const orderStatusColors: Record<string, string> = {
   initBulkSelect(CLOUD, PRESET);
   initCsvImport();
   initFeedSync();
+  initCustomDomain();
+  initStoreUrl();
   initThumbs();
   initInlineEdit();
   initPagination();

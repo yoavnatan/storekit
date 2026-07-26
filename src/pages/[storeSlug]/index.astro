@@ -3,26 +3,39 @@ export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
-import { getStoreBySlug, isStoreVisible } from '../../lib/stores.js';
+import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible } from '../../lib/stores.js';
 import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '../../lib/store-hours.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath } from '../../lib/store-categories.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
+import { storeCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { store as platform, formatPrice, cdnSrc } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getFavoriteStoresForUser } from '../../lib/user-carts.js';
 
-const { slug } = Astro.params;
+const { storeSlug: slug } = Astro.params;
 if (!slug) return Astro.redirect('/404');
 
 const shopStore = getStoreBySlug(slug);
-if (!shopStore) return Astro.redirect('/404');
+if (!shopStore) {
+  // The seller may have renamed the store URL — 301 an old slug to the current one so links +
+  // Google's index carry over instead of 404-ing (see renameStoreSlug).
+  const moved = getStoreByPreviousSlug(slug);
+  if (moved) return Astro.redirect(`/${moved.slug}${Astro.url.search}`, 301);
+  return Astro.redirect('/404');
+}
 // Admin-blocked store (see admin-moderation.ts) — 404s like a nonexistent
 // store rather than rendering, so it stops accumulating crawl/index signal
 // while it's under review.
 if (!isStoreVisible(shopStore)) return Astro.redirect('/404');
+
+// SEO: once the seller's own domain is verified it becomes the store's home — every hit on the
+// platform path (including the old default URL the store used for months) 301s there so all the
+// accumulated ranking consolidates onto the seller's domain. No-op when already served on it.
+const cdRedirect = customDomainRedirectUrl(shopStore, Astro.request.headers.get('host'), Astro.url.search);
+if (cdRedirect) return Astro.redirect(cdRedirect, 301);
 
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
@@ -56,7 +69,10 @@ const filteredProducts = filterAndSortProducts(allProducts, { categoryIds, sort:
 const products = filteredProducts.slice(0, PRODUCTS_PAGE_SIZE);
 const hasMoreProducts = filteredProducts.length > products.length;
 
-const storeUrl = new URL(`/store/${shopStore.slug}`, Astro.url).href;
+// The store's canonical home: the seller's own domain when active, else the platform path
+// (custom-domain.ts → storeCanonicalUrl). Used for both the JSON-LD `url` and <link rel=canonical>
+// so the SEO signal is identical wherever the page is served from.
+const storeUrl = storeCanonicalUrl(shopStore);
 const today = new Date().toDateString();
 
 const lang = getLang(Astro.cookies);
@@ -108,6 +124,7 @@ const pmI18n = {
   description={shopStore.tagline || shopStore.description || `Shop at ${shopStore.name} on ${platform.name}`}
   image={shopStore.bannerImage ? cdnSrc(shopStore.bannerImage, 1200) : (shopStore.profileImage ? cdnSrc(shopStore.profileImage, 600) : undefined)}
   jsonLd={jsonLd}
+  canonical={storeUrl}
   isLoggedIn={isLoggedIn}
   storeMode={true}
   storeName={shopStore.name}
@@ -141,7 +158,7 @@ const pmI18n = {
   </script>
   <script is:inline type="application/json" id="pm-i18n" set:html={JSON.stringify(pmI18n)} />
 
-  <div class="store-page" data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang}>
+  <div class="store-page" data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}>
 
     {/* Curtain scroll (CURRENT_TASK 2): ONLY the banner image is pinned; the
         store details and the products both scroll up and over it as one
@@ -224,7 +241,7 @@ const pmI18n = {
                 class="store-banner-action-btn"
                 data-slug={shopStore.slug}
                 data-favorited={String(isFavorited)}
-                data-login-url={`/seller/login?next=/store/${shopStore.slug}`}
+                data-login-url={`/seller/login?next=/${shopStore.slug}`}
                 data-is-logged-in={String(isLoggedIn)}
                 aria-label={isFavorited ? t.store.savedStore : t.store.saveStore}
                 aria-pressed={isFavorited}
@@ -240,7 +257,7 @@ const pmI18n = {
                 aria-live="polite"
                 style="position:absolute;top:calc(100% + 0.45rem);inset-inline-start:0;z-index:30;background:var(--color-surface);border:1px solid var(--color-border);border-radius:0.55rem;padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text);opacity:0;pointer-events:none;transform:translateY(-6px) scale(0.97);transition:opacity 0.17s,transform 0.22s cubic-bezier(0.34,1.56,0.64,1)"
               >
-                {t.store.loginToSave} <a id="fav-store-tooltip-link" href={`/seller/login?next=/store/${shopStore.slug}`} style="color:var(--color-accent);font-weight:600">{t.store.loginToSaveLink}</a>
+                {t.store.loginToSave} <a id="fav-store-tooltip-link" href={`/seller/login?next=/${shopStore.slug}`} style="color:var(--color-accent);font-weight:600">{t.store.loginToSaveLink}</a>
               </div>
             </div>
 
@@ -253,7 +270,7 @@ const pmI18n = {
                 data-seller-id={shopStore.sellerId}
                 data-store-name={shopStore.name}
                 data-is-logged-in={String(isLoggedIn)}
-                data-login-url={`/seller/login?next=/store/${shopStore.slug}`}
+                data-login-url={`/seller/login?next=/${shopStore.slug}`}
                 aria-label={`צור קשר עם ${shopStore.name}`}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -486,7 +503,7 @@ const pmI18n = {
                     )}
                   </div>
                   <div class="product-card__body" dir="auto">
-                    <a href={`/store/${shopStore.slug}/${p.slug}`}
+                    <a href={`/${shopStore.slug}/${p.slug}`}
                        class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150"
                        style="color:inherit;text-decoration:none;display:block">
                       <h3 class="product-card__name">{p.name}</h3>
@@ -580,6 +597,7 @@ const pmI18n = {
   import type { StoreProduct as StoreProductDTO } from '../../lib/store-products.js';
   import { PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
   import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
+  import { initCustomDomainLinks } from '../../lib/custom-domain-links.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     // Heart/wishlist buttons are excluded — their own heart-burst is the click
@@ -592,10 +610,14 @@ const pmI18n = {
   const storeSlug = storePage?.dataset.storeSlug ?? '';
   const storeName = storePage?.dataset.storeName ?? '';
 
+  // On the store's own verified domain, strip the redundant "/<slug>" prefix from in-store links so
+  // the URL bar reads clean (also stamps window.__customStoreHost for the shared product modal).
+  initCustomDomainLinks(storeSlug, storePage?.dataset.customHost ?? '');
+
   // Tracks the store's own filter/sort/search query string (kept in sync by
   // syncUrl() below) — read at pagehide time instead of location.search,
   // since opening the product quick-view modal rewrites the address bar via
-  // pushState to a /store/slug/product path with no query of its own.
+  // pushState to a /slug/product path with no query of its own.
   let lastQueryString = location.search;
 
   if (storeSlug) {
@@ -1396,7 +1418,7 @@ const pmI18n = {
         ${dotsHtml}
       </div>
       <div class="product-card__body" dir="auto">
-        <a href="/store/${escHtml(storeSlug)}/${escHtml(p.slug)}" class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150" style="color:inherit;text-decoration:none;display:block">
+        <a href="/${escHtml(storeSlug)}/${escHtml(p.slug)}" class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150" style="color:inherit;text-decoration:none;display:block">
           <h3 class="product-card__name">${escHtml(p.name)}</h3>
         </a>
         <div class="product-card__footer" style="flex-direction:column;align-items:stretch;gap:0.4rem">

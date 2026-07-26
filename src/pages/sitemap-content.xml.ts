@@ -6,7 +6,7 @@ import { store as platform } from '../config/store.config.js';
 import { buildUrlSetXml, toSitemapDate, type SitemapEntry } from '../lib/sitemap.js';
 
 // Dynamic content sitemap for the SEO pages that @astrojs/sitemap CANNOT see:
-// every store page (/store/[slug]) and product page (/store/[slug]/[product]) is
+// every store page (/[slug]) and product page (/[slug]/[product]) is
 // SSR (`prerender = false`), so it isn't a build-time route and never lands in
 // the static sitemap. Google therefore only discovers these — the actual ranking
 // pages — through in-page <a href> links, which don't reach products past a
@@ -27,15 +27,19 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   const entries: SitemapEntry[] = [];
 
   for (const s of getVisibleStores()) {
+    // A store on a verified custom domain lives on THAT domain now — its platform URLs 301 there, so
+    // listing them in the platform sitemap would just advertise redirects. Its own domain is crawled
+    // via the platform's discovery links + the 301s. Skip it here.
+    if (s.customDomain?.status === 'active') continue;
     entries.push({
-      loc: `${baseUrl}/store/${s.slug}`,
+      loc: `${baseUrl}/${s.slug}`,
       lastmod: toSitemapDate(s.createdAt),
       changefreq: 'daily',
       priority: '0.8',
     });
     for (const p of getVisibleProductsByStoreId(s.id)) {
       entries.push({
-        loc: `${baseUrl}/store/${s.slug}/${p.slug}`,
+        loc: `${baseUrl}/${s.slug}/${p.slug}`,
         lastmod: toSitemapDate(p.createdAt),
         changefreq: 'weekly',
         priority: '0.7',

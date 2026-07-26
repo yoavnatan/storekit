@@ -1,28 +1,40 @@
 ---
 export const prerender = false;
 import { Image } from 'astro:assets';
-import BaseLayout from '../../../layouts/BaseLayout.astro';
-import { getStoreBySlug, isStoreVisible } from '../../../lib/stores.js';
-import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../../lib/store-products.js';
-import { store as platform, formatPrice, cdnSrc } from '../../../config/store.config.js';
-import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getLang, getT } from '../../../i18n/index.js';
-import { resolveVariantColor, isColorVariant } from '../../../lib/color-variants.js';
-import { comboKey, isProductInStock } from '../../../lib/variant-combo.js';
-import { getCategoriesByStoreId, categoryPath } from '../../../lib/store-categories.js';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible } from '../../lib/stores.js';
+import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
+import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../lib/store-products.js';
+import { store as platform, formatPrice, cdnSrc } from '../../config/store.config.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
+import { getLang, getT } from '../../i18n/index.js';
+import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
+import { comboKey, isProductInStock } from '../../lib/variant-combo.js';
+import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
 
 const shopStore = getStoreBySlug(storeSlug);
-if (!shopStore) return Astro.redirect('/404');
+if (!shopStore) {
+  // Store URL renamed → 301 the old slug (keeping the product path) to the current one, preserving
+  // SEO + shared links instead of 404-ing (see renameStoreSlug).
+  const moved = getStoreByPreviousSlug(storeSlug);
+  if (moved) return Astro.redirect(`/${moved.slug}/${productSlug}`, 301);
+  return Astro.redirect('/404');
+}
 // Admin-blocked store or product (see admin-moderation.ts) — 404, same
 // reasoning as the store page itself.
 if (!isStoreVisible(shopStore)) return Astro.redirect('/404');
 
 const product = getProductBySlug(shopStore.id, productSlug);
-if (!product) return Astro.redirect(`/store/${storeSlug}`);
+if (!product) return Astro.redirect(`/${storeSlug}`);
 if (!isProductVisible(product)) return Astro.redirect('/404');
+
+// SEO: verified custom domain is the store's home — 301 the platform product URL to it (see the
+// store page for the rationale). No-op when already served on the custom domain.
+const cdRedirect = customDomainRedirectUrl(shopStore, Astro.request.headers.get('host'), `/${productSlug}${Astro.url.search}`);
+if (cdRedirect) return Astro.redirect(cdRedirect, 301);
 
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
@@ -52,7 +64,10 @@ const initialStatusText =
   initialStockState === 'out' ? t.store.outOfStock
   : initialStockState === 'low' ? (lang === 'he' ? `נותרו ${initialComboStock} בלבד` : `Only ${initialComboStock} left`)
   : t.store.inStockLabel;
-const productUrl = new URL(`/store/${storeSlug}/${productSlug}`, Astro.url).href;
+// Canonical product/store URLs — the seller's own domain when active, else the platform path
+// (custom-domain.ts). Drives <link rel=canonical>, og:url and the JSON-LD so all SEO signals agree.
+const productUrl = productCanonicalUrl(shopStore, productSlug);
+const storeCanonical = storeCanonicalUrl(shopStore);
 
 // Pre-filtered to non-blocked (see store-products.ts#getVisibleProductsByStoreId) — this list
 // also feeds the header search-suggestions JSON below, which used to leak a blocked product
@@ -107,7 +122,7 @@ const breadcrumbLd = {
       '@type': 'ListItem',
       position: 1,
       name: shopStore.name,
-      item: new URL(`/store/${storeSlug}`, Astro.url).href,
+      item: storeCanonical,
     },
     {
       '@type': 'ListItem',
@@ -135,6 +150,7 @@ const pmI18n = {
   image={images[0]}
   type="product"
   jsonLd={jsonLd}
+  canonical={productUrl}
   isLoggedIn={isLoggedIn}
   storeMode={true}
   storeName={shopStore.name}
@@ -148,6 +164,7 @@ const pmI18n = {
 
   <div class="product-detail-page"
        data-store-slug={shopStore.slug}
+       data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}
        data-store-name={shopStore.name}
        data-images={JSON.stringify(images)}
        data-lang={lang}
@@ -157,7 +174,7 @@ const pmI18n = {
 
     <!-- Back link + checkout link -->
     <nav class="container pt-4 pb-2 flex items-center justify-between" aria-label="breadcrumb">
-      <a href={`/store/${shopStore.slug}`}
+      <a href={`/${shopStore.slug}`}
          data-astro-prefetch
          class="inline-flex items-center gap-1.5 text-sm transition-colors duration-150 hover:[color:var(--color-text)]"
          style="color:var(--color-muted);text-decoration:none">
@@ -465,7 +482,7 @@ const pmI18n = {
               <p class="text-xs font-semibold uppercase tracking-wide" style="color:var(--color-muted);margin:0 0 0.5rem;letter-spacing:0.06em">
                 {t.product.categoryLabel ?? (lang === 'he' ? 'קטגוריה' : 'Category')}
               </p>
-              <a href={`/store/${storeSlug}?category=${encodeURIComponent(product.categoryId!)}`}
+              <a href={`/${storeSlug}?category=${encodeURIComponent(product.categoryId!)}`}
                  class="hover:bg-[var(--color-bg)] transition-colors duration-150"
                  style="display:inline-flex;align-items:center;gap:0.35rem;border:1px solid var(--color-border);border-radius:9999px;padding:0.25rem 0.75rem;font-size:0.8rem;color:var(--color-text);text-decoration:none">
                 {productCategoryName}
@@ -491,7 +508,7 @@ const pmI18n = {
               data-product-slug={product.slug}
               data-store-slug={storeSlug}
               data-is-logged-in={String(isLoggedIn)}
-              data-login-url={`/seller/login?next=/store/${storeSlug}/${productSlug}`}
+              data-login-url={`/seller/login?next=/${storeSlug}/${productSlug}`}
               style="background:none;border:none;cursor:pointer;font-size:0.82rem;color:var(--color-muted);display:inline-flex;align-items:center;gap:0.35rem;padding:0.2rem 0;text-decoration:underline;text-underline-offset:3px;transition:color 0.15s"
               onmouseover="this.style.color='var(--color-text)'"
               onmouseout="this.style.color='var(--color-muted)'"
@@ -522,7 +539,7 @@ const pmI18n = {
                 <div class="related-card"
                      data-slug={p.slug}
                      style="flex:0 0 auto;width:170px;border-radius:var(--radius);overflow:hidden;background:var(--color-surface);cursor:pointer">
-                  <a href={`/store/${shopStore.slug}/${p.slug}`}
+                  <a href={`/${shopStore.slug}/${p.slug}`}
                      class="related-card-trigger"
                      style="display:block;text-decoration:none;color:inherit">
                     <div style="width:170px;height:150px;position:relative;overflow:hidden;background:var(--color-surface);border-bottom:1px solid var(--color-border)">
@@ -622,20 +639,24 @@ const pmI18n = {
 )} />
 
 <script>
-  import { addItem, getCartQty } from '../../../lib/cart.js';
-  import { isWishlisted, toggleWishlist } from '../../../lib/wishlist.js';
-  import { spawnRipple } from '../../../lib/ripple.js';
-  import { trackViewContent, trackAddToCart } from '../../../lib/tracking.js';
-  import { comboKey } from '../../../lib/variant-combo.js';
-  import { isColorVariant } from '../../../lib/color-variants.js';
-  import { initReadMore } from '../../../lib/read-more.js';
-  import { saveLastStore } from '../../../lib/last-store.js';
-  import { spawnHeartBurst } from '../../../lib/burst.js';
-  import { recordStoreVisit } from '../../../lib/recent-stores.js';
+  import { addItem, getCartQty } from '../../lib/cart.js';
+  import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
+  import { spawnRipple } from '../../lib/ripple.js';
+  import { trackViewContent, trackAddToCart } from '../../lib/tracking.js';
+  import { comboKey } from '../../lib/variant-combo.js';
+  import { isColorVariant } from '../../lib/color-variants.js';
+  import { initReadMore } from '../../lib/read-more.js';
+  import { saveLastStore } from '../../lib/last-store.js';
+  import { spawnHeartBurst } from '../../lib/burst.js';
+  import { recordStoreVisit } from '../../lib/recent-stores.js';
+  import { initCustomDomainLinks } from '../../lib/custom-domain-links.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
   const storeName = page?.dataset.storeName ?? '';
+
+  // Clean in-store URLs when served on the store's own verified domain (see custom-domain-links.ts).
+  initCustomDomainLinks(storeSlug, page?.dataset.customHost ?? '');
 
   if (storeSlug) {
     saveLastStore({ slug: storeSlug, name: storeName, url: location.pathname + location.search });

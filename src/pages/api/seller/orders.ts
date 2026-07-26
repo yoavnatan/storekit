@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
+import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug, getOrderById, updateOrder, orderStoreNotes } from '../../../lib/orders.js';
 import type { StoreSubtotal } from '../../../lib/orders.js';
 import { notifyOrderStatusChanged } from '../../../lib/order-notify.js';
@@ -30,13 +30,16 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   if (!sellerId) return json({ error: 'Unauthorized' }, 401);
 
   const url = new URL(request.url);
-  const storeSlug = url.searchParams.get('storeSlug');
-  if (!storeSlug) return json({ error: 'Missing storeSlug' }, 400);
+  const reqSlug = url.searchParams.get('storeSlug');
+  if (!reqSlug) return json({ error: 'Missing storeSlug' }, 400);
 
   const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = findStoreBySlugOrPrevious(stores, reqSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
+  // Use the store's CURRENT slug for all order work — orders migrate to it on rename, and the client
+  // may still send an old (cached) slug (resolved above). Keeps scoping correct across a URL change.
+  const storeSlug = store.slug;
   const orders = getOrdersByStoreSlug(storeSlug);
 
   // No ?page → the original unfiltered/unpaginated shape, used by the
@@ -70,15 +73,17 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     return json({ error: 'Invalid JSON' }, 400);
   }
 
-  const { orderId, storeSlug, shippingStatus, trackingNumber, buyerName, buyerEmail, buyerPhone, buyerAddress, itemDeletes, shippingOverride, discount, sellerNotes } = body;
+  const { orderId, storeSlug: reqSlug, shippingStatus, trackingNumber, buyerName, buyerEmail, buyerPhone, buyerAddress, itemDeletes, shippingOverride, discount, sellerNotes } = body;
 
-  if (typeof orderId !== 'string' || typeof storeSlug !== 'string') {
+  if (typeof orderId !== 'string' || typeof reqSlug !== 'string') {
     return json({ error: 'Missing orderId or storeSlug' }, 400);
   }
 
   const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = findStoreBySlugOrPrevious(stores, reqSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
+  // Current slug — orders migrate to it on rename; a client may still send an old (cached) slug.
+  const storeSlug = store.slug;
 
   const validStatuses = ['pending', 'processing', 'ready', 'shipped', 'delivered', 'cancelled'];
   // A cancellation may only happen before the parcel is on its way — restocking

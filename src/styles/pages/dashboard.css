@@ -1223,6 +1223,9 @@ textarea.input { resize: none; }
 .dash-tabs::-webkit-scrollbar { display: none; }
 
 .dash-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.65rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
@@ -1236,6 +1239,9 @@ textarea.input { resize: none; }
   flex-shrink: 0;
   transition: color 0.15s, border-color 0.15s;
 }
+/* Tab icon — inherits the tab's color (muted → primary when active). */
+.dash-tab > svg { flex-shrink: 0; opacity: 0.85; }
+.dash-tab--active > svg { opacity: 1; }
 
 .dash-tab:hover { color: var(--color-text); }
 

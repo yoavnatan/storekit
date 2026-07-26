@@ -33,7 +33,7 @@ export interface ErrorLogEntry {
 }
 
 // Best-effort identity for an error entry: derives the store from a
-// `/store/[slug]` route and the signed-in account (buyer or seller share the
+// root-level `/<slug>` route and the signed-in account (buyer or seller share the
 // same session cookie — an account only counts as 'seller' if it owns a
 // store). Callers with more specific context (e.g. checkout, which already
 // knows the buyer email) should build these fields directly instead.
@@ -47,7 +47,9 @@ export function resolveErrorContext(
 ): Pick<ErrorLogEntry, 'storeSlug' | 'storeName' | 'actorRole' | 'actorId' | 'actorLabel'> {
   const ctx: Pick<ErrorLogEntry, 'storeSlug' | 'storeName' | 'actorRole' | 'actorId' | 'actorLabel'> = {};
   try {
-    const storeMatch = pathname.match(/^\/store\/([^/]+)/);
+    // Stores live at the root (/<slug>, /<slug>/<product>). Take the first path segment and let
+    // getStoreBySlug filter — a non-store route (/checkout, /search, …) simply returns null.
+    const storeMatch = pathname.match(/^\/([^/]+)(?:\/|$)/);
     if (storeMatch?.[1]) {
       const store = getStoreBySlug(storeMatch[1]);
       if (store) { ctx.storeSlug = store.slug; ctx.storeName = store.name; }

@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
+import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug } from '../../../lib/orders.js';
 import { getProductById } from '../../../lib/store-products.js';
 import { buildPerformanceSummary, buildProductPerformance, pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
@@ -18,16 +18,18 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   if (!sellerId) return json({ error: 'Unauthorized' }, 401);
 
   const url = new URL(request.url);
-  const storeSlug = url.searchParams.get('storeSlug');
+  const reqSlug = url.searchParams.get('storeSlug');
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
-  if (!storeSlug || !from || !to || !ISO_DATE_RE.test(from) || !ISO_DATE_RE.test(to) || from > to) {
+  if (!reqSlug || !from || !to || !ISO_DATE_RE.test(from) || !ISO_DATE_RE.test(to) || from > to) {
     return json({ error: 'Missing or invalid storeSlug/from/to' }, 400);
   }
 
   const stores = getStoresBySellerId(sellerId);
-  const store = stores.find((s) => s.slug === storeSlug);
+  const store = findStoreBySlugOrPrevious(stores, reqSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
+  // Current slug — orders migrate to it on rename; a client may still send an old (cached) slug.
+  const storeSlug = store.slug;
 
   // Cap the window so a crafted ?from= far in the past can't force building
   // an unbounded day-bucket series (each day is a real array entry).

@@ -36,6 +36,24 @@
   const infoEl     = document.getElementById('cart-info') as HTMLElement | null;
   const infoBubble = document.getElementById('cart-info-bubble') as HTMLElement | null;
 
+  // The tooltip is anchored to a tiny icon near the drawer edge; depending on the
+  // title width / viewport it could extend past the screen edge. On reveal, measure
+  // it and nudge it horizontally so it always stays fully on-screen (8px margin).
+  // Applied via `translate` (separate property) so the CSS hover transform is untouched.
+  if (infoEl && infoBubble) {
+    const clampBubble = () => {
+      infoBubble.style.setProperty('--cart-tip-shift', '0px');
+      const r = infoBubble.getBoundingClientRect();
+      const M = 8;
+      let shift = 0;
+      if (r.left < M) shift = M - r.left;
+      else if (r.right > window.innerWidth - M) shift = (window.innerWidth - M) - r.right;
+      infoBubble.style.setProperty('--cart-tip-shift', `${Math.round(shift)}px`);
+    };
+    infoEl.addEventListener('mouseenter', clampBubble);
+    infoEl.addEventListener('focusin', clampBubble);
+  }
+
   const esc = (s: unknown) =>
     String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -131,7 +149,7 @@
     lines.innerHTML = carts.map((c) => `
       <div class="cart-store-group" data-store-slug="${esc(c.storeSlug)}">
         <div class="cart-store-group__head">
-          <a href="/store/${esc(c.storeSlug)}" class="cart-store-group__name">${esc(c.storeName)}</a>
+          <a href="/${esc(c.storeSlug)}" class="cart-store-group__name">${esc(c.storeName)}</a>
           <span class="cart-store-group__count">${c.count} ${c.count !== 1 ? (i18n.items ?? 'items') : (i18n.item ?? 'item')}</span>
         </div>
         <div class="cart-store-group__items">

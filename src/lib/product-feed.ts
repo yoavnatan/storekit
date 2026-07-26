@@ -132,7 +132,7 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
   const imageLink = images[0];
   if (!imageLink || product.price <= 0) return [];
   const additionalImageLinks = images.slice(1, 11); // Google caps additional images at 10
-  const link = `${ctx.baseUrl}/store/${ctx.storeSlug}/${product.slug}`;
+  const link = `${ctx.baseUrl}/${ctx.storeSlug}/${product.slug}`;
 
   const variants = product.variants ?? [];
   if (!variants.length) {

@@ -220,7 +220,7 @@ function storeActionsMenuHtml(t: HTMLElement): string {
   return [
     `<a class="${link}" href="/admin/store/${slug}/performance">ביצועים</a>`,
     `<a class="${link}" href="/admin/store/${slug}/advertising">פרסום</a>`,
-    `<a class="${link}" href="/store/${slug}" target="_blank" rel="noopener">צפה בחנות</a>`,
+    `<a class="${link}" href="/${slug}" target="_blank" rel="noopener">צפה בחנות</a>`,
     `<div class="${MENU_DIVIDER}"></div>`,
     `<button type="button" class="${MENU_ITEM_BASE} [color:var(--color-accent)]" data-action="promote-menu"><span>רמת קידום${weight > 0 ? `: ${PROMO_LEVEL_LABELS[weight]}` : ''}</span>${CHEVRON_DRILL}</button>`,
     `<button type="button" class="${MENU_ITEM_BASE} [color:var(--color-danger)]" data-action="block">${blocked ? 'בטל חסימה' : 'חסום חנות'}</button>`,

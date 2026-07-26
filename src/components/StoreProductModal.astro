@@ -300,7 +300,12 @@ const i18n = {
     // stacked a second identical entry, so browser-Back popped to the same URL
     // and looked like it never returned to the store. Track whether we pushed so
     // close() knows whether a history.back() is owed.
-    const pmTargetPath = `/store/${storeSlug}/${slug}`;
+    // On the store's own custom domain the store is served from root, so the URL is /<product>,
+    // not /<slug>/<product> (see custom-domain-links.ts). window.__customStoreHost is stamped by
+    // the store page; empty/off-host → the normal platform-prefixed path.
+    const pmBase = window.__customStoreHost && location.hostname.toLowerCase() === window.__customStoreHost.toLowerCase()
+      ? '' : `/${storeSlug}`;
+    const pmTargetPath = `${pmBase}/${slug}`;
     if (location.pathname !== pmTargetPath) {
       // `productModal:true` lets the product page (if this URL is later reloaded)
       // detect it was opened from a quick-view and open at the top instead of the
@@ -321,7 +326,7 @@ const i18n = {
     const noImgSvg =`<svg style="color:var(--color-border)" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
 
     const mainImgHtml = hasImages
-      ? `<div id="pm-img-wrap" style="position:relative;padding-top:62%;background:var(--color-surface);border-bottom:1px solid var(--color-border)">
+      ? `<div id="pm-img-wrap" style="position:relative;aspect-ratio:680/421;max-height:70vh;background:var(--color-surface);border-bottom:1px solid var(--color-border)">
            <div class="pm-slides" id="pm-slides" role="button" tabindex="0" style="cursor:zoom-in">
              ${images.map((img) => `<div class="pm-slide is-loading"><img data-src="${escHtml(img)}" alt="${escHtml(name)}" width="680" height="421" class="pm-main-img" decoding="async" /></div>`).join('')}
            </div>
@@ -425,7 +430,7 @@ const i18n = {
     if (pmFooter) {
       pmFooter.innerHTML = `
         ${cartSection}
-        <a href="/store/${escHtml(storeSlug)}/${escHtml(slug)}" class="pm-full-link no-underline hover:underline"
+        <a href="/${escHtml(storeSlug)}/${escHtml(slug)}" class="pm-full-link no-underline hover:underline"
            style="font-size:0.75rem;color:var(--color-muted);text-align:center;display:block;padding-top:0.5rem">
           ${i18n.fullPage ?? 'לדף המוצר המלא'}
         </a>`;
@@ -524,11 +529,23 @@ const i18n = {
     // Skeleton: main slide images (data-src + decode, shimmer removed once loaded)
     const pmSlidesEl = document.getElementById('pm-slides');
     const pmSlideEls = pmSlidesEl ? Array.from(pmSlidesEl.querySelectorAll<HTMLElement>('.pm-slide')) : [];
-    pmSlideEls.forEach((slide) => {
+    const pmImgWrap = document.getElementById('pm-img-wrap');
+    pmSlideEls.forEach((slide, si) => {
       const img = slide.querySelector<HTMLImageElement>('img[data-src]');
       if (img && img.dataset.src) {
         img.src = img.dataset.src;
-        img.decode().then(() => slide.classList.remove('is-loading')).catch(() => slide.classList.remove('is-loading'));
+        img.decode().then(() => {
+          slide.classList.remove('is-loading');
+          // The primary (first) image sets the frame's aspect ratio so it shows
+          // uncropped and with no white letterboxing (the frame matches the photo,
+          // object-fit:cover then fills it exactly). Clamped so a very tall/very
+          // wide photo can't make the modal too tall or too narrow — those extremes
+          // fall back to a mild cover-crop instead of white bars.
+          if (si === 0 && pmImgWrap && img.naturalWidth && img.naturalHeight) {
+            const ratio = Math.min(1.78, Math.max(0.75, img.naturalWidth / img.naturalHeight));
+            pmImgWrap.style.aspectRatio = String(ratio);
+          }
+        }).catch(() => slide.classList.remove('is-loading'));
       }
     });
 

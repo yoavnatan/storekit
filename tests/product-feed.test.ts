@@ -58,7 +58,7 @@ describe('buildFeedItems', () => {
   it('emits one row with an absolute link + image for a plain product', () => {
     const rows = buildFeedItems(product({ slug: 'shirt', images: ['https://cdn/x.jpg', 'https://cdn/y.jpg'] }), CTX);
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.link).toBe('https://shop.example/store/my-store/shirt');
+    expect(rows[0]!.link).toBe('https://shop.example/my-store/shirt');
     expect(rows[0]!.imageLink).toBe('https://cdn/x.jpg');
     expect(rows[0]!.additionalImageLinks).toEqual(['https://cdn/y.jpg']);
     expect(rows[0]!.itemGroupId).toBeUndefined();

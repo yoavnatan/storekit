@@ -100,7 +100,7 @@ const jsonLd = {
             <ul class="search-products-grid" role="list">
               {products.map((p, i) => (
                 <li>
-                  <a href={`/store/${p.storeSlug}/${p.slug}`} class="search-product-card card">
+                  <a href={`/${p.storeSlug}/${p.slug}`} class="search-product-card card">
                     <div class={`search-product-card__img-wrap${p.image ? ' is-loading' : ''}`}>
                       {p.image
                         ? <Image src={p.image} alt={p.name} width={300} height={300} class="search-product-card__img" loading={i < 6 ? 'eager' : 'lazy'} />

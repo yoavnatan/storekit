@@ -30,7 +30,7 @@ const { entries, page, totalPages, buildUrl } = Astro.props;
         <div class="admin-attention-item__reasons">
           {reasons.map((r) => <span class="admin-badge admin-badge--warning">{r}</span>)}
         </div>
-        <a href={`/store/${store.slug}`} target="_blank" rel="noopener" class="admin-link">צפה בחנות</a>
+        <a href={`/${store.slug}`} target="_blank" rel="noopener" class="admin-link">צפה בחנות</a>
       </li>
     ))}
   </ul>

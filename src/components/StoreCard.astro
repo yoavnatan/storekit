@@ -1,6 +1,7 @@
 ---
 import { cdnSrc } from '../config/store.config.js';
 import StoreAvatar from './StoreAvatar.astro';
+import { storeHomeHref } from '../lib/custom-domain.js';
 import type { Store } from '../lib/stores.js';
 
 interface Props {
@@ -29,11 +30,17 @@ const CATEGORY_TAGS_SHOWN = 2;
 const categories = (store.categories ?? []).map((c) => c.trim()).filter(Boolean);
 const shownCategories = categories.slice(0, CATEGORY_TAGS_SHOWN);
 const extraCategoryCount = categories.length - shownCategories.length;
+
+// Link to the seller's own domain when they have a verified one (the store reads as sovereign);
+// otherwise the in-platform path. Prefetch only makes sense for the same-origin (internal) link.
+const storeHref = storeHomeHref(store);
+const isExternalStore = storeHref.startsWith('http');
 ---
 
 <a
-  href={`/store/${store.slug}`}
-  data-astro-prefetch
+  href={storeHref}
+  data-astro-prefetch={isExternalStore ? undefined : true}
+  rel={isExternalStore ? 'noopener' : undefined}
   class={`store-card ${className}`}
   data-store-name={store.name.toLowerCase()}
   data-tagline={(store.tagline || store.description || '').toLowerCase()}

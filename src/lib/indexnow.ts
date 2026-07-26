@@ -41,7 +41,7 @@ export interface IndexNowPayload {
 }
 
 /** Build the IndexNow POST body: absolutize + dedupe the paths, attach the key
- *  and its verification-file location. Accepts relative ('/store/x') or absolute URLs. */
+ *  and its verification-file location. Accepts relative ('/x') or absolute URLs. */
 export function buildIndexNowPayload(paths: string[], cfg: { key: string; siteUrl: string }): IndexNowPayload {
   const base = cfg.siteUrl.replace(/\/+$/, '');
   const host = new URL(base).hostname;
@@ -72,10 +72,10 @@ export async function pingIndexNow(paths: string[]): Promise<void> {
 /** Convenience: notify of a changed product page (and its store page, whose
  *  listing the change also affects). */
 export function pingProductChange(storeSlug: string, productSlug: string): void {
-  void pingIndexNow([`/store/${storeSlug}/${productSlug}`, `/store/${storeSlug}`]);
+  void pingIndexNow([`/${storeSlug}/${productSlug}`, `/${storeSlug}`]);
 }
 
 /** Convenience: notify of a changed store page. */
 export function pingStoreChange(storeSlug: string): void {
-  void pingIndexNow([`/store/${storeSlug}`]);
+  void pingIndexNow([`/${storeSlug}`]);
 }

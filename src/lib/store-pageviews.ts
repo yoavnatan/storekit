@@ -45,6 +45,27 @@ function todayKey(): string {
 
 const pageviewMutex = new Mutex();
 
+/** Move a store's page-view history from oldSlug to newSlug (merging per-day buckets if newSlug
+ *  already has some) so a URL rename doesn't split or lose the seller's visitor analytics. Returns a
+ *  promise the caller can await before responding. See stores.ts → renameStoreSlug. */
+export function renameStoreSlugInPageviews(oldSlug: string, newSlug: string): Promise<void> {
+  if (!oldSlug || oldSlug === newSlug) return Promise.resolve();
+  return pageviewMutex.run(() => {
+    const all = readAll();
+    const from = all[oldSlug];
+    if (!from) return;
+    const into = all[newSlug] ?? {};
+    for (const [date, raw] of Object.entries(from)) {
+      const a = normalizeBucket(into[date]);
+      const b = normalizeBucket(raw);
+      into[date] = { total: a.total + b.total, visitors: Array.from(new Set([...a.visitors, ...b.visitors])) };
+    }
+    all[newSlug] = into;
+    delete all[oldSlug];
+    writeAll(all);
+  }).catch(() => undefined);
+}
+
 /** Fire-and-forget from middleware — bumps today's total load count for a store and, when a stable visitor id is supplied, records it once (repeat loads by the same visitor never inflate the unique count). Never throws (caller must not let analytics failures break page rendering). */
 export function recordPageView(storeSlug: string, visitorId?: string): void {
   pageviewMutex.run(() => {

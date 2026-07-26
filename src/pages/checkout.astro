@@ -264,7 +264,7 @@ for (const s of getVisibleStores()) {
         // Store row: select-all checkbox + store label
         html += `<div class="flex items-center gap-2.5 ${idx === 0 ? 'mt-0' : 'mt-5'} mb-2.5">
           ${checkboxHtml('co-store-check', `data-store-slug="${esc(cart.storeSlug)}"`, `${i18n['selectStoreAria'] ?? ''} ${cart.storeName}`, true)}
-          <a href="/store/${esc(cart.storeSlug)}" class="inline-block text-xs font-bold [color:var(--color-muted)] tracking-[.06em] uppercase no-underline transition-colors duration-[140ms] hover:underline">${esc(cart.storeName)}</a>
+          <a href="/${esc(cart.storeSlug)}" class="inline-block text-xs font-bold [color:var(--color-muted)] tracking-[.06em] uppercase no-underline transition-colors duration-[140ms] hover:underline">${esc(cart.storeName)}</a>
           <span class="co-store-count text-xs font-normal [color:var(--color-muted)]"></span>
         </div>`;
 

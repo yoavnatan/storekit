@@ -1,6 +1,6 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
-import { getStoreBySlug, isStoreVisible } from '../../lib/stores.js';
+import { getStoreBySlugOrPrevious, isStoreVisible } from '../../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds } from '../../lib/store-categories.js';
@@ -16,7 +16,7 @@ function json(data: unknown, status = 200) {
 // filterAndSortProducts() the page's own initial SSR render uses, so results never drift.
 export const GET: APIRoute = async ({ url }) => {
   const storeSlug = url.searchParams.get('store') ?? '';
-  const store = storeSlug ? getStoreBySlug(storeSlug) : null;
+  const store = storeSlug ? getStoreBySlugOrPrevious(storeSlug) : null;
   if (!store || !isStoreVisible(store)) return json({ ok: false, error: 'Store not found.' }, 404);
 
   const category = url.searchParams.get('category') ?? '';

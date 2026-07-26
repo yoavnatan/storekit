@@ -26,7 +26,11 @@ const updateOrder = vi.fn((id: string, updates: Partial<OrderFixture>) => {
 });
 
 vi.mock('../src/lib/seller-auth.js', () => ({ getSellerSession: () => 'seller-1' }));
-vi.mock('../src/lib/stores.js', () => ({ getStoresBySellerId: () => [STORE] }));
+vi.mock('../src/lib/stores.js', () => ({
+  getStoresBySellerId: () => [STORE],
+  findStoreBySlugOrPrevious: (stores: { slug: string; previousSlugs?: string[] }[], slug: string) =>
+    stores.find((s) => s.slug === slug || s.previousSlugs?.includes(slug)),
+}));
 vi.mock('../src/lib/orders.js', () => ({
   getOrdersByStoreSlug: () => [],
   getOrderById: (id: string) => getOrderById(id),

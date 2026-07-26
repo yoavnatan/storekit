@@ -74,8 +74,29 @@ export interface Store {
    *  stock) as CSV/JSON from a tokenized, login-free URL (/api/store-feed/[token]). Absent = the
    *  store shares nothing out. Rotating or clearing it instantly invalidates the old URL. */
   feedExportToken?: string;
+  /** Optional seller-owned custom domain (e.g. "shop.mybrand.co.il") that serves this store from
+   *  its ROOT — an *addition to*, never a replacement for, the always-live local path /<slug>.
+   *  When verified, the custom domain becomes the store's SEO canonical (storeCanonicalUrl);
+   *  until then the platform path is canonical. One canonical either way — no duplicate content. OFF by default;
+   *  seller-activated in settings. SSL + edge routing are handled by Cloudflare-for-SaaS custom
+   *  hostnames (see custom-domain.ts) — this record only holds the seller's state. Absent = unused.
+   *  `status` gates middleware serving: only 'active' (DNS + SSL verified) is served from a custom
+   *  host; a 'pending' domain still routes exclusively through the platform domain. */
+  customDomain?: {
+    hostname: string;               // normalized, lowercase, no scheme/path/port (e.g. "shop.example.com")
+    status: 'pending' | 'active';
+    addedAt: string;
+  };
+  /** Slugs this store used before the seller renamed its URL. The store page 301-redirects any of
+   *  these to the current slug so old links + Google's index transfer instead of 404-ing — that's
+   *  what makes the URL editable without losing SEO. Newest-last, capped, never contains the current
+   *  slug. See renameStoreSlug + getStoreByPreviousSlug. */
+  previousSlugs?: string[];
   createdAt: string;
 }
+
+/** How many old slugs to remember per store (older 301 sources fall off). */
+export const MAX_PREVIOUS_SLUGS = 10;
 
 /** Most saved background colours kept per store (newest-first, older ones fall off). */
 export const MAX_STORE_BG_COLORS = 12;
@@ -98,22 +119,53 @@ function writeStores(stores: Store[]): void {
   fs.writeFileSync(STORES_PATH, JSON.stringify(stores, null, 2));
 }
 
-function slugify(name: string): string {
-  return name.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+/** Turn free text into a URL slug: lowercase, spaces→hyphens, keep only a-z/0-9/hyphen, collapse
+ *  repeats, trim edge hyphens. Returns '' when nothing usable remains — e.g. an all-Hebrew name,
+ *  which is exactly why the store-creation form asks for a separate latin URL name instead of
+ *  deriving the slug from a Hebrew store name (which used to yield junk like "--"). */
+export function normalizeSlug(input: string): string {
+  return input.toLowerCase().trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Top-level path segments a store slug must NEVER equal — every one is a real platform route
+ *  (page or folder under src/pages). Because stores now live at the ROOT (dezabin.com/<slug>, not
+ *  /store/<slug>), a slug colliding with one of these would be permanently shadowed by the static
+ *  route (Astro resolves static routes before the dynamic [storeSlug] one) and the store would be
+ *  unreachable. createStore() bumps a colliding slug (foo → foo-2); the middleware + custom-domain
+ *  resolver share this set so they never mistake a reserved path for a store. Keep in sync with
+ *  src/pages/ top-level entries. */
+export const RESERVED_SLUGS = new Set<string>([
+  'store', 'stores', 'search', 'checkout', 'cart', 'wishlist', 'account',
+  'admin', 'api', 'seller', 'buyer', '404', 'index',
+  'sitemap-content', 'llms', 'robots', 'favicon', '_astro', '_image', '_actions',
+]);
+
+/** A usable store slug: non-empty and not a reserved platform route. */
+export function isReservedSlug(slug: string): boolean {
+  return RESERVED_SLUGS.has(slug);
 }
 
 interface CreateStoreInput {
   name: string;
+  /** Seller-chosen latin URL name → the store's slug. Falls back to a name-derived slug, then
+   *  'store', if empty/all-non-latin (the form requires it, so the fallback is a safety net). */
+  slug?: string;
   tagline?: string;
   description?: string;
 }
 
-export function createStore(sellerId: string, { name, tagline = '', description = '' }: CreateStoreInput): Store {
+export function createStore(sellerId: string, { name, slug: rawSlug, tagline = '', description = '' }: CreateStoreInput): Store {
   const stores = readStores();
-  const base = slugify(name) || 'store';
+  const base = normalizeSlug(rawSlug ?? '') || normalizeSlug(name) || 'store';
   let slug = base;
   let n = 2;
-  while (stores.find((s) => s.slug === slug)) { slug = `${base}-${n++}`; }
+  // Bump on a slug that ANY store already claims (current OR previous — old slugs stay reserved so
+  // 301s never break) OR a reserved route name (a root-level store can't own a real platform path).
+  while (stores.some((s) => storeClaimsSlug(s, slug)) || isReservedSlug(slug)) { slug = `${base}-${n++}`; }
 
   const store: Store = {
     id: crypto.randomUUID(),
@@ -157,6 +209,84 @@ export function getStoreByExportToken(token: string): Store | null {
 
 export function getAllStores(): Store[] {
   return readStores();
+}
+
+/** Resolves an inbound request Host to the store that owns it as an ACTIVE custom domain — the
+ *  routing counterpart the middleware calls on every custom-host request. Only a verified
+ *  (status 'active') hostname is served; a 'pending' one is ignored so an unverified domain can
+ *  never hijack routing. Host is lowercased + port-stripped to match the stored normalized form.
+ *  Linear scan today; an indexed lookup at DB-migration time (same signature). */
+export function getStoreByCustomDomain(hostname: string): Store | null {
+  const h = hostname.toLowerCase().replace(/:\d+$/, '').trim();
+  if (!h) return null;
+  return readStores().find((s) => s.customDomain?.status === 'active' && s.customDomain.hostname === h) ?? null;
+}
+
+/** True if ANY store other than `exceptStoreId` has already registered this hostname (pending OR
+ *  active). A custom domain must be globally unique — two stores claiming the same host would make
+ *  routing ambiguous (first-match wins). Enforced when a seller sets their domain (see /api/store.ts). */
+export function isCustomDomainTaken(hostname: string, exceptStoreId: string): boolean {
+  const h = hostname.toLowerCase().trim();
+  return readStores().some((s) => s.id !== exceptStoreId && s.customDomain?.hostname === h);
+}
+
+/** True if a store CLAIMS this slug — either as its current slug OR in its previousSlugs. A previous
+ *  slug stays reserved so it can never be reused by another store: otherwise the new owner's current
+ *  slug would win resolution and silently break the original store's old 301 redirect. Pure. */
+export function storeClaimsSlug(store: Pick<Store, 'slug' | 'previousSlugs'>, slug: string): boolean {
+  return store.slug === slug || (store.previousSlugs?.includes(slug) ?? false);
+}
+
+/** True if `slug` is claimed (current OR previously) by some store OTHER than exceptStoreId — the
+ *  cross-store uniqueness check for a rename/create. Reserving old slugs preserves everyone's 301s. A
+ *  store's OWN previous slug is excluded (exceptStoreId), so it can freely rename back to it. */
+export function isSlugTaken(slug: string, exceptStoreId: string): boolean {
+  return readStores().some((s) => s.id !== exceptStoreId && storeClaimsSlug(s, slug));
+}
+
+/** Resolve a slug to its store by the CURRENT slug, falling back to a PREVIOUS slug (renamed since).
+ *  Critical for checkout: a buyer's cart holds the slug from when the item was added, so a URL rename
+ *  mid-purchase must NOT make the store "not found" and fail the order. Callers should key downstream
+ *  work off the returned store.slug (the current one), not the slug they passed in. */
+export function getStoreBySlugOrPrevious(slug: string): Store | null {
+  return getStoreBySlug(slug) ?? getStoreByPreviousSlug(slug);
+}
+
+/** Find a store within an already-fetched list by its current slug OR any previous slug. Used by the
+ *  seller data APIs so a client that cached an old slug (e.g. right after a URL rename, before the
+ *  page updates) still resolves to the right store instead of 404-ing. */
+export function findStoreBySlugOrPrevious(stores: Store[], slug: string | null): Store | undefined {
+  if (!slug) return undefined;
+  return stores.find((s) => s.slug === slug || s.previousSlugs?.includes(slug));
+}
+
+/** Resolve a slug that USED to belong to a store (renamed since) → that store, so the route can 301
+ *  to its current slug. A live slug always wins first: callers check getStoreBySlug before this. */
+export function getStoreByPreviousSlug(slug: string): Store | null {
+  if (!slug) return null;
+  return readStores().find((s) => s.slug !== slug && s.previousSlugs?.includes(slug)) ?? null;
+}
+
+/** The previousSlugs list after renaming oldSlug→newSlug: keep history + add oldSlug, drop newSlug
+ *  (a revert), dedupe, cap to the most recent MAX_PREVIOUS_SLUGS. Pure — unit-tested. */
+export function computeNextPreviousSlugs(current: string[] | undefined, oldSlug: string, newSlug: string): string[] {
+  const list = [...(current ?? []), oldSlug].filter((s) => s && s !== newSlug);
+  return Array.from(new Set(list)).slice(-MAX_PREVIOUS_SLUGS);
+}
+
+/** Change a store's URL slug, remembering the old one for 301 redirects (getStoreByPreviousSlug).
+ *  The caller MUST have validated newSlug (normalized, non-empty, not reserved, not taken). The
+ *  slug-keyed side stores (page-views, favorites) are migrated by the caller, not here. */
+export function renameStoreSlug(storeId: string, newSlug: string): Store | null {
+  const stores = readStores();
+  const idx = stores.findIndex((s) => s.id === storeId);
+  if (idx === -1) return null;
+  const oldSlug = stores[idx]!.slug;
+  if (oldSlug === newSlug) return stores[idx]!;
+  const previousSlugs = computeNextPreviousSlugs(stores[idx]!.previousSlugs, oldSlug, newSlug);
+  stores[idx] = { ...stores[idx]!, slug: newSlug, previousSlugs };
+  writeStores(stores);
+  return stores[idx]!;
 }
 
 /** false for an admin-blocked store (see admin-moderation.ts). Every public discovery/purchase
