@@ -12,6 +12,15 @@ export interface FloatingPortal {
   currentTrigger(): HTMLElement | null;
 }
 
+/** A non-interactive title row for the top of a toolbar dropdown (sort/filter).
+ *  Since the sort/filter triggers collapse to icon-only on mobile, the opened
+ *  menu needs to name itself ("מיין לפי" / "סנן לפי") so the user knows what
+ *  they tapped (CURRENT_TASK 2). Prepend its return value to the menu HTML. */
+export function toolbarMenuTitle(text: string): string {
+  const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<div class="px-3 pt-[.15rem] pb-[.4rem] text-[.7rem] font-semibold uppercase tracking-[.04em] [color:var(--color-muted)] select-none">${esc}</div><div class="h-px bg-[color:var(--color-border)] mb-[.3rem]"></div>`;
+}
+
 export function createFloatingPortal(portalId: string): FloatingPortal {
   let trigger: HTMLElement | null = null;
 

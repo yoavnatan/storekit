@@ -281,7 +281,7 @@ const i18n = {
         b.disabled = !available;
         b.setAttribute('aria-disabled', String(!available));
         b.style.opacity = available ? '1' : '0.4';
-        b.style.cursor = available ? 'pointer' : 'not-allowed';
+        b.style.cursor = available ? 'pointer' : 'default';
         b.style.textDecoration = available ? 'none' : 'line-through';
       });
     }

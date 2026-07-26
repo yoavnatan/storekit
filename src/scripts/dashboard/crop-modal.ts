@@ -6,7 +6,9 @@ const cropApplyBtn = document.getElementById('crop-apply') as HTMLButtonElement 
 const cropCancelEl = document.getElementById('crop-cancel') as HTMLButtonElement | null;
 
 const VP_SIZE_DEFAULT = 280;
-const OUT_SIZE_MAX = 2048; // ceiling only — real output size matches the source pixels selected
+const OUT_SIZE_MAX = 2560; // ceiling only — real output size matches the source pixels selected.
+// 2560 keeps the widest surface (the store banner, ~1128px CSS → ~2256px at DPR 2)
+// sharp on retina desktop without upscaling; f_auto/q_auto still compress delivery.
 
 export interface CropOptions {
   vpWidth?: number;  // viewport CSS width in px (default 280 — square gallery crop)

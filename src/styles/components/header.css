@@ -12,8 +12,8 @@
   padding-block: 0.65rem;
 }
 
-/* compensate for fixed header height (padding × 2 + user-btn height + border) */
-body { padding-top: 3.3rem; }
+/* compensate for the fixed header height (pinned to 3.4rem inline on <header>) */
+body { padding-top: 3.4rem; }
 
 /* storeMode's header row (was an inline style — moved out to a real rule so the
    desktop media query below can override `display` to grid when a search bar
@@ -36,7 +36,26 @@ body { padding-top: 3.3rem; }
   min-height: 2rem;
 }
 
-.logo { font-weight: 800; font-size: 1.15rem; color: var(--color-text); letter-spacing: -0.01em; }
+/* Every header row — store, home, and search-less pages (cart/checkout) alike —
+   is locked to ONE FIXED content height (not min-height) and vertically centres
+   its children, so the header height can NEVER change: not with the logo, not
+   between pages, and not during load (an un-styled/pre-font search input or
+   logo used to render taller for a frame, so the header flashed ~60px then
+   snapped to 54px on the homepage — a fixed height makes that impossible).
+   Anything taller than the row overflows visually instead of resizing it. */
+.site-header .container { height: 2rem; align-items: center; }
+
+/* Logo box must be identical in every context: the same font-size, and a tight
+   flex box (line-height:1) so its height is the cap height, not a full text
+   line — otherwise the store-name path (inline-flex) and the platform-logo
+   fallback (inline-block) rendered at different heights and shifted the row. */
+.logo {
+  font-weight: 800; font-size: 1.3rem; color: var(--color-text); letter-spacing: -0.01em;
+  display: inline-flex; align-items: center; line-height: 1;
+}
+/* NB header height is pinned INLINE on <header> (height:3.4rem;box-sizing:border-box)
+   so it's fixed from the first paint — before this stylesheet/fonts load — and can
+   never flash-then-shrink (dev-server injects CSS via JS post-paint). Keep that inline. */
 
 nav ul { margin: 0; }
 nav a { font-weight: 500; font-size: 0.9rem; color: var(--color-muted); }
@@ -534,19 +553,26 @@ nav a:hover { color: var(--color-text); }
 /* Store name truncates when long — never pushes siblings. Also covers the
    rare storeMode-with-no-storeName fallback (plain platform logo text
    rendered inside .store-header__logo-col instead of .store-name-text) —
-   kept as its own overflow:hidden boundary for that path only. */
+   kept as its own overflow:hidden boundary for that path only.
+   inline-block (not block): the column is flex:1 1 0 (grows to push the icons
+   to the far edge), so a block/flex link would stretch across the whole empty
+   column and make that dead space navigate to store home on click — only the
+   logo text itself should be the link target (CURRENT_TASK 1). */
 .store-header__logo-col .logo {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
 }
 
 .store-header__logo-col .store-name-link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   min-width: 0;
+  max-width: 100%;
 }
 
 /* The normal case (real store name) additionally has the dedicated

@@ -290,7 +290,7 @@ const pmI18n = {
                                     'border-radius:var(--radius)',
                                     'padding:0.45rem 0.9rem',
                                     `font-size:0.875rem;font-weight:${isActive ? 600 : 500}`,
-                                    `cursor:${isAvailable ? 'pointer' : 'not-allowed'}`,
+                                    `cursor:${isAvailable ? 'pointer' : 'default'}`,
                                     `background:${isActive ? activeBg : 'transparent'}`,
                                     'color:var(--color-text)',
                                     `opacity:${isAvailable ? '1' : '0.4'}`,
@@ -747,7 +747,7 @@ const pmI18n = {
       b.disabled = !available;
       b.setAttribute('aria-disabled', String(!available));
       b.style.opacity = available ? '1' : '0.4';
-      b.style.cursor = available ? 'pointer' : 'not-allowed';
+      b.style.cursor = available ? 'pointer' : 'default';
       b.style.textDecoration = available ? 'none' : 'line-through';
     });
   }

@@ -22,7 +22,16 @@ function escHtml(s: string): string {
 
 const SYNC_EVENT = 'select-dropdown:sync';
 
-export function initSelectDropdown(select: HTMLSelectElement): void {
+// Default trigger = a full-width, form-field-sized control (advertising selects).
+const DEFAULT_TRIGGER_CLASS =
+  'group w-full flex items-center justify-between gap-2 py-[0.65rem] px-[0.8rem] border [border-color:var(--color-border)] rounded-[var(--radius)] [background:var(--color-bg)] font-[inherit] text-[inherit] [color:var(--color-text)] cursor-pointer text-start transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-[1px] focus-visible:outline-[color:var(--color-primary)]';
+
+// Compact pill — matches the .table-toolbar-btn sort/filter chips so a select
+// can sit inline in a dashboard toolbar row (page-size, CURRENT_TASK 2).
+export const COMPACT_TRIGGER_CLASS =
+  'group inline-flex items-center gap-[.35rem] py-[.35rem] px-[.7rem] border [border-color:var(--color-border)] rounded-full [background:var(--color-surface)] font-[inherit] text-[.82rem] [color:var(--color-text)] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-[1px] focus-visible:outline-[color:var(--color-primary)]';
+
+export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerClassName?: string } = {}): void {
   if (select.dataset.dropdownBound) return;
   select.dataset.dropdownBound = '1';
 
@@ -31,8 +40,7 @@ export function initSelectDropdown(select: HTMLSelectElement): void {
 
   const trigger = document.createElement('button');
   trigger.type = 'button';
-  trigger.className =
-    'group w-full flex items-center justify-between gap-2 py-[0.65rem] px-[0.8rem] border [border-color:var(--color-border)] rounded-[var(--radius)] [background:var(--color-bg)] font-[inherit] text-[inherit] [color:var(--color-text)] cursor-pointer text-start transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-[1px] focus-visible:outline-[color:var(--color-primary)]';
+  trigger.className = opts.triggerClassName ?? DEFAULT_TRIGGER_CLASS;
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
 

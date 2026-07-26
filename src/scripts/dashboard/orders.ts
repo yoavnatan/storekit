@@ -1,4 +1,4 @@
-import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { createFloatingPortal, toolbarMenuTitle } from '../../lib/toolbar-portal.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { applyStockAttentionFilter } from './products.js';
@@ -636,7 +636,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   const ordersPortal = createFloatingPortal('orders-toolbar-portal');
 
   function openOrdersSort(trigger: HTMLElement): void {
-    ordersPortal.open(trigger, '13rem', () => ORDER_SORT_OPTIONS.map((o) => {
+    ordersPortal.open(trigger, '13rem', () => toolbarMenuTitle(ordersDashI18n.sortByLabel ?? 'מיין לפי') + ORDER_SORT_OPTIONS.map((o) => {
       const selected = o.col === ordersSortCol && o.dir === ordersSortDir;
       return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label()}</button>`;
     }).join(''), (portal) => {
@@ -665,6 +665,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   function ordersFilterColumnsHtml(): string {
     const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
     return [
+      toolbarMenuTitle(ordersDashI18n.filterByLabel ?? 'סנן לפי'),
       ...ORDER_FILTER_COLUMNS.map((col) => {
         const active = (ordersFilters.get(col)?.size ?? 0) > 0;
         return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">

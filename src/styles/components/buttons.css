@@ -36,7 +36,7 @@
 .btn--danger { background: var(--color-danger); color: #fff; }
 .btn--danger:hover { background: color-mix(in srgb, var(--color-danger) 88%, #000); }
 
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled { opacity: 0.45; cursor: default; }
 .btn:disabled.btn--confirmed { opacity: 1; cursor: default; }
 /* Briefly disabled while an async action is in flight (e.g. pause/resume a
    campaign) — the disable prevents a double-submit, but the action is allowed,

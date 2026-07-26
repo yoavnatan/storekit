@@ -41,6 +41,8 @@ img, picture, svg, video {
 
 input, button, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; border: none; background: none; }
+/* Never show the "no-entry" cursor on any disabled control (UA default on some browsers). */
+button:disabled, input:disabled, select:disabled, textarea:disabled, [aria-disabled='true'] { cursor: default; }
 a { color: inherit; text-decoration: none; }
 
 ul[role='list'],

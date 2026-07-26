@@ -6,7 +6,7 @@ import { thumbUrl } from './cloudinary.js';
 import { animateScrollTo } from './scroll-utils.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, generateCombos, canonicalDimName, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
-import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { createFloatingPortal, toolbarMenuTitle } from '../../lib/toolbar-portal.js';
 import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree } from './category-tree-cache.js';
 import { initCategoryPicker } from './category-picker.js';
@@ -2064,7 +2064,7 @@ function headerSortClick(col: string): void {
 function openMobileSortMenu(trigger: HTMLElement): void {
   openToolbarPortal(trigger, '13rem', () => {
     const i = getDashI18n();
-    return PRODUCT_SORT_OPTIONS.map((opt) => {
+    return toolbarMenuTitle(i.sortByLabel ?? 'מיין לפי') + PRODUCT_SORT_OPTIONS.map((opt) => {
       const selected = opt.col === productsSortCol && opt.dir === productsSortDir;
       return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${opt.col}" data-sort-dir="${opt.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${esc(i[opt.labelKey] ?? opt.labelKey)}</button>`;
     }).join('');
@@ -2175,6 +2175,7 @@ function filterColumnsHtml(): string {
   const i = getDashI18n();
   const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
   return [
+    toolbarMenuTitle(i.filterByLabel ?? 'סנן לפי'),
     ...PRODUCT_FILTER_COLUMNS.map((col) => {
       const active = (productsFilters.get(col)?.size ?? 0) > 0;
       return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">

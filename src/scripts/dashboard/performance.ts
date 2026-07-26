@@ -164,13 +164,13 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
   if (uniqueEl) uniqueEl.textContent = String(summary.totalUniqueVisitors);
   if (conversionEl) conversionEl.textContent = `${summary.conversionRate.toFixed(1)}%`;
 
-  // Profitability breakdown (gross → −commission → net).
+  // Profitability breakdown (gross → (commission) → net).
   const grossEl = document.getElementById('perf-gross');
   const commissionEl = document.getElementById('perf-commission');
   const commissionRateEl = document.getElementById('perf-commission-rate');
   const netEl = document.getElementById('perf-net');
   if (grossEl) grossEl.textContent = formatPrice(summary.totalRevenue);
-  if (commissionEl) commissionEl.textContent = `−${formatPrice(summary.platformCommission)}`;
+  if (commissionEl) commissionEl.textContent = `(${formatPrice(summary.platformCommission)})`;
   if (commissionRateEl) commissionRateEl.textContent = String(summary.commissionRate);
   if (netEl) netEl.textContent = formatPrice(summary.netProfit);
 

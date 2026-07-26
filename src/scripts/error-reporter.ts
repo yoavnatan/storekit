@@ -12,6 +12,13 @@ function report(message: string, stack?: string): void {
   }).catch(() => {});
 }
 
+// Manual, best-effort report from a caught error path (e.g. an unexpected save
+// failure) — same channel + per-session cap as the global handlers below. Safe
+// to call when offline: the fetch just fails silently.
+export function reportClientError(message: string, stack?: string): void {
+  report(message, stack);
+}
+
 export function initErrorReporter(): void {
   window.addEventListener('error', (e) => {
     report(e.message, e.error?.stack);

@@ -1,4 +1,5 @@
 import { encodeList, debounce } from '../../lib/admin-nav.js';
+import { toolbarMenuTitle } from '../../lib/toolbar-portal.js';
 
 // Messages tab: buyer<->seller threads + the pinned admin "הודעות מערכת" thread,
 // header/mobile sort+filter through an own body-anchored portal, server-fetched
@@ -195,7 +196,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
   // ── Sort ──
   function openMobileMsgSort(trigger: HTMLElement): void {
     openMsgPortal(trigger, '13rem', () => {
-      return MSG_SORT_OPTIONS.map((o) => {
+      return toolbarMenuTitle(msgDashI18nDict.sortByLabel ?? 'מיין לפי') + MSG_SORT_OPTIONS.map((o) => {
         const selected = o.col === msgSortCol && o.dir === msgSortDir;
         return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escMsg(o.label())}</button>`;
       }).join('');
@@ -282,6 +283,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
   function msgFilterColumnsHtml(): string {
     const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
     return [
+      toolbarMenuTitle(msgDashI18nDict.filterByLabel ?? 'סנן לפי'),
       ...MSG_FILTER_COLUMNS.map((col) => {
         const active = (msgFilters.get(col)?.size ?? 0) > 0;
         return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">

@@ -143,19 +143,31 @@ const pmI18n = {
 
   <div class="store-page" data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang}>
 
-    <section class="store-banner" aria-labelledby="store-heading">
-      <div class="container">
-        {shopStore.bannerImage && (
+    {/* Curtain scroll (CURRENT_TASK 2): ONLY the banner image is pinned; the
+        store details and the products both scroll up and over it as one
+        contiguous opaque flow (white details → grey products, no gap), so the
+        image is the single thing the curtain covers — the details are never
+        covered, they just scroll past. */}
+    {shopStore.bannerImage && (
+      <div class="store-banner-pin">
+        <div class="container">
           <div class="store-banner__image-wrap">
             <img
-              src={cdnSrc(shopStore.bannerImage, 1200)}
+              src={cdnSrc(shopStore.bannerImage, 1600)}
+              srcset={`${cdnSrc(shopStore.bannerImage, 800)} 800w, ${cdnSrc(shopStore.bannerImage, 1200)} 1200w, ${cdnSrc(shopStore.bannerImage, 1600)} 1600w, ${cdnSrc(shopStore.bannerImage, 2048)} 2048w`}
+              sizes="(min-width: 1160px) 1128px, calc(100vw - 2rem)"
               alt=""
-              width="1200"
-              height="400"
+              width="1600"
+              height="533"
               class="store-banner__bg"
             />
           </div>
-        )}
+        </div>
+      </div>
+    )}
+
+    <section class="store-banner" aria-labelledby="store-heading">
+      <div class="container">
         <div class="store-banner__info">
           <div class="store-banner__identity">
             <StoreAvatar name={shopStore.name} profileImage={shopStore.profileImage} size={56} />
@@ -253,6 +265,10 @@ const pmI18n = {
       </div>
     </section>
 
+    {/* Full-width opaque layer — the curtain that scrolls up over the pinned
+        banner unit. Full-width (not the container-width section) so it covers
+        the full-width white banner edge-to-edge, no side stripes. */}
+    <div class="store-below">
     <section class="section container">
 {allProducts.length === 0 ? (
         <div class="empty-state">
@@ -536,6 +552,7 @@ const pmI18n = {
         <a href="/" class="platform-link">{platform.name}</a> — {t.store.platformNote}
       </p>
     </footer>
+    </div>
 
   </div>
 </BaseLayout>

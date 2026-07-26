@@ -61,7 +61,9 @@ const strClear   = lang === 'he' ? 'נקה' : 'Clear';
 const strEmpty   = t.store.noProductsFound;
 ---
 
-<header class={`site-header${storeMode ? ' site-header--store' : ''}`}>
+<header class={`site-header${storeMode ? ' site-header--store' : ''}`} style="height:3.4rem;box-sizing:border-box">
+  {/* Height is pinned INLINE (not only in header.css) so it is fixed from the very
+      first paint — before external CSS/fonts load — and can never grow-then-shrink. */}
   <div class={storeMode ? 'container' : 'container between flex'}>
 
     <!-- Logo / store home -->

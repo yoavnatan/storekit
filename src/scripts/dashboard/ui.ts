@@ -1,8 +1,9 @@
+import { reportClientError } from '../error-reporter.js';
+
 const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
 
 export function initSettingsForm(): void {
-  const settingsForm   = document.getElementById('settings-form') as HTMLFormElement | null;
-  const settingsStatus = document.getElementById('settings-status') as HTMLElement | null;
+  const settingsForm = document.getElementById('settings-form') as HTMLFormElement | null;
   // A single button pinned to the bottom of the whole Settings tab (below
   // Categories too), associated via form="settings-form" rather than living
   // inside the <form> — Categories has its own nested <form> lower down, so
@@ -10,18 +11,6 @@ export function initSettingsForm(): void {
   // with settingsForm.querySelector() because of that, hence the plain
   // getElementById.
   const saveBtn = document.getElementById('settings-save-btn') as HTMLButtonElement | null;
-  let settingsTimer: ReturnType<typeof setTimeout>;
-
-  function showSettingsStatus(msg: string, isError = false) {
-    if (!settingsStatus) return;
-    settingsStatus.className = isError
-      ? 'dash-error bg-[#fef2f2] text-[color:var(--color-danger)] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#fecaca] text-sm mb-4'
-      : 'dash-success bg-[#f0fdf4] text-[#166534] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#bbf7d0] text-sm mb-4';
-    settingsStatus.textContent = msg;
-    settingsStatus.hidden = false;
-    clearTimeout(settingsTimer);
-    settingsTimer = setTimeout(() => { settingsStatus.hidden = true; }, 3000);
-  }
 
   settingsForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -30,21 +19,50 @@ export function initSettingsForm(): void {
     if (saveBtn) {
       saveBtn.style.minWidth = `${saveBtn.offsetWidth}px`;
       saveBtn.disabled = true;
+      // btn--busy: the save is in progress, not blocked — show the "working"
+      // cursor (progress), never the disabled "no-entry" (not-allowed).
+      saveBtn.classList.add('btn--busy');
       saveBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">שומר<span class="dot-pulse" role="status" aria-label="שומר"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
     }
 
+    const toastError = (title: string, body: string) =>
+      window.dispatchEvent(new CustomEvent('toast:show', { detail: { title, body, duration: 6000 } }));
+    const reEnableSave = () => {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.classList.remove('btn--busy'); saveBtn.style.minWidth = ''; saveBtn.textContent = origText; }
+    };
+
     const fd = new FormData(settingsForm);
-    let data: { ok: boolean; name?: string; error?: string };
+
+    // 1) Could we even reach the server? A rejected fetch = offline / server
+    //    unreachable. Nothing to log server-side (the log endpoint lives on the
+    //    same server), so just tell the seller it's a connection problem.
+    let res: Response;
     try {
-      const res = await fetch('/api/store', { method: 'POST', body: fd });
-      data = await res.json() as { ok: boolean; name?: string; error?: string };
+      res = await fetch('/api/store', { method: 'POST', body: fd });
     } catch {
-      data = { ok: false, error: 'שגיאה בשמירה.' };
+      toastError('לא הצלחנו להתחבר לשרת', 'בדקו את החיבור לאינטרנט ונסו שוב.');
+      reEnableSave();
+      return;
     }
 
-    if (!data.ok) {
-      showSettingsStatus(data.error ?? 'שגיאה בשמירה.', true);
-      if (saveBtn) { saveBtn.disabled = false; saveBtn.style.minWidth = ''; saveBtn.textContent = origText; }
+    // 2) Server answered — read its verdict (a crash page may not be JSON).
+    type StoreSaveResult = { ok?: boolean; name?: string; error?: string };
+    let data: StoreSaveResult | null = null;
+    try { data = await res.json() as StoreSaveResult; } catch { /* non-JSON body */ }
+
+    if (!res.ok || !data?.ok) {
+      // A 4xx WITH a message is normal input validation — show it, don't alert
+      // the admin. Anything else (5xx, unparseable body) is a genuine fault the
+      // server may not have logged itself (proxy/infra/parse) — best-effort
+      // report it to the admin error log (per-session capped in reportClientError).
+      const isValidation = res.status >= 400 && res.status < 500 && !!data?.error;
+      if (isValidation) {
+        toastError('השמירה נכשלה', data!.error!);
+      } else {
+        reportClientError(`settings save failed (status ${res.status})`);
+        toastError('שגיאה בשמירה', 'משהו השתבש בצד השרת. נסו שוב בעוד רגע.');
+      }
+      reEnableSave();
       return;
     }
 
@@ -53,6 +71,11 @@ export function initSettingsForm(): void {
     if (storeNameEl) storeNameEl.textContent = newName;
 
     if (saveBtn) {
+      // btn--confirmed: stays disabled through the 1.5s ✓ hold to block a
+      // double-submit, but reads as a success confirmation — full opacity +
+      // default cursor, not the disabled not-allowed.
+      saveBtn.classList.remove('btn--busy');
+      saveBtn.classList.add('btn--confirmed');
       saveBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px">${checkSvg}נשמר</span>`;
       saveBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
@@ -60,6 +83,7 @@ export function initSettingsForm(): void {
       );
       setTimeout(() => {
         saveBtn.disabled = false;
+        saveBtn.classList.remove('btn--confirmed');
         saveBtn.style.minWidth = '';
         saveBtn.textContent = origText;
       }, 1500);

@@ -322,7 +322,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-brand-form__field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; font-weight: 600; color: var(--color-muted); }
 .admin-brand-form__field--wide { grid-column: 1 / -1; }
 .admin-brand-form__field > span { display: flex; align-items: center; gap: 0.35rem; }
-.admin-brand-form textarea.input { resize: vertical; font-family: inherit; }
+.admin-brand-form textarea.input { resize: none; font-family: inherit; }
 .admin-brand-form__submit { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.75rem; }
 /* Styled single-select — the site's dropdown design language (see AI_INSTRUCTIONS
    → Dropdown design system), backed by the shared floating portal. Visually

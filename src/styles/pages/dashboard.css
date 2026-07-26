@@ -9,7 +9,7 @@
   gap: 1rem;
 }
 
-textarea.input { resize: vertical; }
+textarea.input { resize: none; }
 
 /* Products table */
 .products-header {
@@ -209,6 +209,34 @@ textarea.input { resize: vertical; }
 }
 @media (max-width: 640px) {
   .table-toolbar:not([hidden]) { display: flex; }
+}
+
+/* Unified toolbar row (CURRENT_TASK 2) — search + optional page-size + sort/
+   filter on ONE line across Products/Orders/Messages. On desktop it may wrap
+   and the nested .table-toolbar (products/messages) is display:none (sort/filter
+   live in the table header there); ≤640px it's forced to a single row and every
+   control but the search collapses to an icon so they all fit. */
+.dash-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.75rem;
+}
+/* Inside a sticky .dash-panel-head (Orders/Messages) the head's own padding +
+   flex gap already space it — don't stack a second bottom pad. */
+.dash-panel-head .dash-toolbar { padding-bottom: 0; }
+/* The nested sort/filter group carries no padding of its own here. */
+.dash-toolbar .table-toolbar { padding-bottom: 0; }
+
+@media (max-width: 640px) {
+  .dash-toolbar { flex-wrap: nowrap; }
+  /* Icon-only: drop the text label + chevron on every pill; keep the leading
+     glyph and the filter-count badge. "בעמוד:" (page-size label) is a
+     .toolbar-btn-label too, so it collapses to just the number pill. */
+  .dash-toolbar .toolbar-btn-label { display: none; }
+  .dash-toolbar .table-toolbar-btn__chevron { display: none; }
+  .dash-toolbar .table-toolbar-btn { padding-inline: 0.55rem; }
 }
 
 /* .toolbar-portal (floating dropdown container — one body-anchored element
@@ -707,15 +735,16 @@ textarea.input { resize: vertical; }
   /* Reclaim the wide side gutters: the outer container + dash-head/tabs
      used desktop-sized padding (1rem container + 1.5rem each), leaving a
      lot of dead space on narrow screens. Bring everything down to match
-     the already-tightened .dash-panel padding. */
-  .dash-section { padding-inline: 0.75rem; }
+     the already-tightened .dash-panel padding. Also trim the top gap between
+     the site header (banner) and the store details block (CURRENT_TASK 2). */
+  .dash-section { padding-inline: 0.75rem; padding-top: 0.6rem; }
 
   /* Selected-count: full "X נבחרו" badge is too wide for mobile — show a
      compact "(N)" right next to the select-all checkbox instead. */
   .bulk-count-badge { display: none; }
   .bulk-count-paren { display: inline; }
   .bulk-select-all--mobile { display: inline-block; }
-  .dash-head { padding-inline: 0.65rem; }
+  .dash-head { padding-inline: 0.65rem; padding-top: 0.85rem; }
   /* #dash-main-card prefix bumps specificity: .dash-tabs/.dash-panel have
      unscoped base rules later in this file (same specificity) that would
      otherwise win over this media query purely on source order. */
@@ -750,32 +779,27 @@ textarea.input { resize: vertical; }
      passes both got reverted per feedback: hiding them behind a "more
      details" toggle (unreachable-by-default is what started this whole
      fix), then one full-width row per field (correct info, but grew the
-     card noticeably taller than before). Pass 3: exactly 3 compact lines
-     right under price/stock — same 2-per-line pairing price/stock itself
-     already uses. **Row order + emphasis (pass 4):** wishlist+purchased sit
-     directly under price/stock, category+SKU below that, date-added alone
-     last — per feedback that likes/purchased/stock read as the genuinely
-     interesting numbers and SKU/date-added as reference-only clutter that
-     shouldn't compete for the same visual weight. Stock/wishlist/purchased
-     get full-contrast, slightly bolder text; category/SKU/date-added stay
-     smaller + muted (see the per-field rules below) — the *order* alone
-     wasn't enough once they were still all the same washed-out gray.
-     SKU is the least important field of all (per feedback) — it shares
-     date-added's row instead of category's, tucked into the one corner
-     slot that would otherwise sit empty; category gets the full-width row
-     to itself now that it isn't sharing. */
+     card noticeably taller than before). **Layout (pass 6, CURRENT_TASK ב׳):**
+     a clean invisible-table grid — the title/price/category/date column
+     (RTL-right) sits row-for-row against the stock/purchased/likes/sku column
+     (RTL-left), so the title lines up with stock, price with purchased, and so
+     on down. The title is a single cell on row 1 (not spanning both columns as
+     before), which is what let it share a line with stock; two equal 4-item
+     columns mean tops AND bottoms align with no dangling empty cell, and the
+     card is one row shorter than the old name-spans-both version. Stock/
+     purchased/wishlist get full-contrast, slightly bolder text; category/SKU/
+     date-added stay smaller + muted (see the per-field rules below). */
   .products-table tbody tr[data-product-display] {
     display: grid;
     grid-template-columns: auto auto 1fr auto auto;
-    grid-template-rows: auto auto auto auto auto;
+    grid-template-rows: auto auto auto auto;
     grid-template-areas:
-      "check thumb name      name      actions"
-      "check thumb price     stock     actions"
-      "check thumb wishlist  purchased actions"
-      "check thumb cat       cat       actions"
-      "check thumb date      sku       actions";
+      "check thumb name  stock     actions"
+      "check thumb price purchased actions"
+      "check thumb cat   wishlist  actions"
+      "check thumb date  sku       actions";
     column-gap: 0.6rem;
-    row-gap: 0.15rem;
+    row-gap: 0.05rem;
     padding: 0.6rem 0.2rem;
     border-bottom: 1px solid var(--color-border);
     align-items: center;
@@ -810,24 +834,24 @@ textarea.input { resize: vertical; }
   }
   .products-table tr[data-product-display] .name-col {
     grid-area: name;
-    align-self: end;
-    padding-bottom: 0.05rem;
+    align-self: center;
+    padding-bottom: 0;
   }
   .products-table tr[data-product-display] .product-price {
     grid-area: price;
-    align-self: start;
+    align-self: center;
     font-size: 0.8rem;
     font-weight: 700;
     color: var(--color-accent);
-    padding-top: 0.08rem;
+    padding-top: 0;
   }
   .products-table tr[data-product-display] .product-stock {
     grid-area: stock;
-    align-self: start;
+    align-self: center;
     font-size: 0.78rem;
     font-weight: 600;
     color: var(--color-text);
-    padding-top: 0.08rem;
+    padding-top: 0;
     white-space: nowrap;
   }
   .products-table tr[data-product-display] .actions {
@@ -840,13 +864,13 @@ textarea.input { resize: vertical; }
      purchased get full-contrast text below, per feedback 2026-07-16). */
   .products-table tr[data-product-display] .cat-col {
     grid-area: cat;
-    align-self: start;
+    align-self: center;
     font-size: 0.74rem;
-    padding-top: 0.15rem;
+    padding-top: 0.05rem;
   }
   .products-table tr[data-product-display] .sku-col {
     grid-area: sku;
-    align-self: start;
+    align-self: center;
     font-size: 0.74rem;
     padding-top: 0.05rem;
   }
@@ -857,21 +881,21 @@ textarea.input { resize: vertical; }
      can raise them to full-contrast on the card without touching desktop. */
   .products-table tr[data-product-display] .wishlist-col {
     grid-area: wishlist;
-    align-self: start;
+    align-self: center;
     padding-top: 0.05rem;
     color: var(--color-text) !important;
     font-weight: 600;
   }
   .products-table tr[data-product-display] .purchased-col {
     grid-area: purchased;
-    align-self: start;
+    align-self: center;
     padding-top: 0.05rem;
     color: var(--color-text) !important;
     font-weight: 600;
   }
   .products-table tr[data-product-display] .date-col {
     grid-area: date;
-    align-self: start;
+    align-self: center;
     font-size: 0.74rem;
     padding-top: 0.05rem;
   }
@@ -890,7 +914,13 @@ textarea.input { resize: vertical; }
      default align-self), so `height:min(100%,56px)` on the wrap resolves
      against that — `aspect-ratio:1` keeps it square off the resulting
      height instead of a separately-guessed width. */
-  .products-table .thumb-wrap    { width: auto; height: min(100%, 56px); aspect-ratio: 1; }
+  /* Fill the card's full content height so the thumbnail spans the same
+     vertical band as the details column beside it — no dead space above/below
+     a small centered image (CURRENT_TASK 2). thumb-col already stretches to the
+     card height; height:100% here resolves against that, aspect-ratio:1 keeps it
+     square off the resulting height. Capped so a very short card (few detail
+     lines) doesn't blow the thumbnail up past a sensible list size. */
+  .products-table .thumb-wrap    { width: auto; height: min(100%, 72px); aspect-ratio: 1; }
   .products-table .product-thumb { width: 100% !important; height: 100% !important; }
 
   /* Kebab button — bigger tap target */
@@ -1084,7 +1114,7 @@ textarea.input { resize: vertical; }
 }
 .cleanup-mode-btn:not(.cleanup-mode-btn--active):hover { background: var(--color-bg); color: var(--color-text); }
 .cleanup-mode-btn--active { background: var(--color-text); color: var(--color-surface); border-color: var(--color-text); cursor: default; }
-.cleanup-mode-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.cleanup-mode-btn:disabled { opacity: 0.4; cursor: default; }
 .cleanup-mode-btn:disabled:hover { background: var(--color-surface); color: var(--color-muted); }
 
 .cleanup-brush-label {
