@@ -1,11 +1,11 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getSellerSession } from '../../../lib/seller-auth.js';
+import { getSellerById, getSellerSession } from '../../../lib/seller-auth.js';
+import { commissionPercentForTier } from '../../../lib/pricing.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug } from '../../../lib/orders.js';
 import { getProductById } from '../../../lib/store-products.js';
 import { buildPerformanceSummary, buildProductPerformance, pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
-import { store as platformConfig } from '../../../config/store.config.js';
 
 function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -61,6 +61,6 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     return json({ ok: true, product: productSummary, productName: product.name });
   }
 
-  const summary = buildPerformanceSummary(orders, storeSlug, from, to, granularity, platformConfig.checkout.commissionPercent, topLimit);
+  const summary = buildPerformanceSummary(orders, storeSlug, from, to, granularity, commissionPercentForTier(getSellerById(sellerId)?.tier), topLimit);
   return json({ ok: true, summary });
 }

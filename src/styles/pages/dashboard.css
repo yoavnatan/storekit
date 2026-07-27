@@ -217,11 +217,25 @@ textarea.input { resize: none; }
    live in the table header there); ≤640px it's forced to a single row and every
    control but the search collapses to an icon so they all fit. */
 .dash-toolbar {
+  /* One height for every control in the row. Each control was sizing itself
+     from its own content — search input and page-size select off a 1.6 line
+     box, the sort/filter pills off whatever was left inside them — which held
+     together on desktop only because the pills happened to carry a text label
+     of the same font-size. ≤640px that label and the chevron are hidden and
+     the pill is left holding a 12px icon, so it collapsed to ~25px next to a
+     ~34px search field. Pinning the height on the row keeps the three locked
+     together if any one of them changes. */
+  --dash-ctl-h: 2.15rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
   padding-bottom: 0.75rem;
+}
+.dash-toolbar input[type="search"],
+.dash-toolbar select,
+.dash-toolbar .table-toolbar-btn {
+  height: var(--dash-ctl-h);
 }
 /* Inside a sticky .dash-panel-head (Orders/Messages) the head's own padding +
    flex gap already space it — don't stack a second bottom pad. */
@@ -236,7 +250,15 @@ textarea.input { resize: none; }
      .toolbar-btn-label too, so it collapses to just the number pill. */
   .dash-toolbar .toolbar-btn-label { display: none; }
   .dash-toolbar .table-toolbar-btn__chevron { display: none; }
-  .dash-toolbar .table-toolbar-btn { padding-inline: 0.55rem; }
+  /* With only the glyph left, square the pill off against --dash-ctl-h so
+     rounded-full reads as a circle the same size as the search field, not a
+     short lozenge. min-width rather than width: the filter pill still has to
+     stretch back out when its active-count badge is showing. */
+  .dash-toolbar .table-toolbar-btn {
+    justify-content: center;
+    min-width: var(--dash-ctl-h);
+    padding-inline: 0.5rem;
+  }
 }
 
 /* .toolbar-portal (floating dropdown container — one body-anchored element
@@ -697,7 +719,7 @@ textarea.input { resize: none; }
   position: relative;
   width: 42px;
   height: 42px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   display: block;
   background: var(--color-surface);

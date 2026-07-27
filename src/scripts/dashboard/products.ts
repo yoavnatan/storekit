@@ -144,7 +144,7 @@ const COMBO_STOCK_VALUE_CLS = 'py-[0.15rem] min-w-[1.9rem] text-end';
 // INLINE_INPUT_NUM, whose base carries min-w-10 (2.5rem) and a 3px ring that
 // bloat the field inside this narrow popover. Sized to its digits, centered,
 // with a slimmer ring.
-const COMBO_STOCK_INPUT_CLS = '[font:inherit] [color:var(--color-text)] text-center bg-[color:var(--color-surface)] border-[1.5px] [border-color:var(--color-primary)] rounded px-[0.25rem] py-[0.05rem] outline-none min-w-0 shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-primary)_15%,transparent)] [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0';
+const COMBO_STOCK_INPUT_CLS = '[font:inherit] [color:var(--color-text)] text-center bg-[color:var(--color-surface)] border-[1.5px] [border-color:var(--color-primary)] rounded-[var(--radius-sm)] px-[0.25rem] py-[0.05rem] outline-none min-w-0 shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-primary)_15%,transparent)] [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0';
 
 // Compact cancel × for the breakdown editor — smaller than INLINE_CANCEL_BTN
 // (w-5) and pulled toward the row edge so it tucks to the side, not next to the
@@ -160,7 +160,7 @@ function stockBreakdownHtml(variants: VariantDimension[] | undefined, variantSto
     const label = comboLabelHtml(variants, combo);
     const value = stockMap[key] ?? 0;
     const lowStyle = value <= LOW_STOCK_THRESHOLD ? ' style="color:var(--color-danger)"' : '';
-    return `<div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key="${esc(key)}"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span class="cursor-text" data-combo-stock-hit role="button" tabindex="0" aria-label="${esc(editLabel)}" style="display:inline-flex;align-items:center;gap:0.3rem"><span data-combo-stock-value class="${COMBO_STOCK_VALUE_CLS}"${lowStyle}>${value}</span><span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">${warnIconHtml(value, i18n)}</span></span></div>`;
+    return `<div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded-[var(--radius-sm)] [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key="${esc(key)}"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span class="cursor-text" data-combo-stock-hit role="button" tabindex="0" aria-label="${esc(editLabel)}" style="display:inline-flex;align-items:center;gap:0.3rem"><span data-combo-stock-value class="${COMBO_STOCK_VALUE_CLS}"${lowStyle}>${value}</span><span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">${warnIconHtml(value, i18n)}</span></span></div>`;
   }).join('');
   return `<span class="relative inline-flex" data-stock-breakdown>
     <button type="button" class="${STOCK_BREAKDOWN_BTN}" data-stock-breakdown-btn aria-expanded="false" aria-haspopup="true" aria-label="${esc(i18n.stockBreakdownLabel ?? 'Show stock breakdown by variant')}">
@@ -832,11 +832,11 @@ function currentGalleryImages(editor: HTMLElement): string[] {
 }
 
 function variantImagePickerHtml(images: string[], current: string, i18n: Record<string, string>): string {
-  const noneItem = `<button type="button" data-variant-image-pick data-url="" style="display:block;width:100%;text-align:start;padding:0.4rem 0.6rem;border-radius:4px;background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--color-muted)">${esc(i18n.variantImageNone ?? 'No linked image')}</button>`;
+  const noneItem = `<button type="button" data-variant-image-pick data-url="" style="display:block;width:100%;text-align:start;padding:0.4rem 0.6rem;border-radius:var(--radius-sm);background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--color-muted)">${esc(i18n.variantImageNone ?? 'No linked image')}</button>`;
   if (!images.length) {
     return `${noneItem}<p class="muted" style="font-size:0.75rem;padding:0.3rem 0.6rem;margin:0">${esc(i18n.variantImageNoPhotos ?? 'Upload product photos first')}</p>`;
   }
-  const thumbs = images.map((url) => `<button type="button" data-variant-image-pick data-url="${esc(url)}" aria-label="${esc(url)}" style="display:block;padding:2px;border-radius:4px;border:2px solid ${url === current ? 'var(--color-accent)' : 'transparent'};background:none;cursor:pointer;line-height:0"><img src="${esc(thumbUrl(url, 64, 64))}" alt="" width="48" height="48" style="width:48px;height:48px;object-fit:cover;border-radius:2px;display:block"></button>`).join('');
+  const thumbs = images.map((url) => `<button type="button" data-variant-image-pick data-url="${esc(url)}" aria-label="${esc(url)}" style="display:block;padding:2px;border-radius:var(--radius-sm);border:2px solid ${url === current ? 'var(--color-accent)' : 'transparent'};background:none;cursor:pointer;line-height:0"><img src="${esc(thumbUrl(url, 64, 64))}" alt="" width="48" height="48" style="width:48px;height:48px;object-fit:cover;border-radius:2px;display:block"></button>`).join('');
   return `<div style="display:flex;flex-wrap:wrap;gap:0.35rem;padding:0.3rem 0.3rem 0.5rem">${thumbs}</div>${noneItem}`;
 }
 
@@ -987,8 +987,8 @@ function openComboFilterPortal(wrap: HTMLElement, editor: HTMLElement, i18n: Rec
   const selected = new Set(getComboFilterSelection(wrap));
 
   const portal = getComboFilterPortal();
-  const items = values.map(v => `<label class="combo-filter-item" style="display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.75rem;border-radius:4px;cursor:pointer;font-size:0.82rem;font-weight:400;text-transform:none;letter-spacing:normal;white-space:nowrap"><input type="checkbox" data-combo-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">${esc(v)}</label>`).join('');
-  portal.innerHTML = `${items}<button type="button" class="combo-filter-clear" data-combo-filter-clear style="display:block;width:100%;text-align:start;padding:0.45rem 0.75rem;border-radius:4px;background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--color-muted);text-transform:none;letter-spacing:normal">${esc(i18n.variantFilterClear ?? 'Clear')}</button>`;
+  const items = values.map(v => `<label class="combo-filter-item" style="display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.75rem;border-radius:var(--radius-sm);cursor:pointer;font-size:0.82rem;font-weight:400;text-transform:none;letter-spacing:normal;white-space:nowrap"><input type="checkbox" data-combo-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">${esc(v)}</label>`).join('');
+  portal.innerHTML = `${items}<button type="button" class="combo-filter-clear" data-combo-filter-clear style="display:block;width:100%;text-align:start;padding:0.45rem 0.75rem;border-radius:var(--radius-sm);background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--color-muted);text-transform:none;letter-spacing:normal">${esc(i18n.variantFilterClear ?? 'Clear')}</button>`;
 
   const rect = btn.getBoundingClientRect();
   const isRTL = getComputedStyle(document.documentElement).direction === 'rtl';
@@ -1386,10 +1386,10 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
         </button>
         <ul class="product-menu__dropdown absolute top-[calc(100%+0.3rem)] end-0 min-w-[130px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 list-none m-0 p-[0.3rem] animate-product-menu-open" hidden role="menu">
-          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product="${p.id}" role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>${esc(i.viewProduct ?? 'צפה במוצר')}</button></li>
-          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>${esc(i.edit ?? 'Edit')}</button></li>
-          <li role="none"><button class="product-menu__item product-menu__item--visibility flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-visibility="${p.id}" data-hidden="${p.hidden ? '1' : ''}" role="menuitem"><svg class="menu-icon-hide shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><svg class="menu-icon-show shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span class="menu-visibility-label">${esc(p.hidden ? (i.productShow ?? 'הצג בחנות') : (i.productHide ?? 'הסתר מהחנות'))}</span></button></li>
-          <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>${esc(i.delete ?? 'Delete')}</button></li>
+          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product="${p.id}" role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>${esc(i.viewProduct ?? 'צפה במוצר')}</button></li>
+          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle="${p.id}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>${esc(i.edit ?? 'Edit')}</button></li>
+          <li role="none"><button class="product-menu__item product-menu__item--visibility flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-visibility="${p.id}" data-hidden="${p.hidden ? '1' : ''}" role="menuitem"><svg class="menu-icon-hide shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg><svg class="menu-icon-show shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span class="menu-visibility-label">${esc(p.hidden ? (i.productShow ?? 'הצג בחנות') : (i.productHide ?? 'הסתר מהחנות'))}</span></button></li>
+          <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product="${p.id}" data-store-id="${esc(p.storeId)}" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>${esc(i.delete ?? 'Delete')}</button></li>
         </ul>
       </div>
     </td>`;
@@ -1405,7 +1405,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
         <input type="hidden" name="_action" value="edit-product">
         <input type="hidden" name="productId" value="${p.id}">
         <div class="edit-row-header">
-          ${p.images?.[0] ? `<img src="${esc(thumbUrl(p.images[0], 72, 72))}" alt="" width="36" height="36" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0">` : ''}
+          ${p.images?.[0] ? `<img src="${esc(thumbUrl(p.images[0], 72, 72))}" alt="" width="36" height="36" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:var(--radius-sm);flex-shrink:0">` : ''}
           <span class="edit-row-title">${esc(p.name)}</span>
           <div class="flex gap-2 mt-2" style="margin-inline-start:auto;margin-top:0">
             <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">${i.save ?? 'Save'}</button>
@@ -2175,7 +2175,7 @@ function openMobileSortMenu(trigger: HTMLElement): void {
     const i = getDashI18n();
     return toolbarMenuTitle(i.sortByLabel ?? 'מיין לפי') + PRODUCT_SORT_OPTIONS.map((opt) => {
       const selected = opt.col === productsSortCol && opt.dir === productsSortDir;
-      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${opt.col}" data-sort-dir="${opt.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${esc(i[opt.labelKey] ?? opt.labelKey)}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${opt.col}" data-sort-dir="${opt.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${esc(i[opt.labelKey] ?? opt.labelKey)}</button>`;
     }).join('');
   }, (portal) => {
     portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
@@ -2235,13 +2235,13 @@ function filterValuesHtml(col: string, showBack: boolean): string {
   const selected = productsFilters.get(col) ?? new Set<string>();
   const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
   const backHtml = showBack
-    ? `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${esc(label)}</button><div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`
+    ? `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${esc(label)}</button><div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`
     : '';
   return [
     backHtml,
-    ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''}>${esc(v)}</label>`),
+    ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''}>${esc(v)}</label>`),
     `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-    `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${esc(i.filterClearColumn ?? 'נקה סינון בעמודה זו')}</button>`,
+    `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${esc(i.filterClearColumn ?? 'נקה סינון בעמודה זו')}</button>`,
   ].join('');
 }
 
@@ -2287,14 +2287,14 @@ function filterColumnsHtml(): string {
     toolbarMenuTitle(i.filterByLabel ?? 'סנן לפי'),
     ...PRODUCT_FILTER_COLUMNS.map((col) => {
       const active = (productsFilters.get(col)?.size ?? 0) > 0;
-      return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
+      return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
         <input type="checkbox" class="cursor-pointer shrink-0" data-filter-col-toggle="${col}" ${active ? 'checked' : ''}>
         <span style="flex:1">${esc(productFilterColumnLabel(col, i))}</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
       </div>`;
     }).join(''),
     `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-    `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${esc(i.filterClearAll ?? 'נקה הכל')}</button>`,
+    `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${esc(i.filterClearAll ?? 'נקה הכל')}</button>`,
   ].join('');
 }
 
@@ -2387,7 +2387,7 @@ export function initViewProduct(): void {
 
 // ── Inline field editing ──────────────────────────────────────────────────────
 
-const INLINE_INPUT_BASE = '[font:inherit] [color:var(--color-text)] bg-[color:var(--color-surface)] border-[1.5px] [border-color:var(--color-primary)] rounded px-[0.3rem] py-[0.1rem] outline-none block min-w-10 shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-primary)_15%,transparent)]';
+const INLINE_INPUT_BASE = '[font:inherit] [color:var(--color-text)] bg-[color:var(--color-surface)] border-[1.5px] [border-color:var(--color-primary)] rounded-[var(--radius-sm)] px-[0.3rem] py-[0.1rem] outline-none block min-w-10 shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-primary)_15%,transparent)]';
 const INLINE_INPUT_NUM = `${INLINE_INPUT_BASE} w-auto group-hover:[color:var(--color-primary)] [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0`;
 const INLINE_CANCEL_BTN = 'inline-flex items-center justify-center w-5 h-5 rounded-full border-none bg-transparent [color:var(--color-muted)] cursor-pointer p-0 shrink-0 transition-colors duration-[120ms] hover:[color:var(--color-danger,#dc2626)] hover:bg-[color-mix(in_srgb,var(--color-danger,#dc2626)_10%,transparent)]';
 
@@ -2913,7 +2913,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
           let images: string[] = [];
           try { images = JSON.parse(row?.dataset.images ?? '[]') as string[]; } catch { images = []; }
           return `
-            <div class="bulk-upload-item border [border-color:var(--color-border)] rounded-[0.45rem] p-3 bg-[color:var(--color-surface)]" data-upload-product="${productId}">
+            <div class="bulk-upload-item border [border-color:var(--color-border)] rounded-[var(--radius-sm)] p-3 bg-[color:var(--color-surface)]" data-upload-product="${productId}">
               <div class="bulk-upload-item-header flex items-center justify-between gap-2 mb-[0.65rem]">
                 <span class="bulk-upload-name text-[0.88rem] font-semibold [color:var(--color-text)] overflow-hidden text-ellipsis whitespace-nowrap min-w-0">${esc(name)}</span>
                 <span class="bulk-img-status" data-status-product="${productId}" aria-live="polite"></span>

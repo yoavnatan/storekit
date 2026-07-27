@@ -3,12 +3,12 @@ import { getCategoryTree, setCategoryTree } from './category-tree-cache.js';
 
 const MAX_CATEGORY_DEPTH = 3;
 
-const BTN_CLASSES = 'text-[0.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-md py-1 px-2 cursor-pointer whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)]';
-const ADD_CLASSES = 'block w-full text-start py-[0.4rem] px-[0.6rem] mt-[0.15rem] rounded text-[0.8rem] font-semibold text-[color:var(--color-primary)] bg-transparent cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
-const ADD_ROOT_CLASSES = 'block w-full text-start py-[0.4rem] px-[0.6rem] mt-[0.3rem] pt-2 rounded text-[0.8rem] font-semibold text-[color:var(--color-primary)] bg-transparent border-t border-[color:var(--color-border)] cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
-const EXPAND_CLASSES = 'shrink-0 w-5 h-5 flex items-center justify-center text-[color:var(--color-muted)] rounded transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:bg-[color:var(--color-bg)] data-[open]:rotate-90';
+const BTN_CLASSES = 'text-[0.76rem] font-medium text-[color:var(--color-muted)] bg-transparent border border-[color:var(--color-border)] rounded-[var(--radius-sm)] py-1 px-2 cursor-pointer whitespace-nowrap transition-colors duration-[120ms] hover:bg-[color:var(--color-bg)] hover:text-[color:var(--color-text)]';
+const ADD_CLASSES = 'block w-full text-start py-[0.4rem] px-[0.6rem] mt-[0.15rem] rounded-[var(--radius-sm)] text-[0.8rem] font-semibold text-[color:var(--color-primary)] bg-transparent cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+const ADD_ROOT_CLASSES = 'block w-full text-start py-[0.4rem] px-[0.6rem] mt-[0.3rem] pt-2 rounded-[var(--radius-sm)] text-[0.8rem] font-semibold text-[color:var(--color-primary)] bg-transparent border-t border-[color:var(--color-border)] cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+const EXPAND_CLASSES = 'shrink-0 w-5 h-5 flex items-center justify-center text-[color:var(--color-muted)] rounded-[var(--radius-sm)] transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:bg-[color:var(--color-bg)] data-[open]:rotate-90';
 const EXPAND_SPACER_CLASSES = 'shrink-0 w-5 h-5';
-const OPTION_BASE_CLASSES = 'flex-1 block text-start py-[0.4rem] px-[0.6rem] rounded text-[0.84rem] bg-transparent border-0 cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+const OPTION_BASE_CLASSES = 'flex-1 block text-start py-[0.4rem] px-[0.6rem] rounded-[var(--radius-sm)] text-[0.84rem] bg-transparent border-0 cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
 
 function optionClasses(selected: boolean, isNone: boolean): string {
   if (selected) return `${OPTION_BASE_CLASSES} font-bold text-[color:var(--color-primary)]`;

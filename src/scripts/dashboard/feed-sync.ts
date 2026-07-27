@@ -192,7 +192,7 @@ export function initFeedSync(): void {
       <div class="flex items-center gap-2 py-[0.3rem]">
         <span class="flex-1 min-w-0 text-[0.82rem] [color:var(--color-text)] font-medium overflow-hidden text-ellipsis whitespace-nowrap" title="${esc(e.source)}">${esc(e.source || '—')}</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="shrink-0 [color:var(--color-muted)] rtl:rotate-180" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-        <select data-src="${idx}" class="flex-1 min-w-0 font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[0.4rem] py-[.3rem] px-[.5rem] outline-none cursor-pointer focus:border-[color:var(--color-primary)]">${options(e.key)}</select>
+        <select data-src="${idx}" class="flex-1 min-w-0 font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] py-[.3rem] px-[.5rem] outline-none cursor-pointer focus:border-[color:var(--color-primary)]">${options(e.key)}</select>
       </div>`).join('');
 
     mappingEl!.innerHTML = `

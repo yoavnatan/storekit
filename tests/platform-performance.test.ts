@@ -34,10 +34,12 @@ function makeOrder(
   };
 }
 
+// Commission is now per-store (it comes from each store's SELLER tier), so the fixture carries
+// it explicitly instead of one platform-wide rate being passed at the call site.
 const STORES = [
-  { slug: 'alpha', name: 'Alpha' },
-  { slug: 'beta', name: 'Beta' },
-  { slug: 'gamma', name: 'Gamma' },
+  { slug: 'alpha', name: 'Alpha', commissionPercent: 10 },
+  { slug: 'beta', name: 'Beta', commissionPercent: 10 },
+  { slug: 'gamma', name: 'Gamma', commissionPercent: 10 },
 ];
 const FROM = '2026-07-01';
 const TO = '2026-07-31';
@@ -49,7 +51,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
       makeOrder('o2', { beta: 500 }, '2026-07-06T10:00:00.000Z'),
       makeOrder('o3', { alpha: 250 }, '2026-07-07T10:00:00.000Z'),
     ];
-    const p = buildPlatformPerformance(orders, STORES, FROM, TO, 'day', 10);
+    const p = buildPlatformPerformance(orders, STORES, FROM, TO, 'day');
     expect(p.summary.totalRevenue).toBe(1750);
     expect(p.summary.totalOrders).toBe(3);
     // commission (platform income) + payout (to sellers) reconcile to GMV
@@ -100,14 +102,14 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
       makeOrder('o2', { beta: 300 }, '2026-07-06T10:00:00.000Z', items('beta', 'p2', 'Gadget', 300, 1)),
       makeOrder('o3', { alpha: 100 }, '2026-07-07T10:00:00.000Z', items('alpha', 'p1', 'Widget', 100, 1)),
     ];
-    const p = buildPlatformPerformance(orders, STORES, FROM, TO, 'day', 10, 5);
+    const p = buildPlatformPerformance(orders, STORES, FROM, TO, 'day', 5);
     const p1 = p.summary.topProducts.find((t) => t.productId === 'p1');
     expect(p1?.units).toBe(3);       // 2 + 1 across two orders
     expect(p1?.revenue).toBe(300);   // 100 * 3
     // revenue-desc: gadget (300) ties widget (300) — both present, capped by topLimit
     expect(p.summary.topProducts.length).toBe(2);
 
-    const capped = buildPlatformPerformance(orders, STORES, FROM, TO, 'day', 10, 1);
+    const capped = buildPlatformPerformance(orders, STORES, FROM, TO, 'day', 1);
     expect(capped.summary.topProducts.length).toBe(1);
   });
 
@@ -128,5 +130,33 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
     expect(p.shownStores).toBe(TOP_STORES_LIMIT);
     // highest-revenue store leads the capped list
     expect(p.stores[0].revenue).toBeGreaterThanOrEqual(p.stores[1].revenue);
+  });
+});
+
+describe('mixed-tier commission', () => {
+  it('applies each store its own rate and reports the blended actual, not one tier', () => {
+    const mixed = [
+      { slug: 'alpha', name: 'Alpha', commissionPercent: 12 }, // starter
+      { slug: 'beta', name: 'Beta', commissionPercent: 4 },    // enterprise
+    ];
+    const orders = [
+      makeOrder('o1', { alpha: 1000 }, '2026-07-05T10:00:00.000Z'),
+      makeOrder('o2', { beta: 1000 }, '2026-07-06T10:00:00.000Z'),
+    ];
+    const p = buildPlatformPerformance(orders, mixed, FROM, TO, 'day');
+    expect(p.summary.totalRevenue).toBe(2000);
+    expect(p.summary.platformCommission).toBe(160); // 120 + 40, NOT 2000 * one rate
+    expect(p.summary.commissionRate).toBe(8);       // revenue-weighted blend
+    expect(p.summary.platformCommission + p.summary.netProfit).toBe(p.summary.totalRevenue);
+  });
+
+  it('takes no commission from a store whose rate is absent', () => {
+    const p = buildPlatformPerformance(
+      [makeOrder('o1', { alpha: 1000 }, '2026-07-05T10:00:00.000Z')],
+      [{ slug: 'alpha', name: 'Alpha' }],
+      FROM, TO, 'day',
+    );
+    expect(p.summary.platformCommission).toBe(0);
+    expect(p.summary.commissionRate).toBe(0);
   });
 });

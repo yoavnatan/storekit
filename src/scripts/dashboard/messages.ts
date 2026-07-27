@@ -198,7 +198,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     openMsgPortal(trigger, '13rem', () => {
       return toolbarMenuTitle(msgDashI18nDict.sortByLabel ?? 'מיין לפי') + MSG_SORT_OPTIONS.map((o) => {
         const selected = o.col === msgSortCol && o.dir === msgSortDir;
-        return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escMsg(o.label())}</button>`;
+        return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${escMsg(o.label())}</button>`;
       }).join('');
     }, (portal) => {
       portal.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
@@ -239,13 +239,13 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     const selected = msgFilters.get(col) ?? new Set<string>();
     const backRotate = document.documentElement.dir === 'rtl' ? -90 : 90;
     const backHtml = showBack
-      ? `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${escMsg(label)}</button><div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`
+      ? `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${backRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>${escMsg(label)}</button><div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`
       : '';
     return [
       backHtml,
-      ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${escMsg(v)}" ${selected.has(v) ? 'checked' : ''}>${escMsg(v)}</label>`),
+      ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${escMsg(v)}" ${selected.has(v) ? 'checked' : ''}>${escMsg(v)}</label>`),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${escMsg(msgI18n.filterClearColumn)}</button>`,
+      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${escMsg(msgI18n.filterClearColumn)}</button>`,
     ].join('');
   }
   function wireMsgFilterValues(portal: HTMLElement, col: string, reopen: () => void, onBack?: () => void): void {
@@ -286,14 +286,14 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       toolbarMenuTitle(msgDashI18nDict.filterByLabel ?? 'סנן לפי'),
       ...MSG_FILTER_COLUMNS.map((col) => {
         const active = (msgFilters.get(col)?.size ?? 0) > 0;
-        return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
+        return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
           <input type="checkbox" class="cursor-pointer shrink-0" data-filter-col-toggle="${col}" ${active ? 'checked' : ''}>
           <span style="flex:1">${escMsg(msgFilterColumnLabel(col))}</span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="flex-shrink:0;transform:rotate(${chevronRotate}deg)"><polyline points="6 9 12 15 18 9"/></svg>
         </div>`;
       }).join(''),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${escMsg(msgI18n.filterClearAll)}</button>`,
+      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${escMsg(msgI18n.filterClearAll)}</button>`,
     ].join('');
   }
 

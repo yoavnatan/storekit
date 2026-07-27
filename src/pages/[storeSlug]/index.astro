@@ -4,6 +4,7 @@ import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible } from '../../lib/stores.js';
+import { isStoreReady } from '../../lib/store-readiness.js';
 import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '../../lib/store-hours.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
@@ -46,6 +47,10 @@ const isFavorited = userId ? getFavoriteStoresForUser(userId).includes(shopStore
 // store's own grid/search/category filters — getVisibleProductsByStoreId is
 // the shared helper every listing surface should call (see store-products.ts).
 const allProducts = getVisibleProductsByStoreId(shopStore.id);
+// A store with nothing to buy stays reachable by direct link (the seller previews and shares it)
+// but must not enter Google's index as an empty page — same gate the sitemap and site search use.
+// See lib/store-readiness.ts.
+const storeReady = isStoreReady({ visibleProductCount: allProducts.length });
 const storeCategories = getCategoriesByStoreId(shopStore.id);
 const categoryTree = buildCategoryTree(storeCategories);
 
@@ -128,6 +133,7 @@ const pmI18n = {
   image={shopStore.bannerImage ? cdnSrc(shopStore.bannerImage, 1200) : (shopStore.profileImage ? cdnSrc(shopStore.profileImage, 600) : undefined)}
   jsonLd={jsonLd}
   canonical={storeUrl}
+  noindex={!storeReady}
   isLoggedIn={isLoggedIn}
   storeMode={true}
   storeName={shopStore.name}
@@ -261,7 +267,7 @@ const pmI18n = {
                 id="fav-store-tooltip"
                 role="status"
                 aria-live="polite"
-                style="position:absolute;top:calc(100% + 0.45rem);inset-inline-start:0;z-index:30;background:var(--color-surface);border:1px solid var(--color-border);border-radius:0.55rem;padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text);opacity:0;pointer-events:none;transform:translateY(-6px) scale(0.97);transition:opacity 0.17s,transform 0.22s cubic-bezier(0.34,1.56,0.64,1)"
+                style="position:absolute;top:calc(100% + 0.45rem);inset-inline-start:0;z-index:30;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text);opacity:0;pointer-events:none;transform:translateY(-6px) scale(0.97);transition:opacity 0.17s,transform 0.22s cubic-bezier(0.34,1.56,0.64,1)"
               >
                 {t.store.loginToSave} <a id="fav-store-tooltip-link" href={`/seller/login?next=/${shopStore.slug}`} style="color:var(--color-accent);font-weight:600">{t.store.loginToSaveLink}</a>
               </div>
@@ -391,12 +397,12 @@ const pmI18n = {
                   hidden
                   class="absolute top-full z-20 mt-1"
                   style="inset-inline-end:0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:0.3rem;animation:sort-menu-open 0.13s cubic-bezier(0.34,1.56,0.64,1);min-width:11rem;max-width:calc(100vw - 1.5rem);white-space:nowrap">
-                  <li role="option" data-value="default" aria-selected="true" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortDefault}</li>
-                  <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameAsc}</li>
-                  <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameDesc}</li>
-                  <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceAsc}</li>
-                  <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceDesc}</li>
-                  <li role="option" data-value="newest" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[4px] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNewest}</li>
+                  <li role="option" data-value="default" aria-selected="true" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortDefault}</li>
+                  <li role="option" data-value="name-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameAsc}</li>
+                  <li role="option" data-value="name-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNameDesc}</li>
+                  <li role="option" data-value="price-asc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceAsc}</li>
+                  <li role="option" data-value="price-desc" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortPriceDesc}</li>
+                  <li role="option" data-value="newest" aria-selected="false" class="px-3 py-[0.45rem] text-sm cursor-pointer select-none rounded-[var(--radius-sm)] transition-colors duration-100 hover:bg-[var(--color-bg)] aria-selected:font-bold aria-selected:text-[var(--color-text)]">{t.store.sortNewest}</li>
                 </ul>
               </div>
             </div>
@@ -1974,7 +1980,7 @@ const pmI18n = {
     hint.className = 'login-hint-popup';
     hint.setAttribute('role', 'status');
     hint.innerHTML = `<span>כדי לשלוח הודעה יש <a href="${loginUrl}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">להתחבר</a></span>`;
-    hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:0.55rem;padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text)';
+    hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text)';
     hint.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease', fill: 'forwards' });
     const container = btn.parentElement ?? btn;
     container.appendChild(hint);

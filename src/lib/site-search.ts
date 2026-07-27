@@ -1,4 +1,5 @@
 import { getVisibleStores } from './stores.js';
+import { isStoreReady } from './store-readiness.js';
 import { readProducts, isProductVisible } from './store-products.js';
 import { matchesQueryWords } from './product-listing.js';
 import { cdnSrc } from '../config/store.config.js';
@@ -55,7 +56,16 @@ export function searchSite(rawQuery: string, options: SiteSearchOptions = {}): {
   const stores = getVisibleStores();
   const storeById = new Map(stores.map((s) => [s.id, s]));
 
+  const allProducts = readProducts();
+  // Store hits are also gated on readiness (lib/store-readiness.ts): a store with nothing to buy
+  // is a dead end, and a search result is a promise that the link goes somewhere. Filtered BEFORE
+  // the limit slice so an unready store can't consume one of the few store slots.
+  const storesWithVisibleProducts = new Set(
+    allProducts.filter(isProductVisible).map((p) => p.storeId),
+  );
+
   const matchedStores: StoreSearchHit[] = stores
+    .filter((s) => isStoreReady({ visibleProductCount: storesWithVisibleProducts.has(s.id) ? 1 : 0 }))
     .filter((s) => matchesQueryWords(q, `${s.name} ${s.tagline} ${s.description}`))
     .slice(0, storeLimit)
     .map((s) => ({
@@ -66,7 +76,7 @@ export function searchSite(rawQuery: string, options: SiteSearchOptions = {}): {
     }));
 
   const matchedProducts: ProductSearchHit[] = [];
-  for (const p of readProducts()) {
+  for (const p of allProducts) {
     if (matchedProducts.length >= productLimit) break;
     if (!isProductVisible(p)) continue;
     if (!matchesQueryWords(q, `${p.name} ${(p.tags ?? []).join(' ')}`)) continue;

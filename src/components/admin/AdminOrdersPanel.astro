@@ -103,12 +103,12 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
         const storesLabel = uniqueStores.length === 1 ? 'חנות אחת' : `${uniqueStores.length} חנויות`;
         return (
           <div
-            class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]"
+            class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]"
             data-order-id={o.id}
             data-shipping-status={o.shippingStatus}
             data-payment-status={o.paymentStatus}
           >
-            <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
+            <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
               {/* Fixed width (not min-width) so the buyer name in the next column
                   always starts at the same x across every card — id/date only;
                   the age chip lives in the status cluster below so its variable
@@ -164,7 +164,7 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
                 <ul class="order-card__items list-none p-0 flex flex-col gap-2">
                   {o.items.map((item) => (
                     <li class="flex items-center gap-2.5 text-sm">
-                      {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-md shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
+                      {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
                       <span class="flex-1 text-[color:var(--color-text)]">
                         {item.productName}
                         {uniqueStores.length > 1 && <> · <a href={`/${item.storeSlug}`} target="_blank" rel="noopener noreferrer" class="text-xs [color:var(--color-primary)] hover:underline">{item.storeName}</a></>}

@@ -86,22 +86,22 @@ for (const s of getVisibleStores()) {
 
         <!-- Skeleton -->
         <div id="cart-content" aria-live="polite">
-          <div class="flex gap-4 items-start bg-[color:var(--color-surface)] rounded-[14px] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)]">
-            <div class="skel-bar w-20 h-20 rounded-[10px] shrink-0"></div>
+          <div class="flex gap-4 items-start bg-[color:var(--color-surface)] rounded-[var(--radius)] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)]">
+            <div class="skel-bar w-20 h-20 rounded-[var(--radius)] shrink-0"></div>
             <div class="flex-1 flex flex-col gap-2 pt-1">
               <div class="skel-bar h-[15px] w-[55%]"></div>
               <div class="skel-bar h-[13px] w-[35%]"></div>
-              <div class="skel-bar h-[30px] w-24 rounded-[6px] mt-1"></div>
+              <div class="skel-bar h-[30px] w-24 rounded-[var(--radius-sm)] mt-1"></div>
             </div>
-            <div class="skel-bar w-14 h-[22px] rounded shrink-0 self-center"></div>
+            <div class="skel-bar w-14 h-[22px] rounded-[var(--radius-sm)] shrink-0 self-center"></div>
           </div>
-          <div class="flex gap-4 items-start bg-[color:var(--color-surface)] rounded-[14px] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)] opacity-[.55]">
-            <div class="skel-bar w-20 h-20 rounded-[10px] shrink-0"></div>
+          <div class="flex gap-4 items-start bg-[color:var(--color-surface)] rounded-[var(--radius)] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)] opacity-[.55]">
+            <div class="skel-bar w-20 h-20 rounded-[var(--radius)] shrink-0"></div>
             <div class="flex-1 flex flex-col gap-2 pt-1">
               <div class="skel-bar h-[15px] w-[70%]"></div>
               <div class="skel-bar h-[13px] w-[40%]"></div>
             </div>
-            <div class="skel-bar w-14 h-[22px] rounded shrink-0 self-center"></div>
+            <div class="skel-bar w-14 h-[22px] rounded-[var(--radius-sm)] shrink-0 self-center"></div>
           </div>
         </div>
 
@@ -126,43 +126,43 @@ for (const s of getVisibleStores()) {
         <h2 class="font-bold [color:var(--color-text)] mb-5 text-xl mt-1">{c.paymentDetails}</h2>
 
         <form id="checkout-form" novalidate aria-label={c.buyerDetails}>
-          <div class="bg-[color:var(--color-surface)] rounded-[14px] p-5 border-[1.5px] [border-color:var(--color-border)] shadow-[var(--shadow-card)] mb-3.5">
+          <div class="bg-[color:var(--color-surface)] rounded-[var(--radius)] p-5 border-[1.5px] [border-color:var(--color-border)] shadow-[var(--shadow-card)] mb-3.5">
             <h3 class="text-[.9375rem] font-semibold [color:var(--color-text)] mb-4">{c.buyerDetails}</h3>
             <div class="grid gap-3.5">
               <div>
                 <label for="buyerName" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.fullName} *</label>
-                <input type="text" id="buyerName" name="buyerName" required autocomplete="name" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+                <input type="text" id="buyerName" name="buyerName" required autocomplete="name" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-[var(--radius)] bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
                 <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="buyerName" role="alert">{c.requiredField}</p>
               </div>
               <div>
                 <label for="buyerEmail" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.email} *</label>
-                <input type="email" id="buyerEmail" name="buyerEmail" required autocomplete="email" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" value={prefillEmail} />
+                <input type="email" id="buyerEmail" name="buyerEmail" required autocomplete="email" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-[var(--radius)] bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" value={prefillEmail} />
                 <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="buyerEmail" role="alert">{c.invalidEmail}</p>
               </div>
               <div>
                 <label for="buyerPhone" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.phone} *</label>
-                <input type="tel" id="buyerPhone" name="buyerPhone" required autocomplete="tel" inputmode="tel" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+                <input type="tel" id="buyerPhone" name="buyerPhone" required autocomplete="tel" inputmode="tel" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-[var(--radius)] bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
                 <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="buyerPhone" role="alert">{c.requiredField}</p>
               </div>
             </div>
           </div>
 
-          <div class="bg-[color:var(--color-surface)] rounded-[14px] p-5 border-[1.5px] [border-color:var(--color-border)] shadow-[var(--shadow-card)] mb-5">
+          <div class="bg-[color:var(--color-surface)] rounded-[var(--radius)] p-5 border-[1.5px] [border-color:var(--color-border)] shadow-[var(--shadow-card)] mb-5">
             <h3 class="text-[.9375rem] font-semibold [color:var(--color-text)] mb-4">{c.shippingAddress}</h3>
             <div class="grid gap-3.5">
               <div>
                 <label for="city" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.city} *</label>
-                <input type="text" id="city" name="city" required autocomplete="address-level2" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+                <input type="text" id="city" name="city" required autocomplete="address-level2" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-[var(--radius)] bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
                 <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="city" role="alert">{c.requiredField}</p>
               </div>
               <div>
                 <label for="street" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.street} *</label>
-                <input type="text" id="street" name="street" required autocomplete="street-address" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+                <input type="text" id="street" name="street" required autocomplete="street-address" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-[var(--radius)] bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
                 <p class="hidden text-xs [color:var(--color-danger)] mt-1" data-err="street" role="alert">{c.requiredField}</p>
               </div>
               <div>
                 <label for="zip" class="block text-sm font-medium mb-1.5 [color:var(--color-text)]">{c.zip}</label>
-                <input type="text" id="zip" name="zip" autocomplete="postal-code" inputmode="numeric" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-lg bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
+                <input type="text" id="zip" name="zip" autocomplete="postal-code" inputmode="numeric" class="w-full py-2.5 px-3 border-[1.5px] [border-color:var(--color-border)] rounded-[var(--radius)] bg-[color:var(--color-bg)] [color:var(--color-text)] text-[.9375rem] [font-family:inherit] transition-[border-color,background] duration-150 box-border focus:outline-none focus:[border-color:var(--color-accent)] focus:bg-[color:var(--color-surface)] aria-[invalid=true]:[border-color:var(--color-danger)]" />
               </div>
             </div>
           </div>
@@ -260,7 +260,7 @@ for (const s of getVisibleStores()) {
         : '';
       return `<label class="relative inline-flex shrink-0 cursor-pointer ${cls}">
         <input type="checkbox" class="peer absolute inset-0 w-5 h-5 m-0 opacity-0 cursor-pointer" ${attrs} aria-label="${esc(ariaLabel)}">
-        <span class="pointer-events-none relative w-5 h-5 rounded-[5px] border-[1.5px] [border-color:var(--color-border)] bg-[color:var(--color-surface)] shrink-0 transition-[background_140ms,border-color_140ms,transform_120ms_cubic-bezier(0.34,1.56,0.64,1)] peer-checked:bg-[color:var(--color-accent)] peer-checked:border-[color:var(--color-accent)] peer-indeterminate:bg-[color:var(--color-accent)] peer-indeterminate:border-[color:var(--color-accent)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:[outline-color:var(--color-accent)] peer-active:scale-90" aria-hidden="true"></span>
+        <span class="pointer-events-none relative w-5 h-5 rounded-[var(--radius-sm)] border-[1.5px] [border-color:var(--color-border)] bg-[color:var(--color-surface)] shrink-0 transition-[background_140ms,border-color_140ms,transform_120ms_cubic-bezier(0.34,1.56,0.64,1)] peer-checked:bg-[color:var(--color-accent)] peer-checked:border-[color:var(--color-accent)] peer-indeterminate:bg-[color:var(--color-accent)] peer-indeterminate:border-[color:var(--color-accent)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:[outline-color:var(--color-accent)] peer-active:scale-90" aria-hidden="true"></span>
         <svg class="pointer-events-none absolute inset-0 m-auto w-3 h-3 [color:var(--color-surface)] opacity-0 scale-[.4] peer-checked:opacity-100 peer-checked:scale-100 transition-[opacity,transform] duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/></svg>
         ${dash}
       </label>`;
@@ -320,9 +320,9 @@ for (const s of getVisibleStores()) {
             ? `<p class="text-[.775rem] [color:var(--color-muted)] mt-[.2rem]">${esc(Object.entries(item.selectedVariants).map(([k,v]) => `${k}: ${v}`).join(' · '))}</p>`
             : '';
 
-          html += `<div class="co-card flex items-center gap-4 bg-[color:var(--color-surface)] rounded-[14px] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)] transition-[box-shadow,opacity] duration-150 hover:shadow-[var(--shadow-card-hover)] data-[unselected]:opacity-50" data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" data-item-name="${esc(item.name)}" ${isSelected ? '' : 'data-unselected'}>
+          html += `<div class="co-card flex items-center gap-4 bg-[color:var(--color-surface)] rounded-[var(--radius)] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)] transition-[box-shadow,opacity] duration-150 hover:shadow-[var(--shadow-card-hover)] data-[unselected]:opacity-50" data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" data-item-name="${esc(item.name)}" ${isSelected ? '' : 'data-unselected'}>
             ${checkboxHtml('co-item-check', `data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" ${isSelected ? 'checked' : ''}`, `${i18n['selectItemAria'] ?? ''} ${item.name}`, false)}
-            <button type="button" class="pqv-trigger shrink-0 block w-20 h-20 rounded-[10px] overflow-hidden bg-[color:var(--color-border)] transition-opacity duration-[140ms] border-0 p-0 cursor-pointer hover:opacity-[.85]"
+            <button type="button" class="pqv-trigger shrink-0 block w-20 h-20 rounded-[var(--radius)] overflow-hidden bg-[color:var(--color-border)] transition-opacity duration-[140ms] border-0 p-0 cursor-pointer hover:opacity-[.85]"
               data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}"
               aria-label="${esc(i18n['viewProduct'] ?? '')} ${esc(item.name)}">
               ${imgHtml}
@@ -337,7 +337,7 @@ for (const s of getVisibleStores()) {
                   <span class="co-qty__num w-7" aria-live="polite">${item.qty}</span>
                   <button class="co-qty__btn" data-action="inc" aria-label="הגדל כמות" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>
                 </div>
-                <button class="w-[26px] h-[26px] shrink-0 bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[5px] cursor-pointer [color:var(--color-muted)] flex items-center justify-center transition-[color,background,border-color] duration-[130ms] hover:[color:var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)] hover:[border-color:color-mix(in_srgb,var(--color-danger)_30%,var(--color-border))]" data-action="remove" aria-label="${esc(i18n['removeItem'] ?? 'הסר')}" type="button">
+                <button class="w-[26px] h-[26px] shrink-0 bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] cursor-pointer [color:var(--color-muted)] flex items-center justify-center transition-[color,background,border-color] duration-[130ms] hover:[color:var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)] hover:[border-color:color-mix(in_srgb,var(--color-danger)_30%,var(--color-border))]" data-action="remove" aria-label="${esc(i18n['removeItem'] ?? 'הסר')}" type="button">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                 </button>
               </div>
@@ -358,7 +358,7 @@ for (const s of getVisibleStores()) {
         const optionsHtml = methods
           .map(m => `<option value="${esc(m)}" ${m === chosen ? 'selected' : ''}>${esc(methodLabel(m))}</option>`)
           .join('');
-        html += `<div class="co-shipping-card bg-[color:var(--color-surface)] rounded-[14px] py-3.5 px-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)]" data-store-slug="${esc(cart.storeSlug)}">
+        html += `<div class="co-shipping-card bg-[color:var(--color-surface)] rounded-[var(--radius)] py-3.5 px-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)]" data-store-slug="${esc(cart.storeSlug)}">
           <div class="flex items-center justify-between gap-2.5">
             <div class="flex items-center gap-2 min-w-0">
               <svg class="shrink-0 [color:var(--color-accent)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>

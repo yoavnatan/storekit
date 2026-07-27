@@ -5,7 +5,8 @@ import { getStoreBySlug } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug } from '../../../lib/orders.js';
 import { getProductById } from '../../../lib/store-products.js';
 import { buildPerformanceSummary, buildProductPerformance, pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
-import { store as platformConfig } from '../../../config/store.config.js';
+import { commissionPercentForTier } from '../../../lib/pricing.js';
+import { getSellerById } from '../../../lib/seller-auth.js';
 
 // Admin-facing twin of /api/seller/performance: identical validation and
 // PerformanceSummary shape, but gated by the admin cookie (requireAdmin) and
@@ -66,6 +67,6 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     return json({ ok: true, product: productSummary, productName: product.name });
   }
 
-  const summary = buildPerformanceSummary(orders, storeSlug, from, to, granularity, platformConfig.checkout.commissionPercent, topLimit);
+  const summary = buildPerformanceSummary(orders, storeSlug, from, to, granularity, commissionPercentForTier(getSellerById(store.sellerId)?.tier), topLimit);
   return json({ ok: true, summary });
 }

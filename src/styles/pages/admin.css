@@ -2,7 +2,7 @@
    (.dash-tabs/.dash-panel/.dash-head/.card) from dashboard.css;
    everything below is admin-page-specific only. */
 
-code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius: 5px; }
+code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius: var(--radius-sm); }
 
 .admin-empty { color: var(--color-muted); font-size: 0.875rem; }
 .admin-link { color: var(--color-accent); text-decoration: none; font-size: 0.82rem; font-weight: 600; }
@@ -77,7 +77,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   border: none;
   cursor: pointer;
   padding: 0.45rem 0.75rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   color: var(--color-text);
 }
@@ -274,7 +274,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   border: 1px solid var(--color-border); border-radius: var(--radius);
 }
 .admin-ads-conn__label { font-size: 0.9rem; font-weight: 600; color: var(--color-text); }
-.admin-ads-conn__row code { font-size: 0.8rem; background: var(--color-bg); padding: 0.1rem 0.35rem; border-radius: 4px; }
+.admin-ads-conn__row code { font-size: 0.8rem; background: var(--color-bg); padding: 0.1rem 0.35rem; border-radius: var(--radius-sm); }
 
 .admin-ads-progress { position: relative; height: 1.5rem; background: var(--color-bg); border-radius: 999px; margin: 1rem 0 0.25rem; overflow: hidden; }
 .admin-ads-progress__bar { height: 100%; background: var(--color-accent); border-radius: 999px; transition: width 0.3s ease; }
@@ -340,12 +340,12 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-select[aria-expanded="true"] .admin-select__chevron { transform: rotate(180deg); }
 
 .admin-brand-image { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-.admin-brand-image__preview { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border); }
+.admin-brand-image__preview { width: 96px; height: 54px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
 
 .admin-brand-list { display: flex; flex-direction: column; gap: 0.75rem; }
 .admin-brand-card { display: flex; gap: 0.9rem; padding: 0.85rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
 .admin-brand-card[data-status="paused"] { opacity: 0.72; }
-.admin-brand-card__img { width: 120px; height: 68px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border); flex-shrink: 0; }
+.admin-brand-card__img { width: 120px; height: 68px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--color-border); flex-shrink: 0; }
 .admin-brand-card__body { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; flex: 1; }
 .admin-brand-card__meta { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .admin-brand-card__headline { font-size: 0.95rem; color: var(--color-text); }
@@ -415,14 +415,14 @@ th.admin-alerts-th-source, .admin-alerts-source { text-align: center; }
 .admin-alerts-actions { display: flex; align-items: center; gap: 0.2rem; }
 .admin-alerts-details-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem;
-  background: none; border: none; padding: 0.3rem; border-radius: 4px;
+  background: none; border: none; padding: 0.3rem; border-radius: var(--radius-sm);
   color: var(--color-muted); font-size: 0.78rem; cursor: pointer; white-space: nowrap; flex-shrink: 0;
 }
 .admin-alerts-details-btn__chevron { flex-shrink: 0; }
 .admin-alerts-details-btn__label { display: none; }
 .admin-alerts-copy-btn, .admin-alerts-resolve-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  background: none; border: none; padding: 0.3rem; border-radius: 4px;
+  background: none; border: none; padding: 0.3rem; border-radius: var(--radius-sm);
   color: var(--color-muted); cursor: pointer; flex-shrink: 0;
 }
 .admin-alerts-details-btn:hover, .admin-alerts-copy-btn:hover, .admin-alerts-resolve-btn:hover { background: var(--color-bg); color: var(--color-text); }
@@ -529,7 +529,7 @@ button.admin-store-row__count { padding: 0; text-align: start; }
 .admin-store-products__search { max-width: 260px; height: 2rem; font-size: 0.82rem; }
 .admin-product-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid var(--color-border); }
 .admin-product-row:last-child { border-bottom: none; }
-.admin-product-row__thumb { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; border: 1px solid var(--color-border); background: var(--color-surface); flex-shrink: 0; }
+.admin-product-row__thumb { width: 36px; height: 36px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid var(--color-border); background: var(--color-surface); flex-shrink: 0; }
 .admin-product-row__thumb--empty { display: inline-flex; align-items: center; justify-content: center; color: var(--color-muted); background: var(--color-bg); }
 .admin-product-row__name { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-product-row__price { font-size: 0.82rem; color: var(--color-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }

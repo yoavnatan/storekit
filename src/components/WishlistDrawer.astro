@@ -13,7 +13,7 @@
     <button
       id="wishlist-close"
       aria-label="Close"
-      style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;color:var(--color-muted);transition:background 0.1s"
+      style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);color:var(--color-muted);transition:background 0.1s"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
@@ -213,9 +213,9 @@
                 ? (() => {
                     const imgSrc = cdnSrc(item.image, 400);
                     const alreadyLoaded = loadedImageSrcs.has(imgSrc);
-                    return `<span class="wl-img-wrap skel-bar${alreadyLoaded ? ' loaded' : ''}" style="border-radius:8px"><img class="wl-img" src="${esc(imgSrc)}" alt="${esc(item.name)}" width="56" height="56" loading="eager" style="${alreadyLoaded ? 'opacity:1' : ''}"></span>`;
+                    return `<span class="wl-img-wrap skel-bar${alreadyLoaded ? ' loaded' : ''}" style="border-radius:var(--radius)"><img class="wl-img" src="${esc(imgSrc)}" alt="${esc(item.name)}" width="56" height="56" loading="eager" style="${alreadyLoaded ? 'opacity:1' : ''}"></span>`;
                   })()
-                : `<div style="width:56px;height:56px;border-radius:8px;background:var(--color-surface);border:1px solid var(--color-border);flex-shrink:0"></div>`}
+                : `<div style="width:56px;height:56px;border-radius:var(--radius);background:var(--color-surface);border:1px solid var(--color-border);flex-shrink:0"></div>`}
               <div style="flex:1;min-width:0">
                 <span style="display:block;font-weight:600;font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</span>
                 <span style="font-size:0.8rem;color:var(--color-muted)">${formatPrice(item.price)}</span>

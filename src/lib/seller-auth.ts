@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type { AstroCookies } from 'astro';
+import type { SellerTierId } from './pricing.js';
 
 const SELLERS_PATH = path.join(process.cwd(), 'data/sellers.json');
 const COOKIE_NAME = 'seller_session';
@@ -16,6 +17,11 @@ export interface Seller {
   email: string;
   passwordHash: string; // empty string for OAuth-only accounts
   googleId?: string;
+  /** Pricing tier — sets this seller's monthly fee AND per-sale commission (see lib/pricing.ts).
+   *  Optional/additive: absent means the default tier, so no account needs backfilling and an
+   *  older deploy reading this record is unaffected. Applies to ALL of a seller's stores — the
+   *  subscription is per account/registered business, not per store. */
+  tier?: SellerTierId;
   createdAt: string;
 }
 

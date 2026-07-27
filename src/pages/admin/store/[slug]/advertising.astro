@@ -124,7 +124,7 @@ const adBudgetLabelFor = (c: { durationDays?: number }): string => (c.durationDa
         <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 mb-4">
           <h3 class="m-0 mb-1 text-[0.9rem] font-semibold">{d.adBoostTitle}</h3>
           <p class="muted text-[0.82rem] m-0 mb-2">{d.adBoostDesc}</p>
-          <p class="text-[0.8rem] m-0 mb-3 p-2 rounded-[0.4rem] [background:color-mix(in_srgb,var(--color-primary)_7%,transparent)] [color:var(--color-text)]">{d.adBoostWhySep}</p>
+          <p class="text-[0.8rem] m-0 mb-3 p-2 rounded-[var(--radius-sm)] [background:color-mix(in_srgb,var(--color-primary)_7%,transparent)] [color:var(--color-text)]">{d.adBoostWhySep}</p>
 
           <form id="ad-create-form" class="flex flex-col gap-3" data-store-slug={store.slug}>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

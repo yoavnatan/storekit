@@ -7,6 +7,7 @@ import {
   type PerformanceSummary,
   type TopProduct,
 } from './seller-performance.js';
+import { blendedCommissionRate, commissionPercentForTier } from './pricing.js';
 
 // Platform-wide ("app-wide") twin of seller-performance.ts's per-store summary,
 // for the ADMIN performance tab. It does NOT re-implement any of the bucketing/
@@ -25,6 +26,26 @@ export interface PlatformStoreInput {
   slug: string;
   name: string;
   blocked?: boolean;
+  /** This store's per-sale commission percent, from its SELLER's pricing tier (lib/pricing.ts).
+   *  Passed in per store rather than as one platform-wide rate: sellers sit on different tiers,
+   *  so a single number would silently misreport the moment the second tier is sold. Absent = 0. */
+  commissionPercent?: number;
+}
+
+/** Attaches each store's commission rate, resolved from its OWNER's pricing tier — the one place
+ *  the store→seller→tier hop is written, so both admin call sites (the dashboard render and the
+ *  AJAX endpoint) can never disagree. Pure: the caller supplies both already-read lists. */
+export function buildPlatformStoreInputs(
+  stores: Array<{ slug: string; name: string; blocked?: boolean; sellerId: string }>,
+  sellers: Array<{ id: string; tier?: string }>,
+): PlatformStoreInput[] {
+  const tierBySellerId = new Map(sellers.map((s) => [s.id, s.tier]));
+  return stores.map((s) => ({
+    slug: s.slug,
+    name: s.name,
+    blocked: s.blocked,
+    commissionPercent: commissionPercentForTier(tierBySellerId.get(s.sellerId)),
+  }));
 }
 
 // One row of the "breakdown by store" table — the same headline metrics each
@@ -78,7 +99,6 @@ export function buildPlatformPerformance(
   fromISO: string,
   toISO: string,
   granularity: PerformanceGranularity,
-  commissionPercent = 0,
   topLimit = 5,
   storeLimit = TOP_STORES_LIMIT,
 ): PlatformPerformance {
@@ -98,13 +118,16 @@ export function buildPlatformPerformance(
   let totalOrders = 0;
   let totalViews = 0;
   let totalUniqueVisitors = 0;
+  // Summed from each store's OWN tier rate — never one rate applied to the platform total.
+  let totalCommission = 0;
 
   for (const store of stores) {
     // topLimit 0 here → the store contributes ALL its sold products to the
     // platform product aggregation, so the platform top-N is a true top-N and
     // not a top-N-of-each-store's-top-5.
-    const s = buildPerformanceSummary(orders, store.slug, fromISO, toISO, granularity, commissionPercent, 0);
+    const s = buildPerformanceSummary(orders, store.slug, fromISO, toISO, granularity, store.commissionPercent ?? 0, 0);
     totalRevenue += s.totalRevenue;
+    totalCommission += s.platformCommission;
     totalOrders += s.totalOrders;
     totalViews += s.totalViews;
     totalUniqueVisitors += s.totalUniqueVisitors;
@@ -143,7 +166,7 @@ export function buildPlatformPerformance(
   const sortedProducts = [...productMap.values()].sort((a, b) => b.revenue - a.revenue);
   const topProducts = topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts;
 
-  const platformCommission = Math.round(totalRevenue * commissionPercent) / 100;
+  const platformCommission = Math.round(totalCommission * 100) / 100;
   const netProfit = Math.round((totalRevenue - platformCommission) * 100) / 100;
   // Conversion = orders / unique visitors (matches the seller tab's definition),
   // falling back to total views when no visitor ids exist (legacy/demo data).
@@ -161,7 +184,9 @@ export function buildPlatformPerformance(
     totalUniqueVisitors,
     conversionRate,
     topProducts,
-    commissionRate: commissionPercent,
+    // Revenue-weighted actual, not any one tier's rate — the only honest headline across a
+    // mixed-tier seller base (see pricing.ts#blendedCommissionRate).
+    commissionRate: blendedCommissionRate(totalRevenue, platformCommission),
     platformCommission,
     netProfit,
   };

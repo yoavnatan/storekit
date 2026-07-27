@@ -11,8 +11,9 @@ import { getOrdersByStoreSlug } from '../../../../lib/orders.js';
 import type { Order } from '../../../../lib/orders.js';
 import { buildPerformanceSummary, pickGranularity } from '../../../../lib/seller-performance.js';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../../../lib/chart-svg.js';
-import { store as platformConfig, formatPrice } from '../../../../config/store.config.js';
+import { formatPrice } from '../../../../config/store.config.js';
 import { getLang, getDir, getT } from '../../../../i18n/index.js';
+import { commissionPercentForTier } from '../../../../lib/pricing.js';
 
 if (!isAdminRequest(Astro.cookies)) {
   return Astro.redirect('/admin/login');
@@ -51,7 +52,7 @@ const toLocalISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1
 const fromISO = toLocalISO(new Date(today.getFullYear(), today.getMonth(), 1));
 const toISO = toLocalISO(today);
 const granularity = pickGranularity(fromISO, toISO);
-const summary = buildPerformanceSummary(storeOrders, store.slug, fromISO, toISO, granularity, platformConfig.checkout.commissionPercent);
+const summary = buildPerformanceSummary(storeOrders, store.slug, fromISO, toISO, granularity, commissionPercentForTier(seller?.tier));
 
 // This blob is injected via set:html into a <script type="application/json">.
 // Unlike the seller's own dashboard (where the product names are the viewer's
@@ -233,13 +234,13 @@ const visitorsChartSvg = buildMultiLineChartSvg(
 
   {/* Revenue-breakdown modal — opened by clicking a revenue bar (performance.ts).
       Shows a donut of which products made up that period's revenue. Injected client-side. */}
-  <dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:14px;padding:0;width:min(440px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
+  <dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(440px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">
       <div>
         <h2 id="pbm-title" style="font-size:0.95rem;font-weight:700;margin:0">{d.perfBreakdownTitle}</h2>
         <p id="pbm-subtitle" class="muted" style="font-size:0.78rem;margin:0.15rem 0 0"></p>
       </div>
-      <button id="perf-breakdown-close" type="button" aria-label={d.perfBreakdownClose} style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:none;background:none;color:var(--color-muted);cursor:pointer;flex-shrink:0">
+      <button id="perf-breakdown-close" type="button" aria-label={d.perfBreakdownClose} style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);border:none;background:none;color:var(--color-muted);cursor:pointer;flex-shrink:0">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>

@@ -189,7 +189,7 @@
   .product-detail-page #sticky-mini-img-wrap {
     width: 44px;
     height: 44px;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     flex-shrink: 0;
   }
@@ -208,7 +208,7 @@
   .product-detail-page #sticky-mini-summary img {
     width: 44px;
     height: 44px;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     object-fit: cover;
     flex-shrink: 0;
     opacity: 0;

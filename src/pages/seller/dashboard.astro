@@ -2,8 +2,13 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
-import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, createStore, updateStore, normalizeSlug, STORE_WEEKDAYS } from '../../lib/stores.js';
+import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
+import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
+import TabHint from '../../components/dashboard/TabHint.astro';
+import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
+import { getSellerById, getSellerSession } from '../../lib/seller-auth.js';
+import { commissionPercentForTier } from '../../lib/pricing.js';
+import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS } from '../../lib/stores.js';
 import { cnameTarget, storeHomeHref } from '../../lib/custom-domain.js';
 import { DEFAULT_STORE_HOURS } from '../../lib/store-hours.js';
 import {
@@ -12,6 +17,7 @@ import {
   updateProduct,
   deleteProduct,
   countStockAlerts,
+  isProductVisible,
 } from '../../lib/store-products.js';
 import { formatPrice, cdnSrc, store as platformConfig } from '../../config/store.config.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
@@ -121,6 +127,9 @@ if (Astro.request.method === 'POST') {
       error = d.storeNameRequired;
     } else if (!slug) {
       error = d.storeUrlRequired;
+    } else if (!canOpenAnotherStore(sellerId)) {
+      // Server-side gate — the entry point is hidden at the cap, but a hidden link is not a guard.
+      error = d.storeLimitReached;
     } else {
       const { id: newStoreId } = createStore(sellerId, { name, slug, tagline, description });
       return Astro.redirect(`/seller/dashboard?store=${newStoreId}`);
@@ -166,6 +175,12 @@ if (Astro.request.method === 'POST') {
 
 const allStores = getStoresBySellerId(sellerId);
 const hasNoStore = allStores.length === 0;
+// `?new=1` opens the SAME store-creation card an empty account gets — that's the entry point
+// for a seller opening an additional store (store switcher → "פתיחת חנות נוספת"). All of a
+// seller's stores bill through their one registered business, so extra stores are extra brands,
+// not extra legal entities — capped at MAX_STORES_PER_SELLER (see stores.ts for why).
+const atStoreLimit = allStores.length >= MAX_STORES_PER_SELLER;
+const showCreateStore = hasNoStore || (Astro.url.searchParams.get('new') === '1' && !atStoreLimit);
 
 // No ?store= in the URL (e.g. arriving fresh via the header's "seller
 // dashboard" link) falls back to whichever store the seller was last on,
@@ -209,6 +224,26 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 // shared definition each mutating /api/product action also returns, so the badge
 // stays live after an inline stock edit / hide without a full reload.
 const stockAlertCount = store ? countStockAlerts(store.id, LOW_STOCK_THRESHOLD) : 0;
+// "First steps" checklist (Overview tab) — derived live from the store's own data, never
+// stored (see lib/seller-onboarding.ts). Renders nothing once every step is satisfied.
+const onboardingSteps = store
+  ? buildOnboardingSteps({
+      // Visible, not total — a catalog of hidden products leaves the store undiscoverable, so
+      // the checklist must not call the step done (see lib/store-readiness.ts).
+      visibleProductCount: products.filter(isProductVisible).length,
+      hasProfileImage: !!store.profileImage,
+      tagline: store.tagline ?? '',
+      description: store.description ?? '',
+      categoryCount: storeCategoryList.length,
+      address: store.address ?? '',
+    })
+  : [];
+// The per-tab "what this tab does" explainers are for a seller meeting this dashboard for the
+// FIRST time, so they need both: an unfinished store AND no second store. Opening another store
+// is itself proof the seller already knows the tabs — the checklist still shows there (the new
+// store really is empty), but re-explaining the UI would be nagging. Nothing stored either way.
+const showTabHints =
+  allStores.length === 1 && onboardingSteps.length > 0 && !onboardingProgress(onboardingSteps).complete;
 // Products tab pagination — mirrors the admin dashboard's server-paginated
 // list tabs (src/lib/pagination.ts) so /api/seller/products (AJAX page/sort/
 // filter/search) and this initial SSR render never drift. `products` above
@@ -287,7 +322,7 @@ const toLocalISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1
 const perfToISO = toLocalISO(perfToday);
 const perfFromISO = toLocalISO(new Date(perfToday.getFullYear(), perfToday.getMonth(), 1));
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
-const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity, platformConfig.checkout.commissionPercent) : undefined;
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier(getSellerById(sellerId)?.tier)) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).
@@ -404,48 +439,8 @@ const orderStatusColors: Record<string, string> = {
 ---
 
 <BaseLayout title={hasNoStore ? d.noStoreTitle : d.title} noindex={true} isLoggedIn={true} hasStore={!hasNoStore} storeMode={true} sellerMode={true}>
-  {hasNoStore ? (
-    <section class="section container">
-      <div class="card" style="max-width:520px;margin:2rem auto;padding:2.5rem 2rem;text-align:center">
-        {error && <p class="dash-error bg-[#fef2f2] text-[color:var(--color-danger)] py-2 px-[.85rem] rounded-[var(--radius)] border border-[#fecaca] text-sm" style="margin-bottom:1.5rem;text-align:start">{error}</p>}
-        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent);margin:0 auto 1.25rem;display:block" aria-hidden="true">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-          <polyline points="9 22 9 12 15 12 15 22"/>
-        </svg>
-        <h1 style="font-size:1.5rem;margin:0 0 0.5rem">{d.noStoreTitle}</h1>
-        <p class="muted" style="margin-bottom:2rem">{d.noStoreDesc}</p>
-        <form method="POST" class="mt-4" style="text-align:start">
-          <input type="hidden" name="_action" value="create-store" />
-          <label class="field">
-            <span>{d.storeNameReq}</span>
-            <input class="input" name="name" required placeholder={d.storeNamePlaceholder} autofocus />
-          </label>
-          <label class="field">
-            <span>{d.storeUrlLabel}</span>
-            <input class="input" name="slug" id="create-store-slug" required placeholder="my-store" dir="ltr" autocomplete="off" spellcheck="false" data-host={new URL(platformConfig.url).hostname} />
-            <p class="muted text-[0.78rem] mt-1" style="text-align:start">{d.storeUrlHint} · <span id="create-store-url-preview" dir="ltr" class="font-mono [color:var(--color-text)]">{`${new URL(platformConfig.url).hostname}/my-store`}</span></p>
-          </label>
-          <button class="btn btn--accent" type="submit" style="width:100%;margin-top:0.25rem">{d.createStoreBtn}</button>
-        </form>
-      </div>
-    </section>
-    <script>
-      // Live-sanitize the store-URL field to a valid slug + preview the full address as the seller
-      // types. Server re-normalizes on submit (see normalizeSlug), so this is only a nicety.
-      const slugInput = document.getElementById('create-store-slug') as HTMLInputElement | null;
-      const preview = document.getElementById('create-store-url-preview');
-      if (slugInput) {
-        const host = slugInput.dataset.host ?? '';
-        const clean = (v: string) => v.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
-        const update = () => {
-          const pos = slugInput.selectionStart;
-          slugInput.value = clean(slugInput.value);
-          try { slugInput.setSelectionRange(pos, pos); } catch { /* ignore */ }
-          if (preview) preview.textContent = `${host}/${slugInput.value.replace(/^-+|-+$/g, '') || 'my-store'}`;
-        };
-        slugInput.addEventListener('input', update);
-      }
-    </script>
+  {showCreateStore ? (
+    <CreateStoreCard first={hasNoStore} error={error} />
   ) : store ? (
   <Fragment>
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
@@ -455,10 +450,9 @@ const orderStatusColors: Record<string, string> = {
       <!-- ── Store header ── -->
       <div class="dash-head">
         <div class="dash-head__top">
-          {allStores.length === 1 ? (
-            <h1 class="dash-store-name text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">{store.name}</h1>
-          ) : (
-            <div class="relative inline-block" id="store-switcher">
+          {/* The switcher renders even for a single-store seller — it is the only entry point to
+              "open another store", and one mechanism beats a second entry point hidden elsewhere. */}
+          <div class="relative inline-block" id="store-switcher">
               <button
                 class="group inline-flex items-center gap-[.3rem] bg-transparent border-0 p-0 cursor-pointer font-[inherit] text-[color:var(--color-text)] transition-colors duration-150 hover:text-[color:var(--color-accent)]"
                 id="store-switcher-btn"
@@ -468,7 +462,7 @@ const orderStatusColors: Record<string, string> = {
                 aria-label={lang === 'he' ? 'החלף חנות' : 'Switch store'}
               >
                 <span class="dash-store-name text-[1.3rem] font-bold m-0 leading-[1.2]">{store.name}</span>
-                <svg class="text-[color:var(--color-muted)] shrink-0 mt-px [transition:transform_.2s_ease,color_.15s] group-hover:text-[color:var(--color-accent)] group-aria-expanded:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                <svg class="store-switcher__chevron text-[color:var(--color-muted)] shrink-0 mt-px [transition:transform_.2s_ease,color_.15s] group-hover:text-[color:var(--color-accent)] group-aria-expanded:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
                 {hasAnyNonCurrentAlert && (
@@ -483,8 +477,9 @@ const orderStatusColors: Record<string, string> = {
                       role="option"
                       aria-selected={s.id === store.id}
                       class={s.id === store.id
-                        ? 'flex items-center justify-between gap-2 py-[.45rem] px-3 rounded no-underline text-[.9rem] transition-colors duration-100 hover:bg-[color:var(--color-bg)] font-semibold text-[color:var(--color-primary)]'
-                        : 'flex items-center justify-between gap-2 py-[.45rem] px-3 rounded text-[color:var(--color-text)] no-underline text-[.9rem] transition-colors duration-100 hover:bg-[color:var(--color-bg)]'}
+                        /* `store-option--current` is a JS-only marker (no CSS) — updateSwitcherAlertDot() below finds the current row through it. */
+                        ? 'store-option--current flex items-center justify-between gap-2 py-[.45rem] px-3 rounded-[var(--radius-sm)] no-underline text-[.9rem] transition-colors duration-100 hover:bg-[color:var(--color-bg)] font-semibold text-[color:var(--color-primary)]'
+                        : 'flex items-center justify-between gap-2 py-[.45rem] px-3 rounded-[var(--radius-sm)] text-[color:var(--color-text)] no-underline text-[.9rem] transition-colors duration-100 hover:bg-[color:var(--color-bg)]'}
                     >
                       <span>{s.name}</span>
                       <span class="store-switcher__item-actions" style="display:flex;align-items:center;gap:0.35rem;flex-shrink:0">
@@ -500,9 +495,23 @@ const orderStatusColors: Record<string, string> = {
                     </a>
                   </li>
                 ))}
+                <li class="mt-[.2rem] pt-[.2rem] border-t [border-color:var(--color-border)]">
+                  {atStoreLimit ? (
+                  <p class="m-0 py-[.45rem] px-3 text-[.8rem] leading-[1.4] [color:var(--color-muted)]">{d.storeLimitReached}</p>
+                  ) : (
+                  <a
+                    href="/seller/dashboard?new=1"
+                    class="flex items-center gap-2 py-[.45rem] px-3 rounded-[var(--radius-sm)] no-underline text-[.9rem] [color:var(--color-accent)] font-medium transition-colors duration-100 hover:bg-[color:var(--color-bg)]"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    <span>{d.addStore}</span>
+                  </a>
+                  )}
+                </li>
               </ul>
             </div>
-          )}
           <a id="dash-view-store" href={storeHomeHref(store)} class="btn btn--sm" target="_blank" rel="noopener">
             {d.viewLive}
           </a>
@@ -593,6 +602,8 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Overview ── -->
       <div id="dash-panel-overview" class="dash-panel" role="tabpanel" aria-labelledby="tab-overview" hidden={initialPanel !== 'overview'}>
+        <OnboardingChecklist steps={onboardingSteps} />
+        {showTabHints && <TabHint text={d.tabHintOverview} />}
         {false && (<div class="mb-4 pb-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0 text-base font-semibold">{d.storeOverview}</h2>
         </div>)}
@@ -640,6 +651,7 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Products ── -->
       <div id="dash-panel-products" class="dash-panel" role="tabpanel" aria-labelledby="tab-products" hidden={initialPanel !== 'products'}>
+        {showTabHints && <TabHint text={d.tabHintProducts} />}
 
         <div>
           <div class="products-header">
@@ -798,7 +810,7 @@ const orderStatusColors: Record<string, string> = {
           <p id="empty-products-search" class="empty-products" hidden={products.length === 0 || productsPage.total > 0}>{d.noProductsMatch}</p>
 
           {/* CSV bulk import/export panel */}
-          <div id="csv-panel" class="csv-panel border [border-color:var(--color-border)] rounded-[0.55rem] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden data-store-id={store.id}>
+          <div id="csv-panel" class="csv-panel border [border-color:var(--color-border)] rounded-[var(--radius)] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden data-store-id={store.id}>
             <div class="csv-panel__header flex items-center justify-between text-[0.85rem] font-semibold [color:var(--color-muted)] uppercase tracking-[0.04em] mb-2">
               <span>{d.csvImportExport}</span>
               <button type="button" class="btn btn--ghost btn--sm" id="csv-panel-close" aria-label={d.csvClose}>
@@ -838,7 +850,7 @@ const orderStatusColors: Record<string, string> = {
               (POS/ERP/Shopify/Woo/spreadsheet). Deliberately separate from the CSV panel above: that
               one is our own catalog round-trip; this one translates a FOREIGN feed (any column names)
               and matches by SKU. See feed-mapping.ts / feed-sync.ts. */}
-          <div id="feed-panel" class="feed-panel border [border-color:var(--color-border)] rounded-[0.55rem] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden
+          <div id="feed-panel" class="feed-panel border [border-color:var(--color-border)] rounded-[var(--radius)] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden
                data-store-id={store.id}
                data-feed-url={store.feedSync?.url ?? ''}
                data-feed-mapping={JSON.stringify(store.feedSync?.mapping ?? {})}
@@ -856,7 +868,7 @@ const orderStatusColors: Record<string, string> = {
               <label for="feed-url-input" class="text-[0.82rem] font-semibold [color:var(--color-text)]">{d.feedUrlLabel}</label>
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input type="url" id="feed-url-input" inputmode="url" placeholder="https://…/inventory.csv" value={store.feedSync?.url ?? ''}
-                  class="flex-1 min-w-0 font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[0.4rem] py-[.4rem] px-[.7rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
+                  class="flex-1 min-w-0 font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] py-[.4rem] px-[.7rem] outline-none transition-colors duration-[120ms] focus:border-[color:var(--color-primary)]" />
                 <button type="button" class="btn btn--ghost btn--sm shrink-0" id="feed-save-btn">{d.feedSaveUrl}</button>
                 <button type="button" class="btn btn--sm shrink-0" id="feed-sync-now-btn">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
@@ -893,7 +905,7 @@ const orderStatusColors: Record<string, string> = {
               <div id="feed-export-active" hidden={!store.feedExportToken} class="flex flex-col gap-2">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <input type="text" id="feed-export-url" readonly value={store.feedExportToken ? `${platformConfig.url}/api/store-feed/${store.feedExportToken}` : ''}
-                    class="flex-1 min-w-0 font-mono text-[.76rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[0.4rem] py-[.4rem] px-[.6rem] outline-none" />
+                    class="flex-1 min-w-0 font-mono text-[.76rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] py-[.4rem] px-[.6rem] outline-none" />
                   <button type="button" class="btn btn--ghost btn--sm shrink-0" id="feed-export-copy">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     {d.feedExportCopy}
@@ -912,7 +924,7 @@ const orderStatusColors: Record<string, string> = {
           </div>
 
           {/* Bulk image upload panel */}
-          <div id="bulk-upload-panel" class="bulk-upload-panel border [border-color:var(--color-border)] rounded-[0.55rem] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden></div>
+          <div id="bulk-upload-panel" class="bulk-upload-panel border [border-color:var(--color-border)] rounded-[var(--radius)] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden></div>
 
           {/* Unified toolbar row (CURRENT_TASK 2) — search + page-size + sort/
               filter all on ONE line. Search + page-size have no desktop-only
@@ -1039,7 +1051,7 @@ const orderStatusColors: Record<string, string> = {
                             </button>
                             <div class="absolute top-[calc(100%+0.3rem)] end-0 min-w-[140px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 m-0 p-[0.3rem] animate-product-menu-open" data-stock-breakdown-dropdown role="menu" hidden>
                               {pVariantCombos.map((c) => (
-                                <div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key={c.key}>
+                                <div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded-[var(--radius-sm)] [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key={c.key}>
                                   <span style="display:inline-flex;align-items:center;gap:0.35rem">
                                     {c.parts.map((part, i) => (
                                       <>
@@ -1086,14 +1098,14 @@ const orderStatusColors: Record<string, string> = {
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                         </button>
                         <ul class="product-menu__dropdown absolute top-[calc(100%+0.3rem)] end-0 min-w-[130px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 list-none m-0 p-[0.3rem] animate-product-menu-open" hidden role="menu">
-                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product={p.id} role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>{d.viewProduct}</button></li>
-                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{d.edit}</button></li>
-                          <li role="none"><button class="product-menu__item product-menu__item--visibility flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-visibility={p.id} data-hidden={p.hidden ? '1' : ''} role="menuitem">
+                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-view-product={p.id} role="menuitem"><svg class="shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>{d.viewProduct}</button></li>
+                          <li role="none"><button class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-edit-toggle={p.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{d.edit}</button></li>
+                          <li role="none"><button class="product-menu__item product-menu__item--visibility flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" type="button" data-toggle-visibility={p.id} data-hidden={p.hidden ? '1' : ''} role="menuitem">
                             <svg class="menu-icon-hide shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                             <svg class="menu-icon-show shrink-0 max-w-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             <span class="menu-visibility-label">{p.hidden ? d.productShow : d.productHide}</span>
                           </button></li>
-                          <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product={p.id} data-store-id={store.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>{d.delete}</button></li>
+                          <li role="none"><button class="product-menu__item product-menu__item--danger flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-danger)] text-start transition-colors duration-100 hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]" type="button" data-delete-product={p.id} data-store-id={store.id} role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>{d.delete}</button></li>
                         </ul>
                       </div>
                     </td>
@@ -1105,7 +1117,7 @@ const orderStatusColors: Record<string, string> = {
                         <input type="hidden" name="_action" value="edit-product" />
                         <input type="hidden" name="productId" value={p.id} />
                         <div class="edit-row-header">
-                          {p.images?.[0] && <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0">}
+                          {p.images?.[0] && <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:var(--radius-sm);flex-shrink:0">}
                           <span class="edit-row-title">{p.name}</span>
                           <div class="flex gap-2 mt-2" style="margin-inline-start:auto;margin-top:0">
                             <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
@@ -1294,6 +1306,7 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Orders ── -->
       <div id="dash-panel-orders" class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
+        {showTabHints && <TabHint text={d.tabHintOrders} />}
         <div class="dash-panel-head flex flex-col items-start mb-4 gap-[0.6rem] py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0">{d.ordersTitle}</h2>
           {/* Orders is cards-only at every screen size (no table/header to fall
@@ -1334,8 +1347,8 @@ const orderStatusColors: Record<string, string> = {
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               const noteList   = orderStoreNotes(order, store!.slug);
               return (
-                <div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-xl overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
-                  <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[11px] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
+                <div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
+                  <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     <div class="flex flex-col items-start gap-[0.2rem] w-20 sm:w-28 shrink-0">
                       <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">
                         #{shortId}
@@ -1405,7 +1418,7 @@ const orderStatusColors: Record<string, string> = {
                       <ul class="order-card__items list-none p-0 flex flex-col gap-2">
                         {storeItems.map((item) => (
                           <li class="flex items-center gap-2.5 text-sm">
-                            {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-md shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
+                            {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
                             <span class="flex-1 text-[color:var(--color-text)]">{item.productName}</span>
                             <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
                             <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(item.price * item.qty)}</span>
@@ -1419,7 +1432,7 @@ const orderStatusColors: Record<string, string> = {
                         </div>
                       )}
                     </div>
-                    <div class="bg-[color:var(--color-bg)] rounded-b-[11px] p-[0.875rem] overflow-visible">
+                    <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
                       {/* Multi-note UI: a list of private notes (each an inline line with
                           its own delete ✗), an always-visible "add note" button, and an
                           on-demand editor (textarea + ✓/✗) that APPENDS a new note. Notes
@@ -1431,8 +1444,8 @@ const orderStatusColors: Record<string, string> = {
                             <li class="order-note-item flex items-start gap-1.5 text-[0.82rem]">
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0 mt-[0.15rem] [color:var(--color-muted)]"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                               <span class="order-note-text flex-1 min-w-0 [color:var(--color-text)] whitespace-pre-wrap break-words">{n}</span>
-                              <button type="button" class="order-note-edit shrink-0 inline-flex items-center justify-center w-5 h-5 rounded [color:var(--color-muted)] bg-transparent border-0 cursor-pointer transition-colors duration-100 hover:[color:var(--color-primary)]" aria-label={d.orderEditNote} title={d.orderEditNote}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
-                              <button type="button" class="order-note-del shrink-0 inline-flex items-center justify-center w-5 h-5 rounded [color:var(--color-muted)] bg-transparent border-0 cursor-pointer transition-colors duration-100 hover:[color:var(--color-danger)]" aria-label={d.orderNoteDelete} title={d.orderNoteDelete}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+                              <button type="button" class="order-note-edit shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-[var(--radius-sm)] [color:var(--color-muted)] bg-transparent border-0 cursor-pointer transition-colors duration-100 hover:[color:var(--color-primary)]" aria-label={d.orderEditNote} title={d.orderEditNote}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+                              <button type="button" class="order-note-del shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-[var(--radius-sm)] [color:var(--color-muted)] bg-transparent border-0 cursor-pointer transition-colors duration-100 hover:[color:var(--color-danger)]" aria-label={d.orderNoteDelete} title={d.orderNoteDelete}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
                             </li>
                           ))}
                         </ul>
@@ -1445,8 +1458,8 @@ const orderStatusColors: Record<string, string> = {
                           <div class="flex items-center justify-between gap-2 mt-1.5">
                             <span class="text-[0.72rem] [color:var(--color-muted)]">{d.orderNotePrivateHint}</span>
                             <div class="flex items-center gap-1.5">
-                              <button type="button" class="order-note-cancel inline-flex items-center justify-center w-7 h-7 rounded-md bg-transparent [color:var(--color-muted)] border border-[color:var(--color-border)] cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-surface)] hover:[color:var(--color-text)]" aria-label={d.orderNoteCancel} title={d.orderNoteCancel}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                              <button type="button" class="order-note-save inline-flex items-center justify-center w-7 h-7 rounded-md bg-[color:var(--color-primary)] text-white border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95" aria-label={d.orderAddNote} title={d.orderAddNote}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+                              <button type="button" class="order-note-cancel inline-flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] bg-transparent [color:var(--color-muted)] border border-[color:var(--color-border)] cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-surface)] hover:[color:var(--color-text)]" aria-label={d.orderNoteCancel} title={d.orderNoteCancel}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                              <button type="button" class="order-note-save inline-flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] bg-[color:var(--color-primary)] text-white border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95" aria-label={d.orderAddNote} title={d.orderAddNote}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
                             </div>
                           </div>
                         </div>
@@ -1454,7 +1467,7 @@ const orderStatusColors: Record<string, string> = {
                       <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">{d.orderTracking}</h3>
                       <div class="relative">
                         <input type="text" class="order-tracking-input input w-full !pe-10" data-field="trackingNumber" value={order.trackingNumber ?? ''} placeholder={d.orderTrackingPlaceholder} />
-                        <button class="order-copy-track absolute end-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-8 h-8 rounded-md bg-transparent border-0 cursor-pointer [color:var(--color-muted)] hover:[color:var(--color-primary)] hover:bg-[color:var(--color-bg)] transition-colors duration-100" type="button" aria-label={d.orderCopyTracking} title={d.orderCopyTracking} data-copied-label={d.orderCopiedTracking}>
+                        <button class="order-copy-track absolute end-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-8 h-8 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer [color:var(--color-muted)] hover:[color:var(--color-primary)] hover:bg-[color:var(--color-bg)] transition-colors duration-100" type="button" aria-label={d.orderCopyTracking} title={d.orderCopyTracking} data-copied-label={d.orderCopiedTracking}>
                           <svg class="order-copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                           <svg class="order-copy-check hidden [color:var(--color-success)]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                         </button>
@@ -1491,6 +1504,7 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Performance ── -->
       <div id="dash-panel-performance" class="dash-panel" role="tabpanel" aria-labelledby="tab-performance" hidden={initialPanel !== 'performance'}>
+        {showTabHints && <TabHint text={d.tabHintPerformance} />}
         <div class="dash-panel-head mb-5 py-[0.6rem] border-b [border-color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 class="m-0 text-base font-semibold">{d.perfTitle}</h2>
@@ -1630,6 +1644,7 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Advertising ── -->
       <div id="dash-panel-advertising" class="dash-panel" role="tabpanel" aria-labelledby="tab-advertising" hidden={initialPanel !== 'advertising'}>
+        {showTabHints && <TabHint text={d.tabHintAdvertising} />}
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0 text-base font-semibold">{d.adTitle}</h2>
           <p class="muted text-[0.82rem] m-0 mt-1">{d.adSubtitle}</p>
@@ -1826,6 +1841,7 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Messages ── -->
       <div id="dash-panel-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
+        {showTabHints && <TabHint text={d.tabHintMessages} />}
         {/* Sticky header carrying the search + sort/filter, matching Orders
             (CURRENT_TASK 2 — Messages previously had neither a sticky head nor
             a one-row toolbar on mobile). */}
@@ -2028,6 +2044,7 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Settings ── -->
       <div id="dash-panel-settings" class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden={initialPanel !== 'settings'}>
+        {showTabHints && <TabHint text={d.tabHintSettings} />}
         {/* Head stays INSIDE the form on purpose: its sticky scope is the form, so the
             "save changes" bar rides only over the fields it actually saves and releases
             at the form's end — the categories tree + custom-domain below save live per
@@ -2186,8 +2203,13 @@ const orderStatusColors: Record<string, string> = {
 
         {store && (
         <div id="store-url" class="mt-8" data-store-id={store.id} data-host={new URL(platformConfig.url).hostname} data-current-slug={store.slug}>
+          <!-- Settings carries TWO "addresses" — the physical one in the store-details
+               form above and this web one. They used to share the literal same Hebrew
+               label ("כתובת החנות"); now they're named apart (כתובת פיזית / כתובת האתר)
+               and this subtitle spells the split out once, where the confusion lands. -->
           <div class="mb-4 pb-[.875rem] border-b border-[color:var(--color-border)]">
             <h2 class="text-base font-semibold text-[color:var(--color-text)] m-0">{d.storeUrlTitle}</h2>
+            <p class="muted text-[0.8rem] leading-[1.5] mt-1 mb-0">{d.storeUrlSubtitle}</p>
           </div>
           <div class="flex items-center gap-2 flex-wrap mb-1">
             <code id="store-url-current" class="font-mono text-[0.85rem] [color:var(--color-text)]">{`${new URL(platformConfig.url).hostname}/${store.slug}`}</code>
@@ -2225,13 +2247,13 @@ const orderStatusColors: Record<string, string> = {
           {/* The always-live local address — the point of the whole feature: a custom domain never replaces it. */}
           <div class="flex flex-col gap-1 mb-4 text-[0.82rem]">
             <span class="muted">{d.cdLocalLabel}</span>
-            <code id="cd-local-addr" class="font-mono text-[0.8rem] [color:var(--color-text)] bg-[color:var(--color-bg)] border [border-color:var(--color-border)] rounded-[0.4rem] py-[.35rem] px-[.6rem] w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{`${platformConfig.url}/${store.slug}`}</code>
+            <code id="cd-local-addr" class="font-mono text-[0.8rem] [color:var(--color-text)] bg-[color:var(--color-bg)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] py-[.35rem] px-[.6rem] w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{`${platformConfig.url}/${store.slug}`}</code>
           </div>
 
           {/* State A — no domain connected yet */}
           <div id="cd-setup" hidden={!!cd} class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center max-w-[30rem]">
             <input type="text" id="cd-input" inputmode="url" autocomplete="off" spellcheck="false" placeholder={d.cdInputPlaceholder}
-              class="flex-1 min-w-0 font-mono text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[0.4rem] py-[.5rem] px-[.6rem] outline-none focus:[border-color:var(--color-accent)]" />
+              class="flex-1 min-w-0 font-mono text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] py-[.5rem] px-[.6rem] outline-none focus:[border-color:var(--color-accent)]" />
             <button type="button" class="btn btn--sm shrink-0" id="cd-connect">{d.cdConnect}</button>
           </div>
 
@@ -2261,7 +2283,7 @@ const orderStatusColors: Record<string, string> = {
                 <code class="font-mono [color:var(--color-text)] overflow-hidden text-ellipsis whitespace-nowrap">{cd?.hostname ?? ''}</code>
                 <span class="muted">{d.cdDnsValue}</span>
                 <span class="flex items-center gap-2 min-w-0">
-                  <code id="cd-cname-value" class="font-mono [color:var(--color-text)] bg-[color:var(--color-bg)] border [border-color:var(--color-border)] rounded-[0.4rem] py-[.3rem] px-[.5rem] overflow-hidden text-ellipsis whitespace-nowrap">{cdTarget}</code>
+                  <code id="cd-cname-value" class="font-mono [color:var(--color-text)] bg-[color:var(--color-bg)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] py-[.3rem] px-[.5rem] overflow-hidden text-ellipsis whitespace-nowrap">{cdTarget}</code>
                   <button type="button" class="btn btn--ghost btn--sm shrink-0" id="cd-copy" aria-label={d.cdCopy}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   </button>
@@ -2354,17 +2376,17 @@ const orderStatusColors: Record<string, string> = {
   .eom-item--deleted .eom-item__name { text-decoration: line-through; }
   .eom-item__img {
     width: 34px; height: 34px; object-fit: cover;
-    border-radius: 6px; flex-shrink: 0;
+    border-radius: var(--radius-sm); flex-shrink: 0;
     border: 1px solid var(--color-border);
   }
   .eom-item__img-ph {
-    width: 34px; height: 34px; border-radius: 6px; flex-shrink: 0;
+    width: 34px; height: 34px; border-radius: var(--radius-sm); flex-shrink: 0;
     background: var(--color-bg); border: 1px solid var(--color-border);
   }
   .eom-item__name { flex: 1; font-size: 0.82rem; font-weight: 500; color: var(--color-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .eom-item__meta { font-size: 0.78rem; color: var(--color-muted); flex-shrink: 0; white-space: nowrap; }
   .eom-item__del {
-    width: 24px; height: 24px; border-radius: 5px; flex-shrink: 0;
+    width: 24px; height: 24px; border-radius: var(--radius-sm); flex-shrink: 0;
     border: 1px solid var(--color-border); background: var(--color-surface);
     color: var(--color-muted); cursor: pointer; display: flex;
     align-items: center; justify-content: center;
@@ -2525,10 +2547,10 @@ const orderStatusColors: Record<string, string> = {
 </div>
 
 <!-- ── Edit Order Details Modal ── -->
-<dialog id="edit-order-modal" aria-labelledby="eom-title" style="border:none;border-radius:14px;padding:0;width:min(520px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
+<dialog id="edit-order-modal" aria-labelledby="eom-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(520px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border);flex-shrink:0">
     <h2 id="eom-title" style="font-size:0.95rem;font-weight:700;margin:0">ערוך פרטי הזמנה</h2>
-    <button id="edit-order-modal-close" type="button" aria-label="סגור" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:none;background:none;color:var(--color-muted);cursor:pointer;transition:background 0.1s">
+    <button id="edit-order-modal-close" type="button" aria-label="סגור" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);border:none;background:none;color:var(--color-muted);cursor:pointer;transition:background 0.1s">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -2576,7 +2598,7 @@ const orderStatusColors: Record<string, string> = {
     <!-- Shipping method (placeholder — wired later) -->
     <div style="border-top:1px solid var(--color-border);padding-top:0.75rem">
       <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">שיטת משלוח</p>
-      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--color-bg);border:1px solid var(--color-border);border-radius:10px;padding:0.6rem 0.85rem;gap:0.75rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.6rem 0.85rem;gap:0.75rem">
         <div style="display:flex;align-items:center;gap:0.55rem">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted);flex-shrink:0" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
           <span id="eom-shipping-label" style="font-size:0.85rem;font-weight:500;color:var(--color-text)">משלוח רגיל</span>
@@ -2586,7 +2608,7 @@ const orderStatusColors: Record<string, string> = {
           type="button"
           disabled
           title="בקרוב"
-          style="font-size:0.75rem;font-weight:500;color:var(--color-muted);background:none;border:1px solid var(--color-border);border-radius:6px;padding:0.25rem 0.6rem;cursor:default;font-family:inherit;opacity:0.6;flex-shrink:0"
+          style="font-size:0.75rem;font-weight:500;color:var(--color-muted);background:none;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:0.25rem 0.6rem;cursor:default;font-family:inherit;opacity:0.6;flex-shrink:0"
         >שנה שיטת משלוח</button>
       </div>
     </div>
@@ -2595,7 +2617,7 @@ const orderStatusColors: Record<string, string> = {
     <div style="border-top:1px solid var(--color-border);padding-top:0.75rem">
       <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">הנחה</p>
       <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
-        <div style="display:flex;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;flex-shrink:0">
+        <div style="display:flex;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
           <button type="button" id="eom-dtype-pct" class="eom-dtype-btn eom-dtype-btn--active" style="padding:0.3rem 0.65rem;font-size:0.82rem;font-weight:600;border:none;cursor:pointer;font-family:inherit;transition:background 0.1s,color 0.1s">%</button>
           <button type="button" id="eom-dtype-amt" class="eom-dtype-btn" style="padding:0.3rem 0.65rem;font-size:0.82rem;font-weight:600;border:none;border-right:1px solid var(--color-border);cursor:pointer;font-family:inherit;transition:background 0.1s,color 0.1s">₪</button>
         </div>
@@ -2616,13 +2638,13 @@ const orderStatusColors: Record<string, string> = {
 {/* Revenue-breakdown modal — opened by clicking a bar in the "revenue over
     time" chart (performance.ts). Shows a donut of which products made up that
     day/month's revenue. Content is injected client-side. */}
-<dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:14px;padding:0;width:min(440px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
+<dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(440px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">
     <div>
       <h2 id="pbm-title" style="font-size:0.95rem;font-weight:700;margin:0">{d.perfBreakdownTitle}</h2>
       <p id="pbm-subtitle" class="muted" style="font-size:0.78rem;margin:0.15rem 0 0"></p>
     </div>
-    <button id="perf-breakdown-close" type="button" aria-label={d.perfBreakdownClose} style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:none;background:none;color:var(--color-muted);cursor:pointer;flex-shrink:0">
+    <button id="perf-breakdown-close" type="button" aria-label={d.perfBreakdownClose} style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);border:none;background:none;color:var(--color-muted);cursor:pointer;flex-shrink:0">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>

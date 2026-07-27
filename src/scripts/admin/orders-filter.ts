@@ -128,7 +128,7 @@ export function initAdminOrdersFilter(): void {
     if (portal.currentTrigger() === sortTrigger) { portal.close(); return; }
     portal.open(sortTrigger, '15rem', () => SORT_OPTIONS.map((o) => {
       const selected = o.col === sortCol && o.dir === sortDir;
-      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -143,7 +143,7 @@ export function initAdminOrdersFilter(): void {
   function openFilterColumns(trigger: HTMLElement): void {
     portal.open(trigger, '12rem', () => FILTER_COLUMNS.map((fc) => {
       const active = (activeFilters.get(fc.col)?.size ?? 0) > 0;
-      return `<button type="button" class="product-menu__item flex items-center justify-between gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${fc.col}" style="${active ? 'font-weight:700;color:var(--color-primary)' : ''}">${fc.label}${active ? ' ●' : ''}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center justify-between gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${fc.col}" style="${active ? 'font-weight:700;color:var(--color-primary)' : ''}">${fc.label}${active ? ' ●' : ''}</button>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-filter-col]').forEach((btn) => {
         btn.addEventListener('click', () => openFilterValues(trigger, btn.dataset.filterCol as FilterCol));
@@ -159,10 +159,10 @@ export function initAdminOrdersFilter(): void {
     if (!fc) return;
     const selected = activeFilters.get(col) ?? new Set<string>();
     portal.open(trigger, '13rem', () => [
-      `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back>‹ ${fc.label}</button>`,
+      `<button type="button" class="product-menu__back flex items-center gap-[.35rem] w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.85rem] font-semibold [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-back>‹ ${fc.label}</button>`,
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
       ...fc.values.map((v) => `
-        <label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]">
+        <label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]">
           <input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${v}" ${selected.has(v) ? 'checked' : ''} />
           ${fc.colors[v] ? `<span class="order-status-dot" style="background:${fc.colors[v]}"></span>` : ''}
           ${fc.labels[v]}

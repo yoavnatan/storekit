@@ -27,7 +27,7 @@ if (Astro.request.method === 'POST') {
         <label style="display:block;margin-bottom:1rem">
           <span style="display:block;font-size:.875rem;font-weight:500;margin-bottom:.375rem;color:var(--color-text)">Password</span>
           <input type="password" name="password" autofocus required
-            style="width:100%;padding:.625rem .75rem;border:1.5px solid var(--color-border);border-radius:8px;font-size:.9375rem;box-sizing:border-box" />
+            style="width:100%;padding:.625rem .75rem;border:1.5px solid var(--color-border);border-radius:var(--radius);font-size:.9375rem;box-sizing:border-box" />
         </label>
         {error && <p style="color:var(--color-danger);font-size:.875rem;margin:0 0 1rem">{error}</p>}
         <button type="submit" class="btn btn--accent" style="width:100%">Login</button>

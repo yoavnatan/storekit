@@ -204,25 +204,36 @@ const jsonLd = {
            .dash-tabs gets its own gutter here (see home.css); .dash-panel
            stays flush (padding-inline:0) since every panel's own content —
            HomeShelf, HomeTabEmpty, the spotlight sections below — already
-           self-pads via its own inner .container, same as it always has. ── -->
-      <div class="container">
-        <div class="dash-tabs !px-0 relative" role="tablist">
-          {tabs.map((tab) => (
-            <button
-              class={`dash-tab home-tab${activeTab === tab.id ? ' dash-tab--active' : ''}
-                rounded-t-[6px] !border-b-0
-                [transition:color_0.15s,background-color_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
-                hover:bg-[color:var(--color-bg)] active:scale-[0.97]`}
-              role="tab"
-              id={`tab-${tab.id}`}
-              data-panel={tab.id}
-              aria-selected={activeTab === tab.id}
-              tabindex={activeTab === tab.id ? 0 : -1}
-            >
-              {tab.label}
-            </button>
-          ))}
-          <span class="home-tabs-indicator" aria-hidden="true"></span>
+           self-pads via its own inner .container, same as it always has.
+
+           The strip STICKS under the fixed site header once scrolled to (same
+           mechanism as `.seller-dash .dash-tabs`, top = --site-header-h): the
+           sticky element is this FULL-BLEED wrapper, not the .container inside
+           it — a container-width sticky bar would let the page's content show
+           through in the side gutters as it scrolls past. Its containing block
+           is .home-body, which spans every panel, so the bar stays pinned for
+           the whole tabbed region. z-30 keeps it under the header (z-50) while
+           still covering the shelves scrolling beneath it. ── -->
+      <div class="sticky top-[var(--site-header-h,3.4rem)] z-30 bg-[var(--color-bg)]">
+        <div class="container">
+          <div class="dash-tabs !px-0 relative" role="tablist">
+            {tabs.map((tab) => (
+              <button
+                class={`dash-tab home-tab${activeTab === tab.id ? ' dash-tab--active' : ''}
+                  rounded-t-[var(--radius-sm)] !border-b-0
+                  [transition:color_0.15s,background-color_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
+                  hover:bg-[color:var(--color-bg)] active:scale-[0.97]`}
+                role="tab"
+                id={`tab-${tab.id}`}
+                data-panel={tab.id}
+                aria-selected={activeTab === tab.id}
+                tabindex={activeTab === tab.id ? 0 : -1}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <span class="home-tabs-indicator" aria-hidden="true"></span>
+          </div>
         </div>
       </div>
 
@@ -473,7 +484,7 @@ const jsonLd = {
         </ul>
         <a
           href="/seller/register"
-          class="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-semibold text-sm
+          class="inline-flex items-center gap-2 px-6 py-3 rounded-[var(--radius)] font-semibold text-sm
                  transition-all duration-150 active:scale-[0.97]"
           style="background:#fff;color:var(--color-primary);box-shadow:0 4px 18px rgba(0,0,0,0.22)"
           onmouseover="this.style.background='rgba(255,255,255,0.92)'"

@@ -4,8 +4,8 @@ import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getAllStores } from '../../../lib/stores.js';
 import { getAllOrders } from '../../../lib/orders.js';
 import { pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
-import { buildPlatformPerformance } from '../../../lib/platform-performance.js';
-import { store as platformConfig } from '../../../config/store.config.js';
+import { buildPlatformPerformance, buildPlatformStoreInputs } from '../../../lib/platform-performance.js';
+import { getAllSellers } from '../../../lib/seller-auth.js';
 
 // Platform-wide (app-wide) twin of /api/admin/performance: same admin guard and
 // validation, but aggregates EVERY store instead of one by slug. Returns the
@@ -47,8 +47,8 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
 
   const orders = getAllOrders();
-  const stores = getAllStores().map((s) => ({ slug: s.slug, name: s.name, blocked: s.blocked }));
-  const result = buildPlatformPerformance(orders, stores, from, to, granularity, platformConfig.checkout.commissionPercent, topLimit);
+  const stores = buildPlatformStoreInputs(getAllStores(), getAllSellers());
+  const result = buildPlatformPerformance(orders, stores, from, to, granularity, topLimit);
 
   return json({ ok: true, summary: result.summary, stores: result.stores, totalStores: result.totalStores, shownStores: result.shownStores });
 }

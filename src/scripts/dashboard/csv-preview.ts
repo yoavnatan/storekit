@@ -33,7 +33,7 @@ function lineLabel(i: Record<string, string>, lines: number[]): string {
   return `${i.csvLines ?? single} ${lines[0]}–${lines[lines.length - 1]}`;
 }
 
-const CHIP_BASE = 'text-[0.82rem] font-semibold px-[0.6rem] py-[0.3rem] rounded-[0.4rem] border bg-[color:var(--color-surface)] w-fit';
+const CHIP_BASE = 'text-[0.82rem] font-semibold px-[0.6rem] py-[0.3rem] rounded-[var(--radius-sm)] border bg-[color:var(--color-surface)] w-fit';
 
 /** Builds the preview as one clearly separated card: a titled review box with a summary-chip row,
  *  then only the rows that need the seller's eyes — updates that actually change a product (shown as
@@ -55,7 +55,7 @@ export function buildPreviewHtml(results: Array<MergedRowResult>, i: Record<stri
     `<span class="csv-summary__item ${CHIP_BASE} [border-color:var(${colorVar})] [color:var(${colorVar})]">${n} ${esc(label)}</span>`;
 
   const errorRows = errors.map((r) => `
-    <div class="csv-row csv-row--error flex flex-col gap-[0.15rem] border [border-color:var(--color-danger)] rounded-[0.4rem] px-[0.6rem] py-[0.45rem] bg-[color:var(--color-surface)] text-[0.8rem]">
+    <div class="csv-row csv-row--error flex flex-col gap-[0.15rem] border [border-color:var(--color-danger)] rounded-[var(--radius-sm)] px-[0.6rem] py-[0.45rem] bg-[color:var(--color-surface)] text-[0.8rem]">
       <span class="csv-row__line font-semibold [color:var(--color-muted)]">${esc(lineLabel(i, r.lines))}</span>
       <span class="csv-row__msg [color:var(--color-danger)]">${esc(r.errors.map((e) => rowErrorLabel(i, e)).join(', '))}</span>
     </div>`).join('');
@@ -96,7 +96,7 @@ export function buildPreviewHtml(results: Array<MergedRowResult>, i: Record<stri
     </div>` : '';
 
   return `
-    <section class="csv-preview__card border [border-color:var(--color-border)] rounded-[0.5rem] p-[0.85rem] bg-[color:var(--color-surface)]">
+    <section class="csv-preview__card border [border-color:var(--color-border)] rounded-[var(--radius)] p-[0.85rem] bg-[color:var(--color-surface)]">
       <h4 class="csv-preview__title text-[0.9rem] font-semibold [color:var(--color-text)] mb-[0.6rem]">${esc(i.csvPreviewTitle ?? 'Review before import')}</h4>
       <div class="csv-summary flex flex-col gap-[0.4rem] sm:flex-row sm:flex-wrap sm:gap-[0.6rem]">
         ${chip(creates.length, i.csvRowsToCreate ?? 'New products', '--color-success')}

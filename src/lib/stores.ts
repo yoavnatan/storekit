@@ -159,6 +159,20 @@ interface CreateStoreInput {
   description?: string;
 }
 
+/** How many stores one seller account may open (decided 2026-07-27). All of a seller's stores bill
+ *  through their ONE registered business — the sub-merchant at the payment processor is per legal
+ *  entity, not per store — so a separate legal entity means a separate account, not a 6th store.
+ *  The cap is an abuse brake (a logged-in seller could otherwise mint slugs endlessly), not a
+ *  product tier; raise it here and both the API guard and the dashboard's "open another store"
+ *  entry point follow. */
+export const MAX_STORES_PER_SELLER = 5;
+
+/** True when the seller has room for another store. Callers MUST check this server-side before
+ *  createStore() — hiding the button is not the guard. */
+export function canOpenAnotherStore(sellerId: string): boolean {
+  return getStoresBySellerId(sellerId).length < MAX_STORES_PER_SELLER;
+}
+
 export function createStore(sellerId: string, { name, slug: rawSlug, tagline = '', description = '' }: CreateStoreInput): Store {
   const stores = readStores();
   const base = normalizeSlug(rawSlug ?? '') || normalizeSlug(name) || 'store';

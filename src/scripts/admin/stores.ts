@@ -14,7 +14,7 @@ const storesActionsPortal = createFloatingPortal('admin-stores-actions-portal');
 // off the base so each action can carry its own (accent links, red block) the way
 // the old inline row links did — set it per item, never alongside another colour.
 const MENU_ITEM_BASE =
-  'product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+  'product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
 const MENU_ITEM = `${MENU_ITEM_BASE} [color:var(--color-text)]`;
 const MENU_DIVIDER = 'product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]';
 const CHEVRON_DRILL = '<svg class="ms-auto shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>';
@@ -63,7 +63,7 @@ function wireStoresToolbar(): void {
     if (storesPortal.currentTrigger() === sortTrigger) { storesPortal.close(); return; }
     storesPortal.open(sortTrigger, '15rem', () => STORE_SORT_OPTIONS.map((o) => {
       const selected = o.col === sortCol && o.dir === sortDir;
-      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
         btn.addEventListener('click', () => {

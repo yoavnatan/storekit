@@ -1,5 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoresBySellerId } from '../lib/stores.js';
 
 // SSR (not Astro's static build-time 404 fallback) so a redirect here — from
 // a missing/blocked store or product, see admin-moderation.ts — actually
@@ -9,8 +11,19 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 // blocking a listing for SEO reasons.
 export const prerender = false;
 Astro.response.status = 404;
+
+const sellerId   = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore   = sellerId ? getStoresBySellerId(sellerId).length > 0 : false;
 ---
-<BaseLayout title="Page not found" noindex={true}>
+<BaseLayout
+  title="Page not found"
+  noindex={true}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
   <section class="section container center">
     <h1>404</h1>
     <p class="muted">The page you were looking for doesn't exist.</p>

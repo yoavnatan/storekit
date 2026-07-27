@@ -7,7 +7,7 @@ let tooltipEl: HTMLElement | null = null;
 function getTooltipEl(): HTMLElement {
   if (!tooltipEl) {
     tooltipEl = document.createElement('div');
-    tooltipEl.className = 'dash-tooltip fixed pointer-events-none z-[400] max-w-[15rem] text-[.76rem] leading-snug font-medium text-white bg-[color:var(--color-text)] rounded-[6px] py-[.35rem] px-[.6rem] shadow-[0_4px_14px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-100';
+    tooltipEl.className = 'dash-tooltip fixed pointer-events-none z-[400] max-w-[15rem] text-[.76rem] leading-snug font-medium text-white bg-[color:var(--color-text)] rounded-[var(--radius-sm)] py-[.35rem] px-[.6rem] shadow-[0_4px_14px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-100';
     tooltipEl.hidden = true;
     document.body.appendChild(tooltipEl);
   }

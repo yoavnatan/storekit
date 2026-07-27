@@ -11,7 +11,7 @@ const sellersPortal = createFloatingPortal('admin-sellers-toolbar-portal');
 // Separate singleton for the per-card actions kebab (see stores.ts for the same split).
 const sellersActionsPortal = createFloatingPortal('admin-sellers-actions-portal');
 const MENU_ITEM =
-  'product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+  'product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
 
 type SellerSortCol = 'joined' | 'revenue' | 'stores';
 const SELLER_SORT_OPTIONS: { col: SellerSortCol; dir: 'asc' | 'desc'; label: string }[] = [
@@ -53,7 +53,7 @@ function wireSellersToolbar(): void {
     if (sellersPortal.currentTrigger() === sortTrigger) { sellersPortal.close(); return; }
     sellersPortal.open(sortTrigger, '15rem', () => SELLER_SORT_OPTIONS.map((o) => {
       const selected = o.col === sortCol && o.dir === sortDir;
-      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
+      return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label}</button>`;
     }).join(''), (p) => {
       p.querySelectorAll<HTMLButtonElement>('[data-sort-col]').forEach((btn) => {
         btn.addEventListener('click', () => {

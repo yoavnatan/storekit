@@ -19,7 +19,7 @@ import { store as platform } from '../../config/store.config.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
 import { getLastViewedAt, recordTabView, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
-import { buildPlatformPerformance } from '../../lib/platform-performance.js';
+import { buildPlatformPerformance, buildPlatformStoreInputs } from '../../lib/platform-performance.js';
 import { pickGranularity } from '../../lib/seller-performance.js';
 import { getLang, getDir } from '../../i18n/index.js';
 import AdminOverviewPanel from '../../components/admin/AdminOverviewPanel.astro';
@@ -155,11 +155,10 @@ const perfToISO = toISODate(perfToday);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
 const platformPerf = buildPlatformPerformance(
   allOrders,
-  stores.map((s) => ({ slug: s.slug, name: s.name, blocked: s.blocked })),
+  buildPlatformStoreInputs(stores, sellers),
   perfFromISO,
   perfToISO,
   perfGranularity,
-  platform.checkout.commissionPercent,
 );
 
 // ── Data tab (first-party analytics — CURRENT_TASK.md item 2) ──
