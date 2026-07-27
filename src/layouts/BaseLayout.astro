@@ -104,7 +104,7 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
     {platformGtm && <script is:inline set:html={gtmHeadScript(platformGtm)} />}
     {platformPixel && <script is:inline set:html={metaPixelScript(platformPixel)} />}
   </head>
-  <body>
+  <body data-store-slug={storeMode && !sellerMode && storeSlug ? storeSlug : undefined}>
     <script is:inline set:html={`
 (function(){
   // Buffers any toast:show fired before ToastContainer's own listener exists.

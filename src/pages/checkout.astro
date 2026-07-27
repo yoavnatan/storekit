@@ -4,6 +4,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import { getLang, getT } from '../i18n/index.js';
 import { getVisibleStores } from '../lib/stores.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
+import { SHIPPING_RATES, availableDeliveryMethods, type DeliveryMethod } from '../lib/shipping.js';
 
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
@@ -21,17 +22,22 @@ const prefillEmail = sessionSeller?.email ?? '';
 // {flatRate:0, freeAbove:null} for a missing slug, so this doesn't break
 // the total display, it just stops charging shipping for an item checkout
 // will reject anyway (found in review, 2026-07-14).
-const storeShipping: Record<string, { flatRate: number; freeAbove: number | null }> = {};
+// Per-store delivery config for the client: which methods the buyer may pick (courier +
+// pickup point on every store; self-pickup only when the seller enabled it AND the store
+// has an address) and, for self-pickup, the address to collect from. Prices are the
+// central SHIPPING_RATES sent once below — the seller never sets them.
+const storeShipping: Record<string, { methods: DeliveryMethod[]; address: string | null }> = {};
 for (const s of getVisibleStores()) {
+  const offersSelfPickup = !!s.shipping?.selfPickup && !!s.address;
   storeShipping[s.slug] = {
-    flatRate: s.shipping?.flatRate ?? 0,
-    freeAbove: s.shipping?.freeAbove ?? null,
+    methods: availableDeliveryMethods(offersSelfPickup),
+    address: offersSelfPickup ? (s.address ?? null) : null,
   };
 }
 ---
 
 <BaseLayout title={c.title} description={c.description} noindex={true} isLoggedIn={isLoggedIn} storeMode={true}>
-  <script type="application/json" id="checkout-shipping-cfg" is:inline set:html={JSON.stringify(storeShipping)}></script>
+  <script type="application/json" id="checkout-shipping-cfg" is:inline set:html={JSON.stringify({ stores: storeShipping, rates: SHIPPING_RATES }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')}></script>
   <script type="application/json" id="checkout-i18n" is:inline set:html={JSON.stringify({
     freeShipping: c.freeShipping,
     shipping: c.shipping,
@@ -40,6 +46,12 @@ for (const s of getVisibleStores()) {
     item: c.item,
     items: c.items,
     changeShipping: c.changeShipping,
+    changeShippingMethod: c.changeShippingMethod,
+    deliveryMethod: c.deliveryMethod,
+    methodPickup: c.methodPickup,
+    methodCourier: c.methodCourier,
+    methodPickupPoint: c.methodPickupPoint,
+    pickupFrom: c.pickupFrom,
     removeItem: c.removeItem,
     removeTitle: c.removeTitle,
     removeMsg: c.removeMsg,
@@ -174,6 +186,14 @@ for (const s of getVisibleStores()) {
     import { getActiveStoreCarts, setQty, removeItem } from '../lib/cart.js';
     import { formatPrice } from '../config/store.config.js';
     import { spawnRipple } from '../lib/ripple.js';
+    import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../scripts/dashboard/select-dropdown.js';
+
+    // Price shown inside each dropdown option (self-pickup is free). NOT shown on the closed
+    // trigger — the trigger mirrors just the method name, and the price already sits outside.
+    const optionMeta = (value: string): string => {
+      const p = value === 'pickup' ? 0 : (platformRates[value] ?? 0);
+      return p === 0 ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(p);
+    };
 
     const storeFilter = new URLSearchParams(window.location.search).get('store') ?? '';
     function getFilteredCarts() {
@@ -181,17 +201,36 @@ for (const s of getVisibleStores()) {
       return storeFilter ? all.filter(c => c.storeSlug === storeFilter) : all;
     }
 
-    const shippingCfg: Record<string, { flatRate: number; freeAbove: number | null }> =
+    type StoreDeliveryCfg = { methods: string[]; address: string | null };
+    const shippingCfg: { stores?: Record<string, StoreDeliveryCfg>; rates?: Record<string, number> } =
       JSON.parse((document.getElementById('checkout-shipping-cfg') as HTMLElement | null)?.textContent ?? '{}');
+    const shippingStores: Record<string, StoreDeliveryCfg> = shippingCfg.stores ?? {};
+    const platformRates: Record<string, number> = shippingCfg.rates ?? {};
     const i18n: Record<string, string> =
       JSON.parse((document.getElementById('checkout-i18n') as HTMLElement | null)?.textContent ?? '{}');
 
     const esc = (s: unknown) =>
       String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-    function calcShipping(slug: string, subtotal: number): number {
-      const cfg = shippingCfg[slug] ?? { flatRate: 0, freeAbove: null };
-      return (cfg.freeAbove !== null && subtotal >= cfg.freeAbove) ? 0 : cfg.flatRate;
+    // Buyer's chosen delivery method per store. Defaults to courier — a PAID method — so a
+    // store never silently defaults to free; persists across cart re-renders. The server
+    // re-validates and re-prices whatever we send, so this is display/intent only.
+    const chosenMethod: Record<string, string> = {};
+    function methodFor(slug: string): string {
+      if (chosenMethod[slug]) return chosenMethod[slug]!;
+      const methods = shippingStores[slug]?.methods ?? ['courier'];
+      chosenMethod[slug] = methods.includes('courier') ? 'courier' : (methods[0] ?? 'courier');
+      return chosenMethod[slug]!;
+    }
+    function methodLabel(method: string): string {
+      if (method === 'pickup') return i18n['methodPickup'] ?? 'איסוף עצמי';
+      if (method === 'pickup_point') return i18n['methodPickupPoint'] ?? 'נקודת איסוף';
+      return i18n['methodCourier'] ?? 'שליח עד הבית';
+    }
+    // Self-pickup is always free; courier/pickup-point use the central platform rate.
+    function calcShipping(slug: string): number {
+      const method = methodFor(slug);
+      return method === 'pickup' ? 0 : (platformRates[method] ?? 0);
     }
 
     // ── Selection (which items the buyer is actually paying for) ──
@@ -256,8 +295,7 @@ for (const s of getVisibleStores()) {
       carts.forEach((cart, idx) => {
         // Initial paint only — recalculated precisely (per current selection) by
         // updateSelectionUI() right after this HTML is inserted into the DOM.
-        const subtotal = cart.items.reduce((s, i) => s + i.price * i.qty, 0);
-        const shipping = calcShipping(cart.storeSlug, subtotal);
+        const shipping = calcShipping(cart.storeSlug);
 
         html += `<div class="co-store-block contents" data-store-slug="${esc(cart.storeSlug)}">`;
 
@@ -311,20 +349,25 @@ for (const s of getVisibleStores()) {
           </div>`;
         });
 
-        // Shipping card for this store
+        // Shipping card for this store — "שיטת משלוח:" + an app-styled dropdown (each option
+        // shows its price; the closed trigger shows just the chosen method name) + the price
+        // outside. Prices are platform-set; self-pickup is free and reveals the address below.
         const isFree = shipping === 0;
-        html += `<div class="co-shipping-card flex items-center justify-between bg-[color:var(--color-surface)] rounded-[14px] py-3.5 px-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)]" data-store-slug="${esc(cart.storeSlug)}">
-          <div class="flex items-center gap-2.5 text-[.9rem] font-medium [color:var(--color-text)]">
-            <svg class="[color:var(--color-accent)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-            <div>
-              <span>${esc(i18n['shipping'] ?? 'משלוח')}</span>
-              <span class="text-xs [color:var(--color-muted)] font-normal"> · ${esc(cart.storeName)}</span>
+        const methods = shippingStores[cart.storeSlug]?.methods ?? ['courier'];
+        const chosen  = methodFor(cart.storeSlug);
+        const optionsHtml = methods
+          .map(m => `<option value="${esc(m)}" ${m === chosen ? 'selected' : ''}>${esc(methodLabel(m))}</option>`)
+          .join('');
+        html += `<div class="co-shipping-card bg-[color:var(--color-surface)] rounded-[14px] py-3.5 px-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)]" data-store-slug="${esc(cart.storeSlug)}">
+          <div class="flex items-center justify-between gap-2.5">
+            <div class="flex items-center gap-2 min-w-0">
+              <svg class="shrink-0 [color:var(--color-accent)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+              <span class="text-[.9rem] font-medium [color:var(--color-text)] shrink-0">${esc(i18n['deliveryMethod'] ?? 'שיטת משלוח')}:</span>
+              <select class="co-method-select" data-store-slug="${esc(cart.storeSlug)}" aria-label="${esc(i18n['deliveryMethod'] ?? 'שיטת משלוח')}">${optionsHtml}</select>
             </div>
+            <span class="co-shipping-card__amount text-[.9375rem] font-bold shrink-0 ${isFree ? 'data-[free]:[color:var(--color-success)]' : ''} [color:var(--color-text)]" ${isFree ? 'data-free' : ''}>${isFree ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(shipping)}</span>
           </div>
-          <div class="flex items-center gap-2.5">
-            <button class="text-xs [color:var(--color-muted)] bg-transparent border [border-color:var(--color-border)] rounded-[6px] py-[.2rem] px-[.55rem] cursor-pointer [font-family:inherit] transition-[color,border-color] duration-[140ms] hover:[color:var(--color-text)] hover:[border-color:var(--color-muted)]" type="button" disabled title="בקרוב">${esc(i18n['changeShipping'] ?? 'שנה')}</button>
-            <span class="co-shipping-card__amount text-[.9375rem] font-bold ${isFree ? 'data-[free]:[color:var(--color-success)]' : ''} [color:var(--color-text)]" ${isFree ? 'data-free' : ''}>${isFree ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(shipping)}</span>
-          </div>
+          <p class="co-pickup-address hidden text-xs [color:var(--color-muted)] mt-2 ps-[26px]" data-store-slug="${esc(cart.storeSlug)}"></p>
         </div>`;
 
         html += `</div>`; // close .co-store-block
@@ -335,6 +378,9 @@ for (const s of getVisibleStores()) {
       footerEl?.classList.remove('hidden');
 
       attachEvents();
+      // Upgrade each delivery-method <select> into the shared app-styled dropdown.
+      document.querySelectorAll<HTMLSelectElement>('.co-method-select').forEach(sel =>
+        initSelectDropdown(sel, { triggerClassName: COMPACT_TRIGGER_CLASS, menuAutoWidth: true, optionMeta }));
       updateSelectionUI();
     }
 
@@ -396,7 +442,7 @@ for (const s of getVisibleStores()) {
         totalItems += cart.items.length;
         totalSelected += selCount;
 
-        const shipping = selCount > 0 ? calcShipping(cart.storeSlug, subtotal) : 0;
+        const shipping = selCount > 0 ? calcShipping(cart.storeSlug) : 0;
         grandTotal += subtotal + shipping;
 
         const shipCard = block?.querySelector<HTMLElement>('.co-shipping-card');
@@ -408,6 +454,14 @@ for (const s of getVisibleStores()) {
             if (amountEl) {
               amountEl.textContent = isFree ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(shipping);
               amountEl.toggleAttribute('data-free', isFree);
+            }
+            // Self-pickup → show where to collect from; any other method hides it.
+            const addrEl = shipCard.querySelector<HTMLElement>('.co-pickup-address');
+            if (addrEl) {
+              const addr = shippingStores[cart.storeSlug]?.address;
+              const showAddr = methodFor(cart.storeSlug) === 'pickup' && !!addr;
+              addrEl.textContent = showAddr ? `${i18n['pickupFrom'] ?? 'איסוף מ'}: ${addr}` : '';
+              addrEl.classList.toggle('hidden', !showAddr);
             }
           }
         }
@@ -527,6 +581,15 @@ for (const s of getVisibleStores()) {
       updateSelectionUI();
     });
 
+    // Delivery-method dropdown change (the upgraded <select> re-fires a bubbling
+    // `change` on the hidden native element) → re-price + refresh totals/address.
+    document.getElementById('cart-content')?.addEventListener('change', (e) => {
+      const sel = e.target as HTMLElement;
+      if (!(sel instanceof HTMLSelectElement) || !sel.classList.contains('co-method-select')) return;
+      chosenMethod[sel.dataset['storeSlug'] ?? ''] = sel.value;
+      updateSelectionUI();
+    });
+
     // ── Payment accordion ──────────────────────────────────
     const toPaymentBtn   = document.getElementById('to-payment-btn');
     const paymentSection = document.getElementById('payment-section');
@@ -595,6 +658,10 @@ for (const s of getVisibleStores()) {
         ...(item.selectedVariants && Object.keys(item.selectedVariants).length ? { selectedVariants: item.selectedVariants } : {}),
       }));
 
+      // Chosen delivery method per purchased store (server re-validates + re-prices).
+      const deliveryMethods: Record<string, string> = {};
+      for (const { storeSlug } of purchased) deliveryMethods[storeSlug] = methodFor(storeSlug);
+
       const body = {
         buyerName:    (document.getElementById('buyerName')  as HTMLInputElement).value.trim(),
         buyerEmail:   (document.getElementById('buyerEmail') as HTMLInputElement).value.trim(),
@@ -605,6 +672,7 @@ for (const s of getVisibleStores()) {
           zip:    (document.getElementById('zip')    as HTMLInputElement).value.trim() || undefined,
         },
         items,
+        deliveryMethods,
       };
 
       try {

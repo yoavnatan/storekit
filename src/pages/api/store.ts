@@ -45,10 +45,16 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const hoursVisible = form.get('hoursVisible') === 'on';
     const hours = parseStoreHoursForm(form);
 
+    // Self-pickup is the seller's only shipping lever (prices are platform-set). It needs
+    // a pickup address — a buyer can't collect from "nowhere" — so block enabling it blank.
+    const selfPickup = form.get('selfPickup') === 'on';
+    if (selfPickup && !address) return json({ ok: false, error: 'כדי לאפשר איסוף עצמי יש להזין כתובת חנות.' }, 400);
+
     updateStore(target.id, {
       name, tagline, description, colors: target.colors, categories: categories.length ? categories : [],
       bannerImage: bannerImage || undefined, profileImage: profileImage || undefined,
       address: address || undefined, addressVisible, hours, hoursVisible,
+      shipping: { selfPickup },
     });
     // Store page content changed — notify the index (fire-and-forget, no-op in dev).
     pingStoreChange(target.slug);

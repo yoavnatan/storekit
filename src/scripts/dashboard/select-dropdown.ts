@@ -31,7 +31,7 @@ const DEFAULT_TRIGGER_CLASS =
 export const COMPACT_TRIGGER_CLASS =
   'group inline-flex items-center gap-[.35rem] py-[.35rem] px-[.7rem] border [border-color:var(--color-border)] rounded-full [background:var(--color-surface)] font-[inherit] text-[.82rem] [color:var(--color-text)] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-[1px] focus-visible:outline-[color:var(--color-primary)]';
 
-export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerClassName?: string } = {}): void {
+export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerClassName?: string; triggerLabel?: string; menuAutoWidth?: boolean; optionMeta?: (value: string) => string } = {}): void {
   if (select.dataset.dropdownBound) return;
   select.dataset.dropdownBound = '1';
 
@@ -58,8 +58,11 @@ export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerCla
   select.tabIndex = -1;
   select.insertAdjacentElement('afterend', trigger);
 
+  // A fixed triggerLabel keeps the button text constant (e.g. an action label like
+  // "Change method") instead of mirroring the selected option — the selected value is
+  // then shown elsewhere by the caller. Omit it for the default value-mirroring behavior.
   function syncLabel(): void {
-    labelSpan.textContent = select.selectedOptions[0]?.textContent ?? '';
+    labelSpan.textContent = opts.triggerLabel ?? (select.selectedOptions[0]?.textContent ?? '');
   }
   syncLabel();
 
@@ -67,7 +70,11 @@ export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerCla
     return Array.from(select.options)
       .map((o) => {
         const selected = o.value === select.value;
-        return `<button type="button" role="option" aria-selected="${selected}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-surface)]" data-value="${escHtml(o.value)}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}"><span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(o.textContent ?? '')}</span></button>`;
+        // optionMeta adds trailing secondary text shown only in the popup (e.g. a price),
+        // never in the trigger label — the trigger keeps mirroring the plain option text.
+        const meta = opts.optionMeta?.(o.value) ?? '';
+        const metaHtml = meta ? `<span class="shrink-0 text-[.8125rem] [color:var(--color-muted)]">${escHtml(meta)}</span>` : '';
+        return `<button type="button" role="option" aria-selected="${selected}" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-surface)]" data-value="${escHtml(o.value)}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}"><span class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(o.textContent ?? '')}</span>${metaHtml}</button>`;
       })
       .join('');
   }
@@ -99,12 +106,28 @@ export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerCla
     // each option keeps the text inside this pinned width.
     const el = document.getElementById(portalId);
     if (!el) return;
-    el.style.width = `${w}px`;
     const a = trigger.getBoundingClientRect();
     const rtl = getComputedStyle(document.documentElement).direction === 'rtl';
     const margin = 8;
-    let left = rtl ? a.right - w : a.left;
-    left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+    // menuAutoWidth: widen the menu to fit the longest option's FULL text (each option is
+    // overflow-hidden, so its span reports the untruncated width via scrollWidth), clamped
+    // to the viewport — lets a small trigger open a popup that shows every option in full,
+    // no ellipsis. Default: pin to the trigger width (compact triggers where clipping is ok).
+    let menuW = w;
+    if (opts.menuAutoWidth) {
+      // Sum every span in the option (label + optional meta/price + the gap between them),
+      // plus the option's px-3 padding (~24px), the portal's p-[.3rem] (~10px) and a small
+      // buffer — so the fully-measured content never clips by a few pixels into an ellipsis.
+      el.querySelectorAll<HTMLElement>('[role="option"]').forEach((opt) => {
+        let content = 0;
+        opt.querySelectorAll<HTMLElement>('span').forEach((s, i) => { content += Math.ceil(s.scrollWidth) + (i ? 8 : 0); });
+        menuW = Math.max(menuW, content + 40);
+      });
+      menuW = Math.min(menuW, window.innerWidth - 2 * margin);
+    }
+    el.style.width = `${menuW}px`;
+    let left = rtl ? a.right - menuW : a.left;
+    left = Math.max(margin, Math.min(left, window.innerWidth - menuW - margin));
     el.style.left = `${left}px`;
   });
 

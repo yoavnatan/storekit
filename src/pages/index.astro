@@ -4,7 +4,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import HomeShelf from '../components/HomeShelf.astro';
 import HomeTabEmpty from '../components/HomeTabEmpty.astro';
 import StoreAvatar from '../components/StoreAvatar.astro';
-import { store as platform, formatPrice, cdnSrc } from '../config/store.config.js';
+import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../lib/store-products.js';
@@ -406,6 +406,8 @@ const jsonLd = {
                                     {p.images?.[0]
                                       ? <img
                                           data-lazy-src={cdnSrc(p.images[0])}
+                                          data-lazy-srcset={cdnSrcSet(p.images[0], [220, 300, 440, 600]) || undefined}
+                                          sizes="(max-width: 480px) 44vw, 220px"
                                           alt={p.name}
                                           width="300"
                                           height="300"
@@ -770,6 +772,8 @@ const jsonLd = {
         if (src) {
           img.src = src;
           img.removeAttribute('data-lazy-src');
+          const ss = img.dataset.lazySrcset;
+          if (ss) { img.srcset = ss; img.removeAttribute('data-lazy-srcset'); }
         }
         lazyObs.unobserve(img);
       });

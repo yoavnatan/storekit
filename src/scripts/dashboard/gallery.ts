@@ -470,7 +470,9 @@ export function initGalleryWidget(gallery: Element): void {
       const urlInput = activeSlot.querySelector<HTMLInputElement>('.gallery-slot__url');
       const url = urlInput?.value;
       if (!url) return;
-      setLoading(true);
+      // Fetching the existing image before opening the crop tool — NOT removing bg.
+      // setLoading defaults its label to the bg-removal message, so pass the right one.
+      setLoading(true, getGalleryI18n().loadingImage ?? 'Loading image…');
       try {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error('fetch failed');

@@ -8,7 +8,7 @@ import { scrollProductsPanelIntoView } from './scroll-utils.js';
 import type { MergedRowResult } from '../../lib/variant-csv.js';
 
 // Drives the "External inventory sync" panel (see dashboard.astro #feed-panel + feed-mapping.ts).
-// Two sources feed the SAME server import routine (matchBySku on, so rows update existing products by
+// Two sources feed the SAME server import routine (which matches id-less rows to existing products by
 // sku): an uploaded file (client reads headers → seller maps columns → canonical CSV → /bulk) and a
 // saved feed URL pulled server-side (/store-product/feed-sync). The mapping the seller confirms on an
 // upload is saved to the store, so the URL pull reuses it.
@@ -229,7 +229,7 @@ export function initFeedSync(): void {
     try {
       const res = await fetch('/api/store-product/bulk', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, csv, commit: false, matchBySku: true }),
+        body: JSON.stringify({ storeId, csv, commit: false }),
       });
       const data = await res.json() as { ok: boolean; results?: Array<MergedRowResult>; error?: string };
       if (!data.ok) return fail(data.error);
@@ -242,7 +242,7 @@ export function initFeedSync(): void {
     try {
       const res = await fetch('/api/store-product/bulk', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, csv, commit: true, matchBySku: true }),
+        body: JSON.stringify({ storeId, csv, commit: true }),
       });
       const data = await res.json() as { ok: boolean };
       if (!data.ok) { showStatus(i.feedSyncFailed ?? 'Failed.', true); return; }

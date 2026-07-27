@@ -6,13 +6,13 @@ import { fetchFeedCsv } from '../../../lib/feed-fetch.js';
 import { parseCsv } from '../../../lib/csv-bulk.js';
 import { guessMapping, buildCanonicalCsv, type MappableKey } from '../../../lib/feed-mapping.js';
 import { runProductImport } from '../../../lib/store-products-import.js';
-import { getLang } from '../../../i18n/index.js';
 
 // "Sync now": server-side pull of the store's saved external-inventory feed. Fetches the URL (behind
 // the SSRF guard), re-applies the saved column mapping to turn it into our canonical format, then
-// runs the exact same import routine as a manual upload — with matchBySku on, so rows update existing
-// products by sku. Two calls: commit:false for the preview, commit:true to write. When a scheduler
-// exists this same endpoint is what it will call on a timer (see CURRENT_TASK / GO_LIVE).
+// runs the exact same import routine as a manual upload — which matches rows to existing products by
+// sku when they carry no id, exactly what a feed keyed by the store's own sku needs. Two calls:
+// commit:false for the preview, commit:true to write. When a scheduler exists this same endpoint is
+// what it will call on a timer (see CURRENT_TASK / GO_LIVE).
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -42,7 +42,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   const { status, body: resBody } = runProductImport({
     storeId: store.id, sellerId, csv: canonicalCsv,
-    commit: !!body.commit, matchBySku: true, lang: getLang(cookies),
+    commit: !!body.commit,
   });
 
   if (body.commit && resBody.ok) {

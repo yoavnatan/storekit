@@ -8,22 +8,27 @@ import type { StoreCategory } from '../src/lib/store-categories.js';
 
 // Field keys as the header — mapHeader accepts the bare key as an alias, and the sku label ('מק"ט')
 // carries a raw double-quote that would need hand-quoting to join into a header row.
-const header = CSV_FIELDS.map((f) => f.key);
-const { map } = mapHeader(header);
+const COLS = CSV_FIELDS.map((f) => f.key);
+const { map } = mapHeader(COLS);
 
-// Columns: id, sku, name, price, stock, category, subcategory1, subcategory2, tags, description, group, variantColor, variantSize
-function merge(csvBodies: string[], lang: 'he' | 'en' = 'he', existingIds = new Set<string>()) {
-  const rows = parseCsv([header.join(','), ...csvBodies].join('\n'));
-  const raw = toRawRows(rows, map);
-  return mergeVariantGroups(validateRows(raw, existingIds), lang);
+// Build a row by column key so tests stay readable across 17 columns (id, sku, name, price, stock,
+// category, subcategory1/2, tags, description, group, option{1,2,3}Name/Value).
+function row(cells: Partial<Record<string, string>>): string {
+  return COLS.map((k) => cells[k] ?? '').join(',');
+}
+
+function merge(rows: string[], existingIds = new Set<string>()) {
+  const parsed = parseCsv([COLS.join(','), ...rows].join('\n'));
+  const raw = toRawRows(parsed, map);
+  return mergeVariantGroups(validateRows(raw, existingIds));
 }
 
 describe('mergeVariantGroups — grouping', () => {
   it('collapses three rows sharing a group into one create product with two dimensions, per-combo stock + sku', () => {
     const [product] = merge([
-      ',SW-BL-L,Sweatshirt,129.9,5,,,,,,grp,כחול,L',
-      ',SW-BL-S,Sweatshirt,129.9,8,,,,,,grp,כחול,S',
-      ',SW-OR-L,Sweatshirt,129.9,3,,,,,,grp,כתום,L',
+      row({ sku: 'SW-BL-L', name: 'Sweatshirt', price: '129.9', stock: '5', group: 'grp', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'L' }),
+      row({ sku: 'SW-BL-S', name: 'Sweatshirt', price: '129.9', stock: '8', group: 'grp', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'S' }),
+      row({ sku: 'SW-OR-L', name: 'Sweatshirt', price: '129.9', stock: '3', group: 'grp', option1Name: 'צבע', option1Value: 'כתום', option2Name: 'מידה', option2Value: 'L' }),
     ]);
     expect(product!.action).toBe('create');
     expect(product!.variantCount).toBe(3);
@@ -46,9 +51,9 @@ describe('mergeVariantGroups — grouping', () => {
 
   it('leaves a standalone row (no group) untouched and passes it through as its own product', () => {
     const results = merge([
-      ',,Plain product,49.9,10,,,,,,,,',
-      ',C-1,Shirt,79,4,,,,,,g1,אדום,M',
-      ',C-2,Shirt,79,6,,,,,,g1,כחול,M',
+      row({ name: 'Plain product', price: '49.9', stock: '10' }),
+      row({ sku: 'C-1', name: 'Shirt', price: '79', stock: '4', group: 'g1', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'M' }),
+      row({ sku: 'C-2', name: 'Shirt', price: '79', stock: '6', group: 'g1', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'M' }),
     ]);
     expect(results.length).toBe(2);
     expect(results[0]!.variantCount).toBeUndefined();
@@ -56,29 +61,37 @@ describe('mergeVariantGroups — grouping', () => {
     expect(results[1]!.variantCount).toBe(2);
   });
 
-  it('supports a single-dimension (color-only) group', () => {
+  it('supports a single-dimension group', () => {
     const [product] = merge([
-      ',R,Mug,20,3,,,,,,mugs,אדום,',
-      ',B,Mug,20,7,,,,,,mugs,כחול,',
+      row({ sku: 'R', name: 'Mug', price: '20', stock: '3', group: 'mugs', option1Name: 'צבע', option1Value: 'אדום' }),
+      row({ sku: 'B', name: 'Mug', price: '20', stock: '7', group: 'mugs', option1Name: 'צבע', option1Value: 'כחול' }),
     ]);
     expect(product!.input!.variants).toEqual([{ name: 'צבע', options: ['אדום', 'כחול'] }]);
     expect(product!.input!.stock).toBe(10);
   });
 
-  it('names the dimensions in English when lang is en', () => {
+  it('takes the dimension name verbatim from the option-name column — any dimension, not just color/size', () => {
     const [product] = merge([
-      ',X,Tee,30,1,,,,,,g,Blue,L',
-      ',Y,Tee,30,1,,,,,,g,Blue,M',
-    ], 'en');
-    expect(product!.input!.variants!.map((v) => v.name)).toEqual(['Color', 'Size']);
+      row({ sku: 'T-W', name: 'Table', price: '450', stock: '4', group: 'tbl', option1Name: 'חומר', option1Value: 'עץ' }),
+      row({ sku: 'T-M', name: 'Table', price: '450', stock: '2', group: 'tbl', option1Name: 'חומר', option1Value: 'מתכת' }),
+    ]);
+    expect(product!.input!.variants).toEqual([{ name: 'חומר', options: ['עץ', 'מתכת'] }]);
+    expect(product!.input!.variantStock![comboKey({ חומר: 'עץ' })]).toBe(4);
+  });
+
+  it('supports three dimensions', () => {
+    const [product] = merge([
+      row({ sku: 'A', name: 'Shoe', price: '200', stock: '1', group: 'sh', option1Name: 'צבע', option1Value: 'שחור', option2Name: 'מידה', option2Value: '42', option3Name: 'רוחב', option3Value: 'רגיל' }),
+    ]);
+    expect(product!.input!.variants!.map((v) => v.name)).toEqual(['צבע', 'מידה', 'רוחב']);
   });
 
   it('preserves output order by first group appearance, interleaved with standalone rows', () => {
     const results = merge([
-      ',,Alpha,10,1,,,,,,,,',
-      ',b1,Beta,10,1,,,,,,gB,אדום,S',
-      ',,Gamma,10,1,,,,,,,,',
-      ',b2,Beta,10,1,,,,,,gB,אדום,M',
+      row({ name: 'Alpha', price: '10', stock: '1' }),
+      row({ sku: 'b1', name: 'Beta', price: '10', stock: '1', group: 'gB', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'S' }),
+      row({ name: 'Gamma', price: '10', stock: '1' }),
+      row({ sku: 'b2', name: 'Beta', price: '10', stock: '1', group: 'gB', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'M' }),
     ]);
     expect(results.map((r) => r.input?.name)).toEqual(['Alpha', 'Beta', 'Gamma']);
     expect(results[1]!.variantCount).toBe(2);
@@ -88,55 +101,65 @@ describe('mergeVariantGroups — grouping', () => {
 describe('mergeVariantGroups — updates', () => {
   it('marks a group whose rows carry a known id as an update to that product', () => {
     const [product] = merge([
-      'p1,A,Item,10,2,,,,,,g,אדום,S',
-      'p1,B,Item,10,4,,,,,,g,כחול,S',
-    ], 'he', new Set(['p1']));
+      row({ id: 'p1', sku: 'A', name: 'Item', price: '10', stock: '2', group: 'g', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'S' }),
+      row({ id: 'p1', sku: 'B', name: 'Item', price: '10', stock: '4', group: 'g', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'S' }),
+    ], new Set(['p1']));
     expect(product!.action).toBe('update');
     expect(product!.id).toBe('p1');
   });
 });
 
 describe('mergeVariantGroups — validation', () => {
-  it('rejects a group with a duplicate color+size combo', () => {
+  it('rejects a group with a duplicate option combination', () => {
     const [product] = merge([
-      ',A,Item,10,1,,,,,,g,אדום,S',
-      ',B,Item,10,1,,,,,,g,אדום,S',
+      row({ sku: 'A', name: 'Item', price: '10', stock: '1', group: 'g', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'S' }),
+      row({ sku: 'B', name: 'Item', price: '10', stock: '1', group: 'g', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'S' }),
     ]);
     expect(product!.action).toBe('error');
     expect(product!.errors).toContain('variant-duplicate-combo');
   });
 
-  it('rejects a group where a dimension is present on some rows but blank on others', () => {
+  it('rejects a group where one row declares a dimension the others omit', () => {
     const [product] = merge([
-      ',A,Item,10,1,,,,,,g,אדום,S',
-      ',B,Item,10,1,,,,,,g,כחול,',
+      row({ sku: 'A', name: 'Item', price: '10', stock: '1', group: 'g', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'S' }),
+      row({ sku: 'B', name: 'Item', price: '10', stock: '1', group: 'g', option1Name: 'צבע', option1Value: 'כחול' }),
     ]);
     expect(product!.action).toBe('error');
     expect(product!.errors).toContain('variant-inconsistent-dimensions');
   });
 
-  it('rejects a grouped row that has neither color nor size', () => {
+  it('rejects a grouped row with no option columns at all', () => {
     const [product] = merge([
-      ',A,Item,10,1,,,,,,g,,',
-      ',B,Item,10,1,,,,,,g,,',
+      row({ sku: 'A', name: 'Item', price: '10', stock: '1', group: 'g' }),
+      row({ sku: 'B', name: 'Item', price: '10', stock: '1', group: 'g' }),
     ]);
     expect(product!.action).toBe('error');
     expect(product!.errors).toContain('variant-missing-option');
   });
 
+  it('rejects a grouped row whose option has a name but a blank value', () => {
+    const [product] = merge([
+      row({ sku: 'A', name: 'Item', price: '10', stock: '1', group: 'g', option1Name: 'צבע', option1Value: 'אדום' }),
+      row({ sku: 'B', name: 'Item', price: '10', stock: '1', group: 'g', option1Name: 'צבע', option1Value: '' }),
+    ]);
+    expect(product!.action).toBe('error');
+    // Second row has an option name with no value → missing-option (a half-filled dimension).
+    expect(product!.errors.some((e) => e === 'variant-missing-option' || e === 'variant-inconsistent-dimensions')).toBe(true);
+  });
+
   it('rejects a group whose rows point at different existing ids', () => {
     const [product] = merge([
-      'p1,A,Item,10,1,,,,,,g,אדום,S',
-      'p2,B,Item,10,1,,,,,,g,כחול,S',
-    ], 'he', new Set(['p1', 'p2']));
+      row({ id: 'p1', sku: 'A', name: 'Item', price: '10', stock: '1', group: 'g', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'S' }),
+      row({ id: 'p2', sku: 'B', name: 'Item', price: '10', stock: '1', group: 'g', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'S' }),
+    ], new Set(['p1', 'p2']));
     expect(product!.action).toBe('error');
     expect(product!.errors).toContain('variant-group-mixed-id');
   });
 
   it('fails the whole group when any single row has a per-row error (e.g. bad price)', () => {
     const [product] = merge([
-      ',A,Item,10,1,,,,,,g,אדום,S',
-      ',B,Item,notaprice,1,,,,,,g,כחול,S',
+      row({ sku: 'A', name: 'Item', price: '10', stock: '1', group: 'g', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'S' }),
+      row({ sku: 'B', name: 'Item', price: 'notaprice', stock: '1', group: 'g', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'S' }),
     ]);
     expect(product!.action).toBe('error');
     expect(product!.errors).toContain('price-invalid');
@@ -146,10 +169,10 @@ describe('mergeVariantGroups — validation', () => {
   it('flags a per-combo sku that collides with another combo in the same batch', () => {
     // DUP is claimed by the first group's row, then reused in the second group — a cross-product clash.
     const results = merge([
-      ',DUP,Item,10,1,,,,,,g1,אדום,S',
-      ',X,Item,10,1,,,,,,g1,כחול,S',
-      ',DUP,Other,10,1,,,,,,g2,אדום,S',
-      ',Y,Other,10,1,,,,,,g2,כחול,S',
+      row({ sku: 'DUP', name: 'Item', price: '10', stock: '1', group: 'g1', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'S' }),
+      row({ sku: 'X', name: 'Item', price: '10', stock: '1', group: 'g1', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'S' }),
+      row({ sku: 'DUP', name: 'Other', price: '10', stock: '1', group: 'g2', option1Name: 'צבע', option1Value: 'אדום', option2Name: 'מידה', option2Value: 'S' }),
+      row({ sku: 'Y', name: 'Other', price: '10', stock: '1', group: 'g2', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'S' }),
     ]);
     expect(results[1]!.action).toBe('error'); // the group containing the duplicate DUP row
     expect(results[1]!.errors).toContain('sku-duplicate');
@@ -175,9 +198,8 @@ describe('productsToCsv variant round trip', () => {
     };
     const csv = productsToCsv([product], categories, 'he');
     const rows = parseCsv(csv);
-    // Only combos with stock in generateCombos order — 4 combos (2×2), all present.
-    expect(rows.length - 1).toBe(4); // header excluded
-    const merged = mergeVariantGroups(validateRows(toRawRows(rows, map), new Set(['p1'])), 'he');
+    expect(rows.length - 1).toBe(4); // 2×2 combos, header excluded
+    const merged = mergeVariantGroups(validateRows(toRawRows(rows, map), new Set(['p1'])));
     expect(merged.length).toBe(1);
     const input = merged[0]!.input!;
     expect(merged[0]!.action).toBe('update');
@@ -186,10 +208,31 @@ describe('productsToCsv variant round trip', () => {
     expect(input.variants).toEqual(product.variants);
   });
 
-  it('exports a product with a non-color/size dimension as a single flat row (no variant columns)', () => {
+  it('now expands a NON-color/size dimension (material) too, and round-trips it', () => {
+    const wood = comboKey({ חומר: 'עץ' });
+    const metal = comboKey({ חומר: 'מתכת' });
     const product: StoreProduct = {
-      id: 'p2', storeId: 's1', slug: 'table', name: 'Table', description: '', price: 500, stock: 2,
+      id: 'p2', storeId: 's1', slug: 'table', name: 'Table', description: '', price: 500, stock: 6,
       variants: [{ name: 'חומר', options: ['עץ', 'מתכת'] }],
+      variantStock: { [wood]: 4, [metal]: 2 },
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const csv = productsToCsv([product], [], 'he');
+    const rows = parseCsv(csv);
+    expect(rows.length - 1).toBe(2); // one row per material, no longer a single flat row
+    const merged = mergeVariantGroups(validateRows(toRawRows(rows, map), new Set(['p2'])));
+    expect(merged.length).toBe(1);
+    expect(merged[0]!.input!.variants).toEqual(product.variants);
+    expect(merged[0]!.input!.variantStock![wood]).toBe(4);
+  });
+
+  it('exports a product with 4+ dimensions as a single flat row (can not fit three option pairs)', () => {
+    const product: StoreProduct = {
+      id: 'p3', storeId: 's1', slug: 'complex', name: 'Complex', description: '', price: 10, stock: 5,
+      variants: [
+        { name: 'צבע', options: ['אדום'] }, { name: 'מידה', options: ['S'] },
+        { name: 'חומר', options: ['עץ'] }, { name: 'נפח', options: ['1L'] },
+      ],
       createdAt: '2026-01-01T00:00:00.000Z',
     };
     const csv = productsToCsv([product], [], 'he');
@@ -197,6 +240,6 @@ describe('productsToCsv variant round trip', () => {
     expect(rows.length - 1).toBe(1);
     const [raw] = toRawRows(rows, map);
     expect(raw!.cells.group).toBeFalsy();
-    expect(raw!.cells.variantColor).toBeFalsy();
+    expect(raw!.cells.option1Name).toBeFalsy();
   });
 });

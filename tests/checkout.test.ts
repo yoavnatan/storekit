@@ -15,13 +15,14 @@ const decrementStock = vi.fn(async (id: string, qty: number, _selectedVariants?:
 });
 const restockProduct = vi.fn(async (_id: string, _qty: number, _selectedVariants?: Record<string, string>): Promise<StockAdjustResult> => ({ ok: true, before: 0, after: 0 }));
 
-const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; shipping?: { flatRate: number; freeAbove: number | null; processingDays: number }; blocked?: boolean; previousSlugs?: string[] }> = {
+const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; address?: string; shipping?: { selfPickup?: boolean }; blocked?: boolean; previousSlugs?: string[] }> = {
   'test-store': {
     id: 's1',
     slug: 'test-store',
     name: 'Test Store',
     sellerId: 'seller-1',
-    shipping: { flatRate: 20, freeAbove: 100, processingDays: 2 },
+    address: 'Herzl 1, Tel Aviv', // present so self-pickup is offerable
+    shipping: { selfPickup: true },
   },
 };
 
@@ -94,9 +95,9 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     }));
     expect(res.status).toBe(201);
     const order = createOrder.mock.calls[0]![0] as { totalAmount: number; storeSubtotals: Record<string, { subtotal: number }> };
-    // real price (50) + flat shipping (20), never the spoofed price of 1
+    // real price (50) + default platform courier rate (30), never the spoofed price of 1
     expect(order.storeSubtotals['test-store']!.subtotal).toBe(50);
-    expect(order.totalAmount).toBe(70);
+    expect(order.totalAmount).toBe(80);
   });
 
   it('SEO-safe rename: a cart item sent with the store\'s OLD slug still checks out (resolves via previousSlugs, records the current slug)', async () => {
@@ -117,14 +118,42 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     }
   });
 
-  it('waives shipping once the store subtotal reaches its freeAbove threshold', async () => {
+  it('charges no shipping for self-pickup (store offers it) and records the method', async () => {
     await POST(makeContext({
       ...validBuyer,
-      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 2 }], // 100, hits freeAbove
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      deliveryMethods: { 'test-store': 'pickup' },
     }));
-    const order = createOrder.mock.calls[0]![0] as { totalAmount: number; shippingAmount: number };
+    const order = createOrder.mock.calls[0]![0] as { totalAmount: number; shippingAmount: number; storeSubtotals: Record<string, { deliveryMethod?: string }> };
     expect(order.shippingAmount).toBe(0);
-    expect(order.totalAmount).toBe(100);
+    expect(order.totalAmount).toBe(50);
+    expect(order.storeSubtotals['test-store']!.deliveryMethod).toBe('pickup');
+  });
+
+  it('re-validates the delivery method: a spoofed/unavailable value falls back to the paid courier rate, never zeroing shipping', async () => {
+    await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      deliveryMethods: { 'test-store': 'free_lol' }, // not a real method
+    }));
+    const order = createOrder.mock.calls[0]![0] as { shippingAmount: number; storeSubtotals: Record<string, { deliveryMethod?: string }> };
+    expect(order.shippingAmount).toBe(30);
+    expect(order.storeSubtotals['test-store']!.deliveryMethod).toBe('courier');
+  });
+
+  it('does not offer self-pickup when the store has no address, even if the flag is set', async () => {
+    STORES['test-store']!.address = undefined;
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+        deliveryMethods: { 'test-store': 'pickup' }, // unavailable without an address
+      }));
+      const order = createOrder.mock.calls[0]![0] as { shippingAmount: number };
+      expect(order.shippingAmount).toBe(30); // falls back to courier
+    } finally {
+      STORES['test-store']!.address = 'Herzl 1, Tel Aviv';
+    }
   });
 
   it('rejects an unknown product instead of trusting client-supplied item data', async () => {

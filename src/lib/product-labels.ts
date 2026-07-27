@@ -44,6 +44,12 @@ export const DEFAULT_LABEL_THRESHOLDS: LabelThresholds = {
 // depends on (a test asserts deriveProductLabels stays this length).
 export const LABEL_SLOTS = ['price_tier', 'performance', 'availability', 'audience', 'store_type'] as const;
 
+// Performance tiers, strongest → weakest. Single source of truth shared by the ad-label
+// feed AND the storefront's default product ranking (product-listing.ts), so "what counts
+// as a bestseller" never drifts between how we advertise a product and how we rank it.
+export const PERFORMANCE_TIERS = ['platform_bestseller', 'bestseller', 'popular', 'new', 'standard'] as const;
+export type PerformanceTier = typeof PERFORMANCE_TIERS[number];
+
 export interface ProductLabelInput {
   price: number;
   stock: number;
@@ -73,14 +79,15 @@ function availabilityTier(stock: number, lowStock: number): string {
   return 'in_stock';
 }
 
-function performanceTier(input: ProductLabelInput, t: LabelThresholds, nowMs: number): string {
-  const units = input.purchasedUnits ?? 0;
+/** The performance tier for a product from its lifetime units sold + age. Exported so the
+ *  storefront default ranking shares the exact same tiering as the ad-label feed. */
+export function performanceTier(units: number, createdAt: string, t: LabelThresholds, nowMs: number): PerformanceTier {
   if (units >= t.platformBestsellerUnits) return 'platform_bestseller';
   if (units >= t.bestsellerUnits) return 'bestseller';
   if (units >= t.popularUnits) return 'popular';
   // "new" only for a product that hasn't proven itself yet — a recent product
   // that's already popular is described by its velocity, not its age.
-  const created = Date.parse(input.createdAt);
+  const created = Date.parse(createdAt);
   if (Number.isFinite(created) && nowMs - created <= t.newWithinDays * DAY_MS) return 'new';
   return 'standard';
 }
@@ -116,7 +123,7 @@ export function deriveProductLabels(input: ProductLabelInput): string[] {
   const nowMs = input.nowMs ?? Date.now();
   return [
     priceTier(input.price),
-    performanceTier(input, t, nowMs),
+    performanceTier(input.purchasedUnits ?? 0, input.createdAt, t, nowMs),
     availabilityTier(input.stock, t.lowStock),
     audienceBucket(input.audienceTexts),
     storeTypeTag(input.storeTags),

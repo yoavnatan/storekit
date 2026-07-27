@@ -1,18 +1,28 @@
 import { findSpamKeyword, findKeywordStuffing } from './spam-filter.js';
 
 export interface CsvField {
-  key: 'id' | 'sku' | 'name' | 'price' | 'stock' | 'category' | 'subcategory1' | 'subcategory2' | 'tags' | 'description' | 'group' | 'variantColor' | 'variantSize';
+  key: 'id' | 'sku' | 'name' | 'price' | 'stock' | 'category' | 'subcategory1' | 'subcategory2' | 'tags' | 'description' | 'group'
+    | 'option1Name' | 'option1Value' | 'option2Name' | 'option2Value' | 'option3Name' | 'option3Value';
   he: string;
   en: string;
 }
 
+/** The three generic variant-dimension slots, paired name↔value — Shopify/Matrixify-style, so a
+ *  product's variants export/import by any dimension (צבע, חומר, נפח…), not a fixed color/size. */
+export const OPTION_SLOTS = [
+  { name: 'option1Name', value: 'option1Value' },
+  { name: 'option2Name', value: 'option2Value' },
+  { name: 'option3Name', value: 'option3Value' },
+] as const satisfies ReadonlyArray<{ name: CsvField['key']; value: CsvField['key'] }>;
+
 // Three separate columns (not one "ביגוד > גברים" path string) — much easier for a seller to
 // fill in a spreadsheet correctly than a delimiter syntax, and maps 1:1 onto MAX_CATEGORY_DEPTH.
-// The last three columns (group/color/size) are appended, never inserted mid-list, so a seller's
-// older files (and every existing fixture) with only the first ten columns still import cleanly —
-// missing trailing columns just read blank. Rows sharing a non-empty `group` merge into one
-// product with variants; see variant-csv.ts#mergeVariantGroups. On those rows the `sku`/`stock`
-// columns describe the individual combo (blue-L), not the product as a whole.
+// The trailing columns (group + the three option name/value pairs) are appended, never inserted
+// mid-list, so a seller's older files (and every existing fixture) with only the first columns still
+// import cleanly — missing trailing columns just read blank. Rows sharing a non-empty `group` merge
+// into one product with variants; see variant-csv.ts#mergeVariantGroups. On those rows the `sku`/
+// `stock` columns describe the individual combo (blue-L), not the product as a whole; each option
+// pair carries one dimension of that combo (option1Name="צבע", option1Value="כחול").
 export const CSV_FIELDS: CsvField[] = [
   { key: 'id',           he: 'מזהה (אל תשנה/תמחקי)', en: 'ID (do not edit/remove)' },
   { key: 'sku',          he: 'מק"ט',                  en: 'SKU' },
@@ -25,8 +35,12 @@ export const CSV_FIELDS: CsvField[] = [
   { key: 'tags',         he: 'תגיות (מופרדות בפסיק)', en: 'Tags (comma-separated)' },
   { key: 'description',  he: 'תיאור',                  en: 'Description' },
   { key: 'group',        he: 'קבוצת גרסאות',          en: 'Variant group' },
-  { key: 'variantColor', he: 'צבע',                   en: 'Color' },
-  { key: 'variantSize',  he: 'מידה',                  en: 'Size' },
+  { key: 'option1Name',  he: 'שם גרסה 1',             en: 'Option 1 name' },
+  { key: 'option1Value', he: 'ערך גרסה 1',            en: 'Option 1 value' },
+  { key: 'option2Name',  he: 'שם גרסה 2',             en: 'Option 2 name' },
+  { key: 'option2Value', he: 'ערך גרסה 2',            en: 'Option 2 value' },
+  { key: 'option3Name',  he: 'שם גרסה 3',             en: 'Option 3 name' },
+  { key: 'option3Value', he: 'ערך גרסה 3',            en: 'Option 3 value' },
 ];
 
 export const BOM = '﻿';
@@ -77,23 +91,28 @@ export function toCsvCell(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-// A plain product leaves group/color/size blank; a variant product is several rows sharing one
-// `group` value, each carrying one color/size combo with its own sku + stock (the last three
-// columns). The three sweatshirt rows below are exactly the "blue-L / blue-S / orange-L" shape a
-// seller expects — one after another — so the format is self-documenting from the template alone.
-// Columns: id, sku, name, price, stock, category, subcategory1, subcategory2, tags, description, group, color, size
+// A plain product leaves group + all option columns blank; a variant product is several rows sharing
+// one `group` value, each carrying one combo with its own sku + stock, its dimensions spelled out in
+// the option name/value pairs. The sweatshirt rows show a two-dimension product (צבע×מידה); the table
+// rows show that a dimension can be ANYTHING (חומר) — not just color/size — so the format is
+// self-documenting from the template alone.
+// Columns: id, sku, name, price, stock, category, subcategory1, subcategory2, tags, description, group, option1Name, option1Value, option2Name, option2Value, option3Name, option3Value
 const TEMPLATE_EXAMPLE_ROWS: Record<'he' | 'en', string[][]> = {
   he: [
-    ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'גברים', '', 'קיץ, מבצע', 'חולצת כותנה איכותית', '', '', ''],
-    ['', 'SW-BL-L', 'סווטשירט', '129.9', '5', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'כחול', 'L'],
-    ['', 'SW-BL-S', 'סווטשירט', '129.9', '8', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'כחול', 'S'],
-    ['', 'SW-OR-L', 'סווטשירט', '129.9', '3', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'כתום', 'L'],
+    ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'גברים', '', 'קיץ, מבצע', 'חולצת כותנה איכותית', '', '', '', '', '', '', ''],
+    ['', 'SW-BL-L', 'סווטשירט', '129.9', '5', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'L', '', ''],
+    ['', 'SW-BL-S', 'סווטשירט', '129.9', '8', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'S', '', ''],
+    ['', 'SW-OR-L', 'סווטשירט', '129.9', '3', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כתום', 'מידה', 'L', '', ''],
+    ['', 'TBL-W', 'שולחן', '450', '4', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'עץ', '', '', '', ''],
+    ['', 'TBL-M', 'שולחן', '450', '2', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'מתכת', '', '', '', ''],
   ],
   en: [
-    ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'Men', '', 'summer, sale', 'High quality cotton shirt', '', '', ''],
-    ['', 'SW-BL-L', 'Sweatshirt', '129.9', '5', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Blue', 'L'],
-    ['', 'SW-BL-S', 'Sweatshirt', '129.9', '8', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Blue', 'S'],
-    ['', 'SW-OR-L', 'Sweatshirt', '129.9', '3', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Orange', 'L'],
+    ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'Men', '', 'summer, sale', 'High quality cotton shirt', '', '', '', '', '', '', ''],
+    ['', 'SW-BL-L', 'Sweatshirt', '129.9', '5', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'L', '', ''],
+    ['', 'SW-BL-S', 'Sweatshirt', '129.9', '8', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'S', '', ''],
+    ['', 'SW-OR-L', 'Sweatshirt', '129.9', '3', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Orange', 'Size', 'L', '', ''],
+    ['', 'TBL-W', 'Table', '450', '4', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Wood', '', '', '', ''],
+    ['', 'TBL-M', 'Table', '450', '2', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Metal', '', '', '', ''],
   ],
 };
 
@@ -121,7 +140,7 @@ export function mapHeader(headerRow: string[]): { map: Map<number, CsvField['key
     byLabel.set(f.he.replace('*', '').trim().toLowerCase(), f.key);
     byLabel.set(f.en.replace('*', '').trim().toLowerCase(), f.key);
     // Lowercased so a header written as the literal key still matches (the lookup lowercases too);
-    // camelCase keys like `variantColor` would otherwise never resolve.
+    // camelCase keys like `option1Name` would otherwise never resolve.
     byLabel.set(f.key.toLowerCase(), f.key);
   }
   const map = new Map<number, CsvField['key']>();
@@ -148,15 +167,16 @@ export interface SkuMatchTarget {
   price: number;
 }
 
-/** External-feed sync only (matchBySku): a store managing inventory elsewhere exports rows keyed by
- *  its OWN sku, never our internal UUID — so a row whose sku already exists in the catalog IS an
- *  update to that product. This resolves each such row's sku to the existing product's id (and
- *  backfills a blank name/price from it, so an inventory feed can legitimately carry only sku+stock)
- *  BEFORE validation — after which the whole downstream pipeline treats it as an ordinary id-matched
- *  update, no other code path changed. A row whose sku is unknown is left untouched, so it flows
- *  through as a create (name/price then required, as usual). An explicit id column always wins over
- *  sku matching. Mutates and returns the same rows (a cheap in-place pre-pass, like toRawRows' output
- *  is only ever consumed once). Never used by the normal UUID import — that path never sets the flag. */
+/** Runs on every import (manual upload AND external-feed sync). A seller who manages inventory
+ *  elsewhere — or just re-uploads their own Excel — keys rows by their OWN sku, never our internal
+ *  UUID, so a row whose sku already exists in the catalog IS an update to that product. This resolves
+ *  each such row's sku to the existing product's id (and backfills a blank name/price from it, so an
+ *  inventory feed can legitimately carry only sku+stock) BEFORE validation — after which the whole
+ *  downstream pipeline treats it as an ordinary id-matched update, no other code path changed. A row
+ *  whose sku is unknown is left untouched, so it flows through as a create (name/price then required,
+ *  as usual). An explicit id column always wins over sku matching, so the export→edit→import
+ *  round-trip is unaffected. Mutates and returns the same rows (a cheap in-place pre-pass, like
+ *  toRawRows' output is only ever consumed once). */
 export function resolveSkuMatches(rows: RawImportRow[], catalogBySku: Map<string, SkuMatchTarget>): RawImportRow[] {
   for (const r of rows) {
     if (r.cells.id?.trim()) continue;
@@ -182,11 +202,12 @@ export interface BulkProductInput {
   description?: string;
   /** Not used to match/find rows (only the id column is) — a plain data field like category/tags, kept in sync with the single-product editor. Uniqueness IS validated here (unlike other bulk fields) — see validateRows' sku-duplicate check — to match the same guarantee the single-product add/edit form enforces via isSkuTaken(). On a variant-group row this is the individual combo's sku. */
   sku?: string;
-  /** Raw variant columns, consumed only by variant-csv.ts#mergeVariantGroups (which assembles the
-   *  product's variant matrix). Left on the per-row input so grouping stays a separate, testable
-   *  pass over already-validated rows rather than tangled into per-row validation. */
-  variantColor?: string;
-  variantSize?: string;
+  /** Raw variant dimensions parsed from the option name/value column pairs (in slot order), consumed
+   *  only by variant-csv.ts#mergeVariantGroups (which assembles the product's variant matrix). A slot
+   *  with any content (name or value) is kept so the group pass can flag an inconsistent/half-filled
+   *  dimension; a fully-blank slot is dropped. Left on the per-row input so grouping stays a separate,
+   *  testable pass over already-validated rows rather than tangled into per-row validation. */
+  variantOptions?: Array<{ name: string; value: string }>;
 }
 
 export interface BulkRowResult {
@@ -253,14 +274,16 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
 
     const categoryPath = categorySegments.filter(Boolean);
     const tags = raw.cells.tags ? raw.cells.tags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean) : undefined;
+    const variantOptions = OPTION_SLOTS
+      .map((slot) => ({ name: raw.cells[slot.name]?.trim() || '', value: raw.cells[slot.value]?.trim() || '' }))
+      .filter((o) => o.name || o.value);
     const input: BulkProductInput = {
       name, price, stock,
       categoryPath: categoryPath.length ? categoryPath : undefined,
       tags: tags?.length ? tags : undefined,
       description: raw.cells.description?.trim() || undefined,
       sku,
-      variantColor: raw.cells.variantColor?.trim() || undefined,
-      variantSize: raw.cells.variantSize?.trim() || undefined,
+      variantOptions: variantOptions.length ? variantOptions : undefined,
     };
     return { line: raw.line, action: id ? 'update' : 'create', id, group, input, errors: [] };
   });

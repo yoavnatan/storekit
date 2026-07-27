@@ -745,6 +745,7 @@ const orderStatusColors: Record<string, string> = {
                     <button type="button" class="variant-chip-add-trigger btn btn--ghost btn--sm" data-tag-add-trigger style="border-radius:999px">{d.variantValueAddBtn}</button>
                   </span>
                 </div>
+                <div data-tag-suggestions style="display:none;flex-wrap:wrap;gap:0.4rem;align-items:center;margin-top:0.45rem"></div>
                 <input type="hidden" name="tags" value="" />
               </div>
 
@@ -1024,11 +1025,13 @@ const orderStatusColors: Record<string, string> = {
                     <td class="num product-price price-col group cursor-text">{formatPrice(p.price)}</td>
                     <td class="num product-stock stock-col group cursor-text">
                       <span style="display:inline-flex;align-items:center;gap:0.3rem">
-                        <span class="product-stock-label">{d.colStock}: </span>
-                        <span style={p.stock <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{p.stock}</span>
-                        {p.stock <= 0 && (
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        )}
+                        <span data-stock-total style="display:inline-flex;align-items:center;gap:0.3rem">
+                          <span class="product-stock-label">{d.colStock}: </span>
+                          <span style={p.stock <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{p.stock}</span>
+                          {p.stock <= 0 && (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          )}
+                        </span>
                         {(p.variants ?? []).length > 0 && (
                           <span class="relative inline-flex" data-stock-breakdown>
                             <button type="button" class="inline-flex items-center justify-center w-[1.1rem] h-[1.1rem] bg-transparent border-0 rounded-full cursor-pointer [color:var(--color-muted)] transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] hover:[color:var(--color-text)] aria-expanded:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] aria-expanded:[color:var(--color-text)] aria-expanded:rotate-180" data-stock-breakdown-btn aria-expanded="false" aria-haspopup="true" aria-label={d.stockBreakdownLabel}>
@@ -1036,7 +1039,7 @@ const orderStatusColors: Record<string, string> = {
                             </button>
                             <div class="absolute top-[calc(100%+0.3rem)] end-0 min-w-[140px] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.13)] z-30 m-0 p-[0.3rem] animate-product-menu-open" data-stock-breakdown-dropdown role="menu" hidden>
                               {pVariantCombos.map((c) => (
-                                <div class="flex items-center justify-between gap-3 px-3 py-[0.45rem] rounded [color:var(--color-text)] text-[0.82rem] whitespace-nowrap">
+                                <div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key={c.key}>
                                   <span style="display:inline-flex;align-items:center;gap:0.35rem">
                                     {c.parts.map((part, i) => (
                                       <>
@@ -1048,11 +1051,13 @@ const orderStatusColors: Record<string, string> = {
                                       </>
                                     ))}
                                   </span>
-                                  <span style="display:inline-flex;align-items:center;gap:0.3rem">
-                                    {c.value}
-                                    {c.value <= 0 && (
-                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                    )}
+                                  <span class="cursor-text" data-combo-stock-hit role="button" tabindex="0" aria-label={d.variantStockEditLabel} style="display:inline-flex;align-items:center;gap:0.3rem">
+                                    <span data-combo-stock-value class="py-[0.15rem] min-w-[1.9rem] text-end" style={c.value <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{c.value}</span>
+                                    <span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">
+                                      {c.value <= 0 && (
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                      )}
+                                    </span>
                                   </span>
                                 </div>
                               ))}
@@ -2114,6 +2119,14 @@ const orderStatusColors: Record<string, string> = {
               <span>{d.storeAddress}</span>
               <input class="input" name="address" value={store.address ?? ''} placeholder={d.storeAddressPlaceholder} />
             </label>
+          </div>
+
+          <div class="field">
+            <label class="inline-flex items-center gap-[.55rem] font-semibold text-[.9rem] cursor-pointer">
+              <input type="checkbox" name="selfPickup" id="self-pickup-toggle" checked={!!store.shipping?.selfPickup} />
+              <span>{d.offerSelfPickup}</span>
+            </label>
+            <p class="[color:var(--color-muted)] mt-[.35rem] text-[.8rem]">{d.offerSelfPickupHint}</p>
           </div>
 
           <div class="field">

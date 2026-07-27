@@ -36,13 +36,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
 
-  const body = await request.json() as { storeId?: string; csv?: string; commit?: boolean; matchBySku?: boolean };
+  const body = await request.json() as { storeId?: string; csv?: string; commit?: boolean };
   const storeId = body.storeId ?? '';
   if (!storeId || !authorizeStore(sellerId, storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
 
   const { status, body: resBody } = runProductImport({
     storeId, sellerId, csv: String(body.csv ?? ''),
-    commit: !!body.commit, matchBySku: !!body.matchBySku, lang: getLang(cookies),
+    commit: !!body.commit,
   });
   return json(resBody, status);
 };

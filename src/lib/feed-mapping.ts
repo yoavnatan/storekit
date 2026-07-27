@@ -26,9 +26,15 @@ const SYNONYMS: Array<[MappableKey, string[]]> = [
   ['subcategory2', ['subcategory 2', 'sub category 2', 'subcategory2', 'תת קטגוריה 2', 'תת-קטגוריה 2']],
   ['tags',         ['tags', 'keywords', 'labels', 'tag', 'תגיות', 'תגית', 'מילות מפתח', 'תוויות']],
   ['description',  ['description', 'desc', 'details', 'long description', 'body', 'תיאור', 'פירוט', 'פרטים']],
-  ['group',        ['group', 'variant group', 'model', 'style', 'parent', 'קבוצה', 'קבוצת גרסאות', 'דגם', 'סגנון']],
-  ['variantColor', ['color', 'colour', 'variant color', 'צבע', 'גוון']],
-  ['variantSize',  ['size', 'variant size', 'מידה', 'גודל']],
+  ['group',        ['group', 'variant group', 'item group', 'item_group_id', 'model', 'style', 'parent', 'קבוצה', 'קבוצת גרסאות', 'דגם', 'סגנון']],
+  // Shopify/Matrixify export their variants as Option{1,2,3} Name / Value column pairs — match those
+  // spellings so such a file maps with zero picks. (Our own canonical he/en labels auto-map too.)
+  ['option1Name',  ['option1 name', 'option 1 name', 'option1name']],
+  ['option1Value', ['option1 value', 'option 1 value', 'option1value', 'option1']],
+  ['option2Name',  ['option2 name', 'option 2 name', 'option2name']],
+  ['option2Value', ['option2 value', 'option 2 value', 'option2value', 'option2']],
+  ['option3Name',  ['option3 name', 'option 3 name', 'option3name']],
+  ['option3Value', ['option3 value', 'option 3 value', 'option3value', 'option3']],
 ];
 
 /** Normalize a header the way both the synonym table and the saved-mapping lookup expect: strip the

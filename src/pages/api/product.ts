@@ -3,12 +3,36 @@ import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
 import { createProduct, updateProduct, deleteProduct, getProductById, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
-import { LOW_STOCK_THRESHOLD, generateCombos, comboKey } from '../../lib/variant-combo.js';
+import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, resolveVariantStockMap } from '../../lib/variant-combo.js';
 import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload } from '../../lib/product-form.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
 import { pingProductChange } from '../../lib/indexnow.js';
+import { deriveAutoTags } from '../../lib/tag-suggest.js';
+
+// Auto-tag a product from its structured, curated fields (category path +
+// variant option values) at save time — the seller's explicit tags always come
+// first and win on de-dupe; auto tags only ADD. Runs AFTER the spam/stuffing
+// gate (which guards the seller's own text) since these sources are already
+// validated structured data, so they can't trip a false stuffing rejection.
+function withAutoTags(sellerTags: string[], categoryPathStr: string, variantValues: string[]): string[] {
+  const auto = deriveAutoTags({ categoryPath: categoryPathStr, variantValues, existingTags: sellerTags });
+  return [...sellerTags, ...auto];
+}
+
+function allVariantValues(variants: { options: string[] }[]): string[] {
+  return variants.flatMap((v) => v.options);
+}
+
+// Values in `next` not already present in `prev` (case-insensitive) — the
+// variant options genuinely NEW to an edit, so auto-tagging only fires for
+// them. This is what lets a seller REMOVE an auto tag on edit and have it stay
+// removed: a source that hasn't changed contributes no auto tag the second time.
+function newVariantValues(prev: string[], next: string[]): string[] {
+  const seen = new Set(prev.map((v) => v.trim().toLowerCase()));
+  return next.filter((v) => !seen.has(v.trim().toLowerCase()));
+}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -58,11 +82,14 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stuffingHit = findKeywordStuffing(name, description, ...tags);
     if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
+    const catPathStr = categoryId ? categoryPath(getCategoriesByStoreId(storeId), categoryId) : '';
+    const finalTags = withAutoTags(tags, catPathStr, allVariantValues(variants));
+
     const product = createProduct(storeId, {
       name, description, price, stock: isNaN(stock) ? 0 : stock,
       images: images.length ? images : undefined,
       categoryId,
-      tags: tags.length ? tags : undefined,
+      tags: finalTags.length ? finalTags : undefined,
       sku: sku || undefined,
       specs: specs.length ? specs : undefined,
       sellerNote: sellerNote || undefined,
@@ -110,11 +137,19 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       Object.entries(product.variantSku ?? {}).filter(([key]) => validComboKeys.has(key)),
     );
 
+    // On edit, auto-tag only from sources NEW since the last save — a category
+    // that just changed, and variant options just added — so a seller who
+    // removed an auto tag whose source is unchanged keeps it removed.
+    const catChanged = (categoryId ?? '') !== (product.categoryId ?? '');
+    const catPathStr = catChanged && categoryId ? categoryPath(getCategoriesByStoreId(product.storeId), categoryId) : '';
+    const freshVariantValues = newVariantValues(allVariantValues(product.variants ?? []), allVariantValues(variants));
+    const finalTags = withAutoTags(tags, catPathStr, freshVariantValues);
+
     const updates: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {
       name, description, price, stock: isNaN(stock) ? 0 : stock,
       images,
       categoryId,
-      tags: tags.length ? tags : [],
+      tags: finalTags.length ? finalTags : [],
       sku: sku || undefined,
       specs: specs.length ? specs : [],
       sellerNote: sellerNote || undefined,
@@ -172,6 +207,35 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // inline edit shouldn't silently dismiss an unrelated low-stock alert.
     if ('stock' in patch) deleteNotificationsByRelatedIds([productId], sellerId);
     return json({ ok: true, product: { name: updated.name, price: updated.price, stock: updated.stock, sku: updated.sku ?? '' }, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+  }
+
+  // Inline edit of a single variant combo's stock from the products-table
+  // breakdown dropdown — the per-combo mirror of `patch-product-fields`' whole
+  // `stock` edit. Persists the FULL per-combo map (via resolveVariantStockMap)
+  // so a product still on the shared pool is converted to explicit per-combo
+  // stock exactly as displayed, and the total `stock` becomes their sum.
+  if (action === 'patch-variant-stock') {
+    const productId = String(form.get('productId') || '');
+    const product = getProductById(productId);
+    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
+    const stores = getStoresBySellerId(sellerId);
+    if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    if (!product.variants?.length) return json({ ok: false, error: 'Product has no variants.' }, 400);
+
+    const key = String(form.get('comboKey') || '');
+    const validKeys = new Set(generateCombos(product.variants).map(comboKey));
+    if (!validKeys.has(key)) return json({ ok: false, error: 'Unknown variant combination.' }, 400);
+    const value = parseInt(String(form.get('stock')), 10);
+    const clamped = isNaN(value) ? 0 : Math.max(0, value);
+
+    const map = resolveVariantStockMap(product.variants, product.variantStock, product.stock);
+    map[key] = clamped;
+    const total = Object.values(map).reduce((s, n) => s + n, 0);
+
+    const updated = updateProduct(productId, { variantStock: map, stock: total });
+    if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
+    deleteNotificationsByRelatedIds([productId], sellerId);
+    return json({ ok: true, comboKey: key, comboStock: clamped, stock: total, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'patch-product-images') {

@@ -115,10 +115,9 @@ export function getSellerCards(sellers: Seller[], stores: Store[], productsBySto
 
 // Informational only — never written back to the Store record and never
 // read by any registration/checkout path. Purely a heads-up for the owner.
-function attentionReasons(store: Store, productCount: number): string[] {
+function attentionReasons(_store: Store, productCount: number): string[] {
   const reasons: string[] = [];
   if (productCount === 0) reasons.push('0 מוצרים');
-  if (!store.shipping) reasons.push('אין הגדרת משלוח');
   return reasons;
 }
 

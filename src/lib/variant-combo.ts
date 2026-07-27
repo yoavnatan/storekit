@@ -43,6 +43,28 @@ export function isProductInStock(stock: number, variants: VariantDimension[] | u
   return generateCombos(variants).some((combo) => (variantStock?.[comboKey(combo)] ?? stock) > 0);
 }
 
+/** Splits `total` units across `count` combos as evenly as possible, handing the remainder to the first rows — the default per-combo stock shown when a variant product has no explicit `variantStock` map yet (shared pool). */
+export function evenSplit(count: number, total: number): number[] {
+  if (count <= 0) return [];
+  const base = Math.floor(total / count);
+  const remainder = total - base * count;
+  return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
+}
+
+/** The complete per-combo stock map a variant product effectively has, matching exactly what the dashboard's stock breakdown shows: an explicit `variantStock` entry when present, else 0 once any override exists, else the even split of the shared `stock` pool. Used to persist a full map the moment a single combo is edited inline, so the shared-pool → per-combo conversion is consistent with the displayed numbers. */
+export function resolveVariantStockMap(variants: VariantDimension[], variantStock: Record<string, number> | undefined, totalStock: number): Record<string, number> {
+  const existing = variantStock ?? {};
+  const hasAnyStock = Object.keys(existing).length > 0;
+  const combos = generateCombos(variants);
+  const splitDefaults = hasAnyStock ? [] : evenSplit(combos.length, totalStock);
+  const out: Record<string, number> = {};
+  combos.forEach((combo, i) => {
+    const key = comboKey(combo);
+    out[key] = key in existing ? existing[key] : (hasAnyStock ? 0 : (splitDefaults[i] ?? 0));
+  });
+  return out;
+}
+
 export function generateCombos(dimensions: VariantDimension[]): VariantSelection[] {
   return dimensions.reduce<VariantSelection[]>(
     (combos, dim) => {

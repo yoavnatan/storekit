@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getStoreBySlugOrPrevious, isStoreVisible } from '../../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
+import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds } from '../../lib/store-categories.js';
 
@@ -27,7 +28,9 @@ export const GET: APIRoute = async ({ url }) => {
 
   // Blocked individual products (see admin-moderation.ts) never appear in the
   // store's own "load more" pagination either.
-  const filtered = filterAndSortProducts(getVisibleProductsByStoreId(store.id), { categoryIds, sort, q });
+  // Same popularity signal the page's SSR render uses, so paged results rank identically.
+  const purchasedUnits = getPurchasedCountsByStoreSlug(store.slug);
+  const filtered = filterAndSortProducts(getVisibleProductsByStoreId(store.id), { categoryIds, sort, q, purchasedUnits });
   const products = filtered.slice(offset, offset + PRODUCTS_PAGE_SIZE);
 
   return json({

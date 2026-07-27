@@ -18,7 +18,7 @@ vi.mock('node:fs', () => ({
 }));
 
 const { isSkuTaken } = await import('../src/lib/store-products.js');
-const { bulkUpsertProducts } = await import('../src/lib/store-products-bulk.js');
+const { bulkUpsertProducts, updateChangesProduct } = await import('../src/lib/store-products-bulk.js');
 
 beforeEach(() => {
   categoriesDb = [
@@ -107,5 +107,51 @@ describe('isSkuTaken', () => {
 
   it('is false for an unused sku', () => {
     expect(isSkuTaken('s1', 'NEW-SKU')).toBe(false);
+  });
+});
+
+describe('updateChangesProduct (no-op detection for the import preview)', () => {
+  const base: StoreProduct = {
+    id: 'p1', storeId: 's1', slug: 'widget', name: 'Widget', description: 'Nice', price: 10,
+    stock: 5, categoryId: 'c1', tags: ['sale'], sku: 'W-1', createdAt: '2026-01-01T00:00:00.000Z',
+  };
+  const path = ['Tools']; // resolved chain of base.categoryId
+
+  it('is false (no change) when every provided field equals the existing product', () => {
+    expect(updateChangesProduct(base, { name: 'Widget', price: 10, stock: 5, sku: 'W-1', tags: ['sale'], description: 'Nice', categoryPath: ['Tools'] }, path)).toBe(false);
+  });
+
+  it('is false when blank cells (undefined fields) leave everything but the matched value alone — a sku+stock feed with identical stock', () => {
+    // resolveSkuMatches backfills name/price to the existing values; stock matches → pure no-op.
+    expect(updateChangesProduct(base, { name: 'Widget', price: 10, stock: 5 }, path)).toBe(false);
+  });
+
+  it('is true when stock actually differs', () => {
+    expect(updateChangesProduct(base, { name: 'Widget', price: 10, stock: 3 }, path)).toBe(true);
+  });
+
+  it('is true when price, name, description, sku, tags, or category differ', () => {
+    expect(updateChangesProduct(base, { name: 'Widget', price: 12 }, path)).toBe(true);
+    expect(updateChangesProduct(base, { name: 'Renamed', price: 10 }, path)).toBe(true);
+    expect(updateChangesProduct(base, { name: 'Widget', price: 10, description: 'Different' }, path)).toBe(true);
+    expect(updateChangesProduct(base, { name: 'Widget', price: 10, sku: 'W-2' }, path)).toBe(true);
+    expect(updateChangesProduct(base, { name: 'Widget', price: 10, tags: ['sale', 'new'] }, path)).toBe(true);
+    expect(updateChangesProduct(base, { name: 'Widget', price: 10, categoryPath: ['Tools', 'Power'] }, path)).toBe(true);
+  });
+
+  it('ignores an undefined field (blank cell) even when the stored value is set', () => {
+    // No sku/tags/description/category in the row → each is "leave unchanged", never a diff.
+    expect(updateChangesProduct(base, { name: 'Widget', price: 10 }, path)).toBe(false);
+  });
+
+  it('detects a changed variant matrix (stock per combo) and ignores an identical one', () => {
+    const variantProduct: StoreProduct = {
+      ...base, variants: [{ name: 'Size', options: ['S', 'L'] }],
+      variantStock: { S: 2, L: 3 }, stock: 5,
+    };
+    const same = { name: 'Widget', price: 10, stock: 5, variants: [{ name: 'Size', options: ['S', 'L'] }], variantStock: { S: 2, L: 3 } };
+    const changed = { name: 'Widget', price: 10, stock: 6, variants: [{ name: 'Size', options: ['S', 'L'] }], variantStock: { S: 2, L: 4 } };
+    expect(updateChangesProduct(variantProduct, same, path)).toBe(false);
+    expect(updateChangesProduct(variantProduct, changed, path)).toBe(true);
   });
 });

@@ -35,11 +35,25 @@ const hasStore = userId ? getStoresBySellerId(userId).length > 0 : false;
       <p class="text-sm [color:var(--color-muted)] mb-8">{c.successEmailNote}</p>
 
       <a href="/" class="btn btn--accent inline-flex">{c.continueShopping}</a>
+
+      <!-- Remaining carts — revealed by JS only when the buyer still has items waiting
+           in other stores (unselected items / other-store carts survive checkout). Mirrors
+           the personal-area "carts" chips: visit-store link + open-cart button. -->
+      <div id="success-more-carts" class="hidden mt-11 text-start"
+        data-label-items={t.home.cartItems}
+        data-label-open={t.home.cartOpenBtn}
+        data-label-visit={t.home.visitStore}>
+        <h2 class="text-[.7rem] font-bold [color:var(--color-muted)] tracking-[.08em] uppercase mb-3 text-center">{c.successMoreInCart}</h2>
+        <div id="success-carts-list" class="flex flex-col gap-2.5" role="list"></div>
+      </div>
     </div>
 
   </main>
 
   <script>
+    import { getActiveStoreCarts, getSubtotal } from '../../lib/cart.js';
+    import { formatPrice } from '../../config/store.config.js';
+
     // Read order ID from URL and clear cart
     const params = new URLSearchParams(window.location.search);
     const orderId = params.get('order');
@@ -50,6 +64,41 @@ const hasStore = userId ? getStoresBySellerId(userId).length > 0 : false;
     }
 
     // Purchased items were already removed from the cart by the checkout page itself
-    // (only the items the buyer selected — unselected items stay in the cart).
+    // (only the items the buyer selected — unselected items stay in the cart). If
+    // anything remains (other stores / unselected items), surface it here as a gentle
+    // nudge back into those carts — post-purchase is the natural, friction-free moment.
+    const wrap = document.getElementById('success-more-carts');
+    const list = document.getElementById('success-carts-list');
+    const esc = (s: unknown) =>
+      String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    if (wrap && list) {
+      const labelItems = wrap.dataset.labelItems ?? 'פריטים';
+      const labelOpen  = wrap.dataset.labelOpen  ?? 'פתח עגלה';
+      const labelVisit = wrap.dataset.labelVisit ?? 'כנס לחנות';
+      const carts = getActiveStoreCarts();
+      if (carts.length) {
+        list.innerHTML = carts.map((c) => {
+          const subtotal = getSubtotal(c.storeSlug);
+          const initial  = (c.storeName[0] ?? '?').toUpperCase();
+          return `
+            <div class="home-cart-chip w-full" role="listitem">
+              <a href="/${encodeURIComponent(c.storeSlug)}" class="home-cart-chip__store grow min-w-0" aria-label="${esc(labelVisit)} ${esc(c.storeName)}">
+                <div class="home-cart-chip__icon" aria-hidden="true">${esc(initial)}</div>
+                <span class="home-cart-chip__name min-w-0 truncate">${esc(c.storeName)}</span>
+              </a>
+              <span class="home-cart-chip__sep" aria-hidden="true"></span>
+              <button type="button" class="home-cart-chip__cart" data-open-cart="${encodeURIComponent(c.storeSlug)}" aria-label="${esc(labelOpen)} — ${esc(c.storeName)}">
+                <span class="home-cart-chip__meta">${c.count} ${esc(labelItems)} · ${formatPrice(subtotal)}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+              </button>
+            </div>`;
+        }).join('');
+        list.addEventListener('click', (e) => {
+          if ((e.target as Element).closest('[data-open-cart]')) window.dispatchEvent(new CustomEvent('cart:open'));
+        });
+        wrap.classList.remove('hidden');
+      }
+    }
   </script>
 </BaseLayout>

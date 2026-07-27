@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import type { DeliveryMethod } from './shipping.js';
 
 const ORDERS_PATH = path.join(process.cwd(), 'data/orders.json');
 
@@ -20,6 +21,10 @@ export interface StoreSubtotal {
   storeName: string;
   subtotal: number;
   shipping: number;
+  /** Delivery method the buyer chose for this store — so the seller knows to prepare it
+   *  for pickup vs ship it. Set from the validated method at checkout. Optional for
+   *  backward-compat with orders placed before delivery methods existed. */
+  deliveryMethod?: DeliveryMethod;
   discount?: { type: 'percent' | 'amount'; value: number; applied: number };
 }
 
@@ -62,7 +67,7 @@ export function orderStoreNotes(o: Order, storeSlug: string): string[] {
   return [];
 }
 
-export type CreateOrderInput = Omit<Order, 'id' | 'paymentStatus' | 'shippingStatus' | 'createdAt' | 'updatedAt'>;
+export type CreateOrderInput = Omit<Order, 'id' | 'shippingStatus' | 'createdAt' | 'updatedAt'>;
 
 function readOrders(): Order[] {
   try { return JSON.parse(fs.readFileSync(ORDERS_PATH, 'utf8')) as Order[]; }
@@ -79,12 +84,9 @@ export function createOrder(input: CreateOrderInput): Order {
   const order: Order = {
     ...input,
     id: crypto.randomUUID(),
-    // No live payment gateway yet (split-payment integration is still on the
-    // roadmap) — checkout only ever creates an Order after collecting payment
-    // details, so by the time one exists here it's already "paid" in this
-    // stub sense. Once a real webhook-based confirm step lands, that should
-    // become the sole place paymentStatus is set.
-    paymentStatus: 'paid',
+    // paymentStatus comes from the caller — checkout sets it from the PaymentProvider
+    // result, so the order records the actual charge outcome rather than assuming it.
+    // When a real webhook-based confirm step lands, that becomes the place it flips paid.
     shippingStatus: 'pending',
     createdAt: now,
     updatedAt: now,

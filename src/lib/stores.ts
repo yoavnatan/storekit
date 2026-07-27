@@ -10,9 +10,10 @@ export interface StoreColors {
 }
 
 export interface StoreShipping {
-  flatRate: number;
-  freeAbove: number | null;
-  processingDays: number;
+  /** Seller opted in to self-pickup from the store address. This is the ONLY shipping
+   *  lever a seller has — courier/pickup-point are platform methods and their prices are
+   *  platform-set (see lib/shipping.ts). A seller never sets shipping prices. */
+  selfPickup?: boolean;
 }
 
 export type StoreWeekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';

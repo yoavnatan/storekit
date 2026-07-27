@@ -6,11 +6,12 @@ import StoreAvatar from '../../components/StoreAvatar.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible } from '../../lib/stores.js';
 import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '../../lib/store-hours.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
+import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath } from '../../lib/store-categories.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
 import { storeCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
-import { store as platform, formatPrice, cdnSrc } from '../../config/store.config.js';
+import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getFavoriteStoresForUser } from '../../lib/user-carts.js';
@@ -65,7 +66,9 @@ const chipLevelCategories = storeCategories
   .sort((a, b) => a.order - b.order);
 
 const categoryIds = selectedCategory ? resolveCategoryFilterIds(storeCategories, selectedCategory.id) : undefined;
-const filteredProducts = filterAndSortProducts(allProducts, { categoryIds, sort: initSort, q: initQ });
+// Popularity signal for the 'default' ranking — lifetime units sold per product in this store.
+const purchasedUnits = getPurchasedCountsByStoreSlug(shopStore.slug);
+const filteredProducts = filterAndSortProducts(allProducts, { categoryIds, sort: initSort, q: initQ, purchasedUnits });
 const products = filteredProducts.slice(0, PRODUCTS_PAGE_SIZE);
 const hasMoreProducts = filteredProducts.length > products.length;
 
@@ -138,8 +141,11 @@ const pmI18n = {
     // visibly snaps down once the module script catches up.
     (function () {
       try {
-        var m = location.pathname.match(/^\/store\/([^/]+)\/?$/);
-        if (m && sessionStorage.getItem('store_scroll_' + m[1])) {
+        // Slug comes from <body data-store-slug> (server-resolved) — reliable for
+        // root-level store URLs AND custom domains; the old /store/[slug] URL parse
+        // broke on the root-URL migration. Matches the key scroll-restore.ts writes.
+        var slug = document.body.dataset.storeSlug || '';
+        if (slug && sessionStorage.getItem('store_scroll_' + slug)) {
           // Only on the quick-view-refresh return (the scripted reload that sets
           // this flag) does the browser's own restore have to be switched off:
           // that entry's remembered offset is stale (measured: 0) and lands
@@ -147,7 +153,7 @@ const pmI18n = {
           // position (`html` is `scroll-behavior:smooth`). Every other return —
           // notably Back from a real product-page navigation — keeps native
           // restoration, which is better timed than any script.
-          if (sessionStorage.getItem('store_scroll_return') === m[1] && 'scrollRestoration' in history) {
+          if (sessionStorage.getItem('store_scroll_return') === slug && 'scrollRestoration' in history) {
             history.scrollRestoration = 'manual';
           }
           document.documentElement.style.visibility = 'hidden';
@@ -453,17 +459,20 @@ const pmI18n = {
                         ? p.images!.map((img, imgIdx) => (
                             <div class="product-card__slide">
                               {imgIdx === 0
-                                ? <Image src={cdnSrc(img)} alt={p.name} class="product-card__img" width={400} height={400} loading={idx < 4 ? 'eager' : 'lazy'} fetchpriority={idx < 2 ? 'high' : undefined} />
+                                /* Plain <img> (not <Image />) so it can carry a hi-DPI srcset:
+                                   the card renders up to ~340px CSS wide, so a lone w_400 delivery
+                                   gets browser-upscaled → blurry on retina. srcset+sizes keeps the
+                                   seller's photo sharp at every DPR. CARD_SRCSET_SIZES below mirrors
+                                   this literal — keep the two in sync. */
+                                ? <img src={cdnSrc(img)} srcset={cdnSrcSet(img, [300, 400, 600, 800]) || undefined} sizes="(max-width: 640px) 48vw, 340px" alt={p.name} class="product-card__img" width="400" height="400" loading={idx < 4 ? 'eager' : 'lazy'} fetchpriority={idx < 2 ? 'high' : undefined} decoding="async" />
                                 : (
-                                  /* Slides past the first carry the URL in data-src and are
-                                     fetched only once the shopper engages that card's carousel
+                                  /* Slides past the first carry the URL in data-src/data-srcset and
+                                     are fetched only once the shopper engages that card's carousel
                                      (hydrateCardSlides below). `loading="lazy"` still downloaded
                                      them for every card the browser considered near the
                                      viewport — measured 20 of 36 images on a first paint that
-                                     showed 4 cards. Not <Image /> because it renders the real
-                                     URL into src, which is exactly what's being deferred;
-                                     alt/width/height are set by hand instead. */
-                                  <img src={BLANK_PIXEL} data-src={cdnSrc(img)} alt={p.name} class="product-card__img" width="400" height="400" loading="lazy" decoding="async" />
+                                     showed 4 cards. */
+                                  <img src={BLANK_PIXEL} data-src={cdnSrc(img)} data-srcset={cdnSrcSet(img, [300, 400, 600, 800]) || undefined} sizes="(max-width: 640px) 48vw, 340px" alt={p.name} class="product-card__img" width="400" height="400" loading="lazy" decoding="async" />
                                 )}
                             </div>
                           ))
@@ -562,13 +571,9 @@ const pmI18n = {
     </section>
 
     <!-- Product modal + lightbox now live in the shared <StoreProductModal>
-         (BaseLayout), opened via the `store-product-modal:open` event. -->
-
-    <footer class="store-platform-note">
-      <p>
-        <a href="/" class="platform-link">{platform.name}</a> — {t.store.platformNote}
-      </p>
-    </footer>
+         (BaseLayout), opened via the `store-product-modal:open` event.
+         Site-wide footer (with the "open a store" link) is rendered once by
+         BaseLayout — no separate store footer here. -->
     </div>
 
   </div>
@@ -586,7 +591,7 @@ const pmI18n = {
 <script>
   import { addItem, syncCartImages, getCartQty } from '../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
-  import { cdnSrc, formatPrice } from '../../config/store.config.js';
+  import { cdnSrc, cdnSrcSet, formatPrice } from '../../config/store.config.js';
   import { spawnRipple } from '../../lib/ripple.js';
   import { spawnBurst, spawnHeartBurst } from '../../lib/burst.js';
   import { initLiquidDots } from '../../lib/carousel-dots.js';
@@ -1364,9 +1369,11 @@ const pmI18n = {
     // Same deferral as the server-rendered cards above: only the first slide gets
     // a real src; the rest hold the blank pixel until hydrateCardSlides() runs.
     const slidesHtml = hasImages
-      ? p.images!.map((img, i) =>
-          `<div class="product-card__slide"><img src="${i === 0 ? escHtml(cdnSrc(img)) : BLANK_PIXEL}"${i === 0 ? '' : ` data-src="${escHtml(cdnSrc(img))}"`} alt="${escHtml(p.name)}" class="product-card__img" width="400" height="400" loading="lazy" decoding="async" /></div>`
-        ).join('')
+      ? p.images!.map((img, i) => {
+          const ss = cdnSrcSet(img, [300, 400, 600, 800]);
+          const srcsetAttr = ss ? (i === 0 ? ` srcset="${escHtml(ss)}"` : ` data-srcset="${escHtml(ss)}"`) : '';
+          return `<div class="product-card__slide"><img src="${i === 0 ? escHtml(cdnSrc(img)) : BLANK_PIXEL}"${i === 0 ? '' : ` data-src="${escHtml(cdnSrc(img))}"`}${srcsetAttr} sizes="(max-width: 640px) 48vw, 340px" alt="${escHtml(p.name)}" class="product-card__img" width="400" height="400" loading="lazy" decoding="async" /></div>`;
+        }).join('')
       : `<div class="product-card__slide"><div class="product-card__img-placeholder" aria-hidden="true"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div></div>`;
 
     const dotsHtml = hasImages && (p.images?.length ?? 0) > 1
@@ -1814,6 +1821,7 @@ const pmI18n = {
   function hydrateCardSlides(card: HTMLElement): void {
     card.querySelectorAll<HTMLImageElement>('.product-card__img[data-src]').forEach((img) => {
       img.src = img.dataset.src ?? '';
+      if (img.dataset.srcset) { img.srcset = img.dataset.srcset; delete img.dataset.srcset; }
       delete img.dataset.src;
     });
   }

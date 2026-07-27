@@ -67,7 +67,7 @@ describe('buildCanonicalCsv', () => {
   });
 });
 
-describe('resolveSkuMatches (external-feed sku matching)', () => {
+describe('resolveSkuMatches (sku matching — runs on every import: manual upload + external feed)', () => {
   const catalog = new Map<string, SkuMatchTarget>([
     ['ABC-1', { id: 'prod-1', name: 'Existing Widget', price: 50 }],
   ]);

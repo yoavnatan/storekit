@@ -5,6 +5,8 @@ import { getStoreBySlug, getStoreBySlugOrPrevious, isStoreVisible } from '../../
 import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD, isProductVisible } from '../../lib/store-products.js';
 import { createOrder } from '../../lib/orders.js';
 import type { Order, OrderItem, StoreSubtotal } from '../../lib/orders.js';
+import { paymentProvider } from '../../lib/payment.js';
+import { normalizeDeliveryMethod, shippingPrice } from '../../lib/shipping.js';
 import { sendOrderConfirmationEmails } from '../../lib/email/order-confirmation.js';
 import { createNotification } from '../../lib/notifications.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
@@ -30,6 +32,10 @@ interface CheckoutBody {
     zip?: unknown;
   };
   items?: unknown[];
+  /** Buyer's chosen delivery method per store, keyed by (current) store slug. Untrusted —
+   *  each value is re-validated against what the store actually offers, and the price is
+   *  recomputed server-side from the central platform rate. */
+  deliveryMethods?: Record<string, unknown>;
 }
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -62,7 +68,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     return json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { buyerName, buyerEmail, buyerPhone, buyerAddress, items } = body;
+  const { buyerName, buyerEmail, buyerPhone, buyerAddress, items, deliveryMethods } = body;
 
   // Validate required buyer fields
   if (!isString(buyerName)) return json({ error: 'Missing buyerName' }, 400);
@@ -169,15 +175,21 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     storeSubtotals[store.slug]!.subtotal += product.price * qty;
   }
 
-  // Calculate shipping per store (server-side, from store config)
+  // Delivery method + shipping price per store — server-authoritative. The buyer's chosen
+  // method is re-validated against what each store actually offers (self-pickup only if
+  // the seller enabled it AND the store has an address); the price is the central platform
+  // rate (lib/shipping.ts), never a client value and never seller-set. Self-pickup is free.
+  const clientMethods = (deliveryMethods && typeof deliveryMethods === 'object' && !Array.isArray(deliveryMethods))
+    ? deliveryMethods as Record<string, unknown>
+    : {};
   let totalShipping = 0;
   for (const [storeSlug, data] of Object.entries(storeSubtotals)) {
     const store = getStoreBySlug(storeSlug);
-    const flatRate  = store?.shipping?.flatRate  ?? 0;
-    const freeAbove = store?.shipping?.freeAbove ?? null;
-    const shipping  = (freeAbove !== null && data.subtotal >= freeAbove) ? 0 : flatRate;
-    data.shipping = shipping;
-    totalShipping += shipping;
+    const offersSelfPickup = !!store?.shipping?.selfPickup && !!store?.address;
+    const method = normalizeDeliveryMethod(clientMethods[storeSlug], offersSelfPickup);
+    data.deliveryMethod = method;
+    data.shipping = shippingPrice(method);
+    totalShipping += data.shipping;
   }
 
   const userId = getSellerSession(cookies);
@@ -202,6 +214,18 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // reserved above must go back rather than sit decremented for an order that
   // never actually got created.
   try {
+    // Charge before committing any order. Today this is the mock provider (always
+    // approves); at go-live the real gateway swaps in behind the same interface. A
+    // decline rolls back the stock reserved above so no order exists for an unpaid cart.
+    // NOTE: once a real provider charges here, a downstream throw after a SUCCESSFUL
+    // charge will need a refund/void — add that alongside the real provider swap.
+    const grandTotal = Object.values(storeSubtotals).reduce((sum, d) => sum + d.subtotal + d.shipping, 0);
+    const payment = await paymentProvider.charge({ amount: grandTotal, checkoutRef, buyerEmail: buyerData.buyerEmail });
+    if (!payment.ok) {
+      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+      return json({ error: payment.error ?? 'התשלום נכשל' }, 402);
+    }
+
     // Create one order per store so each seller owns a separate, isolated order
     const orderIds: string[] = [];
     const createdOrders: Order[] = [];
@@ -211,6 +235,8 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       const storeOrder = createOrder({
         ...buyerData,
         checkoutRef,
+        paymentStatus: 'paid',
+        paymentRef: payment.paymentRef,
         items: storeItems,
         storeSubtotals: { [storeSlug]: sub },
         shippingAmount: sub.shipping,

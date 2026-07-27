@@ -1,5 +1,6 @@
 import { getProductsByStoreId } from './store-products.js';
-import { bulkUpsertProducts } from './store-products-bulk.js';
+import { bulkUpsertProducts, updateChangesProduct } from './store-products-bulk.js';
+import { getCategoriesByStoreId, getAncestorChain } from './store-categories.js';
 import {
   parseCsv, mapHeader, toRawRows, validateRows, resolveSkuMatches,
   MAX_IMPORT_ROWS, type SkuMatchTarget,
@@ -10,8 +11,10 @@ import { deleteNotificationsByRelatedIds } from './notifications.js';
 // Single home for the whole CSV → catalog routine, so the two things that trigger it — the seller
 // uploading/pasting a canonical file (POST /api/store-product/bulk) and the "sync now" URL pull
 // (POST /api/store-product/feed-sync) — run identical validation, variant grouping, sku-matching and
-// notification cleanup. matchBySku is the only behavioural fork (external-feed sync), and it's opt-in:
-// the plain bulk import passes it false and behaves exactly as before this module existed.
+// notification cleanup. Both paths behave identically: a row resolves to an existing product by its
+// id if present, else by an already-existing sku, else it's a create (see resolveSkuMatches). This
+// lets a seller re-upload their own Excel (which has skus, not our ids) to update stock, with no
+// special mode to pick — id still wins whenever it's there, so export→edit→import is unchanged.
 
 export interface ImportResult {
   ok: boolean;
@@ -25,12 +28,9 @@ export interface RunImportOptions {
   csv: string;
   /** false = dry run (preview counts + per-row resolution), true = write to the catalog. */
   commit: boolean;
-  /** External-feed sync: match rows to existing products by sku instead of only the internal id. */
-  matchBySku: boolean;
-  lang: 'he' | 'en';
 }
 
-export function runProductImport({ storeId, sellerId, csv, commit, matchBySku, lang }: RunImportOptions): ImportResult {
+export function runProductImport({ storeId, sellerId, csv, commit }: RunImportOptions): ImportResult {
   const rows = parseCsv(csv);
   if (!rows.length) return { ok: false, status: 400, body: { ok: false, error: 'empty-file' } };
   if (rows.length - 1 > MAX_IMPORT_ROWS) return { ok: false, status: 400, body: { ok: false, error: 'too-many-rows' } };
@@ -49,33 +49,53 @@ export function runProductImport({ storeId, sellerId, csv, commit, matchBySku, l
   }
 
   const rawRows = toRawRows(rows, map);
-  if (matchBySku) {
-    // Resolve each sku-keyed row to the product it updates (and backfill blank name/price) before
-    // validation, so the rest of the pipeline sees ordinary id-matched update rows.
-    const catalogBySku = new Map<string, SkuMatchTarget>();
-    for (const p of existingProducts) if (p.sku) catalogBySku.set(p.sku, { id: p.id, name: p.name, price: p.price });
-    resolveSkuMatches(rawRows, catalogBySku);
-  }
+  // Resolve each id-less, sku-keyed row to the product it updates (and backfill blank name/price)
+  // before validation, so the rest of the pipeline sees ordinary id-matched update rows. A row that
+  // already carries an id is left untouched (id always wins); an unknown sku flows through as a create.
+  const catalogBySku = new Map<string, SkuMatchTarget>();
+  for (const p of existingProducts) if (p.sku) catalogBySku.set(p.sku, { id: p.id, name: p.name, price: p.price });
+  resolveSkuMatches(rawRows, catalogBySku);
 
   // Per-row validation first (name/price/sku/spam/category), then collapse variant-group rows into
   // one product each — errors stay per-line, grouping is a separate testable pass.
   const rowResults = validateRows(rawRows, existingIds, existingSkuOwners);
-  const results = mergeVariantGroups(rowResults, lang);
+  const results = mergeVariantGroups(rowResults);
 
-  if (!commit) {
-    // The id column is a plain UUID a seller has no real reason to look at or trust blindly —
-    // surfacing the product it currently resolves to lets them visually catch a scrambled/wrong-row
-    // mistake before anything is written, which a plain-text CSV can't otherwise guard against.
-    const byId = new Map(existingProducts.map((p) => [p.id, p]));
-    return {
-      ok: true, status: 200,
-      body: { ok: true, results: results.map((r) => (r.action === 'update' && r.id ? { ...r, currentName: byId.get(r.id)?.name } : r)) },
-    };
+  // Flag every update row whose values are identical to the existing product — a no-op. Both the
+  // id column (a plain UUID the seller can't trust blindly) and, more importantly at scale, the
+  // "unchanged" flag are attached here so the preview can surface the resolved product and hide the
+  // (usually large) majority of rows that change nothing. A re-uploaded catalog or a sku+stock feed
+  // is mostly no-ops; listing hundreds of them to "confirm" is unusable.
+  const byId = new Map(existingProducts.map((p) => [p.id, p]));
+  const categories = getCategoriesByStoreId(storeId);
+  const pathOf = (categoryId?: string): string[] => (categoryId ? getAncestorChain(categories, categoryId).map((c) => c.name) : []);
+  for (const r of results) {
+    if (r.action !== 'update' || !r.id || !r.input) continue;
+    const existing = byId.get(r.id);
+    if (!existing) continue;
+    r.currentName = existing.name;
+    r.unchanged = !updateChangesProduct(existing, r.input, pathOf(existing.categoryId));
+    // For a changed variant product, pin down WHICH combo rows actually differ (stock/sku) so the
+    // preview points at those exact lines — "edited one variant" reads as one row, not the whole span.
+    if (!r.unchanged && r.input.variants?.length && r.comboLineByKey) {
+      const eStock = existing.variantStock ?? {}, eSku = existing.variantSku ?? {};
+      const iStock = r.input.variantStock ?? {}, iSku = r.input.variantSku ?? {};
+      r.changedCombos = Object.keys(r.comboLineByKey)
+        .filter((k) => iStock[k] !== eStock[k] || (iSku[k] ?? '') !== (eSku[k] ?? ''))
+        .map((k) => ({ line: r.comboLineByKey![k]!, label: r.comboLabelByKey?.[k] ?? '' }))
+        .sort((a, b) => a.line - b.line);
+    }
+    // These per-combo maps were only needed for the diff above — don't ship them to the client.
+    delete r.comboLineByKey;
+    delete r.comboLabelByKey;
   }
 
-  // bulkUpsertProducts returns exactly one result per input product, in the same order — safe to
-  // pair positionally with validRows (never silently drops one, even if an id ever fails to match).
-  const validRows = results.filter((r) => r.action !== 'error' && r.input);
+  if (!commit) return { ok: true, status: 200, body: { ok: true, results } };
+
+  // Commit skips unchanged rows entirely (nothing to write, no restock-notification churn). validRows
+  // and the cursor below both skip error AND unchanged rows in lock-step, so positional pairing with
+  // bulkUpsertProducts' output stays exact.
+  const validRows = results.filter((r) => r.action !== 'error' && !r.unchanged && r.input);
   const upserted = bulkUpsertProducts(storeId, validRows.map((r) => ({ id: r.id, ...r.input! })));
 
   // An update row that explicitly set a stock value (blank cells preserve the existing stock) —
@@ -92,7 +112,7 @@ export function runProductImport({ storeId, sellerId, csv, commit, matchBySku, l
     body: {
       ok: true,
       results: results.map((r) => {
-        if (r.action === 'error') return r;
+        if (r.action === 'error' || r.unchanged) return r;
         const match = upserted[cursor++];
         if (!match || match.action === 'not-found') return { ...r, action: 'error' as const, errors: ['id-not-found'] };
         return { ...r, product: match.product };

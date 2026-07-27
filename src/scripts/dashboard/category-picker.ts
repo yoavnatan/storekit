@@ -162,6 +162,9 @@ export function initCategoryPicker(root: HTMLElement): void {
     if (selectBtn) {
       selectedId = selectBtn.dataset.select ?? '';
       hiddenInput!.value = selectedId;
+      // Let listeners (e.g. the tag-suggestion recompute) react to a category
+      // change — a plain `.value =` assignment fires no event on its own.
+      hiddenInput!.dispatchEvent(new Event('input', { bubbles: true }));
       updateLabel();
       close();
       return;

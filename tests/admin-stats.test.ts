@@ -18,19 +18,16 @@ function makeStore(overrides: Partial<Store> = {}): Store {
 }
 
 describe('isStoreIncomplete', () => {
-  it('is complete when it has products and shipping configured', () => {
-    const store = makeStore({ shipping: { flatRate: 20, freeAbove: 200, processingDays: 2 } });
+  // Shipping is now platform-provided (no per-store shipping config to be "missing"),
+  // so incompleteness is driven solely by whether the store has any products.
+  it('is complete when it has products', () => {
+    const store = makeStore();
     expect(isStoreIncomplete(store, 5)).toBe(false);
   });
 
-  it('is incomplete when it has zero products, even with shipping configured', () => {
-    const store = makeStore({ shipping: { flatRate: 20, freeAbove: 200, processingDays: 2 } });
-    expect(isStoreIncomplete(store, 0)).toBe(true);
-  });
-
-  it('is incomplete when shipping was never configured, even with products', () => {
+  it('is incomplete when it has zero products', () => {
     const store = makeStore();
-    expect(isStoreIncomplete(store, 5)).toBe(true);
+    expect(isStoreIncomplete(store, 0)).toBe(true);
   });
 });
 

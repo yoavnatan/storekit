@@ -109,9 +109,12 @@
     return `<div class="cart-line__img-placeholder" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>`;
   }
 
+  // The current storefront slug is exposed on <body data-store-slug> by
+  // BaseLayout (server-resolved) — reliable for root-level store URLs AND
+  // custom domains, where the path carries no slug at all. Parsing the URL
+  // (the old /store/[slug] way) broke on the root-URL migration.
   function getCurrentStoreSlug(): string | null {
-    const match = window.location.pathname.match(/^\/store\/([^/]+)/);
-    return match ? match[1] : null;
+    return document.body.dataset.storeSlug || null;
   }
 
   function render() {
@@ -146,8 +149,26 @@
     const grandTotal = getGrandTotal();
     const singleStore = carts.length === 1;
 
-    lines.innerHTML = carts.map((c) => `
-      <div class="cart-store-group" data-store-slug="${esc(c.storeSlug)}">
+    // Store-sovereignty: the store the shopper is currently inside floats to the
+    // top (sorted above) with no heading of its own; the remaining stores then
+    // sit under an "other stores" heading — shown whenever the shopper is inside
+    // a store, even if the current store has nothing in the cart.
+    const insideStore = !!currentSlug;
+    let otherLabelShown = false;
+
+    lines.innerHTML = carts.map((c, idx) => {
+      const isCurrent = c.storeSlug === currentSlug;
+      let sectionLabel = '';
+      if (insideStore && !isCurrent && !otherLabelShown) {
+        otherLabelShown = true;
+        sectionLabel = `<div class="cart-other-stores-label">${esc(i18n.otherStores ?? 'From other stores')}</div>`;
+      }
+      // The "other stores" heading (with its own underline) is itself the
+      // separator for the current→others transition, so no hr there — it would
+      // just double the line. A plain divider only between groups with no heading.
+      const divider = idx > 0 && !sectionLabel ? '<hr class="cart-store-divider">' : '';
+      return `${divider}${sectionLabel}
+      <div class="cart-store-group${isCurrent ? ' cart-store-group--current' : ''}" data-store-slug="${esc(c.storeSlug)}">
         <div class="cart-store-group__head">
           <a href="/${esc(c.storeSlug)}" class="cart-store-group__name">${esc(c.storeName)}</a>
           <span class="cart-store-group__count">${c.count} ${c.count !== 1 ? (i18n.items ?? 'items') : (i18n.item ?? 'item')}</span>
@@ -190,7 +211,8 @@
             ${i18n.checkout ?? 'Checkout'}
           </a>
         </div>
-      </div>`).join('<hr class="cart-store-divider">') +
+      </div>`;
+    }).join('') +
       (carts.length > 1 ? `
         <div class="cart-grand-total">
           <div class="cart-grand-total__row">

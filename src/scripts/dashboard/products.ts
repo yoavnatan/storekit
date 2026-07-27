@@ -5,12 +5,13 @@ import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
 import { animateScrollTo } from './scroll-utils.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
-import { comboKey, generateCombos, canonicalDimName, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
+import { comboKey, generateCombos, canonicalDimName, LOW_STOCK_THRESHOLD, resolveVariantStockMap, type VariantDimension } from '../../lib/variant-combo.js';
 import { createFloatingPortal, toolbarMenuTitle } from '../../lib/toolbar-portal.js';
 import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree } from './category-tree-cache.js';
 import { initCategoryPicker } from './category-picker.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
+import { suggestTags } from '../../lib/tag-suggest.js';
 
 export interface ProductData {
   id: string; storeId: string; slug?: string; name: string;
@@ -120,21 +121,46 @@ function comboLabelHtml(dims: VariantDimension[], combo: Record<string, string>)
   }).join(' · ');
 }
 
-// Read-only quick-glance breakdown next to the products-table stock number —
-// lets a seller scan per-variant stock across the whole table without opening
-// each product's full edit form.
+// Quick-glance breakdown next to the products-table stock number — lets a
+// seller scan AND edit per-variant stock across the whole table without opening
+// each product's full edit form. Each combo's number is click-to-edit inline
+// (activateComboStockEdit), the per-combo mirror of the whole `.product-stock`
+// cell's inline edit; the total cell + total row update live on save.
+function warnIconHtml(value: number, i18n: Record<string, string>): string {
+  return value <= 0 ? warnIcon(i18n.outOfStock ?? 'Out of stock') : '';
+}
+
+// The clickable stock number on a breakdown row — a plain number that turns
+// into an inline input on click, styled to hint it's editable on hover.
+// text-end + min-width: the digit hugs the outer (warn) side at a constant
+// distance across rows, while the spare min-width sits on the inner side as
+// click padding — numbers line up in a column and the warn keeps the same gap
+// from the number as in the main products table. No hover color: the number
+// mirrors the main table's stock display (red when low/out, plain otherwise).
+// Cursor is inherited from the hit area (cursor-text, like the main stock cell).
+const COMBO_STOCK_VALUE_CLS = 'py-[0.15rem] min-w-[1.9rem] text-end';
+
+// Compact inline input for the breakdown dropdown — deliberately NOT
+// INLINE_INPUT_NUM, whose base carries min-w-10 (2.5rem) and a 3px ring that
+// bloat the field inside this narrow popover. Sized to its digits, centered,
+// with a slimmer ring.
+const COMBO_STOCK_INPUT_CLS = '[font:inherit] [color:var(--color-text)] text-center bg-[color:var(--color-surface)] border-[1.5px] [border-color:var(--color-primary)] rounded px-[0.25rem] py-[0.05rem] outline-none min-w-0 shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-primary)_15%,transparent)] [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0';
+
+// Compact cancel × for the breakdown editor — smaller than INLINE_CANCEL_BTN
+// (w-5) and pulled toward the row edge so it tucks to the side, not next to the
+// field taking central space. Keeps the round danger-tint hover.
+const COMBO_STOCK_CANCEL_BTN = 'inline-flex items-center justify-center w-4 h-4 rounded-full border-none bg-transparent [color:var(--color-muted)] cursor-pointer p-0 shrink-0 transition-colors duration-[120ms] hover:[color:var(--color-danger,#dc2626)] hover:bg-[color-mix(in_srgb,var(--color-danger,#dc2626)_12%,transparent)]';
+
 function stockBreakdownHtml(variants: VariantDimension[] | undefined, variantStock: Record<string, number> | undefined, totalStock: number, i18n: Record<string, string>): string {
   if (!variants?.length) return '';
-  const stockMap = variantStock ?? {};
-  const hasAnyStock = Object.keys(stockMap).length > 0;
-  const combos = generateCombos(variants);
-  const splitDefaults = hasAnyStock ? [] : evenSplit(combos.length, totalStock);
-  const rows = combos.map((combo, idx) => {
+  const stockMap = resolveVariantStockMap(variants, variantStock, totalStock);
+  const editLabel = i18n.variantStockEditLabel ?? 'Edit stock';
+  const rows = generateCombos(variants).map((combo) => {
     const key = comboKey(combo);
     const label = comboLabelHtml(variants, combo);
-    const value = key in stockMap ? stockMap[key] : (hasAnyStock ? 0 : (splitDefaults[idx] ?? 0));
-    const warn = value <= 0 ? warnIcon(i18n.outOfStock ?? 'Out of stock') : '';
-    return `<div class="flex items-center justify-between gap-3 px-3 py-[0.45rem] rounded [color:var(--color-text)] text-[0.82rem] whitespace-nowrap"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span style="display:inline-flex;align-items:center;gap:0.3rem">${value}${warn}</span></div>`;
+    const value = stockMap[key] ?? 0;
+    const lowStyle = value <= LOW_STOCK_THRESHOLD ? ' style="color:var(--color-danger)"' : '';
+    return `<div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key="${esc(key)}"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span class="cursor-text" data-combo-stock-hit role="button" tabindex="0" aria-label="${esc(editLabel)}" style="display:inline-flex;align-items:center;gap:0.3rem"><span data-combo-stock-value class="${COMBO_STOCK_VALUE_CLS}"${lowStyle}>${value}</span><span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">${warnIconHtml(value, i18n)}</span></span></div>`;
   }).join('');
   return `<span class="relative inline-flex" data-stock-breakdown>
     <button type="button" class="${STOCK_BREAKDOWN_BTN}" data-stock-breakdown-btn aria-expanded="false" aria-haspopup="true" aria-label="${esc(i18n.stockBreakdownLabel ?? 'Show stock breakdown by variant')}">
@@ -237,7 +263,7 @@ function tagAddTriggerHtml(i18n: Record<string, string>): string {
 }
 
 function tagAddInputHtml(i18n: Record<string, string>): string {
-  return `<input class="input" data-tag-add-input placeholder="${esc(i18n.tagsPlaceholder ?? '')}" style="width:110px;flex:0 0 auto">`;
+  return `<input class="input" data-tag-add-input placeholder="${esc(i18n.tagsPlaceholder ?? '')}" style="width:160px;flex:0 0 auto">`;
 }
 
 // Tags are added one at a time the same way variant values are (collapsed
@@ -250,6 +276,7 @@ function tagsFieldHtml(tags: string[], i18n: Record<string, string>): string {
   return `<div class="field max-w-none" data-tags-field>
     <span>${esc(i18n.tagsLabel ?? 'Tags')}</span>
     <div class="variant-chips" data-tag-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">${chipsHtml}<span data-tag-adder>${tagAddTriggerHtml(i18n)}</span></div>
+    <div data-tag-suggestions style="display:none;flex-wrap:wrap;gap:0.4rem;align-items:center;margin-top:0.45rem"></div>
     <input type="hidden" name="tags" value="${esc(tags.join(','))}">
   </div>`;
 }
@@ -280,25 +307,77 @@ function collapseTagAdder(field: HTMLElement, i18n: Record<string, string>): voi
   delete adder.dataset.mutating;
 }
 
+// Clear a tags field after the add-product form is reset — form.reset() only
+// resets native controls, not the chip spans we appended or the suggestion row.
+function resetTagsField(scope: HTMLElement): void {
+  const field = scope.querySelector<HTMLElement>('[data-tags-field]');
+  if (!field) return;
+  field.querySelectorAll('[data-tag-chip]').forEach(c => c.remove());
+  syncTagsHiddenInput(field);
+  renderTagSuggestions(field, getDashI18n());
+}
+
 function syncTagsHiddenInput(field: HTMLElement): void {
   const hidden = field.querySelector<HTMLInputElement>('input[name="tags"]');
   const values = [...field.querySelectorAll<HTMLElement>('[data-tag-chip]')].map(c => c.dataset.value ?? '');
   if (hidden) hidden.value = values.join(',');
 }
 
-function commitTagValue(field: HTMLElement, i18n: Record<string, string>): void {
-  const input = field.querySelector<HTMLInputElement>('[data-tag-add-input]');
+/** Add one tag chip by value (dedup case-insensitive). Returns whether it was added.
+ *  Shared by the manual add-input and the click-to-add suggestion chips. */
+function addTagChip(field: HTMLElement, rawValue: string, i18n: Record<string, string>): boolean {
+  const value = rawValue.trim();
   const adder = field.querySelector<HTMLElement>('[data-tag-adder]');
-  if (!input || !adder) return;
-  const value = input.value.trim();
-  if (!value) return;
+  if (!value || !adder) return false;
   const existing = [...field.querySelectorAll<HTMLElement>('[data-tag-chip]')].map(c => (c.dataset.value ?? '').toLowerCase());
-  if (existing.includes(value.toLowerCase())) { input.value = ''; return; }
+  if (existing.includes(value.toLowerCase())) return false;
   const wrapper = document.createElement('div');
   wrapper.innerHTML = tagChipHtml(value, i18n);
   adder.before(wrapper.firstElementChild as HTMLElement);
-  input.value = '';
   syncTagsHiddenInput(field);
+  return true;
+}
+
+function commitTagValue(field: HTMLElement, i18n: Record<string, string>): void {
+  const input = field.querySelector<HTMLInputElement>('[data-tag-add-input]');
+  if (!input) return;
+  if (addTagChip(field, input.value, i18n)) renderTagSuggestions(field, i18n);
+  input.value = '';
+}
+
+// A dashed "+ word" chip proposing a tag auto-discovered from the product's own
+// text (name / description / category). Clicking it promotes the word into a
+// real tag; it's never saved on its own — see suggestTags in lib/tag-suggest.ts.
+function tagSuggestChipHtml(value: string, i18n: Record<string, string>): string {
+  return `<button type="button" class="variant-chip" data-tag-suggest-chip data-value="${esc(value)}" aria-label="${esc(i18n.tagsSuggestAdd ?? 'Add')}" style="display:inline-flex;align-items:center;gap:0.3rem;border:1px dashed var(--color-border);border-radius:999px;padding:0.22rem 0.55rem;font-size:0.8rem;background:none;color:var(--color-muted);cursor:pointer">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>${esc(value)}</button>`;
+}
+
+// Recompute + paint the suggestion row from the current form state. Category
+// and variant values are applied AUTOMATICALLY on save (see /api/product's
+// withAutoTags), so the click-to-add row offers only the *optional* extras —
+// name/description words — and excludes anything the auto-tagging will add
+// anyway. Called on editor open and live as the seller edits those fields.
+function renderTagSuggestions(field: HTMLElement, i18n: Record<string, string>): void {
+  const container = field.querySelector<HTMLElement>('[data-tag-suggestions]');
+  if (!container) return;
+  const form = field.closest('form');
+  const name = form?.querySelector<HTMLInputElement>('[name="name"]')?.value ?? '';
+  const description = form?.querySelector<HTMLTextAreaElement>('[name="description"]')?.value ?? '';
+  const categoryId = form?.querySelector<HTMLInputElement>('input[name="categoryId"]')?.value ?? '';
+  const categorySegs = categoryId ? categoryPathFor(categoryId).split('›').map(s => s.trim()).filter(Boolean) : [];
+  const variantValues = form ? collectVariantsPayload(form).variants.flatMap(d => d.options) : [];
+  const currentTags = [...field.querySelectorAll<HTMLElement>('[data-tag-chip]')].map(c => c.dataset.value ?? '');
+  // Auto-applied sources go into the exclusion set (not the suggestion sources)
+  // so they don't show up as redundant chips for something that saves on its own.
+  const suggestions = suggestTags({ name, description, existingTags: [...currentTags, ...categorySegs, ...variantValues] });
+  if (!suggestions.length) {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = `<span style="font-size:0.76rem;color:var(--color-muted)">${esc(i18n.tagsSuggestLabel ?? '')}</span>${suggestions.map(s => tagSuggestChipHtml(s, i18n)).join('')}`;
+  container.style.display = 'flex';
 }
 
 export function initTagsEditor(): void {
@@ -309,13 +388,38 @@ export function initTagsEditor(): void {
     const i18n = getDashI18n();
 
     const trigger = target.closest<HTMLButtonElement>('[data-tag-add-trigger]');
-    if (trigger) { expandTagAdder(field, i18n); return; }
+    // Refresh the offered set the moment the seller reaches for "+ Add".
+    if (trigger) { renderTagSuggestions(field, i18n); expandTagAdder(field, i18n); return; }
+
+    // Click a suggested tag → promote it to a real tag, then refresh the row
+    // (so it drops out of the offered set).
+    const suggestChip = target.closest<HTMLButtonElement>('[data-tag-suggest-chip]');
+    if (suggestChip) {
+      if (addTagChip(field, suggestChip.dataset.value ?? '', i18n)) renderTagSuggestions(field, i18n);
+      return;
+    }
 
     // Arms the shared "Sure? Yes/No" confirm (see initRemoveConfirm) instead
     // of deleting on the spot — same one-stray-click protection as variant chips.
     const removeBtn = target.closest<HTMLButtonElement>('[data-tag-chip-remove]');
     if (removeBtn) { replaceWithHtml(removeBtn, removeConfirmHtml('tag', i18n)); return; }
   });
+
+  // Suggestions track the product's text live: recompute (debounced) whenever
+  // the name/description/category that feed them change. The category picker
+  // fires a synthetic 'input' on its hidden field (see category-picker.ts).
+  const recompute = debounce((field: HTMLElement) => renderTagSuggestions(field, getDashI18n()), 250);
+  document.addEventListener('input', (e) => {
+    const target = e.target as Element;
+    if (!target.matches('[name="name"], [name="description"], input[name="categoryId"]')) return;
+    const field = target.closest('form')?.querySelector<HTMLElement>('[data-tags-field]');
+    if (field) recompute(field);
+  });
+
+  // Paint suggestions for any tags-field already on the page (e.g. an edit row
+  // opened with an existing product's name/category) so they're offered up front.
+  const initialI18n = getDashI18n();
+  document.querySelectorAll<HTMLElement>('[data-tags-field]').forEach(f => renderTagSuggestions(f, initialI18n));
 
   document.addEventListener('keydown', (e) => {
     const target = e.target as Element;
@@ -441,7 +545,7 @@ function resolveRemoveConfirm(wrapper: HTMLElement, i18n: Record<string, string>
   if (kind === 'tag') {
     const field = wrapper.closest<HTMLElement>('[data-tags-field]');
     wrapper.closest('[data-tag-chip]')?.remove();
-    if (field) syncTagsHiddenInput(field);
+    if (field) { syncTagsHiddenInput(field); renderTagSuggestions(field, i18n); }
     return;
   }
   // Must be captured *before* the dim/chip is removed below — .remove()
@@ -1270,7 +1374,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
     <td class="sku-col"><span class="sku-col-label">${esc(i.skuLabel ?? 'SKU')}: </span>${p.sku ? esc(p.sku) : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="cat-col"><span class="cat-col-label">${esc(i.categoryLabel ?? 'Category')}: </span>${p.categoryId && categoryPathFor(p.categoryId) ? `<span class="product-cat-chip inline-block text-[.68rem] font-medium [color:var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] py-[.1rem] px-[.4rem] rounded-full mt-[.2rem] tracking-[.01em]">${esc(categoryPathFor(p.categoryId))}</span>` : `<span style="color:var(--color-border)">—</span>`}</td>
     <td class="num product-price price-col group cursor-text">${fmtPrice(p.price)}</td>
-    <td class="num product-stock stock-col group cursor-text"><span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
+    <td class="num product-stock stock-col group cursor-text"><span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total>${stockHtml(p.stock, i.outOfStock ?? 'Out of stock', i.colStock ?? 'Stock')}</span>${stockBreakdownHtml(p.variants, p.variantStock, p.stock, i)}</span></td>
     <td class="num wishlist-col" style="color:var(--color-muted);font-size:0.82rem">${(p.wishlistCount ?? 0) > 0
       ? `<span style="display:inline-flex;align-items:center;gap:0.25rem;color:var(--color-accent)"><svg class="shrink-0 max-w-none" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${p.wishlistCount}</span>`
       : `<span style="color:var(--color-border)">—</span>`}</td>
@@ -1432,7 +1536,7 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
       if (priceCell) priceCell.textContent = fmtPrice(price);
       if (stockCell) {
         const savedVariants = JSON.parse(String(fd.get('variants_json') || '{}')) as { variants?: VariantDimension[]; variantStock?: Record<string, number> };
-        stockCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.3rem">${stockHtml(stock, i18n.outOfStock ?? 'Out of stock', i18n.colStock ?? 'Stock')}${stockBreakdownHtml(savedVariants.variants, savedVariants.variantStock, stock, i18n)}</span>`;
+        stockCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.3rem"><span data-stock-total>${stockHtml(stock, i18n.outOfStock ?? 'Out of stock', i18n.colStock ?? 'Stock')}</span>${stockBreakdownHtml(savedVariants.variants, savedVariants.variantStock, stock, i18n)}</span>`;
         displayRow.dataset.hasVariants = savedVariants.variants?.length ? '1' : '';
       }
 
@@ -1547,6 +1651,10 @@ export function attachListeners(display: HTMLTableRowElement, edit: HTMLTableRow
   originalEditHtml.set(edit, edit.innerHTML);
   display.querySelector('[data-edit-toggle]')?.addEventListener('click', () => {
     display.hidden = true; edit.hidden = false;
+    // Paint tag suggestions now the row is populated + visible (covers rows
+    // built after page load, e.g. via pagination, which the init paint missed).
+    const tagsField = edit.querySelector<HTMLElement>('[data-tags-field]');
+    if (tagsField) renderTagSuggestions(tagsField, getDashI18n());
     scrollEditRowIntoView(edit);
     refreshBulkEditLabel();
   });
@@ -1602,6 +1710,7 @@ export function initAddProduct(cloud: string, preset: string): void {
 
       addForm.reset();
       resetVariantsEditor(addForm);
+      resetTagsField(addForm);
       if (gallery) resetGallery(gallery);
       addFormWrap?.setAttribute('hidden', '');
       document.getElementById('toggle-add-form')?.removeAttribute('hidden');
@@ -2436,7 +2545,134 @@ export function initInlineEdit(): void {
   });
 }
 
+// Click-to-edit for one variant combo's stock inside the breakdown dropdown —
+// the same interaction as the whole `.product-stock` cell's inline edit (number
+// becomes an input + cancel ×; Enter/blur commit, Escape/× cancel), scoped to a
+// single combo. The × cancels WITHOUT closing the dropdown: its click stops
+// propagating so the popover's own outside-click close never fires (a plain
+// cancel detaches the × mid-event, which used to read as an outside click and
+// shut the whole dropdown). Persists via the server's patch-variant-stock
+// (which rebuilds the full per-combo map + total), then updates the total cell,
+// this row's warn icon, sort key, alert badge, and the still-in-DOM full-edit
+// form so the two views never drift apart.
+function activateComboStockEdit(valueEl: HTMLElement, i: Record<string, string>): void {
+  if (valueEl.dataset.inlineActive) return;
+  const row = valueEl.closest<HTMLElement>('[data-combo-stock-row]');
+  const cell = valueEl.closest<HTMLElement>('.product-stock');
+  const productRow = valueEl.closest<HTMLElement>('[data-product-display]');
+  const key = row?.dataset.comboKey ?? '';
+  const productId = productRow?.dataset.productDisplay ?? '';
+  if (!row || !cell || !productRow || !key || !productId) return;
+  valueEl.dataset.inlineActive = '1';
+
+  const savedInner = valueEl.innerHTML;
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.value = valueEl.textContent?.trim() ?? '0';
+  input.min = '0';
+  input.step = '1';
+  input.dataset.inlineInput = '1';
+  input.className = COMBO_STOCK_INPUT_CLS;
+  input.setAttribute('aria-label', i.colStock ?? 'מלאי');
+  const setW = () => { input.style.width = `${Math.max(input.value.length, 2) + 2.4}ch`; };
+  setW();
+  input.addEventListener('input', setW);
+
+  const xBtn = document.createElement('button');
+  xBtn.type = 'button';
+  xBtn.className = COMBO_STOCK_CANCEL_BTN;
+  xBtn.setAttribute('aria-label', 'ביטול');
+  xBtn.innerHTML = `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  xBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  xBtn.addEventListener('click', (e) => { e.stopPropagation(); cancel(); });
+
+  // While editing there's no out-of-stock warning to show, so the × takes the
+  // warn icon's slot (the outer side) and the input takes the number's place.
+  const warnEl = row.querySelector<HTMLElement>('[data-combo-stock-warn]');
+  const savedWarn = warnEl?.innerHTML ?? '';
+
+  valueEl.innerHTML = '';
+  valueEl.appendChild(input);
+  if (warnEl) { warnEl.innerHTML = ''; warnEl.appendChild(xBtn); }
+  input.focus();
+  input.select();
+
+  let done = false;
+
+  function cancel(): void {
+    done = true;
+    valueEl.innerHTML = savedInner;
+    delete valueEl.dataset.inlineActive;
+    if (warnEl) warnEl.innerHTML = savedWarn;
+  }
+
+  async function commit(): Promise<void> {
+    if (done) return;
+    done = true;
+    const value = Math.max(0, Math.floor(Number(input.value)) || 0);
+
+    input.disabled = true;
+    xBtn.disabled = true;
+    input.style.opacity = '0.6';
+
+    const fd = new FormData();
+    fd.set('_action', 'patch-variant-stock');
+    fd.set('productId', productId);
+    fd.set('comboKey', key);
+    fd.set('stock', String(value));
+
+    try {
+      const res = await fetch('/api/product', { method: 'POST', body: fd });
+      const data = await res.json() as { ok: boolean; comboStock?: number; stock?: number; stockAlerts?: number; error?: string };
+      if (!data.ok) {
+        showStatus(data.error ?? (i.errorSaving ?? 'שגיאה בשמירה.'), true);
+        cancel();
+        return;
+      }
+
+      const combo = data.comboStock ?? value;
+      const total = data.stock ?? 0;
+      delete valueEl.dataset.inlineActive;
+      valueEl.textContent = String(combo);
+      // Match the main table: red when low/out of stock, plain otherwise.
+      valueEl.style.color = combo <= LOW_STOCK_THRESHOLD ? 'var(--color-danger)' : '';
+      if (warnEl) warnEl.innerHTML = warnIconHtml(combo, i);
+
+      const totalEl = cell!.querySelector<HTMLElement>('[data-stock-total]');
+      if (totalEl) totalEl.innerHTML = stockHtml(total, i.outOfStock ?? 'אזל מהמלאי', i.colStock ?? 'מלאי');
+      productRow!.dataset.sortStock = String(total);
+      updateStockBadge(data.stockAlerts);
+
+      // Keep the (still-rendered) full edit form in sync: its read-only total,
+      // the matching combo grid input, and the combo table's live total cell.
+      const editRow = productRow!.nextElementSibling;
+      const formStock = editRow?.querySelector<HTMLInputElement>('input[name="stock"]');
+      if (formStock) formStock.value = String(total);
+      const gridRow = [...(editRow?.querySelectorAll<HTMLElement>('[data-variant-combo-row]') ?? [])]
+        .find((r) => r.dataset.comboKey === key);
+      const gridInput = gridRow?.querySelector<HTMLInputElement>('[data-combo-stock]');
+      if (gridInput) gridInput.value = String(combo);
+      const editor = editRow?.querySelector<HTMLElement>('[data-variants-editor]');
+      if (editor) updateComboTotal(editor);
+    } catch {
+      showStatus(i.errorSaving ?? 'שגיאה בשמירה.', true);
+      cancel();
+    }
+  }
+
+  input.addEventListener('keydown', (e: KeyboardEvent) => {
+    // Stop these from bubbling to the dropdown's own Enter/Escape handling
+    // (which would otherwise close the whole popover mid-edit).
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); void commit(); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); }
+  });
+  input.addEventListener('blur', () => { if (!done) void commit(); });
+}
+
 export function initStockBreakdowns(): void {
+  const i = getDashI18n();
+
   function closeAll(except?: HTMLElement): void {
     document.querySelectorAll<HTMLButtonElement>('[data-stock-breakdown-btn][aria-expanded="true"]').forEach((btn) => {
       const wrap = btn.closest<HTMLElement>('[data-stock-breakdown]');
@@ -2459,10 +2695,29 @@ export function initStockBreakdowns(): void {
       dropdown.hidden = isOpen;
       return;
     }
+    // Click anywhere on a combo's stock area (number OR warn slot) → edit it.
+    // The whole [data-combo-stock-hit] span is the target so the alert icon is
+    // clickable too; the × opts out via stopPropagation, an active input via the
+    // [data-inline-input] guard.
+    if (!target.closest('[data-inline-input]')) {
+      const hit = target.closest<HTMLElement>('[data-combo-stock-hit]');
+      const valueEl = hit?.querySelector<HTMLElement>('[data-combo-stock-value]');
+      if (valueEl) { activateComboStockEdit(valueEl, i); return; }
+    }
+    // A click inside the dropdown must not close it.
     if (!target.closest('[data-stock-breakdown]')) closeAll();
   });
 
+  // Keyboard-activate the stock area (role="button") with Enter/Space.
   document.addEventListener('keydown', (e) => {
+    const target = e.target as Element;
+    const hit = target.closest<HTMLElement>('[data-combo-stock-hit]');
+    const valueEl = hit?.querySelector<HTMLElement>('[data-combo-stock-value]');
+    if (valueEl && !valueEl.dataset.inlineActive && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      activateComboStockEdit(valueEl, i);
+      return;
+    }
     if (e.key === 'Escape') closeAll();
   });
 }

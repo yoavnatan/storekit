@@ -1,4 +1,6 @@
 import type { StoreProduct } from './store-products.js';
+import { isProductInStock } from './variant-combo.js';
+import { performanceTier, PERFORMANCE_TIERS, DEFAULT_LABEL_THRESHOLDS } from './product-labels.js';
 
 export type ProductSort = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'newest';
 
@@ -12,6 +14,48 @@ export interface ProductListingQuery {
   categoryIds?: string[];
   sort?: string;
   q?: string;
+  // productId → lifetime units ordered (orders.ts#getPurchasedCountsByStoreSlug). Powers the
+  // 'default' ranking's popularity signal; omitted → every product scores as zero-sales.
+  purchasedUnits?: Record<string, number>;
+  // ms epoch for the "new" recency window; defaults to Date.now(). Pass a fixed value in tests.
+  nowMs?: number;
+}
+
+// Strongest tier first → highest rank value. Reuses the ad-label tiers so storefront
+// ranking and campaign segmentation agree on what "bestseller"/"popular"/"new" mean.
+const TIER_RANK: Record<string, number> = Object.fromEntries(
+  PERFORMANCE_TIERS.map((tier, i) => [tier, PERFORMANCE_TIERS.length - i]),
+);
+
+/**
+ * The 'default' storefront ranking (no explicit sort chosen). Deterministic — no randomness —
+ * so SSR, "load more", and re-filters all agree and it stays SEO-safe. Order of precedence:
+ *   1. Buyable first — everything in stock ranks above everything sold out (a sold-out
+ *      product, even a brand-new one, sinks to the bottom but is still listed, for SEO).
+ *   2. Proven demand — platform_bestseller › bestseller › popular › new › standard.
+ *   3. Within a tier, more units sold first, then newer first.
+ * Net effect: bestsellers/popular lead, a fresh upload gets a real visibility boost (the
+ * 'new' tier) without burying proven sellers, and dead/sold-out stock falls to the end.
+ */
+function rankDefault(products: StoreProduct[], purchasedUnits: Record<string, number>, nowMs: number): StoreProduct[] {
+  const t = DEFAULT_LABEL_THRESHOLDS;
+  const tierOf = (p: StoreProduct) =>
+    TIER_RANK[performanceTier(purchasedUnits[p.id] ?? 0, p.createdAt, t, nowMs)] ?? 0;
+
+  return [...products].sort((a, b) => {
+    const aIn = isProductInStock(a.stock, a.variants, a.variantStock);
+    const bIn = isProductInStock(b.stock, b.variants, b.variantStock);
+    if (aIn !== bIn) return aIn ? -1 : 1;
+
+    const at = tierOf(a), bt = tierOf(b);
+    if (at !== bt) return bt - at;
+
+    const au = purchasedUnits[a.id] ?? 0, bu = purchasedUnits[b.id] ?? 0;
+    if (au !== bu) return bu - au;
+
+    // Final tiebreak: newer first (deterministic; there is no manual product order).
+    return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0;
+  });
 }
 
 // Normalize Hebrew text for search: remove nikud, normalize sofit letters, collapse punctuation.
@@ -51,7 +95,7 @@ export function filterAndSortProducts(products: StoreProduct[], query: ProductLi
     return matchesCategory && matchesSearch(q, p.name, p.tags?.join(',') ?? '');
   });
 
-  if (sort === 'default') return filtered;
+  if (sort === 'default') return rankDefault(filtered, query.purchasedUnits ?? {}, query.nowMs ?? Date.now());
 
   return [...filtered].sort((a, b) => {
     switch (sort) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseCsv, mapHeader, toRawRows, validateRows, templateCsv, CSV_FIELDS } from '../src/lib/csv-bulk.js';
+import { mergeVariantGroups } from '../src/lib/variant-csv.js';
 import { productsToCsv, productsToFeedJson } from '../src/lib/store-products-bulk.js';
 import type { StoreProduct } from '../src/lib/store-products.js';
 import type { StoreCategory } from '../src/lib/store-categories.js';
@@ -220,21 +221,27 @@ describe('productsToCsv formula-injection sanitization', () => {
 });
 
 describe('templateCsv', () => {
-  it('produces a header + example rows (one standalone product + a 3-row variant group) that all validate cleanly (both languages)', () => {
+  it('produces a header + example rows (one standalone + a color/size group + a material group) that all validate cleanly (both languages)', () => {
     for (const lang of ['he', 'en'] as const) {
       const rows = parseCsv(templateCsv(lang));
-      expect(rows.length).toBe(5); // header + standalone + 3 variant rows
+      expect(rows.length).toBe(7); // header + standalone + 3 sweatshirt rows + 2 table rows
       const { map, missing } = mapHeader(rows[0]!);
       expect(missing).toEqual([]);
       const raw = toRawRows(rows, map);
-      expect(raw.length).toBe(4);
+      expect(raw.length).toBe(6);
       const results = validateRows(raw, new Set());
       expect(results.every((r) => r.action === 'create' && r.errors.length === 0)).toBe(true);
-      // The three variant rows share one non-empty group value; the standalone one has none.
+      // The five variant rows carry a group value across two distinct groups; the standalone one has none.
       const groups = results.map((r) => r.group).filter(Boolean);
-      expect(groups.length).toBe(3);
-      expect(new Set(groups).size).toBe(1);
+      expect(groups.length).toBe(5);
+      expect(new Set(groups).size).toBe(2);
       expect(results[0]!.group).toBeUndefined();
+      // End-to-end: the two groups assemble into valid variant products — including the material
+      // group, proving the format is not limited to color/size.
+      const merged = mergeVariantGroups(results);
+      expect(merged.every((r) => r.action !== 'error')).toBe(true);
+      const material = lang === 'he' ? 'חומר' : 'Material';
+      expect(merged.some((r) => r.input?.variants?.some((v) => v.name === material))).toBe(true);
     }
   });
 });

@@ -172,3 +172,14 @@ export function cdnSrc(url: string, w = 400): string {
   if (m[2].startsWith('f_') || m[2].startsWith('q_') || m[2].startsWith('c_') || m[2].startsWith('w_')) return url;
   return `${m[1]}f_auto,q_auto,w_${w}/${m[2]}`;
 }
+
+/**
+ * Responsive `srcset` (width descriptors) for a Cloudinary image — pair with a `sizes`
+ * attribute so hi-DPI/retina screens receive enough pixels and the seller's uploaded
+ * photo stays sharp (a single `cdnSrc` width gets browser-upscaled → visibly blurry).
+ * Returns '' for non-Cloudinary / already-transformed URLs so the caller keeps its plain src.
+ */
+export function cdnSrcSet(url: string, widths: number[]): string {
+  if (!widths.length || cdnSrc(url, widths[0]) === url) return '';
+  return widths.map((w) => `${cdnSrc(url, w)} ${w}w`).join(', ');
+}

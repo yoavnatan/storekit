@@ -9,23 +9,21 @@ const nextLang = lang === 'he' ? 'en' : 'he';
 ---
 
 <footer class="site-footer">
-  <div class="container">
-    <div class="flex between gap">
-      <p class="muted">© {year} {store.business.legalName || store.name}</p>
-      <nav aria-label="Footer links">
-        <ul role="list" class="flex gap">
-          <li><a href="/terms" class="muted">{t.footer.terms}</a></li>
-          <li><a href="/contact" class="muted">{t.footer.contact}</a></li>
-          <li>
-            <form method="POST" action={`/api/lang?l=${nextLang}`} class="lang-toggle-form">
-              <button type="submit" class="lang-toggle-btn" aria-label={t.nav.switchLangLabel}>
-                {t.nav.switchLang}
-              </button>
-            </form>
-          </li>
-        </ul>
-      </nav>
-    </div>
-    <p class="muted note">{t.footer.note}</p>
+  <div class="container flex between gap">
+    <p class="muted">© {year} <a href="/">{store.name}</a></p>
+    <nav aria-label="Footer links">
+      <ul role="list" class="flex gap">
+        <li><a href="/seller/register">{t.nav.openStore}</a></li>
+        <li><a href="/terms" class="muted">{t.footer.terms}</a></li>
+        <li><a href="/contact" class="muted">{t.footer.contact}</a></li>
+        <li>
+          <form method="POST" action={`/api/lang?l=${nextLang}`} class="lang-toggle-form">
+            <button type="submit" class="lang-toggle-btn" aria-label={t.nav.switchLangLabel}>
+              {t.nav.switchLang}
+            </button>
+          </form>
+        </li>
+      </ul>
+    </nav>
   </div>
 </footer>
