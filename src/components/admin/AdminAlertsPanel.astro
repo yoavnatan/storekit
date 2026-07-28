@@ -2,6 +2,8 @@
 import type { AlertsSortDir, ErrorLogEntry } from '../../lib/error-log.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import AdminPager from './AdminPager.astro';
+import AdminNewBadge from './AdminNewBadge.astro';
+import AdminNewOnlyToggle from './AdminNewOnlyToggle.astro';
 
 interface Props {
   errors: ErrorLogEntry[]; // current page only
@@ -11,11 +13,14 @@ interface Props {
   source: string[];
   storeSlug: string[];
   storeOptions: { slug: string; name: string }[];
+  newSince: string;  // ISO — anything logged after this is what the tab's "(N)" counted
+  newOnly: boolean;
+  newCount: number;
   page: number;
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, storeOptions, page, totalPages, buildUrl } = Astro.props;
+const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, storeOptions, newSince, newOnly, newCount, page, totalPages, buildUrl } = Astro.props;
 
 const sourceLabel: Record<string, string> = { server: 'שרת', client: 'דפדפן' };
 const roleLabel: Record<string, string> = { buyer: 'קונה', seller: 'מוכר' };
@@ -58,6 +63,7 @@ function buildCopyText(e: ErrorLogEntry): string {
     data-sort-dir={sortDir}
     data-source={source.join(',')}
     data-store={storeSlug.join(',')}
+    data-new-only={newOnly ? '1' : ''}
     data-store-options={JSON.stringify(storeOptions)}
   >
     <button type="button" id="admin-alerts-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
@@ -82,6 +88,7 @@ function buildCopyText(e: ErrorLogEntry): string {
         <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
     )}
+    {(newCount > 0 || newOnly) && <AdminNewOnlyToggle id="admin-alerts-new-toggle" active={newOnly} count={newCount} label="חדשות בלבד" />}
   </div>
 
   {totalFiltered === 0 && <p class="admin-empty">לא נמצאו שגיאות תואמות.</p>}
@@ -104,7 +111,13 @@ function buildCopyText(e: ErrorLogEntry): string {
           return (
           <>
             <tr data-alert-row class={e.resolved ? 'admin-alerts-row--resolved' : ''}>
-              <td class="admin-nowrap admin-alerts-time">{formatHeDateTime(e.createdAt)}</td>
+              {/* Chip on its own line inside the (nowrap, ~11%-wide) time cell —
+                  the table has no spare column, and the time is the one field
+                  the "חדשה" mark is actually about. */}
+              <td class="admin-nowrap admin-alerts-time">
+                {formatHeDateTime(e.createdAt)}
+                {e.createdAt > newSince && <><br /><AdminNewBadge label="חדשה" /></>}
+              </td>
               <td class="admin-alerts-source"><span class="admin-badge admin-badge--failed">{sourceLabel[e.source] ?? e.source}</span></td>
               <td class="admin-nowrap admin-alerts-store" title={e.storeName ?? undefined}>
                 <span class="admin-alerts-field-label">חנות: </span>{e.storeName ?? '—'}

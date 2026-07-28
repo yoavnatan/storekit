@@ -15,7 +15,7 @@ const decrementStock = vi.fn(async (id: string, qty: number, _selectedVariants?:
 });
 const restockProduct = vi.fn(async (_id: string, _qty: number, _selectedVariants?: Record<string, string>): Promise<StockAdjustResult> => ({ ok: true, before: 0, after: 0 }));
 
-const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; address?: string; shipping?: { selfPickup?: boolean }; blocked?: boolean; previousSlugs?: string[] }> = {
+const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; address?: string; shipping?: { selfPickup?: boolean }; blocked?: boolean; demo?: boolean; previousSlugs?: string[] }> = {
   'test-store': {
     id: 's1',
     slug: 'test-store',
@@ -176,6 +176,48 @@ describe('POST /api/checkout — server-side price re-validation', () => {
       expect(createOrder).not.toHaveBeenCalled();
     } finally {
       delete STORES['test-store']!.blocked;
+    }
+  });
+
+  it('refuses checkout from a showcase (demo) store — server-side, not by hiding a button', async () => {
+    // The cart deliberately WORKS for a demo store; only this irreversible step is
+    // refused, and it has to be refused here because the cart is client state and
+    // this endpoint is directly callable (see lib/demo-stores.ts).
+    STORES['test-store']!.demo = true;
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: 'demo-store' });
+      expect(createOrder).not.toHaveBeenCalled();
+      // Refused BEFORE any stock is touched — the guard is a pre-pass, so there is
+      // nothing to roll back and no window where a demo "sale" moved inventory.
+      expect(decrementStock).not.toHaveBeenCalled();
+      expect(restockProduct).not.toHaveBeenCalled();
+    } finally {
+      delete STORES['test-store']!.demo;
+    }
+  });
+
+  it('refuses the WHOLE cart when only one of its stores is a showcase store', async () => {
+    // Otherwise a mixed cart would silently part-charge, and the demo items would
+    // land in a real order.
+    STORES['demo-store'] = { id: 's2', slug: 'demo-store', name: 'Showcase', sellerId: 'seller-2', demo: true };
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [
+          { storeSlug: 'test-store', productSlug: 'widget', qty: 1 },
+          { storeSlug: 'demo-store', productSlug: 'widget', qty: 1 },
+        ],
+      }));
+      expect(res.status).toBe(403);
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(decrementStock).not.toHaveBeenCalled();
+    } finally {
+      delete STORES['demo-store'];
     }
   });
 

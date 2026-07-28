@@ -1,4 +1,5 @@
 import { store as platform } from '../config/store.config.js';
+import { isDemoStore } from './demo-stores.js';
 
 // IndexNow — the one ACTIVE indexing lever (vs. passively waiting for a crawl).
 // When a store/product page is newly published or its indexability changes, we
@@ -69,13 +70,21 @@ export async function pingIndexNow(paths: string[]): Promise<void> {
   }
 }
 
+/** The store a ping is about. Taken as an object rather than a bare slug so the
+ *  demo check below can't be forgotten at a call site — pushing a showcase store
+ *  (lib/demo-stores.ts) to Bing would put fabricated catalog straight into the
+ *  index that feeds ChatGPT/Copilot, which is the exact opposite of the point. */
+export type PingTarget = { slug: string; demo?: boolean };
+
 /** Convenience: notify of a changed product page (and its store page, whose
- *  listing the change also affects). */
-export function pingProductChange(storeSlug: string, productSlug: string): void {
-  void pingIndexNow([`/${storeSlug}/${productSlug}`, `/${storeSlug}`]);
+ *  listing the change also affects). No-op for a showcase store. */
+export function pingProductChange(store: PingTarget, productSlug: string): void {
+  if (isDemoStore(store)) return;
+  void pingIndexNow([`/${store.slug}/${productSlug}`, `/${store.slug}`]);
 }
 
-/** Convenience: notify of a changed store page. */
-export function pingStoreChange(storeSlug: string): void {
-  void pingIndexNow([`/${storeSlug}`]);
+/** Convenience: notify of a changed store page. No-op for a showcase store. */
+export function pingStoreChange(store: PingTarget): void {
+  if (isDemoStore(store)) return;
+  void pingIndexNow([`/${store.slug}`]);
 }

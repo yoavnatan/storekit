@@ -66,6 +66,11 @@ export function initSettingsForm(): void {
       return;
     }
 
+    // Settings is the one guarded form that stays on screen after saving, so it can't
+    // go clean by being closed the way an edit row does — tell the unsaved guard
+    // (unsaved-guard.ts) to retake its baseline, or leaving would still prompt.
+    window.dispatchEvent(new CustomEvent('dash:saved', { detail: { form: settingsForm } }));
+
     const newName = data.name ?? String(fd.get('name'));
     const storeNameEl = document.querySelector<HTMLElement>('.dash-store-name');
     if (storeNameEl) storeNameEl.textContent = newName;
@@ -88,6 +93,21 @@ export function initSettingsForm(): void {
         saveBtn.textContent = origText;
       }, 1500);
     }
+  });
+}
+
+/**
+ * "View store" opens a preview tab. The plain named-target link already reuses one tab,
+ * but a link-opened context is only script-closable while it holds a single history
+ * entry — going through window.open makes it script-created, so the store page's
+ * "back to dashboard" bar can close it and return here however far the seller browsed.
+ * The link itself stays the no-JS fallback.
+ */
+export function initStorePreviewLink(): void {
+  const link = document.getElementById('dash-view-store') as HTMLAnchorElement | null;
+  link?.addEventListener('click', (e) => {
+    const opened = window.open(link.href, 'dezabin-store-preview');
+    if (opened) { e.preventDefault(); opened.focus(); }
   });
 }
 

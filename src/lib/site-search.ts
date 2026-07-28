@@ -1,4 +1,4 @@
-import { getVisibleStores } from './stores.js';
+import { getShopperStores } from './stores.js';
 import { isStoreReady } from './store-readiness.js';
 import { readProducts, isProductVisible } from './store-products.js';
 import { matchesQueryWords } from './product-listing.js';
@@ -52,8 +52,10 @@ export function searchSite(rawQuery: string, options: SiteSearchOptions = {}): {
   const imageWidth = options.imageWidth ?? DEFAULT_IMAGE_WIDTH;
 
   // Admin-blocked stores/products (see admin-moderation.ts) never surface in
-  // search — same reasoning as the homepage/directory feeds.
-  const stores = getVisibleStores();
+  // search — same reasoning as the homepage/directory feeds. Showcase stores are
+  // included only while the mall is thin (lib/demo-stores.ts): search is a
+  // shopper-discovery surface, so it follows the same rule the homepage does.
+  const stores = getShopperStores();
   const storeById = new Map(stores.map((s) => [s.id, s]));
 
   const allProducts = readProducts();

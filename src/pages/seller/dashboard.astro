@@ -21,18 +21,19 @@ import {
 } from '../../lib/store-products.js';
 import { formatPrice, cdnSrc, store as platformConfig } from '../../config/store.config.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
+import { storeMark, storeMarkGradient } from '../../lib/store-mark.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
 import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
 import { thumbUrl } from '../../lib/cloudinary.js';
 import { getMessagesBySeller, getMessageReplies } from '../../lib/messages.js';
-import { getAdminMessagesForSeller, getUnreadCountForSellerFromAdmin } from '../../lib/admin-messages.js';
-import { formatHeDateTime } from '../../lib/format-date.js';
+import { getAdminThreadsForSeller } from '../../lib/admin-messages.js';
+import SellerMessageRow from '../../components/dashboard/SellerMessageRow.astro';
 import { getOrdersByStoreSlug, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
 import type { Order } from '../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/seller-products-query.js';
 import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
-import { buildSellerMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
+import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
@@ -46,6 +47,9 @@ import { shortDate } from '../../lib/date-range.js';
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
+import StoreCategoryPicker from '../../components/StoreCategoryPicker.astro';
+import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
+import { getVisibleStores } from '../../lib/stores.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
 // first rows) so seeding legacy combos never silently changes the sum.
@@ -85,6 +89,15 @@ function variantCombosData(variants: VariantDimension[], variantStock: Record<st
   });
   return { hasAnyStock, combos };
 }
+
+const categoryUsage: Record<string, number> = {};
+for (const s of getVisibleStores()) {
+  for (const c of s.categories ?? []) {
+    const key = c.trim();
+    if (key) categoryUsage[key] = (categoryUsage[key] ?? 0) + 1;
+  }
+}
+const categoryVocabulary = buildVocabulary(categoryUsage);
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
@@ -132,6 +145,9 @@ if (Astro.request.method === 'POST') {
       error = d.storeLimitReached;
     } else {
       const { id: newStoreId } = createStore(sellerId, { name, slug, tagline, description });
+      // Same sanitizer the settings endpoint uses — the picker is convenience, this is the rule.
+      const initialCategories = sanitizeStoreCategories(String(form.get('categories') ?? '').split(','));
+      if (initialCategories.length) updateStore(newStoreId, { categories: initialCategories });
       return Astro.redirect(`/seller/dashboard?store=${newStoreId}`);
     }
   } else if (action === 'add-product') {
@@ -273,39 +289,35 @@ const storeMessages = store
   : [];
 const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
   Object.fromEntries(storeMessages.map((m) => [m.id, getMessageReplies(m.id)]));
-// Replies carry no readable "unread" signal at the root level — a thread the
-// seller already read can still have an unread follow-up reply from the
-// buyer, so the tab dot must check those too, not just the root message.
-const unreadMessagesCount = storeMessages.filter((m) =>
-  !m.readBySeller || messageReplies[m.id]!.some((r) => r.toSellerId === sellerId && !r.readBySeller)
-).length;
-const adminMessages = sellerId ? getAdminMessagesForSeller(sellerId) : [];
-const unreadAdminMsgCount = sellerId ? getUnreadCountForSellerFromAdmin(sellerId) : 0;
-// "הודעות מערכת" is a synthetic row folded into the buyer-messages table
-// below (dash-panel-messages) — it always exists, even with zero admin
-// messages, so it always counts as one more row here.
-const lastAdminMessage = adminMessages.length > 0 ? adminMessages[adminMessages.length - 1] : undefined;
+// Admin<->seller "system" threads live in the SAME table as the buyer ones,
+// normalized to the same row shape (seller-messages-query.ts) — one thread
+// per subject, sorted/searched/paginated together with everything else, and
+// nothing at all rendered for a seller who never got one. They used to be a
+// single permanently pinned row outside this pipeline (CURRENT_TASK "סשן ד׳").
+const adminThreads = sellerId ? getAdminThreadsForSeller(sellerId) : [];
+// Messages tab pagination — same server-paginated approach as Products/Orders
+// above (src/lib/seller-messages-query.ts).
+const sellerMessageQuery = parseSellerMessageQuery(Astro.url.searchParams);
+const messageRows = [
+  ...buildSellerMessageRows(storeMessages, messageReplies, sellerId),
+  ...buildSystemMessageRows(adminThreads),
+];
+// A thread the seller already read can still have an unread follow-up reply,
+// so the tab dot counts rows with ANY unread entry, not just unread roots.
+const unreadMsgRows = messageRows.filter((r) => r.hasUnread).length;
 // Sorting/filtering by read-status is only meaningful when the table actually
 // has a mix of both — with everything read (or everything unread) there's
 // nothing to sort or filter, so hide those controls entirely rather than
 // leave a dead, functionless option in the menu.
-const totalMsgRows = storeMessages.length + 1;
-const unreadMsgRows = unreadMessagesCount + (unreadAdminMsgCount > 0 ? 1 : 0);
-const showMsgStatusControls = unreadMsgRows > 0 && unreadMsgRows < totalMsgRows;
-// Messages tab pagination — same server-paginated approach as Products/Orders
-// above (src/lib/seller-messages-query.ts). The pinned "הודעות מערכת" row
-// stays outside this pipeline entirely (rendered separately below, never
-// paginated/filtered/searched — see the lib's own top comment).
-const sellerMessageQuery = parseSellerMessageQuery(Astro.url.searchParams);
-const messageRows = buildSellerMessageRows(storeMessages, messageReplies, sellerId);
+const showMsgStatusControls = unreadMsgRows > 0 && unreadMsgRows < messageRows.length;
 const filteredMessageRows = filterAndSortSellerMessages(messageRows, sellerMessageQuery);
 const messagesPage = paginate(filteredMessageRows, parsePage(Astro.url.searchParams, 'mpage'), 15);
 // Distinct filter-dropdown values must come from the full (unpaginated) set,
 // not just the current page's rows — same reasoning as Products' category
 // filter (allCategoryPaths() in products.ts) once only one page's worth of
 // rows live in the DOM at a time.
-const msgDistinctProducts = [...new Set(storeMessages.map((m) => m.productRef?.productName ?? ''))].sort((a, b) => a.localeCompare(b, 'he'));
-const msgDistinctFrom = [...new Set([...storeMessages.map((m) => m.fromName), 'הודעות מערכת'])].sort((a, b) => a.localeCompare(b, 'he'));
+const msgDistinctProducts = [...new Set(messageRows.map((r) => r.productName))].sort((a, b) => a.localeCompare(b, 'he'));
+const msgDistinctFrom = [...new Set(messageRows.map((r) => r.fromName))].sort((a, b) => a.localeCompare(b, 'he'));
 const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
 
 // Performance tab — SSR renders the default "this month" range so it's never
@@ -440,7 +452,7 @@ const orderStatusColors: Record<string, string> = {
 
 <BaseLayout title={hasNoStore ? d.noStoreTitle : d.title} noindex={true} isLoggedIn={true} hasStore={!hasNoStore} storeMode={true} sellerMode={true}>
   {showCreateStore ? (
-    <CreateStoreCard first={hasNoStore} error={error} />
+    <CreateStoreCard first={hasNoStore} error={error} vocabulary={categoryVocabulary} />
   ) : store ? (
   <Fragment>
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
@@ -512,7 +524,15 @@ const orderStatusColors: Record<string, string> = {
                 </li>
               </ul>
             </div>
-          <a id="dash-view-store" href={storeHomeHref(store)} class="btn btn--sm" target="_blank" rel="noopener">
+          {/* A NAMED target, not _blank: every click reuses the same preview tab instead of
+              opening another one — on mobile, where tabs are out of sight, _blank quietly piled
+              them up. The store page shows the owner a "back to dashboard" bar (see
+              [storeSlug]/index.astro) that closes this tab and returns here.
+              NO rel="noopener": it makes the browser ignore the target name and open a fresh
+              context anyway (measured), which is the whole thing we're avoiding. Safe here
+              because the destination is our own store page, never third-party — and the opener
+              link is what lets initStorePreviewLink's window.open reuse and close the tab. */}
+          <a id="dash-view-store" href={storeHomeHref(store)} class="btn btn--sm" target="dezabin-store-preview">
             {d.viewLive}
           </a>
         </div>
@@ -586,8 +606,8 @@ const orderStatusColors: Record<string, string> = {
           style="position:relative"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>הודעות
-          {(unreadMessagesCount + unreadAdminMsgCount) > 0 && (
-            <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMessagesCount + unreadAdminMsgCount} הודעות שלא נקראו`}></span>
+          {unreadMsgRows > 0 && (
+            <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMsgRows} הודעות שלא נקראו`}></span>
           )}
         </button>
         <button
@@ -696,7 +716,7 @@ const orderStatusColors: Record<string, string> = {
 
           <div id="add-product-form" class="bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] p-5 mb-6" hidden>
             <h3 class="m-0 mb-3 text-base">{d.newProduct}</h3>
-            <form method="POST" class="mt-4">
+            <form method="POST" class="mt-4" data-unsaved-guard>
               <input type="hidden" name="_action" value="add-product" />
               <input type="hidden" name="storeId" value={store.id} />
 
@@ -1113,7 +1133,7 @@ const orderStatusColors: Record<string, string> = {
                   <tr class="edit-row" data-product-edit={p.id} hidden>
                     <td class="num row-num pe-[0.2rem]">{idx + 1}</td>
                     <td colspan="20">
-                      <form method="POST" action="/api/product" class="mt-4 inline-edit-form">
+                      <form method="POST" action="/api/product" class="mt-4 inline-edit-form" data-unsaved-guard>
                         <input type="hidden" name="_action" value="edit-product" />
                         <input type="hidden" name="productId" value={p.id} />
                         <div class="edit-row-header">
@@ -1688,7 +1708,7 @@ const orderStatusColors: Record<string, string> = {
           </div>
           <p class="muted text-[0.82rem] m-0 mb-3">{d.adBoostDesc}</p>
 
-          <form id="ad-create-form" class="flex flex-col gap-3 [&_.field>span]:text-[0.8rem]" data-store-slug={store.slug}>
+          <form id="ad-create-form" class="flex flex-col gap-3 [&_.field>span]:text-[0.8rem]" data-store-slug={store.slug} data-unsaved-guard>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label class="field">
                 <span>{d.adScopeStore} / {d.adScopeProduct}</span>
@@ -1910,135 +1930,11 @@ const orderStatusColors: Record<string, string> = {
                 </tr>
               </thead>
               <tbody>
-                <Fragment>
-                  <tr
-                    class={`msg-table__row${unreadAdminMsgCount > 0 ? ' msg-table__row--unread' : ''}`}
-                    data-msg-id="system"
-                    data-sort-date={lastAdminMessage?.createdAt ?? '1970-01-01T00:00:00.000Z'}
-                    data-sort-product=""
-                    data-filter-product=""
-                    data-filter-from="הודעות מערכת"
-                    tabindex="0"
-                    role="button"
-                    aria-expanded="false"
-                  >
-                    <td class="msg-table__td msg-table__td--status"></td>
-                    <td class="msg-table__td msg-table__td--from">
-                      {unreadAdminMsgCount > 0 && <span class="visually-hidden msg-unread-sr">לא נקרא · </span>}
-                      הודעות מערכת
-                    </td>
-                    <td class="msg-table__td msg-table__td--subject"><span style="color:var(--color-muted)">—</span></td>
-                    <td class="msg-table__td msg-table__td--preview">
-                      {lastAdminMessage ? lastAdminMessage.content : 'אין הודעות מערכת עדיין'}
-                      {lastAdminMessage?.fromRole === 'seller' && <span class="msg-table__preview-you"> (אתה)</span>}
-                    </td>
-                    <td class="msg-table__td msg-table__td--product"><span style="color:var(--color-muted)">—</span></td>
-                    <td class="msg-table__td msg-table__td--date">{lastAdminMessage ? formatHeDateTime(lastAdminMessage.createdAt) : ''}</td>
-                    <td class="msg-table__td msg-table__td--actions"></td>
-                  </tr>
-                  <tr class="msg-thread-row" id="msg-detail-system" hidden>
-                    <td colspan="7">
-                      <div class="msg-thread msg-thread--seller-pov" id="replies-system">
-                        {adminMessages.map((m) => (
-                          <div class={`msg-thread-entry ${m.fromRole === 'seller' ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`}>
-                            <div class="msg-thread-entry__header">
-                              <span class="msg-thread-entry__who">{m.fromRole === 'seller' ? 'אתה' : 'המנהל'}</span>
-                              <span class="msg-thread-entry__date">{formatHeDateTime(m.createdAt)}</span>
-                            </div>
-                            <div class="msg-thread-entry__body">{m.content}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div class="seller-msg-reply-form" data-reply-for="system" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-                        <textarea class="seller-msg-reply-textarea" placeholder="כתוב הודעה למנהל..." rows="3"></textarea>
-                        <div style="display:flex;justify-content:flex-end;gap:0.5rem">
-                          <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-                          <button class="seller-msg-reply-send" type="button">שלח</button>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                </Fragment>
-                {messagesPage.items.map(({ msg, replies, lastMsg, hasUnread }) => {
-                  const fmtDate = (iso: string) => new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-                  return (
-                    <Fragment>
-                      <tr
-                        class={`msg-table__row${hasUnread ? ' msg-table__row--unread' : ''}`}
-                        data-msg-id={msg.id}
-                        data-sort-date={lastMsg.createdAt}
-                        data-sort-product={(msg.productRef?.productName ?? '').toLowerCase()}
-                        data-filter-product={msg.productRef?.productName ?? ''}
-                        data-filter-from={msg.fromName}
-                        tabindex="0"
-                        role="button"
-                        aria-expanded="false"
-                      >
-                        <td class="msg-table__td msg-table__td--status"></td>
-                        <td class="msg-table__td msg-table__td--from">
-                          {hasUnread && <span class="visually-hidden msg-unread-sr">לא נקרא · </span>}
-                          {msg.fromName}
-                        </td>
-                        <td class="msg-table__td msg-table__td--subject">{msg.subject}</td>
-                        <td class="msg-table__td msg-table__td--preview">
-                          {lastMsg.content}
-                          {lastMsg.fromUserId === sellerId && <span class="msg-table__preview-you"> (אתה)</span>}
-                        </td>
-                        <td class="msg-table__td msg-table__td--product">
-                          {msg.productRef
-                            ? <a href={`/${msg.productRef.storeSlug}/${msg.productRef.productSlug}`} target="_blank" rel="noopener" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">{msg.productRef.productName}</a>
-                            : <span style="color:var(--color-muted)">—</span>
-                          }
-                        </td>
-                        <td class="msg-table__td msg-table__td--date">{fmtDate(lastMsg.createdAt)}</td>
-                        <td class="msg-table__td msg-table__td--actions">
-                          <button class="seller-msg-delete" data-delete-msg-id={msg.id} type="button" aria-label="מחק שיחה" title="מחק שיחה">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                          </button>
-                        </td>
-                      </tr>
-                      <tr class="msg-thread-row" id={`msg-detail-${msg.id}`} hidden>
-                        <td colspan="7">
-                          <div class="msg-thread msg-thread--seller-pov" id={`replies-${msg.id}`}>
-                            <div class="msg-thread-entry msg-thread-entry--buyer">
-                              <div class="msg-thread-entry__header">
-                                <span class="msg-thread-entry__who">{msg.fromName}</span>
-                                {!msg.readBySeller && <span class="msg-thread-unread-dot" aria-label="לא נקרא"></span>}
-                                <span class="msg-thread-entry__date">{fmtDate(msg.createdAt)}</span>
-                              </div>
-                              <div class="msg-thread-entry__body">{msg.content}</div>
-                            </div>
-                            {replies.map((r) => {
-                              const isSellerReply = r.fromUserId === sellerId;
-                              const isUnreadBuyerMsg = !isSellerReply && !r.readBySeller;
-                              return (
-                                <div class={`msg-thread-entry ${isSellerReply ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`}>
-                                  <div class="msg-thread-entry__header">
-                                    <span class="msg-thread-entry__who">{isSellerReply ? 'אתה' : r.fromName}</span>
-                                    {isUnreadBuyerMsg && <span class="msg-thread-unread-dot" aria-label="לא נקרא"></span>}
-                                    <span class="msg-thread-entry__date">{fmtDate(r.createdAt)}</span>
-                                  </div>
-                                  <div class="msg-thread-entry__body">{r.content}</div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div class="seller-msg-reply-form" data-reply-for={msg.id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-                            <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
-                            <div style="display:flex;justify-content:flex-end;gap:0.5rem">
-                              <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-                              <button class="seller-msg-reply-send" type="button">שלח</button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    </Fragment>
-                  );
-                })}
+                {messagesPage.items.map((row) => <SellerMessageRow row={row} />)}
               </tbody>
             </table>
           </div>
-          <p class="seller-msg-empty" id="msg-filter-empty" hidden={messagesPage.total > 0}>אין הודעות שתואמות לחיפוש/סינון.</p>
+          <p class="seller-msg-empty" id="msg-filter-empty" hidden={messagesPage.total > 0}>{messageRows.length === 0 ? 'אין הודעות עדיין.' : 'אין הודעות שתואמות לחיפוש/סינון.'}</p>
           <nav id="msg-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label="הודעות" data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
       </div>
 
@@ -2049,7 +1945,7 @@ const orderStatusColors: Record<string, string> = {
             "save changes" bar rides only over the fields it actually saves and releases
             at the form's end — the categories tree + custom-domain below save live per
             action (own APIs), so the button must not appear to govern them. */}
-        <form method="POST" action="/api/store" class="mt-4" id="settings-form" style="margin-top:0">
+        <form method="POST" action="/api/store" class="mt-4" id="settings-form" style="margin-top:0" data-unsaved-guard>
           <input type="hidden" name="_action" value="save-settings" />
           <input type="hidden" name="storeId" value={store.id} />
 
@@ -2083,9 +1979,14 @@ const orderStatusColors: Record<string, string> = {
           <div class="field">
             <span>{d.storeProfileImage}</span>
             <p class="muted" style="margin:0.15rem 0 0.6rem;font-size:0.8rem">{d.storeProfileImageHint}</p>
+            <!-- The store's generated mark sits UNDER the frame as a background, not as a
+                 child: the upload widget owns this element's innerHTML (store-image.ts), so
+                 the seller sees exactly the colour buyers and ad platforms get while the
+                 slot is empty — including right after "remove image". -->
             <div
               id="avatar-frame"
-              class="h-20 w-20 overflow-hidden rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]"
+              class="h-20 w-20 overflow-hidden rounded-full border border-[var(--color-border)]"
+              style={`background:${storeMarkGradient(storeMark(store.slug, store.name))}`}
             >
               {store.profileImage && (
                 <img src={cdnSrc(store.profileImage, 200)} alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
@@ -2119,10 +2020,10 @@ const orderStatusColors: Record<string, string> = {
             <textarea class="input" name="description" rows="3">{store.description}</textarea>
           </label>
 
-          <label class="field">
+          <div class="field">
             <span>{d.storeCategories}</span>
-            <input class="input" name="categories" value={store.categories?.join(', ') ?? ''} placeholder={d.storeCategoriesPlaceholder} />
-          </label>
+            <StoreCategoryPicker vocabulary={categoryVocabulary} selected={store.categories ?? []} id="settings-store-cats" />
+          </div>
 
           <div class="field">
             <label class="inline-flex items-center gap-[.55rem] font-semibold text-[.9rem] cursor-pointer">
@@ -2665,7 +2566,8 @@ const orderStatusColors: Record<string, string> = {
   import { initFeedSync } from '../../scripts/dashboard/feed-sync.js';
   import { initCustomDomain } from '../../scripts/dashboard/custom-domain.js';
   import { initStoreUrl } from '../../scripts/dashboard/store-url.js';
-  import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks } from '../../scripts/dashboard/ui.js';
+  import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks, initStorePreviewLink } from '../../scripts/dashboard/ui.js';
+  import { initUnsavedGuard } from '../../scripts/dashboard/unsaved-guard.js';
   import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
   import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
   import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
@@ -2677,6 +2579,7 @@ const orderStatusColors: Record<string, string> = {
   import { initOrdersTab } from '../../scripts/dashboard/orders.js';
   import { initMessagesTab } from '../../scripts/dashboard/messages.js';
   import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../../scripts/dashboard/select-dropdown.js';
+  import { initAllStoreCategoryPickers } from '../../scripts/store-category-picker.js';
 
   const uploadCfg = document.getElementById('upload-config');
   const CLOUD  = uploadCfg?.dataset.cloud  ?? '';
@@ -2758,6 +2661,8 @@ const orderStatusColors: Record<string, string> = {
   initDeleteProduct();
   initProductVisibilityToggle();
   initSettingsForm();
+  initUnsavedGuard();
+  initStorePreviewLink();
   initStoreHours();
   initCategoryTreeEditor();
   initFormToggles();
@@ -2829,4 +2734,5 @@ const orderStatusColors: Record<string, string> = {
   // switcher-alert refresh above (called on order-status / mark-read changes).
   initOrdersTab(updateSwitcherAlertDot);
   initMessagesTab(updateSwitcherAlertDot);
+  initAllStoreCategoryPickers();
 </script>

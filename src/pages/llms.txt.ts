@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { store as platform } from '../config/store.config.js';
-import { getVisibleStores } from '../lib/stores.js';
+import { getIndexableStores } from '../lib/stores.js';
 
 // /llms.txt — the emerging convention (llmstxt.org) for giving AI answer
 // engines a curated, human-readable map of the site, the "AIO" companion to
@@ -14,12 +14,15 @@ import { getVisibleStores } from '../lib/stores.js';
 // Generated from config + live stores so the real domain propagates
 // automatically on the go-live domain switch (no second hardcoded host to fix).
 // The store list is capped for scale — the content sitemap is the complete
-// enumeration; this file is a readable overview, not a full index.
+// enumeration; this file is a readable overview, not a full index. Showcase
+// stores are excluded (getIndexableStores) for the same reason they're out of
+// the sitemap: an answer engine must never quote the platform's own demo catalog
+// back as real inventory.
 const STORE_LIST_CAP = 50;
 
 export async function GET(_ctx: APIContext): Promise<Response> {
   const baseUrl = platform.url.replace(/\/+$/, '');
-  const stores = getVisibleStores();
+  const stores = getIndexableStores();
   const shown = stores.slice(0, STORE_LIST_CAP);
 
   const storeLines = shown

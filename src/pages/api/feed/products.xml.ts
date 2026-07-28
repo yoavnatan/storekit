@@ -1,6 +1,6 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getVisibleStores } from '../../../lib/stores.js';
+import { getIndexableStores } from '../../../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../../../lib/store-products.js';
 import { getCategoriesByStoreId, categoryPath } from '../../../lib/store-categories.js';
 import { getPurchasedCountsByStoreSlug } from '../../../lib/orders.js';
@@ -17,8 +17,11 @@ import { buildFeedItems, toMerchantXml, type FeedItem } from '../../../lib/produ
 // (API keys / GTM / Pixel — items 15-16); until then it's a valid, fetchable
 // feed that just isn't pointed at a live account yet.
 //
-// Only visible (non-blocked) stores/products are exported — a blocked listing
-// must never keep running in the shared platform's ads. Unauthenticated on
+// Only visible (non-blocked, non-demo) stores/products are exported — a blocked
+// listing must never keep running in the shared platform's ads, and the
+// platform's own showcase stores (lib/demo-stores.ts) are fabricated catalog:
+// submitting those to Merchant Center is a policy violation against the whole
+// account, not just an aesthetic problem. Unauthenticated on
 // purpose: a data feed is a public URL the platforms pull, and it exposes only
 // already-public catalog data.
 //
@@ -31,7 +34,7 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   const baseUrl = platform.url.replace(/\/+$/, '');
   const items: FeedItem[] = [];
 
-  for (const store of getVisibleStores()) {
+  for (const store of getIndexableStores()) {
     const categories = getCategoriesByStoreId(store.id);
     const purchased = getPurchasedCountsByStoreSlug(store.slug);
     for (const product of getVisibleProductsByStoreId(store.id)) {

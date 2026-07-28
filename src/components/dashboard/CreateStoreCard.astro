@@ -4,14 +4,17 @@
 //   • an existing seller opening an additional store (?new=1 on the dashboard).
 // Both POST `_action=create-store` back to /seller/dashboard, which redirects to the new store.
 import { getLang, getT } from '../../i18n/index.js';
+import StoreCategoryPicker from '../StoreCategoryPicker.astro';
 import { store as platformConfig } from '../../config/store.config';
 
 interface Props {
+  /** Shared category vocabulary for the picker (see lib/store-taxonomy.ts). */
+  vocabulary?: readonly string[];
   /** true = the seller's very first store (different heading + no way back). */
   first: boolean;
   error?: string;
 }
-const { first, error = '' } = Astro.props;
+const { first, error = '' , vocabulary = [] } = Astro.props;
 const lang = getLang(Astro.cookies);
 const d = getT(lang).dashboard;
 const host = new URL(platformConfig.url).hostname;
@@ -37,6 +40,10 @@ const host = new URL(platformConfig.url).hostname;
         <input class="input" name="slug" id="create-store-slug" required placeholder="my-store" dir="ltr" autocomplete="off" spellcheck="false" data-host={host} />
         <p class="muted text-[0.78rem] mt-1" style="text-align:start">{d.storeUrlHint} · <span id="create-store-url-preview" dir="ltr" class="font-mono [color:var(--color-text)]">{`${host}/my-store`}</span></p>
       </label>
+      <div class="field">
+        <span>{d.storeCategories}</span>
+        <StoreCategoryPicker vocabulary={vocabulary} id="create-store-cats" />
+      </div>
       <button class="btn btn--accent" type="submit" style="width:100%;margin-top:0.25rem">{d.createStoreBtn}</button>
     </form>
     {!first && (
@@ -48,6 +55,11 @@ const host = new URL(platformConfig.url).hostname;
 </section>
 
 <script>
+  // This card renders on its own page (no store yet), so the dashboard's own init
+  // never runs here — the picker has to be armed locally.
+  import { initAllStoreCategoryPickers } from '../../scripts/store-category-picker.js';
+  initAllStoreCategoryPickers();
+
   // Live-sanitize the store-URL field to a valid slug + preview the full address as the seller
   // types. Server re-normalizes on submit (see normalizeSlug), so this is only a nicety.
   const slugInput = document.getElementById('create-store-slug') as HTMLInputElement | null;

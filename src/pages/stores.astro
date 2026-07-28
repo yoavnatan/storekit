@@ -2,10 +2,13 @@
 export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import StoreCard from '../components/StoreCard.astro';
+import StorePlaceholderCard from '../components/StorePlaceholderCard.astro';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores, byPromoWeight } from '../lib/stores.js';
+import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
 import { getVisibleProductsByStoreId } from '../lib/store-products.js';
+import { isLaunchMode, showShelfInvite, launchInviteCount, LAUNCH_GRID_SLOTS } from '../lib/launch-mode.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const PAGE_SIZE = 24;
@@ -23,9 +26,30 @@ const category = (Astro.url.searchParams.get('category') ?? '').trim();
 const pageParam = parseInt(Astro.url.searchParams.get('page') ?? '1', 10);
 const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
 
+// DEV-only previews of the thin-catalog states, same three modes and same meaning
+// as the homepage's (see index.astro): they cap the number of REAL stores and let
+// the showcase-store rule apply on top, so what renders is what that day renders.
+// Read here rather than further down because the whole page — categories, paging,
+// counts — has to be built from the previewed set, not filtered at the end.
+const previewParam = import.meta.env.DEV ? Astro.url.searchParams.get('preview') : null;
+const previewLimit = previewParam === 'launch' ? 2
+  : previewParam === 'empty' || previewParam === 'blank' ? 0
+  : null;
+
 // Admin-blocked stores/products (see admin-moderation.ts) are excluded from
-// the directory — same reasoning as the homepage feed.
-const storesWithProducts = getVisibleStores()
+// the directory — same reasoning as the homepage feed. filterShopperStores() also
+// drops the platform's own showcase stores once there are enough real ones
+// (lib/demo-stores.ts).
+const visibleStores = getVisibleStores();
+const previewedStores = previewParam === 'blank'
+  ? []
+  : previewLimit === null
+    ? visibleStores
+    : (() => {
+        const keptReal = new Set(realStores(visibleStores).slice(0, previewLimit).map((s) => s.id));
+        return visibleStores.filter((s) => isDemoStore(s) || keptReal.has(s.id));
+      })();
+const storesWithProducts = filterShopperStores(previewedStores)
   .map((s) => ({ store: s, products: getVisibleProductsByStoreId(s.id) }))
   .filter(({ products }) => products.length > 0);
 
@@ -78,6 +102,25 @@ function categoryUrl(c: string): string {
 // query-param-driven listing on the site.
 const isFiltered = !!q || !!category || safePage > 1;
 
+// ── Launch mode (see lib/launch-mode.ts) — the directory gets the same
+// treatment as the homepage: real stores first, then placeholder cards filling
+// the grid out, so an under-populated directory never renders as a bare
+// "no stores found" page. Only on the clean, unfiltered view — padding a
+// *filtered* result set would misread as "these matched your search".
+// The `?preview=*` modes above already narrowed the catalog, so the grid needs no
+// second slice — the count below is the previewed one.
+// Real stores only — a showcase store must not count toward the threshold it
+// exists to cover (lib/demo-stores.ts).
+const liveStoreCount = countRealStores(storesWithProducts.map((s) => s.store));
+const launchMode = isLaunchMode(liveStoreCount);
+const gridStores = pageItems;
+const placeholderCount = !isFiltered && launchMode
+  ? launchInviteCount(gridStores.length, LAUNCH_GRID_SLOTS)
+  : 0;
+// Past launch mode but still thin: one placeholder closes the last page.
+const showGenericInvite = !isFiltered && !launchMode
+  && showShelfInvite(liveStoreCount) && safePage === totalPages;
+
 const titleSuffix = category ? ` — ${category}` : '';
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -128,27 +171,57 @@ const jsonLd = {
          endpoint to keep in sync (same reasoning as the dashboards' own
          SSR/AJAX-parity rule in AI_INSTRUCTIONS.md). ── -->
     <div id="stores-directory-results">
+      <!-- One scrolling row, not a wrapping block — the same
+           .category-filters-wrap/-row/-arrow structure the store page's own
+           category filter uses (styles/pages/store.css), driven by the shared
+           lib/chip-scroller.ts. Wrapping pushed the store grid below the fold
+           once the catalog had a dozen-plus categories. Chips stay real <a
+           href> links so the filter is still crawlable and works without JS;
+           the arrows are the only part that needs it. -->
+      <!-- `.store-controls` is reused verbatim, not re-styled: it already carries
+           the sticky pin under the fixed header, the full-bleed break-out and the
+           frosted backdrop that only appears once pinned (styles/pages/store.css).
+           Copying ~40 lines of that geometry under a directory-specific name would
+           be two things to keep in sync.
+           The comment sits OUTSIDE the expression on purpose: Astro's compiler
+           rejects an HTML comment as the first child right after `{expr && (`, and
+           it fails SILENTLY here — the route stops building, so /stores falls
+           through to [storeSlug] and 302s to /404 (see AI_INSTRUCTIONS → Architecture). -->
       {allCategories.length > 0 && (
-        <div class="stores-directory__chips" role="list">
-          <a href={categoryUrl('')} class="category-chip" role="listitem" aria-pressed={!category}>
-            {t.home.directoryAllCategories}
-          </a>
-          {allCategories.map((c) => (
-            <a href={categoryUrl(c)} class="category-chip" role="listitem" aria-pressed={category === c}>
-              {c}
-            </a>
-          ))}
+        <div class="store-controls stores-directory__chips">
+          <div class="category-filters-wrap">
+            <button type="button" class="category-filters-arrow category-filters-arrow--prev"
+                    id="stores-filters-prev" aria-label={lang === 'he' ? 'הקודם' : 'Previous'} hidden>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                   aria-hidden="true" style={lang === 'he' ? 'transform:scaleX(-1)' : ''}><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <div class="category-filters-row" id="stores-filters" role="list">
+              <a href={categoryUrl('')} class="category-chip" role="listitem" aria-pressed={!category}>
+                {t.home.directoryAllCategories}
+              </a>
+              {allCategories.map((c) => (
+                <a href={categoryUrl(c)} class="category-chip" role="listitem" aria-pressed={category === c}>
+                  {c}
+                </a>
+              ))}
+            </div>
+            <button type="button" class="category-filters-arrow category-filters-arrow--next"
+                    id="stores-filters-next" aria-label={lang === 'he' ? 'הבא' : 'Next'} hidden>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                   aria-hidden="true" style={lang === 'he' ? 'transform:scaleX(-1)' : ''}><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
         </div>
       )}
 
-      {pageItems.length === 0 ? (
+      {gridStores.length === 0 && placeholderCount === 0 ? (
         <div class="stores-directory__empty">
           <p>{t.home.directoryNoResults}</p>
           {isFiltered && <a href="/stores" class="btn btn--ghost btn--sm">{t.home.directoryClearFilters}</a>}
         </div>
       ) : (
         <div class="stores-directory__grid" role="list">
-          {pageItems.map(({ store, products }, i) => (
+          {gridStores.map(({ store, products }, i) => (
             <StoreCard
               store={store}
               previewImages={products.map((p) => p.images?.[0]).filter((u): u is string => !!u)}
@@ -156,6 +229,10 @@ const jsonLd = {
               role="listitem"
             />
           ))}
+          {Array.from({ length: placeholderCount }).map((_, i) => (
+            <StorePlaceholderCard index={gridStores.length + i} role="listitem" />
+          ))}
+          {showGenericInvite && <StorePlaceholderCard index={gridStores.length} role="listitem" />}
         </div>
       )}
 
@@ -179,6 +256,22 @@ const jsonLd = {
 <script>
   import { initImageSkeletons } from '../lib/img-skeleton.js';
   import { playReveal, armBelowFoldReveal } from '../lib/scroll-reveal.js';
+  import { initChipScroller } from '../lib/chip-scroller.js';
+  import { initStickyBar } from '../lib/sticky-bar.js';
+
+  // The chip row lives INSIDE #stores-directory-results, so every AJAX swap
+  // replaces the element the scroller was bound to — re-init rather than update.
+  function armChipScroller(): void {
+    initChipScroller({
+      row: document.getElementById('stores-filters'),
+      prev: document.getElementById('stores-filters-prev'),
+      next: document.getElementById('stores-filters-next'),
+    });
+    // The sticky sentinel is created next to the bar, so it dies with the bar on
+    // every swap too — re-arm both together.
+    initStickyBar(document.querySelector<HTMLElement>('.store-controls'));
+  }
+  armChipScroller();
 
   initImageSkeletons('.store-card__preview-img-wrap');
   armBelowFoldReveal('#stores-directory-results .store-card');
@@ -212,6 +305,7 @@ const jsonLd = {
     history.pushState(null, '', url);
     document.title = doc.title;
     initImageSkeletons('.store-card__preview-img-wrap');
+    armChipScroller();
     playReveal(Array.from(resultsWrap.querySelectorAll<HTMLElement>('.store-card')));
   }
 

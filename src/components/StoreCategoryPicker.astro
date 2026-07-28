@@ -1,0 +1,69 @@
+---
+/**
+ * Store-category picker — replaces the free-text comma field that let seller A write
+ * "אלקטרוניקה" and seller B "חשמל ואלקטרוניקה", splitting one category into two
+ * across `/stores`' filter and the homepage shelves (see lib/store-taxonomy.ts).
+ *
+ * Pick from the shared vocabulary (curated seeds + everything other stores already
+ * use, most-used first). Adding a genuinely new one is allowed — the mall can't
+ * predict every niche and owner approval would break the zero-touch rule — but it
+ * goes through `proposeCategory()`: unsafe wording is refused outright, and a label
+ * sharing a word with an existing category offers that one first (a SOFT block; the
+ * seller can still insist).
+ *
+ * Submits a plain comma-joined `categories` field, so the existing form POST is
+ * unchanged and `/api/store.ts` re-sanitizes server-side regardless — this component
+ * is convenience, never the rule.
+ */
+import { MAX_CATEGORIES_PER_STORE } from '../lib/store-taxonomy.js';
+import { getLang, getT } from '../i18n/index.js';
+
+interface Props {
+  /** Full vocabulary to choose from, already ordered (see buildVocabulary). */
+  vocabulary: readonly string[];
+  /** Categories this store already carries. */
+  selected?: readonly string[];
+  /** Distinguishes the two instances (settings form / new-store form) on one page. */
+  id?: string;
+}
+
+const { vocabulary, selected = [], id = 'store-cats' } = Astro.props;
+const t = getT(getLang(Astro.cookies));
+---
+
+<div
+  class="store-cat-picker"
+  id={id}
+  data-max={MAX_CATEGORIES_PER_STORE}
+  data-vocabulary={JSON.stringify(vocabulary)}
+  data-i18n={JSON.stringify({
+    search: t.dashboard.storeCategoriesPlaceholder,
+    add: t.dashboard.categoryAdd,
+    addAnyway: t.dashboard.categoryAddAnyway,
+    full: t.dashboard.categoryLimit.replace('{n}', String(MAX_CATEGORIES_PER_STORE)),
+    remove: t.dashboard.categoryRemove,
+  })}
+>
+  <!-- The real submitted value. Kept in sync by the script; the form works with
+       whatever is here even if JS never runs (it holds the saved value already). -->
+  <input type="hidden" name="categories" value={selected.join(', ')} class="store-cat-picker__value" />
+
+  <div class="store-cat-picker__chips flex flex-wrap gap-1.5 mb-2" data-chips></div>
+
+  <input
+    type="text"
+    class="input store-cat-picker__search"
+    placeholder={t.dashboard.storeCategoriesPlaceholder}
+    autocomplete="off"
+    data-search
+  />
+
+  <p class="store-cat-picker__msg hidden mt-1.5 text-[0.8rem] leading-relaxed [color:var(--color-muted)]" data-msg role="status"></p>
+
+  <div
+    class="store-cat-picker__list hidden mt-1.5 max-h-52 overflow-y-auto rounded-[var(--radius)] border p-[0.3rem]
+           [border-color:var(--color-border)] [background:var(--color-surface)]"
+    data-list
+    role="listbox"
+  ></div>
+</div>

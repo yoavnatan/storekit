@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { isDemoStore } from '../src/lib/demo-stores.js';
 
 // GUARDRAIL for the regression that shipped once and hid: store + product pages
 // are SSR (prerender=false), so @astrojs/sitemap never lists them and they were
@@ -7,13 +8,25 @@ import { describe, it, expect, vi } from 'vitest';
 // the endpoint actually emits a store URL AND a product URL nested under it. If
 // anyone breaks the enumeration — or a future change drops these routes from the
 // sitemap again — this fails loudly instead of silently costing indexation.
+//
+// The fixture deliberately contains a showcase store (`demo: true`) too, and
+// `getIndexableStores` is mocked to compose the REAL filter over the fixture —
+// only the fs layer is faked. So the demo assertion below tests the route + the
+// actual rule, not the mock (see lib/demo-stores.ts).
+
+const ALL_STORES = [
+  { id: 's1', slug: 'acme', createdAt: '2026-01-02T09:00:00.000Z' },
+  { id: 's2', slug: 'showcase-fashion', createdAt: '2026-01-03T09:00:00.000Z', demo: true },
+];
 
 vi.mock('../src/lib/stores.js', () => ({
-  getVisibleStores: () => [{ id: 's1', slug: 'acme', createdAt: '2026-01-02T09:00:00.000Z' }],
+  getIndexableStores: () => ALL_STORES.filter((s) => !isDemoStore(s)),
 }));
 vi.mock('../src/lib/store-products.js', () => ({
   getVisibleProductsByStoreId: (id: string) =>
-    id === 's1' ? [{ slug: 'blue-widget', createdAt: '2026-03-04T09:00:00.000Z' }] : [],
+    id === 's1' ? [{ slug: 'blue-widget', createdAt: '2026-03-04T09:00:00.000Z' }]
+    : id === 's2' ? [{ slug: 'demo-shirt', createdAt: '2026-03-05T09:00:00.000Z' }]
+    : [],
 }));
 
 import { GET } from '../src/pages/sitemap-content.xml';
@@ -32,5 +45,13 @@ describe('/sitemap-content.xml', () => {
     expect(xml).toMatch(/<loc>https?:\/\/[^<]*\/acme\/blue-widget<\/loc>/);
     // lastmod is derived from createdAt (date part only).
     expect(xml).toContain('<lastmod>2026-03-04</lastmod>');
+  });
+
+  it('never advertises a showcase store or its products', async () => {
+    // Fabricated catalog in Google's index costs the shared platform domain real
+    // ranking — the reason showcase stores are noindex on-page as well.
+    const xml = await (await GET({} as never)).text();
+    expect(xml).not.toContain('showcase-fashion');
+    expect(xml).not.toContain('demo-shirt');
   });
 });

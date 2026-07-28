@@ -1,6 +1,7 @@
 ---
 import { cdnSrc } from '../config/store.config.js';
 import StoreAvatar from './StoreAvatar.astro';
+import StoreDemoBadge from './StoreDemoBadge.astro';
 import { storeHomeHref } from '../lib/custom-domain.js';
 import type { Store } from '../lib/stores.js';
 
@@ -13,16 +14,20 @@ interface Props {
    *  shelf renders first (liked → new → category → discovery). */
   eager?: boolean;
   role?: 'listitem';
+  /** Preview thumbs per card. A shelf holding only one or two cards makes each
+   *  card very wide, and three thumbs stretched across that width read as
+   *  oversized; a fourth restores the card's internal proportion. Set by
+   *  HomeShelf, never by hand. */
+  previewSlots?: number;
 }
 
-const { store, previewImages = [], class: className = '', eager = false, role } = Astro.props;
-const PREVIEW_SLOTS = 3;
-const thumbs = previewImages.slice(0, PREVIEW_SLOTS);
-// Always render a fixed 3-slot row — a store whose products have no photos yet
-// (or fewer than 3) gets neutral placeholder squares for the rest, so every
-// card in the same shelf stays the same height instead of the photo-less one
-// visibly shrinking next to its neighbors.
-const placeholderCount = PREVIEW_SLOTS - thumbs.length;
+const { store, previewImages = [], class: className = '', eager = false, role, previewSlots = 3 } = Astro.props;
+const thumbs = previewImages.slice(0, previewSlots);
+// Always render a fixed slot row — a store whose products have no photos yet
+// (or fewer than the slot count) gets neutral placeholder squares for the rest,
+// so every card in the same shelf stays the same height instead of the
+// photo-less one visibly shrinking next to its neighbors.
+const placeholderCount = previewSlots - thumbs.length;
 const noImgIconSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
 
 // At most 2 tags shown + a "+N" for the rest — a gentle label, not a wall of chips.
@@ -48,7 +53,7 @@ const isExternalStore = storeHref.startsWith('http');
 >
   <div class="store-card__head">
     <span class="store-card__avatar-wrap">
-      <StoreAvatar name={store.name} profileImage={store.profileImage} size={40} />
+      <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={40} />
     </span>
     <div class="store-card__title-group">
       <span class="store-card__name" dir="auto">{store.name}</span>
@@ -65,6 +70,11 @@ const isExternalStore = storeHref.startsWith('http');
        preview row sitting higher than neighboring cards that do have tags,
        a visible misalignment across a shelf of side-by-side cards. -->
   <div class="store-card__tags">
+    <!-- First in the row, before the category chips: a showcase store must
+         disclose itself here and not only at the checkout refusal, which is
+         server-side and final (see lib/demo-stores.ts). Renders nothing for a
+         normal store. -->
+    <StoreDemoBadge demo={store.demo} compact={true} />
     {shownCategories.map((c) => <span class="store-card__tag">{c}</span>)}
     {extraCategoryCount > 0 && <span class="store-card__tag store-card__tag--more">+{extraCategoryCount}</span>}
   </div>

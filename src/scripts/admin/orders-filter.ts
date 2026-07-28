@@ -45,6 +45,9 @@ export function initAdminOrdersFilter(): void {
   const state = root.dataset;
   let sortCol = (state.sortCol as SortCol) || 'date';
   let sortDir = (state.sortDir as 'asc' | 'desc') || 'desc';
+  // Deliberately NOT part of activeFilters/the "סינון לפי" count — it isn't a
+  // property of an order, it's "what arrived since I last left this tab".
+  let newOnly = state.newOnly === '1';
   const storeNames: string[] = JSON.parse(state.storeNames ?? '[]');
 
   const FILTER_COLUMNS: FilterColumnDef[] = [
@@ -82,8 +85,17 @@ export function initAdminOrdersFilter(): void {
       oship: ship?.size ? [...ship].join(',') : undefined,
       opay: pay?.size ? [...pay].join(',') : undefined,
       ostore: store?.size ? encodeList([...store]) : undefined,
+      onew: newOnly ? '1' : undefined,
     });
   }
+
+  // The URL of what the panel is showing right now, captured before any
+  // checkbox can stage a change into activeFilters. Apply/clear compare
+  // against it and skip navigating when the result would be identical —
+  // otherwise clearing a column that was never filtered re-fetches and
+  // re-renders the panel into the exact same list, which reads as the list
+  // flickering in response to a click that had nothing to do.
+  const appliedUrl = buildOrdersNavUrl();
 
 // AJAX-swaps the panel (see admin-nav.ts's swapPanel) instead of a full page
 // nav — shared by sort selection and filter apply/clear (the search box's
@@ -92,6 +104,12 @@ export function initAdminOrdersFilter(): void {
   function navigate(): void {
     swapPanel(buildOrdersNavUrl(), PANEL_ID, () => initAdminOrdersFilter());
   }
+
+  const newToggle = document.getElementById('admin-orders-new-toggle') as HTMLButtonElement | null;
+  newToggle?.addEventListener('click', () => {
+    newOnly = !newOnly;
+    navigate();
+  });
 
   const searchInput = document.getElementById('admin-order-search') as HTMLInputElement | null;
   searchInput?.addEventListener('input', debounce(() => {
@@ -183,9 +201,13 @@ export function initAdminOrdersFilter(): void {
       });
       p.querySelector('[data-filter-clear]')?.addEventListener('click', () => {
         activeFilters.delete(col);
+        if (buildOrdersNavUrl() === appliedUrl) { portal.close(); return; }
         navigate();
       });
-      p.querySelector('[data-filter-apply]')?.addEventListener('click', () => navigate());
+      p.querySelector('[data-filter-apply]')?.addEventListener('click', () => {
+        if (buildOrdersNavUrl() === appliedUrl) { portal.close(); return; }
+        navigate();
+      });
     });
   }
 

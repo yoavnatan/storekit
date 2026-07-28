@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { filterShopperStores, isDemoStore } from './demo-stores.js';
 
 const STORES_PATH = path.join(process.cwd(), 'data/stores.json');
 
@@ -49,6 +50,12 @@ export interface Store {
    *  search), so it can't keep damaging the shared platform domain's Google standing
    *  while the seller sorts it out. Never set by anything but an admin action. */
   blocked?: boolean;
+  /** Platform-owned showcase store ("חנות לדוגמה") — see lib/demo-stores.ts and
+   *  GO_LIVE_CHECKLIST.md §6.2. Never indexed, never counted toward a store
+   *  threshold, never checkout-able, and dropped from shopper discovery once the
+   *  mall has real stores. Set only by the showcase seeder / by hand in data;
+   *  the seller store-update endpoint whitelists fields, so a seller can't set it. */
+  demo?: boolean;
   /** Admin-only "shop-window" curation weight (see /api/admin/promote + CURRENT_TASK.md → סשן ב׳).
    *  Higher = the store floats higher in the platform's OWN discovery surfaces (homepage
    *  discovery + spotlight, /stores directory). It only reorders placement in real estate the
@@ -315,6 +322,31 @@ export function isStoreVisible(store: Store): boolean {
  *  (homepage, /stores, search) should call instead of getAllStores() + an inline filter. */
 export function getVisibleStores(): Store[] {
   return readStores().filter(isStoreVisible);
+}
+
+/** What a SHOPPER-facing discovery surface lists (homepage, /stores, site search):
+ *  getVisibleStores() with the platform's own showcase stores dropped as soon as
+ *  there are real stores to show instead. See lib/demo-stores.ts. */
+export function getShopperStores(): Store[] {
+  return filterShopperStores(getVisibleStores());
+}
+
+/** What a SEARCH ENGINE or an outbound feed may see: getVisibleStores() minus every
+ *  showcase store, always. Sitemap, llms.txt, the Merchant/Meta product feed and
+ *  IndexNow all gate through this — fabricated catalog must never be advertised. */
+export function getIndexableStores(): Store[] {
+  return getVisibleStores().filter((s) => !isDemoStore(s));
+}
+
+/** The platform's showcase stores, oldest first. Unlike the shopper surfaces this
+ *  is NOT thresholded — the seller-facing "צפו בחנות לדוגמה" entry point stays
+ *  live forever, which is why it reads its own list instead of getShopperStores().
+ *  Empty list = the showcase seeder was never run; every call site must degrade to
+ *  rendering nothing rather than to a dead link. */
+export function getDemoStores(): Store[] {
+  return getVisibleStores()
+    .filter(isDemoStore)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export function updateStore(storeId: string, updates: Partial<Omit<Store, 'id' | 'sellerId' | 'createdAt'>>): Store | null {

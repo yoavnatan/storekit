@@ -19,6 +19,20 @@
   --color-warning: #d97706;
   --color-success: #16a34a;
 
+  /* Placeholder store-card tiles (see lib/placeholder-art.ts) — ONE of these is
+     the dominant colour of a whole card, rotated by card index, so the launch-
+     mode shelf reads as a row of different stores rather than one repeated
+     swatch. Deliberately outside the brand palette: three brand blues/teals side
+     by side average out to grey, which is exactly the monotone this replaces.
+     Each is dark enough that the 1.2px line-art drawn in the same hue clears
+     3:1 against that hue's strongest tile wash (22%) — do not lighten one
+     without re-checking, the gold is the tight one at 3.07:1. */
+  --color-tile-blue: #2563c9;
+  --color-tile-orange: #c2620d;
+  --color-tile-green: #158a56;
+  --color-tile-gold: #a8760a;
+  --color-tile-red: #c33a2c;
+
   --font-base: 'Heebo', system-ui, -apple-system, sans-serif;
 
   /* The default step of the radius scale (see the @theme block below), under

@@ -4,14 +4,18 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import HomeShelf from '../components/HomeShelf.astro';
 import HomeTabEmpty from '../components/HomeTabEmpty.astro';
 import StoreAvatar from '../components/StoreAvatar.astro';
+import StoreDemoBadge from '../components/StoreDemoBadge.astro';
+import HomeProductCard from '../components/HomeProductCard.astro';
 import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
+import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
 import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { getAllOrders } from '../lib/orders.js';
 import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
 import { getUserCart } from '../lib/user-carts.js';
 import { parseRecentStores, mergeStoreSlugs } from '../lib/recent-stores.js';
+import { isLaunchMode, showShelfInvite, planLaunchShelf } from '../lib/launch-mode.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId    = getSellerSession(Astro.cookies);
@@ -19,13 +23,39 @@ const sellerStore = sellerId ? getStoreBySellerId(sellerId) : null;
 const isLoggedIn  = !!sellerId;
 const hasStore    = !!sellerStore;
 
-// Admin-blocked stores/products (see admin-moderation.ts) never appear on the
-// discovery surfaces — a blocked store's card here would be a live link into
-// a page that immediately 404s, and defeats the point of blocking it.
-const stores = getVisibleStores();
 const lang   = getLang(Astro.cookies);
 const t      = getT(lang);
 
+// ── Launch mode (CURRENT_TASK.md → 2026-07-28), see lib/launch-mode.ts.
+// DEV-only previews, since the demo dataset is an order of magnitude past the
+// threshold and these states are otherwise impossible to look at. They cap the
+// number of REAL stores; the showcase stores (lib/demo-stores.ts) then follow
+// their own rule on top, so a preview shows exactly what that day looks like:
+//   ?preview=launch → 2 real stores + the showcase stores
+//   ?preview=empty  → 0 real stores — day one as it will actually ship
+//   ?preview=blank  → nothing at all, showcase stores included (the pure
+//                     placeholder page, i.e. day one with no seeded showcase)
+const previewParam = import.meta.env.DEV ? Astro.url.searchParams.get('preview') : null;
+const previewLimit = previewParam === 'launch' ? 2
+  : previewParam === 'empty' || previewParam === 'blank' ? 0
+  : null;
+
+// Admin-blocked stores/products (see admin-moderation.ts) never appear on the
+// discovery surfaces — a blocked store's card here would be a live link into
+// a page that immediately 404s, and defeats the point of blocking it.
+// filterShopperStores() then drops the platform's own showcase stores once there
+// are enough real ones; their pages stay reachable by link either way.
+const visibleStores = getVisibleStores();
+const previewedStores = previewLimit === null || previewParam === 'blank'
+  ? (previewParam === 'blank' ? [] : visibleStores)
+  : (() => {
+      const keptReal = new Set(realStores(visibleStores).slice(0, previewLimit).map((s) => s.id));
+      return visibleStores.filter((s) => isDemoStore(s) || keptReal.has(s.id));
+    })();
+const stores = filterShopperStores(previewedStores);
+
+// Applied before the feed is built, so every downstream surface (shelves,
+// spotlight, discovery) sees the same small catalog rather than a mixed picture.
 const storesWithProducts = stores
   .map((s) => ({ store: s, products: getVisibleProductsByStoreId(s.id) }))
   .filter(({ products }) => products.length > 0);
@@ -119,6 +149,27 @@ const firstEagerShelfId = activeTabShelves.find((s) => s.stores.length > 0)?.id;
 // color back-to-back.
 const bgOffset = Math.floor(Math.random() * 3);
 
+// Under 5 live stores the Discover tab's SHELVES collapse to one placeholder-
+// padded row (the category rows would each hold a single card, which is what
+// actually reads as empty). The spotlight carousel and everything else about
+// the page — hero, tab strip, titles — stay exactly as they are: nothing on
+// screen announces that the mall is new. Between 5 and 10 stores the normal
+// page returns with one placeholder closing the discovery shelf.
+// Both thresholds count REAL stores only — the platform's own showcase stores
+// (lib/demo-stores.ts) are here to FILL launch mode, so counting them would make
+// three of them switch it off and hide themselves along with it.
+const liveStoreCount = countRealStores(storesWithProducts.map((s) => s.store));
+const launchMode = isLaunchMode(liveStoreCount);
+const shelfInvite = !launchMode && showShelfInvite(liveStoreCount);
+
+// What the launch shelf actually holds. Split real vs showcase first, because the
+// shelf has to guarantee BOTH are represented alongside an open slot — see
+// planLaunchShelf; passing one merged list can't express that.
+const launchShelf = planLaunchShelf(
+  storesWithProducts.filter((s) => !isDemoStore(s.store)),
+  storesWithProducts.filter((s) => isDemoStore(s.store)),
+);
+
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
@@ -184,19 +235,9 @@ const jsonLd = {
        tabbed UI below it) — category browsing still lives inside the
        Discover tab's own category shelves. ── -->
 
-  {storesWithProducts.length === 0 ? (
-    <div class="section container flex flex-col items-center gap-4 py-16 text-center">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-           class="opacity-25 text-[var(--color-muted)]" aria-hidden="true">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-        <polyline points="9 22 9 12 15 12 15 22"/>
-      </svg>
-      <p class="text-[var(--color-muted)] text-sm">{t.home.noStores}</p>
-      <a href="/seller/register" class="btn">{t.home.openStoreFree}</a>
-    </div>
-  ) : (
-    <>
-
+  <!-- The tab shell renders at every store count, launch mode included — the
+       chrome of a working app is part of looking ready, and an empty
+       Liked/Bought tab is the normal state for any first-time visitor anyway. -->
       <!-- ── Tabs: liked / bought-before / new / discover — reuses the seller/
            admin dashboard's own tab shell (dash-tabs/.dash-panel + initDashTabs()
            in scripts/dashboard/ui.ts) so the homepage picks up the "app
@@ -220,9 +261,9 @@ const jsonLd = {
             {tabs.map((tab) => (
               <button
                 class={`dash-tab home-tab${activeTab === tab.id ? ' dash-tab--active' : ''}
-                  rounded-t-[var(--radius-sm)] !border-b-0
-                  [transition:color_0.15s,background-color_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
-                  hover:bg-[color:var(--color-bg)] active:scale-[0.97]`}
+                  rounded-[var(--radius-sm)] !border-b-0
+                  [transition:color_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
+                  hover:text-[color:var(--color-text)] active:scale-[0.97]`}
                 role="tab"
                 id={`tab-${tab.id}`}
                 data-panel={tab.id}
@@ -263,22 +304,43 @@ const jsonLd = {
       </div>
 
       <div id="dash-panel-discover" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-discover" hidden={activeTab !== 'discover'}>
-        {discoverHasContent ? (
+        {launchMode || discoverHasContent ? (
           <>
-            <!-- ── Recently visited stores (CURRENT_TASK.md → סשן ב׳ 1+3) — a
-                 normal SSR StoreCard shelf, resolved server-side from the
-                 recent-stores cookie (+ account for a logged-in user). Sits at
-                 the very top of the tab, where "עוד לגלות" used to be; only
-                 renders when there's history (HomeShelf hides itself on an
-                 empty list). ── -->
-            <HomeShelf id="recent" title={t.home.recentlyViewed} stores={recentStores} dotIndex={bgOffset}
-                       eagerFirst={activeTab === 'discover' && recentStores.length > 0} />
+            <!-- Launch mode swaps only the SHELVES — the recently-visited and
+                 category rows would each be a one-card row at 0-4 stores, which
+                 is what actually reads as empty — for a single placeholder-padded
+                 shelf. Same treatment the Liked/BuyAgain/New tabs already use:
+                 heading hidden (the tab is the heading) and mobile-filling. The
+                 spotlight carousel below is NOT skipped: it's the page's one
+                 moving element, and one real store is enough to run it. -->
+            {launchMode ? (
+              <HomeShelf id="launch" title={t.home.discoverStores} stores={launchShelf.stores}
+                         invites={launchShelf.invites}
+                         eagerFirst={activeTab === 'discover'} hideHeading fillMobile />
+            ) : (
+              <>
+                <!-- ── Recently visited stores (CURRENT_TASK.md → סשן ב׳ 1+3) — a
+                     normal SSR StoreCard shelf, resolved server-side from the
+                     recent-stores cookie (+ account for a logged-in user). Sits at
+                     the very top of the tab, where "עוד לגלות" used to be; only
+                     renders when there's history (HomeShelf hides itself on an
+                     empty list). ── -->
+                <HomeShelf id="recent" title={t.home.recentlyViewed} stores={recentStores} dotIndex={bgOffset}
+                           eagerFirst={activeTab === 'discover' && recentStores.length > 0} />
 
-            <!-- ── Category shelves — above the spotlight. "גלה עוד" now renders
-                 BELOW the spotlight instead (see after the carousel block). ── -->
-            {categoryShelves.map((s, i) => (
-              <HomeShelf id={s.id} title={s.title} stores={s.stores} dotIndex={i + 1 + bgOffset} eagerFirst={activeTab === 'discover' && recentStores.length === 0 && s.id === firstEagerShelfId} />
-            ))}
+                <!-- ── Category shelves — above the spotlight. "גלה עוד" now renders
+                     BELOW the spotlight instead (see after the carousel block). ── -->
+                {categoryShelves.map((s, i) => (
+                  <HomeShelf id={s.id} title={s.title} stores={s.stores} dotIndex={i + 1 + bgOffset} eagerFirst={activeTab === 'discover' && recentStores.length === 0 && s.id === firstEagerShelfId} />
+                ))}
+              </>
+            )}
+
+            <!-- Zero live stores → no spotlight at all. It's built from real
+                 stores and real products, and a decorative stand-in band was
+                 tried here and rejected (2026-07-28: too wide, foreign to the
+                 page's own vocabulary). Don't re-add one — the page is complete
+                 without it, and one real store brings the carousel back. -->
 
             <!-- ── Spotlight: a horizontal carousel of per-store product
                  carousels — one store's full section visible at a time,
@@ -363,19 +425,36 @@ const jsonLd = {
                           <div class="home-section-header">
                             <div class="home-store-section__title-group">
                               <a href={`/${s.slug}`} class="flex items-center gap-2.5" style="color:inherit;text-decoration:none">
-                                <StoreAvatar name={s.name} profileImage={s.profileImage} size={36} />
+                                <StoreAvatar name={s.name} slug={s.slug} profileImage={s.profileImage} size={36} />
                                 <h2 id={`sh-${s.slug}`} class="home-section-title hover:text-[var(--color-accent)] transition-colors duration-150">{s.name}</h2>
                               </a>
                               {(s.tagline || s.description) && (
                                 <p class="home-store-section__tagline" dir="auto">{s.tagline || s.description}</p>
                               )}
+                              <!-- The spotlight is the one surface a shopper can browse a
+                                   showcase store's products from without ever seeing its
+                                   card or its page, so the label has to be here too — in
+                                   the quiet variant, since this header is already busy. -->
+                              <StoreDemoBadge demo={s.demo} quiet={true} />
                             </div>
+                            <!-- Hover: the same "lift to a white surface" the tab beam
+                                 uses, plus the arrow springing a few px the way it
+                                 points. `.btn--ghost:hover` fills with --color-bg, which
+                                 IS this page's background — invisible here — hence the
+                                 `!bg` override to --color-surface. The arrow's translate
+                                 needs the rtl branch: `translate` applies in the parent's
+                                 coordinate space *after* `rtl:-scale-x-100`'s flip, so it
+                                 would otherwise slide against the arrowhead in Hebrew. -->
                             <a
                               href={`/${s.slug}`}
-                              class="btn btn--sm btn--ghost inline-flex items-center gap-1.5 shrink-0"
+                              class="btn btn--sm btn--ghost group inline-flex items-center gap-1.5 shrink-0
+                                [transition:background-color_0.15s,box-shadow_0.18s]
+                                hover:!bg-[color:var(--color-surface)] hover:shadow-[var(--shadow-xs)]"
                             >
                               {t.home.visitStore}
-                              <svg class="rtl:-scale-x-100" width="11" height="11" viewBox="0 0 24 24" fill="none"
+                              <svg class="rtl:-scale-x-100 group-hover:translate-x-[3px] rtl:group-hover:-translate-x-[3px]
+                                     [transition:translate_0.18s_cubic-bezier(0.34,1.56,0.64,1)]"
+                                   width="11" height="11" viewBox="0 0 24 24" fill="none"
                                    stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                                 <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
                               </svg>
@@ -407,33 +486,7 @@ const jsonLd = {
                             )}
                             <div class="home-carousel" role="list" aria-label={s.name}>
                               {products.map((p) => (
-                                <a
-                                  href={`/${s.slug}`}
-                                  class="home-product-card card"
-                                  role="listitem"
-                                  aria-label={`${p.name} — ${formatPrice(p.price)}`}
-                                >
-                                  <div class={`home-product-card__img-wrap${p.images?.[0] ? ' is-loading' : ''}`}>
-                                    {p.images?.[0]
-                                      ? <img
-                                          data-lazy-src={cdnSrc(p.images[0])}
-                                          data-lazy-srcset={cdnSrcSet(p.images[0], [220, 300, 440, 600]) || undefined}
-                                          sizes="(max-width: 480px) 44vw, 220px"
-                                          alt={p.name}
-                                          width="300"
-                                          height="300"
-                                          class="home-product-card__img"
-                                        />
-                                      : <span class="home-product-card__initial" aria-hidden="true">
-                                          {p.name[0]?.toUpperCase() ?? '?'}
-                                        </span>
-                                    }
-                                  </div>
-                                  <div class="home-product-card__body">
-                                    <span class="home-product-card__name" dir="auto">{p.name}</span>
-                                    <span class="home-product-card__price">{formatPrice(p.price)}</span>
-                                  </div>
-                                </a>
+                                <HomeProductCard product={p} storeSlug={s.slug} role="listitem" />
                               ))}
                             </div>
                           </div>
@@ -446,56 +499,72 @@ const jsonLd = {
 
             <!-- ── "גלה עוד" (renamed from "עוד לגלות") — now BELOW the big
                  carousel (סשן ב׳ follow-up), as a "keep exploring" shelf after
-                 the hero spotlight. HomeShelf hides itself when empty. ── -->
-            <HomeShelf id={discoveryShelf.id} title={discoveryShelf.title} stores={discoveryShelf.stores}
-                       dotIndex={categoryShelves.length + 1 + bgOffset} />
+                 the hero spotlight. HomeShelf hides itself when empty. Skipped
+                 in launch mode: with under 5 stores it would be the same store
+                 cards the launch shelf above already shows, a visible duplicate
+                 rather than more to explore. ── -->
+            {!launchMode && (
+              <HomeShelf id={discoveryShelf.id} title={discoveryShelf.title} stores={discoveryShelf.stores}
+                         dotIndex={categoryShelves.length + 1 + bgOffset} invites={shelfInvite ? 1 : 0} />
+            )}
+
+            <!-- Nothing closes the discover panel in launch mode, deliberately
+                 (2026-07-28). The page still scrolls and still ends on something:
+                 the seller CTA card below this panel sits under the fold on its
+                 own (measured 1743px page vs a 900px viewport). A cross-store
+                 product row was built here and removed the same day — mixing every
+                 store's goods into one row reads as a bazaar, which is the opposite
+                 of the mall the platform is selling. The only thing missing without
+                 it is the card entrance animation, and that is not worth a section.
+                 Don't re-add one without a reason that isn't "the page feels short". -->
+
           </>
         ) : (
           <HomeTabEmpty message={t.home.tabEmptyGeneric} ctaLabel={t.home.tabEmptyCtaAll} ctaHref="/stores" />
         )}
       </div>
-    </>
-  )}
 
   <!-- ── Seller CTA ─────────────────────────────────────────────────── -->
-  {isLoggedIn && !hasStore && (
+  <!-- Normally only shown to a logged-in visitor without a store (a guest gets
+       the hero's own "open a store" link and doesn't need a second pitch) — but
+       in launch mode recruiting sellers IS the page's job, so guests see it too.
+
+       Restyled 2026-07-28 (user: "לא שייך לאתר"). Was a full-bleed dark navy
+       band with a radial glow and a white shadowed button — a marketing slab
+       lifted from a different site, sitting under a page built out of light
+       cards. It's now the same surface everything else on this page is: a
+       bordered card on the normal background, the standard `.btn`, and no
+       colour or shadow that appears nowhere else.
+
+       The copy is deliberately NOT the "open a store in minutes / no code /
+       free" script — see the note on `home.startSelling` in translations.ts. -->
+  {!hasStore && (isLoggedIn || launchMode) && (
     <section class="home-cta" aria-labelledby="cta-heading">
-      <div class="home-cta__glow" aria-hidden="true"></div>
-      <div class="container home-cta__inner">
-        <div class="flex flex-col gap-3 text-center">
-          <h2 id="cta-heading" class="text-2xl sm:text-3xl font-bold text-white leading-tight">
+      <div class="container">
+        <div class="home-cta__card">
+          <h2 id="cta-heading" class="text-xl sm:text-2xl font-bold leading-tight [color:var(--color-text)] m-0">
             {t.home.startSelling}
           </h2>
-          <p class="text-white/65 text-base max-w-sm mx-auto">{t.home.startSellingDesc}</p>
+          <p class="text-[0.95rem] leading-relaxed [color:var(--color-muted)] max-w-md m-0">
+            {t.home.startSellingDesc}
+          </p>
+          <ul class="flex flex-wrap justify-center gap-x-5 gap-y-2 text-[0.85rem] font-medium [color:var(--color-text)]" role="list">
+            {[t.home.builtInAds, t.home.builtInSeo, t.home.builtInShipping].map((feature) => (
+              <li class="flex items-center gap-1.5">
+                <svg class="[color:var(--color-accent)]" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                {feature}
+              </li>
+            ))}
+          </ul>
+          <a href="/seller/register" class="btn btn--accent mt-1">
+            {t.home.openStoreFree}
+            <svg class="rtl:-scale-x-100" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </a>
         </div>
-        <ul class="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm font-medium text-white/55" role="list">
-          <li class="flex items-center gap-1.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-            {t.home.freeToStart}
-          </li>
-          <li class="flex items-center gap-1.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-            {t.home.ownStorefront}
-          </li>
-          <li class="flex items-center gap-1.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-            {t.home.builtInSeo}
-          </li>
-        </ul>
-        <a
-          href="/seller/register"
-          class="inline-flex items-center gap-2 px-6 py-3 rounded-[var(--radius)] font-semibold text-sm
-                 transition-all duration-150 active:scale-[0.97]"
-          style="background:#fff;color:var(--color-primary);box-shadow:0 4px 18px rgba(0,0,0,0.22)"
-          onmouseover="this.style.background='rgba(255,255,255,0.92)'"
-          onmouseout="this.style.background='#fff'"
-        >
-          {t.home.openStoreFree}
-          <svg class="rtl:-scale-x-100" width="13" height="13" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-          </svg>
-        </a>
       </div>
     </section>
   )}
@@ -520,9 +589,11 @@ const jsonLd = {
   // unchanged, see AI_INSTRUCTIONS.md → Homepage.
   initDashTabs();
 
-  // ── Sliding tab underline (CURRENT_TASK.md → סשן ב׳ 2) — one shared bar that
-  // travels the full width of the tab row to whichever tab the pointer is over,
-  // and eases back to the active tab on pointer-leave. Positioning is by
+  // ── Sliding tab underline (CURRENT_TASK.md → סשן ג׳) — one shared bar that
+  // travels the full width of the tab row to the tab that was just ACTIVATED.
+  // It deliberately does NOT follow the pointer: what follows the pointer is
+  // the hover beam below (home.css → Tab hover beam), so moving across the row
+  // can't make the bar dart back and forth. Positioning is by
   // physical rect (left/width), so it's RTL-correct without a dir branch.
   {
     const tablist   = document.querySelector<HTMLElement>('.dash-tabs');
@@ -544,13 +615,39 @@ const jsonLd = {
       moveIndicatorTo(activeTab());
       requestAnimationFrame(() => { moveIndicatorTo(activeTab()); indicator.classList.add('is-ready'); });
 
-      homeTabs.forEach((tab) => tab.addEventListener('pointerenter', () => moveIndicatorTo(tab)));
-      tablist.addEventListener('pointerleave', () => moveIndicatorTo(activeTab()));
       // Keyboard/click activation (and any programmatic tab switch) re-anchors
       // to the new active tab — dashtab:show bubbles up from the shown panel.
       document.addEventListener('dashtab:show', () => moveIndicatorTo(activeTab()));
       // Width of the tabs can shift on resize / late font load.
       new ResizeObserver(() => moveIndicatorTo(activeTab())).observe(tablist);
+
+      // ── Hover beam — hands the pointer's position inside the hovered tab to
+      // that tab's own `--beam-x`/`--beam-y`, which is where home.css centres
+      // the radial glow (and its transform-origin). One delegated listener on
+      // the row, rAF-throttled: pointermove fires far faster than the screen
+      // repaints, and each write here dirties a gradient's paint.
+      function aimBeam(e: PointerEvent): void {
+        const tab = (e.target as HTMLElement).closest<HTMLElement>('.home-tab');
+        if (!tab) return;
+        const r = tab.getBoundingClientRect();
+        tab.style.setProperty('--beam-x', `${e.clientX - r.left}px`);
+        tab.style.setProperty('--beam-y', `${e.clientY - r.top}px`);
+      }
+
+      let beamFrame = 0;
+      let beamEvent: PointerEvent | null = null;
+      tablist.addEventListener('pointermove', (e) => {
+        beamEvent = e;
+        if (beamFrame) return;
+        beamFrame = requestAnimationFrame(() => {
+          beamFrame = 0;
+          if (beamEvent) aimBeam(beamEvent);
+        });
+      });
+      // Aim once, un-throttled, the moment the pointer crosses into a tab — the
+      // beam fades in over 0.12s, so waiting for the next rAF would light it at
+      // wherever the pointer left this tab last time.
+      tablist.addEventListener('pointerover', aimBeam);
     }
   }
 

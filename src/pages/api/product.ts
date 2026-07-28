@@ -98,7 +98,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       variantImages: Object.keys(variantImages).length ? variantImages : undefined,
     });
     // A brand-new public page — the highest-value IndexNow signal (fire-and-forget).
-    pingProductChange(ownerStore.slug, product.slug);
+    pingProductChange(ownerStore, product.slug);
     return json({ ok: true, product, stockAlerts: countStockAlerts(storeId, LOW_STOCK_THRESHOLD) });
   }
 
@@ -263,7 +263,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const updated = updateProduct(productId, { hidden });
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
     // Indexability just changed (show → wants indexing / hide → drop) — notify.
-    pingProductChange(visStore.slug, updated.slug);
+    pingProductChange(visStore, updated.slug);
     // Taking a product off the shelf resolves any outstanding stock alert for it —
     // the seller has consciously decided it's not for sale, so nagging about its
     // stock would be exactly the noise this feature removes.

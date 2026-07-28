@@ -1,5 +1,6 @@
 ---
 import StoreCard from './StoreCard.astro';
+import StorePlaceholderCard from './StorePlaceholderCard.astro';
 import type { FeedStore } from '../lib/home-feed.js';
 
 interface Props {
@@ -20,12 +21,29 @@ interface Props {
    *  actually fill the panel instead. Discover's own shelves (several per panel, already followed
    *  by more content below) stay the plain horizontal-scroll row — leave this false there. */
   fillMobile?: boolean;
+  /** How many placeholder cards close the row (see lib/launch-mode.ts) — 1 while
+   *  the mall is merely thin, enough to fill the row in launch mode. They count
+   *  toward the shelf being rendered at all, so a shelf that is ALL placeholders
+   *  still shows; a shelf with neither stores nor placeholders hides. */
+  invites?: number;
 }
 
-const { id, title, stores, dotIndex = 0, eagerFirst = false, hideHeading = false, fillMobile = false } = Astro.props;
+const { id, title, stores, dotIndex = 0, eagerFirst = false, hideHeading = false, fillMobile = false, invites = 0 } = Astro.props;
+
+// How many cards this row holds, and therefore how wide each may grow before the
+// row is full (store-card.css reads --shelf-count).
+const cardCount = Math.max(1, stores.length + invites);
+// A row of one or two cards can only reach the far edge by letting each card get
+// very wide — and at that width three preview thumbs blow up and the card reads
+// as stretched. A fourth thumb restores the internal proportion, which is what
+// makes the wider cap look deliberate instead of zoomed. Below that the normal
+// 3-up card already fills the row at its own cap.
+const SPARSE_SHELF = 2;
+const previewSlots = cardCount <= SPARSE_SHELF ? 4 : 3;
+const cardMax = cardCount <= SPARSE_SHELF ? '560px' : '360px';
 ---
 
-{stores.length > 0 && (
+{(stores.length > 0 || invites > 0) && (
   <section
     class="home-shelf-section"
     data-shelf
@@ -41,14 +59,21 @@ const { id, title, stores, dotIndex = 0, eagerFirst = false, hideHeading = false
           </h2>
         </div>
       )}
-      <div class={`home-shelf${fillMobile ? ' home-shelf--fill-mobile' : ''}`} role="list" aria-label={title}>
+      <!-- --shelf-count drives the card max-width so a short shelf ends flush
+           with the row instead of leaving a ragged tail — see store-card.css. -->
+      <div class={`home-shelf${fillMobile ? ' home-shelf--fill-mobile' : ''}`} role="list" aria-label={title}
+           style={`--shelf-count:${cardCount};--shelf-card-max:${cardMax}`}>
         {stores.map(({ store, products }, i) => (
           <StoreCard
             store={store}
             previewImages={products.map((p) => p.images?.[0]).filter((u): u is string => !!u)}
             eager={eagerFirst && i === 0}
+            previewSlots={previewSlots}
             role="listitem"
           />
+        ))}
+        {Array.from({ length: invites }).map((_, i) => (
+          <StorePlaceholderCard index={stores.length + i} previewSlots={previewSlots} role="listitem" />
         ))}
       </div>
     </div>

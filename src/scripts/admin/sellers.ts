@@ -1,5 +1,6 @@
 import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { showErrorToast } from '../../lib/toast.js';
 
 const PANEL_ID = 'dash-panel-sellers';
 
@@ -34,6 +35,7 @@ function wireSellersToolbar(): void {
   let sortCol = (state.sortCol as SellerSortCol) || 'joined';
   let sortDir = (state.sortDir as 'asc' | 'desc') || 'desc';
   let blockedOnly = state.blockedOnly === '1';
+  let newOnly = state.newOnly === '1';
 
   function buildSellersNavUrl(): string {
     const searchInput = document.getElementById('admin-seller-search') as HTMLInputElement | null;
@@ -41,6 +43,7 @@ function wireSellersToolbar(): void {
       sq: searchInput?.value.trim() || undefined,
       ssort: (sortCol !== 'joined' || sortDir !== 'desc') ? `${sortCol}:${sortDir}` : undefined,
       sblocked: blockedOnly ? '1' : undefined,
+      snew: newOnly ? '1' : undefined,
     });
   }
 
@@ -68,6 +71,14 @@ function wireSellersToolbar(): void {
   const blockedToggle = document.getElementById('admin-sellers-blocked-toggle') as HTMLButtonElement | null;
   blockedToggle?.addEventListener('click', () => {
     blockedOnly = !blockedOnly;
+    navigate();
+  });
+
+  // "חדשים בלבד" — same mechanics as the blocked toggle; narrows the list to
+  // exactly the sellers the tab's "(N)" badge counted (see AdminNewBadge.astro).
+  const newToggle = document.getElementById('admin-sellers-new-toggle') as HTMLButtonElement | null;
+  newToggle?.addEventListener('click', () => {
+    newOnly = !newOnly;
     navigate();
   });
 }
@@ -138,7 +149,7 @@ function wireSellerMessageModal(): void {
       if (!res.ok) throw new Error('request failed');
       dialog.close();
     } catch {
-      alert('שליחת ההודעה נכשלה, נסו שוב.');
+      showErrorToast('שליחת ההודעה נכשלה, נסו שוב');
     } finally {
       sendBtn.disabled = false;
     }

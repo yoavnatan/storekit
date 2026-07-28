@@ -27,6 +27,11 @@ export interface HomeFeed {
 
 const SHELF_SIZE = 10;
 const MAX_CATEGORY_SHELVES = 4;
+/** Fewest stores a category needs before it earns its own shelf. Briefly raised to
+ *  3 on 2026-07-28 because two cards left a third of the row empty, then put back:
+ *  a 2-card shelf now widens its cards AND gives them a 4th preview thumb
+ *  (HomeShelf), so it fills the row without looking stretched. */
+const MIN_CATEGORY_SHELF_STORES = 2;
 const SPOTLIGHT_SIZE = 5;
 /** Below this many cards, a shelf reads as sparse/broken rather than a real row (CURRENT_TASK.md
  *  → סשן א׳: "always enough stores in New Stores to fill the section"). */
@@ -145,7 +150,7 @@ export function buildHomeFeed(storesWithProducts: FeedStore[], userId: string | 
     }
   }
   const categories: CategoryShelf[] = [...byCategory.entries()]
-    .filter(([, stores]) => stores.length >= 2)
+    .filter(([, stores]) => stores.length >= MIN_CATEGORY_SHELF_STORES)
     .sort((a, b) => b[1].length - a[1].length)
     .slice(0, MAX_CATEGORY_SHELVES)
     .map(([category, stores]) => ({ category, stores: stores.slice(0, SHELF_SIZE) }));

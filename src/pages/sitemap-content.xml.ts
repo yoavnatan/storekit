@@ -1,6 +1,6 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getVisibleStores } from '../lib/stores.js';
+import { getIndexableStores } from '../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { store as platform } from '../config/store.config.js';
 import { buildUrlSetXml, toSitemapDate, type SitemapEntry } from '../lib/sitemap.js';
@@ -15,9 +15,11 @@ import { isStoreReady } from '../lib/store-readiness.js';
 // straight from live data, so it stays current as sellers add/edit/remove.
 //
 // Referenced from robots.txt alongside the static sitemap-index.xml (Google
-// supports multiple `Sitemap:` directives). Only visible (non-blocked) stores
-// and products are emitted — a blocked listing must not be advertised to search
-// engines, same gate the storefront and product feed use.
+// supports multiple `Sitemap:` directives). Only visible (non-blocked, non-demo)
+// stores and products are emitted — a blocked listing must not be advertised to
+// search engines, and the platform's own showcase stores (lib/demo-stores.ts)
+// are fabricated catalog that would cost the shared domain real ranking. Same
+// `getIndexableStores()` gate the product feed and llms.txt use.
 //
 // Scale note (JSON-file era): rebuilt per request. Fine at current volume with
 // the 1h cache below; at DB-migration time this becomes a cached/generated
@@ -27,7 +29,7 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   const baseUrl = platform.url.replace(/\/+$/, '');
   const entries: SitemapEntry[] = [];
 
-  for (const s of getVisibleStores()) {
+  for (const s of getIndexableStores()) {
     // A store on a verified custom domain lives on THAT domain now — its platform URLs 301 there, so
     // listing them in the platform sitemap would just advertise redirects. Its own domain is crawled
     // via the platform's discovery links + the 301s. Skip it here.

@@ -21,6 +21,20 @@ export function toolbarMenuTitle(text: string): string {
   return `<div class="px-3 pt-[.15rem] pb-[.4rem] text-[.7rem] font-semibold uppercase tracking-[.04em] [color:var(--color-muted)] select-none">${esc}</div><div class="h-px bg-[color:var(--color-border)] mb-[.3rem]"></div>`;
 }
 
+/** The "clear filter" row at the bottom of a filter dropdown.
+ *  `active` = there is actually something to clear. With nothing selected the
+ *  button renders disabled instead of live: pressing it used to re-run the
+ *  whole apply/re-render/reopen cycle for no change at all, which flashed the
+ *  table and nudged the dropdown to a freshly measured position — visible
+ *  work in response to a click that had nothing to do. */
+export function filterClearButtonHtml(dataAttr: string, label: string, active: boolean): string {
+  const text = label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const state = active
+    ? 'cursor-pointer [color:var(--color-muted)] hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]'
+    : 'cursor-default opacity-40 [color:var(--color-muted)]';
+  return `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 font-[inherit] text-[.8rem] transition-colors duration-100 ${state}" ${dataAttr}${active ? '' : ' disabled aria-disabled="true"'}>${text}</button>`;
+}
+
 export function createFloatingPortal(portalId: string): FloatingPortal {
   let trigger: HTMLElement | null = null;
 

@@ -51,7 +51,9 @@ const unreadThreadsCount = messages.filter((m) =>
 ).length;
 const showMsgStatusControls = unreadThreadsCount > 0 && unreadThreadsCount < messages.length;
 
-const storeProfileById = new Map(getAllStores().map((s) => [s.id, s.profileImage]));
+const allStores = getAllStores();
+const storeProfileById = new Map(allStores.map((s) => [s.id, s.profileImage]));
+const storeSlugById = new Map(allStores.map((s) => [s.id, s.slug]));
 
 const dateLocale = lang === 'he' ? 'he-IL' : 'en-US';
 function fmtDate(iso: string) {
@@ -791,7 +793,7 @@ const shipLabel: Record<string, string> = {
                           <td class="msg-table__td msg-table__td--status"></td>
                           <td class="msg-table__td msg-table__td--from">
                             <span class="flex items-center gap-2">
-                              <StoreAvatar name={m.toStoreName} profileImage={storeProfileById.get(m.toStoreId)} size={24} />
+                              <StoreAvatar name={m.toStoreName} slug={storeSlugById.get(m.toStoreId)} profileImage={storeProfileById.get(m.toStoreId)} size={24} />
                               {m.toStoreName}
                             </span>
                           </td>
@@ -932,6 +934,7 @@ const shipLabel: Record<string, string> = {
   data-msg-you={t.buyerDashboard.msgYou}
   data-msg-new-toast={t.buyerDashboard.msgNewToast}
   data-msg-delete-confirm={t.buyerDashboard.msgDeleteConfirm}
+  data-msg-delete-ok={t.buyerDashboard.deleteConv}
   data-msg-col-store={t.buyerDashboard.msgColStore}
   data-msg-col-product={t.buyerDashboard.msgColProduct}
   data-prof-show-pw={t.buyerDashboard.profShowPw}
@@ -963,6 +966,9 @@ const shipLabel: Record<string, string> = {
   import { formatPrice } from '../../config/store.config.js';
   import { debounce } from '../../lib/admin-nav.js';
   import { BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
+  import { filterClearButtonHtml } from '../../lib/toolbar-portal.js';
+  import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
+  import { showErrorToast } from '../../lib/toast.js';
 
   const _i18nEl = document.getElementById('buyer-i18n') as HTMLElement;
   const I = {
@@ -973,6 +979,7 @@ const shipLabel: Record<string, string> = {
     msgYou:          _i18nEl.dataset.msgYou           ?? 'You',
     msgNewToast:     _i18nEl.dataset.msgNewToast       ?? 'You have a new message',
     msgDeleteConfirm:_i18nEl.dataset.msgDeleteConfirm ?? 'Delete this conversation permanently?',
+    msgDeleteOk:     _i18nEl.dataset.msgDeleteOk      ?? 'Delete conversation',
     msgColStore:     _i18nEl.dataset.msgColStore       ?? 'Store',
     msgColProduct:   _i18nEl.dataset.msgColProduct     ?? 'Product',
     profShowPw:      _i18nEl.dataset.profShowPw       ?? '+ Show password fields',
@@ -1307,6 +1314,11 @@ const shipLabel: Record<string, string> = {
   }
 
   function applyBmsgFilter(): void {
+    // Pin the column widths before any row is hidden, so the columns can't
+    // resize and slide the header out from under an open funnel dropdown.
+    // Opening/closing a menu on its own does nothing. See
+    // lib/table-column-lock.ts.
+    if (bmsgFilters.size) lockTableColumns(document.querySelector<HTMLTableElement>('.msg-table'));
     document.querySelectorAll<HTMLElement>('[data-bmsg-id]').forEach((row) => {
       // Never hide a thread the buyer currently has open — becoming "read"
       // mid-view shouldn't make the row vanish out from under them.
@@ -1326,6 +1338,7 @@ const shipLabel: Record<string, string> = {
       badge.hidden = activeCols === 0;
       badge.textContent = String(activeCols);
     }
+    if (!bmsgFilters.size) unlockTableColumns(document.querySelector<HTMLTableElement>('.msg-table'));
   }
 
   function getBmsgSortValue(row: HTMLElement, col: 'date' | 'unread' | 'product'): string | number {
@@ -1406,6 +1419,7 @@ const shipLabel: Record<string, string> = {
   }
   function openBmsgPortal(trigger: HTMLElement, minWidth: string, buildHtml: () => string, wire: (portal: HTMLElement) => void): void {
     const portal = getBmsgPortal();
+    bmsgPortalTrigger = trigger;
     portal.style.minWidth = minWidth;
     portal.style.maxHeight = '320px';
     portal.style.overflow = 'auto';
@@ -1413,7 +1427,6 @@ const shipLabel: Record<string, string> = {
     portal.hidden = false;
     positionBmsgPortal(portal, trigger);
     trigger.setAttribute('aria-expanded', 'true');
-    bmsgPortalTrigger = trigger;
     wire(portal);
   }
   document.addEventListener('click', (e) => {
@@ -1482,7 +1495,7 @@ const shipLabel: Record<string, string> = {
       backHtml,
       ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${escB(v)}" ${selected.has(v) ? 'checked' : ''}>${escB(v)}</label>`),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${escB(bI.filterClearColumn)}</button>`,
+      filterClearButtonHtml('data-filter-clear-col', bI.filterClearColumn, selected.size > 0),
     ].join('');
   }
   function wireBmsgFilterValues(portal: HTMLElement, col: string, reopen: () => void, onBack?: () => void): void {
@@ -1496,6 +1509,7 @@ const shipLabel: Record<string, string> = {
       });
     });
     portal.querySelector('[data-filter-clear-col]')?.addEventListener('click', () => {
+      if (!bmsgFilters.has(col)) return;
       bmsgFilters.delete(col);
       applyBmsgFilter();
       refreshBmsgFilterUI();
@@ -1522,7 +1536,7 @@ const shipLabel: Record<string, string> = {
         </div>`;
       }).join(''),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${escB(bI.filterClearAll)}</button>`,
+      filterClearButtonHtml('data-filter-clear-all', bI.filterClearAll, bmsgFilters.size > 0),
     ].join('');
   }
 
@@ -1549,6 +1563,7 @@ const shipLabel: Record<string, string> = {
         });
       });
       portal.querySelector('[data-filter-clear-all]')?.addEventListener('click', () => {
+        if (!bmsgFilters.size) return;
         bmsgFilters.clear();
         applyBmsgFilter();
         refreshBmsgFilterUI();
@@ -1698,23 +1713,34 @@ const shipLabel: Record<string, string> = {
 
   /* ── Delete message thread ── */
   document.querySelectorAll<HTMLButtonElement>('[data-delete-bmsg-id]').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
+    btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (!confirm(I.msgDeleteConfirm)) return;
       const id = btn.dataset.deleteBmsgId ?? '';
-      try {
-        const res = await fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete', id }),
-        });
-        if (res.ok) {
-          const row = btn.closest('tr');
-          const nextRow = row?.nextElementSibling;
-          row?.remove();
-          if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
-        }
-      } catch { /* ignore */ }
+      // Site-styled ConfirmModal (rendered by BaseLayout), never the native
+      // confirm(). Message/cancel/working labels fall back to the shared
+      // `confirm` i18n block in #i18n-data, so nothing here is hardcoded.
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: I.msgDeleteConfirm,
+          okLabel: I.msgDeleteOk,
+          onConfirm: async () => {
+            try {
+              const res = await fetch('/api/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete', id }),
+              });
+              if (!res.ok) throw new Error('request failed');
+              const row = btn.closest('tr');
+              const nextRow = row?.nextElementSibling;
+              row?.remove();
+              if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
+            } catch {
+              showErrorToast(I.profErrorNetwork);
+            }
+          },
+        },
+      }));
     });
   });
 

@@ -21,7 +21,10 @@
 
 .store-card:hover {
   box-shadow: var(--shadow-card-hover);
-  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  /* Navy (--color-primary), not the accent blue — the hover edge should read as
+     the platform's own dark tone (user, 2026-07-28). Navy is darker than the
+     accent, so a lower mix keeps the same perceived weight. */
+  border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
   transform: translateY(-4px);
 }
 
@@ -222,10 +225,29 @@
    complaint); this lets few cards grow to actually fill the row, capped by
    max-width so a lone card doesn't balloon. Once there are enough cards to
    fill the row, shrink:0 keeps them at their natural size instead of
-   cramming to fit — that's what makes it scroll instead of shrinking. */
+   cramming to fit — that's what makes it scroll instead of shrinking.
+
+   The cap used to be a flat 300px, which re-created the dead space it was
+   meant to prevent the moment a row was short but WIDE: a 3-card category
+   shelf on a 1280px viewport came to 924px of card in a 1128px row — 19%
+   ragged tail, on every shelf (measured 2026-07-28). It's now the exact width
+   that would make THIS row's own card count fill the row, so a short shelf
+   ends flush; --shelf-count is set per shelf by HomeShelf.astro. The 360px
+   ceiling (--shelf-card-max) is what still stops a card from ballooning, and the
+   300px floor keeps the cap from ever going BELOW the old value on a narrow
+   viewport (where the row scrolls anyway). HomeShelf raises the ceiling for a
+   1-2 card row and switches those cards to 4 preview thumbs at the same time —
+   the extra thumb is what keeps a very wide card in proportion. */
 .home-shelf .store-card {
   flex: 1 0 clamp(190px, 46vw, 240px);
-  max-width: 300px;
+  /* The count comes from the shelf (HomeShelf sets it inline). The default is a
+     var() FALLBACK, not a declaration on this rule — declaring --shelf-count
+     here would shadow the inherited value and every shelf would compute as 4. */
+  max-width: clamp(
+    300px,
+    calc((100% - (var(--shelf-count, 4) - 1) * 0.75rem) / var(--shelf-count, 4)),
+    var(--shelf-card-max, 360px)
+  );
   scroll-snap-align: start;
 }
 

@@ -1,0 +1,193 @@
+import { describe, expect, it } from 'vitest';
+import {
+  LAUNCH_GRID_SLOTS,
+  LAUNCH_MODE_MAX_STORES,
+  LAUNCH_SLOTS,
+  SHELF_INVITE_MAX_STORES,
+  MIN_SHELF_DEMO,
+  MIN_SHELF_INVITES,
+  isLaunchMode,
+  launchInviteCount,
+  planLaunchShelf,
+  showShelfInvite,
+} from '../src/lib/launch-mode.js';
+import {
+  PLACEHOLDER_ART,
+  TILE_HUES,
+  TILE_WASHES,
+  pickArtTrio,
+  pickCardHue,
+} from '../src/lib/placeholder-art.js';
+
+describe('launch-mode thresholds', () => {
+  it('is on below the store threshold and off at/above it', () => {
+    expect(isLaunchMode(0)).toBe(true);
+    expect(isLaunchMode(LAUNCH_MODE_MAX_STORES - 1)).toBe(true);
+    expect(isLaunchMode(LAUNCH_MODE_MAX_STORES)).toBe(false);
+    expect(isLaunchMode(50)).toBe(false);
+  });
+
+  it('shelf invite covers the thin phase only, never an empty site', () => {
+    // 0 stores is launch mode's own job — a lone placeholder on an otherwise
+    // blank page would be the "broken" state, not a fix for it.
+    expect(showShelfInvite(0)).toBe(false);
+    expect(showShelfInvite(1)).toBe(true);
+    expect(showShelfInvite(SHELF_INVITE_MAX_STORES - 1)).toBe(true);
+    expect(showShelfInvite(SHELF_INVITE_MAX_STORES)).toBe(false);
+  });
+
+  it('pads a row to a full set of slots, never negative', () => {
+    expect(launchInviteCount(0)).toBe(LAUNCH_SLOTS);
+    expect(launchInviteCount(3)).toBe(LAUNCH_SLOTS - 3);
+    expect(launchInviteCount(LAUNCH_SLOTS)).toBe(0);
+    expect(launchInviteCount(LAUNCH_SLOTS + 4)).toBe(0);
+  });
+
+  it('takes an explicit slot count for the directory grid', () => {
+    expect(launchInviteCount(0, LAUNCH_GRID_SLOTS)).toBe(LAUNCH_GRID_SLOTS);
+    expect(launchInviteCount(2, LAUNCH_GRID_SLOTS)).toBe(LAUNCH_GRID_SLOTS - 2);
+  });
+
+  it('grid slot count divides evenly by every column count the grid can use', () => {
+    // Otherwise the last row ends with a single orphan card at some viewport width.
+    for (const columns of [2, 3, 4]) expect(LAUNCH_GRID_SLOTS % columns).toBe(0);
+  });
+
+  it('shelf slot count is even — the shelf is a 2-column grid on mobile', () => {
+    expect(LAUNCH_SLOTS % 2).toBe(0);
+  });
+});
+
+describe('placeholder art', () => {
+  it('gives three distinct pieces per card', () => {
+    const trio = pickArtTrio(0);
+    expect(trio).toHaveLength(3);
+    expect(new Set(trio.map((a) => a.id)).size).toBe(3);
+  });
+
+  it('varies between neighbouring cards', () => {
+    expect(pickArtTrio(0).map((a) => a.id)).not.toEqual(pickArtTrio(1).map((a) => a.id));
+  });
+
+  it('is deterministic — the same card renders the same art', () => {
+    expect(pickArtTrio(4).map((a) => a.id)).toEqual(pickArtTrio(4).map((a) => a.id));
+  });
+
+  it('stays in range for any index, including a full grid', () => {
+    for (let i = 0; i < LAUNCH_GRID_SLOTS * 3; i++) {
+      expect(pickArtTrio(i).every((a) => !!a && !!a.paths)).toBe(true);
+    }
+  });
+
+  it('has unique ids and enough art to fill three distinct slots', () => {
+    expect(new Set(PLACEHOLDER_ART.map((a) => a.id)).size).toBe(PLACEHOLDER_ART.length);
+    expect(PLACEHOLDER_ART.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('placeholder tile colour', () => {
+  it('gives one dominant hue per card, not per tile', () => {
+    expect(pickCardHue(3)).toBe(TILE_HUES[3]);
+    expect(pickCardHue(TILE_HUES.length)).toBe(TILE_HUES[0]);
+  });
+
+  it('rotates on a cycle coprime with every grid column count', () => {
+    // A pool sharing a factor with the column count repeats one colour straight
+    // down a whole column of the /stores grid at that viewport width.
+    for (const columns of [2, 3, 4]) {
+      const seen = new Set<string>();
+      for (let row = 0; row < TILE_HUES.length; row++) seen.add(pickCardHue(row * columns));
+      expect(seen.size).toBe(TILE_HUES.length);
+    }
+  });
+
+  it('draws every hue from a token, never a literal colour', () => {
+    for (const hue of TILE_HUES) expect(hue).toMatch(/^var\(--color-tile-[a-z]+\)$/);
+  });
+
+  it('keeps the tile wash below the strength the same-hue line-art needs', () => {
+    // Art is stroked in the card's hue at full strength; past ~22% mix the wash
+    // and the stroke collapse into one another (gold clears 3:1 by the least).
+    expect(TILE_WASHES).toHaveLength(3);
+    for (const w of TILE_WASHES) {
+      expect(w.from).toBeLessThanOrEqual(22);
+      expect(w.to).toBeLessThan(w.from);
+    }
+    // Tiles must actually differ, or the card is one flat block of colour.
+    expect(new Set(TILE_WASHES.map((w) => `${w.angle}/${w.from}`)).size).toBe(TILE_WASHES.length);
+  });
+});
+
+describe('planLaunchShelf', () => {
+  const real = (n: number) => Array.from({ length: n }, (_, i) => `r${i}`);
+  const demo = (n: number) => Array.from({ length: n }, (_, i) => `d${i}`);
+
+  it('never fills every slot with stores — the invitation always survives', () => {
+    // The regression this exists for: 3 real + 3 showcase stores is exactly
+    // LAUNCH_SLOTS, and the "your store here" card silently disappeared while
+    // launch mode was still on.
+    const plan = planLaunchShelf(real(3), demo(3));
+    expect(plan.invites).toBeGreaterThanOrEqual(MIN_SHELF_INVITES);
+    expect(plan.stores.length + plan.invites).toBe(LAUNCH_SLOTS);
+  });
+
+  it('keeps a showcase store on the shelf even when real stores could fill it', () => {
+    // 4 real stores is the most launch mode allows; one showcase store still shows.
+    const plan = planLaunchShelf(real(4), demo(3));
+    expect(plan.stores.filter((s) => s.startsWith('d')).length).toBeGreaterThanOrEqual(MIN_SHELF_DEMO);
+    expect(plan.invites).toBeGreaterThanOrEqual(MIN_SHELF_INVITES);
+  });
+
+  it('gives real stores the remaining room ahead of showcase ones', () => {
+    const plan = planLaunchShelf(real(4), demo(3));
+    expect(plan.stores.filter((s) => s.startsWith('r'))).toHaveLength(4);
+  });
+
+  it('drops to ONE showcase store as soon as the mall has real ones', () => {
+    // The shelf scrolls horizontally and shows roughly four and a half cards, so
+    // 2 real + 3 showcase + 1 placeholder buried the placeholder off-screen —
+    // the exact card the row exists to show.
+    const plan = planLaunchShelf(real(2), demo(3));
+    expect(plan.stores.filter((s) => s.startsWith('d'))).toHaveLength(1);
+    expect(plan.stores).toHaveLength(3);
+    expect(plan.invites).toBe(LAUNCH_SLOTS - 3);
+  });
+
+  it('always shows at least one of each — real, showcase and an open slot', () => {
+    for (let r = 1; r < LAUNCH_MODE_MAX_STORES; r++) {
+      const plan = planLaunchShelf(real(r), demo(3));
+      expect(plan.stores.some((s) => s.startsWith('r'))).toBe(true);
+      expect(plan.stores.some((s) => s.startsWith('d'))).toBe(true);
+      expect(plan.invites).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('orders real stores first, then showcase, so placeholders close the row', () => {
+    const plan = planLaunchShelf(real(2), demo(2));
+    const firstDemo = plan.stores.findIndex((s) => s.startsWith('d'));
+    const lastReal = plan.stores.map((s) => s.startsWith('r')).lastIndexOf(true);
+    expect(firstDemo).toBeGreaterThan(lastReal);
+  });
+
+  it('day one — showcase stores plus a padded row', () => {
+    const plan = planLaunchShelf([], demo(3));
+    expect(plan.stores).toHaveLength(3);
+    expect(plan.stores.length + plan.invites).toBe(LAUNCH_SLOTS);
+  });
+
+  it('degrades to all placeholders when the showcase seeder never ran', () => {
+    const plan = planLaunchShelf([], []);
+    expect(plan.stores).toHaveLength(0);
+    expect(plan.invites).toBe(LAUNCH_SLOTS);
+  });
+
+  it('never exceeds the slot count at any real/showcase mix', () => {
+    for (let r = 0; r <= LAUNCH_MODE_MAX_STORES; r++) {
+      for (let d = 0; d <= 5; d++) {
+        const plan = planLaunchShelf(real(r), demo(d));
+        expect(plan.stores.length + plan.invites).toBeLessThanOrEqual(LAUNCH_SLOTS);
+        expect(plan.invites).toBeGreaterThanOrEqual(MIN_SHELF_INVITES);
+      }
+    }
+  });
+});

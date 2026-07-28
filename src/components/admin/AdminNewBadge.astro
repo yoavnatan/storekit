@@ -1,0 +1,16 @@
+---
+// The "(N)" on an admin tab says HOW MANY items are new since the admin last
+// left that tab (admin-tab-views.ts); on its own it never says WHICH ones, so
+// opening the tab answered nothing (owner feedback, 2026-07-28). This chip is
+// that answer — rendered on every row whose createdAt is past the tab's
+// last-viewed boundary, so the count and the rows always agree.
+interface Props {
+  label?: string;
+}
+const { label = 'חדש' } = Astro.props;
+---
+
+<span
+  class="admin-new-chip inline-block text-[0.72rem] font-semibold py-[0.2rem] px-[0.55rem] rounded-full whitespace-nowrap bg-[color-mix(in_srgb,var(--color-success)_15%,transparent)] [color:var(--color-success)]"
+  title="נוסף מאז הפעם האחרונה שיצאת מהלשונית הזו"
+>{label}</span>

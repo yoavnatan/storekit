@@ -11,6 +11,8 @@ import type { AdminSortDir, AdminStoreSortCol, StoreRow } from '../../lib/admin-
 import { formatPrice } from '../../config/store.config.js';
 import AdminPager from './AdminPager.astro';
 import StoreAvatar from '../StoreAvatar.astro';
+import AdminNewBadge from './AdminNewBadge.astro';
+import AdminNewOnlyToggle from './AdminNewOnlyToggle.astro';
 
 interface Props {
   storeRows: StoreRow[]; // current page only
@@ -18,13 +20,16 @@ interface Props {
   sortCol: AdminStoreSortCol;
   sortDir: AdminSortDir;
   blockedOnly: boolean;
+  newSince: string;  // ISO — anything created after this is what the tab's "(N)" counted
+  newOnly: boolean;
+  newCount: number;
   totalAll: number;
   totalFiltered: number;
   page: number;
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { storeRows, q, sortCol, sortDir, blockedOnly, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+const { storeRows, q, sortCol, sortDir, blockedOnly, newSince, newOnly, newCount, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
 
 const sortLabels: Record<string, string> = {
   'name:asc': 'שם: א — ת',
@@ -49,7 +54,7 @@ const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w)
   <p class="admin-empty">אין חנויות עדיין.</p>
 ) : (
   <Fragment>
-    <div class="flex flex-wrap items-center gap-2 mb-4" id="admin-stores-toolbar" data-sort-col={sortCol} data-sort-dir={sortDir} data-blocked-only={blockedOnly ? '1' : ''}>
+    <div class="flex flex-wrap items-center gap-2 mb-4" id="admin-stores-toolbar" data-sort-col={sortCol} data-sort-dir={sortDir} data-blocked-only={blockedOnly ? '1' : ''} data-new-only={newOnly ? '1' : ''}>
       <button type="button" id="admin-stores-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
         <span id="admin-stores-sort-label">{sortLabels[`${sortCol}:${sortDir}`] ?? sortLabels['name:asc']}</span>
@@ -62,6 +67,7 @@ const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w)
         style={blockedOnly ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
         aria-pressed={blockedOnly}
       >חסומות בלבד</button>
+      {(newCount > 0 || newOnly) && <AdminNewOnlyToggle id="admin-stores-new-toggle" active={newOnly} count={newCount} />}
     </div>
 
     {totalFiltered === 0 && <p class="admin-empty">לא נמצאו חנויות תואמות.</p>}
@@ -73,10 +79,11 @@ const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w)
         return (
           <li class="admin-store-row">
             <div class="admin-store-row__info">
-              <StoreAvatar name={store.name} profileImage={store.profileImage} size={34} />
+              <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={34} />
               <div class="admin-store-row__info-text">
                 <span class="admin-store-row__name">
                   {store.name}
+                  {store.createdAt > newSince && <AdminNewBadge />}
                   {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
                   {promoWeight > 0 && <span class="admin-badge admin-badge--promo" data-promo-badge>{promoLabel(promoWeight)}</span>}
                 </span>

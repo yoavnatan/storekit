@@ -3,7 +3,11 @@ export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
+import StoreDemoBadge from '../../components/StoreDemoBadge.astro';
+import StoreDemoBanner from '../../components/StoreDemoBanner.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible } from '../../lib/stores.js';
+import { isDemoStore } from '../../lib/demo-stores.js';
+import { getDemoStores } from '../../lib/stores.js';
 import { isStoreReady } from '../../lib/store-readiness.js';
 import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '../../lib/store-hours.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
@@ -12,6 +16,7 @@ import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-lis
 import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath } from '../../lib/store-categories.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
 import { storeCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
+import { OG_IMAGE_FORMAT, resolveStoreImage, storeImageUrl } from '../../lib/store-image.js';
 import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
@@ -51,6 +56,20 @@ const allProducts = getVisibleProductsByStoreId(shopStore.id);
 // but must not enter Google's index as an empty page — same gate the sitemap and site search use.
 // See lib/store-readiness.ts.
 const storeReady = isStoreReady({ visibleProductCount: allProducts.length });
+// A showcase store (lib/demo-stores.ts) stays reachable by direct link forever —
+// that link is the seller-facing "צפו בחנות לדוגמה" entry point — but is never
+// indexable: a fabricated catalog ranking on the shared platform domain costs
+// real SEO. It's also out of the sitemap and the product feed (see
+// getIndexableStores), so this is the last surface that could leak it.
+const isDemo = isDemoStore(shopStore);
+// Position in the showcase set, which is what picks the banner's colour — so the
+// three of them never come out the same shade (see StoreDemoBanner).
+const demoIndex = isDemo ? Math.max(0, getDemoStores().findIndex((s) => s.id === shopStore.id)) : 0;
+// Quiet per-product label for a showcase store. Every product in such a store is
+// one, so this is a muted line, not the pill the STORE gets — the same markup has
+// to exist in the JS card renderer further down (SSR/AJAX parity).
+const DEMO_PRODUCT_BADGE_CLASS = 'inline-flex items-center gap-1 mb-1 text-[0.66rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]';
+const DEMO_PRODUCT_BADGE_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>';
 const storeCategories = getCategoriesByStoreId(shopStore.id);
 const categoryTree = buildCategoryTree(storeCategories);
 
@@ -87,11 +106,27 @@ const lang = getLang(Astro.cookies);
 const dir  = getDir(lang);
 const t    = getT(lang);
 
+// The seller viewing their own store gets a way back to the dashboard (the "צפה בחנות"
+// button opens the store in a separate preview tab, and on iOS a link-opened tab has no
+// history to go Back through). On a custom domain the dashboard lives on another origin,
+// so the link has to be absolute there.
+const isOwner = !!userId && userId === shopStore.sellerId;
+const onCustomDomain = shopStore.customDomain?.status === 'active';
+const dashboardHref = onCustomDomain ? `${platform.url}/seller/dashboard` : '/seller/dashboard';
+
 const showAddress = !!shopStore.addressVisible && !!shopStore.address;
 const showHours = !!shopStore.hoursVisible && !!shopStore.hours;
 const showDetails = showAddress || showHours;
 const hoursRows = showHours && shopStore.hours ? formatStoreHours(shopStore.hours, t.store.hoursDay, t.store.hoursClosed) : null;
 const mapsUrl = showAddress && shopStore.address ? googleMapsSearchUrl(shopStore.address) : null;
+
+// Store imagery, guaranteed present and guaranteed at the right ratio (see
+// store-image.ts): the seller's own picture when there is one, the store's
+// generated mark when there isn't. `logo` is emitted ONLY for a real upload —
+// a generated tile is honestly the store's mark, but telling Google it is the
+// business's logo would be a claim about the business, not about our UI.
+const ogImage = storeImageUrl(shopStore, OG_IMAGE_FORMAT, platform.url);
+const storeLogo = resolveStoreImage(shopStore, 'logo');
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -99,9 +134,8 @@ const jsonLd = {
   name: shopStore.name,
   description: shopStore.description || shopStore.tagline || `Shop at ${shopStore.name}`,
   url: storeUrl,
-  ...(shopStore.bannerImage || shopStore.profileImage
-    ? { image: cdnSrc((shopStore.bannerImage || shopStore.profileImage)!, 1200) }
-    : {}),
+  image: ogImage,
+  ...(storeLogo.hasUpload ? { logo: storeLogo.src } : {}),
   ...(showAddress && shopStore.address ? { address: shopStore.address } : {}),
   ...(showHours && shopStore.hours ? { openingHours: formatStoreHoursSchema(shopStore.hours) } : {}),
 };
@@ -130,10 +164,10 @@ const pmI18n = {
 <BaseLayout
   title={shopStore.name}
   description={shopStore.tagline || shopStore.description || `Shop at ${shopStore.name} on ${platform.name}`}
-  image={shopStore.bannerImage ? cdnSrc(shopStore.bannerImage, 1200) : (shopStore.profileImage ? cdnSrc(shopStore.profileImage, 600) : undefined)}
+  image={ogImage}
   jsonLd={jsonLd}
   canonical={storeUrl}
-  noindex={!storeReady}
+  noindex={!storeReady || isDemo}
   isLoggedIn={isLoggedIn}
   storeMode={true}
   storeName={shopStore.name}
@@ -170,14 +204,57 @@ const pmI18n = {
   </script>
   <script is:inline type="application/json" id="pm-i18n" set:html={JSON.stringify(pmI18n)} />
 
-  <div class="store-page" data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}>
+  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}>
+
+    {/* Owner preview bar. Sits above .store-banner-pin in normal flow, so it simply
+        scrolls away and the curtain-scroll geometry below is untouched. */}
+    {isOwner && (
+      <div class="bg-[color:var(--color-bg)] border-b border-[color:var(--color-border)]">
+        <div class="container flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-[.82rem]">
+          <span class="[color:var(--color-muted)]">{t.store.ownerPreview}</span>
+          <a
+            id="owner-preview-back"
+            href={dashboardHref}
+            class="font-semibold [color:var(--color-accent)] no-underline hover:underline"
+          >{t.store.ownerPreviewBack}</a>
+        </div>
+      </div>
+    )}
+    <script>
+      // Close the preview tab instead of navigating, so the seller lands back on the
+      // dashboard tab that is still open rather than ending up with two of them.
+      // Closable when the dashboard opened this tab via window.open (initStorePreviewLink),
+      // or while it still holds a single history entry. Reached any other way — a direct
+      // link, or after browsing deep into the store from a plain link-opened tab — close
+      // is refused, so that case falls through to the plain navigation the href provides.
+      const ownerBack = document.getElementById('owner-preview-back') as HTMLAnchorElement | null;
+      ownerBack?.addEventListener('click', (e) => {
+        if (!window.opener && history.length > 1) return;
+        e.preventDefault();
+        window.close();
+        setTimeout(() => { if (!window.closed) window.location.href = ownerBack.href; }, 120);
+      });
+    </script>
 
     {/* Curtain scroll (CURRENT_TASK 2): ONLY the banner image is pinned; the
         store details and the products both scroll up and over it as one
         contiguous opaque flow (white details → grey products, no gap), so the
         image is the single thing the curtain covers — the details are never
         covered, they just scroll past. */}
-    {shopStore.bannerImage && (
+    <!-- A showcase store never uses a photo banner (see StoreDemoBanner) — the
+         generated wordmark takes the identical 3/1 wrap, so the curtain-scroll
+         geometry above is unchanged. The comment sits OUTSIDE the expression on
+         purpose: Astro's compiler rejects an HTML comment as the first child
+         right after `{expr ? (` (see AI_INSTRUCTIONS → Architecture). -->
+    {isDemo ? (
+      <div class="store-banner-pin">
+        <div class="container">
+          <div class="store-banner__image-wrap">
+            <StoreDemoBanner slug={shopStore.slug} index={demoIndex} />
+          </div>
+        </div>
+      </div>
+    ) : shopStore.bannerImage && (
       <div class="store-banner-pin">
         <div class="container">
           <div class="store-banner__image-wrap">
@@ -199,9 +276,38 @@ const pmI18n = {
       <div class="container">
         <div class="store-banner__info">
           <div class="store-banner__identity">
-            <StoreAvatar name={shopStore.name} profileImage={shopStore.profileImage} size={56} />
+            <StoreAvatar name={shopStore.name} slug={shopStore.slug} profileImage={shopStore.profileImage} size={56} />
             <h1 id="store-heading" class="store-name" dir={dir}>{shopStore.name}</h1>
+            <StoreDemoBadge demo={isDemo} />
+            {isDemo && (
+              <a
+                href="/seller/register"
+                class="inline-flex items-center gap-1 text-[0.78rem] font-medium
+                       [color:var(--color-accent-dark)] hover:underline"
+              >
+                {t.demo.openYours}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+                     style="flex-shrink:0">
+                  {lang === 'he' ? <polyline points="15 18 9 12 15 6"/> : <polyline points="9 18 15 12 9 6"/>}
+                </svg>
+              </a>
+            )}
           </div>
+          {isDemo && (
+            <p
+              class="mt-2 rounded-[var(--radius)] border px-3 py-2 text-[0.82rem] leading-relaxed
+                     [border-color:color-mix(in_srgb,var(--color-accent)_28%,transparent)]
+                     [background:color-mix(in_srgb,var(--color-accent)_7%,var(--color-surface))]
+                     [color:var(--color-text)]"
+              dir={dir}
+            >
+              <strong class="font-semibold">{t.demo.noticeTitle}</strong>{' '}{t.demo.noticeText}{' '}
+              <a href="/seller/register" class="font-semibold [color:var(--color-accent-dark)] hover:underline whitespace-nowrap">
+                {t.demo.noticeCta}
+              </a>
+            </p>
+          )}
           {shopStore.tagline && <p class="store-tagline" dir={dir}>{shopStore.tagline}</p>}
             {shopStore.description && shopStore.description !== shopStore.tagline && (
               <p class="store-desc" dir={dir}>{shopStore.description}</p>
@@ -518,6 +624,12 @@ const pmI18n = {
                     )}
                   </div>
                   <div class="product-card__body" dir="auto">
+                    {isDemo && (
+                      <span class={DEMO_PRODUCT_BADGE_CLASS}>
+                        <Fragment set:html={DEMO_PRODUCT_BADGE_ICON} />
+                        {t.demo.productBadge}
+                      </span>
+                    )}
                     <a href={`/${shopStore.slug}/${p.slug}`}
                        class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150"
                        style="color:inherit;text-decoration:none;display:block">
@@ -609,6 +721,8 @@ const pmI18n = {
   import { PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
   import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
   import { initCustomDomainLinks } from '../../lib/custom-domain-links.js';
+  import { initChipScroller } from '../../lib/chip-scroller.js';
+  import { initStickyBar } from '../../lib/sticky-bar.js';
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     // Heart/wishlist buttons are excluded — their own heart-burst is the click
@@ -881,21 +995,10 @@ const pmI18n = {
     card.addEventListener('animationend', () => card.classList.remove('product-card--entering'), { once: true });
   });
 
-  // Sticky filter bar → toggle `.is-stuck` (drives the bg-fade under it, see
-  // store.css) the moment it pins to the header. A zero-height sentinel placed
-  // just above the bar flips the state via IntersectionObserver — no scroll
-  // handler, no layout cost — using the header's own height as the trigger line.
+  // Sticky filter bar → `.is-stuck` fades the frosted backdrop in once it pins
+  // to the header (see lib/sticky-bar.ts; shared with the /stores directory).
   const controlsBar = document.querySelector<HTMLElement>('.store-controls');
-  if (controlsBar?.parentElement) {
-    const sentinel = document.createElement('div');
-    sentinel.setAttribute('aria-hidden', 'true');
-    controlsBar.parentElement.insertBefore(sentinel, controlsBar);
-    const headerPx = Math.round(3.3 * parseFloat(getComputedStyle(document.documentElement).fontSize || '16'));
-    new IntersectionObserver(
-      ([entry]) => controlsBar.classList.toggle('is-stuck', !entry.isIntersecting),
-      { rootMargin: `-${headerPx}px 0px 0px 0px`, threshold: 0 },
-    ).observe(sentinel);
-  }
+  initStickyBar(controlsBar);
 
   // ── Search + Sort ─────────────────────────────────────────────
   const searchInput = document.getElementById('product-search') as HTMLInputElement | null;
@@ -990,35 +1093,24 @@ const pmI18n = {
     return categoryAncestorChain(categoryId).map((c) => c.name).join(' › ');
   }
 
+  // Mirrors the SSR badge above — see the SSR/AJAX-parity rule in AI_INSTRUCTIONS.
+  const demoRoot = document.querySelector<HTMLElement>('.store-page');
+  const demoProductBadgeHtml = demoRoot?.dataset.demo
+    ? `<span class="inline-flex items-center gap-1 mb-1 text-[0.66rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>${escHtml(demoRoot.dataset.demoLabel ?? '')}</span>`
+    : '';
+
   const storeControls = document.querySelector<HTMLElement>('.store-controls');
   const categoryFilters = document.getElementById('category-filters') as HTMLElement | null;
   const categoryFiltersWrap = document.getElementById('category-filters-wrap') as HTMLElement | null;
   const categoryFiltersPrev = document.getElementById('category-filters-prev') as HTMLButtonElement | null;
   const categoryFiltersNext = document.getElementById('category-filters-next') as HTMLButtonElement | null;
   const isRtl = document.documentElement.dir === 'rtl';
-  const CATEGORY_SCROLL_STEP = 200;
 
-  // One row, no wrap — overflow becomes horizontal scroll with edge arrows
-  // (each shown only on the side there's still something to scroll to).
-  // Same edge-detection shape as the homepage's own carousel arrows
-  // (index.astro) — Math.abs handles RTL's negative scrollLeft.
-  function updateCategoryArrows(): void {
-    if (!categoryFilters) return;
-    const { scrollLeft, scrollWidth, clientWidth } = categoryFilters;
-    const atStart = Math.abs(scrollLeft) < 4;
-    const atEnd = Math.abs(scrollLeft) + clientWidth >= scrollWidth - 4;
-    categoryFiltersPrev?.toggleAttribute('hidden', atStart);
-    categoryFiltersNext?.toggleAttribute('hidden', atEnd);
-  }
-
-  if (categoryFilters) {
-    categoryFilters.addEventListener('scroll', updateCategoryArrows, { passive: true });
-    new ResizeObserver(updateCategoryArrows).observe(categoryFilters);
-    updateCategoryArrows();
-    requestAnimationFrame(updateCategoryArrows);
-  }
-  categoryFiltersPrev?.addEventListener('click', () => categoryFilters?.scrollBy({ left: isRtl ? CATEGORY_SCROLL_STEP : -CATEGORY_SCROLL_STEP, behavior: 'smooth' }));
-  categoryFiltersNext?.addEventListener('click', () => categoryFilters?.scrollBy({ left: isRtl ? -CATEGORY_SCROLL_STEP : CATEGORY_SCROLL_STEP, behavior: 'smooth' }));
+  // One row, no wrap — overflow becomes horizontal scroll with edge arrows.
+  // Shared with the /stores directory, which reuses both this and the CSS.
+  const { update: updateCategoryArrows } = initChipScroller({
+    row: categoryFilters, prev: categoryFiltersPrev, next: categoryFiltersNext,
+  });
 
   function renderCategoryNav(): void {
     if (!storeControls) return;
@@ -1431,6 +1523,7 @@ const pmI18n = {
         ${dotsHtml}
       </div>
       <div class="product-card__body" dir="auto">
+        ${demoProductBadgeHtml}
         <a href="/${escHtml(storeSlug)}/${escHtml(p.slug)}" class="product-modal-trigger hover:text-[var(--color-accent)] transition-colors duration-150" style="color:inherit;text-decoration:none;display:block">
           <h3 class="product-card__name">${escHtml(p.name)}</h3>
         </a>

@@ -57,22 +57,29 @@ function buildVariantStock(variants) {
 // Each vertical → a Hebrew-branded set of stores + the DummyJSON categories that
 // stock them. All of a vertical's categories pool together, so a store draws a
 // coherent, on-theme range of real products.
+//
+// `tag` is the STORE-level label (Store.categories) — distinct from `hebCats`,
+// which are the store's own internal product categories. It's what the /stores
+// filter chips list and what the homepage groups its category shelves by; that
+// grouping needs 2+ stores sharing one tag (home-feed.ts), which is why the tag
+// is per-vertical and every vertical has at least two stores. Without it the
+// homepage's whole middle section silently never rendered.
 const VERTICALS = [
-  { key: 'fashion', variant: 'apparel', djCats: ['mens-shirts', 'tops', 'womens-dresses'], hebCats: ['נשים', 'גברים', 'קולקציה חדשה'], stores: ['אורבן סטייל', 'קפסולה', 'לוק בוק'] },
-  { key: 'shoes', variant: 'shoes', djCats: ['mens-shoes', 'womens-shoes'], hebCats: ['גברים', 'נשים', 'ספורט'], stores: ['סטפ אפ', 'סול', 'פוטוור'] },
-  { key: 'tech', variant: 'none', djCats: ['smartphones', 'laptops', 'tablets'], hebCats: ['סמארטפונים', 'מחשבים', 'טאבלטים'], stores: ['גאדג׳ט האב', 'טק פוינט', 'פיקסל'] },
-  { key: 'gadgets', variant: 'none', djCats: ['mobile-accessories', 'sunglasses'], hebCats: ['אביזרים', 'משקפי שמש', 'חדש'], stores: ['אקססורי', 'סטייל אפ'] },
-  { key: 'home', variant: 'none', djCats: ['furniture', 'home-decoration'], hebCats: ['ריהוט', 'עיצוב הבית', 'טקסטיל'], stores: ['בית ונוי', 'הום דקו', 'ליבינג'] },
-  { key: 'kitchen', variant: 'none', djCats: ['kitchen-accessories'], hebCats: ['כלי בישול', 'אחסון', 'הגשה'], stores: ['שף בית', 'קוצ׳ינה', 'טעם'] },
-  { key: 'beauty', variant: 'none', djCats: ['beauty', 'skin-care', 'fragrances'], hebCats: ['איפור', 'טיפוח פנים', 'בשמים'], stores: ['גלואו', 'סקין לאב', 'אורה'] },
-  { key: 'jewelry', variant: 'none', djCats: ['womens-jewellery', 'mens-watches', 'womens-watches'], hebCats: ['תכשיטים', 'שעונים', 'מתנות'], stores: ['לומייר', 'אבן חן'] },
-  { key: 'sports', variant: 'none', djCats: ['sports-accessories'], hebCats: ['כושר', 'ריצה', 'אביזרים'], stores: ['אקטיב', 'פיט זון', 'מומנטום'] },
-  { key: 'bags', variant: 'none', djCats: ['womens-bags'], hebCats: ['תיקים', 'קלאץ׳', 'חדש'], stores: ['תיק וחצי', 'בג בוטיק'] },
-  { key: 'gourmet', variant: 'none', djCats: ['groceries'], hebCats: ['מזווה', 'טרי', 'מארזים'], stores: ['רוסט', 'טעמים', 'מכולת השכונה'] },
-  { key: 'auto', variant: 'none', djCats: ['vehicle', 'motorcycle'], hebCats: ['רכב', 'דו-גלגלי', 'אביזרים'], stores: ['מוטו', 'גראז׳'] },
+  { key: 'fashion', tag: 'אופנה', variant: 'apparel', djCats: ['mens-shirts', 'tops', 'womens-dresses'], hebCats: ['נשים', 'גברים', 'קולקציה חדשה'], stores: ['אורבן סטייל', 'קפסולה', 'לוק בוק'] },
+  { key: 'shoes', tag: 'הנעלה', variant: 'shoes', djCats: ['mens-shoes', 'womens-shoes'], hebCats: ['גברים', 'נשים', 'ספורט'], stores: ['סטפ אפ', 'סול', 'פוטוור'] },
+  { key: 'tech', tag: 'אלקטרוניקה', variant: 'none', djCats: ['smartphones', 'laptops', 'tablets'], hebCats: ['סמארטפונים', 'מחשבים', 'טאבלטים'], stores: ['גאדג׳ט האב', 'טק פוינט', 'פיקסל'] },
+  { key: 'gadgets', tag: 'אביזרים', variant: 'none', djCats: ['mobile-accessories', 'sunglasses'], hebCats: ['אביזרים', 'משקפי שמש', 'חדש'], stores: ['אקססורי', 'סטייל אפ'] },
+  { key: 'home', tag: 'לבית', variant: 'none', djCats: ['furniture', 'home-decoration'], hebCats: ['ריהוט', 'עיצוב הבית', 'טקסטיל'], stores: ['בית ונוי', 'הום דקו', 'ליבינג'] },
+  { key: 'kitchen', tag: 'מטבח', variant: 'none', djCats: ['kitchen-accessories'], hebCats: ['כלי בישול', 'אחסון', 'הגשה'], stores: ['שף בית', 'קוצ׳ינה', 'טעם'] },
+  { key: 'beauty', tag: 'טיפוח', variant: 'none', djCats: ['beauty', 'skin-care', 'fragrances'], hebCats: ['איפור', 'טיפוח פנים', 'בשמים'], stores: ['גלואו', 'סקין לאב', 'אורה'] },
+  { key: 'jewelry', tag: 'תכשיטים', variant: 'none', djCats: ['womens-jewellery', 'mens-watches', 'womens-watches'], hebCats: ['תכשיטים', 'שעונים', 'מתנות'], stores: ['לומייר', 'אבן חן'] },
+  { key: 'sports', tag: 'ספורט', variant: 'none', djCats: ['sports-accessories'], hebCats: ['כושר', 'ריצה', 'אביזרים'], stores: ['אקטיב', 'פיט זון', 'מומנטום'] },
+  { key: 'bags', tag: 'תיקים', variant: 'none', djCats: ['womens-bags'], hebCats: ['תיקים', 'קלאץ׳', 'חדש'], stores: ['תיק וחצי', 'בג בוטיק'] },
+  { key: 'gourmet', tag: 'מזון', variant: 'none', djCats: ['groceries'], hebCats: ['מזווה', 'טרי', 'מארזים'], stores: ['רוסט', 'טעמים', 'מכולת השכונה'] },
+  { key: 'auto', tag: 'רכב', variant: 'none', djCats: ['vehicle', 'motorcycle'], hebCats: ['רכב', 'דו-גלגלי', 'אביזרים'], stores: ['מוטו', 'גראז׳'] },
   // Department stores: draw 100 distinct products from the whole catalog, so the
   // storefront's pagination (24/page) and large-grid rendering get exercised.
-  { key: 'dept', variant: 'none', big: 100, djCats: [], hebCats: ['אלקטרוניקה', 'אופנה', 'לבית ולמטבח', 'מבצעים'], stores: ['MegaMart', 'City Market', 'The Bazaar'] },
+  { key: 'dept', tag: 'כלבו', variant: 'none', big: 100, djCats: [], hebCats: ['אלקטרוניקה', 'אופנה', 'לבית ולמטבח', 'מבצעים'], stores: ['MegaMart', 'City Market', 'The Bazaar'] },
 ];
 
 const FIRST = ['נועה', 'איתי', 'שירה', 'יונתן', 'מאיה', 'דניאל', 'תמר', 'עומר', 'ליאור', 'רוני', 'אורי', 'גל', 'הדר', 'אריאל', 'ניר'];
@@ -210,7 +217,7 @@ async function main() {
         id: storeId, sellerId: seller.id, slug: storeSlug, name: storeName,
         tagline: pick(['איכות שפשוט מרגישים', 'הבחירה החכמה', 'קולקציה חדשה כל שבוע', 'ישר מהיצרן אליך', 'עיצוב שמדבר בעדו']),
         description: `${storeName} — מבחר ${vert.hebCats.join(', ')} באיכות גבוהה ובמשלוח מהיר לכל הארץ.`,
-        colors: { primary, accent }, createdAt, categories: [],
+        colors: { primary, accent }, createdAt, categories: [vert.tag],
         bannerImage: storeProducts[0].images[0], profileImage: (storeProducts[1] || storeProducts[0]).images[0],
         shipping: { flatRate: pick([0, 19, 25, 29]), freeAbove: pick([null, 199, 249, 299]), processingDays: int(1, 3) },
         address: `${pick(STREETS)} ${int(1, 90)}, ${pick(CITIES)}`, addressVisible: true,

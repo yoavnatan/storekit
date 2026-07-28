@@ -3,7 +3,8 @@ import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getMessagesBySeller, getMessageReplies } from '../../../lib/messages.js';
-import { buildSellerMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../../lib/seller-messages-query.js';
+import { getAdminThreadsForSeller } from '../../../lib/admin-messages.js';
+import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
 
 function json(data: unknown, status = 200) {
@@ -13,10 +14,10 @@ function json(data: unknown, status = 200) {
   });
 }
 
-// AJAX pagination for the seller dashboard's Messages tab (buyer threads
-// only — the pinned "הודעות מערכת" row is a separate synthetic row the
-// client never re-fetches through here). Mirrors the initial SSR render's
-// own query/filter/sort/paginate pipeline in dashboard.astro exactly.
+// AJAX pagination for the seller dashboard's Messages tab — buyer threads
+// AND admin "system" threads, in one list. Mirrors the initial SSR render's
+// own query/filter/sort/paginate pipeline in dashboard.astro exactly (the
+// two must stay identical, or page 1 would differ from what SSR painted).
 export const GET: APIRoute = async ({ url, cookies }) => {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
@@ -27,7 +28,10 @@ export const GET: APIRoute = async ({ url, cookies }) => {
 
   const storeMessages = getMessagesBySeller(sellerId).filter((m) => !m.replyToId && m.toStoreId === store.id);
   const repliesByMsgId = Object.fromEntries(storeMessages.map((m) => [m.id, getMessageReplies(m.id)]));
-  const rows = buildSellerMessageRows(storeMessages, repliesByMsgId, sellerId);
+  const rows = [
+    ...buildSellerMessageRows(storeMessages, repliesByMsgId, sellerId),
+    ...buildSystemMessageRows(getAdminThreadsForSeller(sellerId)),
+  ];
 
   const query = parseSellerMessageQuery(url.searchParams);
   const filtered = filterAndSortSellerMessages(rows, query);
@@ -35,7 +39,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
 
   return json({
     ok: true,
-    items: page.items.map(({ msg, lastMsg, hasUnread }) => ({ msg, lastMsg, hasUnread })),
+    items: page.items,
     page: page.page,
     totalPages: page.totalPages,
     total: page.total,

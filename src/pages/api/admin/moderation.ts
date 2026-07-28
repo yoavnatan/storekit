@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getStoreBySlug, getStoreById, updateStore } from '../../../lib/stores.js';
 import { getProductById, updateProduct } from '../../../lib/store-products.js';
-import { createAdminMessage } from '../../../lib/admin-messages.js';
+import { createAdminThread } from '../../../lib/admin-messages.js';
 import { createNotification } from '../../../lib/notifications.js';
 
 const json = { 'Content-Type': 'application/json' };
@@ -11,20 +11,24 @@ const json = { 'Content-Type': 'application/json' };
 // The seller must always hear about a block and be able to contest it — a
 // silent kill switch would violate the platform's own zero-touch promise in
 // the other direction (the seller now has to *guess* something's wrong).
-// Reuses the admin<->seller messaging thread built for CURRENT_TASK.md's
-// "סשן א׳" (merged 2026-07-14): the notice lands as a system message the
-// seller can reply to directly from their existing messages tab — that
-// reply *is* the appeal channel, no separate UI needed.
+// Reuses the admin<->seller messaging built for CURRENT_TASK.md's "סשן א׳"
+// (merged 2026-07-14): the notice opens its OWN subject-titled thread in the
+// seller's messages tab, which they can reply to directly — that reply *is*
+// the appeal channel, no separate UI needed. Its own thread, not one shared
+// system conversation, so an appeal about this block stays attached to this
+// block (CURRENT_TASK "סשן ד׳").
 function notifySellerOfModeration(sellerId: string, entityLabel: string, kind: 'store' | 'product', blocked: boolean): void {
+  const noun = kind === 'store' ? 'חנות' : 'מוצר';
+  const subject = blocked ? `ה${noun} "${entityLabel}" נחסם/ה` : `החסימה על ה${noun} "${entityLabel}" בוטלה`;
   const content = blocked
-    ? `ה${kind === 'store' ? 'חנות' : 'מוצר'} "${entityLabel}" נחסם/ה על ידי הצוות ואינו/ה זמין/ה יותר באתר. אם ברצונך לערער על ההחלטה או לקבל הסבר, פשוט השב/י להודעה זו.`
-    : `ה${kind === 'store' ? 'חנות' : 'מוצר'} "${entityLabel}" שוחרר/ה מחסימה וחזר/ה להיות זמין/ה באתר.`;
-  const message = createAdminMessage(sellerId, 'admin', content);
+    ? `ה${noun} "${entityLabel}" נחסם/ה על ידי הצוות ואינו/ה זמין/ה יותר באתר. אם ברצונך לערער על ההחלטה או לקבל הסבר, פשוט השב/י להודעה זו.`
+    : `ה${noun} "${entityLabel}" שוחרר/ה מחסימה וחזר/ה להיות זמין/ה באתר.`;
+  const message = createAdminThread(sellerId, subject, content);
   createNotification({
     userId: sellerId,
     role: 'seller',
     type: 'admin_message',
-    title: blocked ? 'חנות/מוצר נחסם' : 'חסימה בוטלה',
+    title: subject,
     body: content.slice(0, 120),
     relatedId: message.id,
   });

@@ -5,6 +5,7 @@ import { formatPrice } from '../../config/store.config.js';
 import { createFloatingPortal, type FloatingPortal } from '../../lib/toolbar-portal.js';
 import { buildAdminUrl, swapPanel } from '../../lib/admin-nav.js';
 import { buildBarChartSvg, type BarChartPoint } from '../../lib/chart-svg.js';
+import { showErrorToast } from '../../lib/toast.js';
 
 // Platform advertising tab (CURRENT_TASK.md → סשן ב׳). Wires three things:
 //  1. the "(i)" info tooltips scattered across the panel (initInfoTooltips),
@@ -54,7 +55,7 @@ function initBaselineForm(): void {
       if (!res.ok) throw new Error('request failed');
       if (saved) saved.hidden = false;
     } catch {
-      alert('השמירה נכשלה, נסו שוב.');
+      showErrorToast('השמירה נכשלה, נסו שוב');
     } finally {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('btn--busy'); }
     }
@@ -103,7 +104,7 @@ function initPromotedList(): void {
         if (badge) badge.textContent = PROMO_LABELS[applied] ?? PROMO_LABELS[1]!;
         tierBtn.textContent = applied === 2 ? 'החזר לקידום רגיל' : 'הפוך לקידום חזק';
       } catch {
-        alert('הפעולה נכשלה, נסו שוב.');
+        showErrorToast('הפעולה נכשלה, נסו שוב');
       } finally {
         tierBtn.disabled = false;
       }
@@ -331,7 +332,7 @@ function initBrandCreate(): void {
       if (hidden) hidden.value = '';
       if (imgBtn) imgBtn.textContent = 'העלה תמונה';
     } catch {
-      alert('יצירת הקמפיין נכשלה, נסו שוב.');
+      showErrorToast('יצירת הקמפיין נכשלה, נסו שוב');
     } finally {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('btn--busy'); }
     }
@@ -363,7 +364,7 @@ function initBrandList(): void {
         if (!res.ok) throw new Error('failed');
         saveBtn.textContent = 'נשמר ✓';
         setTimeout(() => { saveBtn.textContent = 'עדכן'; }, 1500);
-      } catch { alert('העדכון נכשל, נסו שוב.'); }
+      } catch { showErrorToast('העדכון נכשל, נסו שוב'); }
       finally { saveBtn.disabled = false; }
       return;
     }
@@ -392,7 +393,7 @@ function initBrandList(): void {
             meta.appendChild(badge);
           }
         } else if (badge) { badge.remove(); }
-      } catch { alert('הפעולה נכשלה, נסו שוב.'); }
+      } catch { showErrorToast('הפעולה נכשלה, נסו שוב'); }
       finally { toggleBtn.disabled = false; }
       return;
     }

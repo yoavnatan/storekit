@@ -1,10 +1,15 @@
 import { encodeList, debounce } from '../../lib/admin-nav.js';
-import { toolbarMenuTitle } from '../../lib/toolbar-portal.js';
+import { toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
+import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
+import { SYSTEM_SENDER_LABEL } from '../../lib/seller-messages-query.js';
+import { showErrorToast } from '../../lib/toast.js';
 
-// Messages tab: buyer<->seller threads + the pinned admin "הודעות מערכת" thread,
-// header/mobile sort+filter through an own body-anchored portal, server-fetched
-// pagination, and live unread polling. Extracted verbatim from
-// seller/dashboard.astro's inline <script>. `onAlertsChanged` = the dashboard's
+// Messages tab: buyer<->seller threads and admin<->seller "system" threads in
+// ONE table (both normalized to the same row shape server-side — see
+// seller-messages-query.ts), header/mobile sort+filter through an own
+// body-anchored portal, server-fetched pagination, and live unread polling.
+// A row's data-msg-kind is the only difference: it picks the API a thread
+// load / mark-read / reply talks to. `onAlertsChanged` = the dashboard's
 // updateSwitcherAlertDot (shared with the orders tab), re-run on mark-read.
 export function initMessagesTab(onAlertsChanged: () => void): void {
   // ── Seller messages: expand / mark read / reply ──────────────
@@ -90,6 +95,11 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
   // (kept as the same function name/shape the toolbar's own filter handlers
   // already call, just server-driven now instead of a DOM show/hide pass).
   function applyMessagesFilter(): void {
+    // Pin the column widths while the pre-change rows are still on screen, so
+    // the re-render can't resize them and slide the header out from under an
+    // open funnel dropdown. Opening/closing a menu on its own does nothing.
+    // See lib/table-column-lock.ts.
+    if (msgFilters.size) lockTableColumns(document.querySelector<HTMLTableElement>('.msg-table'));
     messagesCurrentPage = 1;
     applyMessagesPagination();
   }
@@ -105,6 +115,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       badge.hidden = activeCols === 0;
       badge.textContent = String(activeCols);
     }
+    if (!msgFilters.size) unlockTableColumns(document.querySelector<HTMLTableElement>('.msg-table'));
   }
 
   function refreshMsgSortUI(): void {
@@ -168,6 +179,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
   }
   function openMsgPortal(trigger: HTMLElement, minWidth: string, buildHtml: () => string, wire: (portal: HTMLElement) => void): void {
     const portal = getMsgPortal();
+    msgPortalTrigger = trigger;
     portal.style.minWidth = minWidth;
     portal.style.maxHeight = '320px';
     portal.style.overflow = 'auto';
@@ -175,7 +187,6 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     portal.hidden = false;
     positionMsgPortal(portal, trigger);
     trigger.setAttribute('aria-expanded', 'true');
-    msgPortalTrigger = trigger;
     wire(portal);
   }
   document.addEventListener('click', (e) => {
@@ -245,7 +256,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       backHtml,
       ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${escMsg(v)}" ${selected.has(v) ? 'checked' : ''}>${escMsg(v)}</label>`),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${escMsg(msgI18n.filterClearColumn)}</button>`,
+      filterClearButtonHtml('data-filter-clear-col', msgI18n.filterClearColumn, selected.size > 0),
     ].join('');
   }
   function wireMsgFilterValues(portal: HTMLElement, col: string, reopen: () => void, onBack?: () => void): void {
@@ -259,6 +270,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       });
     });
     portal.querySelector('[data-filter-clear-col]')?.addEventListener('click', () => {
+      if (!msgFilters.has(col)) return;
       msgFilters.delete(col);
       applyMessagesFilter();
       refreshMsgFilterUI();
@@ -293,7 +305,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
         </div>`;
       }).join(''),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${escMsg(msgI18n.filterClearAll)}</button>`,
+      filterClearButtonHtml('data-filter-clear-all', msgI18n.filterClearAll, msgFilters.size > 0),
     ].join('');
   }
 
@@ -320,6 +332,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
         });
       });
       portal.querySelector('[data-filter-clear-all]')?.addEventListener('click', () => {
+        if (!msgFilters.size) return;
         msgFilters.clear();
         applyMessagesFilter();
         refreshMsgFilterUI();
@@ -351,62 +364,74 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
   refreshMsgSortUI();
   refreshMsgFilterUI();
 
-  // Builds the two <tr> a message occupies (main row + collapsible thread
-  // row) from an AJAX-fetched item — mirrors the SSR template exactly, minus
-  // the reply entries themselves: expanding a row always re-fetches its
-  // thread fresh via loadThread() (see bindMessageRow below), which replaces
-  // everything after the first child, so there was never a need to embed
-  // existing replies here — only the buyer's own opening message.
+  // Builds the two <tr> a thread occupies (main row + collapsible thread row)
+  // from an AJAX-fetched item — mirrors SellerMessageRow.astro exactly, for
+  // both kinds of thread. Expanding a row still re-fetches it fresh via
+  // loadThread() (see bindMessageRow below); the entries embedded here are
+  // what shows in the instant between the click and that response.
+  interface ThreadEntryData { who: string; fromSelf: boolean; content: string; createdAt: string; unread: boolean }
   interface MessageRowData {
-    msg: { id: string; fromName: string; subject: string; content: string; createdAt: string; readBySeller: boolean; productRef?: { productName: string; productSlug: string; storeSlug: string } };
-    lastMsg: { content: string; createdAt: string; fromUserId: string };
+    kind: 'buyer' | 'system';
+    id: string;
+    fromName: string;
+    subject: string;
+    entries: ThreadEntryData[];
+    lastContent: string;
+    lastCreatedAt: string;
+    lastFromSelf: boolean;
     hasUnread: boolean;
+    productName: string;
+    productHref: string;
+  }
+  function entryBubbleHtml(entry: ThreadEntryData): string {
+    return `<div class="msg-thread-entry ${entry.fromSelf ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}">
+      <div class="msg-thread-entry__header">
+        <span class="msg-thread-entry__who">${escMsg(entry.who)}</span>
+        ${entry.unread ? '<span class="msg-thread-unread-dot" aria-label="לא נקרא"></span>' : ''}
+        <span class="msg-thread-entry__date">${escMsg(fmtDateJs(entry.createdAt))}</span>
+      </div>
+      <div class="msg-thread-entry__body">${escMsg(entry.content)}</div>
+    </div>`;
   }
   function buildMessageRow(data: MessageRowData): [HTMLTableRowElement, HTMLTableRowElement] {
-    const { msg, lastMsg, hasUnread } = data;
     const row = document.createElement('tr');
-    row.className = `msg-table__row${hasUnread ? ' msg-table__row--unread' : ''}`;
-    row.dataset.msgId = msg.id;
-    row.dataset.sortDate = lastMsg.createdAt;
-    row.dataset.sortProduct = (msg.productRef?.productName ?? '').toLowerCase();
-    row.dataset.filterProduct = msg.productRef?.productName ?? '';
-    row.dataset.filterFrom = msg.fromName;
+    row.className = `msg-table__row${data.hasUnread ? ' msg-table__row--unread' : ''}`;
+    row.dataset.msgId = data.id;
+    row.dataset.msgKind = data.kind;
+    row.dataset.sortDate = data.lastCreatedAt;
+    row.dataset.sortProduct = data.productName.toLowerCase();
+    row.dataset.filterProduct = data.productName;
+    row.dataset.filterFrom = data.fromName;
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
     row.setAttribute('aria-expanded', 'false');
-    const productTd = msg.productRef
-      ? `<a href="/${escMsg(msg.productRef.storeSlug)}/${escMsg(msg.productRef.productSlug)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${escMsg(msg.productRef.productName)}</a>`
+    const productTd = data.productHref
+      ? `<a href="${escMsg(data.productHref)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${escMsg(data.productName)}</a>`
       : `<span style="color:var(--color-muted)">—</span>`;
+    // A system thread is the platform's own record — the seller reads and
+    // replies to it, but can't delete it (a buyer thread they can).
+    const deleteBtn = data.kind === 'buyer'
+      ? `<button class="seller-msg-delete" data-delete-msg-id="${escMsg(data.id)}" type="button" aria-label="מחק שיחה" title="מחק שיחה">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>`
+      : '';
     row.innerHTML = `
       <td class="msg-table__td msg-table__td--status"></td>
-      <td class="msg-table__td msg-table__td--from">${hasUnread ? '<span class="visually-hidden msg-unread-sr">לא נקרא · </span>' : ''}${escMsg(msg.fromName)}</td>
-      <td class="msg-table__td msg-table__td--subject">${escMsg(msg.subject)}</td>
-      <td class="msg-table__td msg-table__td--preview">${escMsg(lastMsg.content)}${lastMsg.fromUserId === currentSellerId ? '<span class="msg-table__preview-you"> (אתה)</span>' : ''}</td>
+      <td class="msg-table__td msg-table__td--from">${data.hasUnread ? '<span class="visually-hidden msg-unread-sr">לא נקרא · </span>' : ''}${escMsg(data.fromName)}</td>
+      <td class="msg-table__td msg-table__td--subject">${escMsg(data.subject)}</td>
+      <td class="msg-table__td msg-table__td--preview">${escMsg(data.lastContent)}${data.lastFromSelf ? '<span class="msg-table__preview-you"> (אתה)</span>' : ''}</td>
       <td class="msg-table__td msg-table__td--product">${productTd}</td>
-      <td class="msg-table__td msg-table__td--date">${escMsg(fmtDateJs(lastMsg.createdAt))}</td>
-      <td class="msg-table__td msg-table__td--actions">
-        <button class="seller-msg-delete" data-delete-msg-id="${escMsg(msg.id)}" type="button" aria-label="מחק שיחה" title="מחק שיחה">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        </button>
-      </td>`;
+      <td class="msg-table__td msg-table__td--date">${escMsg(fmtDateJs(data.lastCreatedAt))}</td>
+      <td class="msg-table__td msg-table__td--actions">${deleteBtn}</td>`;
 
     const threadRow = document.createElement('tr');
     threadRow.className = 'msg-thread-row';
-    threadRow.id = `msg-detail-${msg.id}`;
+    threadRow.id = `msg-detail-${data.id}`;
     threadRow.hidden = true;
     threadRow.innerHTML = `
       <td colspan="7">
-        <div class="msg-thread msg-thread--seller-pov" id="replies-${msg.id}">
-          <div class="msg-thread-entry msg-thread-entry--buyer">
-            <div class="msg-thread-entry__header">
-              <span class="msg-thread-entry__who">${escMsg(msg.fromName)}</span>
-              ${!msg.readBySeller ? '<span class="msg-thread-unread-dot" aria-label="לא נקרא"></span>' : ''}
-              <span class="msg-thread-entry__date">${escMsg(fmtDateJs(msg.createdAt))}</span>
-            </div>
-            <div class="msg-thread-entry__body">${escMsg(msg.content)}</div>
-          </div>
-        </div>
-        <div class="seller-msg-reply-form" data-reply-for="${escMsg(msg.id)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
+        <div class="msg-thread msg-thread--seller-pov" id="replies-${data.id}">${data.entries.map(entryBubbleHtml).join('')}</div>
+        <div class="seller-msg-reply-form" data-reply-for="${escMsg(data.id)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
           <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
           <div style="display:flex;justify-content:flex-end;gap:0.5rem">
             <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
@@ -423,48 +448,57 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
   // the same way an initial SSR row is, instead of duplicating this logic.
   function bindMessageRow(row: HTMLElement): void {
     const id        = row.dataset.msgId ?? '';
-    const isSystem  = id === 'system';
+    const isSystem  = row.dataset.msgKind === 'system';
     const threadRow = document.getElementById(`msg-detail-${id}`) as HTMLTableRowElement | null;
     const repliesEl = document.getElementById(`replies-${id}`);
     let isOpen = false;
 
-    // "הודעות מערכת" (admin<->seller) is a single flat thread — not
-    // subject-based replies like the buyer messages below — so it reads/
-    // writes /api/admin-messages instead of /api/messages, and its message
-    // shape is { fromRole } rather than { fromUserId, fromName }.
+    // Shared tail of both loaders: the row's preview/date/sort key always
+    // track the thread's newest message, whichever API it came from.
+    function applyLastMessage(content: string, createdAt: string, fromSelf: boolean): void {
+      const previewTd = row.querySelector('.msg-table__td--preview');
+      if (previewTd) previewTd.innerHTML = `${escMsg(content)}${fromSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
+      const dateTd = row.querySelector('.msg-table__td--date');
+      if (dateTd) dateTd.textContent = fmtDateJs(createdAt);
+      row.dataset.sortDate = createdAt;
+    }
+
+    function markRowRead(markReadUrl: string, body: Record<string, string>): void {
+      row.classList.remove('msg-table__row--unread');
+      row.querySelector('.msg-unread-sr')?.remove();
+      repliesEl?.querySelectorAll('.msg-thread-unread-dot').forEach((el) => el.remove());
+      // The tab dot reflects ALL threads — only drop it once no other row is
+      // still unread (with the system thread now being many rows instead of
+      // one pinned row, an unconditional remove was wrong).
+      if (!document.querySelector('.msg-table__row--unread')) document.querySelector('#tab-messages span[aria-label]')?.remove();
+      onAlertsChanged();
+      if (!rowMatchesMsgFilters(row)) row.hidden = true;
+      fetch(markReadUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
+    }
+
+    function focusReplyBox(): void {
+      threadRow?.querySelector<HTMLElement>('[data-reply-for]')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      threadRow?.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true });
+    }
+
+    // A system thread reads/writes /api/admin-messages instead of
+    // /api/messages, and its messages carry { fromRole } rather than
+    // { fromUserId, fromName } — its GET returns the WHOLE thread (root
+    // included), so it replaces every bubble rather than all-but-the-first.
     function loadThreadSystem(markRead: boolean) {
-      fetch('/api/admin-messages')
+      fetch(`/api/admin-messages?threadId=${encodeURIComponent(id)}`)
         .then((r) => r.json())
-        .then(({ messages }: { messages: { fromRole: 'admin' | 'seller'; content: string; createdAt: string }[] }) => {
-          if (!repliesEl) return;
-          repliesEl.innerHTML = '';
-          messages.forEach((m) => {
-            const isSelf = m.fromRole === 'seller';
-            const div = document.createElement('div');
-            div.className = `msg-thread-entry ${isSelf ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`;
-            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escMsg(isSelf ? 'אתה' : 'המנהל')}</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(m.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(m.content)}</div>`;
-            repliesEl.appendChild(div);
-          });
-          if (messages.length > 0) {
-            const last = messages[messages.length - 1]!;
-            const isSelf = last.fromRole === 'seller';
-            const previewTd = row.querySelector('.msg-table__td--preview');
-            if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
-            const dateTd = row.querySelector('.msg-table__td--date');
-            if (dateTd) dateTd.textContent = fmtDateJs(last.createdAt);
-            row.dataset.sortDate = last.createdAt;
-          }
-          if (markRead) {
-            row.classList.remove('msg-table__row--unread');
-            row.querySelector('.msg-unread-sr')?.remove();
-            document.querySelector('#tab-messages span[aria-label]')?.remove();
-            onAlertsChanged();
-            if (!rowMatchesMsgFilters(row)) row.hidden = true;
-            fetch('/api/admin-messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read' }) })
-              .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
-          }
-          threadRow?.querySelector<HTMLElement>('[data-reply-for]')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-          threadRow?.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true });
+        .then(({ messages }: { messages?: { fromRole: 'admin' | 'seller'; content: string; createdAt: string; readBySeller: boolean }[] }) => {
+          if (!repliesEl || !messages) return;
+          repliesEl.innerHTML = messages.map((m) => {
+            const fromSelf = m.fromRole === 'seller';
+            return entryBubbleHtml({ who: fromSelf ? 'אתה' : SYSTEM_SENDER_LABEL, fromSelf, content: m.content, createdAt: m.createdAt, unread: !fromSelf && !m.readBySeller });
+          }).join('');
+          const last = messages[messages.length - 1];
+          if (last) applyLastMessage(last.content, last.createdAt, last.fromRole === 'seller');
+          if (markRead) markRowRead('/api/admin-messages', { action: 'mark-read', threadId: id });
+          focusReplyBox();
         }).catch(() => {});
     }
 
@@ -489,11 +523,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
           if (replies.length > 0) {
             const last = replies[replies.length - 1]!;
             const isSelf = last.fromUserId === currentSellerId;
-            const previewTd = row.querySelector('.msg-table__td--preview');
-            if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
-            const dateTd = row.querySelector('.msg-table__td--date');
-            if (dateTd) dateTd.textContent = fmtDateJs(last.createdAt);
-            row.dataset.sortDate = last.createdAt;
+            applyLastMessage(last.content, last.createdAt, isSelf);
             if (viaPoll && markRead && !isSelf) {
               window.dispatchEvent(new CustomEvent('toast:show', { detail: {
                 title: 'יש לך הודעה חדשה מקונה', body: last.fromName, key: last.id,
@@ -501,18 +531,8 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
               } }));
             }
           }
-          if (markRead) {
-            row.classList.remove('msg-table__row--unread');
-            row.querySelector('.msg-unread-sr')?.remove();
-            repliesEl.querySelectorAll('.msg-thread-unread-dot').forEach((el) => el.remove());
-            document.querySelector('#tab-messages span[aria-label]')?.remove();
-            onAlertsChanged();
-            if (!rowMatchesMsgFilters(row)) row.hidden = true;
-            fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark-read', id }) })
-              .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
-          }
-          threadRow?.querySelector<HTMLElement>('[data-reply-for]')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-          threadRow?.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true });
+          if (markRead) markRowRead('/api/messages', { action: 'mark-read', id });
+          focusReplyBox();
         }).catch(() => {});
     }
 
@@ -559,22 +579,14 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
           const res = await fetch(isSystem ? '/api/admin-messages' : '/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(isSystem ? { content } : { replyToId: id, content }),
+            body: JSON.stringify(isSystem ? { threadId: id, content } : { replyToId: id, content }),
           });
           const data = await res.json() as { ok?: boolean; message?: { content: string; createdAt: string } };
-          // /api/admin-messages has no `ok` field on its message response
-          // (unlike /api/messages) — see admin-messages.ts POST handler.
-          const success = isSystem ? (res.ok && data.message) : (res.ok && data.ok && data.message);
-          if (success && data.message && repliesEl) {
-            const div = document.createElement('div');
-            div.className = 'msg-thread-entry msg-thread-entry--seller';
-            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">אתה</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(data.message.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(data.message.content)}</div>`;
-            repliesEl.appendChild(div);
-            const previewTd = row.querySelector('.msg-table__td--preview');
-            if (previewTd) previewTd.innerHTML = `${escMsg(data.message.content)} <span class="msg-table__preview-you">(אתה)</span>`;
-            const dateTd = row.querySelector('.msg-table__td--date');
-            if (dateTd) dateTd.textContent = fmtDateJs(data.message.createdAt);
-            row.dataset.sortDate = data.message.createdAt;
+          if (res.ok && data.ok && data.message && repliesEl) {
+            repliesEl.insertAdjacentHTML('beforeend', entryBubbleHtml({
+              who: 'אתה', fromSelf: true, content: data.message.content, createdAt: data.message.createdAt, unread: false,
+            }));
+            applyLastMessage(data.message.content, data.message.createdAt, true);
             textarea.value = '';
           }
         } catch { /* ignore */ } finally {
@@ -589,9 +601,8 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
   // ── Messages: server-fetched page/search/sort/filter (AJAX) ──────────
   // Same reasoning as Products/Orders' own applyPagination() — search/sort/
   // filter now run server-side (seller-messages-query.ts), so a change
-  // re-fetches the current query's page and rebuilds the *buyer* message
-  // rows (via buildMessageRow) — the pinned "הודעות מערכת" row and its
-  // thread stay untouched, they're never part of this fetch at all.
+  // re-fetches the current query's page and rebuilds every row from it
+  // (buyer and system threads alike — one list, one owner).
   async function applyMessagesPagination(): Promise<void> {
     const storeId = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.storeId ?? '';
     if (!msgTbody || !storeId) return;
@@ -621,9 +632,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
 
     messagesCurrentPage = data.page ?? 1;
 
-    // Everything after the pinned system row + its own thread row (the
-    // first two <tr> children) is buyer-message content this function owns.
-    Array.from(msgTbody.children).slice(2).forEach((el) => el.remove());
+    msgTbody.replaceChildren();
     (data.items ?? []).forEach((item) => {
       const [row, threadRow] = buildMessageRow(item);
       msgTbody!.append(row, threadRow);
@@ -676,25 +685,40 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
   /* ── Delete message thread — event-delegated on document (not a per-button
      bind loop) so a message row inserted later via AJAX doesn't need its
      delete button separately re-bound. ── */
-  document.addEventListener('click', async (e) => {
+  document.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-delete-msg-id]');
     if (!btn) return;
     e.stopPropagation();
-    if (!confirm('למחוק את השיחה הזו לצמיתות?')) return;
     const id = btn.dataset.deleteMsgId ?? '';
-    try {
-      const res = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', id }),
-      });
-      if (res.ok) {
-        const row = btn.closest('tr');
-        const nextRow = row?.nextElementSibling;
-        row?.remove();
-        if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
-      }
-    } catch { /* ignore */ }
+    // Subject is read off the row rather than a data-attribute so both
+    // renderers (SellerMessageRow.astro + buildMessageRow) stay untouched.
+    const subject = btn.closest('tr')?.querySelector('.msg-table__td--subject')?.textContent?.trim() ?? '';
+    window.dispatchEvent(new CustomEvent('confirm:open', {
+      detail: {
+        title: 'למחוק את השיחה?',
+        message: subject
+          ? `"${subject}" תימחק לצמיתות, ללא אפשרות שחזור.`
+          : 'השיחה תימחק לצמיתות, ללא אפשרות שחזור.',
+        okLabel: 'מחק שיחה',
+        workingLabel: 'מוחק…',
+        onConfirm: async () => {
+          try {
+            const res = await fetch('/api/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'delete', id }),
+            });
+            if (!res.ok) throw new Error('request failed');
+            const row = btn.closest('tr');
+            const nextRow = row?.nextElementSibling;
+            row?.remove();
+            if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
+          } catch {
+            showErrorToast('המחיקה נכשלה', 'נסו שוב.');
+          }
+        },
+      },
+    }));
   });
 
   function refreshRowPreview(id: string, row: HTMLElement) {
@@ -712,12 +736,12 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       }).catch(() => {});
   }
 
-  function refreshSystemRowPreview(row: HTMLElement) {
-    fetch('/api/admin-messages')
+  function refreshSystemRowPreview(row: HTMLElement, threadId: string) {
+    fetch(`/api/admin-messages?threadId=${encodeURIComponent(threadId)}`)
       .then((r) => r.json())
-      .then(({ messages }: { messages: { fromRole: 'admin' | 'seller'; content: string; createdAt: string }[] }) => {
-        if (messages.length === 0) return;
-        const last = messages[messages.length - 1]!;
+      .then(({ messages }: { messages?: { fromRole: 'admin' | 'seller'; content: string; createdAt: string }[] }) => {
+        const last = messages?.[messages.length - 1];
+        if (!last) return;
         const isSelf = last.fromRole === 'seller';
         const previewTd = row.querySelector('.msg-table__td--preview');
         if (previewTd) previewTd.innerHTML = `${escMsg(last.content)}${isSelf ? ' <span class="msg-table__preview-you">(אתה)</span>' : ''}`;
@@ -727,18 +751,18 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       }).catch(() => {});
   }
 
-  // Live unread polling — combines buyer<->seller messages with the
-  // admin<->seller "הודעות מערכת" row folded into the same tab/table, so a
-  // seller with zero buyer-unread but a fresh admin message still keeps the
-  // tab dot (a buyer-only unreadIds.length check used to wipe it either way).
+  // Live unread polling — one pass over every row in the table, buyer and
+  // system alike, so a seller with zero buyer-unread but a fresh system
+  // message still keeps the tab dot (a buyer-only unreadIds.length check used
+  // to wipe it either way).
   function pollSellerUnread() {
     Promise.all([
       fetch(`/api/messages?role=seller&unread=1&storeId=${encodeURIComponent(currentStoreIdForMsgs)}`).then((r) => r.json()) as Promise<{ unreadIds: string[] }>,
-      fetch('/api/admin-messages?unread=1').then((r) => r.json()) as Promise<{ unreadCount: number }>,
-    ]).then(([{ unreadIds }, { unreadCount }]) => {
+      fetch('/api/admin-messages?unread=1').then((r) => r.json()) as Promise<{ unreadThreadIds: string[] }>,
+    ]).then(([{ unreadIds }, { unreadThreadIds }]) => {
       const tabBtn = document.getElementById('tab-messages');
       const tabDot = tabBtn?.querySelector<HTMLElement>('span[aria-label]');
-      const hasAnyUnread = unreadIds.length > 0 || unreadCount > 0;
+      const hasAnyUnread = unreadIds.length > 0 || unreadThreadIds.length > 0;
       if (hasAnyUnread && !tabDot && tabBtn) {
         const dot = document.createElement('span');
         dot.setAttribute('aria-label', 'הודעות שלא נקראו');
@@ -749,7 +773,8 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       }
       document.querySelectorAll<HTMLElement>('[data-msg-id]').forEach((row) => {
         const id = row.dataset.msgId!;
-        const isUnread = id === 'system' ? unreadCount > 0 : unreadIds.includes(id);
+        const isSystemRow = row.dataset.msgKind === 'system';
+        const isUnread = isSystemRow ? unreadThreadIds.includes(id) : unreadIds.includes(id);
         if (!isUnread) return;
         if (row.classList.contains('msg-table__row--open')) {
           sellerThreadLoaders.get(id)?.(true, true);
@@ -762,7 +787,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
             sr.textContent = 'לא נקרא · ';
             fromTd.insertBefore(sr, fromTd.firstChild);
           }
-          if (id === 'system') refreshSystemRowPreview(row); else refreshRowPreview(id, row);
+          if (isSystemRow) refreshSystemRowPreview(row, id); else refreshRowPreview(id, row);
           // Becoming unread may no longer match an active "read only" filter
           // — a single-row check against state already known client-side,
           // not a full re-fetch of the current page.

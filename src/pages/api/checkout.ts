@@ -2,6 +2,7 @@ export const prerender = false;
 import crypto from 'node:crypto';
 import type { APIContext } from 'astro';
 import { getStoreBySlug, getStoreBySlugOrPrevious, isStoreVisible } from '../../lib/stores.js';
+import { isDemoStore } from '../../lib/demo-stores.js';
 import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD, isProductVisible } from '../../lib/store-products.js';
 import { createOrder } from '../../lib/orders.js';
 import type { Order, OrderItem, StoreSubtotal } from '../../lib/orders.js';
@@ -79,6 +80,20 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   if (!Array.isArray(items) || items.length === 0) {
     return json({ error: 'Cart is empty' }, 400);
+  }
+
+  // Showcase-store guard (lib/demo-stores.ts, GO_LIVE_CHECKLIST.md §6.2). Adding a
+  // demo store's product to the cart is deliberately allowed — a prospective seller
+  // is meant to walk the real buying flow — and only this last, irreversible step is
+  // refused. Enforced on the server because a hidden button is not a rule: the cart
+  // is client state and this endpoint is directly callable. Runs as a pre-pass,
+  // before the loop below reserves any stock, since being a demo store is a static
+  // property of the store and needs no rollback path.
+  for (const raw of items) {
+    const rawSlug = (raw as CartItemInput).storeSlug;
+    const slug = typeof rawSlug === 'string' ? rawSlug.trim() : '';
+    const demoStore = slug ? getStoreBySlugOrPrevious(slug) : null;
+    if (demoStore && isDemoStore(demoStore)) return json({ error: 'demo-store' }, 403);
   }
 
   const orderItems: OrderItem[] = [];

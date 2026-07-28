@@ -171,6 +171,25 @@ export function cdnSrc(url: string, w = 400): string {
 }
 
 /**
+ * A Cloudinary image forced to EXACT pixel dimensions — cropped to fill, never
+ * letterboxed, with Cloudinary picking the crop window (`g_auto`) so the subject
+ * survives an aspect-ratio change. `f_jpg` is explicit rather than `f_auto`
+ * because the callers are off-site (ad platforms, social scrapers, structured-data
+ * crawlers) and many fetch without an `Accept` header that `f_auto` can read.
+ *
+ * Returns '' when the URL isn't a plain Cloudinary upload — i.e. when the exact
+ * size CANNOT be guaranteed. Callers that promise a format (see store-image.ts)
+ * treat that as "no usable source" and fall back to the generated mark, instead
+ * of handing an ad platform an image at whatever ratio it happens to be.
+ */
+export function cdnFill(url: string, w: number, h: number): string {
+  const m = url.match(/^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)$/);
+  if (!m || !m[2]) return '';
+  const rest = m[2].replace(/^(f_|q_|c_|w_|h_|g_)[^/]*\//, '');
+  return `${m[1]}c_fill,g_auto,f_jpg,q_auto,w_${w},h_${h}/${rest}`;
+}
+
+/**
  * Responsive `srcset` (width descriptors) for a Cloudinary image — pair with a `sizes`
  * attribute so hi-DPI/retina screens receive enough pixels and the seller's uploaded
  * photo stays sharp (a single `cdnSrc` width gets browser-upscaled → visibly blurry).

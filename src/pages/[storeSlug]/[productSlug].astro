@@ -3,6 +3,8 @@ export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible } from '../../lib/stores.js';
+import { OG_IMAGE_FORMAT, storeImageUrl } from '../../lib/store-image.js';
+import { isDemoStore } from '../../lib/demo-stores.js';
 import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../lib/store-products.js';
 import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
@@ -26,6 +28,10 @@ if (!shopStore) {
 // Admin-blocked store or product (see admin-moderation.ts) — 404, same
 // reasoning as the store page itself.
 if (!isStoreVisible(shopStore)) return Astro.redirect('/404');
+// A showcase store's products stay browsable by direct link (that's the point of
+// the demo) but must never be indexed — the store page, sitemap and product feed
+// apply the same rule; see lib/demo-stores.ts.
+const isDemo = isDemoStore(shopStore);
 
 const product = getProductBySlug(shopStore.id, productSlug);
 if (!product) return Astro.redirect(`/${storeSlug}`);
@@ -147,10 +153,11 @@ const pmI18n = {
 <BaseLayout
   title={`${product.name} — ${shopStore.name}`}
   description={product.description || shopStore.tagline || `${product.name} at ${shopStore.name}`}
-  image={images[0]}
+  image={images[0] ?? storeImageUrl(shopStore, OG_IMAGE_FORMAT)}
   type="product"
   jsonLd={jsonLd}
   canonical={productUrl}
+  noindex={isDemo}
   isLoggedIn={isLoggedIn}
   storeMode={true}
   storeName={shopStore.name}
@@ -264,6 +271,15 @@ const pmI18n = {
           <!-- Name + price — dir=auto on the wrapper so the price aligns to the same
                side as the (per-language) product name instead of staying pinned right. -->
           <div class="flex flex-col gap-2" dir="auto">
+            {isDemo && (
+              <span class="inline-flex items-center gap-1 mb-1.5 text-[0.72rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0">
+                  <circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/>
+                </svg>
+                {t.demo.productBadge}
+              </span>
+            )}
             <h1 id="product-name-heading" style="font-size:1.5rem;font-weight:700;line-height:1.25;color:var(--color-text);margin:0">{product.name}</h1>
             <p style="font-size:1.25rem;font-weight:800;line-height:1;color:var(--color-accent);margin:0">{formatPrice(product.price)}</p>
           </div>

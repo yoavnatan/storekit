@@ -8,7 +8,8 @@ import { getAllSellers } from '../../lib/seller-auth.js';
 import { getAllStores } from '../../lib/stores.js';
 import { getAllOrders } from '../../lib/orders.js';
 import { filterAndSortOrders, getOrderStoreNames, parseOrderQuery } from '../../lib/admin-orders-filter.js';
-import { getAdminThreadSummaries, filterAndSortAdminThreads, parseAdminThreadQuery } from '../../lib/admin-messages.js';
+import { getAllAdminThreads } from '../../lib/admin-messages.js';
+import { filterAndSortAdminThreads, parseAdminThreadQuery } from '../../lib/admin-threads-query.js';
 import { getRecentErrors, filterAndSortErrors, getErrorStoreNames } from '../../lib/error-log.js';
 import { buildPlatformAdOverview } from '../../lib/admin-ads.js';
 import { getPlatformAdSettings } from '../../lib/platform-ads.js';
@@ -18,7 +19,7 @@ import { presetRange, coerceRange, previousPeriod, toISODate, AD_RANGE_PRESETS, 
 import { store as platform } from '../../config/store.config.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
-import { getLastViewedAt, recordTabView, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
+import { getLastViewedAt, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
 import { buildPlatformPerformance, buildPlatformStoreInputs } from '../../lib/platform-performance.js';
 import { pickGranularity } from '../../lib/seller-performance.js';
 import { getLang, getDir } from '../../i18n/index.js';
@@ -76,21 +77,48 @@ const productsByStore = getProductsByStoreMap();
 const overview = getPlatformOverview(sellers, stores, allOrders);
 const revenueByStore = getStoreRevenueMap(allOrders);
 
+// ── "new since you last left this tab" (owner feedback 2026-07-28) ──
+// One boundary per tracked tab, read ONCE here and threaded into that tab's
+// panel, so three things always tell the same story: the tab's "(N)" badge,
+// the "חדש" chip on each row, and the "חדשים בלבד" filter. The boundary is
+// deliberately NOT advanced by rendering this page — that used to happen, so
+// the badge said "3 new" while every row inside looked identical, and any
+// in-panel AJAX refresh (search/sort/pager, see admin-nav.ts#swapPanel)
+// silently re-fetched this same route and wiped the marks mid-session.
+// It now advances only when the admin actually leaves the tab
+// (POST /api/admin/tab-view from tab-nav.ts).
+const TRACKED_TABS: TrackedAdminTab[] = ['sellers', 'stores', 'orders', 'alerts'];
+const newSince = Object.fromEntries(TRACKED_TABS.map((t) => [t, getLastViewedAt(t)])) as Record<TrackedAdminTab, string>;
+const newOnly: Record<TrackedAdminTab, boolean> = {
+  sellers: sp.get('snew') === '1',
+  stores: sp.get('stnew') === '1',
+  orders: sp.get('onew') === '1',
+  alerts: sp.get('alnew') === '1',
+};
+// Applied AFTER each tab's own filter+sort so it composes with them instead of
+// replacing them (search "דני" + חדשים בלבד = new sellers named דני).
+function keepNewOnly<T>(items: T[], on: boolean, boundary: string, createdAt: (item: T) => string): T[] {
+  return on ? items.filter((item) => createdAt(item) > boundary) : items;
+}
+
 // ── Sellers tab ──
 const sellerQuery = parseSellerQuery(sp);
 const sellerCardsAll = getSellerCards(sellers, stores, productsByStore, revenueByStore);
-const sellerCardsFiltered = filterAndSortSellerCards(sellerCardsAll, sellerQuery);
+const sellerCardsFiltered = keepNewOnly(filterAndSortSellerCards(sellerCardsAll, sellerQuery), newOnly.sellers, newSince.sellers, (c) => c.seller.createdAt);
 const sellerPageResult = paginate(sellerCardsFiltered, parsePage(sp, 'spage'));
 
 // ── Stores tab ──
 const storeQuery = parseStoreQuery(sp);
 const storeRowsAll = getStoreRows(stores, sellers, productsByStore, revenueByStore);
-const storeRowsFiltered = filterAndSortStoreRows(storeRowsAll, storeQuery);
+const storeRowsFiltered = keepNewOnly(filterAndSortStoreRows(storeRowsAll, storeQuery), newOnly.stores, newSince.stores, (r) => r.store.createdAt);
 const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
 const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore } = parseOrderQuery(sp);
-const ordersFiltered = filterAndSortOrders(allOrders, { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore });
+const ordersFiltered = keepNewOnly(
+  filterAndSortOrders(allOrders, { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore }),
+  newOnly.orders, newSince.orders, (o) => o.createdAt,
+);
 const orderPageResult = paginate(ordersFiltered, parsePage(sp, 'opage'));
 const orderStoreNames = getOrderStoreNames(allOrders);
 
@@ -127,7 +155,7 @@ const adCompare = {
 };
 
 // ── Messages tab ──
-const messageThreadsAll = getAdminThreadSummaries();
+const messageThreadsAll = getAllAdminThreads();
 const unreadMessagesForAdmin = messageThreadsAll.reduce((sum, t) => sum + t.unreadForAdmin, 0);
 const threadQuery = parseAdminThreadQuery(sp);
 const messageThreadsFiltered = filterAndSortAdminThreads(messageThreadsAll, threadQuery);
@@ -138,7 +166,10 @@ const errorsAll = getRecentErrors(500); // MAX_ENTRIES cap in error-log.ts is al
 const alSortDir = sp.get('alsort') === 'asc' ? 'asc' : 'desc';
 const alSource = (sp.get('alsource') ?? '').split(',').filter(Boolean);
 const alStore = decodeList(sp.get('alstore') ?? '');
-const errorsFiltered = filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore });
+const errorsFiltered = keepNewOnly(
+  filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore }),
+  newOnly.alerts, newSince.alerts, (e) => e.createdAt,
+);
 const alertsPageResult = paginate(errorsFiltered, parsePage(sp, 'alpage'));
 const errorStoreOptions = getErrorStoreNames(errorsAll);
 
@@ -175,24 +206,19 @@ const productNames = new Map<string, string>();
 for (const list of productsByStore.values()) for (const p of list) productNames.set(p.id, p.name);
 
 // ── "(N) new since last opened" tab badges (CURRENT_TASK.md → סשן ב׳) ──
+// Counted over the UNFILTERED lists on purpose: the badge answers "is there
+// anything I haven't seen in that tab", which a search box left open in that
+// tab must not change. Same `newSince` boundary the panels mark their rows
+// with, so "(3)" always means exactly the 3 rows wearing a "חדש" chip.
 // Messages isn't in this list — unreadMessagesForAdmin above is already an
 // exact per-message signal, more precise than a per-tab timestamp.
-const TRACKED_TABS: TrackedAdminTab[] = ['sellers', 'stores', 'orders', 'alerts'];
-const lastViewed = Object.fromEntries(TRACKED_TABS.map((t) => [t, getLastViewedAt(t)])) as Record<TrackedAdminTab, string>;
 const badgeCounts: Record<string, number> = {
-  sellers: countSince(sellers, lastViewed.sellers, (s) => s.createdAt),
-  stores: countSince(stores, lastViewed.stores, (s) => s.createdAt),
-  orders: countSince(allOrders, lastViewed.orders, (o) => o.createdAt),
-  alerts: countSince(errorsAll, lastViewed.alerts, (e) => e.createdAt),
+  sellers: countSince(sellers, newSince.sellers, (s) => s.createdAt),
+  stores: countSince(stores, newSince.stores, (s) => s.createdAt),
+  orders: countSince(allOrders, newSince.orders, (o) => o.createdAt),
+  alerts: countSince(errorsAll, newSince.alerts, (e) => e.createdAt),
   messages: unreadMessagesForAdmin,
 };
-// Only the tab actually being opened counts as "viewed" — the other 6 tabs'
-// data is rendered too (initDashTabs() just toggles `hidden`, see ui.ts) but
-// the admin hasn't looked at them yet. A client-side tab switch (no reload)
-// updates this same store via POST /api/admin/tab-view (src/scripts/admin/tab-nav.ts).
-if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
-  recordTabView(initialPanel as TrackedAdminTab);
-}
 ---
 
 {/* sellerMode=true here isn't "seller dashboard" semantics — reusing the flag
@@ -253,6 +279,9 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
           sortCol={sellerQuery.sortCol}
           sortDir={sellerQuery.sortDir}
           blockedOnly={sellerQuery.blockedOnly}
+          newSince={newSince.sellers}
+          newOnly={newOnly.sellers}
+          newCount={badgeCounts.sellers}
           totalAll={sellerCardsAll.length}
           totalFiltered={sellerCardsFiltered.length}
           page={sellerPageResult.page}
@@ -261,6 +290,7 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
             sq: sellerQuery.q || undefined,
             ssort: (sellerQuery.sortCol !== 'joined' || sellerQuery.sortDir !== 'desc') ? `${sellerQuery.sortCol}:${sellerQuery.sortDir}` : undefined,
             sblocked: sellerQuery.blockedOnly ? '1' : undefined,
+            snew: newOnly.sellers ? '1' : undefined,
             spage: p > 1 ? String(p) : undefined,
           })}
         />
@@ -273,6 +303,9 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
           sortCol={storeQuery.sortCol}
           sortDir={storeQuery.sortDir}
           blockedOnly={storeQuery.blockedOnly}
+          newSince={newSince.stores}
+          newOnly={newOnly.stores}
+          newCount={badgeCounts.stores}
           totalAll={storeRowsAll.length}
           totalFiltered={storeRowsFiltered.length}
           page={storePageResult.page}
@@ -281,6 +314,7 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
             stq: storeQuery.q || undefined,
             stsort: (storeQuery.sortCol !== 'name' || storeQuery.sortDir !== 'asc') ? `${storeQuery.sortCol}:${storeQuery.sortDir}` : undefined,
             stblocked: storeQuery.blockedOnly ? '1' : undefined,
+            stnew: newOnly.stores ? '1' : undefined,
             stpage: p > 1 ? String(p) : undefined,
           })}
         />
@@ -298,6 +332,9 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
           paymentStatus={oPay}
           store={oStore}
           storeNames={orderStoreNames}
+          newSince={newSince.orders}
+          newOnly={newOnly.orders}
+          newCount={badgeCounts.orders}
           page={orderPageResult.page}
           totalPages={orderPageResult.totalPages}
           buildUrl={(p) => tabUrl('orders', {
@@ -306,6 +343,7 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
             oship: oShip.length ? oShip.join(',') : undefined,
             opay: oPay.length ? oPay.join(',') : undefined,
             ostore: oStore.length ? encodeList(oStore) : undefined,
+            onew: newOnly.orders ? '1' : undefined,
             opage: p > 1 ? String(p) : undefined,
           })}
         />
@@ -365,12 +403,16 @@ if (TRACKED_TABS.includes(initialPanel as TrackedAdminTab)) {
           source={alSource}
           storeSlug={alStore}
           storeOptions={errorStoreOptions}
+          newSince={newSince.alerts}
+          newOnly={newOnly.alerts}
+          newCount={badgeCounts.alerts}
           page={alertsPageResult.page}
           totalPages={alertsPageResult.totalPages}
           buildUrl={(p) => tabUrl('alerts', {
             alsort: alSortDir !== 'desc' ? alSortDir : undefined,
             alsource: alSource.length ? alSource.join(',') : undefined,
             alstore: alStore.length ? encodeList(alStore) : undefined,
+            alnew: newOnly.alerts ? '1' : undefined,
             alpage: p > 1 ? String(p) : undefined,
           })}
         />

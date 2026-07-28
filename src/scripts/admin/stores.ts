@@ -1,6 +1,7 @@
 import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { escapeHtml } from '../../lib/html-escape.js';
+import { showErrorToast } from '../../lib/toast.js';
 
 const PANEL_ID = 'dash-panel-stores';
 
@@ -44,6 +45,7 @@ function wireStoresToolbar(): void {
   let sortCol = (state.sortCol as StoreSortCol) || 'name';
   let sortDir = (state.sortDir as 'asc' | 'desc') || 'asc';
   let blockedOnly = state.blockedOnly === '1';
+  let newOnly = state.newOnly === '1';
 
   function buildStoresNavUrl(): string {
     const searchInput = document.getElementById('admin-store-search') as HTMLInputElement | null;
@@ -51,6 +53,7 @@ function wireStoresToolbar(): void {
       stq: searchInput?.value.trim() || undefined,
       stsort: (sortCol !== 'name' || sortDir !== 'asc') ? `${sortCol}:${sortDir}` : undefined,
       stblocked: blockedOnly ? '1' : undefined,
+      stnew: newOnly ? '1' : undefined,
     });
   }
 
@@ -78,6 +81,14 @@ function wireStoresToolbar(): void {
   const blockedToggle = document.getElementById('admin-stores-blocked-toggle') as HTMLButtonElement | null;
   blockedToggle?.addEventListener('click', () => {
     blockedOnly = !blockedOnly;
+    navigate();
+  });
+
+  // "חדשים בלבד" — matters most on this tab: it sorts by name by default, so a
+  // brand-new store lands anywhere in the list (or on another page entirely).
+  const newToggle = document.getElementById('admin-stores-new-toggle') as HTMLButtonElement | null;
+  newToggle?.addEventListener('click', () => {
+    newOnly = !newOnly;
     navigate();
   });
 }
@@ -135,7 +146,7 @@ async function runBlockToggle(trigger: HTMLElement): Promise<void> {
       existingBadge.remove();
     }
   } catch {
-    alert('הפעולה נכשלה, נסו שוב.');
+    showErrorToast('הפעולה נכשלה, נסו שוב');
   }
 }
 
@@ -203,7 +214,7 @@ async function runPromoSet(trigger: HTMLElement, weight: number): Promise<void> 
       badge.remove();
     }
   } catch {
-    alert('הפעולה נכשלה, נסו שוב.');
+    showErrorToast('הפעולה נכשלה, נסו שוב');
   }
 }
 
@@ -350,7 +361,7 @@ async function runProductBlockToggle(btn: HTMLButtonElement): Promise<void> {
       existingBadge.remove();
     }
   } catch {
-    alert('הפעולה נכשלה, נסו שוב.');
+    showErrorToast('הפעולה נכשלה, נסו שוב');
   }
 }
 

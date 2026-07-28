@@ -1,4 +1,4 @@
-import { createFloatingPortal, toolbarMenuTitle } from '../../lib/toolbar-portal.js';
+import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { applyStockAttentionFilter } from './products.js';
@@ -658,7 +658,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
       ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-order-filter-value="${v}" ${selected.has(v) ? 'checked' : ''}>${orderFilterValueHtml(col, v)}</label>`),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-orders-filter-clear-col>${ordersDashI18n.filterClearColumn ?? 'נקה סינון בעמודה זו'}</button>`,
+      filterClearButtonHtml('data-orders-filter-clear-col', ordersDashI18n.filterClearColumn ?? 'נקה סינון בעמודה זו', selected.size > 0),
     ].join('');
   }
 
@@ -675,7 +675,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         </div>`;
       }).join(''),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-orders-filter-clear-all>${ordersDashI18n.filterClearAll ?? 'נקה הכל'}</button>`,
+      filterClearButtonHtml('data-orders-filter-clear-all', ordersDashI18n.filterClearAll ?? 'נקה הכל', ordersFilters.size > 0),
     ].join('');
   }
 
@@ -692,6 +692,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       });
       portal.querySelector('[data-filter-back]')?.addEventListener('click', () => openOrdersFilterColumns(trigger));
       portal.querySelector('[data-orders-filter-clear-col]')?.addEventListener('click', () => {
+        if (!ordersFilters.has(col)) return;
         ordersFilters.delete(col);
         applyOrdersFilter();
         openOrdersFilterValues(trigger, col);
@@ -721,6 +722,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         });
       });
       portal.querySelector('[data-orders-filter-clear-all]')?.addEventListener('click', () => {
+        if (!ordersFilters.size) return;
         ordersFilters.clear();
         applyOrdersFilter();
         openOrdersFilterColumns(trigger);

@@ -8,6 +8,7 @@ import { renameStoreSlugInUserData } from '../../lib/user-carts.js';
 import { renameStoreSlugInOrders } from '../../lib/orders.js';
 import { getCustomDomainProvider, normalizeHostname } from '../../lib/custom-domain.js';
 import { pingStoreChange } from '../../lib/indexnow.js';
+import { sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
 import { parseStoreHoursForm } from '../../lib/store-hours.js';
 import { CSV_FIELDS } from '../../lib/csv-bulk.js';
 
@@ -34,8 +35,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const name = String(form.get('name') || '').trim();
     const tagline = String(form.get('tagline') || '').trim();
     const description = String(form.get('description') || '').trim();
+    // The picker in the dashboard is convenience; THIS is the rule. Normalizes,
+    // strips unsafe wording via the shared spam word list, de-dupes and caps —
+    // a hand-crafted POST gets the same treatment as the form (store-taxonomy.ts).
     const categoriesRaw = String(form.get('categories') ?? '');
-    const categories = categoriesRaw.split(',').map(c => c.trim()).filter(Boolean);
+    const categories = sanitizeStoreCategories(categoriesRaw.split(','));
     if (!name) return json({ ok: false, error: 'Store name is required.' }, 400);
 
     const bannerImage = String(form.get('bannerImage') ?? '').trim();
@@ -57,7 +61,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       shipping: { selfPickup },
     });
     // Store page content changed — notify the index (fire-and-forget, no-op in dev).
-    pingStoreChange(target.slug);
+    pingStoreChange(target);
     return json({ ok: true, name });
   }
 
@@ -166,7 +170,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     await renameStoreSlugInPageviews(oldSlug, newSlug);
     renameStoreSlugInUserData(oldSlug, newSlug);
     renameStoreSlugInOrders(oldSlug, newSlug);
-    pingStoreChange(newSlug);
+    pingStoreChange(updated);
     return json({ ok: true, slug: newSlug });
   }
 

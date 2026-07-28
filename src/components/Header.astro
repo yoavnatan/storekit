@@ -479,7 +479,7 @@ const strEmpty   = t.store.noProductsFound;
   const notifDrop  = document.getElementById('notif-dropdown') as HTMLElement | null;
   const notifList  = document.getElementById('notif-list') as HTMLElement | null;
 
-  interface NotifItem { id: string; type?: string; title: string; body: string; read: boolean; createdAt: string; storeName?: string; }
+  interface NotifItem { id: string; type?: string; title: string; body: string; read: boolean; createdAt: string; storeName?: string; relatedId?: string; }
 
   function timeAgo(iso: string): string {
     const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -508,7 +508,7 @@ const strEmpty   = t.store.noProductsFound;
     if (clearAllBtn) clearAllBtn.hidden = items.length === 0;
     if (!items.length) { notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>'; return; }
     notifList.innerHTML = items.slice(0, 10).map((n) => `
-      <div class="notif-item${n.read ? '' : ' notif-item--unread'}" data-id="${escH(n.id)}" data-type="${escH(n.type ?? '')}" role="button" tabindex="0">
+      <div class="notif-item${n.read ? '' : ' notif-item--unread'}" data-id="${escH(n.id)}" data-type="${escH(n.type ?? '')}" data-related-id="${escH(n.relatedId ?? '')}" role="button" tabindex="0">
         <button class="notif-item__delete" data-del-id="${escH(n.id)}" type="button" aria-label="מחק התראה">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -552,10 +552,15 @@ const strEmpty   = t.store.noProductsFound;
           }).catch(() => {});
         }
         const type = el.dataset.type ?? '';
+        // A system message's relatedId is its THREAD id (admin/messages.ts) —
+        // the same value the dashboard row carries as data-msg-id, so the
+        // deep-link opens that exact conversation rather than one shared
+        // "system messages" row (which no longer exists).
+        const relatedId = el.dataset.relatedId ?? '';
         const href = type === 'new_message'
           ? '/seller/dashboard?panel=messages'
           : type === 'admin_message'
-          ? '/seller/dashboard?panel=messages&msg=system'
+          ? `/seller/dashboard?panel=messages${relatedId ? `&msg=${encodeURIComponent(relatedId)}` : ''}`
           : type === 'new_order' || type === 'order_update'
           ? '/seller/dashboard?panel=orders'
           : type === 'low_stock' || type === 'out_of_stock'

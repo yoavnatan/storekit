@@ -1,15 +1,22 @@
 ---
 import { cdnSrc } from '../config/store.config.js';
+import { storeMark, storeMarkGradient } from '../lib/store-mark.js';
 
 interface Props {
   name: string;
+  /** Seed for the generated fallback mark — always pass the store slug, so the
+   *  avatar matches the same store's off-site imagery (see store-image.ts). */
+  slug?: string;
   profileImage?: string;
   size?: number;
   class?: string;
 }
 
-const { name, profileImage, size = 40, class: className = '' } = Astro.props;
-const initial = (name.trim()[0] ?? '?').toUpperCase();
+const { name, slug, profileImage, size = 40, class: className = '' } = Astro.props;
+// Same identity the PNG endpoint renders for this store: one hue per store, so a
+// store with no uploaded picture is still recognisable from list to list — the
+// old fallback painted every such store the identical grey-blue.
+const mark = storeMark(slug || name, name);
 ---
 
 {profileImage ? (
@@ -25,7 +32,7 @@ const initial = (name.trim()[0] ?? '?').toUpperCase();
 ) : (
   <span
     class={`rounded-full flex-shrink-0 flex items-center justify-center font-bold text-white ${className}`}
-    style={`width:${size}px;height:${size}px;background:linear-gradient(135deg,#2a3c40,#3a5260);font-size:${Math.round(size * 0.42)}px;border:1px solid var(--color-border);box-shadow:var(--shadow-xs)`}
+    style={`width:${size}px;height:${size}px;background:${storeMarkGradient(mark)};font-size:${Math.round(size * 0.42)}px;border:1px solid var(--color-border);box-shadow:var(--shadow-xs)`}
     aria-hidden="true"
-  >{initial}</span>
+  >{mark.initial}</span>
 )}

@@ -6,7 +6,8 @@ import { thumbUrl } from './cloudinary.js';
 import { animateScrollTo } from './scroll-utils.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, generateCombos, canonicalDimName, LOW_STOCK_THRESHOLD, resolveVariantStockMap, type VariantDimension } from '../../lib/variant-combo.js';
-import { createFloatingPortal, toolbarMenuTitle } from '../../lib/toolbar-portal.js';
+import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
+import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree } from './category-tree-cache.js';
 import { initCategoryPicker } from './category-picker.js';
@@ -938,6 +939,10 @@ function applyComboFilters(editor: HTMLElement): void {
   if (!rowsBody) return;
 
   const filters = getActiveComboFilters(editor);
+  // Same reasoning as the products table (see applyPagination): pin the
+  // widths while the pre-change rows are still on screen, release once
+  // nothing is filtered.
+  if (filters.size) lockTableColumns(comboTable(editor));
   rowsBody.querySelectorAll<HTMLTableRowElement>('[data-variant-combo-row]').forEach((row) => {
     let visible = true;
     filters.forEach((allowed, col) => {
@@ -949,6 +954,7 @@ function applyComboFilters(editor: HTMLElement): void {
 
   updateComboTotal(editor);
   updateComboTotalLabel(editor, getDashI18n());
+  if (!filters.size) unlockTableColumns(comboTable(editor));
 }
 
 // A single shared dropdown appended to <body> — reused for whichever column's
@@ -979,6 +985,10 @@ function closeComboFilterPortal(): void {
   comboFilterOpenEditor = null;
 }
 
+function comboTable(editor: HTMLElement): HTMLTableElement | null {
+  return editor.querySelector<HTMLElement>('[data-variant-combo-thead]')?.closest('table') ?? null;
+}
+
 function openComboFilterPortal(wrap: HTMLElement, editor: HTMLElement, i18n: Record<string, string>): void {
   const btn = wrap.querySelector<HTMLButtonElement>('.combo-filter-btn');
   if (!btn) return;
@@ -986,9 +996,16 @@ function openComboFilterPortal(wrap: HTMLElement, editor: HTMLElement, i18n: Rec
   const values = readVariantDims(editor)[col]?.options ?? [];
   const selected = new Set(getComboFilterSelection(wrap));
 
+  comboFilterOpenWrap = wrap;
+  comboFilterOpenEditor = editor;
+
   const portal = getComboFilterPortal();
   const items = values.map(v => `<label class="combo-filter-item" style="display:flex;align-items:center;gap:0.4rem;padding:0.45rem 0.75rem;border-radius:var(--radius-sm);cursor:pointer;font-size:0.82rem;font-weight:400;text-transform:none;letter-spacing:normal;white-space:nowrap"><input type="checkbox" data-combo-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''} style="cursor:pointer;flex-shrink:0">${esc(v)}</label>`).join('');
-  portal.innerHTML = `${items}<button type="button" class="combo-filter-clear" data-combo-filter-clear style="display:block;width:100%;text-align:start;padding:0.45rem 0.75rem;border-radius:var(--radius-sm);background:none;border:none;cursor:pointer;font-size:0.8rem;color:var(--color-muted);text-transform:none;letter-spacing:normal">${esc(i18n.variantFilterClear ?? 'Clear')}</button>`;
+  // Disabled while nothing in this column is ticked — see filterClearButtonHtml().
+  const clearState = selected.size
+    ? 'cursor:pointer;color:var(--color-muted)'
+    : 'cursor:default;color:var(--color-muted);opacity:0.4';
+  portal.innerHTML = `${items}<button type="button" class="combo-filter-clear" data-combo-filter-clear ${selected.size ? '' : 'disabled aria-disabled="true"'} style="display:block;width:100%;text-align:start;padding:0.45rem 0.75rem;border-radius:var(--radius-sm);background:none;border:none;font-size:0.8rem;text-transform:none;letter-spacing:normal;${clearState}">${esc(i18n.variantFilterClear ?? 'Clear')}</button>`;
 
   const rect = btn.getBoundingClientRect();
   const isRTL = getComputedStyle(document.documentElement).direction === 'rtl';
@@ -997,9 +1014,6 @@ function openComboFilterPortal(wrap: HTMLElement, editor: HTMLElement, i18n: Rec
   else { portal.style.left = `${rect.left}px`; portal.style.right = 'auto'; }
   portal.hidden = false;
   btn.setAttribute('aria-expanded', 'true');
-
-  comboFilterOpenWrap = wrap;
-  comboFilterOpenEditor = editor;
 }
 
 function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>): void {
@@ -1030,6 +1044,10 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
 
   // Column count/order may have just changed (dimension added/removed/renamed) —
   // any previous sort/filter no longer maps to a meaningful column, so reset.
+  // The width lock goes with them: it's keyed to the header cells about to be
+  // replaced, and leaving table-layout:fixed behind without them would flatten
+  // the new columns to equal widths.
+  unlockTableColumns(comboTable(editor));
   delete combosWrap.dataset.sortCol;
   delete combosWrap.dataset.sortDir;
   thead.innerHTML = comboHeaderHtml(dims, i18n);
@@ -1128,6 +1146,7 @@ export function initVariantEditors(): void {
     // must be handled before the editor-scoped early return below.
     const filterClearBtn = target.closest<HTMLButtonElement>('[data-combo-filter-clear]');
     if (filterClearBtn && comboFilterOpenWrap && comboFilterOpenEditor) {
+      if (!getComboFilterSelection(comboFilterOpenWrap).length) return;
       setComboFilterSelection(comboFilterOpenWrap, []);
       portalEl?.querySelectorAll<HTMLInputElement>('[data-combo-filter-value]').forEach(cb => { cb.checked = false; });
       applyComboFilters(comboFilterOpenEditor);
@@ -1401,7 +1420,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   edit.innerHTML = `
     <td class="num row-num pe-[0.2rem]"></td>
     <td colspan="20">
-      <form method="POST" action="/api/product" class="mt-4 inline-edit-form">
+      <form method="POST" action="/api/product" class="mt-4 inline-edit-form" data-unsaved-guard>
         <input type="hidden" name="_action" value="edit-product">
         <input type="hidden" name="productId" value="${p.id}">
         <div class="edit-row-header">
@@ -1902,6 +1921,11 @@ export async function applyPagination(): Promise<void> {
   const storeId = uploadCfg?.dataset.storeId ?? '';
   if (!tbody || !storeId) return;
 
+  // Filters are already in productsFilters by the time a filter change lands
+  // here, and the rows on screen are still the pre-change ones — so this is
+  // the moment to capture the column widths that must survive the re-render.
+  if (productsFilters.size) lockTableColumns(table);
+
   const params = new URLSearchParams();
   params.set('storeId', storeId);
   params.set('ppage', String(productsCurrentPage));
@@ -2108,6 +2132,17 @@ function closeToolbarPortal(): void {
   toolbarPortalTrigger = null;
 }
 
+// Column widths are pinned for exactly as long as a filter is active — the
+// stretch where re-rendering the rows would otherwise resize the columns and
+// slide the header out from under an open dropdown. Merely opening or
+// closing a menu changes nothing: taking the lock is meant to be invisible,
+// but "meant to be" isn't a reason to do it when there's no filtering going
+// on. Released as soon as the last filter is gone, so an ordinary full table
+// sizes itself to its content again.
+function productsTableEl(): HTMLTableElement | null {
+  return document.getElementById('products-table') as HTMLTableElement | null;
+}
+
 function openToolbarPortal(
   trigger: HTMLElement,
   minWidth: string,
@@ -2115,6 +2150,7 @@ function openToolbarPortal(
   wire: (portal: HTMLElement) => void,
 ): void {
   const portal = getToolbarPortal();
+  toolbarPortalTrigger = trigger;
   portal.style.minWidth = minWidth;
   portal.style.maxHeight = '320px';
   portal.style.overflow = 'auto';
@@ -2122,7 +2158,6 @@ function openToolbarPortal(
   portal.hidden = false;
   positionToolbarPortal(portal, trigger);
   trigger.setAttribute('aria-expanded', 'true');
-  toolbarPortalTrigger = trigger;
   wire(portal);
 }
 
@@ -2205,6 +2240,7 @@ function refreshFilterUI(): void {
     badge.hidden = activeCols === 0;
     badge.textContent = String(activeCols);
   }
+  if (!productsFilters.size) unlockTableColumns(productsTableEl());
 }
 
 // Programmatic entry point for the overview tab's "stock needs attention" card:
@@ -2241,7 +2277,7 @@ function filterValuesHtml(col: string, showBack: boolean): string {
     backHtml,
     ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-filter-value="${esc(v)}" ${selected.has(v) ? 'checked' : ''}>${esc(v)}</label>`),
     `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-    `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-col>${esc(i.filterClearColumn ?? 'נקה סינון בעמודה זו')}</button>`,
+    filterClearButtonHtml('data-filter-clear-col', i.filterClearColumn ?? 'נקה סינון בעמודה זו', selected.size > 0),
   ].join('');
 }
 
@@ -2257,6 +2293,7 @@ function wireFilterValues(portal: HTMLElement, col: string, reopen: () => void, 
     });
   });
   portal.querySelector('[data-filter-clear-col]')?.addEventListener('click', () => {
+    if (!productsFilters.has(col)) return;
     productsFilters.delete(col);
     productsCurrentPage = 1;
     applyPagination();
@@ -2294,7 +2331,7 @@ function filterColumnsHtml(): string {
       </div>`;
     }).join(''),
     `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-    `<button type="button" class="product-menu__clear block w-full text-start py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.8rem] [color:var(--color-muted)] transition-colors duration-100 hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]" data-filter-clear-all>${esc(i.filterClearAll ?? 'נקה הכל')}</button>`,
+    filterClearButtonHtml('data-filter-clear-all', i.filterClearAll ?? 'נקה הכל', productsFilters.size > 0),
   ].join('');
 }
 
@@ -2322,6 +2359,7 @@ function openMobileFilterColumns(trigger: HTMLElement): void {
       });
     });
     portal.querySelector('[data-filter-clear-all]')?.addEventListener('click', () => {
+      if (!productsFilters.size) return;
       productsFilters.clear();
       productsCurrentPage = 1;
       applyPagination();

@@ -3,6 +3,7 @@ export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getLang, getT } from '../i18n/index.js';
 import { getVisibleStores } from '../lib/stores.js';
+import { isDemoStore } from '../lib/demo-stores.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { SHIPPING_RATES, availableDeliveryMethods, type DeliveryMethod } from '../lib/shipping.js';
 
@@ -26,12 +27,16 @@ const prefillEmail = sessionSeller?.email ?? '';
 // pickup point on every store; self-pickup only when the seller enabled it AND the store
 // has an address) and, for self-pickup, the address to collect from. Prices are the
 // central SHIPPING_RATES sent once below — the seller never sets them.
-const storeShipping: Record<string, { methods: DeliveryMethod[]; address: string | null }> = {};
+const storeShipping: Record<string, { methods: DeliveryMethod[]; address: string | null; demo?: boolean }> = {};
 for (const s of getVisibleStores()) {
   const offersSelfPickup = !!s.shipping?.selfPickup && !!s.address;
   storeShipping[s.slug] = {
     methods: availableDeliveryMethods(offersSelfPickup),
     address: offersSelfPickup ? (s.address ?? null) : null,
+    // Showcase store (lib/demo-stores.ts). The real guard is /api/checkout's 403 —
+    // this only lets the page say so BEFORE the buyer fills the whole form, instead
+    // of walking them to the end and failing there.
+    ...(isDemoStore(s) ? { demo: true } : {}),
   };
 }
 ---
@@ -60,6 +65,7 @@ for (const s of getVisibleStores()) {
     requiredField: c.requiredField,
     invalidEmail: c.invalidEmail,
     orderError: c.orderError,
+    demoBlocked: t.demo.checkoutBlocked,
     selectItemAria: c.selectItemAria,
     selectStoreAria: c.selectStoreAria,
     selectAll: c.selectAll,
@@ -169,6 +175,15 @@ for (const s of getVisibleStores()) {
 
           <p id="form-global-error" class="hidden text-sm [color:var(--color-danger)] mb-4" role="alert"></p>
 
+          <!-- Shown the moment a showcase store's item is selected, not at submit —
+               /api/checkout still refuses regardless (that's the actual rule). -->
+          <p id="co-demo-notice"
+             class="hidden mb-3 rounded-[var(--radius)] border px-3 py-2 text-[0.85rem] leading-relaxed
+                    [border-color:color-mix(in_srgb,var(--color-accent)_28%,transparent)]
+                    [background:color-mix(in_srgb,var(--color-accent)_7%,var(--color-surface))]
+                    [color:var(--color-text)]"
+             role="status">{t.demo.checkoutBlocked}</p>
+
           <button type="submit" id="submit-btn" class="btn btn--accent w-full py-[.9rem] px-6 text-[1.0625rem] flex items-center justify-center gap-2 mb-2">
             <span id="submit-label">{c.placeOrder}</span>
             <span id="submit-loading" class="hidden" aria-live="polite">{c.processing}</span>
@@ -201,7 +216,7 @@ for (const s of getVisibleStores()) {
       return storeFilter ? all.filter(c => c.storeSlug === storeFilter) : all;
     }
 
-    type StoreDeliveryCfg = { methods: string[]; address: string | null };
+    type StoreDeliveryCfg = { methods: string[]; address: string | null; demo?: boolean };
     const shippingCfg: { stores?: Record<string, StoreDeliveryCfg>; rates?: Record<string, number> } =
       JSON.parse((document.getElementById('checkout-shipping-cfg') as HTMLElement | null)?.textContent ?? '{}');
     const shippingStores: Record<string, StoreDeliveryCfg> = shippingCfg.stores ?? {};
@@ -489,12 +504,17 @@ for (const s of getVisibleStores()) {
       const totalCountEl = document.getElementById('grand-total-count');
       if (totalCountEl) totalCountEl.textContent = `(${totalSelected} ${itemWord(totalSelected)})`;
 
+      // A selected showcase-store item blocks the order here too, so the buyer is
+      // told up front rather than at the 403 (lib/demo-stores.ts).
+      const demoSelected = Array.from(selected).some((k) => !!shippingStores[k.split('::')[0] ?? '']?.demo);
+      document.getElementById('co-demo-notice')?.classList.toggle('hidden', !demoSelected);
+
       const toPaymentBtn = document.getElementById('to-payment-btn') as HTMLButtonElement | null;
-      if (toPaymentBtn) toPaymentBtn.disabled = !anySelected;
+      if (toPaymentBtn) toPaymentBtn.disabled = !anySelected || demoSelected;
       const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement | null;
-      if (submitBtn) submitBtn.disabled = !anySelected;
+      if (submitBtn) submitBtn.disabled = !anySelected || demoSelected;
       document.getElementById('co-select-hint')?.classList.toggle('hidden', anySelected);
-      document.getElementById('co-submit-hint')?.classList.toggle('hidden', anySelected);
+      document.getElementById('co-submit-hint')?.classList.toggle('hidden', anySelected || demoSelected);
     }
 
     function attachEvents(): void {
@@ -683,8 +703,12 @@ for (const s of getVisibleStores()) {
         // Only the purchased items leave the cart — anything the buyer left unchecked stays.
         purchased.forEach(({ storeSlug, item }) => removeItem(storeSlug, item.cartKey));
         window.location.href = `/checkout/success?order=${encodeURIComponent(ref)}`;
-      } catch {
-        if (errEl) { errEl.textContent = i18n['orderError'] ?? 'שגיאה. נסה שוב.'; errEl.classList.remove('hidden'); }
+      } catch (err) {
+        // 'demo-store' is the one rejection that is NOT worth retrying (see
+        // lib/demo-stores.ts) — the generic "try again" would send the buyer in
+        // circles, so this single case gets its own explanation.
+        const key = (err as Error).message === 'demo-store' ? 'demoBlocked' : 'orderError';
+        if (errEl) { errEl.textContent = i18n[key] ?? 'שגיאה. נסה שוב.'; errEl.classList.remove('hidden'); }
         labelEl?.classList.remove('hidden');
         loadingEl?.classList.add('hidden');
         if (submitBtn) submitBtn.disabled = false;

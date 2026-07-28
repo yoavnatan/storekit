@@ -1,0 +1,27 @@
+---
+// "חדשים בלבד" filter chip — the counterpart to AdminNewBadge for the case the
+// row marks alone can't solve: the new rows may be sorted/paginated out of
+// sight (the Stores tab defaults to name:asc, so a new store lands anywhere).
+// Same toggle mechanics + look as each tab's existing binary filter chips
+// ("חסומות בלבד" / "לא נקראו בלבד"), so it needs no new interaction pattern.
+interface Props {
+  id: string;
+  active: boolean;
+  count: number;
+  label?: string;
+}
+// Orders override the wording: that tab already shows "חדשה" as a *shipping
+// status* on every pending order, so a second "חדש" there would mean two
+// different things in one row (see AdminOrdersPanel).
+const { id, active, count, label = 'חדשים בלבד' } = Astro.props;
+---
+
+<button
+  type="button"
+  id={id}
+  class="table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] border"
+  style={active
+    ? 'background:var(--color-success);border-color:var(--color-success);color:#fff'
+    : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
+  aria-pressed={active}
+>{label}{count > 0 ? ` (${count})` : ''}</button>

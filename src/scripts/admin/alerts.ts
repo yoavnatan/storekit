@@ -1,5 +1,6 @@
 import { buildAdminUrl, encodeList, decodeList, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { showErrorToast } from '../../lib/toast.js';
 
 const PANEL_ID = 'dash-panel-alerts';
 const alertsPortal = createFloatingPortal('admin-alerts-toolbar-portal');
@@ -19,12 +20,14 @@ function wireAlertsToolbar(): void {
   const sourceSet = new Set((state.source ?? '').split(',').filter(Boolean));
   const storeSet = new Set(decodeList(state.store ?? ''));
   const storeOptions: { slug: string; name: string }[] = JSON.parse(state.storeOptions ?? '[]');
+  let newOnly = state.newOnly === '1';
 
   function navigate(): void {
     const url = buildAdminUrl('alerts', {
       alsort: sortDir !== 'desc' ? sortDir : undefined,
       alsource: sourceSet.size ? [...sourceSet].join(',') : undefined,
       alstore: storeSet.size ? encodeList([...storeSet]) : undefined,
+      alnew: newOnly ? '1' : undefined,
     });
     swapPanel(url, PANEL_ID, () => initAdminAlertsPanel());
   }
@@ -43,6 +46,12 @@ function wireAlertsToolbar(): void {
         });
       });
     });
+  });
+
+  const newToggle = document.getElementById('admin-alerts-new-toggle') as HTMLButtonElement | null;
+  newToggle?.addEventListener('click', () => {
+    newOnly = !newOnly;
+    navigate();
   });
 
   root.querySelectorAll<HTMLButtonElement>('.admin-alerts-source-chip').forEach((chip) => {
@@ -139,29 +148,42 @@ export function initAdminAlertsPanel(): void {
   });
 
   const clearBtn = document.getElementById('admin-alerts-clear') as HTMLButtonElement | null;
-  clearBtn?.addEventListener('click', async () => {
-    if (!confirm('לנקות את כל יומן השגיאות?')) return;
-    clearBtn.disabled = true;
-    try {
-      const res = await fetch('/api/admin/errors', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'clear' }),
-      });
-      if (res.ok) {
-        document.getElementById('admin-alerts-wrap')?.remove();
-        clearBtn.remove();
-        const toolbar = document.querySelector('.admin-alerts-toolbar');
-        if (toolbar && !document.getElementById('admin-alerts-empty')) {
-          const p = document.createElement('p');
-          p.className = 'admin-empty';
-          p.id = 'admin-alerts-empty';
-          p.textContent = 'אין שגיאות רשומות.';
-          toolbar.insertAdjacentElement('afterend', p);
-        }
-      }
-    } catch { /* ignore */ } finally {
-      clearBtn.disabled = false;
-    }
+  // Wiping the log is irreversible, so it routes through the global confirm
+  // dialog (ConfirmModal.astro) like every other destructive admin action —
+  // never the browser's native confirm().
+  clearBtn?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('confirm:open', {
+      detail: {
+        title: 'לנקות את יומן השגיאות?',
+        message: 'כל הרשומות יימחקו לצמיתות, ללא אפשרות שחזור.',
+        okLabel: 'נקה יומן',
+        workingLabel: 'מנקה…',
+        onConfirm: async () => {
+          clearBtn.disabled = true;
+          try {
+            const res = await fetch('/api/admin/errors', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'clear' }),
+            });
+            if (!res.ok) throw new Error('request failed');
+            document.getElementById('admin-alerts-wrap')?.remove();
+            clearBtn.remove();
+            const toolbar = document.querySelector('.admin-alerts-toolbar');
+            if (toolbar && !document.getElementById('admin-alerts-empty')) {
+              const p = document.createElement('p');
+              p.className = 'admin-empty';
+              p.id = 'admin-alerts-empty';
+              p.textContent = 'אין שגיאות רשומות.';
+              toolbar.insertAdjacentElement('afterend', p);
+            }
+          } catch {
+            showErrorToast('ניקוי היומן נכשל, נסו שוב');
+          } finally {
+            clearBtn.disabled = false;
+          }
+        },
+      },
+    }));
   });
 }
