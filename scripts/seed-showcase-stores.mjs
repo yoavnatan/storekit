@@ -14,10 +14,12 @@
  * out of the feeds, out of every store-count threshold, and out of checkout — see
  * lib/demo-stores.ts for the whole rule set.
  *
- * Three, each a different kind of store (apparel with variants / electronics /
- * home & kitchen), because a prospective seller has to recognise his own case in
- * at least one of them, and because the spotlight carousel's arrows and
- * auto-rotation are gated on more than one slide.
+ * Three, each a different kind of store (apparel / electronics / home & kitchen),
+ * because a prospective seller has to recognise his own case in at least one of
+ * them, and because the spotlight carousel's arrows and auto-rotation are gated
+ * on more than one slide. All three carry colour/size variants now (see
+ * VARIANTS_BY_CATEGORY) — variants used to be an apparel-only prop, which left
+ * two of the three stores unable to demonstrate the feature at all.
  *
  * Idempotent: a re-run removes the previous showcase set first (matched on
  * `demo: true` plus the platform seller account), so it never accumulates
@@ -61,10 +63,45 @@ const hashPassword = (pw) => {
 const slugify = (s) => s.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 const comboKey = (sel) => Object.keys(sel).sort((a, b) => a.localeCompare(b)).map((k) => `${k}=${sel[k]}`).join(',');
 
-const APPAREL_VARIANTS = [
-  { name: 'מידה', options: ['S', 'M', 'L', 'XL'] },
-  { name: 'צבע', options: ['שחור', 'לבן', 'כחול'] },
-];
+// ── Variants (CURRENT_TASK.md → סשן א׳ 2) ────────────────────────────────────
+// Colour/size options are what a seller most needs to SEE working before he
+// believes the platform handles his catalog, so they're picked per product TYPE
+// rather than per store: a dress in S–XL, a shoe in 38–43, a phone in colour +
+// storage, a bag in colour only. One blanket set per store (what this was until
+// 2026-07-29) produced "מידה: XL" on a handbag, which demonstrates the feature by
+// making it look wrong.
+//
+// Colour option names come from lib/color-variants.ts's COLOR_MAP — a name it
+// doesn't know renders as a text chip instead of a swatch, so the storefront's
+// colour picker only shows what it's meant to show if these match.
+const SIZE_APPAREL  = { name: 'מידה', options: ['S', 'M', 'L', 'XL'] };
+const SIZE_SHOES    = { name: 'מידה', options: ['38', '39', '40', '41', '42', '43'] };
+const SIZE_KITCHEN  = { name: 'גודל', options: ['קטן', 'בינוני', 'גדול'] };
+const STORAGE       = { name: 'נפח אחסון', options: ['128GB', '256GB', '512GB'] };
+const COLOR_APPAREL = { name: 'צבע', options: ['שחור', 'לבן', 'כחול'] };
+const COLOR_SHOES   = { name: 'צבע', options: ['שחור', 'לבן', 'אדום'] };
+const COLOR_BAGS    = { name: 'צבע', options: ['שחור', 'חום', 'אפור'] };
+const COLOR_TECH    = { name: 'צבע', options: ['שחור', 'כסף', 'כחול'] };
+const COLOR_HOME    = { name: 'צבע', options: ['שחור', 'לבן', 'אפור'] };
+
+// Keyed by the DummyJSON category the product was fetched from — that's the only
+// reliable type signal in the source data. `null` is deliberate, not a gap: a
+// showcase store that gives EVERY product a variant picker stops demonstrating
+// the plain single-SKU product, which is most of what a real catalog holds.
+const VARIANTS_BY_CATEGORY = {
+  'mens-shirts':         [SIZE_APPAREL, COLOR_APPAREL],
+  'tops':                [SIZE_APPAREL, COLOR_APPAREL],
+  'womens-dresses':      [SIZE_APPAREL, COLOR_APPAREL],
+  'mens-shoes':          [SIZE_SHOES, COLOR_SHOES],
+  'womens-shoes':        [SIZE_SHOES, COLOR_SHOES],
+  'womens-bags':         [COLOR_BAGS],
+  'smartphones':         [COLOR_TECH, STORAGE],
+  'laptops':             [COLOR_TECH, STORAGE],
+  'mobile-accessories':  [COLOR_TECH],
+  'home-decoration':     [COLOR_HOME],
+  'kitchen-accessories': [SIZE_KITCHEN],
+  'furniture':           null,
+};
 
 function buildVariantStock(variants) {
   const combos = variants.reduce(
@@ -197,7 +234,6 @@ const SHOWCASE = [
     description: 'חנות לדוגמה של Dezabin — כך נראית חנות אופנה מלאה בפלטפורמה: מידות וצבעים לכל דגם, קטגוריות, וגלריית תמונות לכל מוצר.',
     hebCats: ['נשים', 'גברים', 'קולקציה חדשה'],
     djCats: ['mens-shirts', 'tops', 'womens-dresses', 'mens-shoes', 'womens-shoes', 'womens-bags'],
-    variants: APPAREL_VARIANTS,
     colors: { primary: '#1f2937', accent: '#c2620d' },
     address: 'דיזנגוף 112, תל אביב',
   },
@@ -206,10 +242,9 @@ const SHOWCASE = [
     tag: 'אלקטרוניקה',   // store-level label — /stores chips + homepage category grouping
     name: 'טק ליין',
     tagline: 'אלקטרוניקה, בלי הפתעות',
-    description: 'חנות לדוגמה של Dezabin — כך נראית חנות אלקטרוניקה בפלטפורמה: מפרט טכני לכל מוצר, מלאי מדויק ומשלוח מחושב אוטומטית.',
+    description: 'חנות לדוגמה של Dezabin — כך נראית חנות אלקטרוניקה בפלטפורמה: מפרט טכני לכל מוצר, בחירת צבע ונפח אחסון, מלאי מדויק ומשלוח מחושב אוטומטית.',
     hebCats: ['סמארטפונים', 'מחשבים', 'אביזרים'],
     djCats: ['smartphones', 'laptops', 'mobile-accessories'],
-    variants: null,
     colors: { primary: '#0f172a', accent: '#2563c9' },
     address: 'הרצל 40, חיפה',
   },
@@ -218,10 +253,9 @@ const SHOWCASE = [
     tag: 'לבית',   // store-level label — /stores chips + homepage category grouping
     name: 'בית ומטבח',
     tagline: 'דברים טובים לבית',
-    description: 'חנות לדוגמה של Dezabin — כך נראית חנות לבית ולמטבח בפלטפורמה: קטגוריות מסודרות, תיאורים מלאים ואיסוף עצמי לצד משלוח.',
+    description: 'חנות לדוגמה של Dezabin — כך נראית חנות לבית ולמטבח בפלטפורמה: קטגוריות מסודרות, גדלים וצבעים לבחירה, תיאורים מלאים ואיסוף עצמי לצד משלוח.',
     hebCats: ['לבית', 'למטבח', 'עיצוב'],
     djCats: ['home-decoration', 'furniture', 'kitchen-accessories'],
-    variants: null,
     colors: { primary: '#14532d', accent: '#158a56' },
     address: 'ויצמן 8, רעננה',
   },
@@ -318,7 +352,11 @@ async function main() {
       console.log(`   ⚠️  slug "${spec.slug}" is taken by a real store — skipping this showcase store.`);
       continue;
     }
-    const catalog = (await Promise.all(spec.djCats.map(djProducts))).flat();
+    // The source category rides along on each product — it's what VARIANTS_BY_CATEGORY
+    // keys off, and flattening the fetches would otherwise throw it away.
+    const catalog = (await Promise.all(
+      spec.djCats.map(async (djCat) => (await djProducts(djCat)).map((p) => ({ ...p, djCat }))),
+    )).flat();
     if (!catalog.length) {
       console.log(`   ⚠️  no products fetched for ${spec.name} — skipping.`);
       continue;
@@ -357,9 +395,10 @@ async function main() {
         tags: (dj.tags ?? []).slice(0, 5),
         createdAt: iso(NOW - int(1, 45) * DAY),
       };
-      if (spec.variants) {
-        p.variants = spec.variants;
-        p.variantStock = buildVariantStock(spec.variants);
+      const variants = VARIANTS_BY_CATEGORY[dj.djCat] ?? null;
+      if (variants) {
+        p.variants = variants;
+        p.variantStock = buildVariantStock(variants);
         p.stock = Object.values(p.variantStock).reduce((a, b) => a + b, 0);
       }
       return p;

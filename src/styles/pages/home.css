@@ -11,6 +11,25 @@
   50% { transform: scale(1.22); }
 }
 
+/* ── First-visit arrival for the ONE shelf a visitor lands on (HomeShelf's
+   `eagerFirst` row; applied there as `animate-[shelf-arrive_…]`, same
+   keyframe-in-CSS + utility-on-the-element split as the hero above).
+   Deliberately not `card-reveal` (store-card.css) and deliberately not
+   per-card: that one fades+rises+springs each card on a stagger, which is
+   right for a row ARRIVING as you scroll to it, and much too busy for the
+   content you're already looking at. This is opacity only, on the row, so the
+   whole shelf resolves at once — asked for as "a really, really gentle fade,
+   on all of them together" (user, 2026-07-29).
+   `both` matters: the from-state applies at first paint, so the row is never
+   painted solid and then snapped back to transparent (the flash the JS-driven
+   reveal avoids by only ever touching off-screen cards). LCP is unaffected in
+   practice — Chrome skips a fully transparent element for one frame, then
+   records it. */
+@keyframes shelf-arrive {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 /* ── Tabs — hover/press + the .dash-tabs/.dash-panel padding overrides are
    Tailwind utility classes directly on the elements in index.astro (scoped
    per-instance, so dashboard/admin's own untouched markup elsewhere is

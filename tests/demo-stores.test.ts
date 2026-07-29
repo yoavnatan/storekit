@@ -6,6 +6,7 @@ import {
   isDemoStore,
   realStores,
   showDemoStores,
+  splitDemoCarts,
 } from '../src/lib/demo-stores.js';
 import { LAUNCH_MODE_MAX_STORES, isLaunchMode } from '../src/lib/launch-mode.js';
 
@@ -74,5 +75,45 @@ describe('shopper discovery filter', () => {
   it('handles an empty mall', () => {
     expect(filterShopperStores([])).toEqual([]);
     expect(countRealStores([])).toBe(0);
+  });
+});
+
+describe('checkout cart split (a demo item must not block a real one)', () => {
+  const isDemoSlug = (slug: string) => slug.startsWith('showcase-');
+  const cart = (storeSlug: string) => ({ storeSlug });
+
+  it('keeps a real store payable when a showcase store sits next to it', () => {
+    const { payable, viewOnly } = splitDemoCarts(
+      [cart('showcase-fashion'), cart('yoavs-store')],
+      isDemoSlug,
+    );
+    expect(payable).toEqual([cart('yoavs-store')]);
+    expect(viewOnly).toEqual([cart('showcase-fashion')]);
+  });
+
+  it('leaves nothing payable when the cart is showcase-only — the one case that still refuses', () => {
+    const { payable, viewOnly } = splitDemoCarts([cart('showcase-tech'), cart('showcase-home')], isDemoSlug);
+    expect(payable).toEqual([]);
+    expect(viewOnly).toHaveLength(2);
+  });
+
+  it('touches nothing when no showcase store is involved', () => {
+    const carts = [cart('a'), cart('b')];
+    const { payable, viewOnly } = splitDemoCarts(carts, isDemoSlug);
+    expect(payable).toEqual(carts);
+    expect(viewOnly).toEqual([]);
+  });
+
+  it('preserves order within each side, so the rendered cart keeps its store order', () => {
+    const { payable, viewOnly } = splitDemoCarts(
+      [cart('b'), cart('showcase-x'), cart('a'), cart('showcase-y')],
+      isDemoSlug,
+    );
+    expect(payable.map((c) => c.storeSlug)).toEqual(['b', 'a']);
+    expect(viewOnly.map((c) => c.storeSlug)).toEqual(['showcase-x', 'showcase-y']);
+  });
+
+  it('handles an empty cart', () => {
+    expect(splitDemoCarts([], isDemoSlug)).toEqual({ payable: [], viewOnly: [] });
   });
 });

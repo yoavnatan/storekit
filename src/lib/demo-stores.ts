@@ -23,7 +23,10 @@
  *
  * Buying is deliberately half-open: the cart works end to end (a prospective
  * seller should see the real flow), and only the final checkout is refused —
- * server-side, in /api/checkout, not by hiding a button.
+ * server-side, in /api/checkout, not by hiding a button. On the checkout page
+ * that refusal is per-ITEM, never per-cart (see splitDemoCarts): a demo item
+ * next to a real one used to disable the pay button outright, which punished the
+ * buyer for a decision the platform made.
  *
  * Pure module — no fs, no Astro. Covered by tests/demo-stores.test.ts.
  */
@@ -70,4 +73,42 @@ export function showDemoStores(realStoreCount: number): boolean {
 export function filterShopperStores<T extends DemoFlagged>(stores: readonly T[]): T[] {
   const real = realStores(stores);
   return showDemoStores(real.length) ? [...stores] : real;
+}
+
+/** Anything the checkout groups by store — the per-store carts it renders. */
+export interface StoreScoped {
+  storeSlug: string;
+}
+
+export interface CartSplit<T> {
+  /** Carts the buyer may actually select, pay for and be charged for. */
+  payable: T[];
+  /** Carts that stay in the cart, visibly, but never enter an order. */
+  viewOnly: T[];
+}
+
+/**
+ * Splits the checkout's per-store carts into payable and view-only.
+ *
+ * This is the whole "a demo item must not block a real one" rule, in one place:
+ * the refusal is scoped to the demo store's own items, so a cart holding one
+ * showcase product and one real product still checks out — it just checks out
+ * without the showcase product. Blocking the entire order (what the page did
+ * until 2026-07-29) made the platform's own filler cost the buyer their real
+ * purchase, which is the opposite of what the showcase stores are for.
+ *
+ * `payable` empty is the one case that still refuses outright — a cart with
+ * nothing but showcase items has nothing to charge for.
+ *
+ * Pure — covered by tests/demo-stores.test.ts. /api/checkout's own 403 stays the
+ * authority: this decides what the page SENDS, not what the server accepts.
+ */
+export function splitDemoCarts<T extends StoreScoped>(
+  carts: readonly T[],
+  isDemoSlug: (storeSlug: string) => boolean,
+): CartSplit<T> {
+  const payable: T[] = [];
+  const viewOnly: T[] = [];
+  for (const cart of carts) (isDemoSlug(cart.storeSlug) ? viewOnly : payable).push(cart);
+  return { payable, viewOnly };
 }

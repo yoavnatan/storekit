@@ -67,6 +67,11 @@ for (const s of getVisibleStores()) {
     invalidEmail: c.invalidEmail,
     orderError: c.orderError,
     demoBlocked: t.demo.checkoutBlocked,
+    demoBadge: t.demo.badge,
+    demoBadgeTitle: t.demo.badgeTitle,
+    demoExcluded: t.demo.cartExcluded,
+    demoNotice: t.demo.cartNotice,
+    demoOnly: t.demo.cartOnlyDemo,
     selectItemAria: c.selectItemAria,
     selectStoreAria: c.selectStoreAria,
     selectAll: c.selectAll,
@@ -114,10 +119,24 @@ for (const s of getVisibleStores()) {
 
         <!-- Grand total + CTA (revealed after render) -->
         <div id="co-footer" class="hidden">
-          <div class="flex justify-between items-center pt-4 pb-[1.125rem] border-t-2 [border-color:var(--color-border)] mt-1">
+          <!-- Hidden when nothing in the cart is payable (showcase items only) —
+               a "₪0.00 (0 פריטים)" line under a cart that visibly holds products
+               reads as a bug, and the notice below already explains it. -->
+          <div id="co-grand-total-row" class="flex justify-between items-center pt-4 pb-[1.125rem] border-t-2 [border-color:var(--color-border)] mt-1">
             <span class="text-base font-medium [color:var(--color-text)]">{c.total} <span id="grand-total-count" class="text-[.82em] font-normal [color:var(--color-muted)]"></span></span>
             <strong class="text-[1.35rem] font-extrabold [color:var(--color-text)]" id="grand-total-amount"></strong>
           </div>
+          <!-- Shown whenever a showcase-store item sits in the cart — the items are
+               already marked individually, this is the one sentence that says what
+               happens to them at payment. Not a blocker: the pay button stays live
+               as long as anything real is selected (lib/demo-stores.ts →
+               splitDemoCarts). Swaps to `cartOnlyDemo` when there is nothing else. -->
+          <p id="co-demo-notice"
+             class="hidden mb-3 rounded-[var(--radius)] border px-3 py-2 text-[0.85rem] leading-relaxed
+                    [border-color:color-mix(in_srgb,var(--color-accent)_28%,transparent)]
+                    [background:color-mix(in_srgb,var(--color-accent)_7%,var(--color-surface))]
+                    [color:var(--color-text)]"
+             role="status"></p>
           <button id="to-payment-btn" class="btn btn--accent group w-full py-[.9rem] px-6 text-[1.0625rem] flex items-center justify-center gap-2 mb-2" type="button"
             aria-expanded="false" aria-controls="payment-section">
             <span>{c.toPayment}</span>
@@ -176,14 +195,8 @@ for (const s of getVisibleStores()) {
 
           <p id="form-global-error" class="hidden text-sm [color:var(--color-danger)] mb-4" role="alert"></p>
 
-          <!-- Shown the moment a showcase store's item is selected, not at submit —
-               /api/checkout still refuses regardless (that's the actual rule). -->
-          <p id="co-demo-notice"
-             class="hidden mb-3 rounded-[var(--radius)] border px-3 py-2 text-[0.85rem] leading-relaxed
-                    [border-color:color-mix(in_srgb,var(--color-accent)_28%,transparent)]
-                    [background:color-mix(in_srgb,var(--color-accent)_7%,var(--color-surface))]
-                    [color:var(--color-text)]"
-             role="status">{t.demo.checkoutBlocked}</p>
+          <!-- The showcase-store notice lives once, up in #co-footer next to the
+               grand total — that's where the buyer reads what they're paying for. -->
 
           <button type="submit" id="submit-btn" class="btn btn--accent w-full py-[.9rem] px-6 text-[1.0625rem] flex items-center justify-center gap-2 mb-2">
             <span id="submit-label">{c.placeOrder}</span>
@@ -200,6 +213,7 @@ for (const s of getVisibleStores()) {
 
   <script>
     import { getActiveStoreCarts, setQty, removeItem } from '../lib/cart.js';
+    import { splitDemoCarts } from '../lib/demo-stores.js';
     import { formatPrice, cdnThumb } from '../config/store.config.js';
     import { escapeHtml as esc } from '../lib/html-escape.js';
     import { spawnRipple } from '../lib/ripple.js';
@@ -247,16 +261,28 @@ for (const s of getVisibleStores()) {
       return method === 'pickup' ? 0 : (platformRates[method] ?? 0);
     }
 
+    // A showcase store's items are view-only: they stay in the cart, marked, and
+    // are simply never selectable, so they can't reach the order. See
+    // lib/demo-stores.ts → splitDemoCarts for why this is per-item and not a
+    // whole-cart block.
+    const isDemoSlug = (slug: string): boolean => !!shippingStores[slug]?.demo;
+    const payableCarts = <T extends { storeSlug: string }>(carts: readonly T[]): T[] =>
+      splitDemoCarts(carts, isDemoSlug).payable;
+
     // ── Selection (which items the buyer is actually paying for) ──
-    // Default: everything selected. Selection is per-page-load (not persisted) —
-    // resets to "all checked" every time checkout is opened.
+    // Default: everything selectable is selected. Selection is per-page-load (not
+    // persisted) — resets to "all checked" every time checkout is opened.
     const selKey = (storeSlug: string, cartKey: string) => `${storeSlug}::${cartKey}`;
     let selected = new Set<string>();
     let selectionInitialized = false;
 
     function syncSelection(carts: ReturnType<typeof getFilteredCarts>): void {
+      // Only payable carts contribute keys — that alone is what keeps a showcase
+      // item out of the total, out of the submitted order, and out of the
+      // "everything is checked by default" state.
       const currentKeys = new Set<string>();
-      carts.forEach(cart => cart.items.forEach(item => currentKeys.add(selKey(cart.storeSlug, item.cartKey))));
+      payableCarts(carts).forEach(cart =>
+        cart.items.forEach(item => currentKeys.add(selKey(cart.storeSlug, item.cartKey))));
       if (!selectionInitialized) {
         selected = new Set(currentKeys);
         selectionInitialized = true;
@@ -296,9 +322,10 @@ for (const s of getVisibleStores()) {
 
       let html = '';
 
-      // Global "select all" — only worth showing with more than one store, since a
-      // single store's own row checkbox already selects/deselects everything.
-      if (carts.length > 1) {
+      // Global "select all" — only worth showing with more than one SELECTABLE
+      // store, since a single store's own row checkbox already selects/deselects
+      // everything (a showcase store has no checkbox at all).
+      if (payableCarts(carts).length > 1) {
         html += `<div class="flex items-center gap-2.5 mb-4 pb-3 border-b [border-color:var(--color-border)]">
           ${checkboxHtml('co-select-all-check', '', i18n['selectAllAria'] ?? '', true)}
           <span class="text-[.9rem] font-semibold [color:var(--color-text)]">${esc(i18n['selectAll'] ?? 'בחר הכל')}</span>
@@ -310,19 +337,30 @@ for (const s of getVisibleStores()) {
         // Initial paint only — recalculated precisely (per current selection) by
         // updateSelectionUI() right after this HTML is inserted into the DOM.
         const shipping = calcShipping(cart.storeSlug);
+        const isDemo = isDemoSlug(cart.storeSlug);
 
-        html += `<div class="co-store-block contents" data-store-slug="${esc(cart.storeSlug)}">`;
+        html += `<div class="co-store-block contents" data-store-slug="${esc(cart.storeSlug)}"${isDemo ? ' data-demo' : ''}>`;
 
-        // Store row: select-all checkbox + store label
+        // Store row: select-all checkbox + store label. A showcase store gets the
+        // "view only" eye in the checkbox's place instead — same 20px box, so the
+        // store names stay on one vertical line down the whole cart — plus the
+        // "חנות לדוגמה" chip the store card and store page already show.
+        const rowLead = isDemo
+          ? `<span class="inline-flex shrink-0 w-5 h-5 items-center justify-center rounded-[var(--radius-sm)] border-[1.5px] border-dashed [border-color:color-mix(in_srgb,var(--color-accent)_45%,var(--color-border))] [color:var(--color-accent)]" title="${esc(i18n['demoBadgeTitle'] ?? '')}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+             </span>`
+          : checkboxHtml('co-store-check', `data-store-slug="${esc(cart.storeSlug)}"`, `${i18n['selectStoreAria'] ?? ''} ${cart.storeName}`, true);
         html += `<div class="flex items-center gap-2.5 ${idx === 0 ? 'mt-0' : 'mt-5'} mb-2.5">
-          ${checkboxHtml('co-store-check', `data-store-slug="${esc(cart.storeSlug)}"`, `${i18n['selectStoreAria'] ?? ''} ${cart.storeName}`, true)}
+          ${rowLead}
           <a href="/${esc(cart.storeSlug)}" class="inline-block text-xs font-bold [color:var(--color-muted)] tracking-[.06em] uppercase no-underline transition-colors duration-[140ms] hover:underline">${esc(cart.storeName)}</a>
-          <span class="co-store-count text-xs font-normal [color:var(--color-muted)]"></span>
+          ${isDemo
+            ? `<span class="text-[.68rem] font-bold tracking-[.04em] rounded-[var(--radius-sm)] px-1.5 py-[.1rem] [color:var(--color-accent)] [background:color-mix(in_srgb,var(--color-accent)_10%,transparent)]">${esc(i18n['demoBadge'] ?? '')}</span>`
+            : `<span class="co-store-count text-xs font-normal [color:var(--color-muted)]"></span>`}
         </div>`;
 
         // One card per item
         cart.items.forEach(item => {
-          const isSelected = selected.has(selKey(cart.storeSlug, item.cartKey));
+          const isSelected = !isDemo && selected.has(selKey(cart.storeSlug, item.cartKey));
           const imgHtml = item.image
             ? `<img src="${esc(cdnThumb(item.image, 160, 160))}" alt="${esc(item.name)}" class="w-20 h-20 object-cover block" width="80" height="80" loading="lazy" decoding="async" />`
             : `<div class="w-20 h-20 flex items-center justify-center [color:var(--color-muted)]" aria-hidden="true">
@@ -334,8 +372,19 @@ for (const s of getVisibleStores()) {
             ? `<p class="text-[.775rem] [color:var(--color-muted)] mt-[.2rem]">${esc(Object.entries(item.selectedVariants).map(([k,v]) => `${k}: ${v}`).join(' · '))}</p>`
             : '';
 
-          html += `<div class="co-card flex items-center gap-4 bg-[color:var(--color-surface)] rounded-[var(--radius)] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)] transition-[box-shadow,opacity] duration-150 hover:shadow-[var(--shadow-card-hover)] data-[unselected]:opacity-50" data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" data-item-name="${esc(item.name)}" ${isSelected ? '' : 'data-unselected'}>
-            ${checkboxHtml('co-item-check', `data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" ${isSelected ? 'checked' : ''}`, `${i18n['selectItemAria'] ?? ''} ${item.name}`, false)}
+          // A view-only card is NOT drawn as an unselected one: same-shape card,
+          // dashed accent border over a faint accent wash, and no checkbox (an
+          // empty 20px spacer holds the column so the row of cards stays aligned).
+          // `data-unselected`'s 50% opacity is deliberately withheld — dimming it
+          // would read as "you forgot to tick this", which is the opposite of what
+          // the card says.
+          const cardClass = isDemo
+            ? 'co-card flex items-center gap-4 rounded-[var(--radius)] p-4 mb-3 border border-dashed [border-color:color-mix(in_srgb,var(--color-accent)_38%,var(--color-border))] [background:color-mix(in_srgb,var(--color-accent)_4%,var(--color-surface))]'
+            : 'co-card flex items-center gap-4 bg-[color:var(--color-surface)] rounded-[var(--radius)] p-4 mb-3 border [border-color:var(--color-border)] shadow-[var(--shadow-xs)] transition-[box-shadow,opacity] duration-150 hover:shadow-[var(--shadow-card-hover)] data-[unselected]:opacity-50';
+          html += `<div class="${cardClass}" data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" data-item-name="${esc(item.name)}"${isDemo ? ' data-demo' : (isSelected ? '' : ' data-unselected')}>
+            ${isDemo
+              ? '<span class="shrink-0 w-5" aria-hidden="true"></span>'
+              : checkboxHtml('co-item-check', `data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" ${isSelected ? 'checked' : ''}`, `${i18n['selectItemAria'] ?? ''} ${item.name}`, false)}
             <button type="button" class="pqv-trigger shrink-0 block w-20 h-20 rounded-[var(--radius)] overflow-hidden bg-[color:var(--color-border)] transition-opacity duration-[140ms] border-0 p-0 cursor-pointer hover:opacity-[.85]"
               data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}"
               aria-label="${esc(i18n['viewProduct'] ?? '')} ${esc(item.name)}">
@@ -346,18 +395,25 @@ for (const s of getVisibleStores()) {
                 data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}">${esc(item.name)}</button>
               ${variantsHtml}
               <div class="flex items-center gap-1.5 mt-2.5">
-                <div class="cart-line__qty shrink-0" dir="ltr" role="group" aria-label="כמות">
+                ${isDemo
+                  // No quantity stepper on something that can't be bought — changing
+                  // "how many" of a view-only item is a control that does nothing.
+                  // The sentence takes its place, so the row keeps its height.
+                  ? `<span class="text-[.775rem] font-medium [color:var(--color-accent)] me-0.5">${esc(i18n['demoExcluded'] ?? '')}</span>`
+                  : `<div class="cart-line__qty shrink-0" dir="ltr" role="group" aria-label="כמות">
                   <button class="co-qty__btn" data-action="dec" aria-label="הפחת כמות" type="button" ${item.qty <= 1 ? 'disabled' : ''}>−</button>
                   <span class="co-qty__num w-7" aria-live="polite">${item.qty}</span>
                   <button class="co-qty__btn" data-action="inc" aria-label="הגדל כמות" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>
-                </div>
+                </div>`}
                 <button class="w-[26px] h-[26px] shrink-0 bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] cursor-pointer [color:var(--color-muted)] flex items-center justify-center transition-[color,background,border-color] duration-[130ms] hover:[color:var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)] hover:[border-color:color-mix(in_srgb,var(--color-danger)_30%,var(--color-border))]" data-action="remove" aria-label="${esc(i18n['removeItem'] ?? 'הסר')}" type="button">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                 </button>
               </div>
             </div>
             <div class="co-card__price-col shrink-0 text-end flex flex-col items-end gap-[.15rem]">
-              <span class="co-card__total text-[1.0625rem] font-extrabold [color:var(--color-text)]">${formatPrice(item.price * item.qty)}</span>
+              <!-- Muted, not struck through: the price is real, it just isn't part
+                   of this total. A strikethrough would read as a discount. -->
+              <span class="co-card__total text-[1.0625rem] font-extrabold ${isDemo ? '[color:var(--color-muted)] font-semibold' : '[color:var(--color-text)]'}">${formatPrice(item.price * item.qty)}</span>
               ${item.qty > 1 ? `<span class="co-card__unit text-[.72rem] [color:var(--color-muted)]">${formatPrice(item.price)} ליח׳</span>` : ''}
             </div>
           </div>`;
@@ -366,6 +422,9 @@ for (const s of getVisibleStores()) {
         // Shipping card for this store — "שיטת משלוח:" + an app-styled dropdown (each option
         // shows its price; the closed trigger shows just the chosen method name) + the price
         // outside. Prices are platform-set; self-pickup is free and reveals the address below.
+        // Skipped entirely for a view-only store — nothing ships, and a delivery
+        // picker under items that can't be bought is a control with no outcome.
+        if (isDemo) { html += `</div>`; return; }
         const isFree = shipping === 0;
         const methods = shippingStores[cart.storeSlug]?.methods ?? ['courier'];
         const chosen  = methodFor(cart.storeSlug);
@@ -435,7 +494,11 @@ for (const s of getVisibleStores()) {
     // shipping card (hidden entirely once a store has nothing selected), grand
     // total, each store's select-all checkbox state, and the pay button.
     function updateSelectionUI(): void {
-      const carts = getFilteredCarts();
+      const allCarts = getFilteredCarts();
+      // Everything below counts and prices PAYABLE carts only — a view-only card
+      // has no checkbox, no shipping card and no share of the total, so letting it
+      // into these loops would only produce "(0 פריטים)" rows and a wrong x/y count.
+      const { payable: carts, viewOnly } = splitDemoCarts(allCarts, isDemoSlug);
       const itemWord = (n: number) => n !== 1 ? (i18n['items'] ?? 'items') : (i18n['item'] ?? 'item');
       let grandTotal = 0;
       let anySelected = false;
@@ -503,17 +566,29 @@ for (const s of getVisibleStores()) {
       const totalCountEl = document.getElementById('grand-total-count');
       if (totalCountEl) totalCountEl.textContent = `(${totalSelected} ${itemWord(totalSelected)})`;
 
-      // A selected showcase-store item blocks the order here too, so the buyer is
-      // told up front rather than at the 403 (lib/demo-stores.ts).
-      const demoSelected = Array.from(selected).some((k) => !!shippingStores[k.split('::')[0] ?? '']?.demo);
-      document.getElementById('co-demo-notice')?.classList.toggle('hidden', !demoSelected);
+      // A showcase-store item never blocks the order — it just isn't in it. The
+      // notice explains that; only a cart with nothing BUT showcase items (no
+      // payable cart at all) turns into the refusal, and it says why.
+      const onlyDemo = viewOnly.length > 0 && carts.length === 0;
+      // `!hidden`, not `hidden`: this row is a `flex` element and in this build
+      // `.flex` is emitted AFTER `.hidden`, so the plain utility loses on source
+      // order and the row stays visible (measured 2026-07-29 — computed display
+      // was still `flex` with `hidden` applied).
+      document.getElementById('co-grand-total-row')?.classList.toggle('!hidden', onlyDemo);
+      const noticeEl = document.getElementById('co-demo-notice');
+      if (noticeEl) {
+        noticeEl.textContent = onlyDemo ? (i18n['demoOnly'] ?? '') : (i18n['demoNotice'] ?? '');
+        noticeEl.classList.toggle('hidden', viewOnly.length === 0);
+      }
 
       const toPaymentBtn = document.getElementById('to-payment-btn') as HTMLButtonElement | null;
-      if (toPaymentBtn) toPaymentBtn.disabled = !anySelected || demoSelected;
+      if (toPaymentBtn) toPaymentBtn.disabled = !anySelected;
       const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement | null;
-      if (submitBtn) submitBtn.disabled = !anySelected || demoSelected;
-      document.getElementById('co-select-hint')?.classList.toggle('hidden', anySelected);
-      document.getElementById('co-submit-hint')?.classList.toggle('hidden', anySelected || demoSelected);
+      if (submitBtn) submitBtn.disabled = !anySelected;
+      // "בחרו לפחות פריט אחד" is only true advice when there IS something to
+      // choose — with an all-showcase cart the notice above already carries it.
+      document.getElementById('co-select-hint')?.classList.toggle('hidden', anySelected || onlyDemo);
+      document.getElementById('co-submit-hint')?.classList.toggle('hidden', anySelected || onlyDemo);
     }
 
     function attachEvents(): void {
