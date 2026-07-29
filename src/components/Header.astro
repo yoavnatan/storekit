@@ -369,6 +369,9 @@ const strEmpty   = t.store.noProductsFound;
   import { getWishlistCount } from '../lib/wishlist.js';
   import { getLastStore } from '../lib/last-store.js';
   import { updateBadge } from '../lib/badge-ticker.js';
+  import { cdnThumb } from '../lib/cdn.js';
+  // Two historic local names in this file, one implementation.
+  import { escapeHtml as escH, escapeHtml as escHtml } from '../lib/html-escape.js';
 
   // ── Back-to-store pill ────────────────────────────────────────
   {
@@ -488,7 +491,6 @@ const strEmpty   = t.store.noProductsFound;
     if (diff < 86400) return `לפני ${Math.floor(diff / 3600)} ש'`;
     return `לפני ${Math.floor(diff / 86400)} ימים`;
   }
-  function escH(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // Badge/title always reflect the server's own unreadCount (computed fresh from
   // *all* of a user's notifications) — never derived from whatever `items` list
@@ -811,9 +813,6 @@ const strEmpty   = t.store.noProductsFound;
 
     const STORE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
 
-    function escHtml(s: string): string {
-      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
     function formatHomePrice(n: number): string {
       return `${n.toLocaleString('he-IL')} ₪`;
     }
@@ -822,7 +821,7 @@ const strEmpty   = t.store.noProductsFound;
     // initial-gradient avatar (mirrors StoreAvatar.astro) — never the generic
     // house icon, so every store result reads as a distinct brand.
     function storeAvatarHtml(name: string, image: string): string {
-      if (image) return `<img class="hsd-result-store-img" src="${image}" alt="" width="56" height="56" loading="lazy">`;
+      if (image) return `<img class="hsd-result-store-img" src="${escHtml(cdnThumb(image, 112, 112))}" alt="" width="56" height="56" loading="lazy" decoding="async">`;
       const initial = escHtml((name.trim()[0] ?? '?').toUpperCase());
       return `<span class="hsd-result-avatar" aria-hidden="true">${initial}</span>`;
     }
@@ -870,7 +869,7 @@ const strEmpty   = t.store.noProductsFound;
               <li role="option">
                 <a class="hsd-result-item" href="/${p.storeSlug}/${p.slug}">
                   ${p.image
-                    ? `<img class="hsd-result-img" src="${p.image}" alt="${escHtml(p.name)}" width="56" height="56" loading="lazy">`
+                    ? `<img class="hsd-result-img" src="${escHtml(cdnThumb(p.image, 112, 112))}" alt="${escHtml(p.name)}" width="56" height="56" loading="lazy" decoding="async">`
                     : `<div class="hsd-result-img-placeholder" aria-hidden="true">${STORE_ICON}</div>`
                   }
                   <div class="hsd-result-text">
@@ -1041,7 +1040,7 @@ const strEmpty   = t.store.noProductsFound;
             <li role="option">
               <a class="hsd-result-item" href="/${storeSlug}/${p.slug}" data-slug="${p.slug}">
                 ${p.image
-                  ? `<img class="hsd-result-img" src="${p.image}" alt="${escH(p.name)}" width="56" height="56" loading="lazy">`
+                  ? `<img class="hsd-result-img" src="${escH(cdnThumb(p.image, 112, 112))}" alt="${escH(p.name)}" width="56" height="56" loading="lazy" decoding="async">`
                   : `<div class="hsd-result-img-placeholder" aria-hidden="true">${PLACEHOLDER_SVG}</div>`
                 }
                 <span class="hsd-result-name">${escH(p.name)}</span>

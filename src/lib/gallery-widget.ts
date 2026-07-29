@@ -1,6 +1,10 @@
-export function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+/** The shared escaper, re-exported under the name other modules already import
+ *  from here. `import`+`export` rather than a bare re-export, because this module
+ *  uses it internally too. */
+import { escapeHtml as esc } from './html-escape.js';
+export { esc };
+import { cdnThumb } from './cdn.js';
+
 
 export interface GalleryLabels {
   main?: string;
@@ -59,7 +63,7 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
           ${uploadIcon}
         </button>
         <div class="gallery-slot__filled"${hasUrl ? '' : ' hidden'}>
-          <img class="gallery-slot__img" src="${esc(url)}" alt="" width="88" height="88" loading="lazy" decoding="async">
+          <img class="gallery-slot__img" src="${esc(cdnThumb(url, 176, 176))}" alt="" width="88" height="88" loading="lazy" decoding="async">
           <div class="gallery-slot__overlay">
             <button type="button" class="gallery-slot__action gallery-slot__action--edit" aria-label="Edit image">${editIcon}</button>
             <button type="button" class="gallery-slot__action gallery-slot__action--remove" aria-label="Remove image">${removeIcon}</button>
@@ -95,7 +99,7 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
       <div class="gallery-panel" hidden>
         <div class="gallery-panel__inner">
           <div class="img-preview-box">
-            <img class="gallery-panel__img img-preview__img" src="" alt="Product image" width="160" height="160">
+            <img class="gallery-panel__img img-preview__img" src="" alt="Product image" width="160" height="160" loading="eager" decoding="async">
             <div class="img-loading-overlay" hidden>
               <div class="spinner"></div>
               <span>${esc(l.removingBg)}</span>

@@ -10,7 +10,8 @@
 
 <script>
   import type { CartItemAddedDetail } from '../lib/cart.js';
-  import { formatPrice } from '../config/store.config.js';
+  import { formatPrice, cdnThumb } from '../config/store.config.js';
+  import { escapeHtml as esc } from '../lib/html-escape.js';
 
   const preview = document.getElementById('cart-preview')!;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -19,9 +20,6 @@
   function getI18n() {
     try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}'); } catch { return {}; }
   }
-
-  const esc = (s: unknown) =>
-    String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   // Mirrors ToastContainer's own offset trick — if the product page's sticky
   // mobile add-to-cart bar is on screen, sit above it instead of overlapping.
@@ -50,7 +48,7 @@
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
       <div class="cart-preview__body">
-        <img class="cart-preview__img" src="${esc(detail.item.image)}" alt="" width="52" height="52" />
+        <img class="cart-preview__img" src="${esc(cdnThumb(detail.item.image, 104, 104))}" alt="" width="52" height="52" loading="lazy" decoding="async" />
         <div class="cart-preview__info">
           <p class="cart-preview__added">${esc(i18n.addedToCart ?? 'Added to cart')}</p>
           <p class="cart-preview__name">${esc(detail.item.name)}</p>

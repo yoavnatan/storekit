@@ -1,6 +1,7 @@
 import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { escapeHtml } from '../../lib/html-escape.js';
+import { cdnThumb } from '../../lib/cdn.js';
 import { showErrorToast } from '../../lib/toast.js';
 
 const PANEL_ID = 'dash-panel-stores';
@@ -298,7 +299,7 @@ const PLACEHOLDER_THUMB =
 
 function productRowHtml(p: AdminStoreProduct): string {
   const thumb = p.image
-    ? `<img class="admin-product-row__thumb" src="${escapeHtml(p.image)}" alt="" loading="lazy" width="36" height="36" />`
+    ? `<img class="admin-product-row__thumb" src="${escapeHtml(cdnThumb(p.image, 72, 72))}" alt="" loading="lazy" decoding="async" width="36" height="36" />`
     : PLACEHOLDER_THUMB;
   return `
     <div class="admin-product-row">

@@ -53,6 +53,7 @@ const hasStore = userId ? getStoresBySellerId(userId).length > 0 : false;
   <script>
     import { getActiveStoreCarts, getSubtotal } from '../../lib/cart.js';
     import { formatPrice } from '../../config/store.config.js';
+    import { escapeHtml as esc } from '../../lib/html-escape.js';
 
     // Read order ID from URL and clear cart
     const params = new URLSearchParams(window.location.search);
@@ -69,9 +70,6 @@ const hasStore = userId ? getStoresBySellerId(userId).length > 0 : false;
     // nudge back into those carts — post-purchase is the natural, friction-free moment.
     const wrap = document.getElementById('success-more-carts');
     const list = document.getElementById('success-carts-list');
-    const esc = (s: unknown) =>
-      String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-
     if (wrap && list) {
       const labelItems = wrap.dataset.labelItems ?? 'פריטים';
       const labelOpen  = wrap.dataset.labelOpen  ?? 'פתח עגלה';

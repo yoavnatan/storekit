@@ -25,23 +25,72 @@ export interface Seller {
   createdAt: string;
 }
 
+/**
+ * Session-token signing key. In production a missing AUTH_SECRET is a HARD FAILURE,
+ * not a fallback: the dev default is a literal in this repo, so shipping with it
+ * would let anyone forge a session cookie for any seller id — a full auth bypass
+ * with no exploit required beyond reading the source. Failing at boot is loud;
+ * silently signing with a public string is not.
+ */
 function secret(): string {
-  return import.meta.env.AUTH_SECRET || 'dev-insecure-secret';
+  const configured = import.meta.env.AUTH_SECRET;
+  if (configured) return configured;
+  if (import.meta.env.PROD) {
+    throw new Error('AUTH_SECRET is not set. Refusing to sign sessions with the public dev default.');
+  }
+  return 'dev-insecure-secret';
 }
 
 function sign(value: string): string {
   return crypto.createHmac('sha256', secret()).update(value).digest('hex');
 }
 
+/**
+ * scrypt, not HMAC-SHA256. A single SHA-256 is designed to be FAST — a leaked
+ * `sellers.json` would be brute-forced offline at GPU speed, which makes the salt
+ * nearly worthless. scrypt is deliberately slow and memory-hard, so the same leak
+ * costs an attacker orders of magnitude more per guess. Node ships it; no dependency.
+ *
+ * Stored as `scrypt:<salt>:<hash>`. Records written before 2026-07-29 have the old
+ * two-field `<salt>:<hash>` shape and still verify (legacy branch below) — they're
+ * upgraded to scrypt on the owner's next successful login, so nobody is locked out
+ * and no migration script is needed.
+ */
+const SCRYPT_KEYLEN = 64;
+
+function scryptHash(password: string, salt: string): string {
+  return crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex');
+}
+
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.createHmac('sha256', salt).update(password).digest('hex');
-  return `${salt}:${hash}`;
+  return `scrypt:${salt}:${scryptHash(password, salt)}`;
+}
+
+/** Constant-time compare — a plain `===` leaks how many leading characters matched
+ *  through its timing, which is enough to reconstruct a hash byte by byte. */
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(':');
-  return crypto.createHmac('sha256', salt!).update(password).digest('hex') === hash;
+  if (!stored) return false;
+  const parts = stored.split(':');
+  if (parts[0] === 'scrypt' && parts.length === 3) {
+    return safeEqual(scryptHash(password, parts[1]!), parts[2]!);
+  }
+  // Legacy HMAC record — verify, so existing accounts keep working.
+  const [salt, hash] = parts;
+  if (!salt || !hash) return false;
+  return safeEqual(crypto.createHmac('sha256', salt).update(password).digest('hex'), hash);
+}
+
+/** True for a record still on the old fast hash, so a successful login can rewrite it. */
+function needsRehash(stored: string): boolean {
+  return !stored.startsWith('scrypt:');
 }
 
 function readSellers(): Seller[] {
@@ -108,8 +157,19 @@ export function linkGoogleAccount(sellerId: string, googleId: string): void {
 }
 
 export function loginSeller(email: string, password: string): Seller | null {
-  const seller = readSellers().find((s) => s.email === email);
+  const sellers = readSellers();
+  const seller = sellers.find((s) => s.email === email);
   if (!seller || !verifyPassword(password, seller.passwordHash)) return null;
+
+  // Transparent upgrade off the old fast hash — this is the one moment the plaintext
+  // password is available, so it's the only place the record CAN be re-hashed without
+  // forcing a reset. Failure here must never fail the login itself.
+  if (needsRehash(seller.passwordHash)) {
+    try {
+      seller.passwordHash = hashPassword(password);
+      writeSellers(sellers);
+    } catch { /* keep the user logged in; the next login retries the upgrade */ }
+  }
   return seller;
 }
 

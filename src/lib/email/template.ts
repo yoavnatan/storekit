@@ -21,14 +21,11 @@ const COLORS = {
 
 export const emailColors = COLORS;
 
-/** Escape user-supplied strings before interpolating into email HTML. */
-export function esc(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+/** Escape user-supplied strings before interpolating into email HTML — the same
+ *  single implementation the site uses (lib/html-escape.ts), re-exported here
+ *  under the name the email modules already import. */
+import { escapeHtml as esc } from '../html-escape.js';
+export { esc };
 
 export interface EmailShellInput {
   /** Inbox-preview snippet (hidden in the body). */

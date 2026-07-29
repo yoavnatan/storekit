@@ -1,5 +1,6 @@
 import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree, setCategoryTree } from './category-tree-cache.js';
+import { escapeHtml as esc } from '../../lib/html-escape.js';
 
 const MAX_CATEGORY_DEPTH = 3;
 
@@ -14,10 +15,6 @@ function optionClasses(selected: boolean, isNone: boolean): string {
   if (selected) return `${OPTION_BASE_CLASSES} font-bold text-[color:var(--color-primary)]`;
   if (isNone) return `${OPTION_BASE_CLASSES} text-[color:var(--color-muted)]`;
   return `${OPTION_BASE_CLASSES} text-[color:var(--color-text)]`;
-}
-
-function esc(s: string): string {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function getDashI18n(): Record<string, string> {

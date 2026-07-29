@@ -22,7 +22,8 @@
 
 <script>
   import { getActiveStoreCarts, getSubtotal, getGrandTotal, setQtyQuiet, removeItem } from '../lib/cart.js';
-  import { formatPrice } from '../config/store.config.js';
+  import { formatPrice, cdnThumb } from '../config/store.config.js';
+  import { escapeHtml as esc } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
 
   function getI18n() {
@@ -53,9 +54,6 @@
     infoEl.addEventListener('mouseenter', clampBubble);
     infoEl.addEventListener('focusin', clampBubble);
   }
-
-  const esc = (s: unknown) =>
-    String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   let prevFocus: HTMLElement | null = null;
   let suppressNextRender = false;
@@ -182,7 +180,7 @@
               return `
             <div class="cart-line cart-line--link" data-item-slug="${esc(key)}" data-product-slug="${esc(i.slug)}" data-store-slug="${esc(c.storeSlug)}" data-store-name="${esc(c.storeName)}">
               ${i.image
-                ? `<img src="${esc(i.image)}" alt="${esc(i.name)}" width="56" height="56" loading="eager">`
+                ? `<img src="${esc(cdnThumb(i.image, 112, 112))}" alt="${esc(i.name)}" width="56" height="56" loading="eager" decoding="async">`
                 : placeholderSvg()}
               <div class="cart-line__info">
                 <strong>${esc(i.name)}</strong>

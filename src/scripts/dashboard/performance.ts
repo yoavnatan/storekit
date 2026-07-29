@@ -1,4 +1,5 @@
 import { formatPrice } from '../../config/store.config.js';
+import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg, buildDonutChartSvg, type PieSlice } from '../../lib/chart-svg.js';
 import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/seller-performance.js';
 import { showTooltip, showTooltipAtPoint, hideTooltip, mountTooltipIn, initInfoTooltips } from './tooltip.js';
@@ -99,10 +100,6 @@ function renderTopProducts(container: HTMLElement, summary: PerformanceSummary, 
         </div>
       </div>`;
   }).join('');
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // Last rendered summary + direction, kept so the charts can be re-painted at a

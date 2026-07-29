@@ -8,7 +8,7 @@
 // signal for a cross-store admin view (date, amount, shipping/payment
 // status) — phone number etc. stay search-only, same call the seller
 // dashboard's own orders tab already made for itself.
-import { formatPrice } from '../../config/store.config.js';
+import { formatPrice, cdnThumb } from '../../config/store.config.js';
 import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
@@ -174,7 +174,7 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
                 <ul class="order-card__items list-none p-0 flex flex-col gap-2">
                   {o.items.map((item) => (
                     <li class="flex items-center gap-2.5 text-sm">
-                      {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
+                      {item.image && <img src={cdnThumb(item.image, 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
                       <span class="flex-1 text-[color:var(--color-text)]">
                         {item.productName}
                         {uniqueStores.length > 1 && <> · <a href={`/${item.storeSlug}`} target="_blank" rel="noopener noreferrer" class="text-xs [color:var(--color-primary)] hover:underline">{item.storeName}</a></>}

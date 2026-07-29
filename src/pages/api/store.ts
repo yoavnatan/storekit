@@ -10,6 +10,7 @@ import { getCustomDomainProvider, normalizeHostname } from '../../lib/custom-dom
 import { pingStoreChange } from '../../lib/indexnow.js';
 import { sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
 import { parseStoreHoursForm } from '../../lib/store-hours.js';
+import { sanitizeImageUrl } from '../../lib/image-url.js';
 import { CSV_FIELDS } from '../../lib/csv-bulk.js';
 
 function json(data: unknown, status = 200) {
@@ -42,8 +43,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const categories = sanitizeStoreCategories(categoriesRaw.split(','));
     if (!name) return json({ ok: false, error: 'Store name is required.' }, 400);
 
-    const bannerImage = String(form.get('bannerImage') ?? '').trim();
-    const profileImage = String(form.get('profileImage') ?? '').trim();
+    // Same validation as product images (image-url.ts) — these render into
+    // `<img src>` and into off-site ad/OG creatives, so an unusable value is
+    // dropped rather than stored.
+    const bannerImage = sanitizeImageUrl(form.get('bannerImage')) ?? '';
+    const profileImage = sanitizeImageUrl(form.get('profileImage')) ?? '';
     const address = String(form.get('address') ?? '').trim();
     const addressVisible = form.get('addressVisible') === 'on';
     const hoursVisible = form.get('hoursVisible') === 'on';

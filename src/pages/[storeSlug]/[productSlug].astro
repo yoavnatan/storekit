@@ -13,6 +13,7 @@ import { getLang, getT } from '../../i18n/index.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, isProductInStock } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
+import { jsonForScript } from '../../lib/json-script.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
@@ -166,8 +167,8 @@ const pmI18n = {
   productPrice={product.price}
   productCurrency="ILS"
 >
-  <script is:inline type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
-  <script is:inline type="application/json" id="pm-i18n" set:html={JSON.stringify(pmI18n)} />
+  <script is:inline type="application/ld+json" set:html={jsonForScript(breadcrumbLd)} />
+  <script is:inline type="application/json" id="pm-i18n" set:html={jsonForScript(pmI18n)} />
 
   <div class="product-detail-page"
        data-store-slug={shopStore.slug}
@@ -598,7 +599,7 @@ const pmI18n = {
           <div id="sticky-mini-summary">
             {images[0] && (
               <span id="sticky-mini-img-wrap" class="is-loading">
-                <img id="sticky-mini-img" data-src={cdnSrc(images[0], 96)} alt="" width="44" height="44" decoding="async" />
+                <img id="sticky-mini-img" data-src={cdnSrc(images[0], 96)} alt="" width="44" height="44" loading="lazy" decoding="async" />
               </span>
             )}
             <span id="sticky-mini-name" dir="auto">{product.name}</span>
@@ -635,7 +636,7 @@ const pmI18n = {
             <polyline points="15 18 9 12 15 6"/>
           </svg>
         </button>
-        <img class="lightbox__img" id="lightbox-img" src="" alt={product.name} />
+        <img class="lightbox__img" id="lightbox-img" src="" alt={product.name} loading="eager" decoding="async" />
         <button class="lightbox__arrow lightbox__arrow--next" id="lightbox-next" aria-label="Next image">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <polyline points="9 18 15 12 9 6"/>
@@ -648,7 +649,7 @@ const pmI18n = {
   </div>
 </BaseLayout>
 
-<script is:inline type="application/json" id="header-search-products" set:html={JSON.stringify(
+<script is:inline type="application/json" id="header-search-products" set:html={jsonForScript(
   allStoreProducts.map((p) => ({
     slug: p.slug,
     name: p.name,
@@ -666,6 +667,7 @@ const pmI18n = {
   import { isColorVariant } from '../../lib/color-variants.js';
   import { initReadMore } from '../../lib/read-more.js';
   import { saveLastStore } from '../../lib/last-store.js';
+  import { cdnSrc } from '../../lib/cdn.js';
   import { spawnHeartBurst } from '../../lib/burst.js';
   import { recordStoreVisit } from '../../lib/recent-stores.js';
   import { initCustomDomainLinks } from '../../lib/custom-domain-links.js';
@@ -939,7 +941,7 @@ const pmI18n = {
   function openLightbox(idx: number) {
     if (!lightbox || images.length === 0) return;
     lbIndex = Math.max(0, Math.min(idx, images.length - 1));
-    if (lbImg) lbImg.src = images[lbIndex] ?? '';
+    if (lbImg) lbImg.src = cdnSrc(images[lbIndex] ?? '', 1600);
     if (lbPrev) lbPrev.hidden = images.length <= 1;
     if (lbNext) lbNext.hidden = images.length <= 1;
     updateLbCounter();
@@ -964,7 +966,7 @@ const pmI18n = {
     // Decode the next image first, then swap it in place — the current image
     // stays put until the new one is ready, so there's no blank/opacity flash
     // (the "screen jumps, image vanishes then returns" the user reported).
-    const nextSrc = images[lbIndex] ?? '';
+    const nextSrc = cdnSrc(images[lbIndex] ?? '', 1600);
     const pre = new Image();
     pre.src = nextSrc;
     const swap = () => { if (lbImg) lbImg.src = nextSrc; };

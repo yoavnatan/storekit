@@ -163,39 +163,8 @@ export function formatPrice(amount: number | string): string {
   return `${n.toLocaleString('en-US')} ${store.business.currencySymbol}`;
 }
 
-export function cdnSrc(url: string, w = 400): string {
-  const m = url.match(/^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)$/);
-  if (!m || !m[2]) return url;
-  if (m[2].startsWith('f_') || m[2].startsWith('q_') || m[2].startsWith('c_') || m[2].startsWith('w_')) return url;
-  return `${m[1]}f_auto,q_auto,w_${w}/${m[2]}`;
-}
-
-/**
- * A Cloudinary image forced to EXACT pixel dimensions — cropped to fill, never
- * letterboxed, with Cloudinary picking the crop window (`g_auto`) so the subject
- * survives an aspect-ratio change. `f_jpg` is explicit rather than `f_auto`
- * because the callers are off-site (ad platforms, social scrapers, structured-data
- * crawlers) and many fetch without an `Accept` header that `f_auto` can read.
- *
- * Returns '' when the URL isn't a plain Cloudinary upload — i.e. when the exact
- * size CANNOT be guaranteed. Callers that promise a format (see store-image.ts)
- * treat that as "no usable source" and fall back to the generated mark, instead
- * of handing an ad platform an image at whatever ratio it happens to be.
- */
-export function cdnFill(url: string, w: number, h: number): string {
-  const m = url.match(/^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)$/);
-  if (!m || !m[2]) return '';
-  const rest = m[2].replace(/^(f_|q_|c_|w_|h_|g_)[^/]*\//, '');
-  return `${m[1]}c_fill,g_auto,f_jpg,q_auto,w_${w},h_${h}/${rest}`;
-}
-
-/**
- * Responsive `srcset` (width descriptors) for a Cloudinary image — pair with a `sizes`
- * attribute so hi-DPI/retina screens receive enough pixels and the seller's uploaded
- * photo stays sharp (a single `cdnSrc` width gets browser-upscaled → visibly blurry).
- * Returns '' for non-Cloudinary / already-transformed URLs so the caller keeps its plain src.
- */
-export function cdnSrcSet(url: string, widths: number[]): string {
-  if (!widths.length || cdnSrc(url, widths[0]) === url) return '';
-  return widths.map((w) => `${cdnSrc(url, w)} ${w}w`).join(', ');
-}
+/** Image delivery lives in `src/lib/cdn.ts` — the single place a raw image URL
+ *  becomes an optimized one (see the header there for the rule). Re-exported here
+ *  because most call sites already import their image helper alongside
+ *  `formatPrice` from this config; both spellings hit the same implementation. */
+export { cdnSrc, cdnSrcSet, cdnThumb, cdnFill } from '../lib/cdn.js';

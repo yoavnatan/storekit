@@ -2,6 +2,9 @@ import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '.
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { applyStockAttentionFilter } from './products.js';
+import { cdnThumb } from '../../lib/cdn.js';
+// Both historic local names, one implementation (lib/html-escape.ts).
+import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
 
 // Orders tab: order cards (accordion, status/tracking/notes/cancel), toolbar
 // sort+filter, server-fetched pagination, new-order polling, and the edit-order
@@ -450,7 +453,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   function fmtOrderDate(iso: string): string {
     return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
-  function esc(s: unknown): string { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   // Match formatPrice() (store.config): thousands separators, and decimals only
   // when the amount actually has a fraction — no trailing ".00" (owner feedback).
   function fmtPrice(n: number): string { return n.toLocaleString('en-US') + ' ₪'; }
@@ -474,7 +476,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
     const itemsHtml = storeItems.map(item => `
       <li class="flex items-center gap-2.5 text-sm">
-        ${item.image ? `<img src="${esc(item.image)}" alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />` : ''}
+        ${item.image ? `<img src="${esc(cdnThumb(item.image, 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />` : ''}
         <span class="flex-1 text-[color:var(--color-text)]">${esc(item.productName)}</span>
         <span class="text-[color:var(--color-muted)] text-[0.8rem]">×${item.qty}</span>
         <span class="font-bold text-[color:var(--color-text)] ms-auto">${fmtPrice(item.price * item.qty)}</span>
@@ -910,7 +912,6 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
   type EomItem = { productId: string; productName: string; price: number; qty: number; image?: string; storeSlug?: string };
 
-  function escEom(s: unknown) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   function renderEomItems(items: EomItem[]) {
     const list = document.getElementById('eom-items-list');
@@ -919,7 +920,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     list.innerHTML = items.map((item) => `
       <div class="eom-item" data-pid="${escEom(item.productId)}">
         ${item.image
-          ? `<img class="eom-item__img" src="${escEom(item.image)}" alt="" width="34" height="34" loading="lazy">`
+          ? `<img class="eom-item__img" src="${escEom(cdnThumb(item.image, 68, 68))}" alt="" width="34" height="34" loading="lazy" decoding="async">`
           : `<div class="eom-item__img-ph" aria-hidden="true"></div>`}
         <span class="eom-item__name" title="${escEom(item.productName)}">${escEom(item.productName)}</span>
         <span class="eom-item__meta">${item.price.toLocaleString('he-IL')} ₪ × ${item.qty}</span>
@@ -1079,7 +1080,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           const storeItems = savedOrder.items.filter((i) => i.storeSlug === storeSlug);
           cardItemsEl.innerHTML = storeItems.map((item) => `
             <li class="flex items-center gap-2.5 text-sm">
-              ${item.image ? `<img src="${escEom(item.image)}" alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0">` : ''}
+              ${item.image ? `<img src="${escEom(cdnThumb(item.image, 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0">` : ''}
               <span class="flex-1 text-[color:var(--color-text)]">${escEom(item.productName)}</span>
               <span class="text-[color:var(--color-muted)] text-[0.8rem]">×${item.qty}</span>
               <span class="font-bold text-[color:var(--color-text)] ms-auto">${(item.price * item.qty).toFixed(2)} ₪</span>

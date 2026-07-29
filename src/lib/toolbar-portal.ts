@@ -1,3 +1,5 @@
+import { escapeHtml } from './html-escape.js';
+
 // Generic floating dropdown portal — one body-anchored element per instance,
 // repositioned via getBoundingClientRect() and clamped to the viewport on
 // every open, so it can never render off-screen regardless of where its
@@ -17,7 +19,7 @@ export interface FloatingPortal {
  *  menu needs to name itself ("מיין לפי" / "סנן לפי") so the user knows what
  *  they tapped (CURRENT_TASK 2). Prepend its return value to the menu HTML. */
 export function toolbarMenuTitle(text: string): string {
-  const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const esc = escapeHtml(text);
   return `<div class="px-3 pt-[.15rem] pb-[.4rem] text-[.7rem] font-semibold uppercase tracking-[.04em] [color:var(--color-muted)] select-none">${esc}</div><div class="h-px bg-[color:var(--color-border)] mb-[.3rem]"></div>`;
 }
 
@@ -28,7 +30,7 @@ export function toolbarMenuTitle(text: string): string {
  *  table and nudged the dropdown to a freshly measured position — visible
  *  work in response to a click that had nothing to do. */
 export function filterClearButtonHtml(dataAttr: string, label: string, active: boolean): string {
-  const text = label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const text = escapeHtml(label);
   const state = active
     ? 'cursor-pointer [color:var(--color-muted)] hover:bg-[color:var(--color-bg)] hover:[color:var(--color-text)]'
     : 'cursor-default opacity-40 [color:var(--color-muted)]';

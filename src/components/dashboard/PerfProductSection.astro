@@ -7,6 +7,7 @@
 // rest of the tab already uses. The picker itself is the shared floating portal
 // (site-design dropdown), so it stays pinned on scroll and never runs off-page.
 import { getLang, getT } from '../../i18n/index.js';
+import { jsonForScript } from '../../lib/json-script.js';
 
 interface Props {
   // Every product in the store (id + name), incl. hidden ones — a seller may
@@ -41,7 +42,7 @@ const d = getT(lang).dashboard;
   </div>
 
   <!-- Product list for the picker (id + name); performance.ts builds the searchable dropdown from it. -->
-  <script type="application/json" id="perf-product-list" set:html={JSON.stringify(products.map((p) => ({ id: p.id, name: p.name })))}></script>
+  <script type="application/json" id="perf-product-list" set:html={jsonForScript(products.map((p) => ({ id: p.id, name: p.name })))}></script>
 
   <!-- Empty state until a product is chosen. -->
   <p id="perf-product-empty" class="muted text-[0.85rem] m-0 py-6 text-center border [border-color:var(--color-border)] border-dashed rounded-[var(--radius)]">

@@ -1,10 +1,7 @@
 import type { CategoryNode } from '../../lib/store-categories.js';
+import { escapeHtml as esc } from '../../lib/html-escape.js';
 
 const MAX_CATEGORY_DEPTH = 3;
-
-function esc(s: string): string {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 function getDashI18n(): Record<string, string> {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}')?.dashboard ?? {}; }

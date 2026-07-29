@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { sanitizeImageUrl as sanitizeImageUrlShared } from './image-url.js';
 
 const CAMPAIGNS_PATH = path.join(process.cwd(), 'data/brand-campaigns.json');
 
@@ -74,9 +75,11 @@ export function sanitizeDestination(v: unknown, objective: BrandObjective): stri
 }
 
 /** Accept only an https image URL (Cloudinary uploads are https); anything else → undefined. */
+/** Was a prefix check (`startsWith('https://')`), which `https://x" onerror=…`
+ *  passes — it now shares the real validator in image-url.ts. Kept as a named
+ *  export here because the campaign type wants `undefined`, not `null`. */
 export function sanitizeImageUrl(v: unknown): string | undefined {
-  const s = typeof v === 'string' ? v.trim() : '';
-  return s.startsWith('https://') ? s : undefined;
+  return sanitizeImageUrlShared(v) ?? undefined;
 }
 
 export interface CreateBrandInput {

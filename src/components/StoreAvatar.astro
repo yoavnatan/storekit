@@ -23,6 +23,7 @@ const mark = storeMark(slug || name, name);
   <img
     src={cdnSrc(profileImage, size * 2)}
     alt=""
+    decoding="async"
     width={size}
     height={size}
     loading="lazy"

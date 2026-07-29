@@ -6,7 +6,8 @@
 // ever an aggregate (never a row per seller), and per-store exposure is a top-N
 // list, so 1000 boosting sellers can't make this page grow without limit.
 // All numbers are mock estimates until a real Google/Meta account is connected.
-import { formatPrice } from '../../config/store.config.js';
+import { formatPrice, cdnSrc } from '../../config/store.config.js';
+import { jsonForScript } from '../../lib/json-script.js';
 import type { PlatformAdOverview } from '../../lib/admin-ads.js';
 import type { BrandCampaign } from '../../lib/brand-campaigns.js';
 import { brandStatsInRange } from '../../lib/ad-metrics.js';
@@ -162,7 +163,7 @@ const feedTip = 'קובץ אחד מרוכז שמכיל את כל המוצרים 
         </div>
         <div id="admin-ads-exposure-chart" set:html={exposureChartSvg}></div>
       </div>
-      <script type="application/json" id="admin-ads-exposure-data" set:html={JSON.stringify(exposurePoints)} is:inline />
+      <script type="application/json" id="admin-ads-exposure-data" set:html={jsonForScript(exposurePoints)} is:inline />
     </Fragment>
   )}
 
@@ -262,7 +263,7 @@ const feedTip = 'קובץ אחד מרוכז שמכיל את כל המוצרים 
       <div class="admin-brand-form__field admin-brand-form__field--wide">
         <span>תמונה <InfoTip text="התמונה שתופיע במודעה. מומלץ יחס רחב ואיכותי. נשמרת דרך Cloudinary כמו שאר תמונות האתר." /></span>
         <div class="admin-brand-image">
-          <img id="brand-image-preview" class="admin-brand-image__preview" alt="" hidden />
+          <img id="brand-image-preview" class="admin-brand-image__preview" alt="" hidden loading="eager" decoding="async" />
           <button type="button" id="brand-image-btn" class="btn btn--ghost btn--sm">העלה תמונה</button>
           <span id="brand-image-status" class="muted" style="font-size:.8rem"></span>
           <input type="file" id="brand-image-file" accept="image/*" hidden />
@@ -304,7 +305,7 @@ const feedTip = 'קובץ אחד מרוכז שמכיל את כל המוצרים 
   <div class="admin-brand-list" id="brand-list">
     {brandRows.map(({ campaign: c, stats }) => (
       <div class="admin-brand-card" data-id={c.id} data-status={c.status}>
-        {c.imageUrl && <img src={c.imageUrl} alt="" class="admin-brand-card__img" loading="lazy" />}
+        {c.imageUrl && <img src={cdnSrc(c.imageUrl, 320)} alt="" class="admin-brand-card__img" loading="lazy" decoding="async" />}
         <div class="admin-brand-card__body">
           <div class="admin-brand-card__meta">
             <span class="admin-badge admin-badge--promo">{objectiveLabels[c.objective]}</span>

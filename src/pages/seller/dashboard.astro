@@ -19,7 +19,8 @@ import {
   countStockAlerts,
   isProductVisible,
 } from '../../lib/store-products.js';
-import { formatPrice, cdnSrc, store as platformConfig } from '../../config/store.config.js';
+import { formatPrice, cdnSrc, cdnThumb, store as platformConfig } from '../../config/store.config.js';
+import { jsonForScript } from '../../lib/json-script.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
 import { storeMark, storeMarkGradient } from '../../lib/store-mark.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
@@ -1039,7 +1040,7 @@ const orderStatusColors: Record<string, string> = {
                     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
                     <td class="num row-num pe-[0.2rem]">{(productsPage.page - 1) * productsPageSize + idx + 1}</td>
                     <td class="thumb-col">
-                      {p.images?.[0] && <span class="thumb-wrap"><img src={thumbUrl(p.images[0])} alt="" class="product-thumb" width="42" height="42" loading="lazy" /></span>}
+                      {p.images?.[0] && <span class="thumb-wrap"><img src={thumbUrl(p.images[0])} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" /></span>}
                     </td>
                     <td class="name-col">
                       <span class="product-name cursor-text">{p.name}</span>
@@ -1137,7 +1138,7 @@ const orderStatusColors: Record<string, string> = {
                         <input type="hidden" name="_action" value="edit-product" />
                         <input type="hidden" name="productId" value={p.id} />
                         <div class="edit-row-header">
-                          {p.images?.[0] && <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:var(--radius-sm);flex-shrink:0">}
+                          {p.images?.[0] && <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" style="width:36px;height:36px;object-fit:cover;border-radius:var(--radius-sm);flex-shrink:0">}
                           <span class="edit-row-title">{p.name}</span>
                           <div class="flex gap-2 mt-2" style="margin-inline-start:auto;margin-top:0">
                             <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
@@ -1438,7 +1439,7 @@ const orderStatusColors: Record<string, string> = {
                       <ul class="order-card__items list-none p-0 flex flex-col gap-2">
                         {storeItems.map((item) => (
                           <li class="flex items-center gap-2.5 text-sm">
-                            {item.image && <img src={item.image} alt="" width="36" height="36" loading="lazy" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
+                            {item.image && <img src={cdnThumb(item.image, 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
                             <span class="flex-1 text-[color:var(--color-text)]">{item.productName}</span>
                             <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
                             <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(item.price * item.qty)}</span>
@@ -1619,7 +1620,7 @@ const orderStatusColors: Record<string, string> = {
         {/* Initial summary — lets performance.ts re-render both charts at the
             container's real pixel width (crisp, no downscaled text) once the
             panel is visible, and again on resize (ResizeObserver). */}
-        <script type="application/json" id="perf-initial-summary" set:html={JSON.stringify(perfSummary ?? null)} />
+        <script type="application/json" id="perf-initial-summary" set:html={jsonForScript(perfSummary ?? null)} />
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5" data-perf-rtl={perfIsRtl ? '1' : '0'}>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
             <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.perfRevenueChartTitle}</h3>
@@ -1887,7 +1888,7 @@ const orderStatusColors: Record<string, string> = {
             </div>
           </div>
         </div>
-        <script type="application/json" id="msg-filter-values-data" set:html={JSON.stringify({ product: msgDistinctProducts, from: msgDistinctFrom })} />
+        <script type="application/json" id="msg-filter-values-data" set:html={jsonForScript({ product: msgDistinctProducts, from: msgDistinctFrom })} />
 
           <div class="msg-table-wrap">
             <table class="msg-table">
@@ -1965,7 +1966,7 @@ const orderStatusColors: Record<string, string> = {
               style="aspect-ratio:3/1"
             >
               {store.bannerImage && (
-                <img src={cdnSrc(store.bannerImage, 900)} alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
+                <img src={cdnSrc(store.bannerImage, 900)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
               )}
             </div>
             <div class="flex gap-2" style="margin-top:1.1rem">
@@ -1989,7 +1990,7 @@ const orderStatusColors: Record<string, string> = {
               style={`background:${storeMarkGradient(storeMark(store.slug, store.name))}`}
             >
               {store.profileImage && (
-                <img src={cdnSrc(store.profileImage, 200)} alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
+                <img src={cdnSrc(store.profileImage, 200)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
               )}
             </div>
             <div class="flex gap-2" style="margin-top:1.1rem">
@@ -2100,7 +2101,7 @@ const orderStatusColors: Record<string, string> = {
             </form>
           </div>
         )}
-        <script type="application/json" id="category-tree-data" set:html={JSON.stringify(categoryTree)} />
+        <script type="application/json" id="category-tree-data" set:html={jsonForScript(categoryTree)} />
 
         {store && (
         <div id="store-url" class="mt-8" data-store-id={store.id} data-host={new URL(platformConfig.url).hostname} data-current-slug={store.slug}>
@@ -2355,7 +2356,7 @@ const orderStatusColors: Record<string, string> = {
   <div class="crop-panel">
     <h3>{d.cropTitle}</h3>
     <div class="crop-viewport" id="crop-viewport">
-      <img class="crop-img" id="crop-img" alt="" />
+      <img class="crop-img" id="crop-img" alt="" loading="eager" decoding="async" />
       <div class="crop-hint" id="crop-hint" aria-hidden="true">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
         {lang === 'he' ? 'גרור למיקום · גלול לזום' : 'Drag to reposition · Scroll to zoom'}

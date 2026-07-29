@@ -1,8 +1,13 @@
 import type { ProductVariant } from './store-products.js';
 import { comboKey, generateCombos } from './variant-combo.js';
+import { sanitizeImageUrl, sanitizeImageUrls } from './image-url.js';
 
+/** Every image URL a seller submits, validated + normalized (image-url.ts).
+ *  Anything that isn't an https:// or site-relative URL is dropped here rather
+ *  than stored — until 2026-07-29 this took the raw string, so a hand-crafted
+ *  POST could park arbitrary markup in `images[]` and reach the render layer. */
 export function parseImages(form: FormData): string[] {
-  return form.getAll('images').map(v => String(v).trim()).filter(Boolean);
+  return sanitizeImageUrls(form.getAll('images'));
 }
 
 export function parseCategoryId(form: FormData): string {
@@ -81,7 +86,10 @@ export function parseVariantsPayload(form: FormData): VariantsPayload {
   const variantImages: Record<string, string> = {};
   if (obj.variantImages && typeof obj.variantImages === 'object') {
     for (const [key, val] of Object.entries(obj.variantImages as Record<string, unknown>)) {
-      const url = String(val ?? '').trim();
+      // Sanitized before the membership check, not after: `submittedImages` holds
+      // NORMALIZED urls (parseImages), so comparing a raw string against it could
+      // miss a match that is really the same image.
+      const url = sanitizeImageUrl(val);
       if (!validOptionValues.has(key) || !url || !submittedImages.has(url)) continue;
       variantImages[key] = url;
     }

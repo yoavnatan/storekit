@@ -414,7 +414,7 @@ const jsonLd = {
                     [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
                   role="list" aria-label={t.home.spotlightTitle}
                 >
-                  {feed.spotlight.map(({ store: s, products }) => (
+                  {feed.spotlight.map(({ store: s, products }, slideIndex) => (
                     <div class="home-spotlight-slide flex-[0_0_100%] min-w-0 [scroll-snap-align:start]" role="listitem">
                       <section
                         class="home-store-section"
@@ -485,8 +485,13 @@ const jsonLd = {
                               </>
                             )}
                             <div class="home-carousel" role="list" aria-label={s.name}>
-                              {products.map((p) => (
-                                <HomeProductCard product={p} storeSlug={s.slug} role="listitem" />
+                              {/* Only the first slide is on screen (each spotlight slide is
+                                  100% wide), and only its first few tiles are in view before
+                                  the carousel scrolls — those are the LCP candidates, so they
+                                  load eagerly. Everything else stays native-lazy. */}
+                              {products.map((p, tileIndex) => (
+                                <HomeProductCard product={p} storeSlug={s.slug} role="listitem"
+                                                 priority={slideIndex === 0 && tileIndex < 3} />
                               ))}
                             </div>
                           </div>
@@ -870,26 +875,10 @@ const jsonLd = {
     }
   }
 
-  // ── Carousel lazy loading (IntersectionObserver) ─────────────────
-  {
-    const lazyObs = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        const img = entry.target as HTMLImageElement;
-        const src = img.dataset.lazySrc ?? '';
-        if (src) {
-          img.src = src;
-          img.removeAttribute('data-lazy-src');
-          const ss = img.dataset.lazySrcset;
-          if (ss) { img.srcset = ss; img.removeAttribute('data-lazy-srcset'); }
-        }
-        lazyObs.unobserve(img);
-      });
-    }, { rootMargin: '200px 400px 200px 400px', threshold: 0 });
-
-    document.querySelectorAll<HTMLImageElement>('img[data-lazy-src]')
-      .forEach((img) => lazyObs.observe(img));
-  }
+  // Carousel images now carry a real src plus native loading=lazy — the browser defers the
+  // off-screen ones itself, and (unlike the IntersectionObserver that used to live
+  // here) the visible ones start downloading during HTML parse instead of waiting
+  // on this module. See HomeProductCard.astro.
 
   // ── Skeleton shimmer clear — spotlight product images + store-card
   // preview images — once each actually loads (or errors, so a broken/

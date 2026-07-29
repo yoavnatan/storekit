@@ -8,6 +8,7 @@ import { getAllOrders } from '../../lib/orders.js';
 import { getMessagesByBuyer, getMessageReplies } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
+import { cdnThumb } from '../../lib/cdn.js';
 import { filterBuyerOrders, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 
@@ -635,7 +636,7 @@ const shipLabel: Record<string, string> = {
                   {o.items.some((i) => i.image) && (
                     <div class="o-thumbs">
                       {o.items.filter((i) => i.image).slice(0, 3).map((i) => (
-                        <span class="o-thumb-wrap"><img src={i.image!} alt={i.productName} width="52" height="52" loading="lazy" class="o-thumb" /></span>
+                        <span class="o-thumb-wrap"><img src={cdnThumb(i.image!, 104, 104)} alt={i.productName} width="52" height="52" loading="lazy" decoding="async" class="o-thumb" /></span>
                       ))}
                     </div>
                   )}
@@ -674,7 +675,7 @@ const shipLabel: Record<string, string> = {
                           {storeItems.map((item) => (
                             <li class="o-item">
                               {item.image
-                                ? <span class="o-item__img-wrap"><img src={item.image} alt={item.productName} width="40" height="40" loading="lazy" class="o-item__img" /></span>
+                                ? <span class="o-item__img-wrap"><img src={cdnThumb(item.image, 80, 80)} alt={item.productName} width="40" height="40" loading="lazy" decoding="async" class="o-item__img" /></span>
                                 : <div class="o-item__img-placeholder" aria-hidden="true"></div>
                               }
                               <span class="o-item__name">{item.productName}</span>
@@ -963,7 +964,8 @@ const shipLabel: Record<string, string> = {
 
 <script>
   import { getActiveStoreCarts, getSubtotal } from '../../lib/cart.js';
-  import { formatPrice } from '../../config/store.config.js';
+  import { formatPrice, cdnThumb } from '../../config/store.config.js';
+  import { escapeHtml as escB } from '../../lib/html-escape.js';
   import { debounce } from '../../lib/admin-nav.js';
   import { BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
   import { filterClearButtonHtml } from '../../lib/toolbar-portal.js';
@@ -1254,7 +1256,6 @@ const shipLabel: Record<string, string> = {
   function fmtDateBuyer(iso: string) {
     return new Date(iso).toLocaleString(I.dateLocale, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
-  function escB(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   const currentBuyerId = (document.getElementById('panel-messages') as HTMLElement | null)?.dataset.userId ?? '';
   const buyerThreadLoaders = new Map<string, (markRead: boolean, viaPoll?: boolean) => void>();
@@ -1797,7 +1798,7 @@ const shipLabel: Record<string, string> = {
     const storeNameBySlug = new Map(o.items.map((i) => [i.storeSlug, i.storeName]));
     const thumbs = o.items.filter((i) => i.image).slice(0, 3);
     const thumbsHtml = thumbs.length ? `<div class="o-thumbs">${thumbs.map((i) =>
-      `<span class="o-thumb-wrap"><img src="${escB(i.image!)}" alt="${escB(i.productName)}" width="52" height="52" loading="lazy" class="o-thumb" /></span>`).join('')}</div>` : '';
+      `<span class="o-thumb-wrap"><img src="${escB(cdnThumb(i.image!, 104, 104))}" alt="${escB(i.productName)}" width="52" height="52" loading="lazy" decoding="async" class="o-thumb" /></span>`).join('')}</div>` : '';
     const storesHtml = stores.map((slug, idx) =>
       `<span>${escB(storeNameBySlug.get(slug) ?? '')}</span>${idx < stores.length - 1 ? '<span aria-hidden="true">, </span>' : ''}`).join('');
     const itemsLine = o.items.map((i) => `${escB(i.productName)} × ${i.qty}`).join(' · ');
@@ -1808,7 +1809,7 @@ const shipLabel: Record<string, string> = {
       const itemsHtml = storeItems.map((item) => `
         <li class="o-item">
           ${item.image
-            ? `<span class="o-item__img-wrap"><img src="${escB(item.image)}" alt="${escB(item.productName)}" width="40" height="40" loading="lazy" class="o-item__img" /></span>`
+            ? `<span class="o-item__img-wrap"><img src="${escB(cdnThumb(item.image, 80, 80))}" alt="${escB(item.productName)}" width="40" height="40" loading="lazy" decoding="async" class="o-item__img" /></span>`
             : `<div class="o-item__img-placeholder" aria-hidden="true"></div>`}
           <span class="o-item__name">${escB(item.productName)}</span>
           <span class="o-item__qty">×${item.qty}</span>

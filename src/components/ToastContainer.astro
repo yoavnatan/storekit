@@ -11,12 +11,9 @@
 ></div>
 
 <script>
+  import { escapeHtml as esc } from '../lib/html-escape.js';
   const container = document.getElementById('toast-container')!;
   const shownKeys = new Set<string>();
-
-  function esc(s: string): string {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
 
   // If a mobile sticky bottom bar (e.g. the product page's sticky add-to-cart
   // bar) or the AddToCartPreview panel is currently on screen, lift the toast

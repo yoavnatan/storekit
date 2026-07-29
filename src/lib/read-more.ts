@@ -1,10 +1,8 @@
+import { escapeHtml as escHtml } from './html-escape.js';
+
 export interface ReadMoreLabels {
   more: string;
   less: string;
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**

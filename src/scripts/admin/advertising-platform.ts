@@ -1,7 +1,7 @@
 import { initInfoTooltips, showTooltipAtPoint, hideTooltip } from '../dashboard/tooltip.js';
 import { cloudinaryUpload } from '../dashboard/cloudinary.js';
 import { escapeHtml } from '../../lib/html-escape.js';
-import { formatPrice } from '../../config/store.config.js';
+import { formatPrice, cdnSrc } from '../../config/store.config.js';
 import { createFloatingPortal, type FloatingPortal } from '../../lib/toolbar-portal.js';
 import { buildAdminUrl, swapPanel } from '../../lib/admin-nav.js';
 import { buildBarChartSvg, type BarChartPoint } from '../../lib/chart-svg.js';
@@ -200,7 +200,7 @@ interface BrandCampaignDTO {
 // text is escaped — this is AJAX-built innerHTML (stored-XSS surface).
 function brandCardHtml(c: BrandCampaignDTO, s: BrandStats): string {
   const paused = c.status === 'paused';
-  const img = c.imageUrl ? `<img src="${escapeHtml(c.imageUrl)}" alt="" class="admin-brand-card__img" loading="lazy" />` : '';
+  const img = c.imageUrl ? `<img src="${escapeHtml(cdnSrc(c.imageUrl, 320))}" alt="" class="admin-brand-card__img" loading="lazy" decoding="async" />` : '';
   return `
     <div class="admin-brand-card" data-id="${escapeHtml(c.id)}" data-status="${c.status}">
       ${img}

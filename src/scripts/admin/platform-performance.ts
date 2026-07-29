@@ -1,4 +1,5 @@
 import { formatPrice } from '../../config/store.config.js';
+import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import type { PerformanceSummary } from '../../lib/seller-performance.js';
 import type { PlatformStoreRow } from '../../lib/platform-performance.js';
 
@@ -16,10 +17,6 @@ interface LoadedDetail {
   stores?: PlatformStoreRow[];
   totalStores?: number;
   shownStores?: number;
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 let rows: PlatformStoreRow[] = [];

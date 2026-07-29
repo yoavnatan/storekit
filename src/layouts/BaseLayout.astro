@@ -12,6 +12,7 @@ import ToastContainer from '../components/ToastContainer.astro';
 import MessageCompose from '../components/MessageCompose.astro';
 import { getLang, getDir, getT } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
+import { jsonForScript } from '../lib/json-script.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getUnreadCountForUser } from '../lib/notifications.js';
 import heebo400HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-400-normal.woff2?url';
@@ -36,7 +37,7 @@ const {
 const lang = getLang(Astro.cookies);
 const dir  = getDir(lang);
 const t    = getT(lang);
-const i18nJson = JSON.stringify({ cart: t.cart, confirm: t.confirm, dashboard: t.dashboard, gallery: t.gallery, wishlist: t.wishlist });
+const i18nJson = jsonForScript({ cart: t.cart, confirm: t.confirm, dashboard: t.dashboard, gallery: t.gallery, wishlist: t.wishlist });
 
 function sanitizeTagId(id?: string): string {
   const clean = (id ?? '').replace(/[^A-Za-z0-9\-]/g, '');
@@ -56,7 +57,10 @@ function metaPixelScript(id: string): string {
   return `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${id}');fbq('track','PageView');`;
 }
 
-const dlJson = dataLayer ? JSON.stringify(dataLayer) : null;
+// The one blob that lands in EXECUTABLE JS rather than a JSON island, so it needs
+// jsonForScript's U+2028/2029 escapes as much as its `</script>` ones. Carries
+// seller-supplied product names (dataLayer ecommerce items) to every visitor.
+const dlJson = dataLayer ? jsonForScript(dataLayer) : null;
 const sessionUserId = getSellerSession(Astro.cookies) ?? '';
 const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) : 0;
 ---
@@ -79,6 +83,11 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="sitemap" href="/sitemap-index.xml" />
+    {/* Every product/store image is delivered from Cloudinary (src/lib/cdn.ts), so
+        the DNS+TLS handshake for that host is on the critical path of the first
+        image on literally every page. Opening it in parallel with the HTML parse
+        saves that round trip once per connection. */}
+    <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
     {/* All 10 weight/script combos preloaded — measured via Playwright's
        layout-shift observer (2026-07-16) that `font-display:optional` alone
        still let real text paint in the fallback font and visibly re-flow

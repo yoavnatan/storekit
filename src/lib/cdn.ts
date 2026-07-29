@@ -1,0 +1,116 @@
+/**
+ * THE one place a raw image URL becomes an optimized delivery URL.
+ *
+ * Every <img> in the app — Astro markup, client-rendered template strings, ad
+ * feeds, emails — must route its src through a function in this file. Nothing
+ * else in the codebase is allowed to hand a raw uploaded/remote URL to an <img>;
+ * `tests/image-optimization.test.ts` enforces that mechanically so it can't
+ * silently regress in the next component somebody writes.
+ *
+ * Why it exists: a raw source URL is the WRONG image twice over.
+ *   1. Size — a 1000px original painted into a 220px tile is ~8x the bytes it
+ *      needs (measured on the demo set: 82KB → 10KB at w_220).
+ *   2. Caching — third-party hosts routinely forbid caching. The demo dataset's
+ *      host (cdn.dummyjson.com) sends `cache-control: no-store`, so every single
+ *      page refresh re-downloaded every image from scratch. Nothing on our side
+ *      can override that header; the only fix is to stop pointing at that host.
+ *
+ * Both are solved by delivering through Cloudinary:
+ *   • Cloudinary uploads (what real sellers produce) get the transform injected
+ *     into the /upload/ path — same as before.
+ *   • ANY other reachable remote URL goes through Cloudinary's *fetch* delivery
+ *     (`/image/fetch/<transform>/<encoded url>`): Cloudinary pulls the origin
+ *     once, then serves a resized, auto-format (webp/avif), auto-quality copy
+ *     with `max-age=604800`. No upload step, no storage, no seed migration.
+ *
+ * Cost note: fetch delivery bills a transformation per distinct URL, once, and
+ * only for NON-Cloudinary origins — i.e. in practice only for the demo dataset.
+ * Real seller images are Cloudinary uploads and never touch the fetch path.
+ */
+
+const CLOUD = import.meta.env.PUBLIC_CLOUDINARY_CLOUD_NAME as string | undefined;
+
+/** A Cloudinary delivery URL — capture the cloud, the delivery type, and the rest. */
+const CLOUDINARY_URL = /^https:\/\/res\.cloudinary\.com\/([^/]+)\/image\/(upload|fetch)\/(.+)$/;
+
+/** A leading transform segment (`f_auto,q_auto,w_300/…`) — already optimized, leave it alone. */
+const HAS_TRANSFORM = /^(f|q|c|w|h|g|e|b|bo|co|ar|fl|dpr)_/;
+
+/**
+ * Hosts Cloudinary's fetch delivery cannot reach: it pulls the origin from its
+ * own servers, so a dev machine's URL would 404 on their side. Such URLs are
+ * handed back untouched (unoptimized, but working) rather than broken.
+ */
+const UNREACHABLE_HOST = /^(localhost$|127\.|0\.0\.0\.0$|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[|::1$)|\.(test|local|localhost|internal)$/;
+
+/** Builds the delivery URL for `url` under `transform`, or returns `url` unchanged
+ *  when it can't be improved (relative path, data:/blob:, dev-only host, already
+ *  transformed, or no Cloudinary cloud configured). Never throws.
+ *  `replaceExisting` overwrites a transform that's already on the URL instead of
+ *  leaving it alone — for callers that must guarantee the output dimensions. */
+function deliver(url: string, transform: string, replaceExisting = false): string {
+  if (!url) return url;
+
+  const cloudinary = url.match(CLOUDINARY_URL);
+  if (cloudinary) {
+    const [, cloud, type, rest] = cloudinary;
+    if (!rest) return url;
+    const transformed = HAS_TRANSFORM.test(rest);
+    if (transformed && !replaceExisting) return url;
+    const path = transformed ? rest.replace(/^[^/]*\//, '') : rest;
+    if (!path) return url;
+    return `https://res.cloudinary.com/${cloud}/image/${type}/${transform}/${path}`;
+  }
+
+  // Relative paths, data: and blob: URIs are already local/inline — nothing to gain.
+  if (!/^https?:\/\//i.test(url)) return url;
+  if (!CLOUD) return url;
+
+  let host: string;
+  try { host = new URL(url).hostname; } catch { return url; }
+  if (UNREACHABLE_HOST.test(host)) return url;
+
+  return `https://res.cloudinary.com/${CLOUD}/image/fetch/${transform}/${encodeURIComponent(url)}`;
+}
+
+/** The default: an image scaled to `w` CSS pixels, auto format + auto quality.
+ *  Pair with `cdnSrcSet` + a `sizes` attribute whenever the tile is responsive. */
+export function cdnSrc(url: string, w = 400): string {
+  return deliver(url, `f_auto,q_auto,w_${w}`);
+}
+
+/**
+ * Responsive `srcset` (width descriptors) — pair with a `sizes` attribute so
+ * hi-DPI screens get enough pixels and the photo stays sharp (a single width
+ * gets browser-upscaled → visibly blurry).
+ * Returns '' when the URL can't be transformed, so the caller keeps its plain src.
+ */
+export function cdnSrcSet(url: string, widths: number[]): string {
+  if (!widths.length || cdnSrc(url, widths[0]) === url) return '';
+  return widths.map((w) => `${cdnSrc(url, w)} ${w}w`).join(', ');
+}
+
+/** A square-ish thumbnail cropped to fill exactly w×h, with Cloudinary choosing the
+ *  crop window (`g_auto`) so the subject survives the aspect-ratio change.
+ *  This is the right call for every fixed-size tile: cart rows, order rows,
+ *  dashboard tables, search results. */
+export function cdnThumb(url: string, w = 84, h = 84): string {
+  return deliver(url, `c_fill,g_auto,f_auto,q_auto,w_${w},h_${h}`);
+}
+
+/**
+ * An image forced to EXACT pixel dimensions for OFF-SITE consumers (ad platforms,
+ * social scrapers, structured-data crawlers). `f_jpg` is explicit rather than
+ * `f_auto` because many of those fetch without an `Accept` header that `f_auto`
+ * can read.
+ *
+ * Returns '' when the exact size CANNOT be guaranteed (unreachable host, no cloud
+ * configured, or an already-transformed URL). Callers that promise a format — see
+ * store-image.ts — treat '' as "no usable source" and fall back to the generated
+ * mark, rather than handing an ad platform an image at whatever ratio it happens
+ * to have.
+ */
+export function cdnFill(url: string, w: number, h: number): string {
+  const out = deliver(url, `c_fill,g_auto,f_jpg,q_auto,w_${w},h_${h}`, true);
+  return out === url ? '' : out;
+}

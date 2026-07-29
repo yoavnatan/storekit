@@ -1,4 +1,5 @@
 import { encodeList, debounce } from '../../lib/admin-nav.js';
+import { escapeHtml as escMsg } from '../../lib/html-escape.js';
 import { toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import { SYSTEM_SENDER_LABEL } from '../../lib/seller-messages-query.js';
@@ -16,7 +17,6 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
   function fmtDateJs(iso: string) {
     return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
-  function escMsg(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   const currentSellerId = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.sellerId ?? '';
   const currentStoreIdForMsgs = (document.getElementById('upload-config') as HTMLElement | null)?.dataset.storeId ?? '';

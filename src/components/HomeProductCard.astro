@@ -3,10 +3,16 @@
  * One product tile on the homepage — the spotlight's per-store carousel.
  *
  * Lifted out of index.astro (which is long enough that pulling a self-contained
- * card out of it is worth it on its own) with the markup unchanged, including the
- * `data-lazy-src` handoff — index.astro's own IntersectionObserver does the
- * loading, so the attribute names matter — and the `is-loading` skeleton class
+ * card out of it is worth it on its own), plus the `is-loading` skeleton class
  * that initImageSkeletons() clears once the image resolves.
+ *
+ * The image carries a REAL `src`/`srcset` and native `loading="lazy"`. It used to
+ * hold the URL in `data-lazy-src` for a hand-rolled IntersectionObserver, which
+ * cost far more than it saved: an <img> with no src is invisible to the browser's
+ * preload scanner, so not one tile could start downloading until the page's JS
+ * module had loaded, parsed and run — and the shimmer replayed on every refresh
+ * even for images sitting in cache. Native lazy-loading defers the off-screen
+ * ones just the same, without blocking the visible ones behind JS.
  *
  * The card links to the STORE, not the product page — deliberate, and the reason
  * it isn't `<a href={product url}>`: the row is a discovery surface for stores.
@@ -20,9 +26,16 @@ interface Props {
   storeSlug: string;
   /** Accessible name of the carousel/row this tile sits in (for role="listitem"). */
   role?: 'listitem';
+  /** Above the fold: load eagerly at high priority instead of lazily. Only the
+   *  first few tiles of the first row should set this — marking everything
+   *  "priority" is the same as marking nothing. */
+  priority?: boolean;
 }
 
-const { product: p, storeSlug, role } = Astro.props;
+const { product: p, storeSlug, role, priority = false } = Astro.props;
+/** 220px tile; 440 covers 2x retina. Widths kept short on purpose — each distinct
+ *  width is a separate CDN derivative. */
+const WIDTHS = [220, 440];
 ---
 
 <a
@@ -34,12 +47,15 @@ const { product: p, storeSlug, role } = Astro.props;
   <div class={`home-product-card__img-wrap${p.images?.[0] ? ' is-loading' : ''}`}>
     {p.images?.[0]
       ? <img
-          data-lazy-src={cdnSrc(p.images[0])}
-          data-lazy-srcset={cdnSrcSet(p.images[0], [220, 300, 440, 600]) || undefined}
+          src={cdnSrc(p.images[0], 220)}
+          srcset={cdnSrcSet(p.images[0], WIDTHS) || undefined}
           sizes="(max-width: 480px) 44vw, 220px"
           alt={p.name}
           width="300"
           height="300"
+          loading={priority ? 'eager' : 'lazy'}
+          fetchpriority={priority ? 'high' : undefined}
+          decoding="async"
           class="home-product-card__img"
         />
       : <span class="home-product-card__initial" aria-hidden="true">

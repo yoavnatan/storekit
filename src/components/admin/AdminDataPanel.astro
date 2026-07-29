@@ -12,6 +12,7 @@ import type { AnalyticsOverview, FunnelStage } from '../../lib/analytics.js';
 import type { SellerFunnel } from '../../lib/seller-funnel.js';
 import type { AdRangePreset } from '../../lib/date-range.js';
 import InfoTip from '../dashboard/InfoTip.astro';
+import { jsonForScript } from '../../lib/json-script.js';
 
 interface Props {
   overview: AnalyticsOverview;
@@ -106,7 +107,7 @@ const rateCards = [
       <span id="data-range-label">{activeLabel}</span>
       <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
-    <script type="application/json" id="data-range-presets" set:html={JSON.stringify(rangeOptions)} />
+    <script type="application/json" id="data-range-presets" set:html={jsonForScript(rangeOptions)} />
   </div>
 </div>
 

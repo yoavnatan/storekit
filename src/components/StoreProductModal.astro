@@ -47,7 +47,7 @@ const i18n = {
     <button class="lightbox__arrow lightbox__arrow--prev" id="spm-lb-prev" aria-label="Previous image">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <img class="lightbox__img" id="spm-lb-img" src="" alt="" />
+    <img class="lightbox__img" id="spm-lb-img" src="" alt="" loading="eager" decoding="async" />
     <button class="lightbox__arrow lightbox__arrow--next" id="spm-lb-next" aria-label="Next image">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
@@ -78,6 +78,7 @@ const i18n = {
   import { addItem, getCartQty } from '../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../lib/wishlist.js';
   import { cdnSrc, formatPrice } from '../config/store.config.js';
+  import { escapeHtml as escHtml } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
   import { trackAddToCart } from '../lib/tracking.js';
   import { comboKey } from '../lib/variant-combo.js';
@@ -127,10 +128,6 @@ const i18n = {
   // Set when we navigate to the full product page with the modal deliberately left
   // on screen — only then may a bfcache restore find it open and need it closed.
   let pmLeftForFullPage = false;
-
-  function escHtml(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
 
   const resolveColor = resolveVariantColor;
   const isColorVariantName = isColorVariant;
@@ -194,7 +191,7 @@ const i18n = {
   }
 
   function showLbImage() {
-    const url = lbImages[lbIndex] ?? '';
+    const url = cdnSrc(lbImages[lbIndex] ?? '', 1600);
     if (lbImg) { lbImg.src = url; lbImg.alt = lbProductName ? `${lbProductName} — ${lbIndex + 1}` : `Image ${lbIndex + 1}`; }
     const multi = lbImages.length > 1;
     if (lbPrev) lbPrev.hidden = !multi;
@@ -333,7 +330,7 @@ const i18n = {
     const mainImgHtml = hasImages
       ? `<div id="pm-img-wrap" style="position:relative;padding-top:80%;background:var(--color-surface);border-bottom:1px solid var(--color-border)">
            <div class="pm-slides" id="pm-slides" role="button" tabindex="0" style="cursor:zoom-in">
-             ${images.map((img) => `<div class="pm-slide is-loading"><img data-src="${escHtml(img)}" alt="${escHtml(name)}" width="680" height="421" class="pm-main-img" decoding="async" /></div>`).join('')}
+             ${images.map((img) => `<div class="pm-slide is-loading"><img data-src="${escHtml(cdnSrc(img, 800))}" alt="${escHtml(name)}" width="680" height="421" class="pm-main-img" loading="lazy" decoding="async" /></div>`).join('')}
            </div>
            ${hasMultiple ? `<div class="pm-dots" aria-hidden="true">${images.map((_, i) => `<span class="pm-dot" style="width:${i === 0 ? 18 : 6}px;background:${i === 0 ? '#fff' : 'rgba(255,255,255,0.7)'}"></span>`).join('')}</div>` : ''}
          </div>`

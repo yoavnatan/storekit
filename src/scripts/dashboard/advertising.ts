@@ -1,4 +1,5 @@
 import { formatPrice } from '../../config/store.config.js';
+import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { showStatus } from './status.js';
 import { initInfoTooltips } from './tooltip.js';
 import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js';
@@ -59,10 +60,6 @@ function budgetLabel(c: Campaign, i18n: Record<string, string>): string {
 function getI18n(): Record<string, string> {
   try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
   catch { return {}; }
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function campaignCardHtml(c: Campaign, i18n: Record<string, string>): string {

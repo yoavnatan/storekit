@@ -27,7 +27,7 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
   function render() {
     const url = hiddenInput!.value;
     frame!.innerHTML = url
-      ? `<img src="${cdnSrc(url, cfg.previewWidth)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`
+      ? `<img src="${cdnSrc(url, cfg.previewWidth)}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`
       : '';
     uploadBtn!.textContent = url ? cfg.labels.change : cfg.labels.upload;
     if (removeBtn) removeBtn.hidden = !url;

@@ -21,6 +21,7 @@ import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../../config/
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getFavoriteStoresForUser } from '../../lib/user-carts.js';
+import { jsonForScript } from '../../lib/json-script.js';
 
 const { storeSlug: slug } = Astro.params;
 if (!slug) return Astro.redirect('/404');
@@ -202,7 +203,7 @@ const pmI18n = {
       } catch (e) {}
     })();
   </script>
-  <script is:inline type="application/json" id="pm-i18n" set:html={JSON.stringify(pmI18n)} />
+  <script is:inline type="application/json" id="pm-i18n" set:html={jsonForScript(pmI18n)} />
 
   <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}>
 
@@ -265,6 +266,9 @@ const pmI18n = {
               alt=""
               width="1600"
               height="533"
+              loading="eager"
+              fetchpriority="high"
+              decoding="async"
               class="store-banner__bg"
             />
           </div>
@@ -482,7 +486,7 @@ const pmI18n = {
                   <div class="category-chip-dropdown" id="category-chip-dropdown" role="menu" hidden></div>
                 </div>
               )}
-              <script type="application/json" id="store-category-tree-data" set:html={JSON.stringify(categoryTree)} />
+              <script type="application/json" id="store-category-tree-data" set:html={jsonForScript(categoryTree)} />
 
               <div class="sort-dropdown-wrap" id="sort-dropdown">
                 <button
@@ -697,7 +701,7 @@ const pmI18n = {
   </div>
 </BaseLayout>
 
-<script is:inline type="application/json" id="header-search-products" set:html={JSON.stringify(
+<script is:inline type="application/json" id="header-search-products" set:html={jsonForScript(
   allProducts.map((p) => ({
     slug: p.slug,
     name: p.name,
@@ -715,6 +719,7 @@ const pmI18n = {
   import { initLiquidDots } from '../../lib/carousel-dots.js';
   import { trackAddToCart } from '../../lib/tracking.js';
   import { saveLastStore } from '../../lib/last-store.js';
+  import { escapeHtml as escHtml } from '../../lib/html-escape.js';
   import { recordStoreVisit } from '../../lib/recent-stores.js';
   import { saveStoreScroll, applyStoreScrollQuery, restoreStoreScroll, peekStoreScrollState } from '../../lib/scroll-restore.js';
   import type { StoreProduct as StoreProductDTO } from '../../lib/store-products.js';
@@ -1904,10 +1909,6 @@ const pmI18n = {
   function getPMI18n(): Record<string, string> {
     try { return JSON.parse(document.getElementById('pm-i18n')?.textContent ?? '{}') as Record<string, string>; }
     catch { return {}; }
-  }
-
-  function escHtml(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
 

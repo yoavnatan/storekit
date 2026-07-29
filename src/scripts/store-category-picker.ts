@@ -1,3 +1,5 @@
+import { escapeHtml as esc } from '../lib/html-escape.js';
+
 /**
  * Client half of StoreCategoryPicker.astro. Purely a convenience layer over a hidden
  * `categories` input — `/api/store.ts` re-runs `sanitizeStoreCategories()` on whatever
@@ -32,11 +34,6 @@ const CHIP_CLASS =
 const OPTION_CLASS =
   'block w-full text-start px-3 py-[0.45rem] rounded-[var(--radius-sm)] text-[0.85rem] ' +
   'cursor-pointer bg-transparent border-0 [color:var(--color-text)] hover:[background:var(--color-bg)]';
-
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
-}
 
 export function initStoreCategoryPicker(root: HTMLElement): void {
   const valueInput = root.querySelector<HTMLInputElement>('.store-cat-picker__value');

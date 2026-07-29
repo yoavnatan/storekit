@@ -2,6 +2,7 @@
 export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getLang, getT } from '../i18n/index.js';
+import { jsonForScript } from '../lib/json-script.js';
 import { getVisibleStores } from '../lib/stores.js';
 import { isDemoStore } from '../lib/demo-stores.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
@@ -42,8 +43,8 @@ for (const s of getVisibleStores()) {
 ---
 
 <BaseLayout title={c.title} description={c.description} noindex={true} isLoggedIn={isLoggedIn} storeMode={true}>
-  <script type="application/json" id="checkout-shipping-cfg" is:inline set:html={JSON.stringify({ stores: storeShipping, rates: SHIPPING_RATES }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')}></script>
-  <script type="application/json" id="checkout-i18n" is:inline set:html={JSON.stringify({
+  <script type="application/json" id="checkout-shipping-cfg" is:inline set:html={jsonForScript({ stores: storeShipping, rates: SHIPPING_RATES })}></script>
+  <script type="application/json" id="checkout-i18n" is:inline set:html={jsonForScript({
     freeShipping: c.freeShipping,
     shipping: c.shipping,
     storeTotal: c.storeTotal,
@@ -199,7 +200,8 @@ for (const s of getVisibleStores()) {
 
   <script>
     import { getActiveStoreCarts, setQty, removeItem } from '../lib/cart.js';
-    import { formatPrice } from '../config/store.config.js';
+    import { formatPrice, cdnThumb } from '../config/store.config.js';
+    import { escapeHtml as esc } from '../lib/html-escape.js';
     import { spawnRipple } from '../lib/ripple.js';
     import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../scripts/dashboard/select-dropdown.js';
 
@@ -223,9 +225,6 @@ for (const s of getVisibleStores()) {
     const platformRates: Record<string, number> = shippingCfg.rates ?? {};
     const i18n: Record<string, string> =
       JSON.parse((document.getElementById('checkout-i18n') as HTMLElement | null)?.textContent ?? '{}');
-
-    const esc = (s: unknown) =>
-      String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
     // Buyer's chosen delivery method per store. Defaults to courier — a PAID method — so a
     // store never silently defaults to free; persists across cart re-renders. The server
@@ -325,7 +324,7 @@ for (const s of getVisibleStores()) {
         cart.items.forEach(item => {
           const isSelected = selected.has(selKey(cart.storeSlug, item.cartKey));
           const imgHtml = item.image
-            ? `<img src="${esc(item.image)}" alt="${esc(item.name)}" class="w-20 h-20 object-cover block" width="80" height="80" loading="lazy" decoding="async" />`
+            ? `<img src="${esc(cdnThumb(item.image, 160, 160))}" alt="${esc(item.name)}" class="w-20 h-20 object-cover block" width="80" height="80" loading="lazy" decoding="async" />`
             : `<div class="w-20 h-20 flex items-center justify-center [color:var(--color-muted)]" aria-hidden="true">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                   <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>

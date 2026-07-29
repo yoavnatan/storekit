@@ -1,3 +1,4 @@
+import { escapeHtml } from './html-escape.js';
 // Minimal, dependency-free inline-SVG bar chart — isomorphic (no node:fs) so
 // the same function builds both the SSR-rendered initial chart (dashboard.astro,
 // no flash-of-empty-chart on load) and the client-side re-render after a
@@ -38,7 +39,7 @@ export interface BarChartOptions {
 }
 
 function escXml(s: string): string {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return escapeHtml(s);
 }
 
 // Compact y-axis tick label (1200 → "1.2K") — keeps the axis gutter narrow and

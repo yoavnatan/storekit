@@ -1,4 +1,5 @@
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 
 // Upgrades a native <select> into a site-design dropdown backed by the shared
 // floating portal (createFloatingPortal): the menu stays pinned to its trigger
@@ -15,10 +16,6 @@ import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 // visible trigger label.
 
 let counter = 0;
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 const SYNC_EVENT = 'select-dropdown:sync';
 

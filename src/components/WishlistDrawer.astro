@@ -24,7 +24,8 @@
 <script>
   import { removeFromWishlist, addToWishlist, getWishlistByStore } from '../lib/wishlist.js';
   import { addItem, getCartQty } from '../lib/cart.js';
-  import { formatPrice, cdnSrc } from '../config/store.config.js';
+  import { formatPrice, cdnSrc, cdnThumb } from '../config/store.config.js';
+  import { escapeHtml as esc } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
 
   function getI18n() {
@@ -37,9 +38,6 @@
 
   const isRtl = document.documentElement.dir === 'rtl';
   let isOpen = false;
-
-  const esc = (s: unknown) =>
-    String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   // render() rebuilds the whole list (innerHTML) on every wishlist:change
   // while the panel is open — even for an unrelated add/remove elsewhere on
@@ -213,7 +211,7 @@
                 ? (() => {
                     const imgSrc = cdnSrc(item.image, 400);
                     const alreadyLoaded = loadedImageSrcs.has(imgSrc);
-                    return `<span class="wl-img-wrap skel-bar${alreadyLoaded ? ' loaded' : ''}" style="border-radius:var(--radius)"><img class="wl-img" src="${esc(imgSrc)}" alt="${esc(item.name)}" width="56" height="56" loading="eager" style="${alreadyLoaded ? 'opacity:1' : ''}"></span>`;
+                    return `<span class="wl-img-wrap skel-bar${alreadyLoaded ? ' loaded' : ''}" style="border-radius:var(--radius)"><img class="wl-img" src="${esc(cdnThumb(imgSrc, 112, 112))}" alt="${esc(item.name)}" width="56" height="56" loading="eager" decoding="async" style="${alreadyLoaded ? 'opacity:1' : ''}"></span>`;
                   })()
                 : `<div style="width:56px;height:56px;border-radius:var(--radius);background:var(--color-surface);border:1px solid var(--color-border);flex-shrink:0"></div>`}
               <div style="flex:1;min-width:0">

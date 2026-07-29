@@ -10,6 +10,7 @@
  * here so no page forgets a tag.
  */
 import { store } from '../config/store.config.js';
+import { jsonForScript } from '../lib/json-script.js';
 
 const {
   title,
@@ -62,4 +63,4 @@ const ogImage = image ? new URL(image, store.url).href : '';
 {productPrice !== undefined && <meta property="product:price:currency" content={productCurrency} />}
 
 <!-- Structured data -->
-{jsonLd && <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />}
+{jsonLd && <script type="application/ld+json" is:inline set:html={jsonForScript(jsonLd)} />}
