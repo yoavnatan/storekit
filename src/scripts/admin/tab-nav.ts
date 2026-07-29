@@ -3,11 +3,31 @@ import { initGotoPanelLinks } from '../dashboard/ui.js';
 
 const TRACKED_TABS = new Set(['sellers', 'stores', 'orders', 'alerts']);
 
+// Everything that says "this tab has new rows" is cleared together, the moment
+// the tab is left — the count on the tab, the "חדש" chip on each row, and the
+// "חדשים בלבד (N)" filter chip. They're three views of ONE fact (the server-side
+// last-viewed boundary that recordLeft is about to advance), so they must not be
+// able to disagree. They can, without this: the panels are server-rendered HTML
+// and switching tabs only toggles `hidden` — nothing re-renders — so the chips
+// used to keep claiming rows were new long after the count had gone, right up
+// until the next full page load (owner feedback, 2026-07-29).
 function clearTabBadge(panel: string): void {
   const span = document.getElementById(`tab-count-${panel}`);
-  if (!span) return;
-  span.hidden = true;
-  span.textContent = '';
+  if (span) {
+    span.hidden = true;
+    span.textContent = '';
+  }
+
+  const panelEl = document.getElementById(`dash-panel-${panel}`);
+  if (!panelEl) return;
+  panelEl.querySelectorAll('.admin-new-chip').forEach((chip) => chip.remove());
+
+  // The toggle itself stays (it may be the active filter) — only its now-stale
+  // count is dropped.
+  const newOnlyToggle = document.getElementById(`admin-${panel}-new-toggle`);
+  if (newOnlyToggle) {
+    newOnlyToggle.textContent = (newOnlyToggle.textContent ?? '').replace(/\s*\(\d+\)\s*$/, '');
+  }
 }
 
 // Advancing the "last viewed" boundary is what turns a row from new to seen —

@@ -116,7 +116,7 @@ function buildCopyText(e: ErrorLogEntry): string {
                   the "חדשה" mark is actually about. */}
               <td class="admin-nowrap admin-alerts-time">
                 {formatHeDateTime(e.createdAt)}
-                {e.createdAt > newSince && <><br /><AdminNewBadge label="חדשה" /></>}
+                {e.createdAt > newSince && <AdminNewBadge label="חדשה" block />}
               </td>
               <td class="admin-alerts-source"><span class="admin-badge admin-badge--failed">{sourceLabel[e.source] ?? e.source}</span></td>
               <td class="admin-nowrap admin-alerts-store" title={e.storeName ?? undefined}>
