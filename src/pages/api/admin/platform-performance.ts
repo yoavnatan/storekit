@@ -4,14 +4,19 @@ import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getAllStores } from '../../../lib/stores.js';
 import { getAllOrders } from '../../../lib/orders.js';
 import { pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
-import { buildPlatformPerformance, buildPlatformStoreInputs } from '../../../lib/platform-performance.js';
+import { buildPlatformPerformance, buildPlatformStoreInputs, parseStoreRowsQuery, selectStoreRows } from '../../../lib/platform-performance.js';
+import { buildPlatformRevenue } from '../../../lib/platform-revenue.js';
+import { getAllCampaigns } from '../../../lib/ad-campaigns.js';
 import { getAllSellers } from '../../../lib/seller-auth.js';
 
 // Platform-wide (app-wide) twin of /api/admin/performance: same admin guard and
 // validation, but aggregates EVERY store instead of one by slug. Returns the
-// merged PerformanceSummary (charts/KPIs) plus the per-store breakdown rows.
-// Read-only reporting, no money/stock mutation. All stores are included
-// (blocked ones too, badged in the UI) — an admin's view is the whole platform.
+// merged PerformanceSummary (charts/KPIs), the platform's income split
+// (commission / subscriptions / ad margin) and ONE PAGE of the per-store
+// breakdown — the ?storeQ/storeSort/storeDir/storePage params drive that page,
+// so search + paging never reload the dashboard. Read-only reporting, no
+// money/stock mutation. All stores are included (blocked ones too, badged in
+// the UI) — an admin's view is the whole platform.
 
 function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -47,8 +52,33 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
 
   const orders = getAllOrders();
-  const stores = buildPlatformStoreInputs(getAllStores(), getAllSellers());
+  const sellers = getAllSellers();
+  const stores = buildPlatformStoreInputs(getAllStores(), sellers);
   const result = buildPlatformPerformance(orders, stores, from, to, granularity, topLimit);
+  const page = selectStoreRows(result.stores, parseStoreRowsQuery(url.searchParams));
+  const revenue = buildPlatformRevenue(
+    result.summary.platformCommission,
+    result.summary.commissionRate,
+    sellers,
+    getAllCampaigns(),
+    from,
+    to,
+  );
 
-  return json({ ok: true, summary: result.summary, stores: result.stores, totalStores: result.totalStores, shownStores: result.shownStores });
+  // `stores`/`totalStores`/`shownStores` keep their original names and shapes —
+  // an older deployed client reading them still works (additive-API rule).
+  // `storeTotal` is the searched universe (all stores when a query is set,
+  // active-only while browsing); `totalStores` stays "active in range".
+  return json({
+    ok: true,
+    summary: result.summary,
+    revenue,
+    stores: page.rows,
+    totalStores: result.totalStores,
+    shownStores: page.rows.length,
+    storeTotal: page.total,
+    storeMatched: page.matched,
+    storePage: page.page,
+    storeTotalPages: page.totalPages,
+  });
 }

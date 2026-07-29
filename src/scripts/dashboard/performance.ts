@@ -533,7 +533,12 @@ export function initPerformanceTab(): void {
     if (loading) return;
     loading = true;
     try {
-      const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}&from=${from}&to=${to}`);
+      // A surrounding page may pin extra query params onto every range fetch
+      // (the admin tab keeps its store-table search/sort/page here) so a range
+      // change comes back with that view already applied, instead of silently
+      // resetting the table under an unchanged search box. Read live, not once.
+      const extra = picker!.dataset.extraParams ? `&${picker!.dataset.extraParams}` : '';
+      const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}&from=${from}&to=${to}${extra}`);
       if (!res.ok) return;
       const data = await res.json() as { ok?: boolean; summary?: PerformanceSummary };
       if (data.summary) renderSummary(data.summary, i18n);

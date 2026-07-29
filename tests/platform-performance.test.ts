@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildPlatformPerformance, TOP_STORES_LIMIT } from '../src/lib/platform-performance.js';
+import {
+  buildPlatformPerformance,
+  parseStoreRowsQuery,
+  selectStoreRows,
+  STORE_ROWS_PAGE_SIZE,
+  type PlatformStoreRow,
+} from '../src/lib/platform-performance.js';
 import type { Order } from '../src/lib/orders.js';
 
 // A minimal paid order touching one or more stores. Only the fields
@@ -82,16 +88,18 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
     expect(p.summary.totalOrders).toBe(1);
   });
 
-  it('builds a revenue-desc breakdown and only lists stores active in range', () => {
+  it('builds a revenue-desc breakdown, flagging (not dropping) stores idle in range', () => {
     const orders = [
       makeOrder('o1', { beta: 900 }, '2026-07-05T10:00:00.000Z'),
       makeOrder('o2', { alpha: 100 }, '2026-07-06T10:00:00.000Z'),
-      // gamma has no orders → excluded from the breakdown
+      // gamma has no orders and no views → present but active:false, so a search
+      // can still find it while browsing hides it (selectStoreRows).
     ];
     const p = buildPlatformPerformance(orders, STORES, FROM, TO, 'day');
-    expect(p.stores.map((s) => s.slug)).toEqual(['beta', 'alpha']);
+    expect(p.stores.map((s) => s.slug)).toEqual(['beta', 'alpha', 'gamma']);
+    expect(p.stores.map((s) => s.active)).toEqual([true, true, false]);
+    // totalStores counts only the active ones — the default table universe.
     expect(p.totalStores).toBe(2);
-    expect(p.stores.some((s) => s.slug === 'gamma')).toBe(false);
   });
 
   it('aggregates platform top products across stores and honours topLimit', () => {
@@ -118,18 +126,125 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
     expect(p.summary.totalRevenue).toBe(0);
     expect(p.summary.points.length).toBe(31); // full July, zero-filled
     expect(p.summary.points.every((pt) => pt.revenue === 0 && pt.orders === 0)).toBe(true);
-    expect(p.stores.length).toBe(0);
+    // Rows still exist for every store (searchable), none of them active.
+    expect(p.stores.length).toBe(STORES.length);
+    expect(p.totalStores).toBe(0);
   });
 
-  it('caps the breakdown at storeLimit while still counting the total', () => {
-    const many = Array.from({ length: TOP_STORES_LIMIT + 5 }, (_, i) => ({ slug: `s${i}`, name: `S${i}` }));
+  it('returns EVERY store, uncapped — paging is the caller\'s job now', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ slug: `s${i}`, name: `S${i}` }));
     const orders = many.map((s, i) => makeOrder(`o${i}`, { [s.slug]: (i + 1) * 10 }, '2026-07-05T10:00:00.000Z'));
-    const p = buildPlatformPerformance(orders, many, FROM, TO, 'day', 5, TOP_STORES_LIMIT);
-    expect(p.stores.length).toBe(TOP_STORES_LIMIT);
-    expect(p.totalStores).toBe(TOP_STORES_LIMIT + 5);
-    expect(p.shownStores).toBe(TOP_STORES_LIMIT);
-    // highest-revenue store leads the capped list
-    expect(p.stores[0].revenue).toBeGreaterThanOrEqual(p.stores[1].revenue);
+    const p = buildPlatformPerformance(orders, many, FROM, TO, 'day', 5);
+    expect(p.stores.length).toBe(40);
+    expect(p.totalStores).toBe(40);
+    // highest-revenue store leads
+    expect(p.stores[0]!.revenue).toBeGreaterThanOrEqual(p.stores[1]!.revenue);
+  });
+});
+
+// ── Breakdown table: search + sort + pagination (CURRENT_TASK.md → סשן ב׳ #1) ──
+
+function row(slug: string, name: string, revenue: number, orders = 0, views = 0, conversionRate = 0): PlatformStoreRow {
+  return { slug, name, blocked: false, revenue, orders, views, conversionRate, active: revenue > 0 || orders > 0 || views > 0 };
+}
+const ROWS: PlatformStoreRow[] = [
+  row('gadget-shop', 'חנות הגאדג׳טים', 900, 9, 90, 10),
+  row('book-nook', 'Book Nook', 500, 5, 200, 2.5),
+  row('candle-co', 'Candle Co', 100, 1, 50, 2),
+];
+// A store that exists but did nothing in the range — hidden while browsing, findable by search.
+const IDLE = row('quiet-shop', 'Quiet Shop', 0, 0, 0, 0);
+const ROWS_WITH_IDLE: PlatformStoreRow[] = [...ROWS, IDLE];
+
+describe('selectStoreRows', () => {
+  it('defaults to revenue-desc, page 1', () => {
+    const p = selectStoreRows(ROWS, { q: '', sort: 'revenue', dir: 'desc', page: 1 });
+    expect(p.rows.map((r) => r.slug)).toEqual(['gadget-shop', 'book-nook', 'candle-co']);
+    expect(p.total).toBe(3);
+    expect(p.matched).toBe(3);
+    expect(p.totalPages).toBe(1);
+  });
+
+  it('hides zero-activity stores while browsing, but a SEARCH finds them', () => {
+    const browsing = selectStoreRows(ROWS_WITH_IDLE, { q: '', sort: 'revenue', dir: 'desc', page: 1 });
+    expect(browsing.rows.some((r) => r.slug === 'quiet-shop')).toBe(false);
+    expect(browsing.total).toBe(3); // active only
+
+    const searching = selectStoreRows(ROWS_WITH_IDLE, { q: 'quiet', sort: 'revenue', dir: 'desc', page: 1 });
+    expect(searching.rows.map((r) => r.slug)).toEqual(['quiet-shop']);
+    expect(searching.rows[0]!.active).toBe(false); // flagged, so the UI can label it
+    expect(searching.matched).toBe(1);
+    expect(searching.total).toBe(4); // searching spans EVERY store, not just active ones
+  });
+
+  it('searches by name AND slug, case-insensitively, keeping `total` at the unfiltered count', () => {
+    const byName = selectStoreRows(ROWS, { q: 'book', sort: 'revenue', dir: 'desc', page: 1 });
+    expect(byName.rows.map((r) => r.slug)).toEqual(['book-nook']);
+    expect(byName.matched).toBe(1);
+    expect(byName.total).toBe(3);
+
+    // Hebrew store name, matched by a fragment of its Latin slug.
+    expect(selectStoreRows(ROWS, { q: 'GADGET', sort: 'revenue', dir: 'desc', page: 1 }).rows[0]!.slug)
+      .toBe('gadget-shop');
+    expect(selectStoreRows(ROWS, { q: 'גאדג', sort: 'revenue', dir: 'desc', page: 1 }).matched).toBe(1);
+    expect(selectStoreRows(ROWS, { q: 'nothing-here', sort: 'revenue', dir: 'desc', page: 1 }).rows).toEqual([]);
+  });
+
+  it('sorts by any column in either direction', () => {
+    const byViews = selectStoreRows(ROWS, { q: '', sort: 'views', dir: 'desc', page: 1 });
+    expect(byViews.rows.map((r) => r.slug)).toEqual(['book-nook', 'gadget-shop', 'candle-co']);
+    const cheapestFirst = selectStoreRows(ROWS, { q: '', sort: 'revenue', dir: 'asc', page: 1 });
+    expect(cheapestFirst.rows[0]!.slug).toBe('candle-co');
+  });
+
+  it('sorts within the SEARCH results, not the whole set', () => {
+    const p = selectStoreRows(ROWS, { q: 'o', sort: 'revenue', dir: 'asc', page: 1 });
+    // 'o' hits all three slugs; asc within them
+    expect(p.rows.map((r) => r.slug)).toEqual(['candle-co', 'book-nook', 'gadget-shop']);
+  });
+
+  it(`pages at ${STORE_ROWS_PAGE_SIZE} and clamps an out-of-range page`, () => {
+    const many = Array.from({ length: 23 }, (_, i) => row(`s${i}`, `S${i}`, i + 1));
+    const first = selectStoreRows(many, { q: '', sort: 'revenue', dir: 'desc', page: 1 });
+    expect(first.rows.length).toBe(STORE_ROWS_PAGE_SIZE);
+    expect(first.totalPages).toBe(3);
+
+    const last = selectStoreRows(many, { q: '', sort: 'revenue', dir: 'desc', page: 3 });
+    expect(last.rows.length).toBe(3);
+    // No overlap between pages — page 2 continues where page 1 stopped.
+    const second = selectStoreRows(many, { q: '', sort: 'revenue', dir: 'desc', page: 2 });
+    expect(second.rows[0]!.slug).not.toBe(first.rows[STORE_ROWS_PAGE_SIZE - 1]!.slug);
+
+    // A search that shrinks the set below the current page → clamped, and the
+    // clamped page is echoed back so the client can adopt it.
+    const clamped = selectStoreRows(many, { q: 's1', sort: 'revenue', dir: 'desc', page: 9 });
+    expect(clamped.page).toBe(clamped.totalPages);
+    expect(clamped.query.page).toBe(clamped.page);
+    expect(clamped.rows.length).toBeGreaterThan(0);
+  });
+
+  it('never mutates the caller\'s array', () => {
+    const original = [...ROWS];
+    selectStoreRows(ROWS, { q: '', sort: 'orders', dir: 'asc', page: 1 });
+    expect(ROWS).toEqual(original);
+  });
+});
+
+describe('parseStoreRowsQuery', () => {
+  it('reads valid params', () => {
+    const q = parseStoreRowsQuery(new URLSearchParams('storeQ=%20book%20&storeSort=views&storeDir=asc&storePage=4'));
+    expect(q).toEqual({ q: 'book', sort: 'views', dir: 'asc', page: 4 });
+  });
+
+  it('falls back to safe defaults on junk instead of throwing', () => {
+    const q = parseStoreRowsQuery(new URLSearchParams('storeSort=DROP TABLE&storeDir=sideways&storePage=-7'));
+    expect(q).toEqual({ q: '', sort: 'revenue', dir: 'desc', page: 1 });
+    expect(parseStoreRowsQuery(new URLSearchParams()).page).toBe(1);
+  });
+
+  it('bounds the search string so a huge query cannot drive a huge scan', () => {
+    const q = parseStoreRowsQuery(new URLSearchParams(`storeQ=${'a'.repeat(500)}`));
+    expect(q.q.length).toBe(80);
   });
 });
 

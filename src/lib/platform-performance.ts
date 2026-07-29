@@ -59,6 +59,10 @@ export interface PlatformStoreRow {
   orders: number;       // orders that included this store, in range
   views: number;        // store page views in range
   conversionRate: number; // orders / unique-visitors * 100 (per-store, from buildPerformanceSummary)
+  /** Had ANY activity in range — a sale, an order or a page view. Browsing the table
+   *  shows only these (a short range would otherwise be mostly all-zero rows); a
+   *  SEARCH deliberately reaches past it, so every store is findable by name. */
+  active: boolean;
 }
 
 export interface PlatformPerformance {
@@ -69,24 +73,103 @@ export interface PlatformPerformance {
   // income and netProfit is what gets paid out to sellers (the numbers are the
   // same, only the framing differs from the seller's expense view).
   summary: PerformanceSummary;
-  stores: PlatformStoreRow[]; // revenue-desc, capped at storeLimit
-  totalStores: number;        // stores with any activity in range, before the cap
-  shownStores: number;        // rows actually returned (min(totalStores, storeLimit))
+  /** EVERY store, revenue-desc, each flagged `active` or not. Never rendered as-is —
+   *  the breakdown table is a searchable, paginated view over this (selectStoreRows),
+   *  and that view is what decides whether inactive stores are in scope. */
+  stores: PlatformStoreRow[];
+  /** Stores with activity in range — the default (unsearched) table universe. */
+  totalStores: number;
 }
 
-// Bound the breakdown so 1000 stores can't render an unbounded table on one
-// page — mirrors the admin dashboard's own list caps (see AI_INSTRUCTIONS.md →
-// admin pagination). The top revenue-drivers are what an owner scans for; the
-// panel shows a "top N of M" note when the cap bites.
-export const TOP_STORES_LIMIT = 25;
+// ── Breakdown table: search + sort + pagination ──────────────────────────────
+// The table used to be a flat "top 25" list, which both hid the tail and made
+// finding one specific store impossible (CURRENT_TASK.md → סשן ב׳ item 1). It's
+// now a 10-row page over ALL stores with a name search. Filtering/sorting happen
+// here — over the full row set, never over the visible page — so page 2 of a
+// search is the real page 2, and the client only ever holds 10 rows.
+export const STORE_ROWS_PAGE_SIZE = 10;
+
+export type StoreSortCol = 'name' | 'revenue' | 'orders' | 'views' | 'conversionRate';
+const SORT_COLS: readonly StoreSortCol[] = ['name', 'revenue', 'orders', 'views', 'conversionRate'];
+
+export interface StoreRowsQuery {
+  q: string;
+  sort: StoreSortCol;
+  dir: 'asc' | 'desc';
+  page: number;
+}
+
+export interface StoreRowsPage {
+  rows: PlatformStoreRow[];   // the requested page, at most STORE_ROWS_PAGE_SIZE
+  page: number;               // clamped into [1, totalPages] — the client syncs to this
+  totalPages: number;
+  matched: number;            // rows matching the search, before paging
+  /** Size of the universe this page was drawn from, before the search: the ACTIVE
+   *  stores while browsing, EVERY store while searching (see selectStoreRows). */
+  total: number;
+  query: StoreRowsQuery;      // the normalised query actually applied
+}
+
+/** Coerce untrusted params (URL query / dataset) into a valid breakdown query.
+ *  Shared by the SSR render and the AJAX endpoint so both normalise identically. */
+export function parseStoreRowsQuery(params: URLSearchParams): StoreRowsQuery {
+  const sortRaw = params.get('storeSort') ?? '';
+  const pageRaw = parseInt(params.get('storePage') ?? '1', 10);
+  return {
+    // Bounded so a pathological query string can't drive a huge substring scan.
+    q: (params.get('storeQ') ?? '').trim().slice(0, 80),
+    sort: SORT_COLS.includes(sortRaw as StoreSortCol) ? (sortRaw as StoreSortCol) : 'revenue',
+    dir: params.get('storeDir') === 'asc' ? 'asc' : 'desc',
+    page: Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1,
+  };
+}
+
+/** Search → sort → paginate, in that order (the same order the DB query will run in
+ *  after the migration: WHERE name ILIKE … ORDER BY … LIMIT … OFFSET …). Pure.
+ *
+ *  The universe depends on whether there IS a search. Browsing shows only stores with
+ *  activity in range — otherwise a one-day range is 40 all-zero rows and the table is
+ *  useless. But a search is a lookup of a store the owner already has in mind, and
+ *  "no results" for a store that plainly exists reads as a broken feature, so a search
+ *  spans EVERY store; the zero-activity ones come back flagged `active:false` for the
+ *  UI to label rather than silently showing zeros. */
+export function selectStoreRows(rows: PlatformStoreRow[], query: StoreRowsQuery): StoreRowsPage {
+  const q = query.q.toLowerCase();
+  const universe = q ? rows : rows.filter((r) => r.active);
+  // Slug as well as name: an owner who knows the store's URL can paste it.
+  const matches = q
+    ? universe.filter((r) => r.name.toLowerCase().includes(q) || r.slug.toLowerCase().includes(q))
+    : universe;
+
+  const dir = query.dir === 'asc' ? 1 : -1;
+  const sorted = [...matches].sort((a, b) => (
+    query.sort === 'name'
+      // localeCompare with 'he' so Hebrew store names sort alphabetically rather
+      // than by code point (which interleaves them arbitrarily against Latin ones).
+      ? a.name.localeCompare(b.name, 'he') * dir
+      : (a[query.sort] - b[query.sort]) * dir
+  ));
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / STORE_ROWS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, query.page), totalPages);
+  const start = (page - 1) * STORE_ROWS_PAGE_SIZE;
+  return {
+    rows: sorted.slice(start, start + STORE_ROWS_PAGE_SIZE),
+    page,
+    totalPages,
+    matched: sorted.length,
+    total: universe.length,
+    query: { ...query, page },
+  };
+}
 
 /**
  * Aggregates every store's performance into one platform-wide PerformanceSummary
  * plus a per-store breakdown, over [fromISO, toISO]. Pure given its inputs
  * (orders array is the money data; page views are read inside buildPerformanceSummary
  * per store, matching the seller path). `topLimit` caps the aggregated topProducts
- * (default 5; <=0 = all, for the revenue-breakdown modal). `storeLimit` caps the
- * breakdown rows.
+ * (default 5; <=0 = all, for the revenue-breakdown modal). The breakdown rows are
+ * returned in full — paging/search is the caller's job (selectStoreRows).
  *
  * Note: unique visitors are SUMMED across stores (a browser visiting two stores
  * is counted once per store), so the platform figure is an upper bound — the
@@ -100,7 +183,6 @@ export function buildPlatformPerformance(
   toISO: string,
   granularity: PerformanceGranularity,
   topLimit = 5,
-  storeLimit = TOP_STORES_LIMIT,
 ): PlatformPerformance {
   // Zero-filled point skeleton for the whole range, derived straight from the
   // dates — the exact x-axis keys/labels the seller math produces, so the merge
@@ -148,19 +230,19 @@ export function buildPlatformPerformance(
       productMap.set(tp.productId, entry);
     }
 
-    // Only stores with any activity in the range make the breakdown — a store
-    // with no orders and no views in the window is noise in the table.
-    if (s.totalRevenue > 0 || s.totalOrders > 0 || s.totalViews > 0) {
-      rows.push({
-        slug: store.slug,
-        name: store.name,
-        blocked: store.blocked ?? false,
-        revenue: s.totalRevenue,
-        orders: s.totalOrders,
-        views: s.totalViews,
-        conversionRate: s.conversionRate,
-      });
-    }
+    // EVERY store gets a row (its summary was computed either way — this costs
+    // nothing extra). Whether a no-activity store is actually shown is decided
+    // downstream by selectStoreRows: hidden while browsing, findable by search.
+    rows.push({
+      slug: store.slug,
+      name: store.name,
+      blocked: store.blocked ?? false,
+      revenue: s.totalRevenue,
+      orders: s.totalOrders,
+      views: s.totalViews,
+      conversionRate: s.conversionRate,
+      active: s.totalRevenue > 0 || s.totalOrders > 0 || s.totalViews > 0,
+    });
   }
 
   const sortedProducts = [...productMap.values()].sort((a, b) => b.revenue - a.revenue);
@@ -192,10 +274,5 @@ export function buildPlatformPerformance(
   };
 
   const sortedRows = rows.sort((a, b) => b.revenue - a.revenue);
-  return {
-    summary,
-    stores: sortedRows.slice(0, storeLimit),
-    totalStores: sortedRows.length,
-    shownStores: Math.min(sortedRows.length, storeLimit),
-  };
+  return { summary, stores: sortedRows, totalStores: sortedRows.filter((r) => r.active).length };
 }

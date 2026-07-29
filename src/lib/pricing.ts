@@ -73,6 +73,20 @@ export function monthlyFeeForTier(id: string | undefined | null): number {
   return resolveTier(id).monthlyFee;
 }
 
+/** The platform's margin on advertising, as a percent ON TOP of what Google/Meta actually charged.
+ *
+ *  Advertising is a separate component from the subscription+commission pair above (see
+ *  AI_INSTRUCTIONS.md → Business model): the platform buys ad space from Google/Meta with its own
+ *  card, then bills the seller for the ACTUAL spend plus this disclosed margin. So the platform's
+ *  income from a boost campaign is only the margin — the spend itself is a pass-through, never
+ *  revenue. ⚠️ PLACEHOLDER, like the tier numbers (CURRENT_TASK.md item 23). */
+export const AD_PLATFORM_MARGIN_PERCENT = 15;
+
+/** Platform income on `spend` ILS of real ad spend — the margin only, not the spend. */
+export function adMarginForSpend(spend: number): number {
+  return Math.round(spend * (AD_PLATFORM_MARGIN_PERCENT / 100) * 100) / 100;
+}
+
 /** The blended rate a mixed set of sellers actually produced, as a percent of revenue.
  *  The platform-wide view spans sellers on DIFFERENT tiers, so a single headline "commission %"
  *  is only meaningful as revenue-weighted actuals — never as one tier's rate applied to the total.

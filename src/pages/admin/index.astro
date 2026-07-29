@@ -20,7 +20,8 @@ import { store as platform } from '../../config/store.config.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
 import { getLastViewedAt, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
-import { buildPlatformPerformance, buildPlatformStoreInputs } from '../../lib/platform-performance.js';
+import { buildPlatformPerformance, buildPlatformStoreInputs, parseStoreRowsQuery, selectStoreRows } from '../../lib/platform-performance.js';
+import { buildPlatformRevenue } from '../../lib/platform-revenue.js';
 import { pickGranularity } from '../../lib/seller-performance.js';
 import { getLang, getDir } from '../../i18n/index.js';
 import AdminOverviewPanel from '../../components/admin/AdminOverviewPanel.astro';
@@ -191,6 +192,19 @@ const platformPerf = buildPlatformPerformance(
   perfToISO,
   perfGranularity,
 );
+// First page of the searchable breakdown table. Search/sort/paging all re-fetch
+// the endpoint client-side afterwards (platform-performance.ts) — the URL params
+// are still honoured here so a deep-linked ?storeQ= renders server-side too.
+const perfStorePage = selectStoreRows(platformPerf.stores, parseStoreRowsQuery(sp));
+// Where the platform's income actually comes from — commission is only one of three.
+const perfRevenue = buildPlatformRevenue(
+  platformPerf.summary.platformCommission,
+  platformPerf.summary.commissionRate,
+  sellers,
+  adCampaigns,
+  perfFromISO,
+  perfToISO,
+);
 
 // ── Data tab (first-party analytics — CURRENT_TASK.md item 2) ──
 // The buyer-funnel window recomputes per ?datapreset via the panel-swap AJAX
@@ -352,9 +366,8 @@ const badgeCounts: Record<string, number> = {
       <div id="dash-panel-performance" class="dash-panel" role="tabpanel" aria-labelledby="tab-performance" hidden={initialPanel !== 'performance'}>
         <AdminPerformancePanel
           summary={platformPerf.summary}
-          stores={platformPerf.stores}
-          totalStores={platformPerf.totalStores}
-          shownStores={platformPerf.shownStores}
+          revenue={perfRevenue}
+          storePage={perfStorePage}
           fromISO={perfFromISO}
           toISO={perfToISO}
           lang={perfLang}
