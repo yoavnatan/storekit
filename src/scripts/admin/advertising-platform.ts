@@ -1,4 +1,4 @@
-import { initInfoTooltips, showTooltipAtPoint, hideTooltip } from '../dashboard/tooltip.js';
+import { initInfoTooltips, showTooltipAtPoint, hideTooltip } from '../tooltip.js';
 import { cloudinaryUpload } from '../dashboard/cloudinary.js';
 import { escapeHtml } from '../../lib/html-escape.js';
 import { formatPrice, cdnSrc } from '../../config/store.config.js';

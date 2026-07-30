@@ -1,6 +1,6 @@
 import { wirePanelLinks, wirePopstateReload, swapPanel } from '../../lib/admin-nav.js';
 import { createFloatingPortal, type FloatingPortal } from '../../lib/toolbar-portal.js';
-import { initInfoTooltips } from '../dashboard/tooltip.js';
+import { initInfoTooltips } from '../tooltip.js';
 import { escapeHtml } from '../../lib/html-escape.js';
 
 const PANEL_ID = 'dash-panel-data';

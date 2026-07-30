@@ -1,7 +1,9 @@
 // One shared floating tooltip (position:fixed, body-anchored) reused by every
-// hover-to-explain affordance in the seller dashboard — the performance
-// charts' bars and the KPI info icons (e.g. "conversion rate", CURRENT_TASK.md)
-// — instead of one DOM node + positioning logic per trigger.
+// hover-to-explain affordance on the site — the dashboard performance charts'
+// bars, the KPI info icons, and the site-wide hover labels for icon-only
+// controls (icon-tooltips.ts) — instead of one DOM node + positioning logic
+// per trigger. Lived under scripts/dashboard/ until it gained non-dashboard
+// callers.
 let tooltipEl: HTMLElement | null = null;
 
 function getTooltipEl(): HTMLElement {

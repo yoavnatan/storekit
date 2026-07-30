@@ -81,10 +81,13 @@
 .cart-drawer__head { padding: 1rem; border-bottom: 1px solid var(--color-border); }
 .cart-drawer__title-wrap { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
 
-/* CSS-only info tooltip — the dashboard's InfoTip depends on a dashboard-only
-   floating-tooltip script, but the cart drawer is global (BaseLayout), so this
-   is self-contained (no JS, revealed on hover/focus). Matches the dash-tooltip
-   look: dark bubble, white text, 6px radius. */
+/* CSS-only info tooltip, revealed on hover/focus with no JS. It predates the
+   shared floating tooltip going global (scripts/tooltip.ts is loaded by
+   BaseLayout since the site-wide icon-tooltips work), so the original reason
+   — "that script is dashboard-only" — no longer holds; it stays because it
+   already works without any positioning JS, and it deliberately matches the
+   dash-tooltip look (dark bubble, white text, 6px radius) so the two read as
+   one treatment. Keep them visually in sync if either changes. */
 .cart-info {
   position: relative;
   display: inline-flex;

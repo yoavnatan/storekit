@@ -179,6 +179,7 @@ const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) 
     <MessageCompose />
     <script>import '../lib/cart-sync.js';</script>
     <script>import { initErrorReporter } from '../scripts/error-reporter.js'; initErrorReporter();</script>
+    <script>import { initIconTooltips } from '../scripts/icon-tooltips.js'; initIconTooltips();</script>
     {sessionUserId && (
       <script is:inline set:html={`
 (function(){

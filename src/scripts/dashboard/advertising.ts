@@ -1,7 +1,7 @@
 import { formatPrice } from '../../config/store.config.js';
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { showStatus } from './status.js';
-import { initInfoTooltips } from './tooltip.js';
+import { initInfoTooltips } from '../tooltip.js';
 import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js';
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
