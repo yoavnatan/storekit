@@ -15,7 +15,8 @@ import { buildPlatformAdOverview } from '../../lib/admin-ads.js';
 import { getPlatformAdSettings } from '../../lib/platform-ads.js';
 import { getAllCampaigns } from '../../lib/ad-campaigns.js';
 import { getAllBrandCampaigns } from '../../lib/brand-campaigns.js';
-import { presetRange, coerceRange, previousPeriod, toISODate, AD_RANGE_PRESETS, type AdRangePreset } from '../../lib/date-range.js';
+import { presetRange, coerceRange, previousPeriod, AD_RANGE_PRESETS, type AdRangePreset } from '../../lib/date-range.js';
+import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.js';
 import { store as platform } from '../../config/store.config.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
@@ -34,6 +35,9 @@ import AdminAlertsPanel from '../../components/admin/AdminAlertsPanel.astro';
 import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.astro';
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
 import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
+import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
+import { getMoneyEvents, type MoneyEventType } from '../../lib/money-events.js';
+import { reconcileOrders } from '../../lib/reconcile.js';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
 
@@ -52,7 +56,16 @@ const tabs = [
   { id: 'advertising', label: 'פרסום' },
   { id: 'messages', label: 'הודעות' },
   { id: 'alerts', label: 'התראות ושגיאות' },
+  { id: 'moneylog', label: 'יומן כספי' },
 ] as const;
+
+// Money journal (lib/money-events.ts). The type filter is a plain query param
+// validated against the known set — an unknown value shows everything rather than
+// an empty table, same fallback rule the other admin query parsers use.
+const moneyLogAll = getMoneyEvents(500);
+const requestedMoneyType = Astro.url.searchParams.get('mtype') ?? '';
+const moneyLogType = moneyLogAll.some((e) => e.type === requestedMoneyType) ? requestedMoneyType : '';
+const moneyLogEvents = moneyLogType ? moneyLogAll.filter((e) => e.type === moneyLogType as MoneyEventType) : moneyLogAll;
 
 const requestedPanel = Astro.url.searchParams.get('panel');
 const initialPanel = tabs.some((t) => t.id === requestedPanel) ? requestedPanel! : 'overview';
@@ -77,6 +90,12 @@ const productsByStore = getProductsByStoreMap();
 
 const overview = getPlatformOverview(sellers, stores, allOrders);
 const revenueByStore = getStoreRevenueMap(allOrders);
+
+// Cross-check every money headline against a second, independent computation over
+// the real orders (lib/reconcile.ts). Read-only and cheap, so it runs on each render
+// rather than behind a button — a reconciliation nobody clicks is a reconciliation
+// that never catches anything.
+const reconciliation = reconcileOrders(allOrders, stores.map((s) => s.slug));
 
 // ── "new since you last left this tab" (owner feedback 2026-07-28) ──
 // One boundary per tracked tab, read ONCE here and threaded into that tab's
@@ -181,9 +200,12 @@ const errorStoreOptions = getErrorStoreNames(errorsAll);
 // per-store math (buildPlatformPerformance → buildPerformanceSummary).
 const perfLang = getLang(Astro.cookies);
 const perfDir = getDir(perfLang);
-const perfToday = new Date();
-const perfFromISO = toISODate(new Date(perfToday.getFullYear(), perfToday.getMonth(), 1));
-const perfToISO = toISODate(perfToday);
+// Business calendar (business-day.ts) — the same one the per-store summaries bucket
+// orders by. date-range.ts's toISODate reads the RUNTIME's local calendar, which is
+// UTC on a production server and so quietly reintroduced the off-by-one-day this
+// range is supposed to avoid.
+const perfToISO = businessTodayISO();
+const perfFromISO = businessMonthStartISO(perfToISO);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
 const platformPerf = buildPlatformPerformance(
   allOrders,
@@ -429,6 +451,10 @@ const badgeCounts: Record<string, number> = {
             alpage: p > 1 ? String(p) : undefined,
           })}
         />
+      </div>
+
+      <div id="dash-panel-moneylog" class="dash-panel" role="tabpanel" aria-labelledby="tab-moneylog" hidden={initialPanel !== 'moneylog'}>
+        <AdminMoneyLogPanel events={moneyLogEvents} totalAll={moneyLogAll.length} activeType={moneyLogType} reconciliation={reconciliation} />
       </div>
     </div>
   </main>

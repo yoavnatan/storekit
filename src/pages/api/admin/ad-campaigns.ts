@@ -9,6 +9,7 @@ import {
 } from '../../../lib/ad-campaigns.js';
 import { withCampaignStats } from '../../../lib/ad-metrics.js';
 import { resolveAdRange } from '../../../lib/date-range.js';
+import { roundMoney } from '../../../lib/money.js';
 
 // Admin-facing twin of /api/seller/ad-campaigns: identical validation and
 // campaign shape, but gated by the admin cookie (requireAdmin) and able to
@@ -76,7 +77,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     storeSlug: store.slug,
     scope,
     platform,
-    monthlyBudget: Math.round(monthlyBudget * 100) / 100,
+    monthlyBudget: roundMoney(monthlyBudget),
     ...(durationDays ? { durationDays } : {}),
     ...(audience ? { audience } : {}),
     ...(resolvedProductId ? { productId: resolvedProductId, productName } : {}),
@@ -99,7 +100,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const updates: Partial<{ monthlyBudget: number; status: 'active' | 'paused' }> = {};
-  if (typeof monthlyBudget === 'number' && isFinite(monthlyBudget) && monthlyBudget >= 50) updates.monthlyBudget = Math.round(monthlyBudget * 100) / 100;
+  if (typeof monthlyBudget === 'number' && isFinite(monthlyBudget) && monthlyBudget >= 50) updates.monthlyBudget = roundMoney(monthlyBudget);
   if (status === 'active' || status === 'paused') updates.status = status;
   if (Object.keys(updates).length === 0) return json({ error: 'No valid fields to update' }, 400);
 

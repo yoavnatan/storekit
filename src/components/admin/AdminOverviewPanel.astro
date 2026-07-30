@@ -22,16 +22,24 @@ const { overview, attentionCount } = Astro.props;
     <dd>{overview.totalSellers}</dd>
   </button>
   <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="stores">
-    <dt>חנויות</dt>
+    {/* Real stores only — the showcase ones are counted separately rather than
+        folded in, so this card answers "how big is the marketplace" honestly. */}
+    <dt>חנויות{overview.demoStores > 0 ? ` (+${overview.demoStores} הדגמה)` : ''}</dt>
     <dd>{overview.totalStores}</dd>
   </button>
   <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="orders">
-    <dt>הזמנות</dt>
+    <dt>הזמנות ({overview.paidOrders} ששולמו)</dt>
     <dd>{overview.totalOrders}</dd>
   </button>
+  {/* GMV — what buyers paid sellers — NOT the platform's own income, which is
+      commission + subscriptions + ad margin and lives in the Performance tab under
+      its own heading. The old label ("סה"כ הכנסות פלטפורמה") read as the latter
+      while showing the former, and its number included shipping and ignored seller
+      discounts, so it could never be reconciled against the per-store rows in the
+      Stores tab either. */}
   <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="orders">
-    <dt>סה"כ הכנסות פלטפורמה</dt>
-    <dd>{formatPrice(overview.totalRevenue)}</dd>
+    <dt>מחזור מכירות (GMV)</dt>
+    <dd>{formatPrice(overview.gmv)}</dd>
   </button>
   {attentionCount > 0 && (
     <button type="button" class="admin-stat-card admin-stat-card--warning w-full text-inherit font-inherit cursor-pointer" data-goto-panel="attention">

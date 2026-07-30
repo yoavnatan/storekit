@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { store as platform } from '../config/store.config.js';
 import { getIndexableStores } from '../lib/stores.js';
+import { stripTrailingSlashes } from '../lib/url-base.js';
 
 // /llms.txt — the emerging convention (llmstxt.org) for giving AI answer
 // engines a curated, human-readable map of the site, the "AIO" companion to
@@ -21,7 +22,7 @@ import { getIndexableStores } from '../lib/stores.js';
 const STORE_LIST_CAP = 50;
 
 export async function GET(_ctx: APIContext): Promise<Response> {
-  const baseUrl = platform.url.replace(/\/+$/, '');
+  const baseUrl = stripTrailingSlashes(platform.url);
   const stores = getIndexableStores();
   const shown = stores.slice(0, STORE_LIST_CAP);
 

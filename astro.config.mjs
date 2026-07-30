@@ -65,6 +65,19 @@ export default defineConfig({
     // routing (map `demo-shop.test` → 127.0.0.1 in /etc/hosts). Ignored by the production build.
     server: {
       allowedHosts: ['.test'],
+      // Dev-only: `data/` is the JSON "database", and the app WRITES to it while
+      // serving — a store or product page view stamps store-pageviews.json and
+      // analytics-events.json. Vite watches the project root, so each of those
+      // writes looked like a source edit and forced a full reload, which served
+      // the page again, which counted another view, which wrote again: a browser
+      // tab left open on any store page reloaded itself every few seconds
+      // (measured 5 reloads in 20s). It also masked real work, since a reload
+      // mid-rebuild serves a half-stale script bundle. Nothing in data/ is ever
+      // imported as a module — it's read at request time — so ignoring it costs
+      // no HMR. Production is unaffected: the build doesn't watch anything.
+      watch: {
+        ignored: ['**/data/**'],
+      },
     },
   },
 });

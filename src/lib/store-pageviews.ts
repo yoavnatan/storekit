@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Mutex } from './mutex.js';
+import { businessDayISO, calendarDayISO } from './business-day.js';
 
 const PAGEVIEWS_PATH = path.join(process.cwd(), 'data/store-pageviews.json');
 
@@ -39,8 +40,13 @@ function normalizeBucket(v: StoredBucket | undefined): DayBucket {
   return { total: v.total ?? 0, visitors: Array.isArray(v.visitors) ? v.visitors : [] };
 }
 
+/** The BUSINESS day (business-day.ts), not the UTC one. These buckets share an x-axis
+ *  with revenue in the seller's performance tab, and the conversion rate divides one
+ *  by the other — so a visit and the purchase it produced, both at 01:00 local, have
+ *  to land in the same bucket. Under UTC they didn't: the visit went to the previous
+ *  day and the order stayed on today. */
 function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+  return businessDayISO(new Date());
 }
 
 const pageviewMutex = new Mutex();
@@ -86,7 +92,9 @@ function dateRange(fromISO: string, toISO: string): string[] {
   const cur = new Date(fromISO + 'T00:00:00Z');
   const end = new Date(toISO + 'T00:00:00Z');
   while (cur <= end) {
-    dates.push(cur.toISOString().slice(0, 10));
+    // A synthetic calendar cursor, not a moment in time (see business-day.ts —
+    // mixing the two families up is the bug that file exists to prevent).
+    dates.push(calendarDayISO(cur));
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return dates;

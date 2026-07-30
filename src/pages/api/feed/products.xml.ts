@@ -6,6 +6,7 @@ import { getCategoriesByStoreId, categoryPath } from '../../../lib/store-categor
 import { getPurchasedCountsByStoreSlug } from '../../../lib/orders.js';
 import { store as platform } from '../../../config/store.config.js';
 import { buildFeedItems, toMerchantXml, type FeedItem } from '../../../lib/product-feed.js';
+import { stripTrailingSlashes } from '../../../lib/url-base.js';
 
 // Platform-wide product feed (CURRENT_TASK.md item 14) — the single bulk export
 // Google Merchant Center / Meta Catalog fetch on a schedule to power the
@@ -31,7 +32,7 @@ import { buildFeedItems, toMerchantXml, type FeedItem } from '../../../lib/produ
 // output shape.
 
 export async function GET(_ctx: APIContext): Promise<Response> {
-  const baseUrl = platform.url.replace(/\/+$/, '');
+  const baseUrl = stripTrailingSlashes(platform.url);
   const items: FeedItem[] = [];
 
   for (const store of getIndexableStores()) {
@@ -46,6 +47,7 @@ export async function GET(_ctx: APIContext): Promise<Response> {
         categoryPath: cPath,
         purchasedUnits: purchased[product.id],
         storeTags: store.categories,
+        sale: store.sale,
       }));
     }
   }

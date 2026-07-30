@@ -3,6 +3,7 @@ import { inferAudienceGender, inferAgeGroup } from './audience-infer.js';
 import { deriveProductLabels } from './product-labels.js';
 import { generateCombos, comboKey, canonicalDimName } from './variant-combo.js';
 import { isColorVariant } from './color-variants.js';
+import { resolvePrice, type StoreSale } from './discounts.js';
 
 // Maps a StoreProduct to the standard Google Merchant Center / Meta Catalog
 // product-feed attributes. The whole point (see CURRENT_TASK.md item 14): the
@@ -30,7 +31,12 @@ export interface FeedAttributes {
   title: string;
   description: string;
   availability: 'in_stock' | 'out_of_stock';
-  price: number; // ILS
+  price: number; // ILS — the REGULAR price (what `sale_price` is struck through against)
+  /** Present only while the product is discounted (discounts.ts). Google/Meta show it as the
+   *  live price with `price` crossed out, which is exactly the storefront's own treatment —
+   *  and a feed that omitted it would advertise a price the landing page contradicts, which
+   *  is a Merchant Center disapproval, not just a cosmetic mismatch. */
+  salePrice?: number;
   brand: string;
   condition: 'new' | 'used' | 'refurbished';
   gender: 'male' | 'female' | 'unisex';
@@ -44,6 +50,8 @@ export interface FeedAttributes {
 
 export interface FeedContext {
   storeName: string;
+  /** The product's store-wide sale, if running — same input the storefront resolves with. */
+  sale?: StoreSale | null;
   categoryPath?: string;
   /** Units sold — drives the performance custom label. */
   purchasedUnits?: number;
@@ -65,9 +73,13 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
   const gtin = undefined; // no barcode field yet — optional in the feed spec
   const identifierExists = Boolean(gtin || (mpn && brand));
 
+  const pv = resolvePrice(product, ctx.sale);
+
   // Five stable, positional segmentation labels — all zero-touch (product-labels.ts).
+  // Bucketed on the price a shopper would PAY, so a discounted product segments into the
+  // band the ad actually competes in.
   const customLabels = deriveProductLabels({
-    price: product.price,
+    price: pv.price,
     stock: product.stock,
     createdAt: product.createdAt,
     purchasedUnits: ctx.purchasedUnits,
@@ -81,7 +93,8 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
     title: product.name,
     description: product.description,
     availability: product.stock > 0 ? 'in_stock' : 'out_of_stock',
-    price: product.price,
+    price: pv.basePrice,
+    ...(pv.isDiscounted ? { salePrice: pv.price } : {}),
     brand,
     condition: 'new',
     gender,
@@ -184,6 +197,7 @@ function itemXml(it: FeedItem, currency: string): string {
   for (const a of it.additionalImageLinks) lines.push(g('additional_image_link', a));
   lines.push(g('availability', it.availability));
   lines.push(g('price', `${it.price.toFixed(2)} ${currency}`));
+  if (it.salePrice !== undefined) lines.push(g('sale_price', `${it.salePrice.toFixed(2)} ${currency}`));
   lines.push(g('brand', it.brand));
   lines.push(g('condition', it.condition));
   lines.push(g('gender', it.gender));

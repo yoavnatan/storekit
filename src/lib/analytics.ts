@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Mutex } from './mutex.js';
+import { businessDayISO, calendarDayISO } from './business-day.js';
 
 const ANALYTICS_PATH = path.join(process.cwd(), 'data/analytics-events.json');
 
@@ -49,8 +50,12 @@ function normalizeBucket(v: EventBucket | undefined): EventBucket {
   };
 }
 
+/** The BUSINESS day (business-day.ts). The funnel counts add_to_cart against purchase,
+ *  and purchases are bucketed on the business calendar — under UTC a late-night
+ *  session could file its cart event on one day and its purchase on the next, which
+ *  shows up as a conversion rate over 100% on one day and a hole on the other. */
 function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+  return businessDayISO(new Date());
 }
 
 const analyticsMutex = new Mutex();
@@ -89,7 +94,9 @@ function datesInRange(fromISO: string, toISO: string): string[] {
   const cur = new Date(fromISO + 'T00:00:00Z');
   const end = new Date(toISO + 'T00:00:00Z');
   while (cur <= end) {
-    dates.push(cur.toISOString().slice(0, 10));
+    // A synthetic calendar cursor, not a moment in time (see business-day.ts —
+    // mixing the two families up is the bug that file exists to prevent).
+    dates.push(calendarDayISO(cur));
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return dates;

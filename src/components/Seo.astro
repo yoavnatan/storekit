@@ -11,6 +11,7 @@
  */
 import { store } from '../config/store.config.js';
 import { jsonForScript } from '../lib/json-script.js';
+import { stripTrailingSlashes } from '../lib/url-base.js';
 
 const {
   title,
@@ -31,7 +32,7 @@ const fullTitle = title ? `${title} | ${store.name}` : `${store.name} — ${stor
 // A page may pass an explicit `canonical` to point elsewhere — a store/product with an active
 // custom domain sets it to the seller's own domain (see custom-domain.ts → storeCanonicalUrl), so
 // the SEO credit consolidates there instead of on the platform path.
-const canonicalPath = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const canonicalPath = stripTrailingSlashes(Astro.url.pathname) || '/';
 const canonical = canonicalOverride ?? new URL(canonicalPath, store.url).href;
 const ogImage = image ? new URL(image, store.url).href : '';
 ---

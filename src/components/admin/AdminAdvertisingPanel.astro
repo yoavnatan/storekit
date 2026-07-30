@@ -216,7 +216,9 @@ const feedTip = 'קובץ אחד מרוכז שמכיל את כל המוצרים 
   {/* ── Baseline budget control ── */}
   <h3 class="admin-panel-subtitle admin-ads-heading">
     תקציב הקמפיין הבסיסי
-    <InfoTip text="הפרסום שאנחנו מריצים על כל המוצרים, על חשבוננו. התקציב חד-פעמי (lifetime) — כשנגמר הפרסום נעצר לבד עד שתזרים עוד. סטטוס נוכחי: " + (baseline.status === 'paused' ? 'מושהה.' : 'פעיל.') />
+    <InfoTip
+      text={`הפרסום שאנחנו מריצים על כל המוצרים, על חשבוננו. התקציב חד-פעמי (lifetime) — כשנגמר הפרסום נעצר לבד עד שתזרים עוד. סטטוס נוכחי: ${baseline.status === 'paused' ? 'מושהה.' : 'פעיל.'}`}
+    />
   </h3>
   {baseline.lifetimeBudget > 0 && (
     <div class="admin-ads-progress" role="progressbar" aria-valuenow={baseline.budgetUsedPct} aria-valuemin={0} aria-valuemax={100} aria-label="ניצול תקציב">

@@ -3,6 +3,7 @@ import type { AdCampaign } from './ad-campaigns.js';
 import type { BrandCampaign } from './brand-campaigns.js';
 import type { PlatformAdSettings } from './platform-ads.js';
 import { baselineImpressionsInRange, campaignStatsInRange, brandStatsInRange } from './ad-metrics.js';
+import { roundMoney } from './money.js';
 import { presetRange } from './date-range.js';
 
 // Platform-level advertising overview for the admin Advertising tab
@@ -208,8 +209,8 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
     impressions: totalImpressions,
     clicks: totalClicks,
     ctr: totalImpressions > 0 ? Math.round((totalClicks / totalImpressions) * 1000) / 10 : 0,
-    cpc: totalClicks > 0 ? Math.round((totalSpend / totalClicks) * 100) / 100 : 0,
-    cpm: totalImpressions > 0 ? Math.round((totalSpend / totalImpressions) * 1000 * 100) / 100 : 0,
+    cpc: totalClicks > 0 ? roundMoney(totalSpend / totalClicks) : 0,
+    cpm: totalImpressions > 0 ? roundMoney((totalSpend / totalImpressions) * 1000) : 0,
   };
 
   // ── Exposure: the owner's simple "where is exposure coming from" view ──

@@ -5,6 +5,7 @@ import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { store as platform } from '../config/store.config.js';
 import { buildUrlSetXml, toSitemapDate, type SitemapEntry } from '../lib/sitemap.js';
 import { isStoreReady } from '../lib/store-readiness.js';
+import { stripTrailingSlashes } from '../lib/url-base.js';
 
 // Dynamic content sitemap for the SEO pages that @astrojs/sitemap CANNOT see:
 // every store page (/[slug]) and product page (/[slug]/[product]) is
@@ -26,7 +27,7 @@ import { isStoreReady } from '../lib/store-readiness.js';
 // artifact with the same output shape.
 
 export async function GET(_ctx: APIContext): Promise<Response> {
-  const baseUrl = platform.url.replace(/\/+$/, '');
+  const baseUrl = stripTrailingSlashes(platform.url);
   const entries: SitemapEntry[] = [];
 
   for (const s of getIndexableStores()) {

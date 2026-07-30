@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { safeRedirectPath } from './safe-redirect.js';
+import { roundMoney } from './money.js';
 import { sanitizeImageUrl as sanitizeImageUrlShared } from './image-url.js';
 
 const CAMPAIGNS_PATH = path.join(process.cwd(), 'data/brand-campaigns.json');
@@ -60,13 +62,19 @@ export function parseBrandDuration(v: unknown): BrandDuration | undefined {
   return BRAND_DURATION_OPTIONS.includes(n as BrandDuration) ? (n as BrandDuration) : undefined;
 }
 
-/** Only a relative path (starts with "/") or an http(s) URL is allowed — blocks
- *  javascript:/data: and other unsafe schemes in a click destination. Falls back
- *  to the objective's default when empty/invalid. */
+/** Only an in-site path or an http(s) URL is allowed — blocks javascript:/data: and other
+ *  unsafe schemes in a click destination. Falls back to the objective's default when
+ *  empty/invalid.
+ *
+ *  The path branch goes through `safeRedirectPath` rather than a bare `startsWith('/')`:
+ *  that check passes `//evil.com`, which a browser reads as a HOST, so a "relative path"
+ *  destination could quietly point off-site (2026-07-29 — same class as the /api/lang
+ *  open redirect; see lib/safe-redirect.ts). Absolute destinations are still allowed here,
+ *  deliberately — an ad may legitimately land on an external page. */
 export function sanitizeDestination(v: unknown, objective: BrandObjective): string {
   const s = typeof v === 'string' ? v.trim() : '';
   if (!s) return defaultDestination(objective);
-  if (s.startsWith('/')) return s;
+  if (s.startsWith('/')) return safeRedirectPath(s, defaultDestination(objective));
   try {
     const u = new URL(s);
     if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
@@ -184,13 +192,13 @@ export function getMockBrandStats(campaign: BrandCampaign): MockBrandStats {
   if (campaign.status === 'paused') return { impressions: 0, clicks: 0, ctr: 0, spend: 0, conversions: 0 };
 
   const daysRunning = Math.max(1, Math.min(30, Math.floor((Date.now() - new Date(campaign.createdAt).getTime()) / 86400000) + 1));
-  const spend = Math.round((campaign.monthlyBudget / 30) * daysRunning * 100) / 100;
+  const spend = roundMoney((campaign.monthlyBudget / 30) * daysRunning);
 
   const rand = seededFraction(campaign.id);
   // Brand/awareness ads run cheaper CPMs than shopping but convert less directly.
   const cpm = campaign.platform === 'google' ? 10 + rand * 8 : 8 + rand * 7;
   const impressions = Math.round((spend / cpm) * 1000);
-  const ctr = Math.round((0.7 + rand * 1.6) * 100) / 100; // %
+  const ctr = Math.round((0.7 + rand * 1.6) * 1000) / 1000; // %, not money — a rate, so not roundMoney
   const clicks = Math.round(impressions * (ctr / 100));
   const conversions = Math.round(clicks * (0.02 + rand * 0.05)); // 2%–7% of clicks act
 

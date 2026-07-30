@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Mutex } from './mutex.js';
+import { businessDayISO, calendarDayISO } from './business-day.js';
 
 const PRODUCT_PAGEVIEWS_PATH = path.join(process.cwd(), 'data/product-pageviews.json');
 
@@ -34,8 +35,11 @@ function writeAll(data: ProductPageviewStore): void {
   fs.writeFileSync(PRODUCT_PAGEVIEWS_PATH, JSON.stringify(data, null, 2));
 }
 
+/** The BUSINESS day — same reason as store-pageviews.ts: these buckets are plotted
+ *  against order revenue on one axis and divided into it for the conversion rate, so
+ *  a view and the purchase it led to must land in the same bucket. */
 function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+  return businessDayISO(new Date());
 }
 
 const productPageviewMutex = new Mutex();
@@ -58,7 +62,9 @@ function dateRange(fromISO: string, toISO: string): string[] {
   const cur = new Date(fromISO + 'T00:00:00Z');
   const end = new Date(toISO + 'T00:00:00Z');
   while (cur <= end) {
-    dates.push(cur.toISOString().slice(0, 10));
+    // A synthetic calendar cursor, not a moment in time (see business-day.ts —
+    // mixing the two families up is the bug that file exists to prevent).
+    dates.push(calendarDayISO(cur));
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return dates;
