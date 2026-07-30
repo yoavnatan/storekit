@@ -98,7 +98,7 @@ const shipLabel: Record<string, string> = {
       padding: 2rem 1.5rem 4rem;
       display: grid;
       grid-template-columns: 220px 1fr;
-      gap: 2rem;
+      gap: 1.25rem;
       align-items: start;
     }
 
@@ -319,7 +319,7 @@ const shipLabel: Record<string, string> = {
        row (it's calibrated for compact grid cards) — a border tint is
        enough to signal "clickable" here. */
     .o-card:hover { border-color: color-mix(in srgb, var(--color-text) 20%, var(--color-border)); }
-    .o-thumbs { display: flex; flex-direction: row-reverse; margin-inline-end: 0.5rem; flex-shrink: 0; }
+    .o-thumbs { grid-area: thumbs; display: flex; flex-direction: row-reverse; margin-inline-end: 0.5rem; flex-shrink: 0; }
     /* Collapsed-card thumbnails are visible immediately (no expand click
        gating it, unlike .o-item__img-wrap below) so they need their own
        shimmer-until-decoded wrapper — same o-shimmer keyframe/pattern. */
@@ -334,20 +334,38 @@ const shipLabel: Record<string, string> = {
     .o-thumb-wrap.loaded { background: var(--color-surface); animation: none; }
     .o-thumb { width: 52px; height: 52px; border-radius: var(--radius); object-fit: cover; border: 1px solid var(--color-border); opacity: 0; transition: opacity 0.18s; display: block; }
     .o-thumb-wrap.loaded .o-thumb { opacity: 1; }
+    /* The id/date line is its own full-width row ABOVE the thumbs at every
+       width (user, 2026-07-30: it should sit in the same place on every card,
+       not move between breakpoints). It has to leave the text column to do
+       that, hence grid + areas rather than a flex row: with three preview
+       images the text column is only ~145px on a 375px screen while
+       "#A1B2C3D4" + a date-with-time need ~165px, so inline they met with no
+       gap at all. A wider gap would only move that collision to a longer id.
+       Areas (not source order) do the placing, so the thumbs stay in the markup
+       where they belong; the thumb strip keeps its own margin-inline-end
+       instead of a column-gap, because an order with no images renders no
+       .o-thumbs at all and a gap would leave a phantom indent in its place. */
     .o-card__hd {
-      display: flex; align-items: center; gap: 0.5rem;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        "meta   meta meta"
+        "thumbs main chevron";
+      align-items: center;
+      row-gap: 0.5rem;
       padding: 0.9rem 1rem; cursor: pointer; user-select: none;
     }
     .o-card__hd:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-    .o-card__hd-main { flex: 1; min-width: 0; }
-    .o-card__hd-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem; }
+    .o-card__hd-main { grid-area: main; min-width: 0; }
+    .o-card__hd-top { grid-area: meta; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
     .o-card__chevron {
+      grid-area: chevron; margin-inline-start: 0.5rem;
       flex-shrink: 0; color: var(--color-muted);
       transition: transform 220ms cubic-bezier(0.34,1.56,0.64,1);
     }
     .o-card--open .o-card__chevron { transform: rotate(180deg); }
-    .o-id   { font-size: 0.8rem; font-weight: 700; font-family: monospace; color: var(--color-text); }
-    .o-date { font-size: 0.74rem; color: var(--color-muted); }
+    .o-id   { font-size: 0.8rem; font-weight: 700; font-family: monospace; color: var(--color-text); white-space: nowrap; }
+    .o-date { font-size: 0.74rem; color: var(--color-muted); white-space: nowrap; }
     .o-card__stores { font-size: 0.74rem; line-height: 1.4; margin-bottom: 0.3rem; color: var(--color-muted); }
     .o-items { font-size: 0.79rem; color: var(--color-muted); margin-bottom: 0.45rem; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .o-foot { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
@@ -472,7 +490,10 @@ const shipLabel: Record<string, string> = {
     .o-card-skel__thumb { width: 52px; height: 52px; border-radius: var(--radius); flex-shrink: 0; }
     .o-card-skel__lines { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
     .o-card-skel__line { height: 0.7rem; }
-    .o-card-skel__line--id { width: 35%; }
+    /* Mirrors .o-card__hd's own meta row: its own line above the thumb, at the
+       same 0.5rem gap. A skeleton that lays out differently from the card it
+       stands in for makes the swap read as a jump. */
+    .o-card-skel__line--id { width: 35%; margin-bottom: 0.5rem; }
     .o-card-skel__line--stores { width: 55%; }
     .o-card-skel__line--items { width: 80%; }
     .o-card-skel__line--foot { width: 30%; margin-top: 0.15rem; }
@@ -667,11 +688,13 @@ const shipLabel: Record<string, string> = {
                       ))}
                     </div>
                   )}
+                  {/* Sibling of .o-card__hd-main, not a child: it's a grid area
+                      of .o-card__hd, so it spans the full card above the thumbs. */}
+                  <div class="o-card__hd-top">
+                    <span class="o-id">#{o.checkoutRef ?? o.id.slice(0, 8).toUpperCase()}</span>
+                    <span class="o-date">{fmtDate(o.createdAt)}</span>
+                  </div>
                   <div class="o-card__hd-main">
-                    <div class="o-card__hd-top">
-                      <span class="o-id">#{o.checkoutRef ?? o.id.slice(0, 8).toUpperCase()}</span>
-                      <span class="o-date">{fmtDate(o.createdAt)}</span>
-                    </div>
                     <div class="o-card__stores">
                       {storeEntries.map((s, idx) => (
                         <Fragment>
@@ -735,7 +758,8 @@ const shipLabel: Record<string, string> = {
       </div>
 
       <!-- Messages -->
-      <div id="panel-messages" class="my-panel" data-user-id={userId} hidden>
+      <!-- msg-cq: the table below collapses to cards by THIS element's width, not the viewport's (see utils.css) -->
+      <div id="panel-messages" class="my-panel msg-cq" data-user-id={userId} hidden>
         <h1 class="panel-head">{t.buyerDashboard.messagesTitle}</h1>
         {messages.length === 0
           ? <p class="empty">{t.buyerDashboard.noMessages}</p>
@@ -776,7 +800,7 @@ const shipLabel: Record<string, string> = {
                         </div>
                       )}
                     </th>
-                    <th class="msg-table__th">
+                    <th class="msg-table__th msg-table__th--from">
                       <div style="display:flex;align-items:center;gap:0.25rem">
                         {t.buyerDashboard.msgColStore}
                         <button type="button" class="combo-filter-btn" data-filter-funnel-col="store" aria-expanded="false" aria-haspopup="true" aria-label={`${t.dashboard.filterByLabel ?? 'סנן לפי'} ${t.buyerDashboard.msgColStore}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
@@ -784,9 +808,9 @@ const shipLabel: Record<string, string> = {
                         </button>
                       </div>
                     </th>
-                    <th class="msg-table__th">{t.messages.subject}</th>
+                    <th class="msg-table__th msg-table__th--subject">{t.messages.subject}</th>
                     <th class="msg-table__th">{t.messages.content}</th>
-                    <th class="msg-table__th">
+                    <th class="msg-table__th msg-table__th--product">
                       <div style="display:flex;align-items:center;gap:0.25rem">
                         <button type="button" class="sort-btn" data-sort-col="product" aria-label={`${t.dashboard.sortByLabel} ${t.buyerDashboard.msgColProduct}`}>{t.buyerDashboard.msgColProduct}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                         <button type="button" class="combo-filter-btn" data-filter-funnel-col="product" aria-expanded="false" aria-haspopup="true" aria-label={`${t.dashboard.filterByLabel ?? 'סנן לפי'} ${t.buyerDashboard.msgColProduct}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
@@ -794,7 +818,7 @@ const shipLabel: Record<string, string> = {
                         </button>
                       </div>
                     </th>
-                    <th class="msg-table__th">
+                    <th class="msg-table__th msg-table__th--date">
                       <button type="button" class="sort-btn" data-sort-col="date" aria-label={`${t.dashboard.sortByLabel} ${t.dashboard.orderDate}`}>{t.dashboard.orderDate}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
                     </th>
                     <th class="msg-table__th msg-table__th--actions"></th>
@@ -1862,11 +1886,11 @@ const shipLabel: Record<string, string> = {
     return `<div class="o-card">
       <div class="o-card__hd" role="button" tabindex="0" aria-expanded="false">
         ${thumbsHtml}
+        <div class="o-card__hd-top">
+          <span class="o-id">#${escB(o.checkoutRef ?? o.id.slice(0, 8).toUpperCase())}</span>
+          <span class="o-date">${escB(fmtDateBuyer(o.createdAt))}</span>
+        </div>
         <div class="o-card__hd-main">
-          <div class="o-card__hd-top">
-            <span class="o-id">#${escB(o.checkoutRef ?? o.id.slice(0, 8).toUpperCase())}</span>
-            <span class="o-date">${escB(fmtDateBuyer(o.createdAt))}</span>
-          </div>
           <div class="o-card__stores">${storesHtml}</div>
           <div class="o-items">${itemsLine}</div>
           <div class="o-foot">
@@ -1889,10 +1913,10 @@ const shipLabel: Record<string, string> = {
   function renderOrderSkeletons(count: number): string {
     return Array.from({ length: count }, () => `
       <div class="o-card-skel" aria-hidden="true">
+        <div class="o-skel-block o-card-skel__line o-card-skel__line--id"></div>
         <div class="o-card-skel__row">
           <div class="o-skel-block o-card-skel__thumb"></div>
           <div class="o-card-skel__lines">
-            <div class="o-skel-block o-card-skel__line o-card-skel__line--id"></div>
             <div class="o-skel-block o-card-skel__line o-card-skel__line--stores"></div>
             <div class="o-skel-block o-card-skel__line o-card-skel__line--items"></div>
             <div class="o-skel-block o-card-skel__line o-card-skel__line--foot"></div>

@@ -55,7 +55,10 @@
 .product-detail-page #main-img-wrap:hover { box-shadow: var(--shadow-card-hover); }
 
 /* Skeleton shimmer while the initial image loads — @keyframes skeleton-shimmer
-   lives in utils.css; .is-loading is removed by JS once the image fires load/error. */
+   lives in utils.css; .is-loading is removed by JS once the image fires load/error.
+   The shimmer is a BACKGROUND on the wrap, so the image simply paints over it the
+   moment it has pixels — the image is never held at opacity:0 waiting for JS (see
+   the note in store-card.css for what that cost on the homepage). */
 .product-detail-page #main-img-wrap.is-loading,
 .product-detail-page .thumb-btn.is-loading {
   background: linear-gradient(
@@ -67,8 +70,6 @@
   background-size: 400% 100%;
   animation: skeleton-shimmer 1.4s ease infinite;
 }
-.product-detail-page #main-img-wrap.is-loading #main-img,
-.product-detail-page .thumb-btn.is-loading img { opacity: 0; }
 
 .product-detail-page .thumb-btn { background: var(--color-surface); box-shadow: var(--shadow-xs); }
 

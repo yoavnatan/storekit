@@ -1002,15 +1002,20 @@ body:has(.store-page) { background: var(--color-surface); }
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.3s ease, opacity 0.25s ease;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.3s ease;
 }
 
-/* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css */
+/* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css. It sits
+   UNDER the images; see the note in store-card.css for why the image's visibility
+   must never wait on JS. The deferred slides hold a transparent blank pixel until
+   they get their real src, so the shimmer still shows through them. */
 .product-card__img-wrap.is-loading::before {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 0;
   background: linear-gradient(
     90deg,
     var(--color-surface) 25%,

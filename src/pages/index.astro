@@ -271,25 +271,89 @@ const jsonLd = {
            is .home-body, which spans every panel, so the bar stays pinned for
            the whole tabbed region. z-30 keeps it under the header (z-50) while
            still covering the shelves scrolling beneath it. ── -->
-      <div class="sticky top-[var(--site-header-h,3.4rem)] z-30 bg-[var(--color-bg)]">
+      <!-- `--dash-tab-fade-bg`: initDashTabs() injects two edge-fade overlays into
+           every `.dash-tabs`, and each paints the strip's OWN background over the
+           tab dissolving under it. The default is `--color-surface`, right for the
+           two dashboards; this strip is `--color-bg`, so it was painting white
+           over near-white — a fade that measured and toggled correctly while
+           being, in practice, no signal at all. That is half of why nothing on a
+           375px viewport said a fourth tab existed (CURRENT_TASK.md → סשן ב׳ 1);
+           the arrows below are the half that is actually loud enough. -->
+      <div id="home-tabs-bar" class="sticky top-[var(--site-header-h,3.4rem)] z-30 bg-[var(--color-bg)] [--dash-tab-fade-bg:var(--color-bg)]">
         <div class="container">
-          <div class="dash-tabs !px-0 relative" role="tablist">
-            {tabs.map((tab) => (
-              <button
-                class={`dash-tab home-tab${activeTab === tab.id ? ' dash-tab--active' : ''}
-                  rounded-[var(--radius-sm)] !border-b-0
-                  [transition:color_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
-                  hover:text-[color:var(--color-text)] active:scale-[0.97]`}
-                role="tab"
-                id={`tab-${tab.id}`}
-                data-panel={tab.id}
-                aria-selected={activeTab === tab.id}
-                tabindex={activeTab === tab.id ? 0 : -1}
-              >
-                {tab.label}
-              </button>
-            ))}
-            <span class="home-tabs-indicator" aria-hidden="true"></span>
+          <!-- The four Hebrew labels need 441px and a 375px viewport gives the
+               strip 343, so it scrolls — and a fade alone is a quiet signal on a
+               background this light. The arrows are the loud one, and they are
+               positioned against THIS wrapper, not the strip: the strip is the
+               scroll container, so an absolute child of it would scroll away with
+               the tabs. Their show/hide is driven purely off the `at-start`/
+               `at-end` classes initDashTabs() already maintains (see home.css), so
+               arrows and fades can never disagree — one measurement, two signals,
+               the same rule lib/chip-scroller.ts follows for the chip rows.
+
+               `tabindex="-1"`: an arrow at a reached edge is invisible but still
+               in the DOM, and a focus stop on something nobody can see is a worse
+               outcome than no focus stop at all. Nothing is lost — the tabs are
+               already fully operable from the keyboard (arrow keys, and
+               activateTab() scrolls the one it lands on into view), so these are
+               purely a pointer affordance. They keep their label for AT users
+               exploring by touch. -->
+          <div class="home-tabs-wrap relative">
+            <button
+              type="button"
+              class="home-tabs-arrow home-tabs-arrow--prev
+                w-7 h-7 rounded-full border-[1.5px] border-[color:var(--color-border)]
+                bg-[color:var(--color-surface)] text-[color:var(--color-text)]
+                flex items-center justify-center cursor-pointer
+                [transition:box-shadow_0.15s,opacity_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
+                hover:shadow-[var(--shadow-card-hover)]"
+              tabindex="-1"
+              aria-label={lang === 'he' ? 'הלשוניות הקודמות' : 'Previous tabs'}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" aria-hidden="true"
+                   style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <!-- `--dash-tab-pad:0` follows the `!px-0` right above it: the fade
+                 overlay sizes and insets itself off that variable so it can reach
+                 past a padded strip's gutter. At its 1.5rem default on a strip
+                 with no padding the gradient began 24px OUTSIDE the strip and was
+                 already half-spent by the time it crossed the first tab. -->
+            <div class="dash-tabs !px-0 [--dash-tab-pad:0px] relative" role="tablist">
+              {tabs.map((tab) => (
+                <button
+                  class={`dash-tab home-tab${activeTab === tab.id ? ' dash-tab--active' : ''}
+                    rounded-[var(--radius-sm)] !border-b-0
+                    [transition:color_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
+                    hover:text-[color:var(--color-text)] active:scale-[0.97]`}
+                  role="tab"
+                  id={`tab-${tab.id}`}
+                  data-panel={tab.id}
+                  aria-selected={activeTab === tab.id}
+                  tabindex={activeTab === tab.id ? 0 : -1}
+                >
+                  {tab.label}
+                </button>
+              ))}
+              <span class="home-tabs-indicator" aria-hidden="true"></span>
+            </div>
+            <button
+              type="button"
+              class="home-tabs-arrow home-tabs-arrow--next
+                w-7 h-7 rounded-full border-[1.5px] border-[color:var(--color-border)]
+                bg-[color:var(--color-surface)] text-[color:var(--color-text)]
+                flex items-center justify-center cursor-pointer
+                [transition:box-shadow_0.15s,opacity_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
+                hover:shadow-[var(--shadow-card-hover)]"
+              tabindex="-1"
+              aria-label={lang === 'he' ? 'הלשוניות הבאות' : 'More tabs'}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" aria-hidden="true"
+                   style={lang === 'he' ? 'transform:scaleX(-1)' : ''}>
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -607,6 +671,9 @@ const jsonLd = {
   import { clearLastStore } from '../lib/last-store.js';
   import { initImageSkeletons } from '../lib/img-skeleton.js';
   import { initDashTabs } from '../scripts/dashboard/ui.js';
+  // Same JS-driven scroll the dashboard and the store page use — never native
+  // smooth-scroll on this RTL site (AI_INSTRUCTIONS → Architecture → Scroll).
+  import { animateScrollTo } from '../scripts/dashboard/scroll-utils.js';
   import { playReveal, armBelowFoldReveal } from '../lib/scroll-reveal.js';
 
   // Landing on the platform home is a deliberate exit from any store context —
@@ -636,7 +703,17 @@ const jsonLd = {
         const t = tab.getBoundingClientRect();
         const l = tablist!.getBoundingClientRect();
         indicator!.style.width = `${t.width}px`;
-        indicator!.style.transform = `translateX(${t.left - l.left}px)`;
+        // `+ scrollLeft` is not a nicety: the indicator is absolutely positioned
+        // inside the strip, so it lives in the strip's SCROLLED coordinates,
+        // while the two rects are viewport ones. Without it a recompute that
+        // happened while the strip was scrolled sideways (resize, late font,
+        // tab switch) counted the scroll offset twice and parked the bar a full
+        // scroll-width away from its tab — measured 96px off, i.e. under a
+        // different tab entirely, on a 375px viewport (2026-07-30). It was
+        // unreachable before only because nothing much scrolled this strip;
+        // the arrows below make that the normal case. RTL needs no branch —
+        // its scrollLeft is negative and the same addition undoes it.
+        indicator!.style.transform = `translateX(${t.left - l.left + tablist!.scrollLeft}px)`;
       }
 
       // Position under the active tab first, *then* reveal — so the bar fades
@@ -677,6 +754,77 @@ const jsonLd = {
       // beam fades in over 0.12s, so waiting for the next rAF would light it at
       // wherever the pointer left this tab last time.
       tablist.addEventListener('pointerover', aimBeam);
+
+      // ── Tab-strip scroll arrows (CURRENT_TASK.md → סשן ב׳ 1) — the four tab
+      // labels need 441px and a 375px viewport gives the strip 343, so the last
+      // one is off-screen with nothing to say it exists. Show/hide is pure CSS
+      // off initDashTabs()'s own at-start/at-end classes (home.css), so all that
+      // is left here is the scroll itself.
+      // One tab per click, measured live rather than at load: a step in pixels
+      // guessed up front lands mid-label the moment the labels differ in width
+      // (they range 94–118px here) or the language changes.
+      const stripRtl = getComputedStyle(tablist).direction === 'rtl';
+      const tabStep = (): number => Math.max(...homeTabs.map((t) => t.offsetWidth));
+      const scrollTabs = (towardEnd: boolean): void => {
+        // RTL runs scrollLeft negative toward the end, so the sign flips — same
+        // mapping lib/chip-scroller.ts makes for the chip rows.
+        const dir = towardEnd === stripRtl ? -1 : 1;
+        tablist!.scrollBy({ left: dir * tabStep(), behavior: 'smooth' });
+      };
+      document.querySelector('.home-tabs-arrow--prev')?.addEventListener('click', () => scrollTabs(false));
+      document.querySelector('.home-tabs-arrow--next')?.addEventListener('click', () => scrollTabs(true));
+
+      // ── Smooth return to the tab strip on a switch (CURRENT_TASK.md → סשן ב׳ 2)
+      // Switching to a shorter panel from far down the page moved the reader in
+      // one frame — measured: document 2281px → 812px on an empty tab, so the
+      // browser clamped scrollY 1192 → 0 instantly. That is not a scroll the page
+      // performs; it is the scroll position falling off the bottom of a document
+      // that just got shorter, which is why it reads as a jump rather than as a
+      // return to the top.
+      //
+      // Landing at the top of the tabs is the right outcome (the panel's content
+      // starts there), so the fix is to make the page KEEP its height until the
+      // reader has actually travelled: freeze .home-body at its current height,
+      // let the swap happen underneath, animate up, then release. The listener is
+      // on the CAPTURE pass so the freeze is in place before initDashTabs()'s own
+      // click handler swaps the panels.
+      const homeBody = document.querySelector<HTMLElement>('.home-body');
+      const tabsBar = document.getElementById('home-tabs-bar');
+      let settling = false;
+      if (homeBody && tabsBar) {
+        tablist.addEventListener('click', (e) => {
+          if (settling || !(e.target as HTMLElement).closest('.home-tab')) return;
+          const headerH = document.querySelector<HTMLElement>('.site-header')?.offsetHeight ?? 0;
+          // The bar's RESTING position, not its stuck one: while pinned its own
+          // rect reports the header's offset, so it is read off .home-body, which
+          // starts at the bar and never moves.
+          const target = Math.max(0, homeBody.getBoundingClientRect().top + window.scrollY - headerH);
+          if (window.scrollY <= target + 2) return; // already there — nothing to smooth
+          const outgoing = document.querySelector<HTMLElement>('.dash-panel:not([hidden])')?.offsetHeight ?? 0;
+          const frozen = homeBody.offsetHeight;
+          const docFrozen = document.documentElement.scrollHeight;
+          homeBody.style.minHeight = `${frozen}px`;
+          settling = true;
+          requestAnimationFrame(() => {
+            // How far the released page will actually allow scrolling, worked out
+            // by arithmetic rather than by clearing the freeze and re-measuring:
+            // that read would relayout the shorter document and let the browser
+            // clamp mid-animation — the exact jump being removed.
+            const incoming = document.querySelector<HTMLElement>('.dash-panel:not([hidden])')?.offsetHeight ?? 0;
+            const maxAfter = Math.max(0, docFrozen - outgoing + incoming - window.innerHeight);
+            const dest = Math.min(target, maxAfter);
+            // Distance-scaled, not the shared 380ms default: this trip can be
+            // 1700px from the bottom of a long Discover tab, and covering that in
+            // 380ms is a blur, not a scroll. Capped so a long page never turns the
+            // switch into a wait.
+            const duration = Math.min(620, 320 + Math.abs(window.scrollY - dest) * 0.14);
+            animateScrollTo(dest, duration, () => {
+              homeBody.style.minHeight = '';
+              settling = false;
+            });
+          });
+        }, true);
+      }
     }
   }
 

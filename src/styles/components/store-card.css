@@ -35,8 +35,14 @@
   min-width: 0;
 }
 
-/* Soft radial glow behind the avatar — the one deliberate "color play" touch,
-   kept subtle (16% mix, fades to nothing) so it reads as depth, not a badge. */
+/* Soft glow around the avatar — the one deliberate "color play" touch, kept
+   subtle (two low mixes, fading to nothing) so it reads as depth, not a badge.
+   Drawn as an OUTER box-shadow on a circle matching the avatar exactly, never
+   as a radial-gradient fill: this pseudo-element paints above the avatar (the
+   image inside is not positioned), so any background here tints the logo and
+   the halo reads as an inward smudge instead of a glow. An outer shadow is
+   clipped to outside the border box by definition, so it cannot touch the
+   picture — including a logo with a transparent background. */
 .store-card__avatar-wrap {
   position: relative;
   flex-shrink: 0;
@@ -46,11 +52,18 @@
 .store-card__avatar-wrap::before {
   content: '';
   position: absolute;
-  inset: -6px;
+  inset: 0;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 16%, transparent) 0%, transparent 72%);
+  /* Both blurred, neither solid: a hard `0 0 0 Npx` ring is what made the first pass read as a
+     dense outline rather than a glow. The tight one starts AT the avatar's edge so the halo stays
+     attached to the picture, the wide one carries it outward and is what does the diffusing. Low
+     mixes on purpose — the two overlap where they meet, and anything stronger stacks into a rim. */
+  box-shadow:
+    0 0 6px 1px color-mix(in srgb, var(--color-accent) 12%, transparent),
+    0 0 18px 5px color-mix(in srgb, var(--color-accent) 14%, transparent);
   opacity: 0;
   transition: opacity 0.24s ease;
+  pointer-events: none;
 }
 
 .store-card:hover .store-card__avatar-wrap::before {
@@ -142,12 +155,20 @@
   color: var(--color-border);
 }
 
-/* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css */
+/* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css.
+   It sits UNDERNEATH the image (z-index 0) and the image paints over it as soon
+   as it has pixels, so nothing about the photo's visibility depends on JS. It
+   used to sit on top with the image held at `opacity: 0` until initImageSkeletons()
+   removed .is-loading — which meant that on a refresh with a warm cache the photos
+   were already decoded and still invisible until the page module executed
+   (measured 2026-07-30 on the homepage: ~700ms on a prod build, ~2.2s in dev,
+   with every image served from cache). JS still removes .is-loading, but only to
+   stop the animation, not to reveal anything. */
 .store-card__preview-img-wrap.is-loading::before {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 0;
   background: linear-gradient(
     90deg,
     var(--color-surface) 25%,
@@ -158,20 +179,23 @@
   animation: skeleton-shimmer 1.4s ease infinite;
 }
 
-.store-card__preview-img-wrap.is-loading .store-card__preview-img { opacity: 0; }
-
 .store-card__preview-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.18s ease;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .store-card:hover .store-card__preview-img { transform: scale(1.08); }
 
 /* ── Horizontal shelf context (homepage rows) ──────────────────────── */
 .home-shelf {
+  /* How many cards span the row at this breakpoint — the ladder continues just
+     below `.home-shelf .store-card`, where it is explained. */
+  --shelf-fit: 2;
   display: flex;
   gap: 0.75rem;
   overflow-x: auto;
@@ -205,6 +229,17 @@
      related — that's --fade-start/--fade-end and the mask rules below). */
   padding-inline: 8px;
   margin-inline: -8px;
+  /* …and the snap positions have to be told about that padding, or the row rests
+     8px out of line with every other row on the page. A snap area aligns to the
+     SNAPPORT, which is the scrollport (this element's padding box) inset by
+     scroll-padding — 0 by default, so `scroll-snap-align:start` parked the first
+     card against the padding box edge, i.e. 8px into the bleed budget and 8px
+     past the container line every non-scrolling shelf ends on. Measured: a
+     scrollable shelf rested at scrollLeft -8 with its first card at x=1197 while
+     the 3-card shelf beneath it sat at 1189 — and it could not be corrected from
+     JS, since the snap engine re-snaps any scrollLeft you write. Matching
+     scroll-padding to the padding is the fix the property exists for. */
+  scroll-padding-inline: 8px;
   /* A card cut off mid-width at the edge reads as a hard clip — fade it instead,
      but only on the side that actually has more, unscrolled content. The mask
      itself is the shared `.edge-fade` utility (utilities/utils.css), driven by
@@ -234,22 +269,73 @@
    shelf on a 1280px viewport came to 924px of card in a 1128px row — 19%
    ragged tail, on every shelf (measured 2026-07-28). It's now the exact width
    that would make THIS row's own card count fill the row, so a short shelf
-   ends flush; --shelf-count is set per shelf by HomeShelf.astro. The 360px
-   ceiling (--shelf-card-max) is what still stops a card from ballooning, and the
-   300px floor keeps the cap from ever going BELOW the old value on a narrow
-   viewport (where the row scrolls anyway). HomeShelf raises the ceiling for a
-   1-2 card row and switches those cards to 4 preview thumbs at the same time —
-   the extra thumb is what keeps a very wide card in proportion. */
+   ends flush; --shelf-count is set per shelf by HomeShelf.astro. The 300px
+   floor keeps the cap from ever going BELOW the old value on a narrow viewport
+   (where the row scrolls anyway).
+
+   A flat 360px ceiling then sat on top of that formula and quietly re-created
+   a smaller version of the same bug: a 3-card shelf's share of the full 1160px
+   site width is 368px, so the cap cut each card by 8px and left the row 24px
+   short of the edge — small, but next to a carousel and 10-card shelves that
+   DO reach the edge it reads as the row not matching the width of the site
+   (CURRENT_TASK.md → סשן ב׳ 2, measured 2026-07-30). So --shelf-card-max is now
+   `100%` — no ceiling — for any row of two or more, where the share formula is
+   already the thing preventing a balloon; HomeShelf keeps a real 560px ceiling
+   only for a LONE card, whose share would be the entire row. Rows of one or two
+   also switch to 4 preview thumbs — the extra thumb is what keeps a very wide
+   card in proportion.
+
+   THE COUNT THE WIDTH IS DIVIDED BY IS NOT ALWAYS THE CARD COUNT (2026-07-30,
+   second round of the same report). A row with more cards than fit was still
+   sized off a fixed 190–240px basis, so it ended wherever the last card
+   happened to be sliced — while a 3-card row beside it ended exactly on the
+   container line. One row terminating on the line and the next one mid-card is
+   the mismatch the user photographed. So the divisor is now
+   `min(card count, how many fit)`: a short row still fills (nothing about last
+   round changes), and a long row is sized so a WHOLE number of cards spans the
+   row — with scroll-snap already aligning to card starts, every shelf therefore
+   begins AND ends on the same line at rest, no matter how many cards it holds.
+
+   `--shelf-fit` is the "how many fit" half, and it is a per-breakpoint ladder
+   rather than a computed floor(): CSS cannot divide a length by a length, and
+   doing it in JS would mean the shelves relayout after hydration — a layout
+   shift on the homepage's main content, which is the one thing the LCP/CLS
+   budget here can least afford. The steps are chosen so a store card never
+   drops below ~165px (mobile) or ~240px (desktop): 2 up to 776px of viewport,
+   then 3, then 4 from 1028px, where the row is 996px and a quarter of it is
+   exactly 240. There is no 5th step — the site caps at 1160px, so four is as
+   many as a full-width row ever holds. */
+@media (min-width: 776px)  { .home-shelf { --shelf-fit: 3; } }
+@media (min-width: 1028px) { .home-shelf { --shelf-fit: 4; } }
+
 .home-shelf .store-card {
-  flex: 1 0 clamp(190px, 46vw, 240px);
-  /* The count comes from the shelf (HomeShelf sets it inline). The default is a
-     var() FALLBACK, not a declaration on this rule — declaring --shelf-count
-     here would shadow the inherited value and every shelf would compute as 4. */
-  max-width: clamp(
-    300px,
+  /* Both counts come from the shelf (HomeShelf sets --shelf-count inline, the
+     ladder above sets --shelf-fit). The defaults are var() FALLBACKS, not
+     declarations on this rule — declaring either here would shadow the
+     inherited value and every shelf would compute the same.
+
+     `max()` of the two shares, NOT a share of `min()` of the two counts, even
+     though that reads better: `calc(… / min(a, b))` fails to parse — calc only
+     divides by a <number>, and a math function in the denominator is rejected
+     even when it resolves to one. It fails SILENTLY, as an invalid flex-basis
+     falling back to `auto`, which sizes each card to its own content: shelves
+     that came out 198px and 203px wide instead of 166px, i.e. a row whose cards
+     are all slightly different widths. Dividing by a plain var() is fine, so
+     take both shares and keep the larger — a bigger divisor is a smaller card,
+     so the wider of the two IS the share of the smaller count. */
+  flex: 1 0 max(
     calc((100% - (var(--shelf-count, 4) - 1) * 0.75rem) / var(--shelf-count, 4)),
-    var(--shelf-card-max, 360px)
+    calc((100% - (var(--shelf-fit, 4) - 1) * 0.75rem) / var(--shelf-fit, 4))
   );
+  max-width: var(--shelf-card-max, 100%);
+  /* Without this the share above is only a REQUEST: a flex item's default
+     `min-width:auto` floors it at its own min-content width, and a store card's
+     thumbnail row bottoms out near 200px. That is why the same row could render
+     cards of 198px, 190px and 190px — each card as wide as its own contents
+     needed — and why a row could never end on the line at 375px, where its share
+     is 166px. Explicit 0 hands the decision back to the share; the tagline
+     ellipsises and the thumbs shrink, which is what they are built to do. */
+  min-width: 0;
   scroll-snap-align: start;
 }
 
@@ -261,6 +347,14 @@
    own shelves (several per panel, always followed by more content) don't get
    this class and keep the plain scroll row everywhere. */
 @media (max-width: 640px) {
+  /* A wider dissolve than the 24px default (utilities/utils.css). On a phone the
+     row shows exactly two WHOLE cards — deliberately, so every row terminates on
+     the same line — which means the fade is the only thing left saying "this row
+     continues"; a sliced third card used to say it for free. 40px is a quarter of
+     a 166px card: unmistakably a dissolve rather than a soft edge, and still far
+     from eating the card it fades. */
+  .home-shelf { --edge-fade-w: 40px; }
+
   .home-shelf--fill-mobile {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

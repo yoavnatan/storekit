@@ -216,12 +216,42 @@
 /* ── Seller dashboard messages tab ──────────────────────── */
 /* ── Seller messages ── */
 /* ── Message inbox table ── */
+/* The panel that owns a message table declares itself a size container, so the
+   table can collapse to cards by the width IT actually gets rather than by the
+   viewport's. Keyed off the viewport (a plain @media) the two disagree badly in
+   the middle: the buyer dashboard keeps a 220px sidebar down to 768px, so a
+   1024px laptop leaves the table ~684px of column while the media query still
+   calls it "desktop" — measured 2026-07-30, the table needed 907px and scrolled
+   sideways from 641px to ~980px of viewport. Put this class on the element that
+   wraps BOTH the table and its .table-toolbar (see dashboard.css) — the toolbar
+   carries sort/filter once the thead is gone, so it has to flip on the same
+   condition or the cards lose both. */
+.msg-cq { container-type: inline-size; container-name: msgpanel; }
+
 .msg-table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius); }
-.msg-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+/* table-layout:fixed is what actually removes the sideways scroll, and the
+   container query above only decides when cards read better. In the default
+   auto layout a cell's max-width is ignored, so .msg-table__td--preview's
+   min-content width is its whole message on one nowrap line — the table then
+   overflows any container narrower than its longest message, at ANY breakpoint.
+   Fixed layout makes the columns below authoritative, the table exactly as wide
+   as its container, and the ellipsis on each cell finally do their job. */
+.msg-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.875rem; }
 .msg-table thead { border-bottom: 2px solid var(--color-border); background: var(--color-bg); }
 .msg-table__th { padding: 0.5rem 0.4rem; text-align: start; font-size: 0.68rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+/* Column widths live on the <th>s because fixed layout reads them from the
+   first row only — a width on a <td> is ignored. The preview column is left
+   auto on purpose: it takes whatever is left, and it is the one column that
+   benefits from every spare pixel. Admin's table has no product column, so
+   there it simply gets that share too. */
 .msg-table__th--status { width: 12px; padding-inline-start: 0.4rem; padding-inline-end: 0; }
 .msg-table__th--actions { width: 36px; padding-inline-start: 0.3rem; padding-inline-end: 0.4rem; }
+.msg-table__th--from { width: 18%; }
+.msg-table__th--subject { width: 20%; }
+.msg-table__th--product { width: 14%; }
+/* Wide enough for the longest "30.7.2026, 14:32" + cell padding — a date that
+   ellipsises is worse than one that costs 28 extra px. */
+.msg-table__th--date { width: 124px; }
 .msg-table__row { cursor: pointer; transition: background 0.1s; }
 .msg-table__row:hover .msg-table__td { background: var(--color-bg); }
 .msg-table__row--unread .msg-table__td { background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)); }
@@ -230,11 +260,14 @@
 .msg-table__row--unread .msg-table__td--subject { font-weight: 700; color: var(--color-text); }
 .msg-table__td { padding: 0.65rem 0.4rem; border-bottom: 1px solid var(--color-border); vertical-align: middle; color: var(--color-text); }
 .msg-table__td--status { width: 12px; padding-inline-start: 0.4rem; padding-inline-end: 0; }
-.msg-table__td--from { font-weight: 500; white-space: nowrap; }
-.msg-table__td--subject { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.msg-table__td--preview { color: var(--color-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
-.msg-table__td--product { white-space: nowrap; font-size: 0.78rem; color: var(--color-accent); }
-.msg-table__td--date { white-space: nowrap; font-size: 0.78rem; color: var(--color-muted); }
+/* Every text column clips with an ellipsis now that fixed layout gives it a
+   real width to clip against — without overflow:hidden the content would just
+   spill over the next column instead of scrolling the table. */
+.msg-table__td--from { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-table__td--subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-table__td--preview { color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
+.msg-table__td--product { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; color: var(--color-accent); }
+.msg-table__td--date { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; color: var(--color-muted); }
 .msg-table__td--actions { width: 36px; padding-block: 0.2rem; padding-inline-start: 0.3rem; padding-inline-end: 0.4rem; }
 .inline-alert-dot { display: inline-block; width: 7px; height: 7px; background: #ef4444; border: 1px solid var(--color-border); border-radius: 50%; flex-shrink: 0; }
 .msg-thread-row td { padding: 0; border-bottom: 2px solid var(--color-border); }
@@ -288,8 +321,11 @@
 }
 .seller-msg-reply-close:hover { background: var(--color-bg); color: var(--color-text); }
 
-/* ── Mobile: message table → cards ───────────────────────────── */
-@media (max-width: 640px) {
+/* ── Narrow panel: message table → cards ─────────────────────── */
+/* Container query, not a media query — see the .msg-cq comment above. 760px is
+   the width below which the seven columns stop being readable rather than the
+   width below which they stop fitting (fixed layout means they always fit). */
+@container msgpanel (max-width: 760px) {
   .msg-table-wrap { border: none; overflow-x: visible; }
 
   /* Turn table + body into block column */
@@ -348,9 +384,9 @@
 
   /* Grid area assignments */
   .msg-table__td--status  { grid-area: status; display: flex; align-items: center; }
-  .msg-table__td--from    { grid-area: from;   font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none; }
-  .msg-table__td--subject { grid-area: subject; font-size: 0.78rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none; font-weight: 400; }
-  .msg-table__td--preview { grid-area: preview; font-size: 0.76rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none; }
+  .msg-table__td--from    { grid-area: from;   font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg-table__td--subject { grid-area: subject; font-size: 0.78rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+  .msg-table__td--preview { grid-area: preview; font-size: 0.76rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .msg-table__preview-you { color: var(--color-text); font-weight: 600; }
   .msg-table__td--date    { grid-area: date;    font-size: 0.7rem; color: var(--color-muted); white-space: nowrap; }
   .msg-table__td--actions { grid-area: actions; display: flex; align-items: center; }
@@ -714,16 +750,22 @@
    fits pays nothing. Note a mask forces the element into its own compositing
    layer, which clips STRICTLY to its box — give the row a padding/negative-
    margin bleed budget if anything inside it casts a shadow (the bug documented
-   at length in store-card.css). */
+   at length in store-card.css).
+
+   `--edge-fade-w` (default 24px) is how far the dissolve reaches in. A caller
+   raises it when the fade is carrying more weight than usual — the homepage
+   shelves do, under 640px, because there the row shows a whole number of cards
+   and the fade is the ONLY thing saying the row continues (no sliced card to
+   give it away). Everywhere else the default is the right amount. */
 .edge-fade[data-fade="l"] {
-  mask-image: linear-gradient(to right, transparent, black 24px);
-  -webkit-mask-image: linear-gradient(to right, transparent, black 24px);
+  mask-image: linear-gradient(to right, transparent, black var(--edge-fade-w, 24px));
+  -webkit-mask-image: linear-gradient(to right, transparent, black var(--edge-fade-w, 24px));
 }
 .edge-fade[data-fade="r"] {
-  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
-  -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, black calc(100% - var(--edge-fade-w, 24px)), transparent);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--edge-fade-w, 24px)), transparent);
 }
 .edge-fade[data-fade="lr"] {
-  mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, transparent, black var(--edge-fade-w, 24px), black calc(100% - var(--edge-fade-w, 24px)), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black var(--edge-fade-w, 24px), black calc(100% - var(--edge-fade-w, 24px)), transparent);
 }

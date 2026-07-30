@@ -8,11 +8,13 @@ export function clearSkeletonOnLoad(img: HTMLImageElement, wrapSelector: string)
   const wrap = img.closest<HTMLElement>(wrapSelector);
   if (!wrap) return;
   const done = () => wrap.classList.remove('is-loading');
+  // This only STOPS THE SHIMMER — it does not reveal the image. The image paints
+  // over the shimmer on its own (the CSS keeps the shimmer underneath it), because
+  // gating visibility on this module meant a warm-cache refresh sat on invisible,
+  // already-decoded photos until the page bundle executed — see store-card.css.
   // img.src (not just .complete) — an <img> with no src yet reads .complete as
   // trivially true, which would strip the shimmer immediately instead of waiting for
-  // the real image to actually load. With a real src in the HTML this is also what
-  // makes a cached image skip the shimmer entirely: it's already complete by the
-  // time this runs, so there's no flash on refresh.
+  // the real image to actually load.
   if (img.src && img.complete && img.naturalWidth > 0) done();
   else {
     img.addEventListener('load', done, { once: true });

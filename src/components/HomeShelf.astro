@@ -57,7 +57,17 @@ const cardCount = Math.max(1, stores.length + invites);
 // construction, so it takes the fourth thumb for the same reason.
 const SPARSE_SHELF = 2;
 const previewSlots = grid || cardCount <= SPARSE_SHELF ? 4 : 3;
-const cardMax = cardCount <= SPARSE_SHELF ? '560px' : '360px';
+// The ceiling exists for ONE case: a row of a single card, where "fill the row"
+// would mean a 1128px-wide card. Every other count already has the row's own
+// share-of-the-width formula holding it back (store-card.css), and a flat
+// ceiling on top of that formula is what left the ragged tail this fixes
+// (CURRENT_TASK.md → סשן ב׳ 2): a 3-card shelf wants 368px per card at the
+// site's full 1160px width, the old 360px cap cut it to 1104px of card in a
+// 1128px row, and that 24px short of the edge is exactly what read as "not the
+// width of the site" against the carousel and the longer shelves beside it,
+// which do run edge to edge. `100%` is the row itself, so from two cards up the
+// ceiling can never bite and every shelf ends flush at every width.
+const cardMax = cardCount <= 1 ? '560px' : '100%';
 // Deliberately NOT the `.home-shelf` class: that rule set is a scroll container
 // (overflow-x, snap, edge-fade mask) and `.home-shelf .store-card` caps every card
 // at --shelf-card-max. Reusing it and overriding both would need `!` on each — the

@@ -764,6 +764,14 @@ const pmI18n = {
   import { saveLastStore } from '../../lib/last-store.js';
   import { escapeHtml as escHtml } from '../../lib/html-escape.js';
   import { recordStoreVisit } from '../../lib/recent-stores.js';
+  // The shared RTL-safe scroll, not the copy that used to live in this file: the
+  // copy said it "mirrors" the original, and by 2026-07-30 it no longer did —
+  // the shared one had learned to switch the root's `scroll-behavior` off for
+  // the duration, without which reset.css's global `smooth` turns every frame of
+  // the loop into its own native animation and the scroll crawls a couple of
+  // pixels per frame. Two copies of one mechanism, and only one of them fixed,
+  // is this repo's most repeated bug class.
+  import { animateScrollTo } from '../../scripts/dashboard/scroll-utils.js';
   import { saveStoreScroll, applyStoreScrollQuery, restoreStoreScroll, peekStoreScrollState } from '../../lib/scroll-restore.js';
   import type { StoreProduct as StoreProductDTO } from '../../lib/store-products.js';
   import { PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
@@ -1843,24 +1851,6 @@ const pmI18n = {
   // whatever local search was active before/after this episode survives intact).
   // An empty q means the header search was cleared (native "x" or backspaced to
   // empty) — restore whatever filter was active right before the override began.
-  // RTL-safe programmatic scroll (rAF + explicit `window.scrollTo(0, y)` each
-  // frame) — a native smooth `scrollTo`/`scrollIntoView` drifts scrollX off 0
-  // mid-animation on this RTL page (off-thread, un-correctable), so we self-
-  // animate. Mirrors animateScrollTo() in scripts/dashboard/products.ts.
-  function animateScrollTo(targetY: number, duration = 380): void {
-    const startY = window.scrollY;
-    const delta = targetY - startY;
-    if (Math.abs(delta) < 1) { window.scrollTo(0, targetY); return; }
-    const start = performance.now();
-    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
-    function step(now: number): void {
-      const t = Math.min(1, (now - start) / duration);
-      window.scrollTo(0, startY + delta * ease(t));
-      if (t < 1) requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
-  }
-
   // After a whole-store header search the grid is wholesale-replaced, but the
   // scroll stayed wherever the buyer was — mid-page or at the bottom — so the
   // fresh results sat off-screen above them. Bring the top of the results

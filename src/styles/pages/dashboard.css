@@ -217,6 +217,14 @@ textarea.input { resize: none; }
 @media (max-width: 640px) {
   .table-toolbar:not([hidden]) { display: flex; }
 }
+/* The messages table collapses to cards on its CONTAINER's width, not the
+   viewport's (.msg-cq / @container msgpanel in utils.css) — so between ~640px
+   of viewport and 760px of panel there are cards but no thead, and sort/filter
+   would exist nowhere. Same rule, same condition. Products keeps the media
+   query above: its table has no container and still flips at 640px. */
+@container msgpanel (max-width: 760px) {
+  .table-toolbar:not([hidden]) { display: flex; }
+}
 
 /* Unified toolbar row (CURRENT_TASK 2) — search + optional page-size + sort/
    filter on ONE line across Products/Orders/Messages. On desktop it may wrap
@@ -1310,10 +1318,17 @@ textarea.input { resize: none; }
   z-index: 2;
   transition: opacity 0.15s;
 }
-.dash-tab-fade--start { inset-inline-start: calc(-1 * var(--dash-tab-pad, 0px)); margin-inline-end: calc(-1.8rem - var(--dash-tab-pad, 0px)); background: linear-gradient(to right, var(--color-surface), transparent); }
-.dash-tab-fade--end   { inset-inline-end: calc(-1 * var(--dash-tab-pad, 0px));   margin-inline-start: calc(-1.8rem - var(--dash-tab-pad, 0px)); background: linear-gradient(to left, var(--color-surface), transparent); }
-[dir="rtl"] .dash-tab-fade--start { background: linear-gradient(to left, var(--color-surface), transparent); }
-[dir="rtl"] .dash-tab-fade--end   { background: linear-gradient(to right, var(--color-surface), transparent); }
+/* The fade paints the STRIP'S OWN background over the tab dissolving under it, so
+   the colour has to follow whatever the strip sits on: `--color-surface` is right
+   for the seller/admin dashboards and stays the default, but the homepage's strip
+   is `--color-bg` and the white default painted white-on-near-white — a fade that
+   measured, transitioned and hid correctly while being invisible to the eye
+   (CURRENT_TASK.md → סשן ב׳ 1). A consumer on another background sets
+   `--dash-tab-fade-bg` on any ancestor; nothing else changes. */
+.dash-tab-fade--start { inset-inline-start: calc(-1 * var(--dash-tab-pad, 0px)); margin-inline-end: calc(-1.8rem - var(--dash-tab-pad, 0px)); background: linear-gradient(to right, var(--dash-tab-fade-bg, var(--color-surface)), transparent); }
+.dash-tab-fade--end   { inset-inline-end: calc(-1 * var(--dash-tab-pad, 0px));   margin-inline-start: calc(-1.8rem - var(--dash-tab-pad, 0px)); background: linear-gradient(to left, var(--dash-tab-fade-bg, var(--color-surface)), transparent); }
+[dir="rtl"] .dash-tab-fade--start { background: linear-gradient(to left, var(--dash-tab-fade-bg, var(--color-surface)), transparent); }
+[dir="rtl"] .dash-tab-fade--end   { background: linear-gradient(to right, var(--dash-tab-fade-bg, var(--color-surface)), transparent); }
 .dash-tabs.at-start .dash-tab-fade--start,
 .dash-tabs.at-end .dash-tab-fade--end { opacity: 0; }
 

@@ -85,6 +85,52 @@
   .home-tabs-indicator { transition: opacity 0.2s ease; }
 }
 
+/* ── Tab-strip scroll arrows (CURRENT_TASK.md → סשן ב׳ 1) ──────────────────
+   Four Hebrew tab labels need 441px; a 375px viewport gives the strip 343, so
+   the last tab sits entirely off-screen. The edge fades initDashTabs() already
+   injects say "there is more" quietly — these say it loudly, and they are also
+   tappable, which is what was asked for.
+
+   Only the geometry and the state live here (Hard rules → Tailwind on contact):
+   the arrow's own look is utility classes on the element in index.astro, reusing
+   the homepage's existing `.home-spotlight-arrow` recipe rather than inventing a
+   fourth circle-button treatment.
+
+   Visibility is `:has()` on the classes initDashTabs()'s own syncEdges() sets on
+   the strip — NOT a second measurement of the same scroll position. A strip that
+   fits (every desktop width: 1128px of room for 441px of tabs) is at-start AND
+   at-end, so both arrows are simply gone there; nothing new renders on desktop.
+   Opacity rather than `hidden`, so an arrow fades out as its edge is reached
+   instead of blinking away mid-scroll — same treatment `.home-carousel-btn`
+   already uses for the identical moment. */
+.home-tabs-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  box-shadow: var(--shadow-xs);
+  /* Hidden is the DEFAULT state, and it is the no-JS state too: every class
+     below is set by initDashTabs(), so a page whose module never ran shows no
+     arrows at all rather than two that scroll nothing (which is what a flaky
+     dev-server load actually produced here, 2026-07-30). */
+  opacity: 0;
+  pointer-events: none;
+}
+.home-tabs-arrow--prev { inset-inline-start: 0; }
+.home-tabs-arrow--next { inset-inline-end: 0; }
+.home-tabs-arrow:active { transform: translateY(-50%) scale(0.91); }
+
+.home-tabs-wrap:has(> .dash-tabs.is-scrollable) .home-tabs-arrow {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Later than the rule above at equal specificity, so a reached edge wins. */
+.home-tabs-wrap:has(> .dash-tabs.at-start) .home-tabs-arrow--prev,
+.home-tabs-wrap:has(> .dash-tabs.at-end) .home-tabs-arrow--next {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ── Tab hover beam (CURRENT_TASK.md → סשן ג׳) ─────────────────────────────
    The hover signal, now that the underline no longer follows the pointer: a
    **flashlight beam that hangs off the pointer** (user, 2026-07-28) — a soft
@@ -356,6 +402,15 @@
 .home-carousel-btn--next { inset-inline-end: 0.375rem; }
 
 .home-carousel {
+  /* How many product tiles span the row at this breakpoint — same idea, same
+     reasoning and the same reason it is a ladder and not a computed floor(), as
+     `--shelf-fit` in store-card.css; read that comment first. Its own steps
+     because a product tile is a smaller card than a store card: they keep the
+     tile between ~165px (mobile, which is what 44vw already gave it) and ~250px,
+     and land on 216px at the full 1128px row — a hair under the 220px it used to
+     be pinned at, and now an exact fifth of the row instead of 5.1 tiles with
+     the last one sliced. */
+  --carousel-fit: 2;
   display: flex;
   gap: 0.75rem;
   overflow-x: auto;
@@ -400,6 +455,11 @@
   transition: opacity 0.2s ease;
 }
 .home-carousel-fade.is-visible { opacity: 1; }
+/* Same reason the shelves widen theirs under 640px (store-card.css): the row now
+   shows whole tiles, so this overlay is the whole of the "there's more" signal. */
+@media (max-width: 640px) {
+  .home-carousel-fade { width: 40px; }
+}
 .home-carousel-fade--start { inset-inline-start: 0; }
 .home-carousel-fade--end { inset-inline-end: 0; }
 
@@ -410,8 +470,18 @@
 
 /* ── Product card (homepage carousel item) ─────────────────────────── */
 
+/* The carousel's own fit ladder (see `--carousel-fit` on .home-carousel). */
+@media (min-width: 552px)  { .home-carousel { --carousel-fit: 3; } }
+@media (min-width: 812px)  { .home-carousel { --carousel-fit: 4; } }
+@media (min-width: 1072px) { .home-carousel { --carousel-fit: 5; } }
+
 .home-product-card {
-  flex: 0 0 clamp(165px, 44vw, 220px);
+  /* `0 0`, not the shelf's `1 0`: a store with fewer products than fit must NOT
+     stretch them across the row. A shelf's cards are the same shape at any
+     width, but a product tile's image is square — a two-product carousel grown
+     to fill 1128px would be two 558px tiles, i.e. two 558px-tall photos. A short
+     carousel simply ends early, which is what it already did. */
+  flex: 0 0 calc((100% - (var(--carousel-fit, 5) - 1) * 0.75rem) / var(--carousel-fit, 5));
   scroll-snap-align: start;
   display: flex;
   flex-direction: column;
@@ -454,17 +524,21 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.18s ease;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* Skeleton shimmer (2026-07-12 — was missing here; every other image grid on
    the site shimmers while loading, this one just popped in). @keyframes
-   skeleton-shimmer lives in utils.css. Cleared via JS on img load/error. */
+   skeleton-shimmer lives in utils.css. It sits UNDER the image — see the note
+   in store-card.css for why the image must never be gated on JS to become
+   visible. JS clearing only stops the animation. */
 .home-product-card__img-wrap.is-loading::before {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 0;
   background: linear-gradient(
     90deg,
     var(--color-surface) 25%,
@@ -475,8 +549,6 @@
   animation: skeleton-shimmer 1.4s ease infinite;
   border-radius: inherit;
 }
-
-.home-product-card__img-wrap.is-loading .home-product-card__img { opacity: 0; }
 
 .home-product-card:hover .home-product-card__img { transform: scale(1.09); }
 

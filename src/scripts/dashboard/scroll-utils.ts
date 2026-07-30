@@ -10,10 +10,39 @@
 // native smooth-scroll at all: animate scrollY ourselves and call the positional
 // (always-instant, both-axes-explicit) `window.scrollTo(x, y)` every frame.
 // (AI_INSTRUCTIONS → Architecture → Scroll.)
-export function animateScrollTo(targetY: number, duration = 380): void {
+// `onDone` runs once the last frame has landed (and immediately on the no-op
+// path, so a caller can rely on it firing exactly once either way). It exists
+// for callers that hold something open for the duration of the scroll — the
+// homepage freezes the page height across a tab switch so the swap can't yank
+// the scroll position, and releases it here.
+/** How many animations currently hold the root's `scroll-behavior` at `auto`. */
+let running = 0;
+
+export function animateScrollTo(targetY: number, duration = 380, onDone?: () => void): void {
   const startY = window.scrollY;
   const delta = targetY - startY;
-  if (Math.abs(delta) < 1) { window.scrollTo(0, targetY); return; }
+  const root = document.documentElement;
+  // `reset.css` sets `scroll-behavior: smooth` on the root, and that applies to
+  // the POSITIONAL `scrollTo(x, y)` too — so every frame below was asking the
+  // browser to smoothly animate toward a target ~3px away, and each request
+  // restarted that easing. The result was a crawl: measured 2px per frame, ~40px
+  // of travel across a whole 380ms "animation" that was supposed to cover 1200px
+  // (2026-07-30). This function existed precisely to keep the browser's own
+  // animator out of it, and could not, silently. Turning the property off for the
+  // duration is what makes each frame's write land where it was put — and it is
+  // also what finally makes the RTL drift this file was written for impossible,
+  // rather than merely unlikely.
+  root.style.scrollBehavior = 'auto';
+  running += 1;
+  // Counted, not a plain clear: two overlapping calls would otherwise have the
+  // first one to finish hand the root back to `smooth` mid-flight, and the
+  // second would spend its remaining frames crawling again.
+  const settle = (): void => {
+    running -= 1;
+    if (running === 0) root.style.scrollBehavior = '';
+    onDone?.();
+  };
+  if (Math.abs(delta) < 1) { window.scrollTo(0, targetY); settle(); return; }
   const start = performance.now();
   const ease = (t: number) => 1 - Math.pow(1 - t, 3); // ease-out cubic, matches the site's other spring/ease timings in spirit
 
@@ -21,6 +50,7 @@ export function animateScrollTo(targetY: number, duration = 380): void {
     const t = Math.min(1, (now - start) / duration);
     window.scrollTo(0, startY + delta * ease(t));
     if (t < 1) requestAnimationFrame(step);
+    else settle();
   }
   requestAnimationFrame(step);
 }
