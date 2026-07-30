@@ -15,6 +15,8 @@ export interface GalleryLabels {
   crop?: string;
   undoCrop?: string;
   changeImage?: string;
+  editImage?: string;
+  removeImage?: string;
   done?: string;
   cancel?: string;
   removingBg?: string;
@@ -33,6 +35,8 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
     crop:          labels.crop          ?? 'Crop',
     undoCrop:      labels.undoCrop      ?? 'Undo crop',
     changeImage:   labels.changeImage   ?? 'Change image',
+    editImage:     labels.editImage     ?? 'Edit image',
+    removeImage:   labels.removeImage   ?? 'Remove image',
     done:          labels.done          ?? 'Done',
     cancel:        labels.cancel        ?? 'Cancel',
     removingBg:    labels.removingBg    ?? 'Removing background…',
@@ -65,8 +69,8 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
         <div class="gallery-slot__filled"${hasUrl ? '' : ' hidden'}>
           <img class="gallery-slot__img" src="${esc(cdnThumb(url, 176, 176))}" alt="" width="88" height="88" loading="lazy" decoding="async">
           <div class="gallery-slot__overlay">
-            <button type="button" class="gallery-slot__action gallery-slot__action--edit" aria-label="Edit image">${editIcon}</button>
-            <button type="button" class="gallery-slot__action gallery-slot__action--remove" aria-label="Remove image">${removeIcon}</button>
+            <button type="button" class="gallery-slot__action gallery-slot__action--edit" aria-label="${esc(l.editImage)}">${editIcon}</button>
+            <button type="button" class="gallery-slot__action gallery-slot__action--remove" aria-label="${esc(l.removeImage)}">${removeIcon}</button>
           </div>
           <div class="gallery-slot__loading" hidden><div class="spinner spinner--sm"></div></div>
           <span class="gallery-slot__check" hidden aria-hidden="true">${checkIcon}</span>

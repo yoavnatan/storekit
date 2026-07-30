@@ -714,14 +714,18 @@ function comboFilterHtml(colIndex: number, colName: string, i18n: Record<string,
 }
 
 function comboHeaderHtml(dims: VariantDimension[], i18n: Record<string, string>): string {
+  // Every sort button says "sort by <column>" rather than just the column word: that is the
+  // accessible name AND, since icon-tooltips.ts reads aria-label, the hover label — and on mobile
+  // the column text is hidden, leaving nothing but a chevron.
+  const sortBy = i18n.sortByLabel ?? 'Sort by';
   const dimHeaders = dims.map((d, i) => `<th style="padding:0.4rem 0.6rem;text-align:start;border-bottom:1px solid var(--color-border);white-space:nowrap">
     <div style="display:flex;align-items:center;gap:0.25rem">
-      <button type="button" class="combo-sort-btn" data-combo-sort-col="${i}">${esc(d.name)}${SORT_ICON_SVG}</button>
+      <button type="button" class="combo-sort-btn" data-combo-sort-col="${i}" aria-label="${esc(`${sortBy} ${d.name}`)}">${esc(d.name)}${SORT_ICON_SVG}</button>
       ${comboFilterHtml(i, d.name, i18n)}
     </div>
   </th>`).join('');
   return `<tr data-variant-combo-header>${dimHeaders}<th style="padding:0.4rem 0.6rem;text-align:end;border-bottom:1px solid var(--color-border);white-space:nowrap;${STOCK_COL_STICKY};z-index:2">
-    <button type="button" class="combo-sort-btn" data-combo-sort-col="stock">${esc(i18n.variantStockColLabel ?? 'Stock')}${SORT_ICON_SVG}</button>
+    <button type="button" class="combo-sort-btn" data-combo-sort-col="stock" aria-label="${esc(`${sortBy} ${i18n.variantStockColLabel ?? 'Stock'}`)}">${esc(i18n.variantStockColLabel ?? 'Stock')}${SORT_ICON_SVG}</button>
   </th></tr>`;
 }
 
