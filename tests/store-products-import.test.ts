@@ -98,3 +98,50 @@ describe('runProductImport — a variant product is ONE row to update, never N',
     expect(results[0]!.errors).toContain('variant-missing-option');
   });
 });
+
+// A purchase of a variant product decrements that combo's own bucket (resolveStockField in
+// store-products.ts), so a product-level stock number governs nothing once variantStock exists.
+// Writing one anyway reported "updated" while every combo kept selling its old quantity — the
+// oversell path a sku+stock feed walks into.
+describe('runProductImport — a single stock number can never move a per-combo product', () => {
+  it('rejects a flat row that changes stock on a variant product', () => {
+    const csv = [COLS.join(','), row({ id: 'p1', name: 'Chair', price: '100', stock: '3' })].join('\n');
+    const results = preview(csv);
+    expect(results.length).toBe(1);
+    expect(results[0]!.action).toBe('error');
+    expect(results[0]!.errors).toContain('variant-stock-needs-combos');
+  });
+
+  it('commits nothing for that row — the combo buckets and the total both stand', () => {
+    const csv = [COLS.join(','), row({ id: 'p1', name: 'Chair', price: '100', stock: '3' })].join('\n');
+    runProductImport({ storeId: 's1', sellerId: 'seller', csv, commit: true });
+    expect(db[0]!.stock).toBe(20);
+    expect(Object.values(db[0]!.variantStock!)).toEqual([5, 5, 5, 5]);
+  });
+
+  it('leaves a stock cell that matches the existing total as a plain no-op, not an error', () => {
+    // The 4+-dimension export is a flat row carrying the total — a faithful round-trip must stay quiet.
+    const csv = [COLS.join(','), row({ id: 'p1', name: 'Chair', price: '100', stock: '20' })].join('\n');
+    const results = preview(csv);
+    expect(results[0]!.action).toBe('update');
+    expect(results[0]!.unchanged).toBe(true);
+  });
+
+  it('points a 4-dimension product at the dashboard — the option columns cannot express it', () => {
+    // Four dimensions is why the export went flat in the first place; "fill in the option columns"
+    // would send this seller after a fourth column pair that does not exist in the header.
+    const p = db[0]!;
+    p.variants = [...p.variants!, { name: 'חומר', options: ['עץ'] }, { name: 'נפח', options: ['1L'] }];
+    const csv = [COLS.join(','), row({ id: 'p1', name: 'Chair', price: '100', stock: '3' })].join('\n');
+    const results = preview(csv);
+    expect(results[0]!.action).toBe('error');
+    expect(results[0]!.errors).toContain('variant-stock-dashboard-only');
+  });
+
+  it('still applies a flat row that leaves the stock cell blank', () => {
+    const csv = [COLS.join(','), row({ id: 'p1', name: 'Renamed', price: '100' })].join('\n');
+    const results = preview(csv);
+    expect(results[0]!.action).toBe('update');
+    expect(results[0]!.errors).toEqual([]);
+  });
+});

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { readProducts, writeProducts, slugify, type StoreProduct, type ProductVariant } from './store-products.js';
 import { resolveOrCreateCategoryPaths, getAncestorChain, type StoreCategory } from './store-categories.js';
-import { CSV_FIELDS, BOM, sanitizeCsvCell, toCsvCell } from './csv-bulk.js';
+import { CSV_FIELDS, OPTION_SLOTS, BOM, sanitizeCsvCell, toCsvCell } from './csv-bulk.js';
 import { roundMoney } from './money.js';
 import { generateCombos, comboKey } from './variant-combo.js';
 import { discountedPrice } from './discounts.js';
@@ -160,10 +160,13 @@ export function updateChangesProduct(existing: StoreProduct, input: BulkUpsertIn
 // Lives here (not csv-bulk.ts) because it needs store-categories.ts (fs/path, Node-only) to
 // resolve each product's category path — csv-bulk.ts is also imported by the dashboard's
 // client-side CSV preview, and a Node-only import there would crash on load in the browser.
-/** The CSV has three generic option name/value pairs, so a product with 1–3 variant dimensions of ANY
- *  name round-trips (one row per combo). Only a product with 4+ dimensions (vanishingly rare) can't be
- *  represented, so it exports as a single flat row — re-importing that row leaves its matrix untouched. */
-const CSV_MAX_DIMENSIONS = 3;
+/** How many variant dimensions the CSV can express — derived from the column set itself rather than
+ *  written as a second literal `3`, since the cap IS the number of option name/value pairs in the
+ *  header. A product within it round-trips as one row per combo, whatever its dimensions are named.
+ *  A product past it (4+ dimensions, vanishingly rare) exports as a single flat row instead, and
+ *  re-importing that row leaves its matrix untouched — store-products-import.ts reads this to tell
+ *  such a seller the dashboard is the only place to edit that product's stock. */
+export const CSV_MAX_DIMENSIONS = OPTION_SLOTS.length;
 function isCsvExpandable(p: StoreProduct): boolean {
   return !!p.variants?.length && p.variants.length <= CSV_MAX_DIMENSIONS;
 }

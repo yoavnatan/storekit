@@ -1,5 +1,5 @@
 import { getProductsByStoreId } from './store-products.js';
-import { bulkUpsertProducts, updateChangesProduct } from './store-products-bulk.js';
+import { bulkUpsertProducts, updateChangesProduct, CSV_MAX_DIMENSIONS } from './store-products-bulk.js';
 import { getCategoriesByStoreId, getAncestorChain } from './store-categories.js';
 import {
   parseCsv, mapHeader, toRawRows, validateRows, resolveSkuMatches,
@@ -75,6 +75,31 @@ export function runProductImport({ storeId, sellerId, csv, commit }: RunImportOp
     if (!existing) continue;
     r.currentName = existing.name;
     r.unchanged = !updateChangesProduct(existing, r.input, pathOf(existing.categoryId));
+    // A flat row (no option columns) carrying a NEW stock number for a product whose stock lives
+    // per-combo would write a value that governs nothing: a purchase decrements the combo's own
+    // bucket (resolveStockField in store-products.ts), so the seller would be told the row updated
+    // the product while every combo kept selling its old quantity. That is the shape a sku+stock
+    // feed produces for a variant product, and it is exactly how a "set it to 3" ends as an
+    // oversell. Reject the row instead. An unchanged stock cell (the 4+-dimension export's flat
+    // total re-imported) is not affected: it never reaches here, `unchanged` already covers it.
+    //
+    // Two different fixes, so two different messages: with up to CSV_MAX_DIMENSIONS the seller can
+    // spell the combos out in the option columns, but beyond that the file physically cannot express
+    // the product (that is why it exported flat), so the dashboard is the only route — telling that
+    // seller to "fill in the option columns" would send them after a column that doesn't exist.
+    if (
+      !r.unchanged
+      && !r.input.variants?.length
+      && existing.variants?.length
+      && Object.keys(existing.variantStock ?? {}).length > 0
+      && r.input.stock !== undefined
+      && r.input.stock !== existing.stock
+    ) {
+      r.action = 'error';
+      r.errors = [...r.errors, existing.variants.length > CSV_MAX_DIMENSIONS
+        ? 'variant-stock-dashboard-only'
+        : 'variant-stock-needs-combos'];
+    }
     // For a changed variant product, pin down WHICH combo rows actually differ (stock/sku) so the
     // preview points at those exact lines — "edited one variant" reads as one row, not the whole span.
     if (!r.unchanged && r.input.variants?.length && r.comboLineByKey) {
