@@ -1,3 +1,17 @@
+/* Trims the top half of `.section`'s symmetric `padding-block: 3rem`
+   (layout/container.css) for this page only. 3rem is right for a section sitting
+   BETWEEN other content, but this one opens the page directly under the fixed
+   header, so it read as 48px of dead band above the title — the header is already
+   the visual break that padding exists to provide.
+   1.25rem is `.dash-section`'s value (pages/dashboard.css) — the repo's existing
+   answer for "a title immediately under the header" — rather than a new number.
+   Overriding only `padding-top` deliberately leaves the 3rem BOTTOM intact, which
+   is what still separates the last row of cards from the footer. Scoped here and
+   not on `.section`, which is site-wide. */
+.stores-directory {
+  padding-top: 1.25rem;
+}
+
 .stores-directory__title {
   font-size: 1.5rem;
   font-weight: 800;
@@ -44,10 +58,20 @@
   border-color: color-mix(in srgb, var(--color-brand-dark) 35%, var(--color-border));
 }
 
+/* The directory reuses `.store-controls` verbatim (styles/pages/store.css) for
+   its sticky pin, full-bleed break-out and the horizontally-scrolling
+   `.category-filters-wrap` chip row — so this class adds spacing ONLY and must
+   not touch layout.
+   It used to carry `display:flex; flex-wrap:wrap; gap` from the era when the
+   chips really did wrap onto several lines. Left in place after the row became
+   a scroller, `flex-wrap:wrap` silently broke it: on a `flex-direction:column`
+   container (which `.store-controls` is), wrapping makes the flex line size to
+   its content instead of stretching to the container, so the chip row resolved
+   to its full 1571px max-content width inside a 1280px parent. Nothing was left
+   to scroll (scrollWidth === clientWidth, so the arrows stayed correctly
+   hidden) and the overflowing chips were simply clipped by html's
+   overflow-x:hidden — unreachable. Keep layout out of this rule. */
 .stores-directory__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
   margin-bottom: 1.5rem;
 }
 

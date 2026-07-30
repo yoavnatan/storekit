@@ -392,9 +392,29 @@ body:has(.store-page) { background: var(--color-surface); }
   flex: 1 1 auto;
   min-width: 0;
   overflow-x: auto;
+  /* Explicit, not incidental: `overflow-y` computes to `auto` (never `visible`)
+     the moment the other axis isn't visible, so this row was already a VERTICAL
+     scroll container — it simply had nothing to scroll while scrollHeight and
+     clientHeight both landed on 41px. Anything a pixel taller (a larger icon, a
+     label that wraps, a font swapping in, a zoom level, sub-pixel rounding) would
+     have made a one-line horizontal chip row nudge up and down, which is the kind
+     of drift that reads as breakage and has no visible affordance to undo it.
+     Safe against the shadow-clipping this rule otherwise guards: `hidden` clips at
+     the PADDING box, so the bleed budget below still holds the chip's shadow, and
+     the mask already forces a layer that clips to the border box regardless.
+     Vertical swipes still scroll the page, since the row cannot consume them. */
+  overflow-y: hidden;
   scroll-behavior: smooth;
   scroll-snap-type: x proximity;
   scrollbar-width: none;
+  /* The `.edge-fade` mask (utilities/utils.css) puts this row in its own
+     compositing layer, which clips strictly to its box — without a bleed budget
+     the pressed chip's `--shadow-xs` (0 1px 2px, so ~3px of real bleed) would be
+     cut off square at the row's own top/bottom edge. Padding + equal negative
+     margin buys the room back without changing the row's layout position, the
+     same trick `.home-shelf` uses for its much larger hover shadow. */
+  padding-block: 4px;
+  margin-block: -4px;
 }
 .category-filters-row::-webkit-scrollbar { display: none; }
 
@@ -419,7 +439,13 @@ body:has(.store-page) { background: var(--color-surface); }
   z-index: 2;
   transition: box-shadow 0.15s, opacity 0.15s, background 0.15s;
 }
-.category-filters-arrow:hover { background: color-mix(in srgb, var(--color-surface) 95%, transparent); }
+/* One hover rule, not two — background and box-shadow were split across two
+   identical `:hover` selectors either side of the `[hidden]` block, which is how
+   one of them gets edited alone later. */
+.category-filters-arrow:hover {
+  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+  box-shadow: var(--shadow-card-hover);
+}
 .category-filters-arrow--prev { inset-inline-start: 0.2rem; }
 .category-filters-arrow--next { inset-inline-end: 0.2rem; }
 .category-filters-arrow[hidden] {
@@ -427,7 +453,6 @@ body:has(.store-page) { background: var(--color-surface); }
   opacity: 0;
   pointer-events: none;
 }
-.category-filters-arrow:hover { box-shadow: var(--shadow-card-hover); }
 .category-filters-arrow:active { transform: translateY(-50%) scale(0.91); }
 
 .sort-dropdown-wrap {
@@ -637,8 +662,15 @@ body:has(.store-page) { background: var(--color-surface); }
   white-space: nowrap;
 }
 
+/* Scoped to `.store-controls__row` — the store page's own chip row, the only
+   one that has a drawer to swap TO. The store directory (/stores) reuses
+   `.category-filters-wrap` directly under `.store-controls` with no
+   `__row` and no drawer, and an unscoped rule here hid its categories
+   outright on every touch device: nothing replaced them. Its chips are also
+   flat <a href> links with no hover flyout, so the scrolling row is already
+   the right touch UI — native swipe, nothing hover-dependent to lose. */
 @media (hover: none), (pointer: coarse) {
-  .category-filters-wrap { display: none; }
+  .store-controls__row > .category-filters-wrap { display: none; }
   .category-drawer-toggle { display: inline-flex; }
 }
 
