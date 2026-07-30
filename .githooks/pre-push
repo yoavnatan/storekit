@@ -1,34 +1,51 @@
 #!/usr/bin/env bash
-# Auto-push Claude Code memory whenever the main repo is pushed.
+# Runs on every `git push`. Two jobs: back up Claude Code memory, and report any lint problem
+# this push introduces.
 #
-# Memory lives in its own PRIVATE repo, checked out at ./.claude-memory
-# (git-ignored by the main repo). This hook commits any pending memory
-# changes and pushes them, so a `git push` of the code also backs up memory.
-#
-# Failures here only WARN — they never block the code push.
+# NOTHING here blocks the push. The blocking gate lives in CI (.github/workflows/ci.yml), which
+# cannot be skipped and does not sit between you and a push. A local hook that can be bypassed
+# with --no-verify is a reminder, not a gate, so it is written as one.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MEM="$REPO_ROOT/.claude-memory"
 
+# ── 1. Memory backup ────────────────────────────────────────────────────────────
+# Memory lives in its own PRIVATE repo, checked out at ./.claude-memory (git-ignored by the main
+# repo). Committing and pushing it here means a `git push` of the code also backs up memory.
 if [ ! -d "$MEM/.git" ]; then
   echo "[pre-push] .claude-memory is not a git repo — skipping memory backup." >&2
   echo "[pre-push] Run: bash scripts/setup-claude-memory.sh" >&2
-  exit 0
+else
+  (
+    cd "$MEM" || exit 0
+
+    if [ -n "$(git status --porcelain)" ]; then
+      git add -A
+      git -c user.name="Yoav Natan" -c user.email="yoavnatan.yn@gmail.com" \
+          commit -q -m "Memory sync $(git rev-parse --short HEAD 2>/dev/null || echo)" \
+          || echo "[pre-push] memory commit failed (continuing)" >&2
+    fi
+
+    # Push only if the local branch is ahead of its remote.
+    if ! git push -q origin HEAD 2>/dev/null; then
+      echo "[pre-push] WARNING: memory push failed — code push continues, but memory backup is stale." >&2
+    fi
+  )
 fi
 
-cd "$MEM" || exit 0
-
-if [ -n "$(git status --porcelain)" ]; then
-  git add -A
-  git -c user.name="Yoav Natan" -c user.email="yoavnatan.yn@gmail.com" \
-      commit -q -m "Memory sync $(git rev-parse --short HEAD 2>/dev/null || echo)" \
-      || echo "[pre-push] memory commit failed (continuing)" >&2
-fi
-
-# Push only if the local branch is ahead of its remote.
-if ! git push -q origin HEAD 2>/dev/null; then
-  echo "[pre-push] WARNING: memory push failed — code push continues, but memory backup is stale." >&2
+# ── 2. Lint notice ──────────────────────────────────────────────────────────────
+# `npm run lint` measures against .eslint-baseline.json, so the pre-existing backlog is silent and
+# only NEW problems can appear here. Skip it entirely if dependencies are not installed.
+if [ -x "$REPO_ROOT/node_modules/.bin/eslint" ]; then
+  lint_output="$(cd "$REPO_ROOT" && npm run --silent lint 2>&1)"
+  if [ -n "$lint_output" ]; then
+    echo "" >&2
+    echo "[pre-push] NOTICE: this push introduces lint problems. CI will fail on them." >&2
+    echo "$lint_output" >&2
+    echo "[pre-push] Pushing anyway — fix them and push again, or run: npm run lint:fix" >&2
+    echo "" >&2
+  fi
 fi
 
 exit 0
