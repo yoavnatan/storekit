@@ -508,12 +508,18 @@
   line-height: 1.35;
 }
 
+/* The price sits in its own row wrapper (a discounted tile puts the struck-through
+   original next to the current price — see lib/price-html.ts), so the row owns the
+   push-to-bottom and the price element owns only its own type. */
+.home-product-card__price-row {
+  margin-top: auto;
+  padding-top: 0.3rem;
+}
+
 .home-product-card__price {
   font-size: 0.88rem;
   font-weight: 700;
   color: var(--color-accent);
-  margin-top: auto;
-  padding-top: 0.3rem;
 }
 
 /* ── Seller CTA ────────────────────────────────────────────────────── */

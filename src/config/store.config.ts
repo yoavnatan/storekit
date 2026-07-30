@@ -158,9 +158,15 @@ export const store: PlatformConfig = {
   },
 };
 
+/** Agorot are shown as TWO digits or not at all — never one. A discount lands on prices like
+ *  49.5, which `toLocaleString` renders "49.5"; next to a struck-through "55" that reads as a
+ *  truncated number rather than a price. A round price keeps no decimals at all, so the common
+ *  case stays clean (100 ₪, not 100.00 ₪). */
 export function formatPrice(amount: number | string): string {
   const n = Number(amount || 0);
-  return `${n.toLocaleString('en-US')} ${store.business.currencySymbol}`;
+  const hasAgorot = Math.round(n * 100) % 100 !== 0;
+  const digits = hasAgorot ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : undefined;
+  return `${n.toLocaleString('en-US', digits)} ${store.business.currencySymbol}`;
 }
 
 /** Image delivery lives in `src/lib/cdn.ts` — the single place a raw image URL

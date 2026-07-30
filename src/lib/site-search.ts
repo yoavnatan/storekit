@@ -3,6 +3,7 @@ import { isStoreReady } from './store-readiness.js';
 import { readProducts, isProductVisible } from './store-products.js';
 import { matchesQueryWords } from './product-listing.js';
 import { cdnSrc } from '../config/store.config.js';
+import { resolvePrice } from './discounts.js';
 
 export interface StoreSearchHit {
   name: string;
@@ -16,7 +17,12 @@ export interface StoreSearchHit {
 export interface ProductSearchHit {
   name: string;
   slug: string;
+  /** The price the shopper would actually pay — resolved against the product's store sale
+   *  (discounts.ts), so a search result can't quote a price checkout won't honour. */
   price: number;
+  /** Pre-discount price, present only when this hit is discounted. */
+  basePrice?: number;
+  percentOff?: number;
   image: string;
   storeSlug: string;
   storeName: string;
@@ -84,10 +90,12 @@ export function searchSite(rawQuery: string, options: SiteSearchOptions = {}): {
     if (!matchesQueryWords(q, `${p.name} ${(p.tags ?? []).join(' ')}`)) continue;
     const store = storeById.get(p.storeId);
     if (!store) continue;
+    const pv = resolvePrice(p, store.sale);
     matchedProducts.push({
       name: p.name,
       slug: p.slug,
-      price: p.price,
+      price: pv.price,
+      ...(pv.isDiscounted ? { basePrice: pv.basePrice, percentOff: pv.percentOff } : {}),
       image: p.images?.[0] ? cdnSrc(p.images[0], imageWidth) : '',
       storeSlug: store.slug,
       storeName: store.name,

@@ -354,7 +354,7 @@ const jsonLd = {
                 <!-- ── Category shelves — above the spotlight. "גלה עוד" now renders
                      BELOW the spotlight instead (see after the carousel block). ── -->
                 {categoryShelves.map((s, i) => (
-                  <HomeShelf id={s.id} title={s.title} stores={s.stores} dotIndex={i + 1 + bgOffset} eagerFirst={activeTab === 'discover' && recentStores.length === 0 && s.id === firstEagerShelfId} />
+                  <HomeShelf id={s.id} title={s.title} stores={s.stores} categoryLabel={s.title} dotIndex={i + 1 + bgOffset} eagerFirst={activeTab === 'discover' && recentStores.length === 0 && s.id === firstEagerShelfId} />
                 ))}
               </>
             )}
@@ -513,7 +513,7 @@ const jsonLd = {
                                   the carousel scrolls — those are the LCP candidates, so they
                                   load eagerly. Everything else stays native-lazy. */}
                               {products.map((p, tileIndex) => (
-                                <HomeProductCard product={p} storeSlug={s.slug} role="listitem"
+                                <HomeProductCard product={p} storeSlug={s.slug} sale={s.sale} role="listitem"
                                                  priority={slideIndex === 0 && tileIndex < 3} />
                               ))}
                             </div>

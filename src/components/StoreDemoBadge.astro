@@ -40,33 +40,18 @@ const shape = quiet
      ${compact ? 'px-2 py-[0.12rem]' : 'px-2.5 py-[0.2rem]'}`;
 const icon = compact || quiet ? 11 : 13;
 
-// The pill's finish, as an inline style rather than arbitrary utilities: a
-// gradient built from color-mix is unreadable once escaped into Tailwind bracket
-// syntax, and it's one component, not a repeated utility.
-//
-// Two things went wrong in the first version and both showed up as "the fill
-// doesn't sit inside the border":
-//   1. a semi-transparent border-color paints OVER the background, which by
-//      default extends under the border — so the border read as border+gradient
-//      blended, not as a line. Fixed by mixing the border toward --color-surface
-//      (opaque) and clipping the fill to the padding box.
-//   2. an `inset 0 1px 0` white highlight drew a second ring just inside the
-//      first that doesn't follow the radius cleanly at this size. Removed.
-// The gradient itself is now a whisper (11% → 5%): at chip scale a wide spread
-// reads as a coarse stripe rather than as depth.
-const finish = quiet ? undefined : [
-  `background:linear-gradient(140deg,
-     color-mix(in srgb, var(--color-accent) 11%, var(--color-surface)) 0%,
-     color-mix(in srgb, var(--color-accent) 5%, var(--color-surface)) 100%)`,
-  'background-clip:padding-box',
-  'border-color:color-mix(in srgb, var(--color-accent) 28%, var(--color-surface))',
-  'box-shadow:0 1px 1.5px color-mix(in srgb, var(--color-accent) 10%, transparent)',
-].join(';').replace(/\s+/g, ' ');
+// The pill's finish is `.badge-finish` (utilities/utils.css), the one formula shared with the
+// sale chip and the category tags in the same row — see that rule for why each number is what
+// it is. This component only picks the hue.
+// It used to be an inline style here, on the reasoning that it was "one component, not a
+// repeated utility". It became three, so it moved; keeping a private copy would have meant the
+// row's chips could drift apart one edit at a time, which is the whole thing to avoid.
+const finish = quiet ? undefined : '--badge-hue:var(--color-accent)';
 ---
 
 {demo && (
   <span
-    class={`inline-flex shrink-0 items-center whitespace-nowrap leading-[1.5] ${size} ${shape}`}
+    class={`inline-flex shrink-0 items-center whitespace-nowrap leading-[1.5] ${size} ${shape}${quiet ? '' : ' badge-finish'}`}
     style={finish}
     title={t.demo.badgeTitle}
   >

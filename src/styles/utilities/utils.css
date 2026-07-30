@@ -491,3 +491,188 @@
 }
 .read-more-toggle:hover { color: var(--color-text); }
 
+
+/* ── Sale language (see lib/discounts.ts + lib/price-html.ts) ─────────
+   ONE vocabulary for "this is discounted", shared by every price surface:
+   a green current price, the struck-through original next to it, and a
+   corner tag on the image. Lives here rather than as Tailwind utilities
+   because the surfaces' own price classes (.product-card__price,
+   .home-product-card__price, …) are unlayered legacy CSS that already set
+   `color` — a utility would lose to them and need `!` (Hard rules → the
+   "on contact" exception (f)); and because the markup is emitted as a
+   string from price-html.ts for the client-rendered surfaces, so a
+   component-scoped <style> couldn't reach it either. */
+/* `unicode-bidi: isolate` on BOTH, and it is load-bearing, not polish. "83.7 ₪" is a
+   left-to-right run sitting inside a right-to-left paragraph; put two of them side by side
+   (current price + the struck-through original) and the bidi algorithm resolves them as ONE
+   run, so the shekel signs and digits visibly swap between the two numbers — the price reads
+   as neither figure. Isolation makes each price its own bidi run, which is exactly what it is.
+   Do not replace with `direction: ltr`: that would also flip which side each price sits on. */
+.price-now { unicode-bidi: isolate; }
+.price-now--sale { color: var(--color-sale); font-weight: 700; }
+.price-was {
+  unicode-bidi: isolate;
+  color: var(--color-muted);
+  font-size: 0.82em;
+  font-weight: 400;
+  margin-inline-start: 0.4rem;
+  text-decoration-thickness: 1px;
+}
+
+/* Deliberately unlike .badge--new (accent blue, pill, pulsing): solid sale-green,
+   one-time pop. Both live on the inline-START edge — the opposite corner is the
+   wishlist heart's — and a product carrying BOTH stacks them, see below. */
+.sale-badge {
+  position: absolute;
+  top: 0.5rem;
+  inset-inline-start: 0.5rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-sale);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-sale) 35%, transparent);
+  animation: sale-badge-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes sale-badge-in {
+  from { opacity: 0; transform: scale(0.82); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sale-badge { animation: none; }
+}
+
+/* Store-wide sale strip — `.card`'s own recipe (`--color-surface`, 1.5px `--color-border`, `--radius`,
+   `--shadow-xs`) with the discount figure as the single coloured thing on it. Nothing here is invented
+   for this component, and that is the point: nine bespoke treatments were tried first and every one
+   failed on screen. The short list, so the path is not re-walked — a saturated green fill (an ad pasted
+   over the store); a 1px outline on a 3% tint (milky, unfinished); that outline with a warm second hue
+   in four arrangements (decoration in a language this site does not speak); a light travelling the
+   frame (a 2012 idiom, and the main reason the thing read as a gimmick); a near-black green panel (a
+   loud dark bar at full width); a soft green tint with its own gradient (a green SURFACE exists nowhere
+   else here); a gift ribbon, diagonal then vertical (clutter at 68px, and it cut words at 375px); an
+   oversized cropped gift glyph (read as a fragment); a 3px green accent bar, along the top and then
+   ringing the perimeter; and no box at all (read as naked). Shrink-to-fit was tried for the leftover
+   space too — it turned the strip into an orphan chip floating at one edge.
+   Two constraints are load-bearing. Green is already SPOKEN FOR: `--color-sale`'s token comment says
+   the sale price, the badge and this banner share one green "so a shopper learns the mark once", so
+   spending it on a frame dilutes that mark — and a coloured frame reads seasonal, failing the
+   category-agnostic test (Hard rules → Design line). And the shadow must be `--shadow-xs`, never
+   `--shadow-card`: Hard rules already says a full-width row must not carry the card shadow, whose
+   24px bloom landed on the site's tagline and dimmed it.
+   No hover state: this is a page SECTION, not a clickable object — same reason `.card--flat` exists.
+   The figure sits inside the copy cluster at the reading start; pinned to the far edge it read as
+   unrelated to the words it describes. */
+.store-sale {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.8rem 1rem;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xs);
+  color: var(--color-text);
+}
+
+/* The hairline divides the figure from the copy, and it lives HERE and not on the figure. The figure
+   carries `dir="ltr"` (a bare "-10%" is an LTR run; without it the sign lands on the wrong side) and
+   that flips its own inline axis, so `border-inline-end` on the figure drew the line along its OUTER
+   edge instead of between the two. This element inherits the banner's direction, so its inline-start
+   is reliably the side facing the figure.
+   `--color-border`, the site's own separator, not a green tint: on a white surface a coloured divider
+   is one more invented decision, and this one has nothing to say. */
+.store-sale__body {
+  min-width: 0;
+  padding-inline-start: 0.85rem;
+  border-inline-start: 1px solid var(--color-border);
+}
+.store-sale__title { font-size: 0.98rem; font-weight: 700; line-height: 1.3; }
+.store-sale__text { font-size: 0.84rem; line-height: 1.4; color: var(--color-muted); }
+
+/* The figure is the ONLY coloured element on the strip, which is what lets it be the full-strength
+   token green: on `--color-surface` that measures ~5:1, so it needs no darkening — the earlier step
+   toward black existed only because the surface was itself green-tinted.
+   `tabular-nums` so "-5%" and "-25%" take the same width and the copy beside them doesn't shift
+   between two stores; negative tracking because the default spacing reads loose at this weight. */
+.store-sale__pct {
+  flex-shrink: 0;
+  color: var(--color-sale);
+  font-size: clamp(1.25rem, 4vw, 1.45rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The shared finish for every chip in a store card's badge row (`.store-card__tags`) — the demo
+   badge, the sale chip, the category tags. ONE formula, one hue variable: the hue is the only thing
+   that may differ between them, and that is what makes the row read as one system rather than three
+   unrelated pills that happen to sit together.
+   The numbers are lifted from StoreDemoBadge, where they were measured against rendered pixels, and
+   each one is load-bearing:
+   - 11% → 5% is a whisper on purpose. At chip scale a wider spread reads as a coarse stripe, not
+     as depth.
+   - the border is mixed toward `--color-surface` (OPAQUE) rather than being a translucent green/blue.
+     A semi-transparent border paints over the background, which by default runs underneath it, so
+     the edge read as border-and-fill blended together instead of as a line.
+   - `background-clip: padding-box` for the same reason — it keeps the fill from reaching under the
+     border in the first place.
+   - a 1px shadow and no inset highlight: an `inset 0 1px 0` white line drew a second ring just
+     inside the first, and at this radius it does not follow the curve cleanly.
+   Promoted out of StoreDemoBadge's inline style, whose own comment said it stayed inline because it
+   was "one component, not a repeated utility". It is now three, which is the trigger. */
+.badge-finish {
+  --badge-hue: var(--color-muted);
+  border: 1px solid color-mix(in srgb, var(--badge-hue) 28%, var(--color-surface));
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--badge-hue) 11%, var(--color-surface)) 0%,
+    color-mix(in srgb, var(--badge-hue) 5%, var(--color-surface)) 100%
+  );
+  background-clip: padding-box;
+  box-shadow: 0 1px 1.5px color-mix(in srgb, var(--badge-hue) 10%, transparent);
+}
+
+/* Compact "sale running" chip for discovery surfaces (StoreCard), where the
+   full strip would overpower a card.
+   Geometry is `.store-card__tag`'s, to the pixel — font size, line height, padding, and the full
+   pill radius. It used to be 0.7rem/700 in a 6px rounded box, which is what made it the one chip
+   in the row that was a different shape AND tall enough to drive the row's height. Weight 600 is
+   the one thing it keeps for itself: a running sale outranks a category label, and weight is how
+   to say that without breaking the row.
+   No gradient of its own and no travelling glint, unlike the banner: 54px is not enough length for
+   either — a gradient would show one arbitrary slice, different per chip width — and a shelf of
+   cards each firing its own light would be exactly the unasked-for motion the banner avoids. */
+.sale-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 9999px;
+  --badge-hue: var(--color-sale);
+  color: var(--color-sale);
+  font-size: 0.68rem;
+  font-weight: 600;
+  /* 1.5, matching `.store-card__tag`, so 22px is this chip's OWN height. At `line-height: 1` it
+     computed to ~17px and only looked right because the flex row stretched it — which means it
+     read correctly next to a tag and wrong as the row's only chip, where `.store-card__tags`'
+     min-height was all that held the geometry up. */
+  line-height: 1.5;
+}
+
+/* Product-page hero image: `.badge--new` sits at 0.75rem there (not 0.5rem as on a card). */
+.sale-badge--hero { top: 0.75rem; inset-inline-start: 0.75rem; }
+
+/* Both marks at once: the sale tag drops below the "new" pill instead of landing on top
+   of it. An adjacent-sibling rule rather than a wrapper, because `.badge--new` is rendered
+   independently on four surfaces and every one of them emits the sale tag directly after it. */
+.badge--new + .sale-badge { top: 2.3rem; }
+.badge--new + .sale-badge--hero { top: 2.6rem; }
+

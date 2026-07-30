@@ -18,6 +18,12 @@
   --color-danger: #dc2626;
   --color-warning: #d97706;
   --color-success: #16a34a;
+  /* The "on sale" language (discounts.ts): discounted price text, the corner tag on a
+     product image, and the store-wide sale banner all use this one green so a shopper
+     learns the mark once. A step darker than --color-success on purpose — success is
+     only ever a background/large mark, this is body-size price TEXT and needs to clear
+     4.5:1 on white (it sits at ~5:1; do not lighten it toward #16a34a). */
+  --color-sale: #15803d;
 
   /* Placeholder store-card tiles (see lib/placeholder-art.ts) — ONE of these is
      the dominant colour of a whole card, rotated by card index, so the launch-

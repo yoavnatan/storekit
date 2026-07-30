@@ -96,17 +96,25 @@
   min-height: 22px;
 }
 
+/* Fill, border and shadow come from `.badge-finish` (utils.css) — the one finish every chip in this
+   row shares, tinted per chip by `--badge-hue`. This rule owns geometry and text only. The old
+   `border: 1px solid var(--color-border)` is gone deliberately rather than left as a fallback: a
+   flat neutral border next to two chips carrying a gradient and a shadow is exactly the mismatch
+   that finish exists to remove, and leaving it here would also silently outrank the shared one
+   (this file is unlayered legacy CSS). */
 .store-card__tag {
   font-size: 0.68rem;
   font-weight: 500;
   color: var(--color-muted);
-  border: 1px solid var(--color-border);
+  --badge-hue: var(--color-muted);
   border-radius: 9999px;
   padding: 0.12rem 0.55rem;
   line-height: 1.5;
   white-space: nowrap;
 }
 
+/* Keeps the shared fill and shadow, swaps the line for a dashed one — "+3 more" is a count, not a
+   category, and the dash is what says so without giving it a colour of its own. */
 .store-card__tag--more {
   color: color-mix(in srgb, var(--color-muted) 70%, transparent);
   border-style: dashed;
@@ -297,6 +305,16 @@
 .home-shelf-dot--0 { background: var(--color-accent); }
 .home-shelf-dot--1 { background: color-mix(in srgb, var(--color-accent) 55%, var(--color-primary)); }
 .home-shelf-dot--2 { background: var(--color-primary); }
+
+/* A CATEGORY shelf swaps the dot for that category's own icon (HomeShelf's
+   `icon` prop → CategoryIcon.astro) — same slot, same rotating colour, but it
+   says what the row is instead of only marking that a row starts. Shelves with
+   no category (recently-visited, launch) keep the plain dot. Colour comes from
+   the same three mixes, applied to the stroke rather than a fill. */
+.home-shelf-icon { flex-shrink: 0; }
+.home-shelf-icon--0 { color: var(--color-accent); }
+.home-shelf-icon--1 { color: color-mix(in srgb, var(--color-accent) 55%, var(--color-primary)); }
+.home-shelf-icon--2 { color: var(--color-primary); }
 
 /* ── Generic edge-fade — same JS-driven --fade-start/--fade-end vars as
    .home-shelf/.home-carousel (see index.astro's initEdgeFade), factored out

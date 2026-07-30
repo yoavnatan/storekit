@@ -19,11 +19,15 @@
  */
 import type { StoreProduct } from '../lib/store-products.js';
 import { formatPrice, cdnSrc, cdnSrcSet } from '../config/store.config.js';
+import { resolvePrice, type StoreSale } from '../lib/discounts.js';
+import { priceHtml, saleBadgeHtml } from '../lib/price-html.js';
 
 interface Props {
   product: StoreProduct;
   /** Where the tile links — the store the product belongs to. */
   storeSlug: string;
+  /** That store's running sale, so a discounted tile shows the same price the store page does. */
+  sale?: StoreSale;
   /** Accessible name of the carousel/row this tile sits in (for role="listitem"). */
   role?: 'listitem';
   /** Above the fold: load eagerly at high priority instead of lazily. Only the
@@ -32,7 +36,8 @@ interface Props {
   priority?: boolean;
 }
 
-const { product: p, storeSlug, role, priority = false } = Astro.props;
+const { product: p, storeSlug, sale, role, priority = false } = Astro.props;
+const pv = resolvePrice(p, sale);
 /** 220px tile; 440 covers 2x retina. Widths kept short on purpose — each distinct
  *  width is a separate CDN derivative. */
 const WIDTHS = [220, 440];
@@ -42,7 +47,7 @@ const WIDTHS = [220, 440];
   href={`/${storeSlug}`}
   class="home-product-card card"
   role={role}
-  aria-label={`${p.name} — ${formatPrice(p.price)}`}
+  aria-label={`${p.name} — ${formatPrice(pv.price)}`}
 >
   <div class={`home-product-card__img-wrap${p.images?.[0] ? ' is-loading' : ''}`}>
     {p.images?.[0]
@@ -62,9 +67,10 @@ const WIDTHS = [220, 440];
           {p.name[0]?.toUpperCase() ?? '?'}
         </span>
     }
+    <Fragment set:html={saleBadgeHtml(pv)} />
   </div>
   <div class="home-product-card__body">
     <span class="home-product-card__name" dir="auto">{p.name}</span>
-    <span class="home-product-card__price">{formatPrice(p.price)}</span>
+    <span class="home-product-card__price-row"><Fragment set:html={priceHtml(pv, { className: 'home-product-card__price' })} /></span>
   </div>
 </a>

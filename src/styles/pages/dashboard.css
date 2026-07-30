@@ -171,10 +171,17 @@ textarea.input { resize: none; }
      ride over the product title. A fixed width sized to the thumb keeps it in its own lane. */
   .products-table .thumb-col     { width: 3.6rem; }
   .products-table .name-col      { width: 13%; }
-  .products-table .cat-col       { width: 15%; }
+  .products-table .cat-col       { width: 13.5%; }
   .products-table .sku-col       { width: 9%; }
-  .products-table .price-col     { width: 10%; }
-  .products-table .stock-col     { width: 11%; }
+  /* Price and stock are both `.num` (nowrap) and start-aligned, so in RTL a price
+     too wide for its column bleeds LEFT, over the stock number sitting flush
+     against its edge — 10% couldn't hold "1,234.50 ₪". Price takes 3% more: 1.5%
+     from stock's own trailing slack (all of it on the likes side, so the stock
+     number moves toward the heart without the heart moving or shrinking) and 1.5%
+     from cat-col, the one neighbour whose chip wraps instead of overflowing.
+     Budget stays at 89% so every untouched column keeps its share. */
+  .products-table .price-col     { width: 13%; }
+  .products-table .stock-col     { width: 9.5%; }
   .products-table .wishlist-col  { width: 6%; }
   .products-table .purchased-col { width: 8%; }
   .products-table .date-col      { width: 13%; }
@@ -315,12 +322,6 @@ textarea.input { resize: none; }
 .sort-icon { opacity: 0.2; transition: opacity 0.1s, transform 0.15s; flex-shrink: 0; }
 .sort-btn[data-active="true"] .sort-icon { opacity: 1; }
 .sort-btn[data-active="true"][data-dir="desc"] .sort-icon { transform: rotate(180deg); }
-
-.empty-products {
-  color: var(--color-muted);
-  font-size: 0.95rem;
-  padding: 1.5rem 0;
-}
 
 .products-table {
   width: 100%;

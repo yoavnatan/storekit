@@ -469,6 +469,9 @@ body:has(.store-page) { background: var(--color-surface); }
 }
 
 .category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   border: 1px solid var(--color-border);
   border-radius: 9999px;
   padding: 0.35rem 0.9rem;
@@ -504,6 +507,38 @@ body:has(.store-page) { background: var(--color-surface); }
   border-color: color-mix(in srgb, var(--color-primary) 87%, #000);
   color: #fff;
 }
+
+/* Category icon (platform chips only — /stores). Muted at rest so the LABEL stays
+   the thing being read and a row of chips doesn't turn into a row of pictograms;
+   it picks up the accent on hover and rides the white text when pressed. */
+.category-chip > svg { color: var(--color-muted); transition: color 0.13s; }
+.category-chip:hover > svg { color: var(--color-primary); }
+.category-chip[aria-pressed="true"] > svg,
+.category-chip[aria-pressed="true"]:hover > svg { color: inherit; }
+
+/* Store-level chips get no icon — these two carry the same job instead: how many
+   products sit behind the chip, and whether it drills into subcategories. */
+.category-chip__count {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.category-chip:hover > .category-chip__count { color: var(--color-text); }
+.category-chip[aria-pressed="true"] > .category-chip__count {
+  color: #fff;
+  opacity: 0.75;
+}
+/* Colour deliberately left to the `.category-chip > svg` rule above — it already
+   resolves correctly in all three states, and a same-element override here would
+   need to out-specify a class+type selector to land at all. Only opacity differs:
+   the chevron is an affordance, not content, so it sits a step back. */
+.category-chip__chev { opacity: 0.65; transition: opacity 0.13s; }
+.category-chip:hover > .category-chip__chev { opacity: 1; }
+
+/* Same badge inside a dropdown option / drawer row, where it sits inline after the
+   label instead of being spaced by the chip's own flex gap. */
+.category-chip-option__count { margin-inline-start: 0.4rem; }
 
 /* A chip with its own subcategories reveals them on hover (desktop only —
    see the client script's matchMedia guard) in one shared panel, positioned

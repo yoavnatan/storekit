@@ -5,6 +5,8 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import StoreDemoBadge from '../../components/StoreDemoBadge.astro';
 import StoreDemoBanner from '../../components/StoreDemoBanner.astro';
+import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
+import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible } from '../../lib/stores.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
 import { getDemoStores } from '../../lib/stores.js';
@@ -13,7 +15,8 @@ import { formatStoreHours, formatStoreHoursSchema, googleMapsSearchUrl } from '.
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
 import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
-import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath } from '../../lib/store-categories.js';
+import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath, countProductsPerCategory } from '../../lib/store-categories.js';
+import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
 import { storeCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { OG_IMAGE_FORMAT, resolveStoreImage, storeImageUrl } from '../../lib/store-image.js';
@@ -22,6 +25,8 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getFavoriteStoresForUser } from '../../lib/user-carts.js';
 import { jsonForScript } from '../../lib/json-script.js';
+import { resolvePrice } from '../../lib/discounts.js';
+import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
 
 const { storeSlug: slug } = Astro.params;
 if (!slug) return Astro.redirect('/404');
@@ -73,6 +78,11 @@ const DEMO_PRODUCT_BADGE_CLASS = 'inline-flex items-center gap-1 mb-1 text-[0.66
 const DEMO_PRODUCT_BADGE_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>';
 const storeCategories = getCategoriesByStoreId(shopStore.id);
 const categoryTree = buildCategoryTree(storeCategories);
+// A store's own categories are free text, so they get no icons (see
+// lib/category-icons.ts) — this count is what makes a chip row read as a live
+// catalogue instead of a strip of words. Computed off the visible products only,
+// so it can never promise more than the filter will show.
+const categoryCounts = countProductsPerCategory(storeCategories, allProducts.map((p) => p.categoryId));
 
 // Initial page render honors the same category/sort/q as the URL (deep links,
 // back-navigation) — server-side, so first paint is already correct and fully
@@ -93,7 +103,7 @@ const chipLevelCategories = storeCategories
 const categoryIds = selectedCategory ? resolveCategoryFilterIds(storeCategories, selectedCategory.id) : undefined;
 // Popularity signal for the 'default' ranking — lifetime units sold per product in this store.
 const purchasedUnits = getPurchasedCountsByStoreSlug(shopStore.slug);
-const filteredProducts = filterAndSortProducts(allProducts, { categoryIds, sort: initSort, q: initQ, purchasedUnits });
+const filteredProducts = filterAndSortProducts(allProducts, { categoryIds, sort: initSort, q: initQ, purchasedUnits, sale: shopStore.sale });
 const products = filteredProducts.slice(0, PRODUCTS_PAGE_SIZE);
 const hasMoreProducts = filteredProducts.length > products.length;
 
@@ -106,6 +116,15 @@ const today = new Date().toDateString();
 const lang = getLang(Astro.cookies);
 const dir  = getDir(lang);
 const t    = getT(lang);
+
+// EVERY sale names its scope on the banner — the category path when it is a category, "on
+// selected items" for a hand-picked list, "on the whole store" otherwise. The widest scope is
+// labelled too, on purpose: while only the narrow ones spoke, an unlabelled banner was
+// ambiguous between "it covers everything" and "the seller didn't say", and the shopper had no
+// way to tell which. Naming all three makes the line trustworthy — and the store-wide one is
+// the best news of the three anyway.
+const saleScopeLabel = saleScopeCategoryLabel(storeCategories, shopStore.sale, t.store.saleAndMore)
+  || (shopStore.sale?.productIds?.length ? t.store.saleOnSelected : t.store.saleOnWholeStore);
 
 // The seller viewing their own store gets a way back to the dashboard (the "צפה בחנות"
 // button opens the store in a separate preview tab, and on iOS a link-opened tab has no
@@ -150,6 +169,8 @@ const pmI18n = {
   addToWishlist: t.wishlist.addLabel,
   removeFromWishlist: t.wishlist.removeLabel,
   badgeNew: t.store.badgeNew,
+  saleBadge: t.store.saleBadge,
+  saleWas: t.store.saleWas,
   loadingMore: t.store.loadingMore,
   filterAll: t.store.filterAll,
   filterByCategory: t.store.filterByCategory,
@@ -205,37 +226,13 @@ const pmI18n = {
   </script>
   <script is:inline type="application/json" id="pm-i18n" set:html={jsonForScript(pmI18n)} />
 
-  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}>
+  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-owner-store={isOwner ? shopStore.slug : undefined} data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}>
 
-    {/* Owner preview bar. Sits above .store-banner-pin in normal flow, so it simply
+    {/* Owner bar. Sits above .store-banner-pin in normal flow, so it simply
         scrolls away and the curtain-scroll geometry below is untouched. */}
     {isOwner && (
-      <div class="bg-[color:var(--color-bg)] border-b border-[color:var(--color-border)]">
-        <div class="container flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-[.82rem]">
-          <span class="[color:var(--color-muted)]">{t.store.ownerPreview}</span>
-          <a
-            id="owner-preview-back"
-            href={dashboardHref}
-            class="font-semibold [color:var(--color-accent)] no-underline hover:underline"
-          >{t.store.ownerPreviewBack}</a>
-        </div>
-      </div>
+      <OwnerStoreBar label={t.store.ownerPreview} backLabel={t.store.ownerPreviewBack} dashboardHref={dashboardHref} />
     )}
-    <script>
-      // Close the preview tab instead of navigating, so the seller lands back on the
-      // dashboard tab that is still open rather than ending up with two of them.
-      // Closable when the dashboard opened this tab via window.open (initStorePreviewLink),
-      // or while it still holds a single history entry. Reached any other way — a direct
-      // link, or after browsing deep into the store from a plain link-opened tab — close
-      // is refused, so that case falls through to the plain navigation the href provides.
-      const ownerBack = document.getElementById('owner-preview-back') as HTMLAnchorElement | null;
-      ownerBack?.addEventListener('click', (e) => {
-        if (!window.opener && history.length > 1) return;
-        e.preventDefault();
-        window.close();
-        setTimeout(() => { if (!window.closed) window.location.href = ownerBack.href; }, 120);
-      });
-    </script>
 
     {/* Curtain scroll (CURRENT_TASK 2): ONLY the banner image is pinned; the
         store details and the products both scroll up and over it as one
@@ -316,6 +313,28 @@ const pmI18n = {
             {shopStore.description && shopStore.description !== shopStore.tagline && (
               <p class="store-desc" dir={dir}>{shopStore.description}</p>
             )}
+
+            {/* AFTER the store's own words, never between them. It sat between the name and the
+                tagline, which split the one thing this block exists to say — a store's name and its
+                tagline are a single sentence, and a notice box dropped into the middle left the
+                tagline reading as orphaned text under a banner.
+                It stays inside the identity block rather than moving to the head of the catalog: the
+                sale is an announcement BY the store, the same kind of thing as the demo notice a few
+                lines above, and notices belong with whoever is making them. Its scope line ("on
+                selected items") is a qualifier on the announcement, not a heading for the grid.
+                One consequence to know, and it is ordinary rather than exotic: this block sits high
+                on the page and scrolls normally, so the banner is off-screen by the time the shopper
+                reaches the products (measured: its top goes 529 → 229 → -171 at 0/300/700px of
+                scroll — exactly the scroll delta). Only the cover IMAGE is pinned here, not this
+                block — see store.css's note at the top. So the sale is seen on arrival and not again
+                while browsing; nothing downstream may assume it is still visible. Making it present
+                during browsing would need a real addition (a sticky bar, or a second mark at the head
+                of the catalog), not a tweak. */}
+            {/* `mt-4` (1rem) because the measured gap was 0px — `.store-desc`'s margin-bottom is 0 and
+                the strip carries no margin of its own, so they were touching. 1rem matches
+                `.store-banner__actions` below rather than the 0.5rem the two paragraphs use: those
+                are lines of one text block, this is a separate object and has to read as one. */}
+            <StoreSaleBanner sale={shopStore.sale} dir={dir} scopeLabel={saleScopeLabel} class="mt-4" />
 
             {showDetails && (
               <details class="store-details" dir={dir}>
@@ -474,6 +493,14 @@ const pmI18n = {
                       return (
                         <button type="button" class="category-chip" data-category-id={cat.id} aria-pressed="false" data-has-children={hasChildren ? 'true' : undefined}>
                           {cat.name}
+                          {/* Count first, then the drill-down chevron — the chevron
+                              belongs against the chip's edge, the way a menu's does. */}
+                          {(categoryCounts[cat.id] ?? 0) > 0 && (
+                            <span class="category-chip__count">{categoryCounts[cat.id]}</span>
+                          )}
+                          {hasChildren && (
+                            <svg class="category-chip__chev" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                          )}
                         </button>
                       );
                     })}
@@ -487,6 +514,12 @@ const pmI18n = {
                 </div>
               )}
               <script type="application/json" id="store-category-tree-data" set:html={jsonForScript(categoryTree)} />
+              {/* Same numbers as the server-rendered chips above, so a drill-down
+                  (which re-renders the row client-side) doesn't lose them. Shipped
+                  as its own payload rather than folded into the tree: the tree is
+                  the persisted category shape, the counts are a derived view of the
+                  products, and only one of the two changes when a product does. */}
+              <script type="application/json" id="store-category-counts" set:html={jsonForScript(categoryCounts)} />
 
               <div class="sort-dropdown-wrap" id="sort-dropdown">
                 <button
@@ -550,12 +583,15 @@ const pmI18n = {
             {products.map((p, idx) => {
               const isNew = new Date(p.createdAt).toDateString() === today;
               const hasImages = !!(p.images?.length);
+              // One resolution per card; every price/badge/data-attribute below reads from it,
+              // so the shown price, the cart's price and checkout's price cannot disagree.
+              const pv = resolvePrice(p, shopStore.sale);
               return (
                 <li class="product-card card product-card--entering"
                     style={`animation-delay:${Math.min(idx, 12) * 40}ms`}
                     data-images={hasImages ? JSON.stringify(p.images) : undefined}
                     data-product-name={p.name}
-                    data-price={String(p.price)}
+                    data-price={String(pv.price)}
                     data-created-at={p.createdAt}
                     data-slug={p.slug}
                     data-description={p.description || ''}
@@ -604,12 +640,13 @@ const pmI18n = {
                       }
                     </div>
                     {isNew && <span class="badge badge--new">{t.store.badgeNew}</span>}
+                    <Fragment set:html={saleBadgeHtml(pv, t.store.saleBadge)} />
                   <button
                     type="button"
                     class="wishlist-btn"
                     data-wishlist-slug={p.slug}
                     data-wishlist-name={p.name}
-                    data-wishlist-price={String(p.price)}
+                    data-wishlist-price={String(pv.price)}
                     data-wishlist-image={p.images?.[0] ? cdnSrc(p.images[0]) : ''}
                     data-wishlist-store-slug={shopStore.slug}
                     data-wishlist-store-name={shopStore.name}
@@ -640,7 +677,7 @@ const pmI18n = {
                       <h3 class="product-card__name">{p.name}</h3>
                     </a>
                     <div class="product-card__footer" style="flex-direction:column;align-items:stretch;gap:0.4rem">
-                      <span class="product-card__price">{formatPrice(p.price)}</span>
+                      <span class="product-card__price-wrap"><Fragment set:html={priceHtml(pv, { className: 'product-card__price', saleLabel: t.store.saleWas })} /></span>
                       {p.stock <= 0
                           ? <span class="badge badge--muted">{t.store.outOfStock}</span>
                           : <div dir="ltr" class="product-card__qtycart flex items-center" style="width:100%;height:2.25rem;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden">
@@ -652,7 +689,8 @@ const pmI18n = {
                                 class="product-card__add-btn add-to-cart-btn"
                                 data-slug={p.slug}
                                 data-name={p.name}
-                                data-price={String(p.price)}
+                                data-price={String(pv.price)}
+                                data-base-price={pv.isDiscounted ? String(pv.basePrice) : undefined}
                                 data-image={p.images?.[0] ? cdnSrc(p.images[0]) : ''}
                                 data-stock={String(p.stock)}
                                 data-label-added={t.store.addedToCart}
@@ -701,11 +739,17 @@ const pmI18n = {
   </div>
 </BaseLayout>
 
+{/* The running sale, for the client-side "load more" cards — they resolve prices with the
+    same discounts.ts the server used, instead of the API shipping a second price shape. */}
+<script is:inline type="application/json" id="store-sale-data" set:html={jsonForScript(shopStore.sale ?? null)} />
+
 <script is:inline type="application/json" id="header-search-products" set:html={jsonForScript(
   allProducts.map((p) => ({
     slug: p.slug,
     name: p.name,
-    price: p.price,
+    price: resolvePrice(p, shopStore.sale).price,
+    // Present only when discounted — the dropdown renders it struck through.
+    basePrice: resolvePrice(p, shopStore.sale).isDiscounted ? p.price : undefined,
     image: p.images?.[0] ? cdnSrc(p.images[0], 112) : '',
   }))
 )} />
@@ -728,6 +772,14 @@ const pmI18n = {
   import { initCustomDomainLinks } from '../../lib/custom-domain-links.js';
   import { initChipScroller } from '../../lib/chip-scroller.js';
   import { initStickyBar } from '../../lib/sticky-bar.js';
+  import { resolvePrice, type StoreSale } from '../../lib/discounts.js';
+  import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
+
+  // Parsed once — the store's sale never changes within a page view.
+  const storeSale: StoreSale | null = (() => {
+    try { return JSON.parse(document.getElementById('store-sale-data')?.textContent ?? 'null'); }
+    catch { return null; }
+  })();
 
   document.querySelector<HTMLElement>('.store-page')?.addEventListener('pointerdown', (e) => {
     // Heart/wishlist buttons are excluded — their own heart-burst is the click
@@ -775,6 +827,7 @@ const pmI18n = {
     slug: btn.dataset.slug ?? '',
     name: btn.dataset.name ?? '',
     price: Number(btn.dataset.price ?? 0),
+    basePrice: btn.dataset.basePrice ? Number(btn.dataset.basePrice) : undefined,
     image: btn.dataset.image ?? '',
   })).filter((p) => p.slug);
   if (storeSlug) syncCartImages(storeSlug, currentProducts);
@@ -965,8 +1018,8 @@ const pmI18n = {
         openCardModal(card, true);
         return;
       }
-      const { name = '', price = '0', image = '' } = addBtn.dataset;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty);
+      const { name = '', price = '0', basePrice = '', image = '' } = addBtn.dataset;
+      addItem(storeSlug, storeName, { slug, name, price: Number(price), basePrice: basePrice ? Number(basePrice) : undefined, image, stock: maxStock }, qty);
       trackAddToCart({ id: slug, name, price: Number(price), category: cardCategory }, qty);
       updateQty(1);
 
@@ -1084,6 +1137,21 @@ const pmI18n = {
   }
   const flatCategories = flattenTree(categoryTree);
 
+  // Subtree product counts, keyed by category id (see countProductsPerCategory).
+  let categoryCounts: Record<string, number> = {};
+  try { categoryCounts = JSON.parse(document.getElementById('store-category-counts')?.textContent ?? '{}') as Record<string, number>; }
+  catch { categoryCounts = {}; }
+
+  /** The count badge for a chip/menu row — empty string when there's nothing to
+   *  show, so an empty category renders exactly as it did before rather than
+   *  carrying a "0" that reads as broken. */
+  function countBadgeHtml(id: string, cls = 'category-chip__count'): string {
+    const n = categoryCounts[id] ?? 0;
+    return n > 0 ? `<span class="${cls}">${n}</span>` : '';
+  }
+
+  const CHIP_CHEVRON_SVG = '<svg class="category-chip__chev" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+
   function categoryAncestorChain(categoryId: string): StoreCategoryTreeNode[] {
     const chain: StoreCategoryTreeNode[] = [];
     let current = flatCategories.find((c) => c.id === categoryId);
@@ -1160,7 +1228,7 @@ const pmI18n = {
       categoryFilters.scrollLeft = 0;
       categoryFilters.innerHTML = `
         ${!selected ? `<button type="button" class="category-chip" data-category-id="" aria-pressed="true">${escHtml(i18n?.filterAll ?? '')}</button>` : ''}
-        ${children.map((c) => `<button type="button" class="category-chip" data-category-id="${escHtml(c.id)}" aria-pressed="false"${c.children.length > 0 ? ' data-has-children="true"' : ''}>${escHtml(c.name)}</button>`).join('')}
+        ${children.map((c) => `<button type="button" class="category-chip" data-category-id="${escHtml(c.id)}" aria-pressed="false"${c.children.length > 0 ? ' data-has-children="true"' : ''}>${escHtml(c.name)}${countBadgeHtml(c.id)}${c.children.length > 0 ? CHIP_CHEVRON_SVG : ''}</button>`).join('')}
       `;
       updateCategoryArrows();
       requestAnimationFrame(updateCategoryArrows);
@@ -1207,7 +1275,7 @@ const pmI18n = {
           </button>` : ''}
         ${nodes.map((c) => `
           <button type="button" class="category-chip-option" role="menuitem" data-category-id="${escHtml(c.id)}"${c.children.length ? ` data-drill="${escHtml(c.id)}"` : ''}>
-            <span>${escHtml(c.name)}</span>
+            <span>${escHtml(c.name)}${countBadgeHtml(c.id, 'category-chip__count category-chip-option__count')}</span>
             ${c.children.length ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>` : ''}
           </button>`).join('')}
       `;
@@ -1357,7 +1425,7 @@ const pmI18n = {
     return `
       <button type="button" class="category-drawer-option${!hasKids && node.id === activeTag ? ' is-selected' : ''}"
               ${hasKids ? `data-toggle="${escHtml(node.id)}"` : `data-select="${escHtml(node.id)}"`}>
-        <span>${escHtml(node.name)}</span>
+        <span>${escHtml(node.name)}${countBadgeHtml(node.id, 'category-chip__count category-chip-option__count')}</span>
         ${hasKids ? `<svg class="category-drawer-chev${isOpen ? ' is-open' : ''}" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>` : ''}
       </button>
       ${groupHtml}`;
@@ -1468,6 +1536,7 @@ const pmI18n = {
     const ci = getI18nCart();
     const hasImages = !!(p.images && p.images.length);
     const firstImg = p.images?.[0] ? cdnSrc(p.images[0]) : '';
+    const pv = resolvePrice(p, storeSale);
 
     // Same deferral as the server-rendered cards above: only the first slide gets
     // a real src; the rest hold the blank pixel until hydrateCardSlides() runs.
@@ -1489,7 +1558,7 @@ const pmI18n = {
           <button type="button" class="qty-dec flex items-center justify-center text-[var(--color-muted)] hover:bg-[var(--color-bg)] active:scale-95 transition-colors duration-100 disabled:opacity-30" style="width:2.25rem;height:100%" aria-label="${escHtml(ci.qtyDecrease ?? '')}" disabled>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
-          <button type="button" class="product-card__add-btn add-to-cart-btn" data-slug="${escHtml(p.slug)}" data-name="${escHtml(p.name)}" data-price="${p.price}" data-image="${escHtml(firstImg)}" data-stock="${p.stock}" data-label-added="${escHtml(pi.addedToCart ?? '')}" aria-label="${escHtml(pi.addToCart ?? '')}">
+          <button type="button" class="product-card__add-btn add-to-cart-btn" data-slug="${escHtml(p.slug)}" data-name="${escHtml(p.name)}" data-price="${pv.price}"${pv.isDiscounted ? ` data-base-price="${pv.basePrice}"` : ''} data-image="${escHtml(firstImg)}" data-stock="${p.stock}" data-label-added="${escHtml(pi.addedToCart ?? '')}" aria-label="${escHtml(pi.addToCart ?? '')}">
             <span class="btn-label" aria-hidden="true">
               <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="9" cy="21" r="1.3" fill="currentColor" stroke="none"/>
@@ -1508,7 +1577,7 @@ const pmI18n = {
     return `<li class="product-card card"
         ${hasImages ? `data-images="${escHtml(JSON.stringify(p.images))}"` : ''}
         data-product-name="${escHtml(p.name)}"
-        data-price="${p.price}"
+        data-price="${pv.price}"
         data-created-at="${escHtml(p.createdAt)}"
         data-slug="${escHtml(p.slug)}"
         data-description="${escHtml(p.description || '')}"
@@ -1522,7 +1591,8 @@ const pmI18n = {
       <div class="product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable is-loading' : ''}" ${hasImages ? `role="button" aria-label="${escHtml(p.name)}" tabindex="0"` : ''}>
         <div class="product-card__slides">${slidesHtml}</div>
         ${isNew ? `<span class="badge badge--new">${escHtml(pi.badgeNew ?? '')}</span>` : ''}
-        <button type="button" class="wishlist-btn" data-wishlist-slug="${escHtml(p.slug)}" data-wishlist-name="${escHtml(p.name)}" data-wishlist-price="${p.price}" data-wishlist-image="${escHtml(firstImg)}" data-wishlist-store-slug="${escHtml(storeSlug)}" data-wishlist-store-name="${escHtml(storeName)}" data-wishlist-stock="${p.stock}" data-wishlisted="false" aria-pressed="false" aria-label="${escHtml(pi.addToWishlist ?? '')}" style="position:absolute;top:0.45rem;inset-inline-end:0.45rem;z-index:2;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.9);color:var(--color-muted);transition:color 0.15s,background 0.15s,transform 0.15s">
+        ${saleBadgeHtml(pv, pi.saleBadge)}
+        <button type="button" class="wishlist-btn" data-wishlist-slug="${escHtml(p.slug)}" data-wishlist-name="${escHtml(p.name)}" data-wishlist-price="${pv.price}" data-wishlist-image="${escHtml(firstImg)}" data-wishlist-store-slug="${escHtml(storeSlug)}" data-wishlist-store-name="${escHtml(storeName)}" data-wishlist-stock="${p.stock}" data-wishlisted="false" aria-pressed="false" aria-label="${escHtml(pi.addToWishlist ?? '')}" style="position:absolute;top:0.45rem;inset-inline-end:0.45rem;z-index:2;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.9);color:var(--color-muted);transition:color 0.15s,background 0.15s,transform 0.15s">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
         </button>
         ${dotsHtml}
@@ -1533,7 +1603,7 @@ const pmI18n = {
           <h3 class="product-card__name">${escHtml(p.name)}</h3>
         </a>
         <div class="product-card__footer" style="flex-direction:column;align-items:stretch;gap:0.4rem">
-          <span class="product-card__price">${escHtml(formatPrice(p.price))}</span>
+          <span class="product-card__price-wrap">${priceHtml(pv, { className: 'product-card__price', saleLabel: pi.saleWas })}</span>
           ${stockHtml}
         </div>
       </div>

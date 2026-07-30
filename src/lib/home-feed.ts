@@ -1,6 +1,7 @@
 import type { Store } from './stores.js';
 import type { StoreProduct } from './store-products.js';
 import { getFavoriteStoresForUser } from './user-carts.js';
+import { businessDayISO } from './business-day.js';
 
 export interface FeedStore {
   store: Store;
@@ -71,10 +72,12 @@ function seededShuffle<T>(arr: T[], seed: string): T[] {
   return out;
 }
 
-/** Changes once a day (UTC date string) — long enough that a shelf doesn't feel randomly
- *  reordered on every reload, short enough that the homepage doesn't go stale for weeks. */
+/** Changes once a day — long enough that a shelf doesn't feel randomly reordered on
+ *  every reload, short enough that the homepage doesn't go stale for weeks. On the
+ *  BUSINESS day (business-day.ts), so the shuffle turns over at local midnight rather
+ *  than at 02:00/03:00 while people are still browsing. */
 function dailySeed(salt: string): string {
-  return `${new Date().toISOString().slice(0, 10)}:${salt}`;
+  return `${businessDayISO(new Date())}:${salt}`;
 }
 
 function normalizeCategory(raw: string): string {

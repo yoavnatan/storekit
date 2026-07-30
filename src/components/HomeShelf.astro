@@ -1,6 +1,7 @@
 ---
 import StoreCard from './StoreCard.astro';
 import StorePlaceholderCard from './StorePlaceholderCard.astro';
+import CategoryIcon from './CategoryIcon.astro';
 import type { FeedStore } from '../lib/home-feed.js';
 
 interface Props {
@@ -35,9 +36,15 @@ interface Props {
    *  was added to prevent). A grid wraps instead of scrolling, so a launch shelf
    *  can give each store real presence without hiding the invitation behind it. */
   grid?: boolean;
+  /** A platform category label (`store-taxonomy.ts`) when this shelf IS a category
+   *  row — swaps the heading's colour dot for that category's icon. Left unset by
+   *  shelves that aren't a category (recently-visited, launch), which keep the dot:
+   *  there is nothing meaningful to draw for them, and a generic icon in the slot
+   *  would say less than the dot already does. */
+  categoryLabel?: string;
 }
 
-const { id, title, stores, dotIndex = 0, eagerFirst = false, hideHeading = false, fillMobile = false, invites = 0, grid = false } = Astro.props;
+const { id, title, stores, dotIndex = 0, eagerFirst = false, hideHeading = false, fillMobile = false, invites = 0, grid = false, categoryLabel } = Astro.props;
 
 // How many cards this row holds, and therefore how wide each may grow before the
 // row is full (store-card.css reads --shelf-count).
@@ -84,7 +91,9 @@ const arriveClass = eagerFirst
       {!hideHeading && (
         <div class="home-section-header">
           <h2 id={`shelf-${id}`} class="home-section-title">
-            <span class={`home-shelf-dot home-shelf-dot--${dotIndex % 3}`} aria-hidden="true"></span>
+            {categoryLabel
+              ? <CategoryIcon label={categoryLabel} size={19} class={`home-shelf-icon home-shelf-icon--${dotIndex % 3}`} />
+              : <span class={`home-shelf-dot home-shelf-dot--${dotIndex % 3}`} aria-hidden="true"></span>}
             {title}
           </h2>
         </div>

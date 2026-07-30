@@ -1,6 +1,7 @@
 import type { StoreProduct } from './store-products.js';
 import { isProductInStock } from './variant-combo.js';
 import { performanceTier, PERFORMANCE_TIERS, DEFAULT_LABEL_THRESHOLDS } from './product-labels.js';
+import { effectivePrice, type StoreSale } from './discounts.js';
 
 export type ProductSort = 'default' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'newest';
 
@@ -14,11 +15,19 @@ export interface ProductListingQuery {
   categoryIds?: string[];
   sort?: string;
   q?: string;
-  // productId → lifetime units ordered (orders.ts#getPurchasedCountsByStoreSlug). Powers the
-  // 'default' ranking's popularity signal; omitted → every product scores as zero-sales.
+  // productId → lifetime units SOLD (orders.ts#getPurchasedCountsByStoreSlug — revenue-counting
+  // orders only, so payment-pending, failed and cancelled are all excluded). Powers the 'default'
+  // ranking's popularity signal; omitted → every product scores as zero-sales.
+  // It said "units ordered" until the counter was narrowed to sales that stuck; the wording is
+  // load-bearing here because this same map feeds `custom_label_1` in the Merchant/Meta feed, and
+  // a reader who believes failed orders are included would draw the wrong conclusion about why a
+  // product is ranked where it is.
   purchasedUnits?: Record<string, number>;
   // ms epoch for the "new" recency window; defaults to Date.now(). Pass a fixed value in tests.
   nowMs?: number;
+  // The store's running sale, if any — so "price: low to high" sorts by what the shopper
+  // would actually PAY, not by the struck-through figure. Omitted = full price everywhere.
+  sale?: StoreSale | null;
 }
 
 // Strongest tier first → highest rank value. Reuses the ad-label tiers so storefront
@@ -101,8 +110,8 @@ export function filterAndSortProducts(products: StoreProduct[], query: ProductLi
     switch (sort) {
       case 'name-asc':   return a.name.localeCompare(b.name);
       case 'name-desc':  return b.name.localeCompare(a.name);
-      case 'price-asc':  return a.price - b.price;
-      case 'price-desc': return b.price - a.price;
+      case 'price-asc':  return effectivePrice(a, query.sale) - effectivePrice(b, query.sale);
+      case 'price-desc': return effectivePrice(b, query.sale) - effectivePrice(a, query.sale);
       case 'newest':     return b.createdAt > a.createdAt ? 1 : -1;
       default: return 0;
     }

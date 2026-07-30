@@ -8,11 +8,16 @@ import { isDemoStore } from '../../lib/demo-stores.js';
 import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../lib/store-products.js';
 import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
+import { resolvePrice } from '../../lib/discounts.js';
+import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
+import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
+import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, isProductInStock } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
+import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { jsonForScript } from '../../lib/json-script.js';
 
 const { storeSlug, productSlug } = Astro.params;
@@ -47,6 +52,15 @@ const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
+
+// The seller browsing his own store gets the same bar here as on the store page — the
+// store is one surface, and a preview that announces itself only on the front page
+// leaves him guessing on every page he clicks into (see OwnerStoreBar.astro). On a
+// custom domain the dashboard is on another origin, so the link has to be absolute.
+const isOwner = !!userId && userId === shopStore.sellerId;
+const dashboardHref = shopStore.customDomain?.status === 'active'
+  ? `${platform.url}/seller/dashboard`
+  : '/seller/dashboard';
 
 const isNew = new Date(product.createdAt).toDateString() === new Date().toDateString();
 const images = product.images ?? [];
@@ -87,6 +101,15 @@ const relatedProducts = allStoreProducts
 const storeCategoriesForProduct = getCategoriesByStoreId(shopStore.id);
 const productCategoryName = product.categoryId ? storeCategoriesForProduct.find((c) => c.id === product.categoryId)?.name ?? '' : '';
 const productCategoryPathStr = product.categoryId ? categoryPath(storeCategoriesForProduct, product.categoryId) : '';
+// Every sale names its scope on the banner, the store-wide one included — same rule as the
+// store page, and here it also tells the shopper the sale reaches beyond the product they are
+// looking at (StoreSaleBanner still hides itself entirely on a product a scoped sale misses).
+const saleScopeLabel = saleScopeCategoryLabel(storeCategoriesForProduct, shopStore.sale, t.store.saleAndMore)
+  || (shopStore.sale?.productIds?.length ? t.store.saleOnSelected : t.store.saleOnWholeStore);
+
+// The price to display, charge and publish — resolved once from the product + its store's
+// sale, exactly as /api/checkout resolves it (discounts.ts).
+const pv = resolvePrice(product, shopStore.sale);
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -110,7 +133,7 @@ const jsonLd = {
   url: productUrl,
   offers: {
     '@type': 'Offer',
-    price: String(product.price),
+    price: String(pv.price),
     priceCurrency: 'ILS',
     itemCondition: 'https://schema.org/NewCondition',
     availability: isProductInStock(product.stock, product.variants, product.variantStock)
@@ -163,14 +186,20 @@ const pmI18n = {
   storeMode={true}
   storeName={shopStore.name}
   storeSlug={shopStore.slug}
-  dataLayer={{ event: 'page_view', page_type: 'product', store_id: shopStore.id, store_name: shopStore.name, store_slug: storeSlug, currency: 'ILS', ecommerce: { currency: 'ILS', items: [{ item_id: product.id, item_name: product.name, price: product.price, item_category: productCategoryPathStr }] } }}
-  productPrice={product.price}
+  dataLayer={{ event: 'page_view', page_type: 'product', store_id: shopStore.id, store_name: shopStore.name, store_slug: storeSlug, currency: 'ILS', ecommerce: { currency: 'ILS', items: [{ item_id: product.id, item_name: product.name, price: pv.price, item_category: productCategoryPathStr }] } }}
+  productPrice={pv.price}
   productCurrency="ILS"
 >
   <script is:inline type="application/ld+json" set:html={jsonForScript(breadcrumbLd)} />
   <script is:inline type="application/json" id="pm-i18n" set:html={jsonForScript(pmI18n)} />
 
+  {isOwner && (
+    <OwnerStoreBar label={t.store.ownerPreview} backLabel={t.store.ownerPreviewBack} dashboardHref={dashboardHref} />
+  )}
+
   <div class="product-detail-page"
+       data-owner-store={isOwner ? shopStore.slug : undefined}
+       data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined}
        data-store-slug={shopStore.slug}
        data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}
        data-store-name={shopStore.name}
@@ -243,6 +272,7 @@ const pmI18n = {
                 </div>
             }
             {isNew && <span class="badge badge--new" style="position:absolute;top:0.75rem;inset-inline-start:0.75rem">{t.store.badgeNew}</span>}
+            <Fragment set:html={saleBadgeHtml(pv, t.store.saleBadge, 'sale-badge--hero')} />
           </div>
 
           {images.length > 1 && (
@@ -282,7 +312,10 @@ const pmI18n = {
               </span>
             )}
             <h1 id="product-name-heading" style="font-size:1.5rem;font-weight:700;line-height:1.25;color:var(--color-text);margin:0">{product.name}</h1>
-            <p style="font-size:1.25rem;font-weight:800;line-height:1;color:var(--color-accent);margin:0">{formatPrice(product.price)}</p>
+            <p style="font-size:1.25rem;font-weight:800;line-height:1;margin:0" class={pv.isDiscounted ? undefined : '[color:var(--color-accent)]'}>
+              <Fragment set:html={priceHtml(pv, { saleLabel: t.store.saleWas })} />
+            </p>
+            <StoreSaleBanner sale={shopStore.sale} dir="auto" compact product={product} scopeLabel={saleScopeLabel} />
           </div>
 
           <hr style="border:none;border-top:1px solid var(--color-border);margin:0" />
@@ -406,7 +439,8 @@ const pmI18n = {
                           style="white-space:nowrap;height:48px;font-size:0.9375rem;font-weight:600"
                           data-slug={product.slug}
                           data-name={product.name}
-                          data-price={String(product.price)}
+                          data-price={String(pv.price)}
+                          data-base-price={pv.isDiscounted ? String(pv.basePrice) : undefined}
                           data-image={images[0] ?? ''}
                           data-stock={String(product.stock)}
                           data-category={productCategoryPathStr}
@@ -428,7 +462,7 @@ const pmI18n = {
                         style="color:var(--color-muted);background:none;border:none;cursor:pointer;padding:0.25rem 0;visibility:hidden"
                         data-wishlist-slug={product.slug}
                         data-wishlist-name={product.name}
-                        data-wishlist-price={String(product.price)}
+                        data-wishlist-price={String(pv.price)}
                         data-wishlist-image={images[0] ? cdnSrc(images[0]) : ''}
                         data-wishlist-store-slug={shopStore.slug}
                         data-wishlist-store-name={shopStore.name}
@@ -581,7 +615,7 @@ const pmI18n = {
                     </div>
                     <div dir="auto" style="padding:0.5rem 0.6rem 0.6rem">
                       <p style="font-size:0.75rem;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--color-text)">{p.name}</p>
-                      <p style="font-size:0.75rem;font-weight:700;margin:0.2rem 0 0;color:var(--color-accent)">{formatPrice(p.price)}</p>
+                      <p style="font-size:0.75rem;font-weight:700;margin:0.2rem 0 0;color:var(--color-accent)"><Fragment set:html={priceHtml(resolvePrice(p, shopStore.sale), { saleLabel: t.store.saleWas })} /></p>
                     </div>
                   </a>
                 </div>
@@ -603,7 +637,7 @@ const pmI18n = {
               </span>
             )}
             <span id="sticky-mini-name" dir="auto">{product.name}</span>
-            <span id="sticky-mini-price">{formatPrice(product.price)}</span>
+            <span id="sticky-mini-price"><Fragment set:html={priceHtml(pv, { saleLabel: t.store.saleWas })} /></span>
           </div>
           <button type="button" id="sticky-add-to-cart-btn" class="btn flex-shrink-0"
                   style="white-space:nowrap;height:44px;font-size:0.9375rem;font-weight:600">
@@ -624,7 +658,7 @@ const pmI18n = {
     <!-- Lightbox -->
     <div id="lightbox" class="lightbox" hidden aria-modal="true" role="dialog" aria-label={t.product.imageGallery}>
       <div class="lightbox__backdrop" id="lightbox-backdrop"></div>
-      <div class="lightbox__panel">
+      <div class="lightbox__panel" data-lb-frame data-lb-label={t.product.loadingImage}>
         <button class="lightbox__close" id="lightbox-close" aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"/>
@@ -636,7 +670,7 @@ const pmI18n = {
             <polyline points="15 18 9 12 15 6"/>
           </svg>
         </button>
-        <img class="lightbox__img" id="lightbox-img" src="" alt={product.name} loading="eager" decoding="async" />
+        <img class="lightbox__img transition-[filter,scale] duration-300 ease-out motion-reduce:transition-none" id="lightbox-img" src="" alt={product.name} loading="eager" decoding="async" />
         <button class="lightbox__arrow lightbox__arrow--next" id="lightbox-next" aria-label="Next image">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <polyline points="9 18 15 12 9 6"/>
@@ -653,7 +687,9 @@ const pmI18n = {
   allStoreProducts.map((p) => ({
     slug: p.slug,
     name: p.name,
-    price: p.price,
+    price: resolvePrice(p, shopStore.sale).price,
+    // Present only when discounted — the dropdown renders it struck through.
+    basePrice: resolvePrice(p, shopStore.sale).isDiscounted ? p.price : undefined,
     image: p.images?.[0] ? cdnSrc(p.images[0], 72) : '',
   }))
 )} />
@@ -668,6 +704,7 @@ const pmI18n = {
   import { initReadMore } from '../../lib/read-more.js';
   import { saveLastStore } from '../../lib/last-store.js';
   import { cdnSrc } from '../../lib/cdn.js';
+  import { setLightboxImage, resetLightboxImage, lightboxWidth, warmLightboxImage, neighbourIndexes } from '../../lib/lightbox-image.js';
   import { spawnHeartBurst } from '../../lib/burst.js';
   import { recordStoreVisit } from '../../lib/recent-stores.js';
   import { initCustomDomainLinks } from '../../lib/custom-domain-links.js';
@@ -941,7 +978,7 @@ const pmI18n = {
   function openLightbox(idx: number) {
     if (!lightbox || images.length === 0) return;
     lbIndex = Math.max(0, Math.min(idx, images.length - 1));
-    if (lbImg) lbImg.src = cdnSrc(images[lbIndex] ?? '', 1600);
+    if (lbImg) showLbImage();
     if (lbPrev) lbPrev.hidden = images.length <= 1;
     if (lbNext) lbNext.hidden = images.length <= 1;
     updateLbCounter();
@@ -954,6 +991,24 @@ const pmI18n = {
     if (!lightbox) return;
     lightbox.hidden = true;
     document.body.style.overflow = '';
+    resetLightboxImage(lbImg);
+  }
+
+  // The enlarged view opens on the slide the gallery ALREADY downloaded
+  // (softened) and settles onto the full-screen render — the frame is never
+  // black while the big one arrives. `currentSrc`, not a re-derived w_800 URL:
+  // this gallery carries a srcset, so which width is actually in cache depends
+  // on viewport and DPR, and guessing wrong would fetch a third size for nothing.
+  function showLbImage() {
+    if (!lbImg) return;
+    const src = images[lbIndex] ?? '';
+    const w = lightboxWidth(lbImg);
+    const slide = mainSlides?.querySelectorAll<HTMLImageElement>('img')[lbIndex];
+    setLightboxImage(lbImg, {
+      full: cdnSrc(src, w),
+      preview: slide?.currentSrc || cdnSrc(src, 800),
+      neighbours: neighbourIndexes(images.length, lbIndex).map(i => cdnSrc(images[i] ?? '', w)),
+    });
   }
 
   // The lightbox navigates independently — moving between enlarged images must
@@ -962,15 +1017,10 @@ const pmI18n = {
   function goLightbox(dir: 1 | -1) {
     lbIndex = (lbIndex + dir + images.length) % images.length;
     updateLbCounter();
-    if (!lbImg) return;
-    // Decode the next image first, then swap it in place — the current image
-    // stays put until the new one is ready, so there's no blank/opacity flash
-    // (the "screen jumps, image vanishes then returns" the user reported).
-    const nextSrc = cdnSrc(images[lbIndex] ?? '', 1600);
-    const pre = new Image();
-    pre.src = nextSrc;
-    const swap = () => { if (lbImg) lbImg.src = nextSrc; };
-    pre.decode().then(swap).catch(swap);
+    // The current image stays put until the next one has decoded, so there's no
+    // blank/opacity flash (the "screen jumps, image vanishes then returns" the
+    // user reported) — that hand-off now lives in `setLightboxImage`.
+    showLbImage();
   }
 
   const mainWrap = document.getElementById('main-img-wrap');
@@ -984,6 +1034,12 @@ const pmI18n = {
   });
   mainWrap?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLightbox(activeIndex); }
+  });
+  // Hovering the image is the buyer telling us they're about to enlarge it —
+  // start the bigger render now, while they're still looking at the small one,
+  // instead of making them watch it download after the click.
+  mainWrap?.addEventListener('pointerenter', () => {
+    warmLightboxImage(cdnSrc(images[activeIndex] ?? '', lightboxWidth(lbImg)));
   });
   lbClose?.addEventListener('click', closeLightbox);
   lbPrev?.addEventListener('click', (e) => { e.stopPropagation(); goLightbox(-1); });

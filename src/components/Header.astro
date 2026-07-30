@@ -329,7 +329,10 @@ const strEmpty   = t.store.noProductsFound;
                 <span id="seller-alert-dropdown-dot" class="inline-alert-dot" hidden={!initialSellerAlert} aria-hidden="true"></span>
               </a>
             )}
-            <form method="POST" action="/seller/logout">
+            {/* data-native-submit: a real browser POST, on purpose — logout answers with a
+                redirect, and it must keep working even with every module on the page dead
+                (see dashboard/FormFallbackGuard.astro). */}
+            <form method="POST" action="/seller/logout" data-native-submit>
               <input type="hidden" name="_next" value={currentPath} />
               <button class="user-dropdown__item user-dropdown__item--btn" type="submit" role="menuitem">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -827,7 +830,7 @@ const strEmpty   = t.store.noProductsFound;
     }
 
     type SiteSearchStore = { name: string; slug: string; tagline: string; image: string };
-    type SiteSearchProduct = { name: string; slug: string; price: number; image: string; storeSlug: string; storeName: string };
+    type SiteSearchProduct = { name: string; slug: string; price: number; basePrice?: number; image: string; storeSlug: string; storeName: string };
 
     // Guards a slower, earlier fetch (e.g. a fast backspace-retype) from resolving
     // after a newer one and overwriting the dropdown with stale results.
@@ -876,7 +879,7 @@ const strEmpty   = t.store.noProductsFound;
                     <span class="hsd-result-name">${escHtml(p.name)}</span>
                     <span class="hsd-result-store">${escHtml(p.storeName)}</span>
                   </div>
-                  <span class="hsd-result-price">${formatHomePrice(p.price)}</span>
+                  <span class="hsd-result-price price-now${p.basePrice ? ' price-now--sale' : ''}">${formatHomePrice(p.price)}</span>${p.basePrice ? `<s class="price-was">${formatHomePrice(p.basePrice)}</s>` : ''}
                 </a>
               </li>`).join('')}
           </ul>`;
@@ -931,7 +934,7 @@ const strEmpty   = t.store.noProductsFound;
     const MAX_RECENTS  = 5;
     const PLACEHOLDER_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
 
-    type SearchProduct = { slug: string; name: string; price: number; image: string };
+    type SearchProduct = { slug: string; name: string; price: number; basePrice?: number; image: string };
     let products: SearchProduct[] = [];
     try {
       const el = document.getElementById('header-search-products');
@@ -1044,7 +1047,7 @@ const strEmpty   = t.store.noProductsFound;
                   : `<div class="hsd-result-img-placeholder" aria-hidden="true">${PLACEHOLDER_SVG}</div>`
                 }
                 <span class="hsd-result-name">${escH(p.name)}</span>
-                <span class="hsd-result-price">${formatPrice(p.price)}</span>
+                <span class="hsd-result-price price-now${p.basePrice ? ' price-now--sale' : ''}">${formatPrice(p.price)}</span>${p.basePrice ? `<s class="price-was">${formatPrice(p.basePrice)}</s>` : ''}
               </a>
             </li>`).join('')}
         </ul>`;

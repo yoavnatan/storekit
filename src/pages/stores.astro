@@ -3,6 +3,7 @@ export const prerender = false;
 import BaseLayout from '../layouts/BaseLayout.astro';
 import StoreCard from '../components/StoreCard.astro';
 import StorePlaceholderCard from '../components/StorePlaceholderCard.astro';
+import CategoryIcon from '../components/CategoryIcon.astro';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores, byPromoWeight } from '../lib/stores.js';
@@ -196,11 +197,18 @@ const jsonLd = {
                    aria-hidden="true" style={lang === 'he' ? 'transform:scaleX(-1)' : ''}><polyline points="15 18 9 12 15 6"/></svg>
             </button>
             <div class="category-filters-row" id="stores-filters" role="list">
+              <!-- Icons come from the PLATFORM vocabulary only (lib/category-icons.ts) —
+                   a closed list we authored, so every chip resolves to something
+                   meaningful; a seller-added category inherits the nearest seed's icon.
+                   A store's own product categories are free text and deliberately get
+                   none (see the module header). -->
               <a href={categoryUrl('')} class="category-chip" role="listitem" aria-pressed={!category}>
+                <CategoryIcon name="all" />
                 {t.home.directoryAllCategories}
               </a>
               {allCategories.map((c) => (
                 <a href={categoryUrl(c)} class="category-chip" role="listitem" aria-pressed={category === c}>
+                  <CategoryIcon label={c} />
                   {c}
                 </a>
               ))}
