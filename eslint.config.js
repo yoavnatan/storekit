@@ -22,6 +22,17 @@ export default tseslint.config(
       'pics/',
       '.claude-memory/',
       '.claude/worktrees/',
+      // Dot-prefixed one-off verification snippets (throwaway Playwright/Node scripts written to
+      // check a change, then deleted). They are never committed, and CI lints a CLEAN checkout,
+      // so they can never reach the real gate — linting them locally only means one session's
+      // scratch file turns `npm run lint` red for another session's unrelated work, which
+      // happened, and a red gate you learn to explain away is a gate that stopped working.
+      // Only the dot-prefixed form is listed: an ESLint ignore without a slash matches a
+      // BASENAME at any depth, so `check-*.mjs` would also skip scripts/check-required-env.mjs,
+      // a real file that must stay linted. .gitignore keeps the undotted root scratch names out
+      // of the repo, root-anchored for the same reason.
+      '.tmp-*',
+      '.*.mjs', '.*.cjs',
     ],
   },
 

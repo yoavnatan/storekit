@@ -37,13 +37,26 @@ data/*.json
 # local images / assets not for version control
 pics/
 
-# one-off debug/test scripts at root level
-check-*.cjs
-check-*.js
-test-*.cjs
-test-*.js
-debug-*.cjs
-debug-*.js
+# One-off debug/test scripts. ROOT-ANCHORED with a leading slash on purpose: unanchored,
+# `check-*.mjs` also swallowed scripts/check-required-env.mjs — a real, required file (npm's
+# prestart gate), which would then be missing from a fresh clone and break `npm start` on the
+# server. A pattern without a slash matches a basename at ANY depth.
+/check-*.cjs
+/check-*.js
+/check-*.mjs
+/test-*.cjs
+/test-*.js
+/test-*.mjs
+/debug-*.cjs
+/debug-*.js
+/debug-*.mjs
+# Dot-prefixed scratch of any kind, including the screenshots such a script writes. Kept
+# unanchored (and mirrored in eslint.config.js) because nothing real in this repo is a
+# dot-prefixed script, and a verification snippet must never turn `npm run lint` red for
+# somebody else's unrelated work.
+.tmp-*
+.*.mjs
+.*.cjs
 
 # Claude Code internal memory mirror (never source)
 .claude-memory/
