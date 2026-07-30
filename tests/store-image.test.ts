@@ -92,6 +92,8 @@ describe('generated mark PNG', () => {
     expect(pixels[centre]).not.toBe(pixels[0]);
   });
 
+  // Encodes every share-image size in pure JS — ~1.5s alone, but it shares CPU with the
+  // rest of the suite, so the default 5s timeout made it fail on load rather than on merit.
   it('renders every whitelisted format', () => {
     for (const format of FORMATS) {
       const { width, height } = STORE_IMAGE_FORMATS[format];
@@ -99,7 +101,7 @@ describe('generated mark PNG', () => {
       expect(png.readUInt32BE(16)).toBe(width);
       expect(png.readUInt32BE(20)).toBe(height);
     }
-  });
+  }, 20_000);
 });
 
 describe('cdnFill', () => {

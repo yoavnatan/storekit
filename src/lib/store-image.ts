@@ -1,4 +1,5 @@
 import { cdnFill, store as platform } from '../config/store.config.js';
+import { stripTrailingSlashes } from './url-base.js';
 
 /**
  * The one place that answers "what image represents this store, at this exact
@@ -97,7 +98,7 @@ export function storeImageUrl(
   baseUrl: string = platform.url,
 ): string {
   const { src } = resolveStoreImage(store, format);
-  return src.startsWith('http') ? src : `${baseUrl.replace(/\/+$/, '')}${src}`;
+  return src.startsWith('http') ? src : `${stripTrailingSlashes(baseUrl)}${src}`;
 }
 
 /**

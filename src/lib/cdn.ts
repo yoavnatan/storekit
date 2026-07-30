@@ -80,6 +80,19 @@ export function cdnSrc(url: string, w = 400): string {
 }
 
 /**
+ * The only widths a full-screen (lightbox) image is ever requested at, and the
+ * widths `image-derive.ts` pre-renders when a seller saves a product.
+ *
+ * It lives HERE, not in either consumer, because the two must agree exactly: the
+ * viewer picks a rung (`lightboxWidth`) and the save path derives the rungs. A
+ * width the viewer asks for but nobody pre-derived costs the buyer ~1.2s of
+ * Cloudinary render time before a byte moves, which is the whole thing this
+ * pairing exists to prevent — so drifting them apart fails silently and slowly.
+ * 800 doubles as the gallery main image, so all three are worth having warm.
+ */
+export const LIGHTBOX_WIDTHS = [800, 1200, 1600] as const;
+
+/**
  * Responsive `srcset` (width descriptors) — pair with a `sizes` attribute so
  * hi-DPI screens get enough pixels and the photo stays sharp (a single width
  * gets browser-upscaled → visibly blurry).
