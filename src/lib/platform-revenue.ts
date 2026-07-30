@@ -1,7 +1,7 @@
 import type { AdCampaign } from './ad-campaigns.js';
 import { campaignStatsInRange } from './ad-metrics.js';
 import { daysInRangeInclusive } from './date-range.js';
-import { AD_PLATFORM_MARGIN_PERCENT, adMarginForSpend, monthlyFeeForTier } from './pricing.js';
+import { AD_PLATFORM_MARGIN_PERCENT, monthlyFeeForTier } from './pricing.js';
 import { roundMoney, sumMoney } from './money.js';
 
 // Where the platform's money actually comes from, for one date range
@@ -85,14 +85,23 @@ export function buildPlatformRevenue(
 
   // Only seller-owned boost campaigns are billed onward — that's every row in
   // ad-campaigns.json by definition (the platform-funded baseline has no row).
-  let adSpend = 0;
+  //
+  // Two figures, and mixing them up would book the platform's own pass-through as income: what
+  // the SELLER was charged, and what of that reached Google/Meta. The management fee comes out of
+  // the budget (owner's decision, 2026-07-30), so the income is exactly the difference — taken
+  // from the same numbers the seller's dashboard shows him rather than re-derived from a
+  // percentage here, which is how the two would drift apart.
+  let charged = 0;
+  let paidToNetworks = 0;
   for (const campaign of campaigns) {
-    adSpend += campaignStatsInRange(campaign, fromISO, toISO).spend;
+    const stats = campaignStatsInRange(campaign, fromISO, toISO);
+    charged += stats.spend;
+    paidToNetworks += stats.adSpend;
   }
 
   const subs = roundMoney(subscriptions);
-  const spend = roundMoney(adSpend);
-  const margin = adMarginForSpend(spend);
+  const spend = roundMoney(paidToNetworks);
+  const margin = roundMoney(charged - paidToNetworks);
 
   return {
     commission,

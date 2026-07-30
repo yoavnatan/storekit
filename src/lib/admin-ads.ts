@@ -150,19 +150,29 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
   // owner sees totals, not a row per seller. A per-store map is accumulated for
   // the per-store exposure view (also bounded, see topStores below).
   const active = campaigns.filter((c) => c.status === 'active');
+  // Two different questions, two different bases — and the split is the point:
+  //   · what RAN in this window  → every campaign, whatever its status is today. A campaign that
+  //     ran nine days and was then cancelled still spent that money, and platform-revenue.ts
+  //     bills it that way; filtering to currently-active here made the same window report two
+  //     different ad-spend figures on two admin screens.
+  //   · what is committed NOW    → only the active ones (count + monthly budget), which is a
+  //     forward-looking number and has nothing to do with the window.
   let boostSpend = 0;
   let boostImpressions = 0;
   let boostClicks = 0;
   let boostBudget = 0;
   const boostImpByStore = new Map<string, number>();
-  for (const c of active) {
+  for (const c of campaigns) {
     const stats = campaignStatsInRange(c, from, to);
-    boostSpend += stats.spend;
+    // What BOUGHT the exposure, not what the seller was charged for it: this box sits beside the
+    // platform's own baseline spend, and the management fee is income, not media. The fee shows up
+    // where income belongs — the revenue view (platform-revenue.ts).
+    boostSpend += stats.adSpend;
     boostImpressions += stats.impressions;
     boostClicks += stats.clicks;
-    boostBudget += c.monthlyBudget;
     boostImpByStore.set(c.storeId, (boostImpByStore.get(c.storeId) ?? 0) + stats.impressions);
   }
+  for (const c of active) boostBudget += c.monthlyBudget;
   const boost: BoostOverview = {
     activeCampaigns: active.length,
     totalCampaigns: campaigns.length,
@@ -172,20 +182,27 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
   };
 
   // Brand: owner-run platform-awareness campaigns (aggregate view).
+  // Split on the same two questions as the boost half above, for the same reason: what RAN in
+  // this window is every campaign whatever its status is today, and what is committed NOW is
+  // only the active ones. Summing the window over `brandActive` alone made a brand campaign the
+  // owner paused mid-month take its already-spent budget out of the month's reported figure —
+  // the same July window reporting a smaller platform ad cost after the pause than before it,
+  // while brandStatsInRange had the right answer all along (it freezes at pausedAt rather than
+  // returning zero, ad-metrics.ts#runPeriod).
   const brandActive = brandCampaigns.filter((c) => c.status === 'active');
   let brandSpend = 0;
   let brandImpressions = 0;
   let brandClicks = 0;
   let brandConversions = 0;
   let brandBudget = 0;
-  for (const c of brandActive) {
+  for (const c of brandCampaigns) {
     const stats = brandStatsInRange(c, from, to);
     brandSpend += stats.spend;
     brandImpressions += stats.impressions;
     brandClicks += stats.clicks;
     brandConversions += stats.conversions;
-    brandBudget += c.monthlyBudget;
   }
+  for (const c of brandActive) brandBudget += c.monthlyBudget;
   const brand: BrandOverview = {
     activeCampaigns: brandActive.length,
     totalCampaigns: brandCampaigns.length,

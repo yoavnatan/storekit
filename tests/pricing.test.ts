@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  blendedCommissionRate,
-  commissionPercentForTier,
-  DEFAULT_TIER,
-  monthlyFeeForTier,
-  resolveTier,
-  SELLER_TIERS,
-} from '../src/lib/pricing.js';
+import { blendedCommissionRate, commissionPercentForTier, DEFAULT_TIER, monthlyFeeForTier, resolveTier, SELLER_TIERS, boostFeePercent, AD_PLATFORM_MARGIN_PERCENT } from '../src/lib/pricing.js';
 import { buildPlatformStoreInputs } from '../src/lib/platform-performance.js';
 
 describe('tier table shape', () => {
@@ -104,5 +97,25 @@ describe('buildPlatformStoreInputs', () => {
   it('two sellers on different tiers produce different rates — the whole point', () => {
     const out = buildPlatformStoreInputs(stores, sellers);
     expect(out[0]!.commissionPercent).not.toBe(out[1]!.commissionPercent);
+  });
+});
+
+/** The fee a seller is TOLD about and the fee the platform BOOKS have to be one number. They were
+ *  two: the books took AD_PLATFORM_MARGIN_PERCENT while the dashboard read a config field left
+ *  `null` for "not decided", so the seller saw a vague sentence while 15% was already charged. */
+describe('boostFeePercent', () => {
+  it('falls back to the percentage the platform actually books', () => {
+    expect(boostFeePercent(null)).toBe(AD_PLATFORM_MARGIN_PERCENT);
+    expect(boostFeePercent(undefined)).toBe(AD_PLATFORM_MARGIN_PERCENT);
+  });
+
+  it('lets a configured override win — that is what the config field is for', () => {
+    expect(boostFeePercent(9)).toBe(9);
+    expect(boostFeePercent(0)).toBe(0);
+  });
+
+  it('ignores a nonsense override rather than showing it to a seller', () => {
+    expect(boostFeePercent(-3)).toBe(AD_PLATFORM_MARGIN_PERCENT);
+    expect(boostFeePercent(Number.NaN)).toBe(AD_PLATFORM_MARGIN_PERCENT);
   });
 });

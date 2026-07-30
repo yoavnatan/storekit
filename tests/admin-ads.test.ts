@@ -138,7 +138,7 @@ describe('buildPlatformAdOverview', () => {
     expect(o.ppc.ctr).toBeGreaterThan(0);
   });
 
-  it('aggregates only active brand campaigns and folds their spend into the PPC blend', () => {
+  it('commits only active brand budget, and folds brand spend into the PPC blend', () => {
     const brandCampaigns = [
       makeBrand({ id: 'ba', status: 'active', monthlyBudget: 600 }),
       makeBrand({ id: 'bb', status: 'paused', monthlyBudget: 1200 }),
@@ -153,10 +153,69 @@ describe('buildPlatformAdOverview', () => {
     });
     expect(withBrand.brand.activeCampaigns).toBe(1);
     expect(withBrand.brand.totalCampaigns).toBe(2);
-    expect(withBrand.brand.monthlyBudget).toBe(600); // paused excluded
+    // Budget is forward-looking: what is committed NOW, so a paused campaign commits nothing.
+    expect(withBrand.brand.monthlyBudget).toBe(600);
     // The active brand campaign must add impressions/spend to the blended PPC total.
     expect(withBrand.ppc.impressions).toBeGreaterThan(noBrand.ppc.impressions);
     expect(withBrand.ppc.spend).toBeGreaterThan(noBrand.ppc.spend);
+  });
+
+  // The other half of the same rule, and the one that was wrong: a status that stops FUTURE
+  // spend must not retro-erase spend that already happened. Pausing a brand campaign used to
+  // drop it out of the window's aggregate entirely, so the platform under-reported its own ad
+  // cost for a month that had already been paid for — and the same window answered differently
+  // before and after the pause. Asserted for BOTH campaign kinds, because the boost half had
+  // the identical bug and only the budget line was ever covered here.
+  it('keeps spend a paused campaign already accrued inside the window — boost and brand alike', () => {
+    const window = { from: '2026-01-01', to: '2026-01-31' };
+    // Ran 1–10 Jan, then paused. runPeriod freezes at pausedAt, so ten days of spend stand.
+    const pausedBoost = makeCampaign({
+      id: 'ran-then-paused', status: 'paused', monthlyBudget: 900,
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-10T00:00:00.000Z',
+      pausedAt: '2026-01-10T00:00:00.000Z',
+    });
+    const pausedBrand = makeBrand({
+      id: 'brand-ran-then-paused', status: 'paused', monthlyBudget: 1200,
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-10T00:00:00.000Z',
+      pausedAt: '2026-01-10T00:00:00.000Z',
+    });
+    const base = {
+      feedStores: [], feedProductCount: 0, allStores: [],
+      ads: undefined, settings: { baselineStatus: 'paused' as const, lifetimeBudget: 0 },
+      range: window,
+    };
+    const o = buildPlatformAdOverview({ ...base, campaigns: [pausedBoost], brandCampaigns: [pausedBrand] });
+
+    expect(o.boost.estimatedSpend).toBeGreaterThan(0);
+    expect(o.boost.impressions).toBeGreaterThan(0);
+    expect(o.brand.estimatedSpend).toBeGreaterThan(0);
+    expect(o.brand.impressions).toBeGreaterThan(0);
+    // …while nothing is committed going forward, since neither is running.
+    expect(o.boost.activeCampaigns).toBe(0);
+    expect(o.boost.monthlyBudget).toBe(0);
+    expect(o.brand.activeCampaigns).toBe(0);
+    expect(o.brand.monthlyBudget).toBe(0);
+
+    // And the figure does not move when the window is asked again after the pause: the same
+    // ten days are reported whether the campaign is still listed as active or not.
+    const stillActive = buildPlatformAdOverview({
+      ...base,
+      campaigns: [{ ...pausedBoost, status: 'active', pausedAt: undefined }],
+      brandCampaigns: [],
+    });
+    expect(stillActive.boost.estimatedSpend).toBeGreaterThanOrEqual(o.boost.estimatedSpend);
+
+    // The reported window is bounded by pausedAt, NOT by updatedAt — so editing a stopped
+    // campaign later (correcting its budget, say) cannot retroactively bill the platform for the
+    // weeks between. Both kinds must hold; brand carried no pausedAt at all until this fix, so
+    // its whole run period stretched to the day of any such edit.
+    const editedLater = buildPlatformAdOverview({
+      ...base,
+      campaigns: [{ ...pausedBoost, updatedAt: '2026-01-31T00:00:00.000Z' }],
+      brandCampaigns: [{ ...pausedBrand, updatedAt: '2026-01-31T00:00:00.000Z' }],
+    });
+    expect(editedLater.boost.estimatedSpend).toBe(o.boost.estimatedSpend);
+    expect(editedLater.brand.estimatedSpend).toBe(o.brand.estimatedSpend);
   });
 
   it('caps per-store exposure at a top-N list, keeps the full store count (scalability)', () => {

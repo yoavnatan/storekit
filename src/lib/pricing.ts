@@ -89,6 +89,18 @@ export function adMarginForSpend(spend: number): number {
   return percentOf(spend, AD_PLATFORM_MARGIN_PERCENT);
 }
 
+/** The management-fee percentage a SELLER is told about, which must be the same number the
+ *  platform actually books above. It was two: the books took AD_PLATFORM_MARGIN_PERCENT while the
+ *  seller's tooltip read `store.config.ts → ads.boostCommissionPercent`, left `null` as "not
+ *  decided yet" — so the dashboard showed a vague "a management fee is taken" while 15% was
+ *  already being charged in the reporting. A config override still wins (that is what the field is
+ *  for), but there is no longer a state where the seller is told less than the platform books. */
+export function boostFeePercent(configured?: number | null): number {
+  return typeof configured === 'number' && isFinite(configured) && configured >= 0
+    ? configured
+    : AD_PLATFORM_MARGIN_PERCENT;
+}
+
 /** The blended rate a mixed set of sellers actually produced, as a percent of revenue.
  *  The platform-wide view spans sellers on DIFFERENT tiers, so a single headline "commission %"
  *  is only meaningful as revenue-weighted actuals — never as one tier's rate applied to the total.

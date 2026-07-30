@@ -3,6 +3,8 @@ import type { AdCampaign } from './ad-campaigns.js';
 import type { BrandCampaign } from './brand-campaigns.js';
 import { daysInRangeInclusive, toISODate } from './date-range.js';
 import { roundMoney } from './money.js';
+import { boostFeePercent } from './pricing.js';
+import { store } from '../config/store.config.js';
 
 // Range-aware MOCK ad metrics (CURRENT_TASK.md → סשן ב׳). Deterministic — seeded
 // per entity so numbers stay stable across reloads — and O(1) per entity (a
@@ -16,8 +18,23 @@ function frac(seed: string): number {
   return crypto.createHash('sha256').update(seed).digest().readUInt32BE(0) / 0xffffffff;
 }
 
-export interface RangeStat { impressions: number; clicks: number; ctr: number; spend: number; cpc: number; conversions: number; roas: number }
-const ZERO: RangeStat = { impressions: 0, clicks: 0, ctr: 0, spend: 0, cpc: 0, conversions: 0, roas: 0 };
+export interface RangeStat {
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  /** What the SELLER is charged — the figure his budget cap is a ceiling on. */
+  spend: number;
+  /** What of that reached Google/Meta. The platform's management fee is the difference: the fee
+   *  comes OUT of the budget (owner's decision, 2026-07-30), so a 500₪ cap buys 500₪ minus the
+   *  fee worth of advertising rather than 500₪ of ads plus a bill on top. Kept as its own field
+   *  because the two are different money: `spend` is the seller's cost, `adSpend` is the
+   *  platform's pass-through to the ad network, and only their difference is income. */
+  adSpend: number;
+  cpc: number;
+  conversions: number;
+  roas: number;
+}
+const ZERO: RangeStat = { impressions: 0, clicks: 0, ctr: 0, spend: 0, adSpend: 0, cpc: 0, conversions: 0, roas: 0 };
 
 /** Cost per click from spend/clicks, guarded against divide-by-zero (₪, 2dp). */
 function cpcOf(spend: number, clicks: number): number {
@@ -84,23 +101,71 @@ function overlapDays(c: Runnable, from: string, to: string): number {
   return s > e ? 0 : daysInRangeInclusive(s, e);
 }
 
+/** What a campaign SPENDS over `days` — pacing times delivery, and neither half is optional.
+ *
+ *  Pacing: the divisor is the campaign's own period, NOT always 30. The form calls the figure a
+ *  monthly cap for an ongoing boost and a TOTAL cap for a fixed 7/14/30-day one ("תקרת תקציב
+ *  לקמפיין"). Dividing a 7-day 500₪ campaign by 30 paced it as if the 500 were monthly, so after
+ *  running its whole week it reported ~117₪ — a fifth of what the seller had capped.
+ *
+ *  Delivery: a budget is a CEILING, never a commitment — Google and Meta charge for what the
+ *  auction actually delivered, and a campaign that doesn't win enough impressions simply spends
+ *  less. That is the normal outcome for a small budget in a narrow audience, and it is the whole
+ *  point of the platform's own promise ("משלמים רק על הוצאה בפועל"). So a fully-run campaign
+ *  lands NEAR its cap, not exactly on it: a seeded 82–98% utilisation, stable per campaign like
+ *  every other number here. Pacing alone would have turned the ceiling into a guaranteed charge —
+ *  a different product from the one the form describes.
+ *
+ *  Seeded separately from the campaign's CPM/CTR: one shared `rand` would tie "spent less" to
+ *  "cheaper clicks", and those are independent in reality. */
+function spendOver(campaign: { id: string; monthlyBudget: number; durationDays?: number }, days: number): number {
+  const pace = campaign.monthlyBudget / (campaign.durationDays ?? 30);
+  const utilisation = 0.82 + frac('util:' + campaign.id) * 0.16;
+  return pace * days * utilisation;
+}
+
+/** How much of a seller's charge actually buys advertising. The fee is a percentage OF THE AD
+ *  SPEND and comes out of the budget (owner's decision, 2026-07-30) — so the charge is
+ *  `adSpend × (1 + p)` and this inverts it. Reading the config through pricing.ts#boostFeePercent
+ *  keeps this the same percentage the platform books as income and the same one the seller is
+ *  shown in the budget tooltip. */
+function adSpendOfCharge(charge: number): number {
+  return charge / (1 + boostFeePercent(store.ads?.boostCommissionPercent) / 100);
+}
+
 /** Seeded, deterministic metrics for a campaign that ran `days` active days.
  *  Shared by the lifetime and windowed views so the two never disagree on rate. */
 function accrue(campaign: AdCampaign, days: number): RangeStat {
   if (days <= 0) return ZERO;
   const rand = frac('camp:' + campaign.id);
-  const spend = (campaign.monthlyBudget / 30) * days;
+  const spend = spendOver(campaign, days);
+  // The management fee is taken OUT of the budget, so only the rest buys advertising — which
+  // means the impressions have to be priced off THAT, not off what the seller was charged.
+  // Deriving them from the charge would have quietly advertised money the platform kept.
+  const adMoney = adSpendOfCharge(spend);
   const cpm = campaign.platform === 'google' ? 18 + rand * 14
     : campaign.platform === 'meta' ? 12 + rand * 10
     : 15 + rand * 12; // 'both' = blended Google+Meta band
-  const imp = Math.round((spend / cpm) * 1000);
+  const imp = Math.round((adMoney / cpm) * 1000);
   const ctr = 1.2 + rand * 2.3; // %
   const clicks = Math.round(imp * (ctr / 100));
-  const roas = roundMoney(1.8 + rand * 3.2); // simulated revenue / spend
   const spendR = roundMoney(spend);
   // Sales attributed to the campaign — a seeded ~1.5%–5.5% of clicks convert.
   const conversions = Math.round(clicks * (0.015 + rand * 0.04));
-  return { impressions: imp, clicks, ctr: ctrOf(imp, clicks), spend: spendR, cpc: cpcOf(spendR, clicks), conversions, roas };
+  // ROAS is DERIVED from those sales, never seeded on its own. It used to be an independent
+  // random band, so one card could read "0 מכירות" beside "x4.96 תשואה על הפרסום" — two figures
+  // answering the same question and contradicting each other, which is exactly the number a
+  // seller decides his next budget on. Revenue = sales × a seeded basket value, so zero sales
+  // now honestly means zero return.
+  const revenue = conversions * (90 + frac('aov:' + campaign.id) * 170); // ₪90–260 per order
+  const roas = spendR > 0 ? roundMoney(revenue / spendR) : 0;
+  return {
+    impressions: imp, clicks, ctr: ctrOf(imp, clicks),
+    spend: spendR, adSpend: roundMoney(adMoney),
+    // Cost per click is what the CLICK cost the seller, not what the network charged for it —
+    // the fee is part of what he paid for that click.
+    cpc: cpcOf(spendR, clicks), conversions, roas,
+  };
 }
 
 /** Metrics accrued during the overlap of the picked window [from,to] with the
@@ -120,6 +185,16 @@ export function campaignLifetimeStats(campaign: AdCampaign, today: Date = new Da
   return accrue(campaign, daysInRangeInclusive(start, end));
 }
 
+/** Has a fixed-duration campaign already run its course? Derived, never stored: the end date is
+ *  a pure function of createdAt + durationDays, so there is no second copy of it to go stale and
+ *  no sweep needed to keep a status field honest. An ongoing campaign (no durationDays) never
+ *  ends by itself — only the seller stops it. */
+export function isCampaignEnded(campaign: AdCampaign, today: Date = new Date()): boolean {
+  if (!campaign.durationDays) return false;
+  const start = campaign.createdAt.slice(0, 10);
+  return addDaysISO(start, campaign.durationDays - 1) < toISODate(today);
+}
+
 /** The campaign's run period as ISO dates + active-day count — for the card's
  *  "running since / ran X days" label. */
 export function campaignRunPeriod(campaign: AdCampaign, today: Date = new Date()): { start: string; end: string; days: number } {
@@ -136,6 +211,10 @@ export function withCampaignStats(campaign: AdCampaign, range?: { from: string; 
     ...campaign,
     stats: range ? campaignStatsInRange(campaign, range.from, range.to) : campaignLifetimeStats(campaign),
     runPeriod: campaignRunPeriod(campaign),
+    // Derived here so no card has to do date arithmetic to know which badge to draw: `ended` =
+    // ran its full fixed duration, `archived` = it is history (cancelled, or ended and swept).
+    ended: isCampaignEnded(campaign),
+    archived: !!campaign.archivedAt,
   };
 }
 
@@ -143,7 +222,7 @@ export function brandStatsInRange(campaign: BrandCampaign, from: string, to: str
   const days = overlapDays(campaign, from, to);
   if (days === 0) return ZERO;
   const rand = frac('brand:' + campaign.id);
-  const spend = (campaign.monthlyBudget / 30) * days;
+  const spend = spendOver(campaign, days);
   const cpm = campaign.platform === 'google' ? 10 + rand * 8 : 8 + rand * 7; // brand/awareness runs cheaper
   const impressions = (spend / cpm) * 1000;
   const ctr = 0.7 + rand * 1.6; // %
@@ -155,6 +234,8 @@ export function brandStatsInRange(campaign: BrandCampaign, from: string, to: str
     clicks,
     ctr: ctrOf(imp, clicks),
     spend: spendR,
+    // The platform's own ads: every shekel goes to the network, there is nobody to charge a fee.
+    adSpend: spendR,
     cpc: cpcOf(spendR, clicks),
     conversions: Math.round(clicks * (0.02 + rand * 0.05)), // 2%–7% of clicks act
     roas: 0, // brand/awareness has no direct revenue attribution modelled
