@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { AstroCookies } from 'astro';
+import { allSecretsEqual, secretsEqual } from './secret-compare.js';
 
 const COOKIE_NAME = 'admin_session';
 const ONE_DAY = 60 * 60 * 24;
@@ -20,14 +21,14 @@ function makeToken(): string {
 function verifyToken(token: string | undefined): boolean {
   if (!token || !token.includes('.')) return false;
   const [payload, sig] = token.split('.');
-  if (sign(payload!) !== sig) return false;
+  if (!secretsEqual(sign(payload!), sig ?? '')) return false;
   return Number(payload) > Math.floor(Date.now() / 1000);
 }
 
 export function checkCredentials(username: string, password: string): boolean {
   const u = import.meta.env.ADMIN_USERNAME || 'admin';
   const p = import.meta.env.ADMIN_PASSWORD || 'admin';
-  return username === u && password === p;
+  return allSecretsEqual([[username, u], [password, p]]);
 }
 
 export function login(cookies: AstroCookies): void {

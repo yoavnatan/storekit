@@ -1,4 +1,5 @@
 import type { AstroCookies } from 'astro';
+import { secretsEqual } from './secret-compare.js';
 
 const COOKIE_NAME = 'admin_token';
 const COOKIE_MAX_AGE = 60 * 60 * 8; // 8 hours
@@ -11,11 +12,11 @@ function adminSecret(): string {
 }
 
 export function isAdminRequest(cookies: AstroCookies): boolean {
-  return (cookies.get(COOKIE_NAME)?.value ?? '') === adminSecret();
+  return secretsEqual(cookies.get(COOKIE_NAME)?.value ?? '', adminSecret());
 }
 
 export function checkAdminPassword(password: string): boolean {
-  return password === adminSecret();
+  return secretsEqual(password, adminSecret());
 }
 
 // path:'/' (not '/admin') so the cookie is also sent with /api/admin/* requests —

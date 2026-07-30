@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import type { SellerTierId } from './pricing.js';
+import { secretsEqual } from './secret-compare.js';
 
 const SELLERS_PATH = path.join(process.cwd(), 'data/sellers.json');
 const COOKIE_NAME = 'seller_session';
@@ -216,7 +217,7 @@ function verifyToken(token: string | undefined): string | null {
   if (lastDot === -1) return null;
   const payload = token.slice(0, lastDot);
   const sig = token.slice(lastDot + 1);
-  if (sign(payload) !== sig) return null;
+  if (!secretsEqual(sign(payload), sig)) return null;
   const [sellerId, exp] = payload.split('|');
   if (Number(exp) < Math.floor(Date.now() / 1000)) return null;
   return sellerId ?? null;
