@@ -1,0 +1,217 @@
+---
+/** Seller dashboard → "מבצעים" tab. Display only; behaviour lives in scripts/dashboard/promotions.ts.
+ *
+ *  Two blocks, matching the two levers in lib/discounts.ts and nothing more:
+ *    1. The store-wide sale — the seller's own banner copy plus one optional percent that applies
+ *       to every product that has no discount of its own. Copy and percent are ONE form because
+ *       they are one record: a banner saved without the percent it promises is the single way this
+ *       feature can lie to a shopper.
+ *    2. A read-only roll-up of the products currently marked down, so "what is on sale right now"
+ *       is answerable without paging the catalog. Setting a product's own discount stays in the
+ *       Products tab (single edit form, or the bulk toolbar for many at once) — this tab does not
+ *       duplicate that editor, it links to it.
+ */
+import { formatPrice } from '../../config/store.config.js';
+import { isStoreSaleLive, resolvePrice, salePickedCategoryIds, type StoreSale } from '../../lib/discounts.js';
+import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
+import { SALE_TITLE_MAX, SALE_TEXT_MAX } from '../../lib/discount-input.js';
+import type { StoreProduct } from '../../lib/store-products.js';
+import type { Store } from '../../lib/stores.js';
+import type { StoreCategory } from '../../lib/store-categories.js';
+import type { getT } from '../../i18n/index.js';
+import InfoTip from './InfoTip.astro';
+import { jsonForScript } from '../../lib/json-script.js';
+
+interface Props {
+  store: Store;
+  products: StoreProduct[];
+  /** The store's category tree — the sale's scope picker chooses from it. */
+  categories: StoreCategory[];
+  /** The buyer-facing wording for a product-scoped sale (t.store.saleOnSelected), so the
+   *  preview shows the exact string the storefront banner will. */
+  selectedScopeLabel: string;
+  /** Same, for a store-wide sale (t.store.saleOnWholeStore). The banner labels that scope too,
+   *  so a preview that left it out would under-promise what the seller is about to publish. */
+  storeScopeLabel: string;
+  /** Buyer-facing "and {n} more" (t.store.saleAndMore) — the tail of a multi-category scope,
+   *  passed down so the picker, the preview and the banner collapse it the same way. */
+  andMoreLabel: string;
+  /** The dashboard translation table, passed down rather than re-derived — the panel must use
+   *  the same language the page already resolved from the cookie. */
+  d: ReturnType<typeof getT>['dashboard'];
+}
+
+const { store, products, categories, selectedScopeLabel, storeScopeLabel, andMoreLabel, d } = Astro.props;
+const sale: StoreSale | undefined = store.sale;
+const scopedCategoryIds = salePickedCategoryIds(sale);
+// The picker's own label and the preview both use the storefront's wording rule, so the seller
+// is reading the exact line the banner will print — not a lookalike built from the same ids.
+const scopedCategoryLabel = saleScopeCategoryLabel(categories, sale, andMoreLabel);
+const scopedProductIds = sale?.productIds ?? [];
+const scopeMode = scopedProductIds.length ? 'products' : scopedCategoryIds.length ? 'category' : 'store';
+
+// Names + prices only, as JSON rather than a thousand rendered <label>s: the picker builds
+// rows on the client for the current search term, so a large catalog costs one small payload
+// instead of a DOM node per product (Hard rules → Scalability).
+const productOptions = products.map((p) => ({ id: p.id, name: p.name, price: p.price }));
+
+// Mirrors StoreSaleBanner's own subtitle rule, so the preview is the banner and not a lookalike.
+const previewScope = scopeMode === 'products' ? selectedScopeLabel
+  : scopeMode === 'category' ? scopedCategoryLabel
+  : storeScopeLabel;
+const previewSubtitle = [previewScope, sale?.text].filter(Boolean).join(' · ');
+
+// Only a product's OWN discount lands a product in this list — a store-wide percent applies to
+// everything and listing the whole catalog would say nothing. But each row is priced against the
+// RUNNING SALE TOO, so the figure here is the one the shopper actually sees: the seller reads a
+// result instead of having to reason about which of the two levers wins.
+const saleLive = isStoreSaleLive(sale);
+const discounted = products
+  .filter((p) => p.discount)
+  .map((p) => ({ p, view: resolvePrice(p, sale) }))
+  .filter(({ view }) => view.isDiscounted);
+---
+
+<div class="dash-panel-head mb-5 py-[0.6rem] border-b border-[color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
+  <h2 class="text-[color:var(--color-text)] m-0">{d.tabPromotions}</h2>
+  <button class="btn btn--sm" type="submit" form="store-sale-form" id="store-sale-save-btn">{d.saveChanges}</button>
+</div>
+
+<form method="POST" action="/api/store" id="store-sale-form" data-unsaved-guard>
+  <input type="hidden" name="_action" value="save-store-sale" />
+  <input type="hidden" name="storeId" value={store.id} />
+
+  <div class="card card--flat p-4 md:p-5">
+    <div class="flex items-start justify-between gap-3 flex-wrap mb-1">
+      <div>
+        <h3 class="text-[1.05rem] font-bold m-0">{d.storeSaleTitle}</h3>
+        <p class="muted m-0 mt-1 text-[0.82rem]">{d.storeSaleHint}</p>
+      </div>
+      <label class="flex items-center gap-2 text-[0.85rem] font-semibold cursor-pointer shrink-0">
+        <input type="checkbox" name="saleActive" id="sale-active" checked={sale?.active === true} style="width:16px;height:16px;cursor:pointer" />
+        {d.storeSaleActive}
+      </label>
+    </div>
+
+    {/* Scope. "Selected products" is deliberately NOT a third option here: selecting products
+        and marking them down is the Products tab's bulk action, which writes each product's own
+        discount — the same record a single-product edit writes. Two places to set one thing
+        would be two places to disagree, so this links there instead of copying it. */}
+    <div class="grid gap-4 md:grid-cols-2 mt-4">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.saleScope}</span>
+        <select class="input" name="saleScope" id="sale-scope">
+          <option value="store" selected={scopeMode === 'store'}>{d.saleScopeStore}</option>
+          <option value="category" selected={scopeMode === 'category'}>{d.saleScopeCategory}</option>
+          <option value="products" selected={scopeMode === 'products'}>{d.saleScopeProducts}</option>
+        </select>
+      </label>
+      <div class="field" id="sale-category-field" hidden={scopeMode !== 'category'}>
+        <span class="text-[0.85rem]">{d.saleScopeCategoryPick}</span>
+        <div class="category-picker relative" data-category-picker data-picker-input="saleCategoryId" data-picker-add="off" data-picker-multi="on" data-picker-more-label={andMoreLabel}>
+          <input type="hidden" name="saleCategoryId" id="sale-category-id" value={scopedCategoryIds.join(',')} />
+          <button type="button" class="category-picker__trigger input group flex items-center justify-between gap-2 cursor-pointer text-[color:var(--color-text)] text-start transition-colors duration-[120ms] hover:border-[var(--color-muted)] aria-expanded:border-[var(--color-accent)]" aria-haspopup="true" aria-expanded="false">
+            <span class="category-picker__label overflow-hidden text-ellipsis whitespace-nowrap">{scopedCategoryLabel || d.categoryNone}</span>
+            <svg class="category-picker__chevron shrink-0 text-[color:var(--color-muted)] transition-transform duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="category-picker__menu absolute start-0 top-[calc(100%+5px)] w-max min-w-full max-w-[20rem] max-h-[18rem] overflow-y-auto bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] p-[0.3rem] shadow-[0_4px_20px_rgba(0,0,0,0.12)] z-[60] animate-status-pop" hidden></div>
+        </div>
+      </div>
+    </div>
+
+    {/* Product scope: a searchable list, rendered client-side from the JSON below so the panel
+        stays the same size whether the store has 8 products or 8,000. */}
+    <div class="field" id="sale-products-field" hidden={scopeMode !== 'products'}>
+      <span class="text-[0.85rem]">{d.saleScopeProductsPick} <span class="muted font-normal" id="sale-products-count"></span></span>
+      <input type="hidden" name="saleProductIds" id="sale-product-ids" value={scopedProductIds.join(',')} />
+      <input class="input" type="search" id="sale-products-search" placeholder={d.saleProductsSearch} autocomplete="off" />
+      <div id="sale-products-list" class="mt-2 max-h-[15rem] overflow-y-auto rounded-[var(--radius)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-1"></div>
+      <script type="application/json" id="sale-products-data" set:html={jsonForScript(productOptions)} />
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-[2fr_1fr] mt-4">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.storeSaleHeadline}</span>
+        <input class="input" name="saleTitle" id="sale-title" maxlength={SALE_TITLE_MAX} value={sale?.title ?? ''} placeholder={d.storeSaleHeadlinePlaceholder} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.storeSalePercent}</span>
+        <input class="input" name="salePercent" id="sale-percent" type="number" min="0" max="95" step="1" value={sale?.percent ?? ''} placeholder="0" />
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.storeSalePercentHint}</p>
+      </label>
+    </div>
+
+    <label class="field">
+      <span class="text-[0.85rem]">{d.storeSaleText}</span>
+      <input class="input" name="saleText" id="sale-text" maxlength={SALE_TEXT_MAX} value={sale?.text ?? ''} placeholder={d.storeSaleTextPlaceholder} />
+    </label>
+
+    <div class="grid gap-4 md:grid-cols-2">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.saleStarts}</span>
+        <input class="input" name="saleStarts" id="sale-starts" type="date" value={sale?.startsAt ?? ''} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.saleEnds}</span>
+        <input class="input" name="saleEnds" id="sale-ends" type="date" value={sale?.endsAt ?? ''} />
+      </label>
+    </div>
+    <p class="muted m-0 -mt-2 mb-3 text-[0.76rem]">{d.saleDatesHint}</p>
+
+    {/* Its own row, not a third grid column: as a column it collapsed to a sliver and the
+        label wrapped under its own checkbox. */}
+    <label class="flex items-center gap-2 text-[0.85rem] cursor-pointer mb-4">
+      <input type="checkbox" name="saleBadge" id="sale-badge" checked={sale?.showBadge !== false} style="width:16px;height:16px;cursor:pointer" />
+      {d.saleShowBadge}
+    </label>
+
+    {/* Exactly the storefront markup (utilities/utils.css .store-sale) — a preview built from
+        different classes would drift from the thing it claims to preview. */}
+    <p class="muted m-0 mt-2 mb-1.5 text-[0.78rem]">{d.salePreview}</p>
+    <div class="store-sale" id="sale-preview" dir="rtl" hidden={!sale?.active || !sale?.title}>
+      <span class="store-sale__pct" id="sale-preview-pct" dir="ltr" hidden={!sale?.percent}>-{sale?.percent ?? 0}%</span>
+      <span class="store-sale__body">
+        <span class="store-sale__title" id="sale-preview-title">{sale?.title ?? ''}</span>
+        <span class="store-sale__text" id="sale-preview-text" style="display:block" data-selected-label={selectedScopeLabel} data-store-label={storeScopeLabel} hidden={!previewSubtitle}>{previewSubtitle}</span>
+      </span>
+    </div>
+    <p class="muted m-0 mt-2 text-[0.78rem]" id="sale-preview-empty" hidden={!!(sale?.active && sale?.title)}>{d.salePreviewEmpty}</p>
+  </div>
+</form>
+
+<div class="card card--flat p-4 md:p-5 mt-4">
+  {/* The tip belongs HERE, not on the store-wide block: this is the section where the two
+      levers can meet on one product, so this is where "which discount wins" needs answering. */}
+  <h3 class="text-[1.05rem] font-bold m-0 flex items-center gap-1.5">
+    {d.discountedProducts}
+    <InfoTip text={d.discountedProductsTip} />
+  </h3>
+  <p class="muted m-0 mt-1 mb-3 text-[0.82rem]">{d.discountedProductsHint}</p>
+
+  {discounted.length === 0
+    ? <p class="muted m-0 text-[0.85rem]">{d.discountedProductsEmpty}</p>
+    : (
+      <ul role="list" class="list-none m-0 p-0 flex flex-col gap-1.5" id="discounted-list">
+        {discounted.map(({ p, view }) => (
+          <li class="flex items-center gap-3 flex-wrap py-2 px-2.5 rounded-[var(--radius-sm)] border border-[color:var(--color-border)]" data-discounted-row={p.id}>
+            <span class="min-w-0 flex-1">
+              <span class="font-semibold text-[0.86rem] block overflow-hidden text-ellipsis whitespace-nowrap" dir="auto">{p.name}</span>
+              {/* Which lever decided this price. Only worth saying while a store-wide sale is
+                  actually running — with no sale there is nothing to disambiguate. */}
+              {saleLive && (
+                <span class="muted text-[0.75rem]">
+                  {view.source === 'store' ? d.saleSourceStore : d.saleSourceProduct}
+                </span>
+              )}
+            </span>
+            <span class="sale-chip" dir="ltr">-{view.percentOff}%</span>
+            <span class="text-[0.84rem]">
+              <span class="price-now price-now--sale">{formatPrice(view.price)}</span>
+              <s class="price-was">{formatPrice(view.basePrice)}</s>
+            </span>
+            <button type="button" class="btn btn--ghost btn--sm" data-clear-discount={p.id} data-store-id={store.id}>{d.saleClear}</button>
+          </li>
+        ))}
+      </ul>
+    )}
+</div>

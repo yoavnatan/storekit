@@ -1,0 +1,66 @@
+---
+/** The store-wide sale strip (see lib/discounts.ts → Store.sale).
+ *
+ *  Renders on the store page under the store identity and again on every product page of that
+ *  store, so a shopper who lands deep from search sees the same running sale a shopper who
+ *  came through the storefront does. Renders NOTHING unless the sale is switched on, has a
+ *  headline, and is inside its date window — a store with no sale pays no layout for it.
+ *
+ *  The copy is the seller's own (validated + capped in /api/store.ts). The percent shown is
+ *  the same number `resolvePrice` applies, so the banner can never promise a discount the
+ *  prices don't give.
+ */
+import { isStoreSaleLive, saleCoversProduct, type StoreSale } from '../lib/discounts.js';
+
+interface Props {
+  sale?: StoreSale;
+  dir?: string;
+  /** Tighter type scale for the product page, where the banner is secondary to the product. */
+  compact?: boolean;
+  /** Human-readable category path when the sale is scoped to one — rendered so the banner can
+   *  never read as store-wide while the discount only touches part of the catalog. */
+  scopeLabel?: string;
+  /** On a product page: the product being viewed. A scoped sale that doesn't cover it renders
+   *  nothing — announcing a discount on the page of an item it excludes is worse than silence. */
+  product?: { categoryId?: string };
+  /** Utilities for how this instance sits in ITS page — spacing, essentially. The component owns
+   *  its own look and nothing about its surroundings: the store page needs a margin above it, the
+   *  product page sits in a flex column that already spaces it, and the dashboard preview needs
+   *  neither. A margin baked into `.store-sale` would double up on two of the three.
+   *  It has to arrive as a prop rather than as a wrapper `<div class="mt-4">` around the component,
+   *  because this renders NOTHING when no sale is live — a wrapper would leave its margin behind as
+   *  a blank gap on every store that has no sale, and paying no layout for an absent sale is the
+   *  one promise this component's own doc comment makes. */
+  class?: string;
+}
+
+const { sale, dir, compact = false, scopeLabel, product, class: className } = Astro.props;
+const live = isStoreSaleLive(sale) && (!product || !sale || saleCoversProduct(sale, product));
+
+// The scope reads as the first run of the subtitle, in the SAME type as the seller's own line —
+// not as a chip. A chip carried its own padding, so its text started a few px in from the title
+// above it and the block read as misaligned; plain text sits on the title's own edge.
+const subtitle = [scopeLabel, sale?.text].filter(Boolean).join(' · ');
+---
+
+{/* The figure first, the copy after it: one cluster at the reading start. Source order IS the
+    layout here — nothing is pushed to the far edge.
+    `compact` is a TYPE-SCALE switch only. It used to override padding too, which existed while this
+    was a bordered card; with no box there is nothing to pad, and the override would put the
+    product-page instance back to being indented from the price above it.
+    All comments live OUT here rather than inside the `live && sale && (…)` expression: a JSX comment
+    placed in there makes it two expressions and Astro fails the build outright. That cost a build
+    twice — and then a third time, because the note explaining it spelled the comment's own closing
+    delimiter out, which ENDED this comment early and rendered the remaining prose onto the page.
+    Never write that two-character sequence inside a comment; describe it in words. */}
+{live && sale && (
+  <div class:list={['store-sale', className]} dir={dir}>
+    {sale.percent && (
+      <span class="store-sale__pct" dir="ltr" style={compact ? 'font-size:1.15rem' : undefined}>-{sale.percent}%</span>
+    )}
+    <span class="store-sale__body">
+      <span class="store-sale__title" style={compact ? 'font-size:0.9rem' : undefined}>{sale.title}</span>
+      {subtitle && <span class="store-sale__text" style="display:block">{subtitle}</span>}
+    </span>
+  </div>
+)}
