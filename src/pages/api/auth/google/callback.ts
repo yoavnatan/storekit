@@ -7,6 +7,7 @@ import {
   linkGoogleAccount,
   setSellerSession,
 } from '../../../../lib/seller-auth.js';
+import { safeRedirectPath } from '../../../../lib/safe-redirect.js';
 
 interface GoogleTokenResponse {
   access_token: string;
@@ -30,7 +31,10 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   }
 
   const storedState = cookies.get('oauth_state')?.value;
-  const nextPath = cookies.get('oauth_next')?.value ?? '/seller/dashboard';
+  // Re-validated on the way out even though google.ts already sanitised it on the way in: this
+  // is the line that actually emits the redirect, and a destination that reaches it unchecked is
+  // exactly the bug. Cheap, and it stops the guarantee depending on a second file staying right.
+  const nextPath = safeRedirectPath(cookies.get('oauth_next')?.value, '/seller/dashboard');
 
   cookies.delete('oauth_state', { path: '/' });
   cookies.delete('oauth_next', { path: '/' });

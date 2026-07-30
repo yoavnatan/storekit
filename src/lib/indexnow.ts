@@ -1,5 +1,6 @@
 import { store as platform } from '../config/store.config.js';
 import { isDemoStore } from './demo-stores.js';
+import { stripTrailingSlashes } from './url-base.js';
 
 // IndexNow — the one ACTIVE indexing lever (vs. passively waiting for a crawl).
 // When a store/product page is newly published or its indexability changes, we
@@ -44,7 +45,7 @@ export interface IndexNowPayload {
 /** Build the IndexNow POST body: absolutize + dedupe the paths, attach the key
  *  and its verification-file location. Accepts relative ('/x') or absolute URLs. */
 export function buildIndexNowPayload(paths: string[], cfg: { key: string; siteUrl: string }): IndexNowPayload {
-  const base = cfg.siteUrl.replace(/\/+$/, '');
+  const base = stripTrailingSlashes(cfg.siteUrl);
   const host = new URL(base).hostname;
   const abs = Array.from(
     new Set(paths.map((u) => (/^https?:\/\//i.test(u) ? u : `${base}${u.startsWith('/') ? '' : '/'}${u}`))),

@@ -1,6 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession, updateSeller } from '../../../lib/seller-auth.js';
+import { isValidEmail } from '../../../lib/email-address.js';
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   const userId = getSellerSession(cookies);
@@ -17,7 +18,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return new Response(JSON.stringify({ error: 'שם ואימייל הם שדות חובה' }), { status: 400 });
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!isValidEmail(email)) {
     return new Response(JSON.stringify({ error: 'כתובת מייל לא תקינה' }), { status: 400 });
   }
 

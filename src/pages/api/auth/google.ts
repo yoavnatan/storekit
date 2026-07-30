@@ -1,11 +1,12 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import crypto from 'node:crypto';
+import { safeRedirectPath } from '../../../lib/safe-redirect.js';
 
 export const GET: APIRoute = ({ redirect, cookies, url }) => {
-  const rawNext = url.searchParams.get('next') ?? '';
-  const safeNext =
-    rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/seller/dashboard';
+  // Sanitised HERE, before it is stored — the callback redirects to this cookie's value, so a
+  // hostile destination that got in would survive the whole OAuth round trip (lib/safe-redirect.ts).
+  const safeNext = safeRedirectPath(url.searchParams.get('next'), '/seller/dashboard');
 
   const state = crypto.randomBytes(16).toString('hex');
 

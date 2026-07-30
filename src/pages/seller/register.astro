@@ -6,17 +6,16 @@ import { getLang, getT } from '../../i18n/index.js';
 import { store } from '../../config/store.config';
 import { getDemoStores } from '../../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
+import { safeRedirectPath } from '../../lib/safe-redirect.js';
+import { isValidEmail } from '../../lib/email-address.js';
 
 if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
 
-const rawNext = Astro.url.searchParams.get('next') ?? '';
-const safeNext =
-  rawNext.startsWith('/') && !rawNext.startsWith('//') && rawNext !== '/seller/register'
-    ? rawNext
-    : '/';
+// Same rule as login — see lib/safe-redirect.ts.
+const safeNext = safeRedirectPath(Astro.url.searchParams.get('next'), '/', ['/seller/register']);
 
 // The seller-facing way into a finished store (lib/demo-stores.ts) — this entry
 // point never expires, unlike the showcase stores' presence in shopper discovery.
@@ -40,6 +39,10 @@ if (Astro.request.method === 'POST') {
 
   if (!name || !email || !password) {
     error = t.auth.allRequired;
+  } else if (!isValidEmail(email)) {
+    // The browser's type="email" is a convenience, not a guarantee — this POST can arrive without
+    // one. The address is the account's only recovery channel, so a junk value is unrecoverable.
+    error = t.auth.invalidEmail;
   } else if (password.length < 6) {
     error = t.auth.passwordTooShort;
   } else {

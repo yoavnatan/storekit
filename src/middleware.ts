@@ -5,6 +5,8 @@ import { logError, resolveErrorContext } from './lib/error-log.js';
 import { recordPageView } from './lib/store-pageviews.js';
 import { recordProductView } from './lib/product-pageviews.js';
 import { recordAnalyticsEvent } from './lib/analytics.js';
+import { isBotRequest } from './lib/bot-detect.js';
+import { getSellerSession } from './lib/seller-auth.js';
 import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/stores.js';
 import { resolveCustomDomainRewrite, isUnclaimedCustomHost } from './lib/custom-domain.js';
 import { getProductBySlug } from './lib/store-products.js';
@@ -70,9 +72,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
     // A navigable page — the only kind we count in the first-party funnel and
     // resolve a visitor id for. Excludes API calls, static assets (any path with
-    // a file extension), and the admin backend (the owner's own browsing must not
-    // pollute the shopper funnel). The definitive HTML check happens after next().
+    // a file extension), the admin backend (the owner's own browsing must not
+    // pollute the shopper funnel), and non-human clients: robots.txt invites a
+    // dozen crawlers on purpose, and counting their visits as page views tells a
+    // seller the mall sent traffic that didn't buy. The definitive HTML check
+    // happens after next().
+    const isHuman = !isBotRequest(context.request);
     const isPageCandidate = isGet
+      && isHuman
       && !pathname.startsWith('/api/')
       && !pathname.startsWith('/admin')
       && !/\.[a-z0-9]+$/i.test(pathname);
@@ -82,12 +89,21 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // resolves to a store counts a store visit; a two-segment path additionally counts a product
     // view. Reserved routes and asset paths never reach getStoreBySlug. All wrapped so an analytics
     // lookup miss/failure can never affect the response.
-    const pathMatch = isGet ? pathname.match(STORE_PATH_RE) : null;
+    const pathMatch = isGet && isHuman ? pathname.match(STORE_PATH_RE) : null;
     let viewedProductId = '';
+    let ownerViewingOwnStore = false;
     if (pathMatch && !isReservedSlug(pathMatch[1]!) && !pathMatch[1]!.includes('.')) {
       try {
         const st = getStoreBySlug(pathMatch[1]!);
-        if (st) {
+        // A seller looking at their own storefront is not a visit. The dashboard's
+        // "צפה בחנות" button sends them here constantly while they set the store
+        // up — and because that page IS the live store (no preview mode), every
+        // one of those was landing in the seller's own visit count, which is the
+        // number they use to judge whether the mall works. Same identity check the
+        // page itself uses (own-store-guard / isOwner). Their visits to OTHER
+        // stores still count: there they really are a shopper.
+        ownerViewingOwnStore = !!st && getSellerSession(context.cookies) === st.sellerId;
+        if (st && !ownerViewingOwnStore) {
           recordPageView(st.slug, vid || resolveVisitorId(context.cookies));
           // A product page also counts one product-level view. Resolve slug→id so history keys on
           // the immutable product id (a rename changes the slug).
@@ -105,7 +121,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // never throws (see analytics.ts). page_view = a session touched the site;
     // the narrower stages map product pages → view_item, the checkout page →
     // begin_checkout, and the seller register page → the seller-funnel top.
-    if (isPageCandidate && (response.headers.get('content-type') ?? '').includes('text/html')) {
+    if (isPageCandidate && !ownerViewingOwnStore && (response.headers.get('content-type') ?? '').includes('text/html')) {
       recordAnalyticsEvent('page_view', { vid });
       if (viewedProductId) recordAnalyticsEvent('view_item', { vid, productIds: [viewedProductId] });
       else if (pathname === '/checkout') recordAnalyticsEvent('begin_checkout', { vid });

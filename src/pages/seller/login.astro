@@ -4,18 +4,17 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { loginSeller, setSellerSession, getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { store } from '../../config/store.config';
+import { safeRedirectPath } from '../../lib/safe-redirect.js';
 
 if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
 
-const rawNext = Astro.url.searchParams.get('next') ?? '';
-// Only allow same-origin relative paths; block protocol-relative URLs and loops
-const safeNext =
-  rawNext.startsWith('/') && !rawNext.startsWith('//') && rawNext !== '/seller/login'
-    ? rawNext
-    : '/';
+// Only an in-site absolute path, and never back to this page itself (login → login loop).
+// The rule lives in lib/safe-redirect.ts — it used to be three lines copy-pasted here, in
+// register, in logout and in the Google route, which is how /api/lang ended up without it.
+const safeNext = safeRedirectPath(Astro.url.searchParams.get('next'), '/', ['/seller/login']);
 
 // Map OAuth error codes to user-facing messages
 const oauthError = Astro.url.searchParams.get('error');
