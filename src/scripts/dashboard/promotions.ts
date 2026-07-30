@@ -8,13 +8,12 @@
 // seller sees here is the thing shoppers get — not an approximation of it.
 
 import { showToast, showErrorToast } from '../../lib/toast.js';
-import { escapeHtml } from '../../lib/html-escape.js';
-import { formatPrice } from '../../config/store.config.js';
 import { resolvePrice, type ProductDiscount } from '../../lib/discounts.js';
 import { refreshDiscountFieldsIn } from './discount-field.js';
 import { dashStoreSale } from './products.js';
 import { selectedRowIds } from './bulk-selection.js';
 import { initSelectDropdown } from './select-dropdown.js';
+import { initProductMultiPicker, readProductOptions } from './product-multi-picker.js';
 
 interface SaleResponse { ok: boolean; error?: string }
 
@@ -154,61 +153,23 @@ function initBulkDiscount(i: Record<string, string>): void {
   addSaleBtn?.addEventListener('click', () => void send('add-to-sale', addSaleBtn));
 }
 
-interface SaleProductOption { id: string; name: string; price: number }
-
-/** The "selected products" scope picker. Rows are built on demand for the current search term
- *  (capped per render) instead of one element per product up front, so the panel costs the same
- *  for a catalog of 8 or 8,000. Returns a repaint function the scope switch calls. */
+/** The sale's "selected products" scope field — the shared dashboard picker
+ *  (product-multi-picker.ts, also used by the advertising tab's boost scope). Returns a repaint
+ *  function the scope switch calls, since a container that was hidden renders nothing. */
 function initProductPicker(i: Record<string, string>): () => void {
   const list = el('sale-products-list');
-  const search = el<HTMLInputElement>('sale-products-search');
   const hidden = el<HTMLInputElement>('sale-product-ids');
-  const countEl = el('sale-products-count');
   if (!list || !hidden) return () => {};
 
-  const MAX_ROWS = 60;
-  let options: SaleProductOption[] = [];
-  try { options = JSON.parse(document.getElementById('sale-products-data')?.textContent ?? '[]'); }
-  catch { options = []; }
-
-  const selected = new Set(hidden.value.split(',').map((v) => v.trim()).filter(Boolean));
-
-  const commit = (): void => {
-    hidden.value = [...selected].join(',');
-    if (countEl) countEl.textContent = selected.size ? `(${selected.size} ${i.saleProductsSelected ?? 'נבחרו'})` : '';
-  };
-
-  const render = (): void => {
-    const q = (search?.value ?? '').trim().toLowerCase();
-    // Selected rows always render, whatever the search term — otherwise a seller could not see
-    // (or un-tick) a choice that the current filter happens to exclude.
-    const matches = options.filter((o) => selected.has(o.id) || (!q || o.name.toLowerCase().includes(q)));
-    const shown = matches.slice(0, MAX_ROWS);
-    if (!shown.length) {
-      list.innerHTML = `<p class="muted m-0 p-2 text-[0.82rem]">${escapeHtml(i.saleProductsNone ?? '')}</p>`;
-      return;
-    }
-    list.innerHTML = shown.map((o) => `
-      <label class="flex items-center gap-2 py-1.5 px-2 rounded-[var(--radius-sm)] cursor-pointer hover:bg-[color:var(--color-bg)]">
-        <input type="checkbox" value="${escapeHtml(o.id)}" style="width:15px;height:15px;cursor:pointer"${selected.has(o.id) ? ' checked' : ''}>
-        <span class="text-[0.85rem] flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" dir="auto">${escapeHtml(o.name)}</span>
-        <span class="muted text-[0.78rem]">${escapeHtml(formatPrice(o.price))}</span>
-      </label>`).join('')
-      + (matches.length > shown.length
-        ? `<p class="muted m-0 p-2 text-[0.78rem]">+${matches.length - shown.length}</p>`
-        : '');
-    commit();
-  };
-
-  list.addEventListener('change', (e) => {
-    const box = e.target as HTMLInputElement;
-    if (box?.type !== 'checkbox') return;
-    if (box.checked) selected.add(box.value); else selected.delete(box.value);
-    commit();
+  const picker = initProductMultiPicker({
+    list,
+    hidden,
+    search: el<HTMLInputElement>('sale-products-search'),
+    count: el('sale-products-count'),
+    options: readProductOptions('sale-products-data'),
+    labels: { selected: i.saleProductsSelected ?? 'נבחרו', none: i.saleProductsNone ?? '' },
   });
-  search?.addEventListener('input', render);
-
-  return render;
+  return picker.render;
 }
 
 /** Everything that lives INSIDE #dash-panel-promotions. Split out from initPromotionsTab so it

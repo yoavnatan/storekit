@@ -2,11 +2,9 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getStoreBySlug } from '../../../lib/stores.js';
-import { getProductsByStoreId } from '../../../lib/store-products.js';
-import {
-  getCampaignsByStoreId, createCampaign, updateCampaign, deleteCampaign,
-  parseDuration, parseAudience,
-} from '../../../lib/ad-campaigns.js';
+import { createCampaign, updateCampaign, archiveCampaign } from '../../../lib/ad-campaigns.js';
+import { getCampaignsForStore, getCampaignHistory, resumeBlockReason } from '../../../lib/ad-campaign-health.js';
+import { buildCampaignInput, isValidCampaignBudget } from '../../../lib/ad-campaign-input.js';
 import { withCampaignStats } from '../../../lib/ad-metrics.js';
 import { resolveAdRange } from '../../../lib/date-range.js';
 import { roundMoney } from '../../../lib/money.js';
@@ -35,53 +33,34 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // Same window/lifetime semantics as the seller route (shared resolveAdRange) so
   // the one picker (advertising.ts) drives both. lifetime/no-preset → lifetime.
   const range = resolveAdRange(url.searchParams);
-  const campaigns = getCampaignsByStoreId(store.id).map((c) => withCampaignStats(c, range));
-  return json({ ok: true, campaigns });
+  // getCampaignsForStore (not the raw accessor): it attaches each campaign's health and pauses
+  // any that has nothing left on the storefront to advertise (ad-campaign-health.ts).
+  const campaigns = getCampaignsForStore(store.id).map((c) => withCampaignStats(c, range));
+  // History rides along in the same response: the two lists are rendered together, and a second
+  // round trip for a block that is usually collapsed would be a request nobody asked for.
+  const archived = getCampaignHistory(store.id).map((c) => withCampaignStats(c, range));
+  return json({ ok: true, campaigns, archived });
 }
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  let body: { storeSlug?: unknown; scope?: unknown; productId?: unknown; platform?: unknown; monthlyBudget?: unknown; durationDays?: unknown; audience?: unknown };
+  let body: { storeSlug?: unknown; scope?: unknown; productId?: unknown; productIds?: unknown; categoryIds?: unknown; platform?: unknown; monthlyBudget?: unknown; durationDays?: unknown; audience?: unknown };
   try { body = await request.json() as typeof body; }
   catch { return json({ error: 'Invalid JSON' }, 400); }
 
-  const { storeSlug, scope, productId, platform, monthlyBudget } = body;
-  const durationDays = parseDuration(body.durationDays);
-  // A store-wide campaign self-targets per product (each product's own feed
-  // attributes) — it never carries a single audience, even if one is posted.
-  const audience = scope === 'product' ? parseAudience(body.audience) : undefined;
-  if (typeof storeSlug !== 'string') return json({ error: 'Missing storeSlug' }, 400);
-  if (scope !== 'store' && scope !== 'product') return json({ error: 'Invalid scope' }, 400);
-  if (platform !== 'google' && platform !== 'meta' && platform !== 'both') return json({ error: 'Invalid platform' }, 400);
-  if (typeof monthlyBudget !== 'number' || !isFinite(monthlyBudget) || monthlyBudget < 50) {
-    return json({ error: 'Minimum monthly budget is 50 ₪' }, 400);
-  }
+  if (typeof body.storeSlug !== 'string') return json({ error: 'Missing storeSlug' }, 400);
 
-  const store = getStoreBySlug(storeSlug);
+  const store = getStoreBySlug(body.storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
-  let productName: string | undefined;
-  let resolvedProductId: string | undefined;
-  if (scope === 'product') {
-    if (typeof productId !== 'string') return json({ error: 'Missing productId' }, 400);
-    const product = getProductsByStoreId(store.id).find((p) => p.id === productId);
-    if (!product) return json({ error: 'Product not found' }, 404);
-    resolvedProductId = product.id;
-    productName = product.name;
-  }
+  // Same validation the seller route runs (ad-campaign-input.ts) — one definition of which
+  // products/categories a campaign may name, so the two routes can't drift apart.
+  const built = buildCampaignInput(body, store);
+  if (!built.ok) return json({ error: built.error }, built.status);
 
-  const campaign = createCampaign({
-    storeId: store.id,
-    storeSlug: store.slug,
-    scope,
-    platform,
-    monthlyBudget: roundMoney(monthlyBudget),
-    ...(durationDays ? { durationDays } : {}),
-    ...(audience ? { audience } : {}),
-    ...(resolvedProductId ? { productId: resolvedProductId, productName } : {}),
-  });
+  const campaign = createCampaign(built.input);
   return json({ ok: true, campaign: withCampaignStats(campaign) });
 }
 
@@ -100,8 +79,20 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const updates: Partial<{ monthlyBudget: number; status: 'active' | 'paused' }> = {};
-  if (typeof monthlyBudget === 'number' && isFinite(monthlyBudget) && monthlyBudget >= 50) updates.monthlyBudget = roundMoney(monthlyBudget);
+  // Floor and ceiling from the module that owns them, same as the seller twin — see the note there.
+  if (isValidCampaignBudget(monthlyBudget)) updates.monthlyBudget = roundMoney(monthlyBudget);
   if (status === 'active' || status === 'paused') updates.status = status;
+  // Refused while the campaign has nothing to advertise, or nothing anyone can buy — the reason
+  // travels as a code so the wording stays in the seller's language (ad-campaign-health.ts).
+  if (status === 'active') {
+    const blocked = resumeBlockReason(store.id, id);
+    if (blocked) {
+      const code = blocked === 'out-of-stock' ? 'CAMPAIGN_OUT_OF_STOCK'
+        : blocked === 'ended' ? 'CAMPAIGN_ENDED'
+        : 'CAMPAIGN_UNAVAILABLE';
+      return json({ error: code }, 409);
+    }
+  }
   if (Object.keys(updates).length === 0) return json({ error: 'No valid fields to update' }, 400);
 
   const updated = updateCampaign(id, store.id, updates);
@@ -123,7 +114,10 @@ export async function DELETE({ request, cookies }: APIContext): Promise<Response
   const store = getStoreBySlug(storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
-  const ok = deleteCampaign(id, store.id);
-  if (!ok) return json({ error: 'Campaign not found' }, 404);
+  // Cancelled, not erased: the campaign stops and moves to the store's history, because the
+  // spend it already accrued is part of figures that were reported for a month that is over
+  // (ad-campaigns.ts#archiveCampaign).
+  const archived = archiveCampaign(id, store.id);
+  if (!archived) return json({ error: 'Campaign not found' }, 404);
   return json({ ok: true });
 }
