@@ -2651,7 +2651,7 @@ const orderStatusColors: Record<string, string> = {
   import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
   import { initCleanupModal } from '../../scripts/dashboard/cleanup-modal.js';
   import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
-  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductVisibilityToggle, initProductMenus, initProductsToolbar, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initViewProduct, initPagination, initStickyOffsets, applyStockAttentionFilter } from '../../scripts/dashboard/products.js';
+  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductVisibilityToggle, initProductMenus, initProductsToolbar, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
   import { initCsvImport } from '../../scripts/dashboard/csv-import.js';
   import { initFeedSync } from '../../scripts/dashboard/feed-sync.js';
   import { initCustomDomain } from '../../scripts/dashboard/custom-domain.js';
@@ -2662,9 +2662,6 @@ const orderStatusColors: Record<string, string> = {
   import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
   import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
   import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
-  import { createFloatingPortal } from '../../lib/toolbar-portal.js';
-  import { orderAgeChipHtml } from '../../lib/order-age.js';
-  import { encodeList, debounce } from '../../lib/admin-nav.js';
   import { initPerformanceTab } from '../../scripts/dashboard/performance.js';
   import { initAdvertisingTab } from '../../scripts/dashboard/advertising.js';
   import { initOrdersTab } from '../../scripts/dashboard/orders.js';

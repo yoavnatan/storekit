@@ -162,7 +162,7 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
         if (form.hasAttribute('data-native-submit')) continue;
         var key = keyFor(form);
         if (!key) continue;
-        var raw = null;
+        var raw;
         try { raw = localStorage.getItem(key); } catch (err) { return; }
         if (!raw) continue;
         var draft;

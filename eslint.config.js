@@ -45,6 +45,13 @@ export default tseslint.config(
       'sonarjs/todo-tag': 'off',
       'sonarjs/no-commented-code': 'off',
 
+      // `!(x > 0)` is not the same check as `x <= 0` and the rule's suggested rewrite is a bug:
+      // NaN fails EVERY comparison, so the inverted form catches it and the "opposite operator"
+      // form lets it through. All 3 findings at introduction were NaN guards on numbers parsed
+      // from user input or image metadata — a discount value, a percentage, an image scale —
+      // where following the rule would have shipped "-NaN%" and a NaN-wide element.
+      'sonarjs/no-inverted-boolean-check': 'off',
+
       // Fires on this codebase's one-line guard style — `if (a) x(); if (b) y();` — where the
       // braces are present and the sequencing is exactly what was meant. All 11 hits at
       // introduction were reviewed one by one and all 11 were false positives.
@@ -91,6 +98,16 @@ export default tseslint.config(
       'sonarjs/prefer-specific-assertions': 'off',
       'sonarjs/no-hardcoded-passwords': 'off',
       'sonarjs/pseudo-random': 'off',
+
+      // An insecure URL in a test is the INPUT, not a deployment: all 4 findings at introduction
+      // were assertions that an `http://` value gets rejected or sanitised away. A test proving we
+      // refuse cleartext has to contain a cleartext URL to refuse.
+      'sonarjs/no-clear-text-protocols': 'off',
+
+      // tests/form-fallback-guard.test.ts runs the component's own `<script is:inline>` body
+      // through `new Function`, which is the only way to test the shipped code rather than a
+      // copy of it. The input is a file read off disk at test time, not anything a request reaches.
+      'sonarjs/code-eval': 'off',
     },
   },
 );

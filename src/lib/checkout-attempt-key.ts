@@ -29,6 +29,10 @@ function mintKey(): string {
   }
   // Last resort. Weaker, but the key only needs to be unique per buyer session —
   // it is a de-duplication token, never a secret or an authorisation.
+  // eslint-disable-next-line sonarjs/pseudo-random -- reviewed: a de-duplication token, not a
+  // secret. crypto is used whenever it exists; this path is for browsers that have neither
+  // randomUUID nor getRandomValues. Guessing another buyer's key grants nothing, because the
+  // server binds a completed record to its owner (sha256 of the email) and replays only to them.
   return `co-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 

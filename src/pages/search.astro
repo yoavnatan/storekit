@@ -5,7 +5,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import StoreCard from '../components/StoreCard.astro';
 import { store as platform, formatPrice } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
-import { getStoreBySellerId, getStoresBySellerId, getStoreBySlug } from '../lib/stores.js';
+import { getStoresBySellerId, getStoreBySlug } from '../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { searchSite } from '../lib/site-search.js';
 import { getLang, getT } from '../i18n/index.js';

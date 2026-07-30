@@ -36,6 +36,7 @@ export function safeRedirectPath(raw: string | null | undefined, fallback = '/',
   // both leave this origin while looking path-shaped.
   if (candidate.startsWith('//') || candidate.startsWith('/\\')) return fallback;
   // A control character can truncate the Location header; a well-formed path never holds one.
+  // eslint-disable-next-line no-control-regex -- matching control characters IS the check here
   if (/[\x00-\x1f\x7f]/.test(candidate)) return fallback;
   if (reject.includes(candidate.split('?')[0] ?? candidate)) return fallback;
   return candidate;

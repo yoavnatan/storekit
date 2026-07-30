@@ -7,7 +7,7 @@ import { OG_IMAGE_FORMAT, storeImageUrl } from '../../lib/store-image.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
 import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../lib/store-products.js';
-import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
+import { store as platform, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';

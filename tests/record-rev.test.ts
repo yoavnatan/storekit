@@ -59,6 +59,7 @@ describe('productEditRev — the fields the edit form overwrites', () => {
   });
 
   it('tells an absent field apart from an emptied one', () => {
+    // eslint-disable-next-line sonarjs/no-unused-vars -- the binding exists only to omit the field
     const { sku: _sku, ...withoutSku } = product;
     expect(productEditRev(withoutSku)).not.toBe(productEditRev({ ...product, sku: '' }));
   });
@@ -147,6 +148,7 @@ describe('mergeByFieldRev — two tabs, one product', () => {
   });
 
   it('an emptied collection is not confused with an absent one', () => {
+    // eslint-disable-next-line sonarjs/no-unused-vars -- the binding exists only to omit the field
     const { sku: _sku, ...storedNoSku } = product;
     // Neither side touched tags; stored has none, the form sends []. Must not read as an edit.
     const stored = { ...storedNoSku, tags: undefined, price: 300 };

@@ -148,7 +148,7 @@ export function resolvePrice(
   if (!candidates.length) return plain(base);
 
   // Lowest price wins; a tie keeps the product's own record, which is first in the list.
-  const best = candidates.reduce((a, b) => (b.price < a.price ? b : a));
+  const best = candidates.reduce((a, b) => (b.price < a.price ? b : a), candidates[0]);
   return {
     price: best.price, basePrice: base, isDiscounted: true,
     percentOff: Math.round((1 - best.price / base) * 100),

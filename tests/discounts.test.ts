@@ -1,3 +1,7 @@
+/* eslint-disable sonarjs/no-floating-point-equality -- exactness is the property under test.
+ * These functions round money to agorot, so `toBe(71.92)` asserts the rounding landed on the
+ * agora; a tolerance would pass on the drift the rounding exists to prevent. */
+
 import { describe, expect, it } from 'vitest';
 import {
   discountedPrice, effectivePrice, isSaleScoped, isScheduleOpen, isStoreSaleLive, resolvePrice, saleCoversProduct,

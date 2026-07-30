@@ -21,11 +21,6 @@
       "count": 1
     }
   },
-  "src/components/ProductQuickView.astro": {
-    "sonarjs/unused-import": {
-      "count": 1
-    }
-  },
   "src/components/StoreProductModal.astro": {
     "@typescript-eslint/no-unused-expressions": {
       "count": 1
@@ -34,19 +29,9 @@
       "count": 1
     }
   },
-  "src/components/dashboard/FormFallbackGuard.astro": {
-    "no-useless-assignment": {
-      "count": 1
-    }
-  },
   "src/layouts/BaseLayout.astro": {
     "no-useless-escape": {
       "count": 1
-    }
-  },
-  "src/lib/burst.ts": {
-    "sonarjs/pseudo-random": {
-      "count": 8
     }
   },
   "src/lib/checkout-attempt-key.ts": {
@@ -54,24 +39,9 @@
       "count": 2
     }
   },
-  "src/lib/discounts.ts": {
-    "sonarjs/reduce-initial-value": {
-      "count": 1
-    }
-  },
-  "src/lib/email/order-status-email.ts": {
-    "sonarjs/unused-import": {
-      "count": 1
-    }
-  },
   "src/lib/last-store.ts": {
     "no-empty": {
       "count": 2
-    }
-  },
-  "src/lib/lightbox-image.ts": {
-    "sonarjs/no-inverted-boolean-check": {
-      "count": 1
     }
   },
   "src/lib/product-listing.ts": {
@@ -79,16 +49,6 @@
       "count": 1
     },
     "sonarjs/duplicates-in-character-class": {
-      "count": 1
-    }
-  },
-  "src/lib/safe-redirect.ts": {
-    "no-control-regex": {
-      "count": 1
-    }
-  },
-  "src/lib/sale-shine.ts": {
-    "sonarjs/void-use": {
       "count": 1
     }
   },
@@ -104,11 +64,6 @@
   },
   "src/lib/store-products-bulk.ts": {
     "sonarjs/misplaced-loop-counter": {
-      "count": 1
-    }
-  },
-  "src/lib/store-products.ts": {
-    "sonarjs/no-unused-vars": {
       "count": 1
     }
   },
@@ -135,9 +90,6 @@
     "sonarjs/no-ignored-exceptions": {
       "count": 1
     },
-    "sonarjs/unused-import": {
-      "count": 1
-    },
     "sonarjs/void-use": {
       "count": 1
     }
@@ -154,26 +106,10 @@
     },
     "sonarjs/no-ignored-exceptions": {
       "count": 1
-    },
-    "sonarjs/unused-import": {
-      "count": 3
     }
   },
   "src/pages/buyer/dashboard.astro": {
     "@typescript-eslint/no-unused-expressions": {
-      "count": 1
-    }
-  },
-  "src/pages/index.astro": {
-    "sonarjs/pseudo-random": {
-      "count": 1
-    },
-    "sonarjs/unused-import": {
-      "count": 3
-    }
-  },
-  "src/pages/search.astro": {
-    "sonarjs/unused-import": {
       "count": 1
     }
   },
@@ -186,9 +122,6 @@
     },
     "sonarjs/table-header": {
       "count": 1
-    },
-    "sonarjs/unused-import": {
-      "count": 5
     }
   },
   "src/scripts/admin/admin-messages.ts": {
@@ -224,21 +157,6 @@
       "count": 3
     }
   },
-  "src/scripts/dashboard/promotions.ts": {
-    "sonarjs/no-inverted-boolean-check": {
-      "count": 2
-    }
-  },
-  "tests/brand-campaigns.test.ts": {
-    "sonarjs/no-clear-text-protocols": {
-      "count": 2
-    }
-  },
-  "tests/checkout.test.ts": {
-    "sonarjs/no-unused-collection": {
-      "count": 1
-    }
-  },
   "tests/csv-bulk.test.ts": {
     "sonarjs/parameterized-tests": {
       "count": 1
@@ -249,32 +167,9 @@
       "count": 2
     }
   },
-  "tests/discounts.test.ts": {
-    "sonarjs/no-floating-point-equality": {
-      "count": 4
-    }
-  },
-  "tests/form-fallback-guard.test.ts": {
-    "sonarjs/code-eval": {
-      "count": 1
-    }
-  },
   "tests/image-optimization.test.ts": {
-    "sonarjs/no-clear-text-protocols": {
-      "count": 1
-    },
     "sonarjs/single-character-alternation": {
       "count": 2
-    }
-  },
-  "tests/record-rev.test.ts": {
-    "sonarjs/no-unused-vars": {
-      "count": 2
-    }
-  },
-  "tests/safe-redirect.test.ts": {
-    "sonarjs/no-clear-text-protocols": {
-      "count": 1
     }
   }
 }

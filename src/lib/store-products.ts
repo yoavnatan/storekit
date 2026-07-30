@@ -169,6 +169,7 @@ export function getVisibleProductsByStoreId(storeId: string): StoreProduct[] {
  *  grid's "load more") did exactly that until this existed. Anything private added to
  *  StoreProduct later must be dropped here too. */
 export function toPublicProduct(p: StoreProduct): Omit<StoreProduct, 'sellerNote'> {
+  // eslint-disable-next-line sonarjs/no-unused-vars -- the binding exists only to omit the field
   const { sellerNote: _sellerNote, ...pub } = p;
   return pub;
 }

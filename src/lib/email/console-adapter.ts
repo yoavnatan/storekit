@@ -9,7 +9,7 @@ export function createConsoleAdapter(): EmailAdapter {
   return {
     name: 'console',
     async send(message: EmailMessage, from: string): Promise<EmailResult> {
-      // eslint-disable-next-line no-console
+      // The log IS this adapter's delivery mechanism, not leftover debugging.
       console.info(`[email:console] would send "${message.subject}" from ${from} → ${message.to}`);
       return { ok: true, provider: 'console', id: 'console-noop' };
     },

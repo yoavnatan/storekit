@@ -1,6 +1,5 @@
 ---
 export const prerender = false;
-import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import StoreDemoBadge from '../../components/StoreDemoBadge.astro';
@@ -20,7 +19,7 @@ import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
 import { storeCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { OG_IMAGE_FORMAT, resolveStoreImage, storeImageUrl } from '../../lib/store-image.js';
-import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
+import { store as platform, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getFavoriteStoresForUser } from '../../lib/user-carts.js';
@@ -757,7 +756,7 @@ const pmI18n = {
 <script>
   import { addItem, syncCartImages, getCartQty } from '../../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
-  import { cdnSrc, cdnSrcSet, formatPrice } from '../../config/store.config.js';
+  import { cdnSrc, cdnSrcSet } from '../../config/store.config.js';
   import { spawnRipple } from '../../lib/ripple.js';
   import { spawnBurst, spawnHeartBurst } from '../../lib/burst.js';
   import { initLiquidDots } from '../../lib/carousel-dots.js';

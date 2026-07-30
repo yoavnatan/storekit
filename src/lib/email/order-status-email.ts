@@ -14,7 +14,7 @@ import { store } from '../../config/store.config.js';
 import { STATUS_MESSAGES, type NotifiableStatus } from '../order-status-copy.js';
 import { logError } from '../error-log.js';
 import type { EmailMessage } from './adapter.js';
-import { renderEmailShell, esc, emailColors as C } from './template.js';
+import { renderEmailShell, esc } from './template.js';
 import { storeMeta, storefrontUrl, storeHeader, itemsTable, refLine, ctaButton } from './parts.js';
 import { sendEmail } from './index.js';
 

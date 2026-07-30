@@ -6,7 +6,7 @@ import HomeTabEmpty from '../components/HomeTabEmpty.astro';
 import StoreAvatar from '../components/StoreAvatar.astro';
 import StoreDemoBadge from '../components/StoreDemoBadge.astro';
 import HomeProductCard from '../components/HomeProductCard.astro';
-import { store as platform, formatPrice, cdnSrc, cdnSrcSet } from '../config/store.config.js';
+import { store as platform } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
 import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
@@ -147,6 +147,7 @@ const firstEagerShelfId = activeTabShelves.find((s) => s.stores.length > 0)?.id;
 // (home-shelf-dot--0/1/2, see store-card.css) gets a random starting offset,
 // added onto a running index so adjacent titles never repeat the same dot
 // color back-to-back.
+// eslint-disable-next-line sonarjs/pseudo-random -- picks one of three accent-dot colours
 const bgOffset = Math.floor(Math.random() * 3);
 
 // Under 5 live stores the Discover tab's SHELVES collapse to one placeholder-

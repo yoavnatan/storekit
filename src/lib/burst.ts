@@ -1,3 +1,7 @@
+/* eslint-disable sonarjs/pseudo-random -- decorative jitter only: the angle, distance and size
+ * of confetti dots. Nothing here is a token, an id or a choice anyone could exploit by predicting
+ * it, and a CSPRNG would buy nothing but a slower animation. */
+
 /** A small radial burst of dots in the site's own palette — a "confetti but
  * not" celebratory cue for a successful action, restrained rather than
  * literal confetti (no rainbow colors/varied shapes). Positioned `fixed` off
