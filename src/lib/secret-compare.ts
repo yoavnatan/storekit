@@ -22,13 +22,3 @@ export function secretsEqual(a: string, b: string): boolean {
   const db = crypto.createHash('sha256').update(b, 'utf8').digest();
   return crypto.timingSafeEqual(da, db);
 }
-
-/**
- * True when every pair matches. Checks all pairs before answering — a plain
- * `userOk && passOk` short-circuits, which tells the caller that the username alone was wrong.
- */
-export function allSecretsEqual(pairs: Array<readonly [string, string]>): boolean {
-  let ok = true;
-  for (const [a, b] of pairs) ok = secretsEqual(a, b) && ok;
-  return ok;
-}

@@ -97,6 +97,10 @@ export default tseslint.config(
       // Assertion-phrasing preferences; the tests already assert the right thing.
       'sonarjs/prefer-specific-assertions': 'off',
       'sonarjs/no-hardcoded-passwords': 'off',
+      // Same reasoning one rule further: a test that proves the dev-fallback secret is refused in
+      // production has to name that fallback. `tests/admin-auth.test.ts` signs with it precisely
+      // to assert the token is REJECTED.
+      'sonarjs/hardcoded-secret-signatures': 'off',
       'sonarjs/pseudo-random': 'off',
 
       // An insecure URL in a test is the INPUT, not a deployment: all 4 findings at introduction

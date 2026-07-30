@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { allSecretsEqual, secretsEqual } from '../src/lib/secret-compare.js';
+import { secretsEqual } from '../src/lib/secret-compare.js';
 
 describe('secretsEqual', () => {
   it('accepts identical strings', () => {
@@ -30,28 +30,6 @@ describe('secretsEqual', () => {
   it('is not fooled by a prefix', () => {
     expect(secretsEqual('admin', 'admin-extra')).toBe(false);
     expect(secretsEqual('admin-extra', 'admin')).toBe(false);
-  });
-});
-
-describe('allSecretsEqual', () => {
-  it('is true only when every pair matches', () => {
-    expect(allSecretsEqual([['a', 'a'], ['b', 'b']])).toBe(true);
-    expect(allSecretsEqual([['a', 'a'], ['b', 'c']])).toBe(false);
-    expect(allSecretsEqual([['a', 'x'], ['b', 'b']])).toBe(false);
-    expect(allSecretsEqual([])).toBe(true);
-  });
-
-  it('evaluates every pair rather than short-circuiting', () => {
-    // A wrong username must not cost less work than a wrong password: `userOk && passOk` would
-    // answer early and tell the guesser which half was wrong.
-    let compared = 0;
-    const pairs: Array<readonly [string, string]> = [
-      ['wrong', 'right'],
-      ['also-wrong', 'right'],
-    ];
-    for (const [a, b] of pairs) { compared++; void secretsEqual(a, b); }
-    expect(allSecretsEqual(pairs)).toBe(false);
-    expect(compared).toBe(2);
   });
 });
 
