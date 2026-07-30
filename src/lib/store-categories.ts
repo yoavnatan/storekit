@@ -80,6 +80,37 @@ export function getAncestorChain(categories: StoreCategory[], categoryId: string
   return chain;
 }
 
+/**
+ * How many products sit behind each category, counting its whole subtree — the
+ * number the store page prints on every category chip. A parent therefore counts
+ * everything its children hold, which is what the chip does when clicked
+ * (`resolveCategoryFilterIds`); a count that only reflected directly-assigned
+ * products would contradict the filter it labels.
+ *
+ * Takes the product's category ids rather than products so it stays pure and
+ * storage-agnostic. One walk up the ancestor chain per product — the naive
+ * alternative (resolve the subtree per category, then scan all products) is
+ * categories × products.
+ */
+export function countProductsPerCategory(
+  categories: StoreCategory[],
+  productCategoryIds: ReadonlyArray<string | null | undefined>,
+): Record<string, number> {
+  const parentOf = new Map(categories.map((c) => [c.id, c.parentId]));
+  const counts: Record<string, number> = {};
+  for (const id of productCategoryIds) {
+    let current = id ?? null;
+    // A malformed cycle would spin forever; the depth cap is the guard, and
+    // MAX_CATEGORY_DEPTH is the real ceiling anyway.
+    for (let hop = 0; current && hop <= MAX_CATEGORY_DEPTH; hop++) {
+      if (!parentOf.has(current)) break; // product points at a deleted category
+      counts[current] = (counts[current] ?? 0) + 1;
+      current = parentOf.get(current) ?? null;
+    }
+  }
+  return counts;
+}
+
 /** "ביגוד › גברים › חולצות" — for table cells, badges, breadcrumbs; not for matching. */
 export function categoryPath(categories: StoreCategory[], categoryId: string): string {
   return getAncestorChain(categories, categoryId).map((c) => c.name).join(' › ');

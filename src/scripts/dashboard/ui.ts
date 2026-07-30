@@ -1,6 +1,12 @@
 import { reportClientError } from '../error-reporter.js';
+import { markDashboardStale, conflictMessage } from './tab-sync.js';
 
 const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+function getI18nDict(): Record<string, unknown> {
+  try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
+  catch { return {}; }
+}
 
 export function initSettingsForm(): void {
   const settingsForm = document.getElementById('settings-form') as HTMLFormElement | null;
@@ -32,6 +38,12 @@ export function initSettingsForm(): void {
     };
 
     const fd = new FormData(settingsForm);
+    // The revisions this form was rendered with — what lets the server merge this save
+    // into the stored settings field by field instead of overwriting them. `force` rides
+    // alongside (never instead), settling only the fields two tabs set differently.
+    if (settingsForm.dataset.baseRev) fd.set('baseRev', settingsForm.dataset.baseRev);
+    if (settingsForm.dataset.forceSave === '1') fd.set('force', '1');
+    delete settingsForm.dataset.forceSave;
 
     // 1) Could we even reach the server? A rejected fetch = offline / server
     //    unreachable. Nothing to log server-side (the log endpoint lives on the
@@ -46,9 +58,27 @@ export function initSettingsForm(): void {
     }
 
     // 2) Server answered — read its verdict (a crash page may not be JSON).
-    type StoreSaveResult = { ok?: boolean; name?: string; error?: string };
+    type StoreSaveResult = { ok?: boolean; name?: string; error?: string; conflict?: boolean; conflictFields?: string[]; rev?: string };
     let data: StoreSaveResult | null = null;
     try { data = await res.json() as StoreSaveResult; } catch { /* non-JSON body */ }
+
+    // 2a) Some field here was set differently in another tab (or on another device)
+    //     after this form was rendered. Nothing was written; everything else in the form
+    //     merges either way, so the only question is whose value those fields take.
+    if (data?.conflict) {
+      const i18n = getI18nDict();
+      reEnableSave();
+      markDashboardStale();
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: String(i18n.conflictTitle ?? 'Changed somewhere else'),
+          message: conflictMessage(data.conflictFields, i18n),
+          okLabel: String(i18n.conflictOverwrite ?? 'Use my value'),
+          onConfirm: () => { settingsForm.dataset.forceSave = '1'; settingsForm.requestSubmit(); },
+        },
+      }));
+      return;
+    }
 
     if (!res.ok || !data?.ok) {
       // A 4xx WITH a message is normal input validation — show it, don't alert
@@ -65,6 +95,11 @@ export function initSettingsForm(): void {
       reEnableSave();
       return;
     }
+
+    // The form stays on screen, so it now represents what was just saved — take the
+    // new revision before anything else, or the seller's own next save conflicts with
+    // this one.
+    if (data.rev) settingsForm.dataset.baseRev = data.rev;
 
     // Settings is the one guarded form that stays on screen after saving, so it can't
     // go clean by being closed the way an edit row does — tell the unsaved guard

@@ -10,9 +10,15 @@ import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '.
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree } from './category-tree-cache.js';
+import { NO_CATEGORY_TOKEN } from '../../lib/seller-products-query.js';
+import { armSelectAll, clearBulkSelection, disarmSelectAll, isSelectAllArmed, onBulkSelectionChange, selectedRowIds, setBulkSelected, syncBulkSelectionToRows } from './bulk-selection.js';
 import { initCategoryPicker } from './category-picker.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { suggestTags } from '../../lib/tag-suggest.js';
+import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
+import { resolvePrice, type ProductDiscount, type StoreSale } from '../../lib/discounts.js';
+import { refreshDiscountFieldsIn } from './discount-field.js';
+import { markDashboardStale, conflictMessage, registerPanelRefresh } from './tab-sync.js';
 
 export interface ProductData {
   id: string; storeId: string; slug?: string; name: string;
@@ -20,11 +26,16 @@ export interface ProductData {
   categoryId?: string; tags?: string[]; sku?: string;
   specs?: Array<{ label: string; value: string }>;
   sellerNote?: string;
+  /** The product's own markdown, so a client-rebuilt edit row shows the same discount block the
+   *  server rendered (lib/discount-field.ts). */
+  discount?: ProductDiscount;
   variants?: VariantDimension[];
   variantStock?: Record<string, number>;
   variantImages?: Record<string, string>;
   hidden?: boolean;
   createdAt?: string;
+  /** Revision of the fields the edit form owns, computed server-side (lib/record-rev.ts) — rides back on save so a stale tab can't overwrite a newer one. */
+  rev?: string;
   // Only set on rows fetched via /api/seller/products (a brand-new product
   // from the add-product form naturally has 0 of both, buildRows' defaults
   // below already cover that case without these).
@@ -33,6 +44,20 @@ export interface ProductData {
 }
 
 function fmtPrice(n: number) { return formatPrice(n); }
+
+/** The store's running sale, parsed once — it never changes within a page view. */
+export function dashStoreSale(): StoreSale | null {
+  try { return JSON.parse(document.getElementById('dash-store-sale')?.textContent ?? 'null'); }
+  catch { return null; }
+}
+
+/** The Products table's per-row "on sale" chip text — mirrors the SSR helper in dashboard.astro
+ *  so a client-rebuilt row shows exactly what the server-rendered one did. Resolves against the
+ *  running sale too, so a product discounted only BY the sale is marked as on sale here. */
+export function rowSaleLabel(p: { id?: string; price: number; categoryId?: string; discount?: ProductDiscount }): string {
+  const view = resolvePrice(p, dashStoreSale());
+  return view.isDiscounted ? `-${view.percentOff}%` : '';
+}
 
 // Live-updates the Products-tab stock-alert badge from a store-wide count the
 // server returns after any stock/visibility mutation (or a list re-fetch). The
@@ -180,9 +205,8 @@ function getGalleryI18n() { return getRawI18n().gallery ?? {}; }
 // Re-derives the bulk-edit button's "ערוך"/"סגור עריכה" label from actual row state (which
 // selected products currently have their edit row open) rather than trusting whatever it was
 // last set to — a row can close via its own save/cancel, not just via this button, and the
-// label needs to reflect that too. Reads selection straight from the checkboxes rather than
-// initBulkSelect's own `selected` closure, since callers outside that closure (a row's own
-// save) have no access to it.
+// label needs to reflect that too. Reads the ticked checkboxes rather than the shared
+// selection, on purpose: only a rendered row can have an edit row open at all.
 function refreshBulkEditLabel(): void {
   const bulkEditBtn = document.getElementById('bulk-edit-btn') as HTMLButtonElement | null;
   const bulkEditLabel = document.getElementById('bulk-edit-label') as HTMLElement | null;
@@ -1365,6 +1389,8 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
 
   const display = document.createElement('tr');
   display.dataset.productDisplay = p.id;
+  // The bulk "מבצע" panel reads this to prefill from the selection instead of opening blank.
+  display.dataset.discount = p.discount ? JSON.stringify(p.discount) : '';
   display.dataset.storeId = p.storeId;
   display.dataset.images = JSON.stringify(p.images ?? []);
   display.dataset.sortName = p.name.toLowerCase();
@@ -1386,6 +1412,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
     <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap"><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async"></span>` : ''}</td>
     <td class="name-col">
       <span class="product-name cursor-text">${esc(p.name)}</span>
+      <span class="sale-chip ms-1.5 align-middle" data-row-sale="${esc(p.id)}" dir="ltr"${rowSaleLabel(p) ? '' : ' hidden'}>${rowSaleLabel(p)}</span>
       <span class="product-note-chip inline-flex items-center align-middle ms-1 [color:var(--color-muted)]"${p.sellerNote ? ` title="${esc(p.sellerNote)}"` : ' hidden'} aria-label="${esc(i.sellerNoteLabel ?? 'Private note')}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg></span>
       <span class="product-hidden-chip inline-flex items-center gap-1 text-[.66rem] font-semibold [color:var(--color-muted)] [background:color-mix(in_srgb,var(--color-muted)_14%,transparent)] py-[.08rem] px-[.4rem] rounded-full align-middle ms-1"${p.hidden ? '' : ' hidden'}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>${esc(i.productHiddenChip ?? 'מוסתר')}</span>
       ${p.description ? `<span class="product-desc">${esc(p.description)}</span>` : ''}
@@ -1420,7 +1447,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   edit.innerHTML = `
     <td class="num row-num pe-[0.2rem]"></td>
     <td colspan="20">
-      <form method="POST" action="/api/product" class="mt-4 inline-edit-form" data-unsaved-guard>
+      <form method="POST" action="/api/product" class="mt-4 inline-edit-form" data-unsaved-guard data-base-rev="${esc(p.rev ?? '')}">
         <input type="hidden" name="_action" value="edit-product">
         <input type="hidden" name="productId" value="${p.id}">
         <div class="edit-row-header">
@@ -1436,6 +1463,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
           <label class="field"><span>${i.priceLabel ?? 'Price'}</span><input class="input" name="price" type="number" min="0" step="0.01" value="${p.price}"></label>
           <label class="field"><span>${i.colStock ?? 'Stock'}</span><input class="input" name="stock" type="number" min="0" step="1" value="${p.stock}"></label>
         </div>
+        ${discountFieldHtml(p.discount, discountFieldLabels(i))}
         <label class="field"><span>${i.descLabel ?? 'Description'}</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
         <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">${categoryFieldHtml(p.categoryId ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}</div>
         ${tagsFieldHtml(p.tags ?? [], i)}
@@ -1453,7 +1481,26 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
       </form>
     </td>`;
 
+  // The block's readout is painted from live values, so a freshly built row starts correct
+  // instead of showing an empty "price after discount" until the seller touches something.
+  refreshDiscountFieldsIn(edit);
+
   return [display, edit];
+}
+
+/**
+ * Carries a partial save's new revision onto the product's still-rendered edit row.
+ *
+ * The inline cell edits and the bulk image save already patch that row's fields so it
+ * doesn't hold a stale value — its revision has to follow for the same reason. Without
+ * this, the seller's OWN inline edit would make his next save from that row look like
+ * someone else's conflict, and a warning he caused himself is exactly what teaches him
+ * to click straight through the real one.
+ */
+function syncEditRowRev(displayRow: Element | null | undefined, rev: string | undefined): void {
+  if (!rev) return;
+  const form = displayRow?.nextElementSibling?.querySelector<HTMLFormElement>('form.inline-edit-form');
+  if (form) form.dataset.baseRev = rev;
 }
 
 async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): Promise<void> {
@@ -1481,13 +1528,43 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
 
     const fd = new FormData(form);
     fd.set('variants_json', JSON.stringify(collectVariantsPayload(form)));
+    // The revisions this row was built from — they are what lets the server merge this
+    // save into whatever the record holds now instead of overwriting it. `force` is kept
+    // ALONGSIDE them (never instead of): it only settles the fields two tabs edited to
+    // different values, so everything else still merges rather than reverting.
+    if (form.dataset.baseRev) fd.set('baseRev', form.dataset.baseRev);
+    if (form.dataset.forceSave === '1') fd.set('force', '1');
+    delete form.dataset.forceSave;
+
     const res = await fetch('/api/product', { method: 'POST', body: fd });
-    const data = await res.json() as { ok: boolean; images?: string[]; categoryId?: string; categoryPath?: string; stockAlerts?: number; error?: string };
+    const data = await res.json() as { ok: boolean; conflict?: boolean; conflictFields?: string[]; rev?: string; images?: string[]; categoryId?: string; categoryPath?: string; stockAlerts?: number; error?: string };
+
+    if (data.conflict) {
+      // Nothing was written, and only the listed fields are actually in dispute — the
+      // rest of this form merges either way, so the question is just whose value those
+      // fields end up with.
+      submitBtns.forEach(btn => { btn.disabled = false; btn.textContent = origText; });
+      markDashboardStale();
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: i18n.conflictTitle ?? 'Changed somewhere else',
+          message: conflictMessage(data.conflictFields, i18n),
+          okLabel: i18n.conflictOverwrite ?? 'Use my value',
+          onConfirm: () => { form.dataset.forceSave = '1'; form.requestSubmit(); },
+        },
+      }));
+      return;
+    }
     if (!data.ok) {
       submitBtns.forEach(btn => { btn.disabled = false; btn.textContent = origText; });
       showStatus(data.error ?? (i18n.errorSaving ?? 'Error saving.'), true);
       return;
     }
+    // The row's markup survives the save (it closes but is reopened without a
+    // re-fetch, and its Cancel snapshot is retaken from it below), so it takes the
+    // revision it now holds — otherwise a second edit of the same row would report a
+    // conflict against the seller's own previous save.
+    if (data.rev) form.dataset.baseRev = data.rev;
     updateStockBadge(data.stockAlerts);
 
     const savedImages = data.images ?? [];
@@ -1872,6 +1949,11 @@ export function initProductVisibilityToggle(): void {
   });
 }
 
+/** The thumbnail a `.thumb-wrap` shows, for deciding whether a decoded one can be reused. */
+function thumbSrcOf(wrap: HTMLElement): string {
+  return wrap.querySelector<HTMLImageElement>('.product-thumb')?.getAttribute('src') ?? '';
+}
+
 export function initThumbs(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>('.thumb-wrap').forEach(wrap => {
     if (wrap.classList.contains('loaded')) return;
@@ -1886,6 +1968,24 @@ export function initThumbs(root: ParentNode = document): void {
       img.addEventListener('error', markLoaded, { once: true });
     }
   });
+}
+
+// Number of <th>s in the products table — the empty-state row spans all of them.
+const PRODUCTS_TABLE_COLS = 12;
+
+/** The "nothing matches" row. Lives INSIDE the table on purpose: the table header carries
+ *  the very filter funnels the seller needs to undo the filter, so hiding the table strands
+ *  them with a stray dropdown and the "add your first product" copy — which is plainly wrong
+ *  for a store that is full of products. Mirrors #products-empty-row in dashboard.astro. */
+function emptyFilterRow(): HTMLTableRowElement {
+  const tr = document.createElement('tr');
+  tr.id = 'products-empty-row';
+  const td = document.createElement('td');
+  td.colSpan = PRODUCTS_TABLE_COLS;
+  td.className = 'py-6 text-center text-[0.95rem] [color:var(--color-muted)]';
+  td.textContent = getDashI18n().noProductsMatch ?? 'אין מוצרים שתואמים לחיפוש/סינון.';
+  tr.append(td);
+  return tr;
 }
 
 function renderPaginationControls(totalPages: number): void {
@@ -1916,7 +2016,6 @@ export async function applyPagination(): Promise<void> {
   const tbody = document.getElementById('products-tbody') as HTMLTableSectionElement | null;
   const table = document.getElementById('products-table') as HTMLTableElement | null;
   const emptyMsg = document.getElementById('empty-products');
-  const emptyMsgSearch = document.getElementById('empty-products-search');
   const uploadCfg = document.getElementById('upload-config') as HTMLElement | null;
   const storeId = uploadCfg?.dataset.storeId ?? '';
   if (!tbody || !storeId) return;
@@ -1935,7 +2034,7 @@ export async function applyPagination(): Promise<void> {
   const catValues = productsFilters.get('category');
   if (catValues?.size) {
     const noCatLabel = getDashI18n().filterNoCategory ?? 'ללא קטגוריה';
-    params.set('pcat', encodeList([...catValues].map((v) => (v === noCatLabel ? '' : v))));
+    params.set('pcat', encodeList([...catValues].map((v) => (v === noCatLabel ? NO_CATEGORY_TOKEN : v))));
   }
   const stockValues = productsFilters.get('stock');
   if (stockValues?.size) {
@@ -1958,26 +2057,56 @@ export async function applyPagination(): Promise<void> {
   const storeSlug = uploadCfg?.dataset.storeSlug ?? '';
   const storeName = uploadCfg?.dataset.storeName ?? '';
 
-  tbody.innerHTML = '';
+  // A rebuilt row gets a brand-new <img>, which replays the skeleton→load→decode
+  // cycle even for a picture the browser already has — that is what made every
+  // filter/sort/page change flash the whole table's thumbnails. Carry the decoded
+  // ones over instead; nothing is bound inside .thumb-wrap (the thumb's click is
+  // delegated on document), so the node moves without dragging listeners along.
+  const decodedThumbs = new Map<string, HTMLElement>();
+  tbody.querySelectorAll<HTMLElement>('[data-product-display]').forEach((row) => {
+    const id = row.dataset.productDisplay ?? '';
+    const wrap = row.querySelector<HTMLElement>('.thumb-wrap.loaded');
+    if (id && wrap) decodedThumbs.set(id, wrap);
+  });
+
+  // One fragment, one insertion: building straight into the live tbody reflows
+  // the table once per row.
+  const rows = document.createDocumentFragment();
   (data.items ?? []).forEach((p, idx) => {
     const [display, edit] = buildRows(p, storeSlug, storeName);
     const numCell = display.querySelector<HTMLElement>('.row-num');
     if (numCell) numCell.textContent = String((productsCurrentPage - 1) * productsPageSize + idx + 1);
     attachListeners(display, edit, cloud, preset);
-    tbody.append(display, edit);
+    const kept = decodedThumbs.get(p.id);
+    const fresh = display.querySelector<HTMLElement>('.thumb-wrap');
+    if (kept && fresh && thumbSrcOf(kept) === thumbSrcOf(fresh)) fresh.replaceWith(kept);
+    rows.append(display, edit);
     initThumbs(display);
   });
+  tbody.replaceChildren(rows);
+  // Every row above is brand new and therefore unticked — re-apply the live
+  // selection so filtering or paging can't silently empty a selection, and so
+  // an armed "select all" takes in the rows this view just brought up.
+  syncBulkSelectionToRows(tbody);
 
   const total = data.total ?? 0;
-  const hasActiveQuery = !!productsSearchQuery || (catValues?.size ?? 0) > 0;
-  if (table) table.hidden = total === 0;
+  // Any column's filter counts, not just the category one — a stock filter that
+  // matched nothing used to fall through to "add your first product".
+  const hasActiveQuery = !!productsSearchQuery || productsFilters.size > 0;
+  if (total === 0 && hasActiveQuery) tbody.append(emptyFilterRow());
+  // The table only disappears when the store itself is empty; a filter that
+  // matched nothing keeps it, with the row above explaining why.
+  if (table) table.hidden = total === 0 && !hasActiveQuery;
   if (emptyMsg) emptyMsg.hidden = total !== 0 || hasActiveQuery;
-  if (emptyMsgSearch) emptyMsgSearch.hidden = total !== 0 || !hasActiveQuery;
 
   renderPaginationControls(data.totalPages ?? 1);
 }
 
 export function initPagination(): void {
+  // Registered before the early return: a store small enough to have no pager still has
+  // a table another tab can change under it (tab-sync.ts).
+  if (document.getElementById('products-tbody')) registerPanelRefresh('dash-panel-products', applyPagination);
+
   const nav = document.getElementById('products-pagination') as HTMLElement | null;
   if (!nav) return;
 
@@ -2503,19 +2632,36 @@ function activateInlineEdit(
     fd.set('_action', 'patch-product-fields');
     fd.set('productId', productId);
     fd.set(field, val);
+    // Stock is the one inline field whose number the SERVER also changes: every sale decrements it.
+    // The seller typed his over what this cell displayed, so that displayed figure travels with the
+    // save as a compare-and-set — if a purchase moved stock meanwhile, the write is refused instead
+    // of putting a sold unit back on the shelf. Name/price have no such second writer.
+    if (field === 'stock') fd.set('prevStock', rawValue);
 
     try {
       const res = await fetch('/api/product', { method: 'POST', body: fd });
-      const data = await res.json() as { ok: boolean; product?: { name: string; price: number; stock: number }; stockAlerts?: number; error?: string };
+      const data = await res.json() as { ok: boolean; product?: { name: string; price: number; stock: number }; rev?: string; stockAlerts?: number; error?: string; conflict?: true; currentStock?: number };
 
       if (!data.ok) {
         showStatus(data.error ?? (i.errorSaving ?? 'שגיאה בשמירה.'), true);
+        // A stock conflict is the one refusal that also corrects the screen: show what the number
+        // really is now, so the seller re-decides against the truth rather than retyping the stale
+        // value into the same refusal.
+        if (data.conflict && typeof data.currentStock === 'number') {
+          trigger.innerHTML = stockHtml(data.currentStock, i.outOfStock ?? 'אזל מהמלאי', i.colStock ?? 'מלאי');
+          row.dataset.sortStock = String(data.currentStock);
+          const editInput = row.nextElementSibling?.querySelector<HTMLInputElement>('[name="stock"]');
+          if (editInput) editInput.value = String(data.currentStock);
+          delete trigger.dataset.inlineActive;
+          return;
+        }
         cancel();
         return;
       }
 
       const p = data.product!;
       updateStockBadge(data.stockAlerts);
+      syncEditRowRev(row, data.rev);
       delete trigger.dataset.inlineActive;
 
       if (field === 'name') {
@@ -2607,7 +2753,10 @@ function activateComboStockEdit(valueEl: HTMLElement, i: Record<string, string>)
 
   const input = document.createElement('input');
   input.type = 'number';
-  input.value = valueEl.textContent?.trim() ?? '0';
+  // Captured BEFORE the cell becomes an input: the number the seller is typing over, which the
+  // save sends back as its compare-and-set baseline.
+  const prevStock = valueEl.textContent?.trim() ?? '0';
+  input.value = prevStock;
   input.min = '0';
   input.step = '1';
   input.dataset.inlineInput = '1';
@@ -2659,12 +2808,23 @@ function activateComboStockEdit(valueEl: HTMLElement, i: Record<string, string>)
     fd.set('productId', productId);
     fd.set('comboKey', key);
     fd.set('stock', String(value));
+    // The figure this cell displayed, as a compare-and-set — a sale of this combo between render
+    // and save must not be undone by the absolute number typed over it (see /api/product).
+    fd.set('prevStock', prevStock);
 
     try {
       const res = await fetch('/api/product', { method: 'POST', body: fd });
-      const data = await res.json() as { ok: boolean; comboStock?: number; stock?: number; stockAlerts?: number; error?: string };
+      const data = await res.json() as { ok: boolean; comboStock?: number; stock?: number; rev?: string; stockAlerts?: number; error?: string; conflict?: true; currentStock?: number };
       if (!data.ok) {
         showStatus(data.error ?? (i.errorSaving ?? 'שגיאה בשמירה.'), true);
+        // Correct the cell to what stock really is now, so the seller re-decides against the truth.
+        if (data.conflict && typeof data.currentStock === 'number') {
+          delete valueEl.dataset.inlineActive;
+          valueEl.textContent = String(data.currentStock);
+          valueEl.style.color = data.currentStock <= LOW_STOCK_THRESHOLD ? 'var(--color-danger)' : '';
+          if (warnEl) warnEl.innerHTML = warnIconHtml(data.currentStock, i);
+          return;
+        }
         cancel();
         return;
       }
@@ -2681,6 +2841,7 @@ function activateComboStockEdit(valueEl: HTMLElement, i: Record<string, string>)
       if (totalEl) totalEl.innerHTML = stockHtml(total, i.outOfStock ?? 'אזל מהמלאי', i.colStock ?? 'מלאי');
       productRow!.dataset.sortStock = String(total);
       updateStockBadge(data.stockAlerts);
+      syncEditRowRev(productRow, data.rev);
 
       // Keep the (still-rendered) full edit form in sync: its read-only total,
       // the matching combo grid input, and the combo table's live total cell.
@@ -2777,8 +2938,11 @@ export function initBulkSelect(cloud: string, preset: string): void {
   const bulkUploadLabel = document.getElementById('bulk-upload-label') as HTMLElement | null;
   const bulkEditBtn    = document.getElementById('bulk-edit-btn') as HTMLButtonElement | null;
   const bulkEditLabel  = document.getElementById('bulk-edit-label') as HTMLElement | null;
+  // Owned by promotions.ts (it runs the apply/clear request); this module only shows/hides it
+  // with the rest of the selection toolbar and closes its panel when the selection empties.
+  const bulkDiscountBtn = document.getElementById('bulk-discount-btn') as HTMLButtonElement | null;
+  const discountPanel   = document.getElementById('bulk-discount-panel') as HTMLDialogElement | null;
 
-  const selected = new Set<string>();
   const i = getDashI18n();
 
   function getCheckboxes(): HTMLInputElement[] {
@@ -2788,7 +2952,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
   const bulkSep = document.getElementById('bulk-sep') as HTMLElement | null;
 
   function updateBar(): void {
-    const count = selected.size;
+    const count = selectedRowIds().length;
     const empty = count === 0;
     if (bulkCountEl) bulkCountEl.textContent = String(count);
     if (bulkCountBadge) bulkCountBadge.hidden = empty;
@@ -2801,27 +2965,39 @@ export function initBulkSelect(cloud: string, preset: string): void {
     if (bulkDeleteBtn) bulkDeleteBtn.hidden = empty;
     if (bulkUploadBtn) bulkUploadBtn.hidden = empty;
     if (bulkEditBtn) bulkEditBtn.hidden = empty;
+    if (bulkDiscountBtn) bulkDiscountBtn.hidden = empty;
     if (bulkSep) bulkSep.hidden = empty;
     header?.classList.toggle('products-header--selecting', !empty);
     if (empty && uploadPanel) uploadPanel.hidden = true;
+    // Clearing the selection leaves the discount dialog with nothing to act on — close it.
+    if (empty && discountPanel?.open) discountPanel.close();
     if (empty && bulkEditLabel) bulkEditLabel.textContent = i.bulkEdit ?? 'ערוך';
     if (empty && bulkEditBtn) bulkEditBtn.setAttribute('aria-label', i.bulkEdit ?? 'ערוך');
     if (empty && bulkUploadLabel) bulkUploadLabel.textContent = i.bulkUploadImages ?? 'העלה תמונות';
     if (empty && bulkUploadBtn) bulkUploadBtn.setAttribute('aria-label', i.bulkUploadImages ?? 'העלה תמונות');
     if (empty) selectAllChks.forEach((chk) => { chk.hidden = false; });
 
+    // Ticked while "select all" is armed (it keeps selecting whatever the table
+    // renders next), half-ticked for a hand-picked subset.
+    const armed = isSelectAllArmed();
     selectAllChks.forEach((chk) => {
-      chk.indeterminate = selected.size > 0;
-      chk.checked = false;
+      chk.checked = armed;
+      chk.indeterminate = !armed && count > 0;
     });
   }
+
+  // A re-render of the table (filter/sort/search/page) re-ticks the rows from
+  // the shared selection — the count and action buttons here have to follow.
+  onBulkSelectionChange(updateBar);
 
   // Checkbox change (delegated)
   document.addEventListener('change', (e) => {
     const chk = (e.target as Element).closest<HTMLInputElement>('[data-bulk-check]');
     if (!chk) return;
-    const id = chk.dataset.bulkCheck ?? '';
-    if (chk.checked) selected.add(id); else selected.delete(id);
+    setBulkSelected(chk.dataset.bulkCheck ?? '', chk.checked);
+    // One row off means the selection is no longer "everything" — stop pulling
+    // in rows the seller hasn't seen yet.
+    if (!chk.checked) disarmSelectAll();
     updateBar();
   });
 
@@ -2839,21 +3015,28 @@ export function initBulkSelect(cloud: string, preset: string): void {
     chk.dispatchEvent(new Event('change', { bubbles: true }));
   });
 
-  // Select all — if anything is selected, deselect all; else select all
-  // Read selected.size BEFORE loop (still reflects pre-click state in change handler)
+  // Select all — a mode, not a one-off: while it stays ticked every row the
+  // table renders next (after a filter, a sort, the next page) is selected too.
+  // Unticking it drops the whole selection, including rows currently filtered out.
   selectAllChks.forEach((chk) => chk.addEventListener('change', () => {
-    const shouldSelect = selected.size === 0;
-    getCheckboxes().forEach((c) => {
-      c.checked = shouldSelect;
-      const id = c.dataset.bulkCheck ?? '';
-      if (shouldSelect) selected.add(id); else selected.delete(id);
-    });
+    // A click on an indeterminate box lands on checked=true, which is the
+    // reading the seller expects: "select everything", not "clear my few".
+    if (chk.checked) {
+      armSelectAll();
+      getCheckboxes().forEach((c) => {
+        c.checked = true;
+        setBulkSelected(c.dataset.bulkCheck ?? '', true);
+      });
+    } else {
+      clearBulkSelection();
+      getCheckboxes().forEach((c) => { c.checked = false; });
+    }
     updateBar();
   }));
 
   // Bulk delete
   bulkDeleteBtn?.addEventListener('click', () => {
-    const count = selected.size;
+    const count = selectedRowIds().length;
     if (!count) return;
     window.dispatchEvent(new CustomEvent('confirm:open', {
       detail: {
@@ -2862,7 +3045,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
         okLabel: `${i.bulkDelete ?? 'מחק'} (${count})`,
         workingLabel: `${i.deleting ?? 'מוחק...'} (${count})`,
         onConfirm: async () => {
-          const ids = Array.from(selected);
+          const ids = selectedRowIds();
           await Promise.all(ids.map(async (productId) => {
             const row = document.querySelector<HTMLTableRowElement>(`[data-product-display="${productId}"]`);
             const storeId = row?.dataset.storeId ?? '';
@@ -2872,8 +3055,11 @@ export function initBulkSelect(cloud: string, preset: string): void {
             fd.set('storeId', storeId);
             const res = await fetch('/api/product', { method: 'POST', body: fd });
             const data = await res.json() as { ok: boolean };
-            if (data.ok) selected.delete(productId);
+            if (data.ok) setBulkSelected(productId, false);
           }));
+          // The rows that replace these must not be swept up by an armed "select
+          // all" — the seller asked to delete a selection, not to keep selecting.
+          clearBulkSelection();
           updateBar();
           // Re-fetches the current page from the server (drops deleted rows,
           // clamps the page if it ran off the end) — same as single-delete.
@@ -2887,7 +3073,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
   // Bulk image upload — toggle: open (render + scroll its sticky header into view, same
   // pattern as opening a single product's edit row) or close if already open.
   bulkUploadBtn?.addEventListener('click', () => {
-    if (!uploadPanel || !selected.size) return;
+    if (!uploadPanel || !selectedRowIds().length) return;
     const isOpen = !uploadPanel.hidden;
     if (isOpen) {
       uploadPanel.hidden = true;
@@ -2904,12 +3090,13 @@ export function initBulkSelect(cloud: string, preset: string): void {
 
   // Bulk edit — toggle: if any selected edit row is open → close all; else open all
   bulkEditBtn?.addEventListener('click', () => {
-    if (!selected.size) return;
-    const anyOpen = Array.from(selected).some((productId) =>
+    const ids = selectedRowIds();
+    if (!ids.length) return;
+    const anyOpen = ids.some((productId) =>
       !(document.querySelector<HTMLElement>(`[data-product-edit="${productId}"]`)?.hidden ?? true)
     );
     let firstRow: HTMLElement | undefined;
-    selected.forEach((productId) => {
+    ids.forEach((productId) => {
       const displayRow = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
       const editRow    = document.querySelector<HTMLElement>(`[data-product-edit="${productId}"]`);
       if (displayRow && editRow) {
@@ -2945,7 +3132,7 @@ export function initBulkSelect(cloud: string, preset: string): void {
         </span>
       </div>
       <div class="bulk-upload-list flex flex-col gap-4">
-        ${Array.from(selected).map((productId) => {
+        ${selectedRowIds().map((productId) => {
           const row = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
           const name = row?.querySelector('.product-name')?.textContent?.trim() ?? '';
           let images: string[] = [];
@@ -2995,13 +3182,14 @@ export function initBulkSelect(cloud: string, preset: string): void {
           fd.set('productId', productId);
           urls.forEach((url) => fd.append('images', url));
           return fetch('/api/product', { method: 'POST', body: fd })
-            .then((r) => r.json() as Promise<{ ok: boolean; images?: string[] }>)
+            .then((r) => r.json() as Promise<{ ok: boolean; images?: string[]; rev?: string }>)
             .then((data) => ({ data, urls }));
         })
         .then(({ data, urls }) => {
           if (data.ok) {
             const savedImages = data.images ?? urls;
             const row = document.querySelector<HTMLElement>(`[data-product-display="${productId}"]`);
+            syncEditRowRev(row, data.rev);
             if (row && savedImages.length) {
               row.dataset.images = JSON.stringify(savedImages);
               const firstUrl = savedImages[0];

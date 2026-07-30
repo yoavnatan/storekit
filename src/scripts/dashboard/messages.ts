@@ -4,6 +4,7 @@ import { toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-porta
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import { SYSTEM_SENDER_LABEL } from '../../lib/seller-messages-query.js';
 import { showErrorToast } from '../../lib/toast.js';
+import { registerPanelRefresh } from './tab-sync.js';
 
 // Messages tab: buyer<->seller threads and admin<->seller "system" threads in
 // ONE table (both normalized to the same row shape server-side — see
@@ -674,6 +675,9 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     });
   }
   initMessagesPagination();
+  // Cross-tab live refresh (tab-sync.ts) — same re-fetch the toolbar uses, so a refresh
+  // triggered by another tab keeps this one's page, search, sort and filters.
+  registerPanelRefresh('dash-panel-messages', applyMessagesPagination);
 
   const msgSearchInput = document.getElementById('msg-search-input') as HTMLInputElement | null;
   msgSearchInput?.addEventListener('input', debounce(() => {
@@ -714,7 +718,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
             row?.remove();
             if (nextRow?.classList.contains('msg-thread-row')) nextRow.remove();
           } catch {
-            showErrorToast('המחיקה נכשלה', 'נסו שוב.');
+            showErrorToast('המחיקה נכשלה', 'נסו שוב');
           }
         },
       },

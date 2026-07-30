@@ -1,6 +1,8 @@
 import type { ProductVariant } from './store-products.js';
 import { comboKey, generateCombos } from './variant-combo.js';
 import { sanitizeImageUrl, sanitizeImageUrls } from './image-url.js';
+import { normalizeProductDiscount } from './discount-input.js';
+import type { ProductDiscount } from './discounts.js';
 
 /** Every image URL a seller submits, validated + normalized (image-url.ts).
  *  Anything that isn't an https:// or site-relative URL is dropped here rather
@@ -21,6 +23,23 @@ export function parseSku(form: FormData): string {
 /** Private seller-only note. Capped to keep a runaway paste out of the JSON store. */
 export function parseSellerNote(form: FormData): string {
   return String(form.get('sellerNote') ?? '').trim().slice(0, 2000);
+}
+
+/** The product edit/add form's discount block → a normalized `ProductDiscount` (or `undefined`,
+ *  which REMOVES an existing discount). `price` bounds a ₪-off so it can't zero the product out.
+ *  `showBadge` is read as a checkbox: absent from the payload means the seller unticked it, so it
+ *  is passed explicitly rather than left to the default-true normalizer. */
+export function parseProductDiscount(form: FormData, price: number): ProductDiscount | undefined {
+  // "no discount" picked in the select — an explicit removal, whatever stale value the amount
+  // input may still be carrying.
+  if (!String(form.get('discount_type') ?? '').trim()) return undefined;
+  return normalizeProductDiscount({
+    type: form.get('discount_type'),
+    value: form.get('discount_value'),
+    showBadge: form.get('discount_badge') === null ? '0' : '1',
+    startsAt: form.get('discount_starts'),
+    endsAt: form.get('discount_ends'),
+  }, price);
 }
 
 export function parseTags(form: FormData): string[] {

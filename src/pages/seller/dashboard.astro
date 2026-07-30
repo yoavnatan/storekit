@@ -5,6 +5,11 @@ import PerfProductSection from '../../components/dashboard/PerfProductSection.as
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
 import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
 import TabHint from '../../components/dashboard/TabHint.astro';
+import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
+import StaleDataBar from '../../components/dashboard/StaleDataBar.astro';
+import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
+import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
+import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
 import { getSellerById, getSellerSession } from '../../lib/seller-auth.js';
 import { commissionPercentForTier } from '../../lib/pricing.js';
@@ -18,6 +23,7 @@ import {
   deleteProduct,
   countStockAlerts,
   isProductVisible,
+  type StoreProduct,
 } from '../../lib/store-products.js';
 import { formatPrice, cdnSrc, cdnThumb, store as platformConfig } from '../../config/store.config.js';
 import { jsonForScript } from '../../lib/json-script.js';
@@ -42,6 +48,7 @@ import { comboKey, generateCombos, LOW_STOCK_THRESHOLD, type VariantDimension } 
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath } from '../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js';
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
+import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.js';
 import { getCampaignsByStoreId, getMockBaselineImpressions } from '../../lib/ad-campaigns.js';
 import { campaignLifetimeStats, campaignRunPeriod } from '../../lib/ad-metrics.js';
 import { shortDate } from '../../lib/date-range.js';
@@ -50,6 +57,7 @@ import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
 import StoreCategoryPicker from '../../components/StoreCategoryPicker.astro';
 import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
+import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
 import { getVisibleStores } from '../../lib/stores.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
@@ -103,6 +111,15 @@ const categoryVocabulary = buildVocabulary(categoryUsage);
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
 const d    = t.dashboard;
+// Built once — the discount block's labels are the same for every product row.
+const discountLabels = discountFieldLabels(d);
+// "-25%" for any product a shopper currently sees discounted — its own markdown OR the running
+// store-wide sale. The seller asked "which of these is on sale", and the honest answer is the one
+// the storefront gives, so this resolves through the same discounts.ts, sale included.
+const rowSaleLabel = (p: StoreProduct): string => {
+  const view = resolvePrice(p, store?.sale);
+  return view.isDiscounted ? `-${view.percentOff}%` : '';
+};
 const g    = t.gallery;
 
 const sellerId = getSellerSession(Astro.cookies);
@@ -327,13 +344,12 @@ const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
 // Products/Orders/Messages, no full page nav). Default is "this month" to
 // match the range picker's own default preset (performance.ts) — the two must
 // agree or the SSR chart wouldn't match the picker label on first paint.
-const perfToday = new Date();
-// Local-calendar ISO (not toISOString, which is UTC and would shift the 1st of
-// the month back a day in positive-UTC timezones) — must match performance.ts's
-// own toISODate so SSR and the picker's "this month" preset agree exactly.
-const toLocalISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-const perfToISO = toLocalISO(perfToday);
-const perfFromISO = toLocalISO(new Date(perfToday.getFullYear(), perfToday.getMonth(), 1));
+// Both bounds come from business-day.ts — the same calendar buildPerformanceSummary
+// buckets orders by. This used to hand-roll a local-calendar formatter here while
+// the summary bucketed in UTC, so the range and its contents disagreed about which
+// day an order belonged to (see business-day.ts's header).
+const perfToISO = businessTodayISO();
+const perfFromISO = businessMonthStartISO(perfToISO);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
 const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier(getSellerById(sellerId)?.tier)) : undefined;
 
@@ -456,6 +472,7 @@ const orderStatusColors: Record<string, string> = {
     <CreateStoreCard first={hasNoStore} error={error} vocabulary={categoryVocabulary} />
   ) : store ? (
   <Fragment>
+  <FormFallbackGuard message={d.saveUnavailable} draftFound={d.draftFound} draftRestore={d.draftRestore} draftDiscard={d.draftDiscard} />
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
   <section class="section container dash-section">
     <div id="dash-main-card" class="card seller-dash" style="margin-bottom:1.5rem">
@@ -568,6 +585,14 @@ const orderStatusColors: Record<string, string> = {
           <span id="products-stock-badge" class="dash-tab-badge ![background:var(--color-warning)]" data-tooltip={d.stockAlertBadge} aria-label={d.stockAlertBadge} hidden={stockAlertCount === 0}>{stockAlertCount}</span>
         </button>
         <button
+          class={`dash-tab${initialPanel === 'promotions' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-promotions"
+          data-panel="promotions"
+          aria-selected={initialPanel === 'promotions'}
+          tabindex={initialPanel === 'promotions' ? 0 : -1}
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>{d.tabPromotions}</button>
+        <button
           class={`dash-tab${initialPanel === 'orders' ? ' dash-tab--active' : ''}`}
           role="tab"
           id="tab-orders"
@@ -620,6 +645,10 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'settings' ? 0 : -1}
         ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>{d.tabSettings}</button>
       </div>
+
+      {/* Raised by tab-sync.ts when another tab of this same store saves something —
+          advisory only, the seller chooses when to take the fresh data. */}
+      <StaleDataBar message={d.staleDataMsg} refreshLabel={d.staleDataRefresh} dismissLabel={d.staleDataDismiss} />
 
       <!-- ── Panel: Overview ── -->
       <div id="dash-panel-overview" class="dash-panel" role="tabpanel" aria-labelledby="tab-overview" hidden={initialPanel !== 'overview'}>
@@ -693,6 +722,10 @@ const orderStatusColors: Record<string, string> = {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <span id="bulk-upload-label" class="bulk-btn__label" aria-hidden="true">{d.bulkUploadImages}</span>
               </button>
+              <button id="bulk-discount-btn" type="button" class="btn btn--sm bulk-btn" hidden aria-label={d.bulkDiscountTitle}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+                <span class="bulk-btn__label" aria-hidden="true">{d.bulkDiscount}</span>
+              </button>
               <button id="bulk-delete-btn" type="button" class="btn btn--sm btn--danger bulk-btn !bg-[color:var(--color-danger)] hover:opacity-90" hidden aria-label={d.bulkDelete}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                 <span class="bulk-btn__label" aria-hidden="true">{d.bulkDelete}</span>
@@ -742,6 +775,8 @@ const orderStatusColors: Record<string, string> = {
                   <input class="input" name="stock" type="number" min="0" step="1" placeholder="0" />
                 </label>
               </div>
+
+              <Fragment set:html={discountFieldHtml(undefined, discountLabels)} />
 
               <label class="field">
                 <span>{d.descLabel}</span>
@@ -827,8 +862,9 @@ const orderStatusColors: Record<string, string> = {
             </form>
           </div>
 
-          <p id="empty-products" class="empty-products" hidden={products.length > 0}>{d.noProducts}</p>
-          <p id="empty-products-search" class="empty-products" hidden={products.length === 0 || productsPage.total > 0}>{d.noProductsMatch}</p>
+          {/* "Nothing matches" is a row inside the table (see #products-empty-row below), not a
+              paragraph under a hidden table — the header's filter funnels have to stay reachable. */}
+          <p id="empty-products" class="py-6 text-[0.95rem] [color:var(--color-muted)]" hidden={products.length > 0}>{d.noProducts}</p>
 
           {/* CSV bulk import/export panel */}
           <div id="csv-panel" class="csv-panel border [border-color:var(--color-border)] rounded-[var(--radius)] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden data-store-id={store.id}>
@@ -947,6 +983,40 @@ const orderStatusColors: Record<string, string> = {
           {/* Bulk image upload panel */}
           <div id="bulk-upload-panel" class="bulk-upload-panel border [border-color:var(--color-border)] rounded-[var(--radius)] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden></div>
 
+          {/* A MODAL, not an inline strip: setting a discount for a batch is its own decision, and
+              inline it sat next to the row-edit form and the selection checkboxes — three things
+              editing the same products at once, with no signal about which one you were in.
+              A <dialog> also gives the focus trap + Escape for free. */}
+          <dialog id="bulk-discount-panel" class="bd-dialog" aria-labelledby="bulk-discount-heading" data-store-id={store.id} style="max-width:min(620px,95vw)">
+            {/* Header/footer metrics mirror MessageCompose.astro so every dialog in the app reads
+                the same. The title's size is an INLINE style, not a utility class: `h2` is styled
+                unlayered in tokens.css (clamp up to 2rem) and unlayered CSS beats @layer
+                utilities whatever the specificity — a Tailwind text-size here silently loses. */}
+            <div style="display:flex;align-items:start;justify-content:space-between;gap:0.75rem;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">
+              <h2 id="bulk-discount-heading" style="font-size:1rem;font-weight:700;line-height:1.4;margin:0;color:var(--color-text)">
+                {d.bulkDiscountTitle} <span id="bulk-discount-count" class="muted font-normal"></span>
+              </h2>
+              <button type="button" id="bulk-discount-close" aria-label={d.cancel} class="shrink-0 w-8 h-8 rounded-[var(--radius)] flex items-center justify-center [color:var(--color-muted)] bg-transparent border-0 cursor-pointer hover:bg-[color:var(--color-bg)]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div class="px-5 pt-4 pb-1">
+              <Fragment set:html={discountFieldHtml(undefined, discountLabels, { header: false })} />
+              {/* The one interaction a seller can't see from inside this dialog: the discount
+                  set here may not be the one that ends up applying. */}
+              <p class="muted m-0 mt-1 text-[0.78rem]">{d.bulkDiscountVsSaleHint}</p>
+              <p class="muted m-0 mt-0.5 text-[0.78rem]">{d.bulkDiscountRemoveHint}</p>
+            </div>
+            <div class="flex gap-2 flex-wrap py-3 px-5 border-t border-[color:var(--color-border)] bg-[color:var(--color-bg)]">
+              <button type="button" class="btn btn--sm" id="bulk-discount-apply">{d.bulkDiscountApply}</button>
+              {/* Only offered while a sale is actually running — "add to the running sale" with
+                  no sale to add to would be a button that does nothing. */}
+              {store.sale?.active && !!store.sale.productIds?.length && (
+                <button type="button" class="btn btn--ghost btn--sm" id="bulk-discount-add-sale">{d.bulkAddToSale}</button>
+              )}
+            </div>
+          </dialog>
+
           {/* Unified toolbar row (CURRENT_TASK 2) — search + page-size + sort/
               filter all on ONE line. Search + page-size have no desktop-only
               home so they show at every width; sort/filter live in the table
@@ -983,7 +1053,7 @@ const orderStatusColors: Record<string, string> = {
             </div>
           </div>
 
-          <table id="products-table" class="products-table" hidden={productsPage.total === 0}>
+          <table id="products-table" class="products-table" hidden={products.length === 0}>
             <thead>
               <tr>
                 <th class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" id="bulk-select-all" class="bulk-select-all" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0"></th>
@@ -1036,7 +1106,7 @@ const orderStatusColors: Record<string, string> = {
                 const pStockFieldValue = pHasVariants ? pVariantCombos.reduce((s, c) => s + c.value, 0) : p.stock;
                 return (
                 <>
-                  <tr data-product-display={p.id} data-store-id={store.id} data-hidden={p.hidden ? '1' : ''} class={p.hidden ? 'is-product-hidden' : undefined} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
+                  <tr data-product-display={p.id} data-store-id={store.id} data-discount={p.discount ? JSON.stringify(p.discount) : ''} data-hidden={p.hidden ? '1' : ''} class={p.hidden ? 'is-product-hidden' : undefined} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
                     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
                     <td class="num row-num pe-[0.2rem]">{(productsPage.page - 1) * productsPageSize + idx + 1}</td>
                     <td class="thumb-col">
@@ -1044,6 +1114,9 @@ const orderStatusColors: Record<string, string> = {
                     </td>
                     <td class="name-col">
                       <span class="product-name cursor-text">{p.name}</span>
+                      {/* Sits beside the name, never inside the price cell: that cell is
+                          click-to-edit and parses its own textContent as the price. */}
+                      <span class="sale-chip ms-1.5 align-middle" data-row-sale={p.id} dir="ltr" hidden={!rowSaleLabel(p)}>{rowSaleLabel(p)}</span>
                       <span class="product-note-chip inline-flex items-center align-middle ms-1 [color:var(--color-muted)]" title={p.sellerNote || undefined} aria-label={d.sellerNoteLabel} hidden={!p.sellerNote}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
                       </span>
@@ -1134,7 +1207,7 @@ const orderStatusColors: Record<string, string> = {
                   <tr class="edit-row" data-product-edit={p.id} hidden>
                     <td class="num row-num pe-[0.2rem]">{idx + 1}</td>
                     <td colspan="20">
-                      <form method="POST" action="/api/product" class="mt-4 inline-edit-form" data-unsaved-guard>
+                      <form method="POST" action="/api/product" class="mt-4 inline-edit-form" data-unsaved-guard data-base-rev={productEditRev(p)}>
                         <input type="hidden" name="_action" value="edit-product" />
                         <input type="hidden" name="productId" value={p.id} />
                         <div class="edit-row-header">
@@ -1159,6 +1232,7 @@ const orderStatusColors: Record<string, string> = {
                             <input class="input" name="stock" type="number" min="0" step="1" value={pStockFieldValue} readonly={pHasVariants} style={pHasVariants ? 'background:var(--color-bg)' : undefined} />
                           </label>
                         </div>
+                        <Fragment set:html={discountFieldHtml(p.discount, discountLabels)} />
                         <label class="field">
                           <span>{d.descLabel}</span>
                           <textarea class="input" name="description" rows="2">{p.description}</textarea>
@@ -1318,6 +1392,11 @@ const orderStatusColors: Record<string, string> = {
                 </>
                 );
               })}
+              {/* Mirrors emptyFilterRow() in products.ts — same row, whether the empty result
+                  arrives with the page or from a later filter change. */}
+              {products.length > 0 && productsPage.total === 0 && (
+                <tr id="products-empty-row"><td colspan="12" class="py-6 text-center text-[0.95rem] [color:var(--color-muted)]">{d.noProductsMatch}</td></tr>
+              )}
             </tbody>
           </table>
 
@@ -1939,6 +2018,16 @@ const orderStatusColors: Record<string, string> = {
           <nav id="msg-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label="הודעות" data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
       </div>
 
+      {/* The running sale, for the client-side row renderer: a rebuilt row must show the same
+          "-N%" chip the server rendered, and that answer depends on the sale, not only on the
+          product's own discount. */}
+      <script is:inline type="application/json" id="dash-store-sale" set:html={jsonForScript(store?.sale ?? null)} />
+
+      <!-- ── Panel: Promotions ── -->
+      <div id="dash-panel-promotions" class="dash-panel" role="tabpanel" aria-labelledby="tab-promotions" hidden={initialPanel !== 'promotions'}>
+        <PromotionsPanel store={store} products={products} categories={storeCategoryList} selectedScopeLabel={t.store.saleOnSelected} storeScopeLabel={t.store.saleOnWholeStore} andMoreLabel={t.store.saleAndMore} d={d} />
+      </div>
+
       <!-- ── Panel: Settings ── -->
       <div id="dash-panel-settings" class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden={initialPanel !== 'settings'}>
         {showTabHints && <TabHint text={d.tabHintSettings} />}
@@ -1946,7 +2035,7 @@ const orderStatusColors: Record<string, string> = {
             "save changes" bar rides only over the fields it actually saves and releases
             at the form's end — the categories tree + custom-domain below save live per
             action (own APIs), so the button must not appear to govern them. */}
-        <form method="POST" action="/api/store" class="mt-4" id="settings-form" style="margin-top:0" data-unsaved-guard>
+        <form method="POST" action="/api/store" class="mt-4" id="settings-form" style="margin-top:0" data-unsaved-guard data-base-rev={storeSettingsRev(store)}>
           <input type="hidden" name="_action" value="save-settings" />
           <input type="hidden" name="storeId" value={store.id} />
 
@@ -2569,6 +2658,7 @@ const orderStatusColors: Record<string, string> = {
   import { initStoreUrl } from '../../scripts/dashboard/store-url.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks, initStorePreviewLink } from '../../scripts/dashboard/ui.js';
   import { initUnsavedGuard } from '../../scripts/dashboard/unsaved-guard.js';
+  import { initDashTabSync } from '../../scripts/dashboard/tab-sync.js';
   import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
   import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
   import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
@@ -2579,6 +2669,8 @@ const orderStatusColors: Record<string, string> = {
   import { initAdvertisingTab } from '../../scripts/dashboard/advertising.js';
   import { initOrdersTab } from '../../scripts/dashboard/orders.js';
   import { initMessagesTab } from '../../scripts/dashboard/messages.js';
+  import { initPromotionsTab } from '../../scripts/dashboard/promotions.js';
+  import { initDiscountFields } from '../../scripts/dashboard/discount-field.js';
   import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../../scripts/dashboard/select-dropdown.js';
   import { initAllStoreCategoryPickers } from '../../scripts/store-category-picker.js';
 
@@ -2594,10 +2686,14 @@ const orderStatusColors: Record<string, string> = {
     }
   }
 
+  // First: it observes fetch, so it should be in place before anything can save.
+  initDashTabSync(uploadCfg?.dataset.storeId ?? '');
   initDashTabs();
   initGotoPanelLinks();
   initPerformanceTab();
   initAdvertisingTab();
+  initPromotionsTab();
+  initDiscountFields();
 
   // Deep-link: ?panel=messages&msg=<id>
   {

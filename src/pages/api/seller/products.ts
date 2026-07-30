@@ -9,6 +9,7 @@ import { getAllWishlistCounts } from '../../../lib/wishlist-counts.js';
 import { getPurchasedCountsByStoreSlug } from '../../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../../lib/seller-products-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
+import { productEditRev } from '../../../lib/record-rev.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -50,6 +51,10 @@ export const GET: APIRoute = async ({ url, cookies }) => {
       wishlistCount: wishlistCounts[p.slug] ?? 0,
       purchasedCount: purchasedCounts[p.id] ?? 0,
       categoryPath: categoryPaths.get(p.id) ?? '',
+      // The edit row this page builds carries the product's revision, so a save from
+      // it can be checked against the stored record (lib/record-rev.ts). Computed here
+      // rather than in the browser so an AJAX row and an SSR row can never disagree.
+      rev: productEditRev(p),
     })),
     page,
     totalPages,

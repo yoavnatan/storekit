@@ -83,6 +83,14 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
 
   function open(anchor: HTMLElement, minWidth: string, buildHtml: () => string, wire: (portal: HTMLElement) => void): void {
     const portal = getPortal();
+    // A <dialog> opened with showModal() paints in the browser's TOP LAYER, which sits above
+    // the entire normal stacking context — no z-index on a <body>-level element can reach it,
+    // so a portal left on the body renders *behind* the modal and looks like it never opened.
+    // Re-home it inside that dialog (itself in the top layer) whenever the trigger is in one.
+    // Position is unaffected: the portal is position:fixed, so it is neither offset by the new
+    // parent nor clipped by the dialog's own overflow:hidden.
+    const host = anchor.closest('dialog[open]') ?? document.body;
+    if (portal.parentElement !== host) host.appendChild(portal);
     portal.style.minWidth = minWidth;
     portal.style.maxHeight = '320px';
     portal.style.overflow = 'auto';
@@ -107,7 +115,18 @@ export function createFloatingPortal(portalId: string): FloatingPortal {
     if (trigger && path.includes(trigger)) return;
     close();
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  // Capture phase + preventDefault, because a portal opened INSIDE a <dialog> would otherwise
+  // let one Escape close both: the browser's own dialog-cancel behaviour runs unless the keydown
+  // is canceled first, so the seller lost the whole modal while only meaning to dismiss the menu
+  // they had just opened. Escape now peels one layer at a time.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const portal = document.getElementById(portalId);
+    if (!portal || portal.hidden) return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  }, true);
   // The portal is position:fixed and only positioned once, on open — left
   // alone, it doesn't track the trigger as the page scrolls, so it stays
   // floating in the same screen spot while the trigger (e.g. an order

@@ -48,7 +48,7 @@ function snapshot(form: HTMLFormElement): string {
     else if (f.type === 'checkbox' || f.type === 'radio') parts.push(`${f.name}=${f.checked}`);
     else parts.push(`${f.name}=${fieldValue(f)}`);
   }
-  return parts.join('');
+  return parts.join('\x01');
 }
 
 /**
@@ -71,7 +71,8 @@ function remember(target: EventTarget | null): void {
   if (form && !baselines.has(form)) baselines.set(form, snapshot(form));
 }
 
-function hasUnsavedChanges(): boolean {
+/** Exported for tab-sync.ts: a live cross-tab refresh must never redraw over work in progress, and this is already the one place that knows what "in progress" means. */
+export function hasUnsavedChanges(): boolean {
   return Array.from(document.querySelectorAll<HTMLFormElement>(GUARDED)).some(
     (form) => baselines.has(form) && isLive(form) && baselines.get(form) !== snapshot(form),
   );

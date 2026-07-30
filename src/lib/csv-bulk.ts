@@ -2,7 +2,7 @@ import { findSpamKeyword, findKeywordStuffing } from './spam-filter.js';
 
 export interface CsvField {
   key: 'id' | 'sku' | 'name' | 'price' | 'stock' | 'category' | 'subcategory1' | 'subcategory2' | 'tags' | 'description' | 'group'
-    | 'option1Name' | 'option1Value' | 'option2Name' | 'option2Value' | 'option3Name' | 'option3Value';
+    | 'option1Name' | 'option1Value' | 'option2Name' | 'option2Value' | 'option3Name' | 'option3Value' | 'salePrice';
   he: string;
   en: string;
 }
@@ -41,6 +41,12 @@ export const CSV_FIELDS: CsvField[] = [
   { key: 'option2Value', he: 'ערך גרסה 2',            en: 'Option 2 value' },
   { key: 'option3Name',  he: 'שם גרסה 3',             en: 'Option 3 name' },
   { key: 'option3Value', he: 'ערך גרסה 3',            en: 'Option 3 value' },
+  // ONE column, holding the price the shopper pays while the sale runs — the same shape
+  // Shopify ("Compare at price") and WooCommerce ("Sale price") use, so a seller exporting
+  // from another system recognises it. A percent column alongside it would be a second way
+  // to say the same thing, which is how a spreadsheet ends up disagreeing with itself.
+  // Blank = leave unchanged (the standard rule for every column here); 0 = end the sale.
+  { key: 'salePrice',    he: 'מחיר מבצע',              en: 'Sale price' },
 ];
 
 export const BOM = '﻿';
@@ -96,23 +102,23 @@ export function toCsvCell(value: string): string {
 // the option name/value pairs. The sweatshirt rows show a two-dimension product (צבע×מידה); the table
 // rows show that a dimension can be ANYTHING (חומר) — not just color/size — so the format is
 // self-documenting from the template alone.
-// Columns: id, sku, name, price, stock, category, subcategory1, subcategory2, tags, description, group, option1Name, option1Value, option2Name, option2Value, option3Name, option3Value
+// Columns: id, sku, name, price, stock, category, subcategory1, subcategory2, tags, description, group, option1Name, option1Value, option2Name, option2Value, option3Name, option3Value, salePrice
 const TEMPLATE_EXAMPLE_ROWS: Record<'he' | 'en', string[][]> = {
   he: [
-    ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'גברים', '', 'קיץ, מבצע', 'חולצת כותנה איכותית', '', '', '', '', '', '', ''],
-    ['', 'SW-BL-L', 'סווטשירט', '129.9', '5', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'L', '', ''],
-    ['', 'SW-BL-S', 'סווטשירט', '129.9', '8', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'S', '', ''],
-    ['', 'SW-OR-L', 'סווטשירט', '129.9', '3', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כתום', 'מידה', 'L', '', ''],
-    ['', 'TBL-W', 'שולחן', '450', '4', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'עץ', '', '', '', ''],
-    ['', 'TBL-M', 'שולחן', '450', '2', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'מתכת', '', '', '', ''],
+    ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'גברים', '', 'קיץ, מבצע', 'חולצת כותנה איכותית', '', '', '', '', '', '', '', '69.9'],
+    ['', 'SW-BL-L', 'סווטשירט', '129.9', '5', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'L', '', '', ''],
+    ['', 'SW-BL-S', 'סווטשירט', '129.9', '8', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'S', '', '', ''],
+    ['', 'SW-OR-L', 'סווטשירט', '129.9', '3', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כתום', 'מידה', 'L', '', '', ''],
+    ['', 'TBL-W', 'שולחן', '450', '4', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'עץ', '', '', '', '', ''],
+    ['', 'TBL-M', 'שולחן', '450', '2', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'מתכת', '', '', '', '', ''],
   ],
   en: [
-    ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'Men', '', 'summer, sale', 'High quality cotton shirt', '', '', '', '', '', '', ''],
-    ['', 'SW-BL-L', 'Sweatshirt', '129.9', '5', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'L', '', ''],
-    ['', 'SW-BL-S', 'Sweatshirt', '129.9', '8', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'S', '', ''],
-    ['', 'SW-OR-L', 'Sweatshirt', '129.9', '3', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Orange', 'Size', 'L', '', ''],
-    ['', 'TBL-W', 'Table', '450', '4', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Wood', '', '', '', ''],
-    ['', 'TBL-M', 'Table', '450', '2', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Metal', '', '', '', ''],
+    ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'Men', '', 'summer, sale', 'High quality cotton shirt', '', '', '', '', '', '', '', '69.9'],
+    ['', 'SW-BL-L', 'Sweatshirt', '129.9', '5', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'L', '', '', ''],
+    ['', 'SW-BL-S', 'Sweatshirt', '129.9', '8', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'S', '', '', ''],
+    ['', 'SW-OR-L', 'Sweatshirt', '129.9', '3', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Orange', 'Size', 'L', '', '', ''],
+    ['', 'TBL-W', 'Table', '450', '4', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Wood', '', '', '', '', ''],
+    ['', 'TBL-M', 'Table', '450', '2', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Metal', '', '', '', '', ''],
   ],
 };
 
@@ -196,6 +202,9 @@ export interface BulkProductInput {
   price: number;
   /** Undefined = blank cell = "leave unchanged" on an update row, defaults to 0 on create. */
   stock?: number;
+  /** The price while the sale runs. Undefined = blank cell = leave any existing discount alone;
+   *  0 = end the sale. Stored as a ₪-off discount against `price` (see store-products-bulk.ts). */
+  salePrice?: number;
   /** Ordered root-first segment names (e.g. ["ביגוד", "גברים"]), already validated for no orphan gaps — resolved/auto-created into a real categoryId by store-products-bulk.ts. Undefined = all three columns blank = "leave unchanged" on update / no category on create. */
   categoryPath?: string[];
   tags?: string[];
@@ -245,6 +254,17 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
       else stock = parsed;
     }
 
+    // Sale price: blank = leave unchanged, 0 = end the sale, otherwise it must land strictly
+    // between 0 and the row's own price — a "sale" at or above the regular price is a typo the
+    // shopper would see as a fake markdown, so it fails the row rather than importing quietly.
+    let salePrice: number | undefined;
+    if (raw.cells.salePrice?.trim()) {
+      const parsed = parseFloat(raw.cells.salePrice);
+      if (!Number.isFinite(parsed) || parsed < 0 || (parsed > 0 && Number.isFinite(price) && parsed >= price)) {
+        errors.push('sale-price-invalid');
+      } else salePrice = parsed;
+    }
+
     const sku = raw.cells.sku?.trim() || undefined;
     if (sku) {
       const catalogOwner = existingSkuOwners.get(sku);
@@ -278,7 +298,7 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
       .map((slot) => ({ name: raw.cells[slot.name]?.trim() || '', value: raw.cells[slot.value]?.trim() || '' }))
       .filter((o) => o.name || o.value);
     const input: BulkProductInput = {
-      name, price, stock,
+      name, price, stock, salePrice,
       categoryPath: categoryPath.length ? categoryPath : undefined,
       tags: tags?.length ? tags : undefined,
       description: raw.cells.description?.trim() || undefined,

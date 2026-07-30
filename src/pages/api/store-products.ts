@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getStoreBySlugOrPrevious, isStoreVisible } from '../../lib/stores.js';
-import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
+import { getVisibleProductsByStoreId, toPublicProduct } from '../../lib/store-products.js';
 import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds } from '../../lib/store-categories.js';
@@ -30,12 +30,14 @@ export const GET: APIRoute = async ({ url }) => {
   // store's own "load more" pagination either.
   // Same popularity signal the page's SSR render uses, so paged results rank identically.
   const purchasedUnits = getPurchasedCountsByStoreSlug(store.slug);
-  const filtered = filterAndSortProducts(getVisibleProductsByStoreId(store.id), { categoryIds, sort, q, purchasedUnits });
+  // `sale` rides along so a "price: low to high" page orders by what the shopper would pay.
+  const filtered = filterAndSortProducts(getVisibleProductsByStoreId(store.id), { categoryIds, sort, q, purchasedUnits, sale: store.sale });
   const products = filtered.slice(offset, offset + PRODUCTS_PAGE_SIZE);
 
   return json({
     ok: true,
-    products,
+    // Never the raw rows — they carry the seller's private note (see toPublicProduct).
+    products: products.map(toPublicProduct),
     hasMore: offset + products.length < filtered.length,
   });
 };

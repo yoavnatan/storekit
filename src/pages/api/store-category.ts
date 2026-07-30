@@ -4,6 +4,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
 import { createCategory, renameCategory, deleteCategory, moveCategory, getCategoryById, buildCategoryTree, getCategoriesByStoreId } from '../../lib/store-categories.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
+import { refreshStoreSaleScope } from '../../lib/store-sale-scope.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -41,6 +42,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     const result = createCategory(storeId, { name, parentId: parentIdRaw || null });
     if ('error' in result) return json({ ok: false, error: result.error }, 400);
+    // The tree just changed, so a category-scoped sale's flattened scope may be stale (a new
+    // subcategory belongs inside it; a deleted one no longer exists). Re-resolve before the
+    // storefront reads it — see store-sale-scope.ts for why the list is stored, not computed.
+    refreshStoreSaleScope(storeId);
     return json({ ok: true, tree: buildCategoryTree(getCategoriesByStoreId(storeId)) });
   }
 
@@ -65,6 +70,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     const result = deleteCategory(categoryId);
     if ('error' in result) return json({ ok: false, error: result.error }, 400);
+    // The tree just changed, so a category-scoped sale's flattened scope may be stale (a new
+    // subcategory belongs inside it; a deleted one no longer exists). Re-resolve before the
+    // storefront reads it — see store-sale-scope.ts for why the list is stored, not computed.
+    refreshStoreSaleScope(category.storeId);
     return json({ ok: true, tree: buildCategoryTree(getCategoriesByStoreId(category.storeId)) });
   }
 

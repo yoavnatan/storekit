@@ -1,7 +1,9 @@
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
+import { CANCELLABLE_FROM } from '../../lib/order-status-rules.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { applyStockAttentionFilter } from './products.js';
+import { registerPanelRefresh } from './tab-sync.js';
 import { cdnThumb } from '../../lib/cdn.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
 import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
@@ -560,7 +562,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             <button class="order-save-btn btn btn--sm btn--accent" type="button">שמור</button>
           </div>
           <p class="order-save-status text-[0.8rem] font-semibold text-[color:var(--color-success)] mt-[0.4rem]" hidden aria-live="polite">נשמר ✓</p>
-          ${['pending', 'processing', 'ready'].includes(o.shippingStatus) ? `<button class="order-cancel-btn mt-3 inline-flex items-center gap-[0.3rem] bg-transparent border-0 p-0 cursor-pointer text-[0.78rem] font-semibold text-[color:var(--color-danger)] hover:underline" type="button" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>ביטול הזמנה</button>` : ''}
+          ${(CANCELLABLE_FROM as readonly string[]).includes(o.shippingStatus) ? `<button class="order-cancel-btn mt-3 inline-flex items-center gap-[0.3rem] bg-transparent border-0 p-0 cursor-pointer text-[0.78rem] font-semibold text-[color:var(--color-danger)] hover:underline" type="button" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>ביטול הזמנה</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -829,6 +831,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     });
   }
   initOrdersPagination();
+  // What this tab re-runs when another tab of the same store changes something
+  // (tab-sync.ts) — the same re-fetch its own toolbar uses, so the seller's page,
+  // search, sort and filters survive a cross-tab refresh exactly as they do here.
+  registerPanelRefresh('dash-panel-orders', applyOrdersPagination);
 
   const ordersSearchInput = document.getElementById('orders-search-input') as HTMLInputElement | null;
   ordersSearchInput?.addEventListener('input', debounce(() => {
@@ -983,8 +989,31 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     eomDiscountPreview.textContent = applied > 0 ? `= −${applied.toFixed(2).replace(/\.00$/, '')} ₪` : '';
   }
 
+  /**
+   * The buyer block as this modal was opened with it, so the save can send ONLY what the
+   * seller actually changed.
+   *
+   * The dashboard is routinely open in several tabs (tab-sync.ts). This form submits the
+   * whole buyer block, so a tab whose modal was opened before another tab fixed the phone
+   * would carry the old phone along with the one field it did change — and quietly undo
+   * it. Sending just the edited fields removes the problem at the source: the endpoint
+   * already applies each field only when it is present, so an untouched field is not
+   * merely un-overwritten, it is never mentioned.
+   */
+  let eomOpenedWith: Record<string, string> = {};
+
   function openEditOrderModal(btn: HTMLElement) {
     if (!editOrderModal) return;
+    eomOpenedWith = {
+      name:   btn.dataset.buyerName   ?? '',
+      email:  btn.dataset.buyerEmail  ?? '',
+      phone:  btn.dataset.buyerPhone  ?? '',
+      street: btn.dataset.buyerStreet ?? '',
+      city:   btn.dataset.buyerCity   ?? '',
+      zip:    btn.dataset.buyerZip    ?? '',
+      discountType:  btn.dataset.discountType ?? 'percent',
+      discountValue: btn.dataset.discountValue ?? '0',
+    };
     (document.getElementById('edit-order-id') as HTMLInputElement).value = btn.dataset.orderId ?? '';
     (document.getElementById('edit-order-store-slug') as HTMLInputElement).value = btn.dataset.storeSlug ?? '';
     (document.getElementById('eob-name') as HTMLInputElement).value    = btn.dataset.buyerName   ?? '';
@@ -1049,11 +1078,34 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     editOrderSaveBtn.disabled = true;
     if (editOrderError) editOrderError.style.display = 'none';
 
+    // Only what actually changed since the modal opened (see eomOpenedWith). The address
+    // travels as one object because that is how it is stored and edited — all three parts
+    // go if any of them moved. An omitted field is left exactly as it stands on the server.
+    const addressChanged = city !== eomOpenedWith.city || street !== eomOpenedWith.street || zip !== eomOpenedWith.zip;
+    const openedDiscountValue = parseFloat(eomOpenedWith.discountValue ?? '0') || 0;
+    const discountChanged = discountVal !== openedDiscountValue
+      || (discountVal > 0 && eomDiscountType !== eomOpenedWith.discountType);
+    const payload: Record<string, unknown> = { orderId, storeSlug };
+    if (name !== eomOpenedWith.name) payload['buyerName'] = name;
+    if (email !== eomOpenedWith.email) payload['buyerEmail'] = email;
+    if (phone !== eomOpenedWith.phone) payload['buyerPhone'] = phone;
+    if (addressChanged) payload['buyerAddress'] = { city, street, zip };
+    if (itemDeletes.length) payload['itemDeletes'] = itemDeletes;
+    if (discountChanged) payload['discount'] = discount;
+
+    // Opened, looked, saved: nothing to send, and the endpoint would answer "no valid
+    // fields to update" — an error message for having changed his mind. Just close.
+    if (Object.keys(payload).length === 2) {
+      editOrderSaveBtn.disabled = false;
+      editOrderModal?.close();
+      return;
+    }
+
     try {
       const res = await fetch('/api/seller/orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, storeSlug, buyerName: name, buyerEmail: email, buyerPhone: phone, buyerAddress: { city, street, zip }, itemDeletes, discount }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json() as { error?: string };

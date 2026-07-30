@@ -2,7 +2,9 @@ import crypto from 'node:crypto';
 import { readProducts, writeProducts, slugify, type StoreProduct, type ProductVariant } from './store-products.js';
 import { resolveOrCreateCategoryPaths, getAncestorChain, type StoreCategory } from './store-categories.js';
 import { CSV_FIELDS, BOM, sanitizeCsvCell, toCsvCell } from './csv-bulk.js';
+import { roundMoney } from './money.js';
 import { generateCombos, comboKey } from './variant-combo.js';
+import { discountedPrice } from './discounts.js';
 
 export interface BulkUpsertInput {
   id?: string;
@@ -10,6 +12,10 @@ export interface BulkUpsertInput {
   price: number;
   /** Undefined = blank CSV cell = "leave unchanged" on update, defaults to 0 on create. */
   stock?: number;
+  /** Price while the sale runs (csv-bulk.ts's `salePrice` column). Undefined = leave any existing
+   *  discount alone; 0 = end the sale. Stored as a ₪-off against `price` rather than as an absolute
+   *  figure so it reads the same as a discount set in the dashboard — one shape in the data. */
+  salePrice?: number;
   /** Root-first segment names, e.g. ["ביגוד", "גברים"] — undefined = leave unchanged on update / no category on create. */
   categoryPath?: string[];
   tags?: string[];
@@ -47,6 +53,11 @@ export function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): Bu
     // A variant row (assembled from a group) carries the product's whole variant matrix; only then
     // do we touch variants/variantStock/variantSku, so a plain update never clobbers them.
     const isVariant = !!row.variants?.length;
+    // undefined → leave the product's discount as it is; 0 → clear it; otherwise the ₪ gap.
+    const rowDiscount: StoreProduct['discount'] | undefined | null =
+      row.salePrice === undefined ? undefined
+        : row.salePrice <= 0 || row.salePrice >= row.price ? null
+        : { type: 'amount', value: roundMoney(row.price - row.salePrice) };
     if (row.id) {
       const idx = idIndex.get(row.id);
       const existing = idx !== undefined ? products[idx] : undefined;
@@ -64,6 +75,7 @@ export function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): Bu
         tags: row.tags ?? existing.tags,
         description: row.description ?? existing.description,
         sku: row.sku ?? existing.sku,
+        discount: rowDiscount === undefined ? existing.discount : (rowDiscount ?? undefined),
         ...(isVariant ? { variants: row.variants, variantStock: row.variantStock ?? {}, variantSku: row.variantSku } : {}),
       };
       products[idx] = updated;
@@ -86,6 +98,7 @@ export function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): Bu
         ...(categoryId ? { categoryId } : {}),
         ...(row.tags?.length ? { tags: row.tags } : {}),
         ...(row.sku ? { sku: row.sku } : {}),
+        ...(rowDiscount ? { discount: rowDiscount } : {}),
         ...(isVariant ? { variants: row.variants } : {}),
         ...(isVariant && row.variantStock && Object.keys(row.variantStock).length ? { variantStock: row.variantStock } : {}),
         ...(isVariant && row.variantSku && Object.keys(row.variantSku).length ? { variantSku: row.variantSku } : {}),
@@ -131,6 +144,16 @@ export function updateChangesProduct(existing: StoreProduct, input: BulkUpsertIn
   }
   if (input.stock !== undefined && input.stock !== existing.stock) return true;
   if (input.sku !== undefined && input.sku !== existing.sku) return true;
+  if (input.salePrice !== undefined) {
+    const nextValue = input.salePrice > 0 && input.salePrice < input.price
+      ? roundMoney(input.price - input.salePrice)
+      : 0;
+    const currentValue = existing.discount?.type === 'amount' ? existing.discount.value : 0;
+    // A percent discount can't be equal to a ₪ one for diff purposes — treat any type change
+    // as a change rather than trying to compare across shapes.
+    if (existing.discount && existing.discount.type !== 'amount' && nextValue > 0) return true;
+    if (nextValue !== currentValue) return true;
+  }
   return false;
 }
 
@@ -185,6 +208,16 @@ export function productsToFeedJson(products: StoreProduct[], categories: StoreCa
   });
 }
 
+/** The product's OWN discount as an absolute price, for the export column. The store-wide sale is
+ *  deliberately not folded in: it isn't a property of any single product, and re-importing a file
+ *  where it had been baked into every row would freeze it into permanent per-product discounts. */
+function salePriceCell(p: StoreProduct): string {
+  const d = p.discount;
+  if (!d) return '';
+  const next = discountedPrice(p.price, d.type, d.value);
+  return next > 0 && next < p.price ? String(next) : '';
+}
+
 export function productsToCsv(products: StoreProduct[], categories: StoreCategory[], lang: 'he' | 'en'): string {
   const header = CSV_FIELDS.map((f) => toCsvCell(f[lang])).join(',');
   // The "variant group" column only has to tie a product's rows together and stay unique within the
@@ -216,7 +249,7 @@ export function productsToCsv(products: StoreProduct[], categories: StoreCategor
     const blankOptions = ['', '', '', '', '', '']; // three name/value pairs
     if (!isCsvExpandable(p)) {
       // id, sku, [name, price], stock, [category…description], group, + 3 blank option pairs
-      return [[p.id, sanitizeCsvCell(p.sku ?? ''), ...shared, String(p.stock), ...tail, '', ...blankOptions].map(toCsvCell).join(',')];
+      return [[p.id, sanitizeCsvCell(p.sku ?? ''), ...shared, String(p.stock), ...tail, '', ...blankOptions, salePriceCell(p)].map(toCsvCell).join(',')];
     }
 
     const dims = p.variants!; // 1–3 dimensions, any name
@@ -238,6 +271,7 @@ export function productsToCsv(products: StoreProduct[], categories: StoreCategor
         ...tail,
         sanitizeCsvCell(group),
         ...optionCells,
+        salePriceCell(p),
       ].map(toCsvCell).join(',');
     });
   });

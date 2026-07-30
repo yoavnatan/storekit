@@ -1,0 +1,178 @@
+---
+/**
+ * Last line of defence against the dashboard reloading under a seller mid-edit — and against
+ * him losing the edit anyway when he reloads to recover.
+ *
+ * Every mutating form here is AJAX: the handler calls preventDefault() and posts with fetch.
+ * But the forms still carry `method="POST" action="/api/…"`, so if the handler never attached
+ * — the whole dashboard is ONE module graph, and a single failed import or a throw during init
+ * kills all of them at once — the browser falls back to its own submit. That is a full page
+ * navigation to a raw JSON response: everything else the seller had typed on that screen is gone.
+ *
+ * Two halves:
+ *  1. BLOCK. `defaultPrevented` at document level is an exact test for "did a handler run": every
+ *     AJAX handler calls preventDefault() as its first statement, and this listener sits on
+ *     document, so it fires after all of them. No flag to set at each call site, nothing to
+ *     remember when a new form lands (same reasoning as tab-sync.ts's fetch observer).
+ *  2. KEEP. Blocking alone only trades a surprise reload for a deliberate one — the moment he
+ *     reloads to fix things, the typing is gone all the same. So the blocked form is written to
+ *     localStorage, and the next load OFFERS it back. Offers, never restores on its own: silently
+ *     overwriting what the server just rendered would be its own kind of data loss.
+ *
+ * MUST stay `is:inline`: its whole job is to survive the module graph failing, which it cannot
+ * do from inside that graph. That also means the restore half works on a still-broken load.
+ *
+ * Only server-rendered forms are offered a restore (the DOMContentLoaded scan). A form that JS
+ * builds — the paginated inline product editor — can only exist if that same module graph is
+ * alive, in which case the block never fires and there is no draft to restore.
+ *
+ * Never stored: file and password inputs.
+ *
+ * A form that genuinely wants the browser to post it (server-rendered redirect flows — logout,
+ * store creation) opts out with `data-native-submit`.
+ */
+interface Props {
+  /** What the seller is told when a save was blocked — his typed values stay on screen. */
+  message: string;
+  /** The restore offer on the next load, and its two buttons. */
+  draftFound: string;
+  draftRestore: string;
+  draftDiscard: string;
+}
+const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
+---
+
+<script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard }}>
+  (function () {
+    var PREFIX = 'dz-draft:';
+    var MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+    var SKIP = { file: 1, password: 1, submit: 1, button: 1, reset: 1, image: 1 };
+
+    /** Identity that survives a reload: the form's own id (or its field names when it has none),
+     *  scoped by the record it edits, so two products' editors never share a draft.
+     *  '' for a form with nothing named in it — it has no draft worth keeping, and every such
+     *  form would otherwise key to the same empty string as every other. */
+    function keyFor(form) {
+      var names = [];
+      for (var i = 0; i < form.elements.length; i++) if (form.elements[i].name) names.push(form.elements[i].name);
+      if (!names.length) return '';
+      var store = (document.getElementById('upload-config') || { dataset: {} }).dataset.storeId || '';
+      var record = (form.querySelector('[name="productId"]') || form.querySelector('[name="storeId"]') || {}).value || '';
+      return PREFIX + store + ':' + (form.id || names.join(',')) + ':' + record;
+    }
+
+    /** Keyed by name + which occurrence of that name, so radio groups and repeated names land
+     *  back on the right element even if the page rendered slightly differently. */
+    function fieldKey(form, el) {
+      var same = form.querySelectorAll('[name="' + (window.CSS && CSS.escape ? CSS.escape(el.name) : el.name) + '"]');
+      return el.name + '#' + Array.prototype.indexOf.call(same, el);
+    }
+
+    function snapshot(form) {
+      var out = {};
+      for (var i = 0; i < form.elements.length; i++) {
+        var el = form.elements[i];
+        if (!el.name || el.disabled || SKIP[el.type]) continue;
+        out[fieldKey(form, el)] = el.type === 'checkbox' || el.type === 'radio' ? { c: el.checked } : { v: el.value };
+      }
+      return out;
+    }
+
+    function save(form) {
+      var key = keyFor(form);
+      if (!key) return;
+      try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), values: snapshot(form) })); }
+      catch (err) { /* private mode / quota — the values are still on screen, which is the point */ }
+    }
+
+    function drop(form) {
+      var key = keyFor(form);
+      if (!key) return;
+      try { localStorage.removeItem(key); } catch (err) { /* ignore */ }
+    }
+
+    function apply(form, values) {
+      for (var i = 0; i < form.elements.length; i++) {
+        var el = form.elements[i];
+        if (!el.name || el.disabled || SKIP[el.type]) continue;
+        var saved = values[fieldKey(form, el)];
+        if (!saved) continue;
+        if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!saved.c;
+        else if (typeof saved.v === 'string') el.value = saved.v;
+        // Everything downstream — the sale preview, the unsaved-changes baseline, the scope
+        // toggles — listens for these rather than being poked field by field from here.
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+
+    function offer(form, draft) {
+      var bar = document.createElement('div');
+      bar.className = 'flex items-center gap-2 flex-wrap mb-3 py-2 px-2.5 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] text-[0.82rem]';
+      bar.setAttribute('role', 'status');
+
+      var text = document.createElement('span');
+      text.className = 'flex-1 min-w-0';
+      text.textContent = draftFound;
+
+      var yes = document.createElement('button');
+      yes.type = 'button';
+      yes.className = 'btn btn--sm';
+      yes.textContent = draftRestore;
+
+      var no = document.createElement('button');
+      no.type = 'button';
+      no.className = 'btn btn--ghost btn--sm';
+      no.textContent = draftDiscard;
+
+      yes.addEventListener('click', function () { apply(form, draft.values); drop(form); bar.remove(); });
+      no.addEventListener('click', function () { drop(form); bar.remove(); });
+
+      bar.appendChild(text);
+      bar.appendChild(yes);
+      bar.appendChild(no);
+      form.insertBefore(bar, form.firstChild);
+    }
+
+    document.addEventListener('submit', function (e) {
+      var form = e.target;
+      if (!form || form.tagName !== 'FORM') return;
+      if (form.hasAttribute('data-native-submit')) return;  // deliberately a browser POST
+
+      // A handler took it — the normal path, and proof the AJAX route is alive again, so any
+      // draft this form left behind has nothing left to protect.
+      if (e.defaultPrevented) { drop(form); return; }
+
+      e.preventDefault();
+      save(form);
+      window.dispatchEvent(new CustomEvent('toast:show', { detail: { title: msg, body: '', duration: 9000 } }));
+
+      // The toast is itself a module, so it may be the thing that died. If nothing rendered,
+      // say it in the one way that cannot fail — a blocked save that stays silent would read
+      // as a dead button, which is worse than the reload this is preventing.
+      setTimeout(function () {
+        if (!document.querySelector('#toast-container .toast-card')) window.alert(msg);
+      }, 300);
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+      var forms = document.querySelectorAll('form');
+      for (var i = 0; i < forms.length; i++) {
+        var form = forms[i];
+        if (form.hasAttribute('data-native-submit')) continue;
+        var key = keyFor(form);
+        if (!key) continue;
+        var raw = null;
+        try { raw = localStorage.getItem(key); } catch (err) { return; }
+        if (!raw) continue;
+        var draft;
+        try { draft = JSON.parse(raw); } catch (err) { drop(form); continue; }
+        if (!draft || !draft.values || Date.now() - (draft.at || 0) > MAX_AGE) { drop(form); continue; }
+        // Nothing to put back (the save landed after all, or another tab already did it):
+        // an offer to restore identical values is a prompt with no answer worth giving.
+        if (JSON.stringify(draft.values) === JSON.stringify(snapshot(form))) { drop(form); continue; }
+        offer(form, draft);
+      }
+    });
+  })();
+</script>

@@ -1,7 +1,10 @@
 import type { StoreProduct } from './store-products.js';
 import { matchesQueryWords } from './product-listing.js';
 import { decodeList } from './admin-nav.js';
-import { LOW_STOCK_THRESHOLD } from './store-products.js';
+// Straight from variant-combo (store-products.ts only re-exports it): the products-tab
+// toolbar imports NO_CATEGORY_TOKEN from here, and going through store-products.ts would
+// drag node:fs/node:crypto into the browser bundle.
+import { LOW_STOCK_THRESHOLD } from './variant-combo.js';
 
 // Server-side counterpart of the seller dashboard's Products tab toolbar
 // (src/scripts/dashboard/products.ts) — pagination means the toolbar can no
@@ -19,6 +22,12 @@ const VALID_STOCK_STATUSES = new Set<string>(['out', 'low', 'ok']);
 export function stockBucket(stock: number): StockStatus {
   return stock <= 0 ? 'out' : stock <= LOW_STOCK_THRESHOLD ? 'low' : 'ok';
 }
+
+// Wire token for the "ללא קטגוריה" row of the category filter. The natural value
+// for "has no category" is the empty string (that IS an uncategorized product's
+// path), but decodeList() drops empty entries — so the whole filter arrived here
+// empty and read as "no filter at all": picking it changed nothing on screen.
+export const NO_CATEGORY_TOKEN = '__none__';
 
 export interface SellerProductQuery {
   q: string;
@@ -48,7 +57,9 @@ export function parseSellerProductQuery(sp: URLSearchParams): SellerProductQuery
     q: (sp.get('pq') ?? '').trim(),
     sortCol,
     sortDir,
-    categoryPaths: decodeList(sp.get('pcat') ?? ''), // paths may contain commas (nested category names)
+    // paths may contain commas (nested category names); the token maps back to the
+    // empty path that uncategorized products carry
+    categoryPaths: decodeList(sp.get('pcat') ?? '').map((v) => (v === NO_CATEGORY_TOKEN ? '' : v)),
     stockStatuses: (sp.get('pstock') ?? '').split(',').map((s) => s.trim()).filter((s): s is StockStatus => VALID_STOCK_STATUSES.has(s)),
   };
 }

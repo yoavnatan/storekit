@@ -4,6 +4,8 @@ import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg, buildDonut
 import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/seller-performance.js';
 import { showTooltip, showTooltipAtPoint, hideTooltip, mountTooltipIn, initInfoTooltips } from './tooltip.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { businessDayISO, businessMonthStartISO, calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
+import { addDaysISO } from '../../lib/date-range.js';
 
 const PRESETS = ['today', 'thisWeek', 'thisMonth', 'lastMonth', '7d', '30d', '90d'] as const;
 type Preset = typeof PRESETS[number];
@@ -42,45 +44,41 @@ function getI18n(): Record<string, string> {
   catch { return {}; }
 }
 
-// Local-calendar ISO (YYYY-MM-DD) — NOT toISOString(), which serialises in UTC
-// and in a positive-UTC timezone (e.g. Israel) shifts a local-midnight date
-// back to the previous day, so "this month" would start on the last day of the
-// previous month. Range boundaries follow the seller's own calendar.
-function toISODate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 function formatShortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+  return new Date(iso + 'T12:00:00Z').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', timeZone: BUSINESS_TIMEZONE });
 }
 
+/**
+ * Every bound is derived from the BUSINESS day (business-day.ts) by calendar
+ * arithmetic on the date string — never from the browser's own clock.
+ *
+ * This used to build each bound from a local `Date`, which is the SELLER'S DEVICE
+ * timezone. On a laptop still set to another zone (or simply travelling), "this
+ * month" was computed against one calendar while the server bucketed the orders
+ * against another, and the range silently included or dropped a day at each end.
+ * Deriving everything from one `today` string removes the possibility rather than
+ * making the two agree by luck.
+ */
 function presetRange(preset: string): { from: string; to: string } {
-  const today = new Date();
-  const to = new Date(today);
-  if (preset === 'today') {
-    return { from: toISODate(today), to: toISODate(to) };
-  }
+  const to = businessDayISO(new Date());
+  if (preset === 'today') return { from: to, to };
   if (preset === 'thisWeek') {
-    // Week starts on Sunday (Israeli convention). getDay(): 0=Sun … 6=Sat.
-    const from = new Date(today);
-    from.setDate(from.getDate() - today.getDay());
-    return { from: toISODate(from), to: toISODate(to) };
+    // Week starts on Sunday (Israeli convention). getUTCDay() on the parsed calendar
+    // date — a pure date string has no zone, so this is the weekday of `to` itself.
+    const weekday = new Date(to + 'T00:00:00Z').getUTCDay();
+    return { from: addDaysISO(to, -weekday), to };
   }
   if (preset === '7d' || preset === '30d' || preset === '90d') {
     const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
-    const from = new Date(today);
-    from.setDate(from.getDate() - (days - 1));
-    return { from: toISODate(from), to: toISODate(to) };
+    return { from: addDaysISO(to, -(days - 1)), to };
   }
-  if (preset === 'thisMonth') {
-    const from = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { from: toISODate(from), to: toISODate(to) };
-  }
+  if (preset === 'thisMonth') return { from: businessMonthStartISO(to), to };
   if (preset === 'lastMonth') {
-    const from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const end = new Date(today.getFullYear(), today.getMonth(), 0);
-    return { from: toISODate(from), to: toISODate(end) };
+    // Day before this month's 1st = last day of the previous month.
+    const end = addDaysISO(businessMonthStartISO(to), -1);
+    return { from: businessMonthStartISO(end), to: end };
   }
-  return { from: toISODate(to), to: toISODate(to) };
+  return { from: to, to };
 }
 
 function renderTopProducts(container: HTMLElement, summary: PerformanceSummary, i18n: Record<string, string>): void {
@@ -232,11 +230,9 @@ function bucketRange(key: string): { from: string; to: string } {
   if (key.length === 7) {
     const [y, m] = key.split('-').map(Number);
     const from = `${key}-01`;
-    // Date.UTC (not a local Date) so toISOString below doesn't shift the last
-    // day back to the previous one in positive-UTC timezones — the summary's
-    // own month buckets are UTC, and `to` must match. Day 0 of next month =
-    // last day of this one.
-    const to = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    // A synthetic calendar date (day 0 of next month = last day of this one), built
+    // and read in UTC — see business-day.ts on why an axis cursor is not an instant.
+    const to = calendarDayISO(new Date(Date.UTC(y ?? 1970, m ?? 1, 0)));
     return { from, to };
   }
   return { from: key, to: key };

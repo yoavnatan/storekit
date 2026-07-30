@@ -1,6 +1,7 @@
 import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree, setCategoryTree } from './category-tree-cache.js';
 import { escapeHtml as esc } from '../../lib/html-escape.js';
+import { formatScopeNames } from '../../lib/sale-scope-label.js';
 
 const MAX_CATEGORY_DEPTH = 3;
 
@@ -10,6 +11,18 @@ const ADD_ROOT_CLASSES = 'block w-full text-start py-[0.4rem] px-[0.6rem] mt-[0.
 const EXPAND_CLASSES = 'shrink-0 w-5 h-5 flex items-center justify-center text-[color:var(--color-muted)] rounded-[var(--radius-sm)] transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:bg-[color:var(--color-bg)] data-[open]:rotate-90';
 const EXPAND_SPACER_CLASSES = 'shrink-0 w-5 h-5';
 const OPTION_BASE_CLASSES = 'flex-1 block text-start py-[0.4rem] px-[0.6rem] rounded-[var(--radius-sm)] text-[0.84rem] bg-transparent border-0 cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis transition-colors duration-100 hover:bg-[color:var(--color-bg)]';
+
+/** In multi-pick the ticked rows are the whole state of the field, so they can't be told apart
+ *  by colour alone (accessibility: never colour-only state) — and with several ticks on screen
+ *  at once a mark is also just faster to scan than weight+hue. Single-pick keeps the plain row:
+ *  one bold entry among many is unambiguous, and a tick column would indent every menu on the
+ *  product form for one selected item. */
+function tickHtml(show: boolean, selected: boolean): string {
+  if (!show) return '';
+  return selected
+    ? '<svg class="inline-block align-[-0.15em] me-1.5 shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>'
+    : '<span class="inline-block align-[-0.15em] me-1.5 w-3 shrink-0" aria-hidden="true"></span>';
+}
 
 function optionClasses(selected: boolean, isNone: boolean): string {
   if (selected) return `${OPTION_BASE_CLASSES} font-bold text-[color:var(--color-primary)]`;
@@ -22,7 +35,7 @@ function getDashI18n(): Record<string, string> {
   catch { return {}; }
 }
 
-function pathLabel(id: string): string {
+function findTrail(id: string): string[] | null {
   function find(nodes: CategoryNode[], trail: string[]): string[] | null {
     for (const n of nodes) {
       if (n.id === id) return [...trail, n.name];
@@ -31,7 +44,18 @@ function pathLabel(id: string): string {
     }
     return null;
   }
-  return find(getCategoryTree(), [])?.join(' › ') ?? '';
+  return find(getCategoryTree(), []);
+}
+
+function pathLabel(id: string): string {
+  return findTrail(id)?.join(' › ') ?? '';
+}
+
+/** Just the category's own name — what a multi-pick label lists, since a row of full paths
+ *  reads as noise once there is more than one of them. */
+function nameLabel(id: string): string {
+  const trail = findTrail(id);
+  return trail?.[trail.length - 1] ?? '';
 }
 
 function showError(message: string): void {
@@ -49,13 +73,30 @@ export function initCategoryPicker(root: HTMLElement): void {
   if (root.dataset.pickerBound === '1') return;
   root.dataset.pickerBound = '1';
 
-  const hiddenInput = root.querySelector<HTMLInputElement>('input[name="categoryId"]');
+  // Field name is configurable so a second consumer can live on the same page without two
+  // pickers fighting over one input name — the promotions tab's sale scope posts
+  // `saleCategoryId`, the product forms keep `categoryId` (the default).
+  const inputName = root.dataset.pickerInput ?? 'categoryId';
+  // `data-picker-add="off"` makes the picker a pure chooser. Creating a category is a CATALOG
+  // decision; the promotions tab is only asking which existing part of the catalog a sale
+  // covers, and offering "+ add" there invites a seller to invent a category as a side effect
+  // of running a sale — a tree they never meant to reshape, from a screen that doesn't show it.
+  const canAdd = root.dataset.pickerAdd !== 'off';
+  // `data-picker-multi="on"` — a sale may cover several categories, a product is filed under
+  // exactly one. Same picker, and the multi one carries its ids comma-joined in the same single
+  // hidden input, so the form posts one field either way.
+  const multi = root.dataset.pickerMulti === 'on';
+  // Translated "and {n} more" for the collapsed tail, handed in by the consumer so this label
+  // and the storefront banner word one sale identically (sale-scope-label.ts).
+  const andMore = root.dataset.pickerMoreLabel ?? '+{n}';
+  const hiddenInput = root.querySelector<HTMLInputElement>(`input[name="${inputName}"]`);
   const trigger = root.querySelector<HTMLButtonElement>('.category-picker__trigger');
   const labelEl = root.querySelector<HTMLElement>('.category-picker__label');
   const menu = root.querySelector<HTMLElement>('.category-picker__menu');
   if (!hiddenInput || !trigger || !labelEl || !menu) return;
 
-  let selectedId = hiddenInput.value;
+  const selectedIds: string[] = hiddenInput.value.split(',').map((s) => s.trim()).filter(Boolean);
+  const isSelected = (id: string): boolean => (id ? selectedIds.includes(id) : !selectedIds.length);
   const expanded = new Set<string>();
   // undefined = no add-row open; null = adding a root category; string = adding under that parent id.
   let addingUnderId: string | null | undefined;
@@ -64,9 +105,16 @@ export function initCategoryPicker(root: HTMLElement): void {
     return document.getElementById('category-tree-editor')?.getAttribute('data-store-id') ?? '';
   }
 
+  /** Mirrors the banner's own rule (sale-scope-label.ts): one pick keeps its full path, several
+   *  are named plainly and the tail past two collapses into a count. The seller reads here
+   *  exactly the line a shopper will read there. */
   function updateLabel(): void {
     const i = getDashI18n();
-    labelEl!.textContent = selectedId ? (pathLabel(selectedId) || i.categoryNone || '') : (i.categoryNone ?? '');
+    if (!selectedIds.length) { labelEl!.textContent = i.categoryNone ?? ''; return; }
+    const names = selectedIds.length === 1
+      ? [pathLabel(selectedIds[0]!)]
+      : selectedIds.map((id) => nameLabel(id));
+    labelEl!.textContent = formatScopeNames(names, andMore) || (i.categoryNone ?? '');
   }
 
   function renderAddRow(): string {
@@ -78,15 +126,25 @@ export function initCategoryPicker(root: HTMLElement): void {
     </div>`;
   }
 
-  function renderRow(node: CategoryNode, depth: number): string {
+  /** Does any row in this sibling group get an arrow? The empty gutter beside a row exists ONLY
+   *  to keep its label aligned with a sibling that has one — where no sibling does, it is 20px
+   *  of nothing indenting a list for no reason, so the whole group loses it. In the add-enabled
+   *  pickers every row can nest, so this is always true there and nothing moves. */
+  function groupHasToggle(nodes: CategoryNode[], depth: number): boolean {
+    return (canAdd && depth + 1 < MAX_CATEGORY_DEPTH) || nodes.some((n) => n.children.length > 0);
+  }
+
+  function renderRow(node: CategoryNode, depth: number, siblingHasToggle: boolean): string {
     const i = getDashI18n();
     const isExpanded = expanded.has(node.id);
-    const canNest = depth + 1 < MAX_CATEGORY_DEPTH;
+    const canNest = canAdd && depth + 1 < MAX_CATEGORY_DEPTH;
+    // Without the add row, a childless category has nothing to expand INTO — so it gets no
+    // arrow either, and the menu stops promising a level that isn't there.
     const showToggle = node.children.length > 0 || canNest;
 
     const childrenHtml = isExpanded
       ? `<div class="flex flex-col ps-[1.1rem]">
-          ${node.children.map((c) => renderRow(c, depth + 1)).join('')}
+          ${node.children.map((c) => renderRow(c, depth + 1, groupHasToggle(node.children, depth + 1))).join('')}
           ${canNest
             ? (addingUnderId === node.id ? renderAddRow() : `<button type="button" class="${ADD_CLASSES}" data-add-under="${esc(node.id)}">+ ${esc((i.addSubcategoryUnder ?? '{name}').replace('{name}', node.name))}</button>`)
             : ''}
@@ -99,8 +157,8 @@ export function initCategoryPicker(root: HTMLElement): void {
           ? `<button type="button" class="${EXPAND_CLASSES}" data-expand="${esc(node.id)}" aria-label="${esc(i.toggleExpand ?? '')}"${isExpanded ? ' data-open' : ''}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
             </button>`
-          : `<span class="${EXPAND_SPACER_CLASSES}"></span>`}
-        <button type="button" class="${optionClasses(node.id === selectedId, false)}" data-select="${esc(node.id)}">${esc(node.name)}</button>
+          : siblingHasToggle ? `<span class="${EXPAND_SPACER_CLASSES}"></span>` : ''}
+        <button type="button" class="${optionClasses(isSelected(node.id), false)}" data-select="${esc(node.id)}"${multi ? ` aria-pressed="${isSelected(node.id)}"` : ''}>${tickHtml(multi, isSelected(node.id))}${esc(node.name)}</button>
       </div>
       ${childrenHtml}
     </div>`;
@@ -110,9 +168,9 @@ export function initCategoryPicker(root: HTMLElement): void {
     const i = getDashI18n();
     const tree = getCategoryTree();
     menu!.innerHTML = `
-      <button type="button" class="${optionClasses(!selectedId, true)}" data-select="">${esc(i.categoryNone ?? '')}</button>
-      ${tree.map((n) => renderRow(n, 0)).join('')}
-      ${addingUnderId === null ? renderAddRow() : `<button type="button" class="${ADD_ROOT_CLASSES}" data-add-under="">+ ${esc(i.addRootCategory ?? '')}</button>`}
+      <button type="button" class="${optionClasses(isSelected(''), true)}" data-select="">${tickHtml(multi, isSelected(''))}${esc(i.categoryNone ?? '')}</button>
+      ${tree.map((n) => renderRow(n, 0, groupHasToggle(tree, 0))).join('')}
+      ${!canAdd ? '' : addingUnderId === null ? renderAddRow() : `<button type="button" class="${ADD_ROOT_CLASSES}" data-add-under="">+ ${esc(i.addRootCategory ?? '')}</button>`}
     `;
     menu!.querySelector<HTMLInputElement>('.category-picker__add-input')?.focus();
   }
@@ -130,6 +188,19 @@ export function initCategoryPicker(root: HTMLElement): void {
   }
 
   trigger.addEventListener('click', () => { menu.hidden ? open() : close(); });
+
+  // The consumer owns the hidden input too: the promotions tab empties it when the sale's scope
+  // moves off categories, so that switching away and back doesn't quietly keep a narrow scope.
+  // Without this the trigger kept advertising categories the form was no longer posting, and the
+  // save then failed on "pick at least one" while the label showed a selection. A dedicated
+  // event, not `input` — the picker dispatches `input` itself and would re-enter.
+  hiddenInput.addEventListener('picker:sync', () => {
+    const ids = hiddenInput.value.split(',').map((s) => s.trim()).filter(Boolean);
+    selectedIds.length = 0;
+    selectedIds.push(...ids);
+    updateLabel();
+    if (!menu.hidden) render();
+  });
 
   // Not root.contains(e.target) — the in-menu click handler below can call render(), which
   // replaces menu.innerHTML (and so detaches the original e.target) before this bubbles up
@@ -157,13 +228,29 @@ export function initCategoryPicker(root: HTMLElement): void {
 
     const selectBtn = target.closest<HTMLButtonElement>('[data-select]');
     if (selectBtn) {
-      selectedId = selectBtn.dataset.select ?? '';
-      hiddenInput!.value = selectedId;
-      // Let listeners (e.g. the tag-suggestion recompute) react to a category
+      const id = selectBtn.dataset.select ?? '';
+      if (!multi || !id) {
+        // Single-pick, or the "no category" row in either mode — that row means "clear", so in
+        // multi mode it empties the whole set rather than becoming a selectable member of it.
+        selectedIds.length = 0;
+        if (id) selectedIds.push(id);
+      } else {
+        const at = selectedIds.indexOf(id);
+        if (at >= 0) selectedIds.splice(at, 1); else selectedIds.push(id);
+      }
+      hiddenInput!.value = selectedIds.join(',');
+      // ORDER MATTERS: the trigger's label is repainted BEFORE the event fires. A listener may
+      // read that label as its source of truth — the sale preview does, since the picker is the
+      // only place the category NAMES are known — so notifying first left the banner rendering
+      // the selection as it was one click ago, every click.
+      updateLabel();
+      // Let listeners (the tag-suggestion recompute, the sale preview) react to a category
       // change — a plain `.value =` assignment fires no event on its own.
       hiddenInput!.dispatchEvent(new Event('input', { bubbles: true }));
-      updateLabel();
-      close();
+      // Multi-pick keeps the menu open: closing after every tick would make choosing four
+      // categories four round trips through the trigger. Re-rendered in place so the ticks and
+      // the trigger's label follow the click that caused them.
+      if (multi && id) render(); else close();
       return;
     }
 

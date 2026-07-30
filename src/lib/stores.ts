@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { filterShopperStores, isDemoStore } from './demo-stores.js';
+import type { StoreSale } from './discounts.js';
 
 const STORES_PATH = path.join(process.cwd(), 'data/stores.json');
 
@@ -41,6 +42,12 @@ export interface Store {
   shipping?: StoreShipping;
   bannerImage?: string;
   profileImage?: string;
+  /** Store-wide sale: the seller's own headline/copy for a running sale, plus an optional
+   *  percent that automatically applies to every product WITHOUT its own discount (a
+   *  product's own discount always wins — see discounts.ts). Announcement and price live in
+   *  one record on purpose, so a banner promising 30% can't drift from what the buyer pays.
+   *  Absent/`active:false` = no banner, no price change. */
+  sale?: StoreSale;
   address?: string;
   addressVisible?: boolean;
   hours?: StoreHours;

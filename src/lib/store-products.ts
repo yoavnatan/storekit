@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { comboKey } from './variant-combo.js';
+import type { ProductDiscount } from './discounts.js';
 export { LOW_STOCK_THRESHOLD } from './variant-combo.js';
 import { Mutex } from './mutex.js';
 
@@ -55,6 +56,11 @@ export interface StoreProduct {
    *  unlike a stock shortage — excluded from the Products tab's stock-alert count so an
    *  intentional take-down never nags (CURRENT_TASK.md, סשן א׳). */
   hidden?: boolean;
+  /** Seller-set markdown on this product — percent or ₪ off, optionally scheduled, with a
+   *  seller-controlled storefront badge. `price` stays the ORIGINAL (it is what gets struck
+   *  through); the price to display/charge is always `discounts.ts#resolvePrice`, never this
+   *  field or `price` read directly. Absent = sold at full price. */
+  discount?: ProductDiscount;
   /** Private seller-only note ("things that help me handle this product"). Never
    *  rendered on any public/storefront surface — dashboard/edit-form only, and never
    *  leaked through /api/store-product, the feed, or JSON-LD (CURRENT_TASK.md, seller
@@ -87,6 +93,7 @@ interface CreateProductInput {
   tags?: string[];
   sku?: string;
   specs?: ProductSpec[];
+  discount?: ProductDiscount;
   sellerNote?: string;
   variants?: ProductVariant[];
   variantStock?: Record<string, number>;
@@ -99,7 +106,7 @@ export function isSkuTaken(storeId: string, sku: string, excludeId?: string): bo
   return readProducts().some((p) => p.storeId === storeId && p.sku === sku && p.id !== excludeId);
 }
 
-export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, categoryId, tags, sku, specs, sellerNote, variants, variantStock, variantSku, variantImages }: CreateProductInput): StoreProduct {
+export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, categoryId, tags, sku, specs, discount, sellerNote, variants, variantStock, variantSku, variantImages }: CreateProductInput): StoreProduct {
   const products = readProducts();
   const storeProducts = products.filter((p) => p.storeId === storeId);
   const base = slugify(name) || 'product';
@@ -120,6 +127,7 @@ export function createProduct(storeId: string, { name, description = '', price, 
     ...(tags?.length ? { tags } : {}),
     ...(sku ? { sku } : {}),
     ...(specs?.length ? { specs } : {}),
+    ...(discount ? { discount } : {}),
     ...(sellerNote ? { sellerNote } : {}),
     ...(variants?.length ? { variants } : {}),
     ...(variantStock && Object.keys(variantStock).length ? { variantStock } : {}),
@@ -153,6 +161,16 @@ export function isProductVisible(product: StoreProduct): boolean {
  *  getProductsByStoreId() + an inline filter. */
 export function getVisibleProductsByStoreId(storeId: string): StoreProduct[] {
   return getProductsByStoreId(storeId).filter(isProductVisible);
+}
+
+/** A product with every seller-private field removed — what a public endpoint is allowed to
+ *  serialize. `sellerNote` is explicitly dashboard-only (see its field doc), and returning a
+ *  whole row verbatim is how it reaches a shopper by accident: /api/store-products (the store
+ *  grid's "load more") did exactly that until this existed. Anything private added to
+ *  StoreProduct later must be dropped here too. */
+export function toPublicProduct(p: StoreProduct): Omit<StoreProduct, 'sellerNote'> {
+  const { sellerNote: _sellerNote, ...pub } = p;
+  return pub;
 }
 
 export function getProductById(id: string): StoreProduct | null {

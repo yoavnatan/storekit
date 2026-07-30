@@ -29,7 +29,9 @@ const host = new URL(platformConfig.url).hostname;
     </svg>
     <h1 style="font-size:1.5rem;margin:0 0 0.5rem">{first ? d.noStoreTitle : d.addStore}</h1>
     <p class="muted" style="margin-bottom:2rem">{first ? d.noStoreDesc : d.addStoreDesc}</p>
-    <form method="POST" class="mt-4" style="text-align:start">
+    {/* data-native-submit: this one really is a browser POST back to the page, which answers
+        with a redirect to the new store (see dashboard/FormFallbackGuard.astro). */}
+    <form method="POST" class="mt-4" style="text-align:start" data-native-submit>
       <input type="hidden" name="_action" value="create-store" />
       <label class="field">
         <span>{d.storeNameReq}</span>

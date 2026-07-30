@@ -17,6 +17,9 @@ export interface MergedProductInput {
   name: string;
   price: number;
   stock?: number;
+  /** Product-level, like `price` — a sale applies to the whole product, not per combo, so it
+   *  comes from the group's first row along with the other shared fields. */
+  salePrice?: number;
   categoryPath?: string[];
   tags?: string[];
   description?: string;
@@ -152,6 +155,7 @@ function finalizeGroup(rows: BulkRowResult[]): MergedRowResult {
   const input: MergedProductInput = {
     name: first.name,
     price: first.price,
+    salePrice: first.salePrice,
     stock: Object.values(variantStock).reduce((a, b) => a + b, 0),
     categoryPath: first.categoryPath,
     tags: first.tags,

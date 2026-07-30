@@ -12,6 +12,10 @@ import { sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
 import { parseStoreHoursForm } from '../../lib/store-hours.js';
 import { sanitizeImageUrl } from '../../lib/image-url.js';
 import { CSV_FIELDS } from '../../lib/csv-bulk.js';
+import { normalizeStoreSale } from '../../lib/discount-input.js';
+import { resolveSaleScope, resolveSaleProductScope } from '../../lib/store-sale-scope.js';
+import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
+import { storeSettingsRev, mergeByFieldRev, STORE_REV_FIELDS } from '../../lib/record-rev.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -33,40 +37,138 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const target = stores.find((s) => s.id === storeId) ?? stores[0];
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
 
-    const name = String(form.get('name') || '').trim();
-    const tagline = String(form.get('tagline') || '').trim();
-    const description = String(form.get('description') || '').trim();
     // The picker in the dashboard is convenience; THIS is the rule. Normalizes,
     // strips unsafe wording via the shared spam word list, de-dupes and caps —
     // a hand-crafted POST gets the same treatment as the form (store-taxonomy.ts).
-    const categoriesRaw = String(form.get('categories') ?? '');
-    const categories = sanitizeStoreCategories(categoriesRaw.split(','));
-    if (!name) return json({ ok: false, error: 'Store name is required.' }, 400);
+    // Image URLs get the same validation as product images (image-url.ts): they render
+    // into `<img src>` and into off-site ad/OG creatives, so an unusable value is dropped.
+    // Shaped exactly as it will be stored — the merge below compares it field by field
+    // against the stored record, and a difference in shape alone would read as an edit.
+    const submitted = {
+      name: String(form.get('name') || '').trim(),
+      tagline: String(form.get('tagline') || '').trim(),
+      description: String(form.get('description') || '').trim(),
+      categories: sanitizeStoreCategories(String(form.get('categories') ?? '').split(',')),
+      bannerImage: sanitizeImageUrl(form.get('bannerImage')) || undefined,
+      profileImage: sanitizeImageUrl(form.get('profileImage')) || undefined,
+      address: String(form.get('address') ?? '').trim() || undefined,
+      addressVisible: form.get('addressVisible') === 'on',
+      hoursVisible: form.get('hoursVisible') === 'on',
+      hours: parseStoreHoursForm(form),
+      shipping: { selfPickup: form.get('selfPickup') === 'on' },
+    };
 
-    // Same validation as product images (image-url.ts) — these render into
-    // `<img src>` and into off-site ad/OG creatives, so an unusable value is
-    // dropped rather than stored.
-    const bannerImage = sanitizeImageUrl(form.get('bannerImage')) ?? '';
-    const profileImage = sanitizeImageUrl(form.get('profileImage')) ?? '';
-    const address = String(form.get('address') ?? '').trim();
-    const addressVisible = form.get('addressVisible') === 'on';
-    const hoursVisible = form.get('hoursVisible') === 'on';
-    const hours = parseStoreHoursForm(form);
+    // Merge rather than overwrite — see the same treatment in api/product.ts. The fields
+    // are only the ones THIS form owns (record-rev.ts), so the sale, the categories tree,
+    // the domain and the feed token — each saving live from its own section — are outside
+    // it entirely and can never collide with a settings save.
+    const { merged, conflicts } = mergeByFieldRev({
+      fields: STORE_REV_FIELDS,
+      submitted,
+      stored: target,
+      baseline: form.get('baseRev'),
+      force: String(form.get('force') || '') === '1',
+    });
+    if (conflicts.length) {
+      return json({ ok: false, conflict: true, conflictFields: conflicts, error: 'הגדרות החנות עודכנו במקום אחר מאז שפתחת את הטופס.' }, 409);
+    }
+
+    const name = String(merged.name ?? '');
+    const address = merged.address as string | undefined;
+    const categories = (merged.categories ?? []) as string[];
+    if (!name) return json({ ok: false, error: 'Store name is required.' }, 400);
 
     // Self-pickup is the seller's only shipping lever (prices are platform-set). It needs
     // a pickup address — a buyer can't collect from "nowhere" — so block enabling it blank.
-    const selfPickup = form.get('selfPickup') === 'on';
+    const selfPickup = (merged.shipping as { selfPickup?: boolean } | undefined)?.selfPickup === true;
     if (selfPickup && !address) return json({ ok: false, error: 'כדי לאפשר איסוף עצמי יש להזין כתובת חנות.' }, 400);
 
-    updateStore(target.id, {
-      name, tagline, description, colors: target.colors, categories: categories.length ? categories : [],
-      bannerImage: bannerImage || undefined, profileImage: profileImage || undefined,
-      address: address || undefined, addressVisible, hours, hoursVisible,
+    const saved = updateStore(target.id, {
+      name,
+      tagline: String(merged.tagline ?? ''),
+      description: String(merged.description ?? ''),
+      colors: target.colors,
+      categories,
+      bannerImage: merged.bannerImage as string | undefined,
+      profileImage: merged.profileImage as string | undefined,
+      address,
+      addressVisible: merged.addressVisible === true,
+      hours: merged.hours as ReturnType<typeof parseStoreHoursForm>,
+      hoursVisible: merged.hoursVisible === true,
       shipping: { selfPickup },
     });
     // Store page content changed — notify the index (fire-and-forget, no-op in dev).
     pingStoreChange(target);
-    return json({ ok: true, name });
+    // The form stays on screen after saving, so it takes the revision it now holds —
+    // without it the seller's own next save would conflict with his previous one.
+    return json({ ok: true, name, rev: saved ? storeSettingsRev(saved) : '' });
+  }
+
+  // Store-wide sale — the banner copy AND the optional percent that applies to every product
+  // without its own discount, saved as one record so the promise and the price can't drift
+  // (see discounts.ts). The headline/subtitle are public seller copy, so they go through the
+  // same spam/keyword-stuffing gate as product text before they can reach a storefront.
+  if (action === 'save-store-sale') {
+    const storeId = String(form.get('storeId') || '');
+    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
+
+    // Scope resolved + ownership-checked server-side; a blank/foreign category or product id
+    // falls back to "whole store" rather than being stored as an unmatched filter.
+    const scopeMode = String(form.get('saleScope') ?? '');
+    const scope = scopeMode === 'products'
+      ? resolveSaleProductScope(target.id, String(form.get('saleProductIds') ?? '').split(','))
+      : scopeMode === 'category'
+        // One comma-joined field rather than repeated inputs: the picker owns a single hidden
+        // input, and `resolveSaleScope` drops anything blank or not this store's anyway.
+        ? resolveSaleScope(target.id, String(form.get('saleCategoryId') ?? '').split(','))
+        : undefined;
+
+    const sale = normalizeStoreSale({
+      active: form.get('saleActive') === null ? '0' : '1',
+      title: form.get('saleTitle'),
+      text: form.get('saleText'),
+      percent: form.get('salePercent'),
+      showBadge: form.get('saleBadge') === null ? '0' : '1',
+      startsAt: form.get('saleStarts'),
+      endsAt: form.get('saleEnds'),
+    }, scope);
+
+    if (sale?.title) {
+      const spamHit = findSpamKeyword(sale.title, sale.text ?? '');
+      if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
+      const stuffingHit = findKeywordStuffing(sale.title, sale.text ?? '');
+      if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
+    }
+    // An active sale needs something to say — an empty banner would render as a blank strip.
+    if (sale?.active && !sale.title) return json({ ok: false, error: 'sale-title-required' }, 400);
+
+    updateStore(target.id, { sale });
+    // Prices/badges on every product page in this store just changed — re-notify the index.
+    pingStoreChange(target);
+    return json({ ok: true, sale: sale ?? null });
+  }
+
+  // Products tab → "add to the running sale". Widens the SAME sale record rather than writing
+  // per-product discounts, so the seller's one campaign stays one campaign. Only meaningful for a
+  // product-scoped sale: a store-wide or category-wide one already covers whatever it covers, and
+  // pinning it to a product list here would silently NARROW it.
+  if (action === 'add-to-store-sale') {
+    const storeId = String(form.get('storeId') || '');
+    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
+    const sale = target.sale;
+    if (!sale?.active) return json({ ok: false, error: 'no-active-sale' }, 400);
+    if (!sale.productIds?.length) return json({ ok: false, error: 'sale-not-product-scoped' }, 400);
+
+    const requested = String(form.get('productIds') ?? '').split(',');
+    const scope = resolveSaleProductScope(target.id, [...sale.productIds, ...requested]);
+    if (!scope?.productIds?.length) return json({ ok: false, error: 'No products selected.' }, 400);
+
+    updateStore(target.id, { sale: { ...sale, productIds: scope.productIds } });
+    pingStoreChange(target);
+    // No per-product discount changed, so every row's own chip stays as it was.
+    return json({ ok: true, count: scope.productIds.length, applied: [] });
   }
 
   if (action === 'save-feed-config') {

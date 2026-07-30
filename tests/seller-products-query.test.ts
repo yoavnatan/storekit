@@ -5,6 +5,7 @@ import {
   stockBucket,
   parseSellerProductQuery,
   filterAndSortSellerProducts,
+  NO_CATEGORY_TOKEN,
 } from '../src/lib/seller-products-query.js';
 
 // Stock-status filter (CURRENT_TASK.md item 3). The boundary around
@@ -54,5 +55,42 @@ describe('filterAndSortSellerProducts — stock filter', () => {
   });
   it('matches a single status', () => {
     expect(run(['out'])).toEqual(['out']);
+  });
+});
+
+// "ללא קטגוריה" is a real filter value, and its natural payload — the empty path an
+// uncategorized product carries — is exactly what a list encoder drops. When that
+// happened the filter reached the server empty and read as "no filter", so picking it
+// appeared to do nothing at all.
+describe('parseSellerProductQuery — pcat, uncategorized', () => {
+  it('decodes the no-category token back to the empty path', () => {
+    const q = parseSellerProductQuery(new URLSearchParams(`pcat=${NO_CATEGORY_TOKEN}`));
+    expect(q.categoryPaths).toEqual(['']);
+  });
+  it('keeps it alongside real category paths', () => {
+    const q = parseSellerProductQuery(new URLSearchParams(`pcat=${encodeURIComponent('ביגוד › חולצות')},${NO_CATEGORY_TOKEN}`));
+    expect(q.categoryPaths).toEqual(['ביגוד › חולצות', '']);
+  });
+  it('stays empty when no category is selected', () => {
+    expect(parseSellerProductQuery(new URLSearchParams('')).categoryPaths).toEqual([]);
+  });
+});
+
+describe('filterAndSortSellerProducts — category filter', () => {
+  const p = (id: string): StoreProduct =>
+    ({ id, slug: id, name: id, price: 10, stock: 5, createdAt: '2026-01-01', sku: '' } as StoreProduct);
+  const products = [p('shirt'), p('loose'), p('shoe')];
+  const cats = new Map<string, string>([['shirt', 'ביגוד › חולצות'], ['shoe', 'הנעלה']]); // 'loose' has no category
+
+  const run = (paths: string[]): string[] =>
+    filterAndSortSellerProducts(products, cats, {}, {}, {
+      q: '', sortCol: 'name', sortDir: 'asc', categoryPaths: paths, stockStatuses: [],
+    }).map((x) => x.id);
+
+  it('isolates the products that have no category', () => {
+    expect(run([''])).toEqual(['loose']);
+  });
+  it('ORs "no category" with a real path', () => {
+    expect(run(['הנעלה', '']).sort()).toEqual(['loose', 'shoe']);
   });
 });
