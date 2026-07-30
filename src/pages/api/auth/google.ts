@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import crypto from 'node:crypto';
 import { safeRedirectPath } from '../../../lib/safe-redirect.js';
+import { googleClientId, googleRedirectUri } from '../../../lib/google-oauth.js';
 
 export const GET: APIRoute = ({ redirect, cookies, url }) => {
   // Sanitised HERE, before it is stored — the callback redirects to this cookie's value, so a
@@ -25,14 +26,12 @@ export const GET: APIRoute = ({ redirect, cookies, url }) => {
     maxAge: 300,
   });
 
-  const clientId = import.meta.env.GOOGLE_CLIENT_ID as string | undefined;
+  const clientId = googleClientId();
   if (!clientId) {
     return new Response('Google OAuth not configured', { status: 503 });
   }
 
-  const redirectUri =
-    (import.meta.env.GOOGLE_REDIRECT_URI as string | undefined) ||
-    `${url.origin}/api/auth/google/callback`;
+  const redirectUri = googleRedirectUri(url.origin);
 
   const params = new URLSearchParams({
     client_id: clientId,

@@ -8,6 +8,7 @@ import {
   setSellerSession,
 } from '../../../../lib/seller-auth.js';
 import { safeRedirectPath } from '../../../../lib/safe-redirect.js';
+import { googleClientId, googleClientSecret, googleRedirectUri } from '../../../../lib/google-oauth.js';
 
 interface GoogleTokenResponse {
   access_token: string;
@@ -43,16 +44,14 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
     return redirect('/seller/login?error=oauth_invalid_state');
   }
 
-  const clientId = import.meta.env.GOOGLE_CLIENT_ID as string | undefined;
-  const clientSecret = import.meta.env.GOOGLE_CLIENT_SECRET as string | undefined;
+  const clientId = googleClientId();
+  const clientSecret = googleClientSecret();
 
   if (!clientId || !clientSecret) {
     return redirect('/seller/login?error=oauth_not_configured');
   }
 
-  const redirectUri =
-    (import.meta.env.GOOGLE_REDIRECT_URI as string | undefined) ||
-    `${url.origin}/api/auth/google/callback`;
+  const redirectUri = googleRedirectUri(url.origin);
 
   // Exchange code for access token
   let accessToken: string;
