@@ -692,7 +692,6 @@ const jsonLd = {
   // ── Carousel arrows (per store section) + edge fade (shelves/category row) ──
   const isRtl = document.documentElement.dir === 'rtl';
   const STEP  = 240;
-  const FADE_SIZE = 24; // px — matches the mask stop distance in store-card.css
 
   // Logical start/end (not physical left/right — the [dir] split in CSS maps
   // these onto the correct side), computed the same RTL-safe way as the
@@ -728,8 +727,12 @@ const jsonLd = {
   function initEdgeFade(el: HTMLElement, onUpdate?: () => void): void {
     function update(): void {
       const { atStart, atEnd } = edgeState(el);
-      el.style.setProperty('--fade-start', atStart ? '0px' : `${FADE_SIZE}px`);
-      el.style.setProperty('--fade-end', atEnd ? '0px' : `${FADE_SIZE}px`);
+      // `data-fade` names PHYSICAL sides for the shared `.edge-fade` mask
+      // (utilities/utils.css), so map logical start/end here. Empty = no mask,
+      // which is what a row that fits should cost.
+      const fadeLeft = isRtl ? !atEnd : !atStart;
+      const fadeRight = isRtl ? !atStart : !atEnd;
+      el.dataset.fade = `${fadeLeft ? 'l' : ''}${fadeRight ? 'r' : ''}`;
       onUpdate?.();
     }
     update();

@@ -676,3 +676,54 @@
 .badge--new + .sale-badge { top: 2.3rem; }
 .badge--new + .sale-badge--hero { top: 2.6rem; }
 
+
+/* ── Edge fade for a horizontally scrolling row ──────────────────────────────
+   A row cut off mid-item at its edge reads as a hard clip; this fades the
+   content itself out instead, and only on the side that still has unscrolled
+   content — no fade at the true start (nothing behind you) or true end.
+
+   Taken from the home shelf's own treatment (`--fade-start`/`--fade-end` +
+   a mask gradient, components/store-card.css), not invented per row. Two
+   deliberate differences make it reusable where that one is not:
+
+   1. `mask-image` rather than a gradient overlay element. The chip row sits on
+      `.store-controls`, whose frosted `::before` backdrop fades in only once
+      pinned — a gradient painted in `--color-bg` would be a visible block over
+      that glass, and over the cards blurring beneath it. A mask fades the
+      content to transparent, so it is correct against ANY backdrop, needs no
+      colour, and cannot intercept a click the way an overlay can.
+   2. A STATIC fade width with the state selected by `data-fade`, rather than a
+      length in a custom property. Both forms work — a `var()` in a gradient
+      color-stop position does substitute correctly, verified directly — so this
+      is a legibility choice, not a workaround: one rule per state, no `[dir]`
+      selector pair, no property contract a caller can half-implement.
+
+   HISTORY, because it cost a debugging round: a SECOND `.edge-fade` used to live
+   in components/store-card.css, declaring `--fade-start`/`--fade-end` with the
+   mask in a `[dir="ltr"]`/`[dir="rtl"]` pair. That pair is specificity 0,2,0 and
+   a bare `.edge-fade` is 0,1,0, so the old rule OUTRANKED this one: a row here
+   got masked by the stale rule reading properties nobody set, i.e. a zero-width
+   gradient that renders as a hard clip and looks exactly like no fade at all —
+   no error, nothing in the console. The duplicate is now deleted. The lesson is
+   the repo's own rule: two definitions of one class name is the bug, and the
+   more specific one wins silently. Grep the name before claiming it.
+
+   Caller contract: set `data-fade` to "l", "r", "lr", or "" (physical sides —
+   the caller knows the writing direction; lib/chip-scroller.ts maps logical
+   start/end onto them). Absent or empty means no mask at all, so a row that
+   fits pays nothing. Note a mask forces the element into its own compositing
+   layer, which clips STRICTLY to its box — give the row a padding/negative-
+   margin bleed budget if anything inside it casts a shadow (the bug documented
+   at length in store-card.css). */
+.edge-fade[data-fade="l"] {
+  mask-image: linear-gradient(to right, transparent, black 24px);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 24px);
+}
+.edge-fade[data-fade="r"] {
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+}
+.edge-fade[data-fade="lr"] {
+  mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+}

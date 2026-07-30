@@ -205,25 +205,19 @@
      related — that's --fade-start/--fade-end and the mask rules below). */
   padding-inline: 8px;
   margin-inline: -8px;
-  /* A card cut off mid-width at the edge reads as a hard clip — fade it
-     instead of a hard edge, but only on the side that actually has more,
-     unscrolled content: no fade at the true start (nothing behind you) or
-     true end (nothing ahead). --fade-start/--fade-end are set by JS
-     (initEdgeFade in index.astro's script) to 0px/24px per real scroll
-     position — logical, not physical, so the [dir] split below just maps
-     "start"/"end" onto the correct physical left/right per direction. */
-  --fade-start: 0px;
-  --fade-end: 0px;
-}
-
-[dir="ltr"] .home-shelf {
-  mask-image: linear-gradient(to right, transparent, black var(--fade-start), black calc(100% - var(--fade-end)), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, black var(--fade-start), black calc(100% - var(--fade-end)), transparent);
-}
-
-[dir="rtl"] .home-shelf {
-  mask-image: linear-gradient(to right, transparent, black var(--fade-end), black calc(100% - var(--fade-start)), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, black var(--fade-end), black calc(100% - var(--fade-start)), transparent);
+  /* A card cut off mid-width at the edge reads as a hard clip — fade it instead,
+     but only on the side that actually has more, unscrolled content. The mask
+     itself is the shared `.edge-fade` utility (utilities/utils.css), driven by
+     `data-fade` from initEdgeFade in index.astro's script.
+     This used to be its own `--fade-start`/`--fade-end` pair consumed by a
+     `[dir="ltr"]`/`[dir="rtl"]` rule pair right here. That worked — it was moved
+     so the shelves and the category chip rows share ONE mechanism instead of two
+     that drift, and so this file stops being a second home for the treatment.
+     Note `padding-inline: 8px` above inflates scrollWidth by 16px over the real
+     content width, and the row rests at scrollLeft ±8 — so `scrollWidth >
+     clientWidth` is NOT a usable overflow test on this element. index.astro's
+     EDGE_SLOP (12) is what absorbs that; a shelf whose cards fit is correctly
+     left with no fade even though scrollWidth exceeds clientWidth by 16. */
 }
 
 .home-shelf::-webkit-scrollbar { display: none; }
@@ -272,8 +266,11 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     overflow-x: visible;
     scroll-snap-type: none;
-    mask-image: none;
-    -webkit-mask-image: none;
+    /* No `mask-image: none` needed any more: the mask now only exists while
+       `data-fade` is non-empty, and a 2-column grid that wraps instead of
+       scrolling is atStart AND atEnd, so initEdgeFade clears the attribute and
+       no mask rule matches. Dropping the override also avoids a specificity
+       fight — `.edge-fade[data-fade]` outranks this single-class rule. */
   }
   .home-shelf--fill-mobile .store-card {
     flex-basis: auto;
@@ -316,24 +313,14 @@
 .home-shelf-icon--1 { color: color-mix(in srgb, var(--color-accent) 55%, var(--color-primary)); }
 .home-shelf-icon--2 { color: var(--color-primary); }
 
-/* ── Generic edge-fade — same JS-driven --fade-start/--fade-end vars as
-   .home-shelf/.home-carousel (see index.astro's initEdgeFade), factored out
-   here since a 3rd scroll row (the category browse row) needed the exact
-   same behavior without needing its own padding/layout rules duplicated. */
-.edge-fade {
-  --fade-start: 0px;
-  --fade-end: 0px;
-}
-
-[dir="ltr"] .edge-fade {
-  mask-image: linear-gradient(to right, transparent, black var(--fade-start), black calc(100% - var(--fade-end)), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, black var(--fade-start), black calc(100% - var(--fade-end)), transparent);
-}
-
-[dir="rtl"] .edge-fade {
-  mask-image: linear-gradient(to right, transparent, black var(--fade-end), black calc(100% - var(--fade-start)), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, black var(--fade-end), black calc(100% - var(--fade-start)), transparent);
-}
+/* An `.edge-fade` definition lived here (its own `--fade-start`/`--fade-end` pair
+   plus a `[dir="ltr"]`/`[dir="rtl"]` mask pair) and was already dead CSS: the
+   caller it names, "the category browse row", no longer used the class, so nothing
+   under `src/` referenced it. The name now belongs to utilities/utils.css.
+   Deleting it mattered rather than merely tidying: `[dir] .edge-fade` is
+   specificity 0,2,0 and a bare `.edge-fade` is 0,1,0, so this stale copy silently
+   OUTRANKED the new utility and masked rows with properties nobody sets — a
+   zero-width gradient, i.e. a hard clip that looks exactly like no fade. */
 
 /* ── Category browse row — plain pills, not a content shelf: "not fancy,
    not dead" per the ask. A count badge is the one bit of "life" — real

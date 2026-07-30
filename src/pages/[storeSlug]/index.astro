@@ -481,7 +481,7 @@ const pmI18n = {
                   <button type="button" class="category-filters-arrow category-filters-arrow--prev" id="category-filters-prev" aria-label={lang === 'he' ? 'הקודם' : 'Previous'} hidden>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={lang === 'he' ? 'transform:scaleX(-1)' : ''}><polyline points="15 18 9 12 15 6"/></svg>
                   </button>
-                  <div id="category-filters" class="category-filters-row" role="group" aria-label={t.store.filterByCategory}>
+                  <div id="category-filters" class="category-filters-row edge-fade" role="group" aria-label={t.store.filterByCategory}>
                     {!selectedCategory && (
                       <button type="button" class="category-chip" data-category-id="" aria-pressed="true">
                         {t.store.filterAll}

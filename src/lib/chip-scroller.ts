@@ -32,6 +32,10 @@ const DEFAULT_STEP = 200;
 const EDGE_EPSILON = 4;
 
 export function initChipScroller({ row, prev, next, step = DEFAULT_STEP }: ChipScrollerRefs): ChipScroller {
+  // Hoisted out of the `if (row)` block below so `update` can read it too — both
+  // callers are browser `<script>` blocks, so `document` is always there.
+  const isRtl = document.documentElement.dir === 'rtl';
+
   const update = (): void => {
     if (!row) return;
     const { scrollLeft, scrollWidth, clientWidth } = row;
@@ -39,10 +43,19 @@ export function initChipScroller({ row, prev, next, step = DEFAULT_STEP }: ChipS
     const atEnd = Math.abs(scrollLeft) + clientWidth >= scrollWidth - EDGE_EPSILON;
     prev?.toggleAttribute('hidden', atStart);
     next?.toggleAttribute('hidden', atEnd);
+
+    // Same two edge facts drive the `.edge-fade` mask (utilities/utils.css), so the
+    // fade can never disagree with the arrows — one measurement, two signals.
+    // `data-fade` names PHYSICAL sides, so map logical start/end here, where the
+    // direction is already known (this is also what `scrollBy` below reverses for).
+    // A row that isn't scrollable at all is atStart AND atEnd, so this comes out ''
+    // and no mask applies — the fade only ever means "there is more this way".
+    const fadeLeft = isRtl ? !atEnd : !atStart;
+    const fadeRight = isRtl ? !atStart : !atEnd;
+    row.dataset.fade = `${fadeLeft ? 'l' : ''}${fadeRight ? 'r' : ''}`;
   };
 
   if (row) {
-    const isRtl = document.documentElement.dir === 'rtl';
     row.addEventListener('scroll', update, { passive: true });
     new ResizeObserver(update).observe(row);
     prev?.addEventListener('click', () => row.scrollBy({ left: isRtl ? step : -step, behavior: 'smooth' }));

@@ -65,9 +65,12 @@ const cardMax = cardCount <= SPARSE_SHELF ? '560px' : '360px';
 // `home-shelf-grid` carries no CSS — it's the hook index.astro's REVEAL_SELECTOR
 // needs, since dropping `.home-shelf` also dropped this row out of the card
 // entrance animation on tab switches.
+// `edge-fade` only on the scrolling variant — the grid has nothing to scroll, so
+// nothing to fade toward. The mask itself stays inert until initEdgeFade sets
+// `data-fade` (utilities/utils.css explains why the width is static, not a var).
 const shelfClass = grid
   ? 'home-shelf-grid grid grid-cols-2 gap-3 min-[900px]:grid-cols-3'
-  : `home-shelf${fillMobile ? ' home-shelf--fill-mobile' : ''}`;
+  : `home-shelf edge-fade${fillMobile ? ' home-shelf--fill-mobile' : ''}`;
 // The shelf the visitor actually lands on fades in as one block on first paint —
 // see `@keyframes shelf-arrive` in home.css for why it's the row and not the
 // cards. `eagerFirst` already means exactly "the first shelf of the active tab",
