@@ -12,10 +12,13 @@ const strDec       = lang === 'he' ? 'הפחת' : 'Decrease';
 const strClose     = lang === 'he' ? 'סגור' : 'Close';
 const strError     = lang === 'he' ? 'שגיאה בטעינת המוצר' : 'Error loading product';
 const strEnlarged  = lang === 'he' ? 'תמונה מוגדלת' : 'Enlarged image';
+const strLoadingImage = t.product.loadingImage;
 const strPrev      = lang === 'he' ? 'הקודמת' : 'Previous';
 const strNext      = lang === 'he' ? 'הבאה' : 'Next';
 const strShowMore  = lang === 'he' ? 'עוד' : 'More';
 const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
+const strSaleBadge = t.store.saleBadge;
+const strSaleWas   = t.store.saleWas;
 ---
 
 <!-- Lightbox (native dialog → top-layer, opens above pqv-dialog).
@@ -27,7 +30,8 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
      full product page's single rgba(0,0,0,0.9) lightbox. -->
 <dialog id="co-lightbox" aria-label={strEnlarged}
   class="border-0 p-0 m-0 w-screen h-screen max-w-[100vw] max-h-[100vh] bg-transparent overflow-hidden [&::backdrop]:bg-black/80 [&::backdrop]:cursor-zoom-out">
-  <div class="relative flex items-center justify-center w-full h-full py-12 px-20 box-border pointer-events-none max-[600px]:py-14 max-[600px]:px-10">
+  <div data-lb-frame data-lb-label={strLoadingImage}
+    class="relative flex items-center justify-center w-full h-full py-12 px-20 box-border pointer-events-none max-[600px]:py-14 max-[600px]:px-10">
     <button id="co-lb-close" aria-label={strClose}
       class="absolute top-4 right-5 z-[2] w-9 h-9 rounded-[var(--radius)] border-0 bg-white/10 text-white cursor-pointer flex items-center justify-center transition-colors duration-100 [pointer-events:all] hover:bg-white/20">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -37,7 +41,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
     <img id="co-lb-img" src="" alt="" loading="eager" decoding="async"
-      class="w-auto h-auto max-w-full max-h-full object-contain rounded-[var(--radius)] block shadow-[0_8px_48px_rgba(0,0,0,.5)] select-none pointer-events-none bg-[color:var(--color-surface)] [-webkit-user-drag:none]" />
+      class="w-auto h-auto max-w-full max-h-full object-contain rounded-[var(--radius)] block shadow-[0_8px_48px_rgba(0,0,0,.5)] select-none pointer-events-none bg-[color:var(--color-surface)] [-webkit-user-drag:none] transition-[filter,scale] duration-300 ease-out motion-reduce:transition-none" />
     <button id="co-lb-next" aria-label={strNext}
       class="absolute top-1/2 -translate-y-1/2 z-[2] w-10 h-10 rounded-[var(--radius)] border-0 bg-white/10 text-white cursor-pointer flex items-center justify-center transition-colors duration-100 [pointer-events:all] hover:bg-white/20 right-5 max-[600px]:right-2">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
@@ -60,6 +64,8 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
   data-str-error={strError}
   data-str-show-more={strShowMore}
   data-str-show-less={strShowLess}
+  data-str-sale-badge={strSaleBadge}
+  data-str-sale-was={strSaleWas}
   class="border-0 rounded-[var(--radius-lg)] p-0 w-[min(540px,94vw)] max-h-[90dvh] overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,.22)] [overscroll-behavior:contain] fixed inset-0 m-auto will-change-transform contain-layout open:animate-modal-in [&::backdrop]:bg-black/50 transition-opacity duration-150 data-[lightbox=open]:opacity-0"
 >
   <div class="relative max-h-[90dvh] flex flex-col overflow-hidden">
@@ -79,6 +85,9 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
 
 <script>
   import { formatPrice, cdnSrc } from '../config/store.config.js';
+  import { setLightboxImage, resetLightboxImage, lightboxWidth, warmLightboxImage, neighbourIndexes } from '../lib/lightbox-image.js';
+  import { priceHtml, saleBadgeHtml } from '../lib/price-html.js';
+  import type { PriceView } from '../lib/discounts.js';
   import { escapeHtml as pqvEsc } from '../lib/html-escape.js';
   import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
   import { initReadMore } from '../lib/read-more.js';
@@ -98,16 +107,34 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
     error:     pqvDialog?.dataset['strError']     ?? 'שגיאה בטעינת המוצר',
     showMore:  pqvDialog?.dataset['strShowMore']  ?? 'הצג עוד',
     showLess:  pqvDialog?.dataset['strShowLess']  ?? 'הצג פחות',
+    saleBadge: pqvDialog?.dataset['strSaleBadge'] ?? 'מבצע',
+    saleWas:   pqvDialog?.dataset['strSaleWas']   ?? 'מחיר קודם',
   };
 
   interface PQVProduct {
+    // `price` is what the buyer would be charged; the rest describe the discount behind it
+    // (see /api/store-product) so the struck-through original can render next to it.
     slug: string; name: string; price: number; description: string;
+    basePrice?: number; isDiscounted?: boolean; percentOff?: number; showSaleBadge?: boolean;
     stock: number; images: string[];
     variants: Array<{ name: string; options: string[] }>;
     variantImages?: Record<string, string>;
   }
 
   const pqvCache = new Map<string, PQVProduct>();
+
+  /** The endpoint sends resolved numbers, not the discount record — rebuild the shape
+   *  price-html.ts renders from (an older payload falls back to "no discount"). */
+  function pqvPriceView(p: PQVProduct): PriceView {
+    return {
+      price: p.price,
+      basePrice: p.basePrice ?? p.price,
+      isDiscounted: p.isDiscounted === true,
+      percentOff: p.percentOff ?? 0,
+      showBadge: p.showSaleBadge !== false,
+      source: p.isDiscounted ? 'product' : null,
+    };
+  }
 
   async function openProductQuickView(storeSlug: string, productSlug: string, storeName: string, newTab = false): Promise<void> {
     if (!pqvDialog || !pqvBody) return;
@@ -158,6 +185,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
         ? `<div class="relative bg-[color:var(--color-surface)] aspect-[5/4] overflow-hidden border-b border-[color:var(--color-border)]">
              <div class="pqv-slides flex w-full h-full overflow-x-scroll overflow-y-hidden [scroll-snap-type:x_mandatory] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [touch-action:pan-x] [overscroll-behavior-inline:contain] [&::-webkit-scrollbar]:hidden">${p.images.map((img) => `<div class="${slideClasses}" data-loading><img data-src="${pqvEsc(cdnSrc(img, 900))}" alt="${pqvEsc(p.name)}" class="${imgClasses}" loading="lazy" decoding="async" /></div>`).join('')}</div>
              ${hasMultiple ? `<div class="pqv-dots absolute bottom-[7px] left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 py-1 px-2 rounded-full bg-white/15 [backdrop-filter:blur(8px)] border-[0.75px] border-white/20 z-[3] pointer-events-none" aria-hidden="true">${p.images.map((_, i) => `<span class="${dotClasses}"${i === 0 ? ' data-active' : ''}></span>`).join('')}</div>` : ''}
+             ${saleBadgeHtml(pqvPriceView(p), strings.saleBadge)}
            </div>`
         : `<div class="relative bg-[color:var(--color-surface)] aspect-[5/4] overflow-hidden border-b border-[color:var(--color-border)] flex items-center justify-center text-[color:var(--color-muted)]"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
 
@@ -190,7 +218,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
             <a href="/${pqvEsc(storeSlug)}" class="text-xs font-bold text-[color:var(--color-muted)] no-underline tracking-[.05em] uppercase inline-block mb-1.5 transition-colors duration-[140ms] hover:text-[color:var(--color-text)]">${pqvEsc(storeName)}</a>
             <div dir="auto">
               <h2 class="text-[1.2rem] font-bold text-[color:var(--color-text)] mb-1.5" id="pqv-name">${pqvEsc(p.name)}</h2>
-              <p class="text-[1.125rem] font-extrabold text-[color:var(--color-accent)] mb-2">${formatPrice(p.price)}</p>
+              <p class="text-[1.125rem] font-extrabold mb-2${pqvPriceView(p).isDiscounted ? '' : ' text-[color:var(--color-accent)]'}">${priceHtml(pqvPriceView(p), { saleLabel: strings.saleWas })}</p>
             </div>
             ${descHtml}
             ${variantsHtml}
@@ -279,6 +307,11 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
       slidesEl?.addEventListener('click', () => {
         if (p.images.length > 0) openLightbox(p.images, pqvImgIdx, p.name);
       });
+      // Hover = they're about to enlarge. Fetch the bigger render during that
+      // dwell rather than after the click, when they'd be watching it arrive.
+      slidesEl?.addEventListener('pointerenter', () => {
+        if (p.images.length > 0) warmLightboxImage(cdnSrc(p.images[pqvImgIdx] ?? '', lightboxWidth(colbImg)));
+      });
 
       const descEl = document.getElementById('pqv-desc');
       if (descEl) initReadMore(descEl, 2, { more: strings.showMore, less: strings.showLess });
@@ -343,8 +376,17 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
   let lbPrevFocus: HTMLElement | null = null;
 
   function showLbImg() {
-    const url = cdnSrc(lbImages[lbIdx] ?? '', 1600);
-    if (colbImg) { colbImg.src = url; colbImg.alt = lbName ? `${lbName} — ${lbIdx + 1}` : `${lbIdx + 1}`; }
+    // The PQV slides are already loaded at 900px — open on that (softened) and
+    // settle onto the full-screen render once it decodes, so the frame is never
+    // black while the big one downloads.
+    const src = lbImages[lbIdx] ?? '';
+    const w = lightboxWidth(colbImg);
+    if (colbImg) setLightboxImage(colbImg, {
+      full: cdnSrc(src, w),
+      preview: cdnSrc(src, 900),
+      alt: lbName ? `${lbName} — ${lbIdx + 1}` : `${lbIdx + 1}`,
+      neighbours: neighbourIndexes(lbImages.length, lbIdx).map(i => cdnSrc(lbImages[i] ?? '', w)),
+    });
     const multi = lbImages.length > 1;
     if (colbPrev)    colbPrev.hidden    = !multi;
     if (colbNext)    colbNext.hidden    = !multi;
@@ -365,6 +407,7 @@ const strShowLess  = lang === 'he' ? 'פחות' : 'Less';
   function closeLightbox() {
     colb?.close();
     pqvDialog?.removeAttribute('data-lightbox');
+    resetLightboxImage(colbImg);
     lbImages = [];
     lbPrevFocus?.focus();
     lbPrevFocus = null;

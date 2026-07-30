@@ -22,9 +22,11 @@
 
 <script>
   import { getActiveStoreCarts, getSubtotal, getGrandTotal, setQtyQuiet, removeItem } from '../lib/cart.js';
+  import { refreshCartPrices, watchCartPrices } from '../lib/cart-prices.js';
   import { formatPrice, cdnThumb } from '../config/store.config.js';
   import { escapeHtml as esc } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
+  import { showToast } from '../lib/toast.js';
 
   function getI18n() {
     try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}'); } catch { return {}; }
@@ -301,7 +303,27 @@
 
   document.getElementById('cart-close')?.addEventListener('click', close);
   overlay?.addEventListener('click', close);
-  window.addEventListener('cart:open', open);
+  window.addEventListener('cart:open', () => {
+    open();
+    // Same reason as the checkout page: the drawer must not quote a price the checkout won't
+    // honour. Opening it is a moment of attention, so it re-checks unless a refresh already
+    // ran in the last minute, and re-renders only when something actually moved.
+    void refreshCartPrices().then((changes) => { if (changes.length) render(); });
+  });
+  // ...and the drawer follows the same prices back when the shopper returns to a tab they left
+  // open, so a sale that ended meanwhile can't sit on screen until the next reload. A number
+  // that changes under the shopper's eyes with no explanation is worse than the stale one it
+  // fixed, so it is said out loud — and a drop gets to sound like the good news it is.
+  // The drawer is in BaseLayout, so this one toast covers every page — including checkout,
+  // which deliberately stays quiet here and lets this speak for both.
+  watchCartPrices((changes) => {
+    render();
+    const up   = changes.some((c) => c.to > c.from);
+    const down = changes.some((c) => c.to < c.from);
+    if (!up && !down) return; // only a strikethrough moved — re-rendered, not worth a word
+    const i18n = getI18n().cart ?? {};
+    showToast(up ? (i18n.pricesUpdated ?? 'Cart prices updated') : (i18n.pricesDropped ?? 'Prices went down'));
+  });
   window.addEventListener('cart:change', () => {
     if (suppressNextRender) { suppressNextRender = false; return; }
     render();

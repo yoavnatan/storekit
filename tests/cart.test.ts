@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addItem, getCartQty, getStoreItems, makeCartKey, removeItem, setQty } from '../src/lib/cart.js';
+import { addItem, applyServerPrices, applyStockLimit, getCartQty, getStoreItems, itemSaving, makeCartKey, removeItem, setQty } from '../src/lib/cart.js';
 
 const STORE = 'test-store';
 const PRODUCT = { slug: 'widget', name: 'Widget', price: 50, image: 'w.png' };
@@ -78,5 +78,159 @@ describe('removeItem / setQty', () => {
     const remaining = getStoreItems(STORE);
     expect(remaining).toHaveLength(1);
     expect(remaining[0]!.slug).toBe('other');
+  });
+});
+
+// Someone else bought the last units while this buyer was at checkout. /api/checkout refuses the
+// line and says how many are really left; this is what brings the cart down to that number, so a
+// second press of pay isn't the same refusal again.
+describe('applyStockLimit — a line that ran out under the buyer', () => {
+  it('clamps the quantity to what is really left and records the new ceiling', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 10 }, 5);
+    expect(applyStockLimit(STORE, PRODUCT.slug, 2)).toBe(2);
+    expect(getCartQty(STORE, PRODUCT.slug)).toBe(2);
+    expect(getStoreItems(STORE)[0]!.stock).toBe(2);
+  });
+
+  it('leaves a quantity that already fits alone', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 10 }, 2);
+    applyStockLimit(STORE, PRODUCT.slug, 7);
+    expect(getCartQty(STORE, PRODUCT.slug)).toBe(2);
+  });
+
+  it('keeps a sold-out line in the cart — the buyer has to see which item stopped the purchase', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 10 }, 3);
+    expect(applyStockLimit(STORE, PRODUCT.slug, 0)).toBe(0);
+    const items = getStoreItems(STORE);
+    expect(items).toHaveLength(1);
+    expect(items[0]!.stock).toBe(0);
+    expect(items[0]!.qty).toBe(3); // untouched: the card says "sold out", it doesn't quietly rewrite the number beside it
+  });
+
+  it('touches only the variant combo that ran out', () => {
+    const red = { Color: 'Red' };
+    const blue = { Color: 'Blue' };
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 10 }, 4, red);
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 10 }, 4, blue);
+    applyStockLimit(STORE, makeCartKey(PRODUCT.slug, red), 1);
+    expect(getCartQty(STORE, PRODUCT.slug, red)).toBe(1);
+    expect(getCartQty(STORE, PRODUCT.slug, blue)).toBe(4);
+  });
+
+  it('is a no-op for a line that is no longer in the cart', () => {
+    expect(applyStockLimit(STORE, 'ghost', 5)).toBe(0);
+    expect(getStoreItems(STORE)).toHaveLength(0);
+  });
+});
+
+// A cart sits in localStorage for as long as the shopper leaves it there, while the seller
+// keeps changing prices behind it. /api/cart/prices answers with the current figures and this
+// is what writes them back — the guard against a summary that quotes one price and a checkout
+// that charges another.
+describe('applyServerPrices — re-pricing a cart that has gone stale', () => {
+  const line = (over: Partial<{ price: number; basePrice: number; stock: number }> = {}) =>
+    ({ storeSlug: STORE, slug: PRODUCT.slug, price: 50, ...over });
+
+  it('writes a newly started sale into the stored line', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 1);
+    expect(applyServerPrices([line({ price: 40, basePrice: 50 })])).toEqual([
+      expect.objectContaining({ slug: PRODUCT.slug, from: 50, to: 40 }),
+    ]);
+    const item = getStoreItems(STORE)[0]!;
+    expect(item.price).toBe(40);
+    expect(item.basePrice).toBe(50);
+    expect(itemSaving(item)).toBe(10);
+  });
+
+  it('clears basePrice when the sale has ENDED — otherwise the checkout keeps striking through a price that is no longer a discount', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, price: 40, basePrice: 50, stock: 9 }, 1);
+    expect(applyServerPrices([line({ price: 50 })])).toEqual([
+      expect.objectContaining({ slug: PRODUCT.slug, from: 40, to: 50 }),
+    ]);
+    const item = getStoreItems(STORE)[0]!;
+    expect(item.price).toBe(50);
+    expect(item.basePrice).toBeUndefined();
+    expect(itemSaving(item)).toBe(0);
+  });
+
+  it('reports no change when the stored prices are already current, so nothing re-renders', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 1);
+    expect(applyServerPrices([line()])).toEqual([]);
+  });
+
+  it('leaves a product that is gone exactly as it was — checkout refuses it with a real message', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 1);
+    expect(applyServerPrices([{ storeSlug: STORE, slug: PRODUCT.slug, price: 0, gone: true }])).toEqual([]);
+    expect(getStoreItems(STORE)[0]!.price).toBe(50);
+  });
+
+  it('ignores rows for a store the shopper has no cart for', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 1);
+    expect(applyServerPrices([{ storeSlug: 'other-store', slug: PRODUCT.slug, price: 1 }])).toEqual([]);
+    expect(getStoreItems(STORE)[0]!.price).toBe(50);
+  });
+
+  // The same answer carries stock, so most shortages are caught at a moment of attention instead
+  // of at the pay button. The flags matter as much as the numbers: the checkout page reacts
+  // differently to a reduced quantity than to a price move, and must never do it silently.
+  it('clamps the quantity to the stock the server reports, and flags it as a clamp', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 4);
+    const changes = applyServerPrices([line({ stock: 2 })]);
+    expect(changes).toEqual([expect.objectContaining({ from: 50, to: 50, clampedTo: 2 })]);
+    expect(getCartQty(STORE, PRODUCT.slug)).toBe(2);
+    expect(getStoreItems(STORE)[0]!.stock).toBe(2);
+  });
+
+  it('flags a sold-out line without touching its quantity', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 3);
+    const changes = applyServerPrices([line({ stock: 0 })]);
+    expect(changes).toEqual([expect.objectContaining({ soldOut: true })]);
+    expect(changes[0]!.clampedTo).toBeUndefined();
+    expect(getCartQty(STORE, PRODUCT.slug)).toBe(3);
+  });
+
+  it('reports a ceiling that moved with no price change, so the stepper stops offering units that are gone', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 1);
+    const changes = applyServerPrices([line({ stock: 4 })]);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]!.clampedTo).toBeUndefined(); // qty 1 still fits — nothing was taken from the buyer
+    expect(getStoreItems(STORE)[0]!.stock).toBe(4);
+  });
+
+  it('says nothing when price AND stock are both already current', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 4 }, 1);
+    expect(applyServerPrices([line({ stock: 4 })])).toEqual([]);
+  });
+
+  // A row matched by slug alone can belong to a different combo of the same product, so its stock
+  // is the wrong ceiling for this line. Prices are per product and still apply.
+  it('applies stock only to the line the row actually identifies, never to a sibling variant', () => {
+    const red = { Color: 'Red' };
+    const blue = { Color: 'Blue' };
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 3, red);
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 3, blue);
+    applyServerPrices([{ storeSlug: STORE, slug: PRODUCT.slug, price: 50, stock: 1, selectedVariants: red }]);
+    expect(getCartQty(STORE, PRODUCT.slug, red)).toBe(1);
+    expect(getCartQty(STORE, PRODUCT.slug, blue)).toBe(3);
+    expect(getStoreItems(STORE).find((i) => i.selectedVariants?.Color === 'Blue')!.stock).toBe(9);
+  });
+
+  it('still re-prices a variant line from a row that carries no variants, without inventing a ceiling for it', () => {
+    const red = { Color: 'Red' };
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 3, red);
+    const changes = applyServerPrices([{ storeSlug: STORE, slug: PRODUCT.slug, price: 45, stock: 1 }]);
+    expect(changes).toEqual([expect.objectContaining({ from: 50, to: 45 })]);
+    expect(getCartQty(STORE, PRODUCT.slug, red)).toBe(3); // the shared-pool stock is NOT this line's ceiling
+    expect(getStoreItems(STORE)[0]!.stock).toBe(9);
+  });
+});
+
+describe('itemSaving', () => {
+  it('is the gap times quantity, and zero without a discount', () => {
+    expect(itemSaving({ price: 40, basePrice: 55, qty: 2 })).toBe(30);
+    expect(itemSaving({ price: 40, qty: 2 })).toBe(0);
+    // A basePrice at or below the price is not a saving — it must never render as one.
+    expect(itemSaving({ price: 40, basePrice: 40, qty: 1 })).toBe(0);
+    expect(itemSaving({ price: 40, basePrice: 30, qty: 1 })).toBe(0);
   });
 });

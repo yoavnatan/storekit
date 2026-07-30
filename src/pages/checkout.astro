@@ -51,6 +51,7 @@ for (const s of getVisibleStores()) {
     total: c.total,
     item: c.item,
     items: c.items,
+    youSaved: c.youSaved,
     changeShipping: c.changeShipping,
     changeShippingMethod: c.changeShippingMethod,
     deliveryMethod: c.deliveryMethod,
@@ -66,6 +67,17 @@ for (const s of getVisibleStores()) {
     requiredField: c.requiredField,
     invalidEmail: c.invalidEmail,
     orderError: c.orderError,
+    ownStoreBlocked: c.ownStoreBlocked,
+    pricesChanged: c.pricesChanged,
+    // checkoutInProgress was mapped in the submit handler but never sent over, so the one
+    // message that must not say "try again" fell back to the generic one that does.
+    checkoutInProgress: c.checkoutInProgress,
+    soldOutDuringCheckout: c.soldOutDuringCheckout,
+    stockReducedDuringCheckout: c.stockReducedDuringCheckout,
+    stockReducedDuringCheckoutOne: c.stockReducedDuringCheckoutOne,
+    outOfStockNote: c.outOfStockNote,
+    stockLeftNote: c.stockLeftNote,
+    stockLeftNoteOne: c.stockLeftNoteOne,
     demoBlocked: t.demo.checkoutBlocked,
     demoBadge: t.demo.badge,
     demoBadgeTitle: t.demo.badgeTitle,
@@ -122,6 +134,17 @@ for (const s of getVisibleStores()) {
           <!-- Hidden when nothing in the cart is payable (showcase items only) —
                a "₪0.00 (0 פריטים)" line under a cart that visibly holds products
                reads as a bug, and the notice below already explains it. -->
+          {/* The saving sits ABOVE the total, not beside it: the buyer reads down to the number
+              they are about to pay, and this is the last thing they pass on the way. It is the
+              real gap between the sellers' own listed prices and what the platform is charging —
+              never a "compare at" figure invented to make a discount look bigger. */}
+          <div id="co-savings-row" class="hidden flex justify-between items-center pt-3 pb-1">
+            <span class="flex items-center gap-1.5 text-[.9rem] font-semibold [color:var(--color-sale)]">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+              {c.youSavedTotal}
+            </span>
+            <strong class="text-[1.05rem] font-extrabold [color:var(--color-sale)]" id="co-savings-amount"></strong>
+          </div>
           <div id="co-grand-total-row" class="flex justify-between items-center pt-4 pb-[1.125rem] border-t-2 [border-color:var(--color-border)] mt-1">
             <span class="text-base font-medium [color:var(--color-text)]">{c.total} <span id="grand-total-count" class="text-[.82em] font-normal [color:var(--color-muted)]"></span></span>
             <strong class="text-[1.35rem] font-extrabold [color:var(--color-text)]" id="grand-total-amount"></strong>
@@ -195,6 +218,12 @@ for (const s of getVisibleStores()) {
 
           <p id="form-global-error" class="hidden text-sm [color:var(--color-danger)] mb-4" role="alert"></p>
 
+          <!-- A sale that ended while this page sat open. Deliberately NOT the error line above:
+               nothing failed and the buyer did nothing wrong, so it reads as a heads-up in the
+               warning tone, `role="status"` (announced without interrupting), and the pay button
+               right below it stays live — one more press completes the order. -->
+          <p id="co-price-notice" class="hidden text-sm mb-4 py-2.5 px-3 rounded-[var(--radius)] [color:var(--color-warning)] [background:color-mix(in_srgb,var(--color-warning)_9%,transparent)] border [border-color:color-mix(in_srgb,var(--color-warning)_28%,transparent)]" role="status"></p>
+
           <!-- The showcase-store notice lives once, up in #co-footer next to the
                grand total — that's where the buyer reads what they're paying for. -->
 
@@ -212,11 +241,14 @@ for (const s of getVisibleStores()) {
   <!-- PQV and lightbox dialogs are rendered globally via ProductQuickView in BaseLayout -->
 
   <script>
-    import { getActiveStoreCarts, setQty, removeItem } from '../lib/cart.js';
+    import { getActiveStoreCarts, setQty, removeItem, itemSaving, makeCartKey, applyStockLimit } from '../lib/cart.js';
+    import { refreshCartPrices, watchCartPrices, hasIncrease, stockCorrections } from '../lib/cart-prices.js';
     import { splitDemoCarts } from '../lib/demo-stores.js';
     import { formatPrice, cdnThumb } from '../config/store.config.js';
     import { escapeHtml as esc } from '../lib/html-escape.js';
     import { spawnRipple } from '../lib/ripple.js';
+    import { checkoutAttemptKey, clearCheckoutAttemptKey } from '../lib/checkout-attempt-key.js';
+    import { isValidEmail } from '../lib/email-address.js';
     import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../scripts/dashboard/select-dropdown.js';
 
     // Price shown inside each dropdown option (self-pickup is free). NOT shown on the closed
@@ -413,7 +445,8 @@ for (const s of getVisibleStores()) {
             <div class="co-card__price-col shrink-0 text-end flex flex-col items-end gap-[.15rem]">
               <!-- Muted, not struck through: the price is real, it just isn't part
                    of this total. A strikethrough would read as a discount. -->
-              <span class="co-card__total text-[1.0625rem] font-extrabold ${isDemo ? '[color:var(--color-muted)] font-semibold' : '[color:var(--color-text)]'}">${formatPrice(item.price * item.qty)}</span>
+              <span class="co-card__total text-[1.0625rem] font-extrabold ${isDemo ? '[color:var(--color-muted)] font-semibold' : itemSaving(item) > 0 ? 'price-now price-now--sale' : '[color:var(--color-text)]'}">${formatPrice(item.price * item.qty)}</span>
+              ${itemSaving(item) > 0 ? `<s class="price-was !ms-0 text-[.72rem]">${formatPrice(item.basePrice! * item.qty)}</s>` : ''}
               ${item.qty > 1 ? `<span class="co-card__unit text-[.72rem] [color:var(--color-muted)]">${formatPrice(item.price)} ליח׳</span>` : ''}
             </div>
           </div>`;
@@ -425,6 +458,19 @@ for (const s of getVisibleStores()) {
         // Skipped entirely for a view-only store — nothing ships, and a delivery
         // picker under items that can't be bought is a control with no outcome.
         if (isDemo) { html += `</div>`; return; }
+
+        // Per-store saving, in the mall's own grammar: the bag is grouped by store, so the
+        // buyer is told what each store's slice saved them before the one figure at the bottom.
+        // Rendered only when there is something to report — a "חסכת 0 ₪" row would be noise,
+        // and a saving invented where none exists is the one thing this feature must never do.
+        html += `<div class="co-store-saving flex items-center justify-between gap-2 py-2 px-4 mb-3 rounded-[var(--radius)] !hidden" data-store-slug="${esc(cart.storeSlug)}" style="background:color-mix(in srgb, var(--color-sale) 9%, var(--color-surface));border:1px solid color-mix(in srgb, var(--color-sale) 22%, transparent)">
+          <span class="flex items-center gap-1.5 text-[.85rem] font-semibold [color:var(--color-sale)]">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+            ${esc(i18n['youSaved'] ?? 'חסכת בחנות הזו')}
+          </span>
+          <strong class="co-store-saving__amount text-[.9375rem] font-extrabold [color:var(--color-sale)]"></strong>
+        </div>`;
+
         const isFree = shipping === 0;
         const methods = shippingStores[cart.storeSlug]?.methods ?? ['courier'];
         const chosen  = methodFor(cart.storeSlug);
@@ -501,6 +547,7 @@ for (const s of getVisibleStores()) {
       const { payable: carts, viewOnly } = splitDemoCarts(allCarts, isDemoSlug);
       const itemWord = (n: number) => n !== 1 ? (i18n['items'] ?? 'items') : (i18n['item'] ?? 'item');
       let grandTotal = 0;
+      let totalSaving = 0;
       let anySelected = false;
       let totalItems = 0;
       let totalSelected = 0;
@@ -509,12 +556,29 @@ for (const s of getVisibleStores()) {
         const block = document.querySelector<HTMLElement>(`.co-store-block[data-store-slug="${CSS.escape(cart.storeSlug)}"]`);
         let subtotal = 0;
         let selCount = 0;
+        let storeSaving = 0;
         cart.items.forEach(item => {
           if (selected.has(selKey(cart.storeSlug, item.cartKey))) {
             subtotal += item.price * item.qty;
+            storeSaving += itemSaving(item);
             selCount++;
           }
         });
+        totalSaving += storeSaving;
+
+        const savingRow = block?.querySelector<HTMLElement>('.co-store-saving');
+        if (savingRow) {
+          // `!hidden`, not `hidden` — this row is a `flex` element, and in this build `.flex` is
+          // emitted after `.hidden`, so the plain utility loses on source order and the row stays
+          // on screen showing "0 ₪" for a store that saved nothing (memory: hidden-vs-flex).
+          // With a single store the per-store row and the order row are the same number twice —
+          // the footer already says it. The per-store breakdown only earns its place once the
+          // bag holds more than one store, which is the case it exists for.
+          const showSaving = storeSaving > 0 && carts.length > 1;
+          savingRow.classList.toggle('!hidden', !showSaving);
+          const amt = savingRow.querySelector<HTMLElement>('.co-store-saving__amount');
+          if (amt) amt.textContent = showSaving ? formatPrice(storeSaving) : '';
+        }
         if (selCount > 0) anySelected = true;
         totalItems += cart.items.length;
         totalSelected += selCount;
@@ -560,6 +624,16 @@ for (const s of getVisibleStores()) {
       }
       const selectAllCountEl = document.querySelector<HTMLElement>('.co-select-all-count');
       if (selectAllCountEl) selectAllCountEl.textContent = `(${totalSelected}/${totalItems})`;
+
+      // `!hidden` for the same reason the demo notice below uses it: this row is a `flex`
+      // element and `.flex` is emitted after `.hidden` in this build, so a plain `hidden`
+      // utility loses on source order.
+      const savingsRow = document.getElementById('co-savings-row');
+      if (savingsRow) {
+        savingsRow.classList.toggle('!hidden', totalSaving <= 0);
+        const amountEl = document.getElementById('co-savings-amount');
+        if (amountEl) amountEl.textContent = formatPrice(totalSaving);
+      }
 
       const totalEl = document.getElementById('grand-total-amount');
       if (totalEl) totalEl.textContent = formatPrice(grandTotal);
@@ -714,13 +788,105 @@ for (const s of getVisibleStores()) {
       const phone  = (document.getElementById('buyerPhone') as HTMLInputElement | null)?.value.trim() ?? '';
       const city   = (document.getElementById('city')       as HTMLInputElement | null)?.value.trim() ?? '';
       const street = (document.getElementById('street')     as HTMLInputElement | null)?.value.trim() ?? '';
-      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      const emailOk = isValidEmail(email);
       setFieldErr('buyerName',  !name);
       setFieldErr('buyerEmail', !email || !emailOk);
       setFieldErr('buyerPhone', !phone);
       setFieldErr('city',       !city);
       setFieldErr('street',     !street);
       return !!(name && email && emailOk && phone && city && street);
+    }
+
+    // ── Stock ran out under the buyer ──────────────────────
+    // The item was in stock when this page loaded and someone else bought the last units while
+    // the buyer filled in the form. /api/checkout refuses it (409) and sends back which line and
+    // how many are really left, so this is the one rejection that can be CORRECTED in place
+    // instead of reported: without the correction, "try again" walks the buyer into the identical
+    // refusal forever, with nothing on screen saying which of their items caused it.
+    interface OutOfStockDetail {
+      storeSlug: string;
+      productSlug: string;
+      productName: string;
+      available: number;
+      selectedVariants?: Record<string, string>;
+    }
+
+    // Marks the line on the card itself — the notice above the pay button says what happened,
+    // this says which item. Applied imperatively rather than from renderCart(): the mark belongs
+    // to one failed attempt, so the next re-render is meant to clear it.
+    function markStockLine(storeSlug: string, cartKey: string, available: number): void {
+      const card = document.querySelector<HTMLElement>(
+        `.co-card[data-store-slug="${CSS.escape(storeSlug)}"][data-cart-key="${CSS.escape(cartKey)}"]`);
+      if (!card) return;
+      card.classList.add('![border-color:var(--color-danger)]');
+      // A sold-out line is left unticked, and `data-unselected`'s 50% opacity would fade the very
+      // note it now needs to be read for. The danger border and the note carry that state better
+      // than dimming does, so the dimming is overridden for this one card.
+      if (available <= 0) card.classList.add('!opacity-100');
+      const note = document.createElement('p');
+      note.className = 'co-card__stock-note text-[.775rem] font-semibold [color:var(--color-danger)] mt-[.2rem]';
+      note.setAttribute('role', 'status');
+      // Hebrew has its own singular, and this note lands on a card the buyer is reading while
+      // deciding whether to pay — "נותרו 1 במלאי" is exactly where machine-written copy shows.
+      note.textContent = available <= 0
+        ? (i18n['outOfStockNote'] ?? 'אזל מהמלאי')
+        : available === 1
+          ? (i18n['stockLeftNoteOne'] ?? 'נותרה יחידה אחת')
+          : (i18n['stockLeftNote'] ?? 'נותרו {n} במלאי').replace('{n}', String(available));
+      card.querySelector('.co-card__name')?.insertAdjacentElement('afterend', note);
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // One sentence for both routes into this state — the pay-time refusal and the re-check that
+    // catches it earlier — so the buyer reads the same explanation whichever one found it.
+    function stockMessage(productName: string, available: number): string {
+      if (available <= 0) {
+        return (i18n['soldOutDuringCheckout'] ?? 'המוצר אזל מהמלאי. הוצאנו אותו מהתשלום.')
+          .replace('{name}', productName);
+      }
+      const reduced = available === 1
+        ? (i18n['stockReducedDuringCheckoutOne'] ?? 'נותרה יחידה אחת בלבד. הכמות בעגלה עודכנה.')
+        : (i18n['stockReducedDuringCheckout'] ?? 'הכמות בעגלה עודכנה לפי המלאי. בדקו ולחצו שוב.');
+      return reduced.replace('{n}', String(available)).replace('{name}', productName);
+    }
+
+    // Shown in the warning line above the pay button, never in the error line: nothing failed and
+    // the buyer did nothing wrong — the cart was corrected and the rest of the order still stands.
+    function showStockNotice(text: string): void {
+      const el = document.getElementById('co-price-notice');
+      if (!el) return;
+      el.textContent = text;
+      el.classList.remove('hidden');
+    }
+
+    // Brings the cart down to what the server says is really there, and returns the sentence to
+    // show. A sold-out line stays in the cart but leaves the payment — the buyer has to see which
+    // item stopped them, and everything else they picked should still go through on the next press.
+    function applyOutOfStock(oos: OutOfStockDetail): string {
+      const cartKey = makeCartKey(oos.productSlug, oos.selectedVariants);
+      const available = applyStockLimit(oos.storeSlug, cartKey, oos.available);
+      if (available <= 0) selected.delete(selKey(oos.storeSlug, cartKey));
+      renderCart(); // redraws the clamped quantity + the new total, and re-enables the button per what is still selected
+      markStockLine(oos.storeSlug, cartKey, available);
+      return stockMessage(oos.productName, available);
+    }
+
+    // The same correction, reached BEFORE the pay button: /api/cart/prices now answers with each
+    // line's stock, and cart.ts has already written it and clamped the quantity by the time these
+    // changes arrive. So this only has to finish the buyer-facing half — take a sold-out line out
+    // of the payment, mark the lines, say what happened. It runs at every moment of attention (page
+    // load, returning to the tab, pressing pay), which is what keeps most of these from ever
+    // reaching the server's refusal. Returns true when something was corrected.
+    function applyStockChanges(changes: ReturnType<typeof stockCorrections>): boolean {
+      if (!changes.length) return false;
+      for (const c of changes) if (c.soldOut) selected.delete(selKey(c.storeSlug, c.cartKey));
+      renderCart();
+      for (const c of changes) markStockLine(c.storeSlug, c.cartKey, c.soldOut ? 0 : (c.clampedTo ?? 0));
+      // With several corrections at once, the sold-out one is the one that changes what the buyer
+      // can do; a reduced quantity is the milder story and is already visible on its own card.
+      const lead = changes.find((c) => c.soldOut) ?? changes[0]!;
+      showStockNotice(stockMessage(lead.name, lead.soldOut ? 0 : (lead.clampedTo ?? 0)));
+      return true;
     }
 
     // ── Submit ─────────────────────────────────────────────
@@ -738,12 +904,51 @@ for (const s of getVisibleStores()) {
       const labelEl   = document.getElementById('submit-label');
       const loadingEl = document.getElementById('submit-loading');
       const errEl     = document.getElementById('form-global-error');
+      const priceNoticeEl = document.getElementById('co-price-notice');
       const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement | null;
 
       labelEl?.classList.add('hidden');
       loadingEl?.classList.remove('hidden');
       if (submitBtn) submitBtn.disabled = true;
       errEl?.classList.add('hidden');
+      priceNoticeEl?.classList.add('hidden');
+
+      // Last look before the money moves. /api/checkout derives the price itself and charges it
+      // without complaint, so a summary that went stale while this page sat open would mean a
+      // buyer reading one number and being billed another. Forced (`maxAge: 0`) — this is the
+      // one moment where a minute-old answer isn't good enough — and it rides inside the button's
+      // own "מעבד..." state, with a hard timeout in cart-prices.ts so it can never stall a
+      // purchase.
+      const moved = await refreshCartPrices({ maxAge: 0 });
+
+      // Stock is checked before price and stops the submit outright: the quantity the buyer chose
+      // has just been reduced (or the line is gone), so going ahead would charge them for a
+      // different order than the one they pressed pay on — the one outcome that must never be
+      // silent. The server would refuse this anyway; catching it here means the buyer gets the
+      // explanation without a rejected charge attempt in between.
+      const shortages = stockCorrections(moved, (c) => selected.has(selKey(c.storeSlug, c.cartKey)));
+      if (shortages.length) {
+        labelEl?.classList.remove('hidden');
+        loadingEl?.classList.add('hidden');
+        applyStockChanges(shortages);
+        return;
+      }
+
+      // Only a line being paid for RIGHT NOW that got MORE expensive is worth stopping for. A
+      // price that dropped goes through untouched — the buyer is charged less than the summary
+      // promised, which needs no permission — and so does a change on an item they left
+      // unticked. Stopping on any movement at all would spend a real interruption on the common,
+      // welcome case; this way the interruption only ever buys the buyer something.
+      if (hasIncrease(moved, (c) => selected.has(selKey(c.storeSlug, c.cartKey)))) {
+        labelEl?.classList.remove('hidden');
+        loadingEl?.classList.add('hidden');
+        renderCart(); // shows the new figures and re-enables the button per what is still selected
+        priceNoticeEl?.classList.remove('hidden');
+        if (priceNoticeEl) priceNoticeEl.textContent = i18n['pricesChanged'] ?? 'המחירים בעגלה התעדכנו. בדקו ולחצו שוב.';
+        // The changed total is what they need to re-read, and it sits right above this button.
+        document.getElementById('co-footer')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
 
       const items = purchased.map(({ storeSlug, item }) => ({
         storeSlug,
@@ -767,21 +972,43 @@ for (const s of getVisibleStores()) {
         },
         items,
         deliveryMethods,
+        idempotencyKey: checkoutAttemptKey(),
       };
 
       try {
         const res  = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-        const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string };
+        const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string; outOfStock?: OutOfStockDetail };
+        // Handled here rather than in the catch below because it is the only rejection that
+        // carries data to apply, and because it is not an error message: it shows up in the same
+        // warning line a changed price uses, with the pay button live, since the cart has just
+        // been corrected and one more press buys everything that is still there.
+        if (res.status === 409 && data.error === 'out-of-stock' && data.outOfStock) {
+          labelEl?.classList.remove('hidden');
+          loadingEl?.classList.add('hidden');
+          const notice = applyOutOfStock(data.outOfStock);
+          if (priceNoticeEl) { priceNoticeEl.textContent = notice; priceNoticeEl.classList.remove('hidden'); }
+          return;
+        }
         if (!res.ok || !data.orderIds?.length) throw new Error(data.error ?? 'Unknown error');
+        // Success — the next purchase is a genuinely new one and must not reuse
+        // this key, or it would be replayed as this one.
+        clearCheckoutAttemptKey();
         const ref = data.checkoutRef ?? data.orderIds[0]!.slice(0, 8).toUpperCase();
         // Only the purchased items leave the cart — anything the buyer left unchecked stays.
         purchased.forEach(({ storeSlug, item }) => removeItem(storeSlug, item.cartKey));
         window.location.href = `/checkout/success?order=${encodeURIComponent(ref)}`;
       } catch (err) {
-        // 'demo-store' is the one rejection that is NOT worth retrying (see
-        // lib/demo-stores.ts) — the generic "try again" would send the buyer in
-        // circles, so this single case gets its own explanation.
-        const key = (err as Error).message === 'demo-store' ? 'demoBlocked' : 'orderError';
+        // Two rejections are NOT worth retrying — a showcase store (lib/demo-stores.ts)
+        // and a store the buyer himself owns (lib/own-store-guard.ts). The generic "try
+        // again" would send them in circles, so each gets its own explanation.
+        const msg = (err as Error).message;
+        const key = msg === 'demo-store' ? 'demoBlocked'
+          : msg === 'own-store' ? 'ownStoreBlocked'
+          // The previous submit is still at the gateway. "Try again" is the wrong
+          // advice here — pressing again is what we are trying to prevent — so this
+          // one asks them to wait instead.
+          : msg === 'checkout-in-progress' ? 'checkoutInProgress'
+          : 'orderError';
         if (errEl) { errEl.textContent = i18n[key] ?? 'שגיאה. נסה שוב.'; errEl.classList.remove('hidden'); }
         labelEl?.classList.remove('hidden');
         loadingEl?.classList.add('hidden');
@@ -798,6 +1025,29 @@ for (const s of getVisibleStores()) {
     });
 
     renderCart();
+
+    // A cart can sit for days while the seller starts or ends a sale behind it. Re-price against
+    // the catalog and re-render if anything moved, so the summary the buyer reads is the one
+    // /api/checkout will charge — a page that displays one price and bills another is the one
+    // outcome this whole feature must never produce. Renders first and corrects after: the
+    // stored prices are right in the overwhelming majority of visits, and waiting on a network
+    // round-trip before showing the cart at all would be a worse trade.
+    // A stock shortage the same answer reveals is applied through the shared correction path, so a
+    // quantity that came back reduced is explained rather than just quietly redrawn — a number the
+    // buyer chose changing under them with no word is worse than the stale one it replaced.
+    const reconcile = (changes: Awaited<ReturnType<typeof refreshCartPrices>>): void => {
+      if (!changes.length) return;
+      if (!applyStockChanges(stockCorrections(changes, (c) => selected.has(selKey(c.storeSlug, c.cartKey))))) renderCart();
+    };
+    void refreshCartPrices().then(reconcile);
+
+    // The summary must keep telling the truth for as long as the page is open, not only for the
+    // first paint: a shopper who leaves this tab and comes back an hour later would otherwise
+    // read the price the sale had when they left. Checks on return, never on a timer. A price move
+    // stays silent on purpose — the cart drawer (BaseLayout, so it is on this page too) raises the
+    // one toast that explains it, and two announcements of one event is noise — but a stock
+    // correction speaks up here, because the drawer says nothing about it.
+    watchCartPrices(reconcile);
 
     // Auto-open payment accordion when arriving via ?pay=1 (from PQV modal)
     if (new URLSearchParams(window.location.search).get('pay') === '1') {
