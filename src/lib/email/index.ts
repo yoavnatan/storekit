@@ -12,13 +12,14 @@
 import { store } from '../../config/store.config.js';
 import type { EmailAdapter, EmailMessage, EmailResult } from './adapter.js';
 import { createResendAdapter } from './resend-adapter.js';
+import { serverEnv } from '../runtime-env.js';
 import { createConsoleAdapter } from './console-adapter.js';
 
 let cached: EmailAdapter | null = null;
 
 function getAdapter(): EmailAdapter {
   if (cached) return cached;
-  const resendKey = import.meta.env.RESEND_API_KEY as string | undefined;
+  const resendKey = serverEnv('RESEND_API_KEY');
   cached = resendKey ? createResendAdapter(resendKey) : createConsoleAdapter();
   return cached;
 }
@@ -26,7 +27,7 @@ function getAdapter(): EmailAdapter {
 /** The verified sender address. Must be on a domain verified with the provider
  *  (see GO_LIVE_CHECKLIST §4) — falls back to a localhost-safe default in dev. */
 function fromAddress(): string {
-  const configured = import.meta.env.EMAIL_FROM as string | undefined;
+  const configured = serverEnv('EMAIL_FROM');
   if (configured) return configured;
   return `${store.name} <no-reply@${new URL(store.url).hostname}>`;
 }

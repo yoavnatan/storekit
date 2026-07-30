@@ -1,9 +1,35 @@
 // @ts-check
 import { defineConfig, passthroughImageService } from 'astro/config';
+import { loadEnv } from 'vite';
 import node from '@astrojs/node';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import { store } from './src/config/store.config.js';
+import { hydrateProcessEnv } from './src/lib/runtime-env.js';
+
+/**
+ * Make the `.env` file visible to the DEV server.
+ *
+ * Server-only configuration is read from `process.env` (src/lib/runtime-env.ts — the
+ * `import.meta.env.NAME` form is a build-time text substitution and cannot be filled in at
+ * runtime). Astro loads `.env` into `process.env` itself, but only during `astro build`; the
+ * dev server never does, and private variables are handed to Vite as `define` replacements,
+ * which a runtime lookup cannot see. Without this, every server variable in `.env` —
+ * GOOGLE_CLIENT_ID, RESEND_API_KEY, ADMIN_SECRET — silently read as unset under `astro dev`,
+ * and each one degrades quietly rather than erroring: no Google button, console emails, and
+ * /admin back on its dev-default password.
+ *
+ * Same loader Astro uses (`loadEnv` with an empty prefix = every variable, not just PUBLIC_).
+ */
+function dotEnvForDevServer() {
+  return {
+    name: 'dezabin:dotenv-for-dev-server',
+    apply: 'serve',
+    config(/** @type {unknown} */ _config, /** @type {{ mode: string }} */ { mode }) {
+      hydrateProcessEnv(loadEnv(mode, process.cwd(), ''));
+    },
+  };
+}
 
 // SEO note: `site` MUST be set to the real domain so canonical URLs,
 // the sitemap and Open Graph absolute URLs are generated correctly.
@@ -56,7 +82,7 @@ export default defineConfig({
   },
 
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [dotEnvForDevServer(), tailwindcss()],
     optimizeDeps: {
       exclude: ['@imgly/background-removal'],
     },

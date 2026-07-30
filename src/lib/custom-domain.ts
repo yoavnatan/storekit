@@ -12,6 +12,7 @@
 import { store as platform } from '../config/store.config.js';
 import { isReservedSlug, type Store } from './stores.js';
 import { createCloudflareProvider } from './custom-domain-cloudflare.js';
+import { serverEnv } from './runtime-env.js';
 
 export type CustomDomainStatus = 'pending' | 'active';
 
@@ -43,7 +44,7 @@ const HOSTNAME_RE = /^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1
  *  fallback origin (set via env, see GO_LIVE §1); in dev it falls back to the platform hostname so
  *  the settings screen always shows a concrete, copyable instruction. */
 export function cnameTarget(): string {
-  const configured = import.meta.env.CUSTOM_DOMAIN_TARGET as string | undefined;
+  const configured = serverEnv('CUSTOM_DOMAIN_TARGET');
   if (configured && configured.trim()) return configured.trim();
   return new URL(platform.url).hostname;
 }
@@ -151,7 +152,7 @@ export function isPlatformHost(hostname: string): boolean {
   if (h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]') return true;
   const platformHost = new URL(platform.url).hostname.replace(/^www\./, '');
   if (h === platformHost || h === `www.${platformHost}`) return true;
-  const extra = ((import.meta.env.PLATFORM_HOSTS as string | undefined) ?? '')
+  const extra = (serverEnv('PLATFORM_HOSTS') ?? '')
     .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
   return extra.includes(h);
 }
@@ -175,8 +176,8 @@ let cached: CustomHostnameProvider | null = null;
 
 export function getCustomDomainProvider(): CustomHostnameProvider {
   if (cached) return cached;
-  const token = import.meta.env.CLOUDFLARE_API_TOKEN as string | undefined;
-  const zoneId = import.meta.env.CLOUDFLARE_ZONE_ID as string | undefined;
+  const token = serverEnv('CLOUDFLARE_API_TOKEN');
+  const zoneId = serverEnv('CLOUDFLARE_ZONE_ID');
   cached = token && zoneId ? createCloudflareProvider(token, zoneId) : createStubProvider();
   return cached;
 }
@@ -186,7 +187,7 @@ export function getCustomDomainProvider(): CustomHostnameProvider {
  *  is set, which flips it to 'active' so the full flow (incl. middleware serving) can be exercised
  *  locally. Never touches the network; never throws. */
 export function createStubProvider(): CustomHostnameProvider {
-  const autoVerify = (import.meta.env.CUSTOM_DOMAIN_DEV_AUTOVERIFY as string | undefined) === '1';
+  const autoVerify = serverEnv('CUSTOM_DOMAIN_DEV_AUTOVERIFY') === '1';
   return {
     name: 'stub',
     async register() {

@@ -35,14 +35,18 @@ function fakeCookies(initial: Record<string, string> = {}) {
 }
 
 describe('the production guard on ADMIN_SECRET', () => {
-  it('throws rather than falling back to a default when unset in production', () => {
-    expect(SRC).toMatch(/import\.meta\.env\.PROD[\s\S]{0,200}throw new Error\('ADMIN_SECRET is not set/);
+  // The guard itself (throw in production, dev fallback otherwise, blank counts as unset) now
+  // lives in requiredSecret() and is tested behaviourally in tests/runtime-env.test.ts. What
+  // matters here is that admin-auth goes through it rather than reading the variable directly:
+  // `import.meta.env.ADMIN_SECRET` is inlined at build time, so a secret handed to the running
+  // server would be invisible and the guard would throw on every /admin request instead.
+  // (The direct `import.meta.env.ADMIN_SECRET` form is banned tree-wide by the scan in
+  // tests/runtime-env.test.ts, so it isn't re-asserted here.)
+  it('reads the secret at runtime, not from a build-time inline', () => {
+    expect(SRC).toMatch(/requiredSecret\('ADMIN_SECRET', 'admin'\)/);
   });
 
   it('treats a blank value as unset, so an empty password cannot authenticate', () => {
-    // `||` and not `??`: with `??` a blank ADMIN_SECRET would be a real (empty) secret.
-    expect(SRC).toMatch(/const configured = import\.meta\.env\.ADMIN_SECRET;\s*\n\s*if \(configured\)/);
-    expect(SRC).not.toMatch(/ADMIN_SECRET \?\?/);
     expect(checkAdminPassword('')).toBe(false);
   });
 });

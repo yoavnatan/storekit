@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import { secretsEqual } from './secret-compare.js';
+import { requiredSecret } from './runtime-env.js';
 
 const COOKIE_NAME = 'admin_token';
 const COOKIE_MAX_AGE = 60 * 60 * 8; // 8 hours
@@ -15,16 +16,15 @@ const COOKIE_MAX_AGE = 60 * 60 * 8; // 8 hours
  * area whose password was `admin`. The throw lands on the first request that touches /admin
  * rather than at boot, which is loud where it matters and impossible to mistake for a login
  * failure. Mirrors `secret()` in seller-auth.ts, which had this guard already.
+ *
+ * Read via `requiredSecret` (runtime-env.ts), never `import.meta.env.ADMIN_SECRET` — the latter
+ * is inlined at build time, so a secret supplied only to the running server would be invisible
+ * and this guard would throw on every /admin request instead.
  */
 function adminSecret(): string {
-  // `||` (not `??`) so a blank value counts as unset — otherwise an empty secret would match an
-  // empty submitted password and read as authenticated.
-  const configured = import.meta.env.ADMIN_SECRET;
-  if (configured) return configured;
-  if (import.meta.env.PROD) {
-    throw new Error('ADMIN_SECRET is not set. Refusing to guard /admin with the public dev default.');
-  }
-  return 'admin';
+  // A blank value counts as unset — otherwise an empty secret would match an empty submitted
+  // password and read as authenticated.
+  return requiredSecret('ADMIN_SECRET', 'admin');
 }
 
 /**

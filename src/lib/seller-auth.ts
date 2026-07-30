@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import type { SellerTierId } from './pricing.js';
 import { secretsEqual } from './secret-compare.js';
+import { requiredSecret } from './runtime-env.js';
 
 const SELLERS_PATH = path.join(process.cwd(), 'data/sellers.json');
 const COOKIE_NAME = 'seller_session';
@@ -30,16 +31,15 @@ export interface Seller {
  * Session-token signing key. In production a missing AUTH_SECRET is a HARD FAILURE,
  * not a fallback: the dev default is a literal in this repo, so shipping with it
  * would let anyone forge a session cookie for any seller id — a full auth bypass
- * with no exploit required beyond reading the source. Failing at boot is loud;
- * silently signing with a public string is not.
+ * with no exploit required beyond reading the source.
+ *
+ * Read via `requiredSecret` (runtime-env.ts), never `import.meta.env.AUTH_SECRET`: that form is
+ * inlined at build time, so building without the variable constant-folded this whole function
+ * into an unconditional throw and no runtime environment could undo it — every session check on
+ * the deployed server failed, which reads as a routing bug, not a missing secret.
  */
 function secret(): string {
-  const configured = import.meta.env.AUTH_SECRET;
-  if (configured) return configured;
-  if (import.meta.env.PROD) {
-    throw new Error('AUTH_SECRET is not set. Refusing to sign sessions with the public dev default.');
-  }
-  return 'dev-insecure-secret';
+  return requiredSecret('AUTH_SECRET', 'dev-insecure-secret');
 }
 
 function sign(value: string): string {

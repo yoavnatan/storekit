@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "start": "astro dev",
+    "prestart": "node --env-file-if-exists=.env ./scripts/check-required-env.mjs",
+    "start": "node --env-file-if-exists=.env ./dist/server/entry.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",

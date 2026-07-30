@@ -52,8 +52,12 @@ describe('password hashing', () => {
 });
 
 describe('session signing secret', () => {
+  // The production-refusal behaviour itself moved to requiredSecret() and is covered by
+  // tests/runtime-env.test.ts. What this file still owns is that seller-auth uses it — and reads
+  // the secret at runtime rather than from a build-time inline, which is what made the old form
+  // constant-fold into an unconditional throw whenever the build machine lacked the variable.
   it('refuses to fall back to the public dev default in production', () => {
-    expect(AUTH_SRC).toMatch(/import\.meta\.env\.PROD[\s\S]{0,160}throw new Error/);
+    expect(AUTH_SRC).toMatch(/requiredSecret\('AUTH_SECRET', 'dev-insecure-secret'\)/);
   });
 
   it('the dev default is still available outside production', () => {
