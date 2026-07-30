@@ -1,7 +1,11 @@
 import type { Seller } from './seller-auth.js';
 import type { Store } from './stores.js';
 import type { Order } from './orders.js';
+import { countsAsRevenue } from './orders.js';
 import { readProducts, type StoreProduct } from './store-products.js';
+import { businessMonthKey } from './business-day.js';
+import { isDemoStore } from './demo-stores.js';
+import { roundMoney } from './money.js';
 
 export interface StoreRevenue {
   totalRevenue: number; // all-time, paid orders only, net of any seller-applied discount
@@ -14,9 +18,35 @@ const EMPTY_REVENUE: StoreRevenue = { totalRevenue: 0, monthRevenue: 0 };
 // order (see orders.ts's StoreSubtotal.discount) — subtotal alone would
 // overstate revenue on a discounted order.
 export function orderNetForStore(order: Order, storeSlug: string): number {
-  const sub = order.storeSubtotals[storeSlug];
+  // `?.` because a stored row can predate the field (same reason orders.ts guards it when it
+  // repoints slugs): every order this code path CREATES has storeSubtotals, but reading one that
+  // doesn't must answer 0, not throw — this runs inside order status changes, so an exception
+  // here turns a legacy row into a failed cancellation the seller can do nothing about.
+  const sub = order.storeSubtotals?.[storeSlug];
   if (!sub) return 0;
-  return sub.subtotal - (sub.discount?.applied ?? 0);
+  // Floored at zero. The discount is written against the subtotal alone (see the
+  // orders API), so this can only go negative on a row stored before that was true —
+  // and a report must never show negative revenue for a sale that happened. The row
+  // itself is not silently accepted: reconcile.ts reports any discount that exceeds
+  // its subtotal, so the data error surfaces as a discrepancy rather than as a
+  // number quietly bent back into range here.
+  return Math.max(0, roundMoney(sub.subtotal - (sub.discount?.applied ?? 0)));
+}
+
+/** GMV for one order on the SAME basis every per-store surface uses: the sum of its
+ *  stores' net subtotals. Deliberately not `order.totalAmount` — that figure adds
+ *  shipping and ignores a seller-applied discount, so summing it gave the admin
+ *  Overview a "platform revenue" headline that could never be reconciled against
+ *  the per-store rows sitting one tab away. Shipping is the carrier's money, not
+ *  the platform's or the seller's (AI_INSTRUCTIONS.md → shipping is platform-set,
+ *  never a seller margin), so it does not belong in a revenue figure at all. */
+export function orderNetTotal(order: Order): number {
+  let total = 0;
+  // `?? {}` for the same legacy rows orderNetForStore guards above — iterating the
+  // field is exactly as exposed as reading it, and this one runs on the admin
+  // Overview, where a TypeError takes the whole panel down rather than one figure.
+  for (const storeSlug of Object.keys(order.storeSubtotals ?? {})) total += orderNetForStore(order, storeSlug);
+  return roundMoney(total);
 }
 
 // One pass over all orders, keyed by storeSlug — callers (getSellerCards/
@@ -25,14 +55,14 @@ export function orderNetForStore(order: Order, storeSlug: string): number {
 // architecture) — mirrors getPlatformOverview's paid-orders-only revenue rule.
 export function getStoreRevenueMap(orders: Order[]): Map<string, StoreRevenue> {
   const map = new Map<string, StoreRevenue>();
-  const now = new Date();
-  const curMonth = now.getMonth();
-  const curYear = now.getFullYear();
+  // "This month" on the BUSINESS calendar (business-day.ts) — the same definition
+  // the performance tab buckets by. These were two different months: this read the
+  // server's local calendar, the performance tab read UTC.
+  const curMonth = businessMonthKey(new Date());
   for (const order of orders) {
-    if (order.paymentStatus !== 'paid') continue;
-    const created = new Date(order.createdAt);
-    const isThisMonth = created.getMonth() === curMonth && created.getFullYear() === curYear;
-    for (const storeSlug of Object.keys(order.storeSubtotals)) {
+    if (!countsAsRevenue(order)) continue;
+    const isThisMonth = businessMonthKey(new Date(order.createdAt)) === curMonth;
+    for (const storeSlug of Object.keys(order.storeSubtotals ?? {})) {
       const net = orderNetForStore(order, storeSlug);
       const entry = map.get(storeSlug) ?? { totalRevenue: 0, monthRevenue: 0 };
       entry.totalRevenue += net;
@@ -40,26 +70,52 @@ export function getStoreRevenueMap(orders: Order[]): Map<string, StoreRevenue> {
       map.set(storeSlug, entry);
     }
   }
+  for (const entry of map.values()) {
+    entry.totalRevenue = roundMoney(entry.totalRevenue);
+    entry.monthRevenue = roundMoney(entry.monthRevenue);
+  }
   return map;
 }
 
 export interface PlatformOverview {
   totalSellers: number;
+  /** REAL stores only. The showcase/demo stores (lib/demo-stores.ts) are excluded:
+   *  they are platform-owned fixtures that refuse checkout outright, so counting them
+   *  told the owner he had more of a marketplace than he does — the one number on
+   *  this screen he would use to judge whether the business is working. */
   totalStores: number;
+  /** Showcase stores, surfaced separately rather than hidden, so the count is
+   *  explainable against the Stores tab instead of looking like a discrepancy. */
+  demoStores: number;
+  /** EVERY order row, whatever its payment state — deliberately a different population
+   *  from `gmv` below, which is why the card that renders it is labelled as such. */
   totalOrders: number;
-  totalRevenue: number;
+  /** Orders that actually counted as money — the population `gmv` is summed over. */
+  paidOrders: number;
+  /** Gross merchandise value: what buyers paid the sellers, net of seller discounts and
+   *  excluding shipping. Same basis as getStoreRevenueMap, so this headline equals the
+   *  sum of the per-store rows exactly (asserted in tests/reporting-invariants.test.ts).
+   *  It is NOT the platform's own income — that is commission + subscriptions + ad
+   *  margin, built by platform-revenue.ts and shown in the Performance tab. */
+  gmv: number;
 }
 
 export function getPlatformOverview(sellers: Seller[], stores: Store[], orders: Order[]): PlatformOverview {
+  // Reporting only (split-payment architecture — see AI_INSTRUCTIONS.md): only
+  // orders the processor confirmed as paid AND that were not cancelled count as
+  // revenue (countsAsRevenue is the single definition — see orders.ts).
+  const paid = orders.filter(countsAsRevenue);
+  const realStores = stores.filter((s) => !isDemoStore(s));
   return {
     totalSellers: sellers.length,
-    totalStores: stores.length,
+    totalStores: realStores.length,
+    demoStores: stores.length - realStores.length,
     totalOrders: orders.length,
-    // Reporting only (split-payment architecture — see AI_INSTRUCTIONS.md):
-    // only orders the processor actually confirmed as paid count as revenue.
-    totalRevenue: orders
-      .filter((o) => o.paymentStatus === 'paid')
-      .reduce((sum, o) => sum + o.totalAmount, 0),
+    paidOrders: paid.length,
+    // Summed through orderNetTotal, not `o.totalAmount`: the latter includes
+    // shipping and ignores seller discounts, so this headline and the per-store
+    // revenue rows one tab away were two different numbers for the same concept.
+    gmv: roundMoney(paid.reduce((sum, o) => sum + orderNetTotal(o), 0)),
   };
 }
 

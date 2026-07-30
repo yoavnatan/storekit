@@ -2,14 +2,17 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
-import { createProduct, updateProduct, deleteProduct, getProductById, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
+import { createProduct, updateProduct, deleteProduct, getProductById, getProductsByStoreId, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
 import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, resolveVariantStockMap } from '../../lib/variant-combo.js';
-import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload } from '../../lib/product-form.js';
+import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
+import { normalizeProductDiscount } from '../../lib/discount-input.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
 import { pingProductChange } from '../../lib/indexnow.js';
+import { warmImageDerivations } from '../../lib/image-derive.js';
 import { deriveAutoTags } from '../../lib/tag-suggest.js';
+import { productEditRev, mergeByFieldRev, PRODUCT_REV_FIELDS } from '../../lib/record-rev.js';
 
 // Auto-tag a product from its structured, curated fields (category path +
 // variant option values) at save time — the seller's explicit tags always come
@@ -72,6 +75,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const sku = parseSku(form);
     const specs = parseSpecs(form);
     const sellerNote = parseSellerNote(form);
+    const discount = parseProductDiscount(form, price);
     const { variants, variantStock, variantImages } = parseVariantsPayload(form);
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
@@ -92,6 +96,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       tags: finalTags.length ? finalTags : undefined,
       sku: sku || undefined,
       specs: specs.length ? specs : undefined,
+      discount,
       sellerNote: sellerNote || undefined,
       variants: variants.length ? variants : undefined,
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
@@ -99,7 +104,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
     // A brand-new public page — the highest-value IndexNow signal (fire-and-forget).
     pingProductChange(ownerStore, product.slug);
-    return json({ ok: true, product, stockAlerts: countStockAlerts(storeId, LOW_STOCK_THRESHOLD) });
+    // Every image here is new, so render them at the widths buyers will ask for
+    // now rather than making the first one to open the gallery wait for it.
+    warmImageDerivations(images);
+    return json({ ok: true, product: { ...product, rev: productEditRev(product) }, stockAlerts: countStockAlerts(storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'edit-product') {
@@ -109,17 +117,57 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const ownedStores = getStoresBySellerId(sellerId);
     if (!ownedStores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
 
-    const name = String(form.get('name') || '').trim();
-    const description = String(form.get('description') || '').trim();
-    const price = parseFloat(String(form.get('price') || '0'));
-    const stock = parseInt(String(form.get('stock') || '0'), 10);
-    const images = parseImages(form);
-    const categoryId = resolveCategoryId(parseCategoryId(form), product.storeId);
-    const tags = parseTags(form);
-    const sku = parseSku(form);
-    const specs = parseSpecs(form);
-    const sellerNote = parseSellerNote(form);
-    const { variants, variantStock, variantImages } = parseVariantsPayload(form);
+    const submittedPrice = parseFloat(String(form.get('price') || '0'));
+    const submittedStock = parseInt(String(form.get('stock') || '0'), 10);
+    // Shaped exactly like the stored record (empty → absent), because these values are
+    // compared field-by-field against it below — a difference in shape alone would read
+    // as an edit the seller never made.
+    const submitted = {
+      name: String(form.get('name') || '').trim(),
+      description: String(form.get('description') || '').trim(),
+      price: submittedPrice,
+      stock: isNaN(submittedStock) ? 0 : submittedStock,
+      images: parseImages(form),
+      categoryId: resolveCategoryId(parseCategoryId(form), product.storeId),
+      tags: parseTags(form),
+      sku: parseSku(form) || undefined,
+      specs: parseSpecs(form),
+      discount: parseProductDiscount(form, submittedPrice),
+      sellerNote: parseSellerNote(form) || undefined,
+      ...parseVariantsPayload(form),
+    };
+
+    // The form submits every field, so a stale tab would revert whatever a second tab
+    // saved meanwhile. Merge instead of overwrite: fields this tab actually edited win,
+    // fields it merely carried keep what is stored, and only a field BOTH sides changed
+    // is worth interrupting the seller for (record-rev.ts).
+    // The single-field inline edits below need none of this — each expresses one explicit
+    // intent ("set stock to 4"), with no untouched fields riding along.
+    const { merged, conflicts } = mergeByFieldRev({
+      fields: PRODUCT_REV_FIELDS,
+      submitted,
+      stored: product,
+      baseline: form.get('baseRev'),
+      force: String(form.get('force') || '') === '1',
+    });
+    if (conflicts.length) {
+      return json({ ok: false, conflict: true, conflictFields: conflicts, error: 'המוצר עודכן במקום אחר מאז שפתחת את הטופס.' }, 409);
+    }
+
+    const name = String(merged.name ?? '');
+    const description = String(merged.description ?? '');
+    const price = Number(merged.price);
+    const stock = Number(merged.stock);
+    const images = (merged.images ?? []) as string[];
+    const categoryId = merged.categoryId as string | undefined;
+    const tags = (merged.tags ?? []) as string[];
+    const sku = (merged.sku ?? '') as string;
+    const specs = (merged.specs ?? []) as ReturnType<typeof parseSpecs>;
+    const sellerNote = (merged.sellerNote ?? '') as string;
+    const discount = merged.discount as StoreProduct['discount'];
+    const variants = (merged.variants ?? []) as ReturnType<typeof parseVariantsPayload>['variants'];
+    const variantStock = (merged.variantStock ?? {}) as Record<string, number>;
+    const variantImages = (merged.variantImages ?? {}) as Record<string, string>;
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
@@ -152,6 +200,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       tags: finalTags.length ? finalTags : [],
       sku: sku || undefined,
       specs: specs.length ? specs : [],
+      discount,
       sellerNote: sellerNote || undefined,
       variants: variants.length ? variants : [],
       variantStock: Object.keys(variantStock).length ? variantStock : undefined,
@@ -161,12 +210,18 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     const updated = updateProduct(productId, updates);
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
+    // Only the images this edit ADDED — a re-save that didn't touch the gallery
+    // must not re-request renders the CDN already holds.
+    warmImageDerivations(images.filter((u) => !(product.images ?? []).includes(u)));
     // The seller just reviewed/re-entered this product's stock as part of the
     // full edit form — treat that as acknowledging any low-stock/out-of-stock
     // alert for it, same as an order's status change clearing its own notification.
     deleteNotificationsByRelatedIds([productId], sellerId);
     const categoryPathStr = updated.categoryId ? categoryPath(getCategoriesByStoreId(product.storeId), updated.categoryId) : '';
-    return json({ ok: true, images: updated.images ?? [], categoryId: updated.categoryId ?? '', categoryPath: categoryPathStr, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+    // The edit row stays in the DOM after a save, so it gets the revision it now
+    // holds — otherwise a second save from the same open row would report a conflict
+    // against the seller's own first one.
+    return json({ ok: true, rev: productEditRev(updated), images: updated.images ?? [], categoryId: updated.categoryId ?? '', categoryPath: categoryPathStr, discount: updated.discount ?? null, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'patch-product-fields') {
@@ -193,6 +248,27 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     }
     if (form.has('stock')) {
       const stock = parseInt(String(form.get('stock')), 10);
+      // Compare-and-set. `stock` is an ABSOLUTE write, and it is the only inline field the server
+      // itself also changes — /api/checkout decrements it on every sale. A seller who types 20 over
+      // a cell that displayed 19 is describing a shelf that no longer exists if a purchase landed in
+      // between, and the plain write would resurrect the sold unit (and let it be sold twice). So
+      // the figure the cell DISPLAYED rides along, and a stored value that moved since refuses the
+      // write and hands back the truth. Absent `prevStock` (an older client) the write proceeds —
+      // additive, per the zero-downtime rule. The full edit form needs none of this: `stock` is in
+      // PRODUCT_REV_FIELDS, so mergeByFieldRev above already answers 409 for exactly this case.
+      const prevRaw = form.get('prevStock');
+      if (prevRaw != null) {
+        const prev = parseInt(String(prevRaw), 10);
+        if (!isNaN(prev) && prev !== product.stock) {
+          return json({
+            ok: false,
+            conflict: true,
+            conflictFields: ['stock'],
+            currentStock: product.stock,
+            error: `המלאי השתנה ל-${product.stock} מאז שפתחת את השדה (כנראה נמכר בינתיים). עדכנו לפי המספר החדש.`,
+          }, 409);
+        }
+      }
       patch.stock = isNaN(stock) ? 0 : Math.max(0, stock);
     }
     if (form.has('sku')) {
@@ -206,7 +282,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Only clear when the stock cell itself was the one edited — a name/price/sku
     // inline edit shouldn't silently dismiss an unrelated low-stock alert.
     if ('stock' in patch) deleteNotificationsByRelatedIds([productId], sellerId);
-    return json({ ok: true, product: { name: updated.name, price: updated.price, stock: updated.stock, sku: updated.sku ?? '' }, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+    // The partial-save actions return the new revision so the open edit row — which the
+    // client patches field-by-field to match — stays in step and doesn't report the
+    // seller's own inline edit as a conflict.
+    return json({ ok: true, rev: productEditRev(updated), product: { name: updated.name, price: updated.price, stock: updated.stock, sku: updated.sku ?? '' }, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   // Inline edit of a single variant combo's stock from the products-table
@@ -229,13 +308,31 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const clamped = isNaN(value) ? 0 : Math.max(0, value);
 
     const map = resolveVariantStockMap(product.variants, product.variantStock, product.stock);
+    // Same compare-and-set as the whole-product stock above, on the one combo being written: a sale
+    // of THIS combo between render and save would otherwise be undone by the absolute number the
+    // seller typed. The rest of the map is read fresh here, so only the edited combo needs guarding.
+    const prevRaw = form.get('prevStock');
+    if (prevRaw != null) {
+      const prev = parseInt(String(prevRaw), 10);
+      const current = map[key] ?? 0;
+      if (!isNaN(prev) && prev !== current) {
+        return json({
+          ok: false,
+          conflict: true,
+          conflictFields: ['stock'],
+          comboKey: key,
+          currentStock: current,
+          error: `המלאי של הווריאנט הזה השתנה ל-${current} מאז שפתחת את השדה (כנראה נמכר בינתיים). עדכנו לפי המספר החדש.`,
+        }, 409);
+      }
+    }
     map[key] = clamped;
     const total = Object.values(map).reduce((s, n) => s + n, 0);
 
     const updated = updateProduct(productId, { variantStock: map, stock: total });
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
     deleteNotificationsByRelatedIds([productId], sellerId);
-    return json({ ok: true, comboKey: key, comboStock: clamped, stock: total, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+    return json({ ok: true, rev: productEditRev(updated), comboKey: key, comboStock: clamped, stock: total, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'patch-product-images') {
@@ -247,7 +344,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stores = getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
     const updated = updateProduct(productId, { images });
-    return json({ ok: true, images: updated?.images ?? [] });
+    warmImageDerivations(images.filter((u) => !(product.images ?? []).includes(u)));
+    return json({ ok: true, rev: updated ? productEditRev(updated) : undefined, images: updated?.images ?? [] });
   }
 
   if (action === 'set-product-visibility') {
@@ -269,6 +367,40 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // stock would be exactly the noise this feature removes.
     if (hidden) deleteNotificationsByRelatedIds([productId], sellerId);
     return json({ ok: true, hidden: updated.hidden === true, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+  }
+
+  // Apply (or clear) the same discount across many products at once — the "run a sale on
+  // these 12 items" flow, driven by the products table's existing bulk selection. Each row is
+  // normalized against ITS OWN price, so one ₪-off never zeroes out the cheapest product in the
+  // batch; a blank/zero value clears instead of storing an inert discount.
+  if (action === 'bulk-discount') {
+    const storeId = String(form.get('storeId') || '');
+    const ownerStore = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    if (!ownerStore) return json({ ok: false, error: 'Not authorized' }, 403);
+
+    const ids = String(form.get('productIds') || '').split(',').map((v) => v.trim()).filter(Boolean);
+    if (!ids.length) return json({ ok: false, error: 'No products selected.' }, 400);
+    const clear = String(form.get('clear') || '') === '1';
+
+    // Scope the ids to this store's own products — an id from another seller's store is
+    // dropped here rather than reaching updateProduct.
+    const owned = new Map(getProductsByStoreId(storeId).map((p) => [p.id, p]));
+    const targets = ids.map((id) => owned.get(id)).filter((p): p is StoreProduct => !!p);
+    if (!targets.length) return json({ ok: false, error: 'No products selected.' }, 400);
+
+    const applied: Array<{ id: string; discount: StoreProduct['discount'] | null }> = [];
+    for (const p of targets) {
+      const discount = clear ? undefined : normalizeProductDiscount({
+        type: form.get('discount_type'),
+        value: form.get('discount_value'),
+        showBadge: form.get('discount_badge') === null ? '0' : '1',
+        startsAt: form.get('discount_starts'),
+        endsAt: form.get('discount_ends'),
+      }, p.price);
+      updateProduct(p.id, { discount });
+      applied.push({ id: p.id, discount: discount ?? null });
+    }
+    return json({ ok: true, count: applied.length, applied });
   }
 
   if (action === 'delete-product') {

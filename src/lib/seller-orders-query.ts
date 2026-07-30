@@ -1,4 +1,5 @@
 import type { Order } from './orders.js';
+import { SHIPPING_STATUS_RULES, type ShippingStatus } from './order-status-rules.js';
 import { decodeList } from './admin-nav.js';
 
 // Server-side counterpart of the seller dashboard's Orders tab toolbar
@@ -19,7 +20,12 @@ export type SellerOrderSortDir = 'asc' | 'desc';
 const URGENCY_GROUP: Record<string, number> = {
   pending: 0, processing: 0, ready: 0, shipped: 1, delivered: 2, cancelled: 3,
 };
-export const ORDER_ACTIVE_STATUSES = ['pending', 'processing', 'ready', 'shipped'];
+/** "Active" = the order is still live: neither delivered nor terminal. Derived from
+ *  the status table (order-status-rules.ts) rather than re-listed, so a status added
+ *  there is filterable here on the same commit instead of being silently absent from
+ *  the seller's default view. */
+export const ORDER_ACTIVE_STATUSES: string[] = (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[])
+  .filter((s) => s !== 'delivered' && !SHIPPING_STATUS_RULES[s].terminal);
 
 export interface SellerOrderQuery {
   q: string;

@@ -1,7 +1,10 @@
 import type { Order } from './orders.js';
+import { countsAsRevenue } from './orders.js';
 import { orderNetForStore } from './admin-stats.js';
 import { getDailyPageViews } from './store-pageviews.js';
 import { getProductDailyViews } from './product-pageviews.js';
+import { businessDayISO, businessMonthKey, calendarDayISO, calendarMonthKey, dayInRange, BUSINESS_TIMEZONE } from './business-day.js';
+import { roundMoney, percentOf } from './money.js';
 
 export type PerformanceGranularity = 'day' | 'month';
 
@@ -60,30 +63,41 @@ export interface ProductPerformanceSummary {
   conversionRate: number;    // ordersWithProduct / totalViews * 100, 0 when no views
 }
 
-function toISODate(d: Date): string { return d.toISOString().slice(0, 10); }
-function toMonthKey(d: Date): string { return d.toISOString().slice(0, 7); }
+/** Which bucket an ORDER falls in — the business calendar (business-day.ts), never
+ *  the runtime's. This used to be `toISOString().slice(0,10)`, i.e. UTC, while the
+ *  range it was compared against was built from the local calendar: every sale
+ *  between local midnight and 02:00/03:00 was filed under the previous day, and one
+ *  placed just after midnight on the 1st dropped out of "this month" altogether. */
+const bucketKeyOf = (d: Date, granularity: PerformanceGranularity): string =>
+  granularity === 'day' ? businessDayISO(d) : businessMonthKey(d);
 
-/** The zero-filled x-axis keys for a range at a given granularity — shared by the store and per-product builders so their bars line up on the same axis. */
+/** The zero-filled x-axis keys for a range at a given granularity — shared by the store and per-product builders so their bars line up on the same axis.
+ *  The cursor here is a synthetic calendar date, not a moment in time, so it is read
+ *  back with the calendar* helpers (see business-day.ts's header for why the two
+ *  families exist). */
 function rangeKeys(fromISO: string, toISO: string, granularity: PerformanceGranularity): string[] {
   const from = new Date(fromISO + 'T00:00:00.000Z');
   const to = new Date(toISO + 'T23:59:59.999Z');
   const keys: string[] = [];
   if (granularity === 'day') {
     const cur = new Date(from);
-    while (cur <= to) { keys.push(toISODate(cur)); cur.setUTCDate(cur.getUTCDate() + 1); }
+    while (cur <= to) { keys.push(calendarDayISO(cur)); cur.setUTCDate(cur.getUTCDate() + 1); }
   } else {
     const cur = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1));
     const end = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), 1));
-    while (cur <= end) { keys.push(toMonthKey(cur)); cur.setUTCMonth(cur.getUTCMonth() + 1); }
+    while (cur <= end) { keys.push(calendarMonthKey(cur)); cur.setUTCMonth(cur.getUTCMonth() + 1); }
   }
   return keys;
 }
 
+// Axis labels render a pure calendar date, so they are formatted in a fixed zone
+// rather than the runtime's — otherwise the same bucket key reads as a different
+// day on a server west of UTC than it does in the browser that requested it.
 function dayLabel(iso: string): string {
-  return new Date(iso + 'T00:00:00Z').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+  return new Date(iso + 'T12:00:00Z').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', timeZone: BUSINESS_TIMEZONE });
 }
 function monthLabel(key: string): string {
-  return new Date(key + '-01T00:00:00Z').toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+  return new Date(key + '-01T12:00:00Z').toLocaleDateString('he-IL', { month: 'long', year: 'numeric', timeZone: BUSINESS_TIMEZONE });
 }
 
 /** Auto-picks granularity so a chart never has to render 200+ bars: day buckets up to ~62 days, month buckets beyond that. */
@@ -120,38 +134,30 @@ export function buildPerformanceSummary(
   // that sold in the range (the breakdown modal's full-composition view).
   topLimit = 5,
 ): PerformanceSummary {
-  const from = new Date(fromISO + 'T00:00:00.000Z');
-  const to = new Date(toISO + 'T23:59:59.999Z');
-
+  // Membership is decided on the BUSINESS day an order landed on, compared against
+  // the range's own business-day bounds — a lexicographic compare of 'YYYY-MM-DD'
+  // strings, which is chronological and has no instant arithmetic for a DST change
+  // to shift. The range is inclusive of both whole days, which is what the picker's
+  // labels promise.
   const inRange = orders.filter((o) => {
-    if (o.paymentStatus !== 'paid' || !o.storeSubtotals[storeSlug]) return false;
-    const c = new Date(o.createdAt);
-    return c >= from && c <= to;
+    if (!countsAsRevenue(o) || !o.storeSubtotals?.[storeSlug]) return false;
+    return dayInRange(businessDayISO(new Date(o.createdAt)), fromISO, toISO);
   });
 
   // ── period keys (x-axis), zero-filled so a quiet day/month still shows as 0, not a gap ──
-  const keys: string[] = [];
-  if (granularity === 'day') {
-    const cur = new Date(from);
-    while (cur <= to) { keys.push(toISODate(cur)); cur.setUTCDate(cur.getUTCDate() + 1); }
-  } else {
-    const cur = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1));
-    const end = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), 1));
-    while (cur <= end) { keys.push(toMonthKey(cur)); cur.setUTCMonth(cur.getUTCMonth() + 1); }
-  }
-
-  const bucketOf = (d: Date) => (granularity === 'day' ? toISODate(d) : toMonthKey(d));
+  const keys = rangeKeys(fromISO, toISO, granularity);
 
   const revenueByKey = new Map<string, number>();
   const ordersByKey = new Map<string, number>();
   let totalRevenue = 0;
   for (const o of inRange) {
-    const key = bucketOf(new Date(o.createdAt));
+    const key = bucketKeyOf(new Date(o.createdAt), granularity);
     const net = orderNetForStore(o, storeSlug);
     revenueByKey.set(key, (revenueByKey.get(key) ?? 0) + net);
     ordersByKey.set(key, (ordersByKey.get(key) ?? 0) + 1);
     totalRevenue += net;
   }
+  totalRevenue = roundMoney(totalRevenue);
 
   const dailyViews = getDailyPageViews(storeSlug, fromISO, toISO);
   const viewsByKey = new Map<string, number>();
@@ -173,7 +179,7 @@ export function buildPerformanceSummary(
   const points: PerformancePoint[] = keys.map((key) => ({
     key,
     label: granularity === 'day' ? dayLabel(key) : monthLabel(key),
-    revenue: revenueByKey.get(key) ?? 0,
+    revenue: roundMoney(revenueByKey.get(key) ?? 0),
     orders: ordersByKey.get(key) ?? 0,
     views: viewsByKey.get(key) ?? 0,
     uniqueVisitors: visitorsByKey.get(key)?.size ?? 0,
@@ -191,11 +197,12 @@ export function buildPerformanceSummary(
       productMap.set(item.productId, entry);
     }
   }
+  for (const entry of productMap.values()) entry.revenue = roundMoney(entry.revenue);
   const sortedProducts = [...productMap.values()].sort((a, b) => b.revenue - a.revenue);
   const topProducts = topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts;
 
-  const platformCommission = Math.round(totalRevenue * commissionPercent) / 100;
-  const netProfit = Math.round((totalRevenue - platformCommission) * 100) / 100;
+  const platformCommission = percentOf(totalRevenue, commissionPercent);
+  const netProfit = roundMoney(totalRevenue - platformCommission);
 
   // Conversion = orders per *distinct* visitor (the honest "share of people who
   // bought"). Fall back to total loads when no visitor ids exist yet (legacy /
@@ -207,7 +214,7 @@ export function buildPerformanceSummary(
     points,
     totalRevenue,
     totalOrders,
-    avgOrderValue: totalOrders > 0 ? Math.round((totalRevenue / totalOrders) * 100) / 100 : 0,
+    avgOrderValue: totalOrders > 0 ? roundMoney(totalRevenue / totalOrders) : 0,
     totalViews,
     totalUniqueVisitors,
     conversionRate: conversionBase > 0 ? (totalOrders / conversionBase) * 100 : 0,
@@ -232,10 +239,7 @@ export function buildProductPerformance(
   toISO: string,
   granularity: PerformanceGranularity,
 ): ProductPerformanceSummary {
-  const from = new Date(fromISO + 'T00:00:00.000Z');
-  const to = new Date(toISO + 'T23:59:59.999Z');
   const keys = rangeKeys(fromISO, toISO, granularity);
-  const bucketOf = (d: Date) => (granularity === 'day' ? toISODate(d) : toMonthKey(d));
 
   const unitsByKey = new Map<string, number>();
   const revenueByKey = new Map<string, number>();
@@ -244,13 +248,16 @@ export function buildProductPerformance(
   let ordersWithProduct = 0;
 
   for (const o of orders) {
-    if (o.paymentStatus !== 'paid') continue;
+    if (!countsAsRevenue(o)) continue;
     const created = new Date(o.createdAt);
-    if (created < from || created > to) continue;
+    // Same business-day membership rule as the store summary — the two views sit
+    // on the same axis and are read against each other, so they cannot use
+    // different definitions of which day a sale happened on.
+    if (!dayInRange(businessDayISO(created), fromISO, toISO)) continue;
     let inThisOrder = false;
     for (const item of o.items) {
       if (item.storeSlug !== storeSlug || item.productId !== productId) continue;
-      const key = bucketOf(created);
+      const key = bucketKeyOf(created, granularity);
       unitsByKey.set(key, (unitsByKey.get(key) ?? 0) + item.qty);
       revenueByKey.set(key, (revenueByKey.get(key) ?? 0) + item.price * item.qty);
       totalUnits += item.qty;
@@ -272,7 +279,7 @@ export function buildProductPerformance(
     key,
     label: granularity === 'day' ? dayLabel(key) : monthLabel(key),
     units: unitsByKey.get(key) ?? 0,
-    revenue: Math.round((revenueByKey.get(key) ?? 0) * 100) / 100,
+    revenue: roundMoney(revenueByKey.get(key) ?? 0),
     views: viewsByKey.get(key) ?? 0,
   }));
 
@@ -281,7 +288,7 @@ export function buildProductPerformance(
     granularity,
     points,
     totalUnits,
-    totalRevenue: Math.round(totalRevenue * 100) / 100,
+    totalRevenue: roundMoney(totalRevenue),
     totalViews,
     ordersWithProduct,
     conversionRate: totalViews > 0 ? (ordersWithProduct / totalViews) * 100 : 0,

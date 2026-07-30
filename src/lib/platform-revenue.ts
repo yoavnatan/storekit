@@ -2,6 +2,7 @@ import type { AdCampaign } from './ad-campaigns.js';
 import { campaignStatsInRange } from './ad-metrics.js';
 import { daysInRangeInclusive } from './date-range.js';
 import { AD_PLATFORM_MARGIN_PERCENT, adMarginForSpend, monthlyFeeForTier } from './pricing.js';
+import { roundMoney, sumMoney } from './money.js';
 
 // Where the platform's money actually comes from, for one date range
 // (CURRENT_TASK.md → סשן ב׳ item 2). The performance tab used to show a single
@@ -89,9 +90,8 @@ export function buildPlatformRevenue(
     adSpend += campaignStatsInRange(campaign, fromISO, toISO).spend;
   }
 
-  const round = (n: number): number => Math.round(n * 100) / 100;
-  const subs = round(subscriptions);
-  const spend = round(adSpend);
+  const subs = roundMoney(subscriptions);
+  const spend = roundMoney(adSpend);
   const margin = adMarginForSpend(spend);
 
   return {
@@ -102,6 +102,6 @@ export function buildPlatformRevenue(
     adSpend: spend,
     adMargin: margin,
     adMarginRate: AD_PLATFORM_MARGIN_PERCENT,
-    total: round(commission + subs + margin),
+    total: sumMoney([commission, subs, margin]),
   };
 }

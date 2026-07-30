@@ -1,0 +1,55 @@
+/**
+ * The buyer's side of the double-charge guard (server side: checkout-idempotency.ts).
+ *
+ * One key per checkout ATTEMPT, held in sessionStorage. The important property is
+ * that it SURVIVES a failed submit: the case most likely to charge twice is the one
+ * where the request actually succeeded but the response never arrived, and the buyer
+ * presses the button again. Only a key that is reused on that second press lets the
+ * server recognise the retry. A key minted fresh per click would look like a brand
+ * new purchase and buy no protection at all.
+ *
+ * It is cleared only on a CONFIRMED success, so the buyer's next purchase is treated
+ * as new rather than replayed as the previous one.
+ *
+ * sessionStorage rather than a module variable: a refresh mid-checkout (or a
+ * back-navigation onto a re-executed page) drops module state but is exactly the
+ * moment the key still needs to be the same one.
+ */
+
+const STORAGE_KEY = 'sn_checkout_attempt';
+
+/** Charset/length here must satisfy isValidIdempotencyKey() on the server. */
+function mintKey(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === 'function') return `co-${c.randomUUID()}`;
+  // Older browsers: getRandomValues is far more widely supported than randomUUID.
+  if (c && typeof c.getRandomValues === 'function') {
+    const bytes = c.getRandomValues(new Uint8Array(16));
+    return `co-${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
+  }
+  // Last resort. Weaker, but the key only needs to be unique per buyer session —
+  // it is a de-duplication token, never a secret or an authorisation.
+  return `co-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** The current attempt's key, minting and persisting one on first use. */
+export function checkoutAttemptKey(): string {
+  try {
+    const existing = sessionStorage.getItem(STORAGE_KEY);
+    if (existing) return existing;
+    const key = mintKey();
+    sessionStorage.setItem(STORAGE_KEY, key);
+    return key;
+  } catch {
+    // Private mode / storage disabled. A fresh key each time is strictly worse than
+    // a persisted one, but it is still better than sending none: the server rejects
+    // a missing key outright, and concurrent duplicate submits are caught by the
+    // button's disabled state plus the server's in-progress claim.
+    return mintKey();
+  }
+}
+
+/** Call ONLY after a confirmed successful checkout. */
+export function clearCheckoutAttemptKey(): void {
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* nothing to clear */ }
+}

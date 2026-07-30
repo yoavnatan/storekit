@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { AdCampaign } from './ad-campaigns.js';
 import type { BrandCampaign } from './brand-campaigns.js';
 import { daysInRangeInclusive, toISODate } from './date-range.js';
+import { roundMoney } from './money.js';
 
 // Range-aware MOCK ad metrics (CURRENT_TASK.md → סשן ב׳). Deterministic — seeded
 // per entity so numbers stay stable across reloads — and O(1) per entity (a
@@ -20,7 +21,7 @@ const ZERO: RangeStat = { impressions: 0, clicks: 0, ctr: 0, spend: 0, cpc: 0, c
 
 /** Cost per click from spend/clicks, guarded against divide-by-zero (₪, 2dp). */
 function cpcOf(spend: number, clicks: number): number {
-  return clicks > 0 ? Math.round((spend / clicks) * 100) / 100 : 0;
+  return clicks > 0 ? roundMoney(spend / clicks) : 0;
 }
 
 /** Click-through rate % from impressions/clicks, guarded against divide-by-zero. */
@@ -95,8 +96,8 @@ function accrue(campaign: AdCampaign, days: number): RangeStat {
   const imp = Math.round((spend / cpm) * 1000);
   const ctr = 1.2 + rand * 2.3; // %
   const clicks = Math.round(imp * (ctr / 100));
-  const roas = Math.round((1.8 + rand * 3.2) * 100) / 100; // simulated revenue / spend
-  const spendR = Math.round(spend * 100) / 100;
+  const roas = roundMoney(1.8 + rand * 3.2); // simulated revenue / spend
+  const spendR = roundMoney(spend);
   // Sales attributed to the campaign — a seeded ~1.5%–5.5% of clicks convert.
   const conversions = Math.round(clicks * (0.015 + rand * 0.04));
   return { impressions: imp, clicks, ctr: ctrOf(imp, clicks), spend: spendR, cpc: cpcOf(spendR, clicks), conversions, roas };
@@ -148,7 +149,7 @@ export function brandStatsInRange(campaign: BrandCampaign, from: string, to: str
   const ctr = 0.7 + rand * 1.6; // %
   const imp = Math.round(impressions);
   const clicks = Math.round(impressions * (ctr / 100));
-  const spendR = Math.round(spend * 100) / 100;
+  const spendR = roundMoney(spend);
   return {
     impressions: imp,
     clicks,

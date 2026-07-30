@@ -12,9 +12,14 @@ import { sendOrderConfirmationEmails } from '../../lib/email/order-confirmation.
 import { createNotification } from '../../lib/notifications.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getUserCart, saveUserCart } from '../../lib/user-carts.js';
+import { isValidEmail } from '../../lib/email-address.js';
 import { makeCartKey } from '../../lib/cart.js';
 import { logError } from '../../lib/error-log.js';
 import { recordAnalyticsEvent } from '../../lib/analytics.js';
+import { effectivePrice } from '../../lib/discounts.js';
+import { claimCheckout, completeCheckout, releaseCheckout, isValidIdempotencyKey, checkoutOwner } from '../../lib/checkout-idempotency.js';
+import { recordMoneyEvent } from '../../lib/money-events.js';
+import { roundMoney, sumMoney } from '../../lib/money.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -37,6 +42,10 @@ interface CheckoutBody {
    *  each value is re-validated against what the store actually offers, and the price is
    *  recomputed server-side from the central platform rate. */
   deliveryMethods?: Record<string, unknown>;
+  /** Client-minted key identifying this checkout ATTEMPT, reused across retries so a
+   *  repeat submit replays the first result instead of charging again. Required —
+   *  see lib/checkout-idempotency.ts for why a missing one is not safe to wave through. */
+  idempotencyKey?: unknown;
 }
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -48,10 +57,6 @@ function json(data: Record<string, unknown>, status = 200): Response {
 
 function isString(v: unknown): v is string {
   return typeof v === 'string' && v.trim().length > 0;
-}
-
-function isValidEmail(v: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
 /** Identifies which product name a stock alert should read — the exact variant combo that crossed the threshold, not just the product, so the seller knows what to restock. */
@@ -69,11 +74,20 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     return json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { buyerName, buyerEmail, buyerPhone, buyerAddress, items, deliveryMethods } = body;
+  const { buyerName, buyerEmail, buyerPhone, buyerAddress, items, deliveryMethods, idempotencyKey } = body;
+
+  // Refused outright rather than waved through when absent: without a key this
+  // endpoint cannot tell a second purchase from the same purchase arriving twice,
+  // and the failure mode is charging a buyer twice (lib/checkout-idempotency.ts).
+  // "Old clients might not send it" is not a reason to keep the unsafe path alive —
+  // nothing has shipped yet, and the client is in this repo.
+  if (!isValidIdempotencyKey(idempotencyKey)) {
+    return json({ error: 'Missing or malformed idempotencyKey' }, 400);
+  }
 
   // Validate required buyer fields
   if (!isString(buyerName)) return json({ error: 'Missing buyerName' }, 400);
-  if (!isString(buyerEmail) || !isValidEmail(buyerEmail)) return json({ error: 'Invalid buyerEmail' }, 400);
+  if (!isValidEmail(buyerEmail)) return json({ error: 'Invalid buyerEmail' }, 400);
   if (!isString(buyerPhone)) return json({ error: 'Missing buyerPhone' }, 400);
   if (!isString(buyerAddress?.city)) return json({ error: 'Missing city' }, 400);
   if (!isString(buyerAddress?.street)) return json({ error: 'Missing street' }, 400);
@@ -82,18 +96,76 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     return json({ error: 'Cart is empty' }, 400);
   }
 
-  // Showcase-store guard (lib/demo-stores.ts, GO_LIVE_CHECKLIST.md §6.2). Adding a
-  // demo store's product to the cart is deliberately allowed — a prospective seller
-  // is meant to walk the real buying flow — and only this last, irreversible step is
-  // refused. Enforced on the server because a hidden button is not a rule: the cart
-  // is client state and this endpoint is directly callable. Runs as a pre-pass,
-  // before the loop below reserves any stock, since being a demo store is a static
-  // property of the store and needs no rollback path.
+  const userId = getSellerSession(cookies);
+
+  // Pre-pass guards, both refusing the whole checkout before the loop below reserves any
+  // stock — each is a static property of the store, so neither needs a rollback path.
   for (const raw of items) {
     const rawSlug = (raw as CartItemInput).storeSlug;
     const slug = typeof rawSlug === 'string' ? rawSlug.trim() : '';
-    const demoStore = slug ? getStoreBySlugOrPrevious(slug) : null;
-    if (demoStore && isDemoStore(demoStore)) return json({ error: 'demo-store' }, 403);
+    const preStore = slug ? getStoreBySlugOrPrevious(slug) : null;
+    if (!preStore) continue;
+    // Showcase store (lib/demo-stores.ts, GO_LIVE_CHECKLIST.md §6.2). Adding a demo
+    // store's product to the cart is deliberately allowed — a prospective seller is
+    // meant to walk the real buying flow — and only this last, irreversible step is
+    // refused.
+    if (isDemoStore(preStore)) return json({ error: 'demo-store' }, 403);
+    // A seller may not buy from a store he owns. Such an order is real in every way
+    // that matters — stock, commission, mail, the units that drive the `popular`/
+    // `bestseller` label in the Google/Meta feed, and the first sale that starts his
+    // monthly fee — so a curious click around his own storefront must not create one.
+    // The storefront also refuses this client-side (lib/own-store-guard.ts), but a
+    // hidden button is not a rule: the cart is client state and this endpoint is
+    // directly callable. This is the guarantee; that is only the explanation.
+    if (userId && preStore.sellerId === userId) return json({ error: 'own-store' }, 403);
+  }
+
+  // Binds the key to this buyer, so a completed record can only ever be replayed back to them.
+  const owner = checkoutOwner(buyerEmail);
+  // Claim the key BEFORE any stock is reserved. A repeat submit that got this far
+  // would otherwise decrement stock a second time even if it were later stopped from
+  // charging — the replay has to short-circuit ahead of every side effect, not just
+  // the money one.
+  // A prefix only. The key is half of what it takes to replay a completed checkout
+  // (the buyer's email is the other half), so writing it whole into a journal the
+  // admin reads — and that a future export or support paste could carry further —
+  // would put a live token somewhere it has no reason to be. The prefix is still
+  // enough to correlate the three entries of one incident.
+  const keyForLog = `${idempotencyKey.slice(0, 8)}…`;
+
+  const claim = await claimCheckout(idempotencyKey, owner);
+  if (claim.status === 'conflict') {
+    // This key completed for someone else. Not a retry — either a guessed key or a collision, and
+    // the replay below would hand over that buyer's order references. Same generic shape as
+    // in_progress on purpose: the response must not confirm that the key exists.
+    await recordMoneyEvent({
+      type: 'duplicate_checkout_blocked',
+      actor: 'buyer',
+      detail: `idempotencyKey=${keyForLog}; presented by a different buyer than the one who completed it`,
+    });
+    return json({ error: 'checkout-in-progress' }, 409);
+  }
+  if (claim.status === 'replay') {
+    // The first attempt already succeeded; its response was just never received.
+    // Hand back the exact same result — same orders, same ref — so the buyer lands
+    // on their real confirmation page instead of paying again for it.
+    await recordMoneyEvent({
+      type: 'duplicate_checkout_blocked',
+      checkoutRef: claim.record.checkoutRef,
+      actor: 'buyer',
+      detail: `idempotencyKey=${keyForLog}; replayed ${claim.record.orderIds?.length ?? 0} order(s)`,
+    });
+    return json({ orderIds: claim.record.orderIds ?? [], checkoutRef: claim.record.checkoutRef, replayed: true });
+  }
+  if (claim.status === 'in_progress') {
+    // The first attempt is still at the gateway. Refusing is the safe answer: we
+    // cannot know yet whether it will charge, so we must not start a second one.
+    await recordMoneyEvent({
+      type: 'duplicate_checkout_blocked',
+      actor: 'buyer',
+      detail: `idempotencyKey=${keyForLog}; concurrent submit while the first was still in flight`,
+    });
+    return json({ error: 'checkout-in-progress' }, 409);
   }
 
   const orderItems: OrderItem[] = [];
@@ -104,6 +176,19 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // went through would be a false positive.
   const stockAlerts: { type: 'low_stock' | 'out_of_stock'; sellerId: string; storeSlug: string; storeName: string; productId: string; productName: string; stockAfter: number; selectedVariants?: Record<string, string> }[] = [];
 
+  // Every failure path from here on has to undo BOTH reservations this request made:
+  // the stock it decremented for earlier items in the same cart, and the idempotency
+  // claim it is holding (which would otherwise make the buyer's immediate retry wait
+  // out the pending TTL). Two of the "not found" checks below returned without
+  // restocking at all, so a multi-item cart whose second item resolved to a missing
+  // store left the first item's stock decremented against an order that never
+  // existed. One helper on every exit is what keeps that from coming back.
+  const abort = async (payload: Record<string, unknown>, status: number): Promise<Response> => {
+    for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+    await releaseCheckout(idempotencyKey);
+    return json(payload, status);
+  };
+
   for (const raw of items) {
     const item = raw as CartItemInput;
     const storeSlug   = typeof item.storeSlug   === 'string' ? item.storeSlug.trim()   : '';
@@ -111,33 +196,24 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     const qty         = typeof item.qty         === 'number' ? Math.floor(item.qty)    : 0;
 
     if (!storeSlug || !productSlug || qty <= 0) {
-      return json({ error: `Invalid item: storeSlug=${storeSlug} productSlug=${productSlug} qty=${qty}` }, 400);
+      return abort({ error: `Invalid item: storeSlug=${storeSlug} productSlug=${productSlug} qty=${qty}` }, 400);
     }
 
     // Tolerate a previous slug: if the seller renamed the store URL after this item entered the
     // cart, the client still sends the OLD slug — resolve it so the purchase never fails. Everything
     // downstream keys off store.slug (the current one) for consistency with the order records.
     const store = getStoreBySlugOrPrevious(storeSlug);
-    if (!store) return json({ error: `Store not found: ${storeSlug}` }, 400);
-    // Admin-blocked store (see admin-moderation.ts) — reject the whole
-    // checkout rather than silently drop the item, same as "not found". Rolls
-    // back stock already reserved for earlier items in this same cart (a
-    // multi-item order where an earlier item committed fine) — unlike the
-    // pre-existing "not found" checks around this one, a store/product going
-    // blocked *while a cart sits open* is a realistic mid-session admin
+    if (!store) return abort({ error: `Store not found: ${storeSlug}` }, 400);
+    // Admin-blocked store (see admin-moderation.ts) — reject the whole checkout
+    // rather than silently drop the item, same as "not found". A store or product
+    // going blocked *while a cart sits open* is a realistic mid-session admin
     // action, not just a hard-to-hit deleted-product race.
-    if (!isStoreVisible(store)) {
-      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
-      return json({ error: `Store not found: ${storeSlug}` }, 400);
-    }
+    if (!isStoreVisible(store)) return abort({ error: `Store not found: ${storeSlug}` }, 400);
 
     // Server-side price lookup — never trust client-sent prices
     const product = getProductBySlug(store.id, productSlug);
-    if (!product) return json({ error: `Product not found: ${productSlug}` }, 400);
-    if (!isProductVisible(product)) {
-      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
-      return json({ error: `Product not found: ${productSlug}` }, 400);
-    }
+    if (!product) return abort({ error: `Product not found: ${productSlug}` }, 400);
+    if (!isProductVisible(product)) return abort({ error: `Product not found: ${productSlug}` }, 400);
 
     const selectedVariants =
       item.selectedVariants && typeof item.selectedVariants === 'object' && !Array.isArray(item.selectedVariants)
@@ -149,8 +225,23 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // whole checkout instead of creating a partially-fulfillable order.
     const stockResult = await decrementStock(product.id, qty, selectedVariants);
     if (!stockResult.ok) {
-      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
-      return json({ error: `אזל המלאי: ${product.name}` }, 409);
+      // A code plus the identity of the line that failed and how many units are really
+      // left — not a prose sentence. This is the one rejection the buyer's page can
+      // CORRECT rather than merely report (clamp the quantity, drop a sold-out line,
+      // name the product), and it can only do that if it is told which line and what
+      // number. The count comes from `before`, read inside the same mutex-protected
+      // pass that refused the write, so it is the live figure and not a second read
+      // that a concurrent checkout could already have moved.
+      return abort({
+        error: 'out-of-stock',
+        outOfStock: {
+          storeSlug: store.slug,
+          productSlug: product.slug,
+          productName: product.name,
+          available: Math.max(0, stockResult.before),
+          ...(selectedVariants ? { selectedVariants } : {}),
+        },
+      }, 409);
     }
     decremented.push({ productId: product.id, qty, selectedVariants });
 
@@ -169,13 +260,22 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       stockAlerts.push({ type: 'low_stock', sellerId: store.sellerId, storeSlug: store.slug, storeName: store.name, productId: product.id, productName: product.name, stockAfter: stockResult.after, selectedVariants });
     }
 
+    // The charged price is derived server-side from the product AND its store's sale, exactly
+    // like the storefront derives the displayed one — never `product.price` (which is the
+    // pre-discount figure) and never the client's number. A sale that ended between page load
+    // and submit therefore charges full price, and one that started charges the lower one.
+    // Rounded to agorot at the point it becomes the charged price (lib/money.ts): a
+    // percent-discount price is a raw division, and letting that tail through means
+    // the line total, the subtotal and the amount handed to the gateway all carry it.
+    const unitPrice = roundMoney(effectivePrice(product, store.sale));
+
     orderItems.push({
       productId:   product.id,
       productName: product.name,
       productSlug: product.slug,
       storeSlug:   store.slug,
       storeName:   store.name,
-      price:       product.price,
+      price:       unitPrice,
       qty,
       image:       product.images?.[0],
       ...(selectedVariants ? { selectedVariants } : {}),
@@ -187,7 +287,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     if (!storeSubtotals[store.slug]) {
       storeSubtotals[store.slug] = { storeName: store.name, subtotal: 0, shipping: 0 };
     }
-    storeSubtotals[store.slug]!.subtotal += product.price * qty;
+    storeSubtotals[store.slug]!.subtotal = roundMoney(storeSubtotals[store.slug]!.subtotal + unitPrice * qty);
   }
 
   // Delivery method + shipping price per store — server-authoritative. The buyer's chosen
@@ -207,8 +307,6 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     totalShipping += data.shipping;
   }
 
-  const userId = getSellerSession(cookies);
-
   const buyerData = {
     ...(userId ? { buyerId: userId } : {}),
     buyerName:   buyerName.trim(),
@@ -224,29 +322,43 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // Shared reference for the buyer to identify the full purchase across all stores
   const checkoutRef = crypto.randomUUID().slice(0, 8).toUpperCase();
 
-  // Everything below only mutates in-memory data until it's written out (orders,
-  // notifications, the buyer's cart) — if any of it throws, the stock already
-  // reserved above must go back rather than sit decremented for an order that
-  // never actually got created.
+  const orderIds: string[] = [];
+  const createdOrders: Order[] = [];
+  // Flips the moment the order rows exist, and it is what the catch below reads.
+  // Before it: a throw means no purchase happened, so the reserved stock goes back.
+  // After it: the buyer HAS been charged and the orders are real, so restocking
+  // would put sold units back on the shelf and oversell them — a failure in the
+  // trailing steps (clearing the cart, analytics, confirmation mail) is not grounds
+  // for undoing a completed purchase. The old catch rolled back either way.
+  let committed = false;
+
   try {
     // Charge before committing any order. Today this is the mock provider (always
     // approves); at go-live the real gateway swaps in behind the same interface. A
     // decline rolls back the stock reserved above so no order exists for an unpaid cart.
     // NOTE: once a real provider charges here, a downstream throw after a SUCCESSFUL
     // charge will need a refund/void — add that alongside the real provider swap.
-    const grandTotal = Object.values(storeSubtotals).reduce((sum, d) => sum + d.subtotal + d.shipping, 0);
-    const payment = await paymentProvider.charge({ amount: grandTotal, checkoutRef, buyerEmail: buyerData.buyerEmail });
-    if (!payment.ok) {
-      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
-      return json({ error: payment.error ?? 'התשלום נכשל' }, 402);
-    }
+    const grandTotal = sumMoney(Object.values(storeSubtotals).flatMap((d) => [d.subtotal, d.shipping]));
+    // The key travels to the provider too, so the gateway's OWN de-duplication backs
+    // up ours: if our ledger write is lost between charging and recording, the retry
+    // still reaches a provider that recognises the key and refuses to charge twice.
+    const payment = await paymentProvider.charge({ amount: grandTotal, checkoutRef, buyerEmail: buyerData.buyerEmail, idempotencyKey });
+    // Journalled whether it succeeded or failed — a decline is exactly the kind of
+    // event that is invisible afterwards (no order row is left behind to show it
+    // happened) and exactly what someone asks about later.
+    await recordMoneyEvent({
+      type: 'payment_attempted',
+      checkoutRef,
+      amount: grandTotal,
+      actor: 'buyer',
+      detail: payment.ok ? `approved ref=${payment.paymentRef ?? '—'}` : `declined: ${payment.error ?? 'unknown'}`,
+    });
+    if (!payment.ok) return abort({ error: payment.error ?? 'התשלום נכשל' }, 402);
 
     // Create one order per store so each seller owns a separate, isolated order
-    const orderIds: string[] = [];
-    const createdOrders: Order[] = [];
     for (const [storeSlug, sub] of Object.entries(storeSubtotals)) {
       const storeItems = orderItems.filter((i) => i.storeSlug === storeSlug);
-      const storeTotalAmount = sub.subtotal + sub.shipping;
+      const storeTotalAmount = sumMoney([sub.subtotal, sub.shipping]);
       const storeOrder = createOrder({
         ...buyerData,
         checkoutRef,
@@ -259,6 +371,16 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       });
       orderIds.push(storeOrder.id);
       createdOrders.push(storeOrder);
+      await recordMoneyEvent({
+        type: 'order_created',
+        orderId: storeOrder.id,
+        checkoutRef,
+        storeSlug,
+        amount: storeTotalAmount,
+        to: 'paid',
+        actor: 'buyer',
+        detail: `${storeItems.length} item(s); paymentRef=${payment.paymentRef ?? '—'}`,
+      });
 
       const store = getStoreBySlug(storeSlug);
       if (store) {
@@ -274,6 +396,11 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         });
       }
     }
+
+    // The purchase is now real. Record the key's result before anything else can
+    // throw, so a retry replays these orders instead of buying them again.
+    committed = true;
+    await completeCheckout(idempotencyKey, checkoutRef, orderIds, owner);
 
     for (const alert of stockAlerts) {
       const label = describeStockAlertProduct(alert.productName, alert.selectedVariants);
@@ -332,7 +459,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
     return json({ orderIds, checkoutRef }, 201);
   } catch (err) {
-    for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+    if (!committed) {
+      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+      await releaseCheckout(idempotencyKey);
+    }
     const storeSlugs = Object.keys(storeSubtotals);
     logError({
       source: 'server',
@@ -345,8 +475,14 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       actorLabel: typeof buyerEmail === 'string' ? buyerEmail : undefined,
       storeSlug: storeSlugs.length ? storeSlugs.join(', ') : undefined,
       storeName: storeSlugs.length ? storeSlugs.map((s) => storeSubtotals[s]!.storeName).join(', ') : undefined,
-      resolutionHint: 'כשל בביצוע ההזמנה; המלאי שוחזר אוטומטית. יש לנסות לבצע את ההזמנה שוב — אם התקלה חוזרת, יש לפנות לתמיכה עם מספר האסמכתא.',
+      resolutionHint: committed
+        ? 'ההזמנה נוצרה והתשלום עבר; הכשל היה בשלב שאחרי (ניקוי עגלה / מייל אישור). אין לבטל את ההזמנה — יש לבדוק שהמייל נשלח.'
+        : 'כשל בביצוע ההזמנה; המלאי שוחזר אוטומטית. יש לנסות לבצע את ההזמנה שוב — אם התקלה חוזרת, יש לפנות לתמיכה עם מספר האסמכתא.',
     });
+    // A post-commit failure still returns the successful response: the buyer paid
+    // and the orders exist, so sending them an error would invite exactly the
+    // duplicate purchase this endpoint now guards against.
+    if (committed) return json({ orderIds, checkoutRef }, 201);
     return json({ error: 'Checkout failed, please try again' }, 500);
   }
 }

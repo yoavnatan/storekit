@@ -8,6 +8,7 @@ import {
   type TopProduct,
 } from './seller-performance.js';
 import { blendedCommissionRate, commissionPercentForTier } from './pricing.js';
+import { roundMoney } from './money.js';
 
 // Platform-wide ("app-wide") twin of seller-performance.ts's per-store summary,
 // for the ADMIN performance tab. It does NOT re-implement any of the bucketing/
@@ -245,11 +246,17 @@ export function buildPlatformPerformance(
     });
   }
 
+  // Round every summed amount once, here, before anything sorts or divides by it —
+  // each addend arrived already rounded, but the running totals are float sums.
+  totalRevenue = roundMoney(totalRevenue);
+  for (const p of points) p.revenue = roundMoney(p.revenue);
+  for (const entry of productMap.values()) entry.revenue = roundMoney(entry.revenue);
+
   const sortedProducts = [...productMap.values()].sort((a, b) => b.revenue - a.revenue);
   const topProducts = topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts;
 
-  const platformCommission = Math.round(totalCommission * 100) / 100;
-  const netProfit = Math.round((totalRevenue - platformCommission) * 100) / 100;
+  const platformCommission = roundMoney(totalCommission);
+  const netProfit = roundMoney(totalRevenue - platformCommission);
   // Conversion = orders / unique visitors (matches the seller tab's definition),
   // falling back to total views when no visitor ids exist (legacy/demo data).
   const conversionRate = totalUniqueVisitors > 0
@@ -261,7 +268,7 @@ export function buildPlatformPerformance(
     points,
     totalRevenue,
     totalOrders,
-    avgOrderValue: totalOrders > 0 ? Math.round((totalRevenue / totalOrders) * 100) / 100 : 0,
+    avgOrderValue: totalOrders > 0 ? roundMoney(totalRevenue / totalOrders) : 0,
     totalViews,
     totalUniqueVisitors,
     conversionRate,

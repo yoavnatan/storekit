@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { APIContext } from 'astro';
 import type { UserCartData } from '../src/lib/user-carts.js';
 
-const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number; blocked?: boolean; hidden?: boolean }> = {
+type TestDiscount = { type: 'percent' | 'amount'; value: number; startsAt?: string; endsAt?: string };
+const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number; blocked?: boolean; hidden?: boolean; discount?: TestDiscount }> = {
   widget: { id: 'p1', slug: 'widget', name: 'Widget', price: 50, images: ['w.png'], stock: 100 },
 };
 
@@ -15,7 +16,7 @@ const decrementStock = vi.fn(async (id: string, qty: number, _selectedVariants?:
 });
 const restockProduct = vi.fn(async (_id: string, _qty: number, _selectedVariants?: Record<string, string>): Promise<StockAdjustResult> => ({ ok: true, before: 0, after: 0 }));
 
-const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; address?: string; shipping?: { selfPickup?: boolean }; blocked?: boolean; demo?: boolean; previousSlugs?: string[] }> = {
+const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; address?: string; shipping?: { selfPickup?: boolean }; blocked?: boolean; demo?: boolean; previousSlugs?: string[]; sale?: { active: boolean; title: string; percent?: number } }> = {
   'test-store': {
     id: 's1',
     slug: 'test-store',
@@ -59,6 +60,38 @@ vi.mock('../src/lib/user-carts.js', () => ({
 // entry that looked like a real production incident.
 vi.mock('../src/lib/error-log.js', () => ({ logError: (entry: Record<string, unknown>) => logError(entry) }));
 
+// The idempotency ledger and the money log both fs.writeFileSync into the real dev `data/`
+// directory (same reasoning as error-log below), and the ledger is additionally STATEFUL across
+// requests — a leftover `complete` record would replay a later test's checkout instead of running
+// it. Replaced with an in-memory ledger that keeps the real claim/replay/release semantics, so the
+// endpoint's duplicate-submit branches stay exercised rather than stubbed away.
+const ledger = new Map<string, { status: 'pending' | 'complete'; owner?: string; checkoutRef?: string; orderIds?: string[] }>();
+vi.mock('../src/lib/checkout-idempotency.js', () => ({
+  isValidIdempotencyKey: (key: unknown): boolean => typeof key === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(key),
+  // Mirrors the real ownership rule too — a mock that ignored `owner` would let a route that
+  // forgot to pass it, or that fell through on a conflict, pass every test here.
+  checkoutOwner: (buyerEmail: string): string => `owner:${buyerEmail.trim().toLowerCase()}`,
+  claimCheckout: async (key: string, owner: string) => {
+    const existing = ledger.get(key);
+    if (existing?.status === 'complete') {
+      if (existing.owner && existing.owner !== owner) return { status: 'conflict' };
+      return { status: 'replay', record: { key, ...existing } };
+    }
+    if (existing?.status === 'pending') return { status: 'in_progress' };
+    ledger.set(key, { status: 'pending', owner });
+    return { status: 'claimed' };
+  },
+  completeCheckout: async (key: string, checkoutRef: string, orderIds: string[], owner: string) => {
+    ledger.set(key, { status: 'complete', owner, checkoutRef, orderIds });
+  },
+  releaseCheckout: async (key: string) => {
+    if (ledger.get(key)?.status === 'pending') ledger.delete(key);
+  },
+}));
+vi.mock('../src/lib/money-events.js', () => ({
+  recordMoneyEvent: async (event: Record<string, unknown>) => event,
+}));
+
 // Same reasoning as error-log above: the real recordAnalyticsEvent does an
 // fs.writeFileSync into the dev data/analytics-events.json on every purchase, so
 // stub it out — the funnel-capture side effect isn't what these tests exercise.
@@ -66,10 +99,14 @@ vi.mock('../src/lib/analytics.js', () => ({ recordAnalyticsEvent: () => {} }));
 
 const { POST } = await import('../src/pages/api/checkout.js');
 
+// Every request carries its own key: the endpoint refuses a submit without one (400), and two
+// requests sharing a key are a deliberate duplicate — which is a different test, not the default.
+// Spread last so a test that WANTS to replay a key can pass its own.
+let keySeq = 0;
 function makeContext(body: unknown): APIContext {
   const request = new Request('http://localhost/api/checkout', {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify({ idempotencyKey: `test-key-${String(++keySeq).padStart(8, '0')}`, ...(body as Record<string, unknown>) }),
   });
   const cookies = { get: () => undefined } as unknown as APIContext['cookies'];
   return { request, cookies } as APIContext;
@@ -84,6 +121,7 @@ const validBuyer = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ledger.clear();
   getSellerSession.mockReturnValue(null);
 });
 
@@ -98,6 +136,72 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     // real price (50) + default platform courier rate (30), never the spoofed price of 1
     expect(order.storeSubtotals['test-store']!.subtotal).toBe(50);
     expect(order.totalAmount).toBe(80);
+  });
+
+  // A discount is a price the SERVER decides, exactly like the base price: the buyer is charged
+  // the marked-down figure whether or not the client knew about it, and a sale that has ended
+  // between page load and submit charges full price again.
+  it('charges the discounted price when the product is marked down, without the client sending it', async () => {
+    PRODUCTS.widget!.discount = { type: 'percent', value: 20 };
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 2, price: 50 }],
+      }));
+      expect(res.status).toBe(201);
+      const order = createOrder.mock.calls[0]![0] as { totalAmount: number; items: { price: number }[]; storeSubtotals: Record<string, { subtotal: number }> };
+      expect(order.items[0]!.price).toBe(40);
+      expect(order.storeSubtotals['test-store']!.subtotal).toBe(80);
+      expect(order.totalAmount).toBe(110); // 80 + 30 courier
+    } finally {
+      delete PRODUCTS.widget!.discount;
+    }
+  });
+
+  it('ignores a discount whose date window has already closed — full price is charged', async () => {
+    PRODUCTS.widget!.discount = { type: 'percent', value: 50, startsAt: '2020-01-01', endsAt: '2020-01-31' };
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotal: number }> };
+      expect(order.storeSubtotals['test-store']!.subtotal).toBe(50);
+    } finally {
+      delete PRODUCTS.widget!.discount;
+    }
+  });
+
+  it('applies the STORE-wide sale to a product with no discount of its own', async () => {
+    STORES['test-store']!.sale = { active: true, title: 'End of season', percent: 10 };
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotal: number }> };
+      expect(order.storeSubtotals['test-store']!.subtotal).toBe(45);
+    } finally {
+      delete STORES['test-store']!.sale;
+    }
+  });
+
+  it('never stacks, and charges the better of the two — here the store sale beats the product\'s own', async () => {
+    PRODUCTS.widget!.discount = { type: 'amount', value: 5 };            // 50 → 45
+    STORES['test-store']!.sale = { active: true, title: 'End of season', percent: 50 }; // 50 → 25
+    try {
+      await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotal: number }> };
+      // 25 — not 45 (the banner promised 50% off, so the buyer can't be charged more than that)
+      // and not 22.5 (the two discounts are never added together).
+      expect(order.storeSubtotals['test-store']!.subtotal).toBe(25);
+    } finally {
+      delete PRODUCTS.widget!.discount;
+      delete STORES['test-store']!.sale;
+    }
   });
 
   it('SEO-safe rename: a cart item sent with the store\'s OLD slug still checks out (resolves via previousSlugs, records the current slug)', async () => {
@@ -221,6 +325,61 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     }
   });
 
+  it('refuses checkout when the logged-in seller owns the store he is buying from', async () => {
+    // A seller browsing his own storefront sees live buy buttons. Completing the purchase
+    // would create a real order — stock, commission, mail, the units behind the
+    // popular/bestseller ad label, and the first sale that starts his monthly fee. The
+    // storefront also refuses it client-side, but this endpoint is the guarantee.
+    getSellerSession.mockReturnValue('seller-1'); // STORES['test-store'].sellerId
+    const res = await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'own-store' });
+    expect(createOrder).not.toHaveBeenCalled();
+    // Pre-pass, like the demo guard — no stock moved, so nothing to roll back.
+    expect(decrementStock).not.toHaveBeenCalled();
+    expect(restockProduct).not.toHaveBeenCalled();
+  });
+
+  it('refuses the WHOLE cart when only one of its stores belongs to the logged-in seller', async () => {
+    // Otherwise the self-dealt item would ride along inside an otherwise legitimate order.
+    STORES['other-store'] = { id: 's3', slug: 'other-store', name: 'Other', sellerId: 'seller-9' };
+    getSellerSession.mockReturnValue('seller-1');
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [
+          { storeSlug: 'other-store', productSlug: 'widget', qty: 1 },
+          { storeSlug: 'test-store', productSlug: 'widget', qty: 1 },
+        ],
+      }));
+      expect(res.status).toBe(403);
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(decrementStock).not.toHaveBeenCalled();
+    } finally {
+      delete STORES['other-store'];
+    }
+  });
+
+  it('lets a logged-in seller buy from a store he does NOT own', async () => {
+    // The block is self-dealing, not "sellers may not shop" — a seller is a buyer
+    // everywhere else in the mall.
+    STORES['other-store'] = { id: 's3', slug: 'other-store', name: 'Other', sellerId: 'seller-9' };
+    getSellerSession.mockReturnValue('seller-1');
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'other-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(res.status).toBe(201);
+      expect(createOrder).toHaveBeenCalled();
+    } finally {
+      delete STORES['other-store'];
+    }
+  });
+
   it('rejects checkout for an admin-blocked product even when its store is fine', async () => {
     PRODUCTS.widget!.blocked = true;
     try {
@@ -319,6 +478,33 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     }));
     expect(res.status).toBe(409);
     expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  // The buyer's page can only correct itself — clamp the quantity, drop a sold-out line, name the
+  // product — from these fields. Without them the refusal degrades to a generic "try again" that
+  // walks the buyer into the identical refusal forever, so the payload's shape is the contract.
+  it('reports WHICH line ran out and how many units are really left, as a machine-readable code', async () => {
+    decrementStock.mockResolvedValueOnce({ ok: false, before: 2, after: 2 });
+    const res = await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 5 }],
+    }));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'out-of-stock',
+      outOfStock: { storeSlug: 'test-store', productSlug: 'widget', productName: 'Widget', available: 2 },
+    });
+  });
+
+  it('names the exact variant combo that ran out, so a multi-variant line is corrected and not the whole product', async () => {
+    decrementStock.mockResolvedValueOnce({ ok: false, before: 0, after: 0 });
+    const res = await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1, selectedVariants: { color: 'red' } }],
+    }));
+    const body = await res.json() as { outOfStock: { available: number; selectedVariants?: Record<string, string> } };
+    expect(body.outOfStock.selectedVariants).toEqual({ color: 'red' });
+    expect(body.outOfStock.available).toBe(0);
   });
 
   it('notifies the seller once stock crosses the low-stock threshold', async () => {
@@ -500,5 +686,106 @@ describe('POST /api/checkout — server-side price re-validation', () => {
       wishlist: [],
       favoriteStores: ['other-store'], // untouched by checkout
     });
+  });
+});
+
+describe('a declined payment leaves nothing behind', () => {
+  // Until the mock provider learned to decline (MOCK_DECLINE_MARKER in lib/payment.ts)
+  // this entire branch had never executed outside a unit test — the provider approved
+  // every charge, so the rollback ran only in production, on the worst day, untried.
+  const declineBuyer = { ...validBuyer, buyerEmail: 'dana+decline@example.com' };
+
+  it('refuses the checkout with the gateway\'s reason', async () => {
+    const res = await POST(makeContext({
+      ...declineBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 2 }],
+    }));
+    expect(res.status).toBe(402);
+    expect(((await res.json()) as { error?: string }).error).toMatch(/נדחה/);
+  });
+
+  it('creates no order at all', async () => {
+    // The rule the reports depend on: a failed charge must not leave a row that any
+    // revenue sum could later pick up.
+    await POST(makeContext({
+      ...declineBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 2 }],
+    }));
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('returns every reserved unit to stock', async () => {
+    // Stock is decremented item-by-item as the cart validates, BEFORE the charge.
+    // A decline that skipped this would quietly remove inventory that was never sold.
+    await POST(makeContext({
+      ...declineBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 2 }],
+    }));
+    expect(restockProduct).toHaveBeenCalledWith('p1', 2, undefined);
+  });
+
+  it('releases the idempotency claim so the buyer can retry immediately', async () => {
+    // A declined card is the one case where the buyer SHOULD press pay again. Holding
+    // the claim would make our own double-charge guard block the legitimate retry
+    // until its TTL expired.
+    const key = 'test-key-decline-retry-0001';
+    const declined = await POST(makeContext({
+      ...declineBuyer, idempotencyKey: key,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(declined.status).toBe(402);
+
+    // Same key, good card: must go through rather than 409 or replay the failure.
+    const retried = await POST(makeContext({
+      ...validBuyer, idempotencyKey: key,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(retried.status).toBe(201);
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('the decline trigger is a dev affordance, not a production one', async () => {
+    // A production build must never be one crafted email away from a free "declined"
+    // checkout. The marker is gated on import.meta.env.DEV.
+    const { MOCK_DECLINE_MARKER } = await import('../src/lib/payment.js');
+    const src = await import('node:fs').then((fs) =>
+      fs.readFileSync(new URL('../src/lib/payment.ts', import.meta.url), 'utf8'));
+    expect(src).toContain('import.meta.env.DEV');
+    expect(declineBuyer.buyerEmail).toContain(MOCK_DECLINE_MARKER);
+  });
+});
+
+describe('a completed idempotency key belongs to the buyer who completed it', () => {
+  it('replays to that buyer, and refuses anyone else the order references', async () => {
+    // The replay response hands back orderIds and checkoutRef. Keyed on nothing but the key, it
+    // would hand them to whoever presented one — so the key alone would authorise reading another
+    // buyer's order references.
+    const key = 'test-key-owner-binding-001';
+    const first = await POST(makeContext({
+      ...validBuyer, idempotencyKey: key,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(first.status).toBe(201);
+
+    // Same buyer, same key: the lost-response retry still works.
+    const retry = await POST(makeContext({
+      ...validBuyer, idempotencyKey: key,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(retry.status).toBe(200);
+    expect((await retry.json() as { replayed?: boolean }).replayed).toBe(true);
+
+    // Someone else with the same key: refused, and the body carries no orders or ref.
+    const other = await POST(makeContext({
+      ...validBuyer, buyerEmail: 'someone.else@example.com', idempotencyKey: key,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(other.status).toBe(409);
+    const body = await other.json() as Record<string, unknown>;
+    expect(body).not.toHaveProperty('orderIds');
+    expect(body).not.toHaveProperty('checkoutRef');
+
+    // And the refusal charged nothing and created nothing.
+    expect(createOrder).toHaveBeenCalledTimes(1);
   });
 });

@@ -17,6 +17,8 @@
  *  import from anywhere (client bundles included).
  */
 
+import { percentOf } from './money.js';
+
 export type SellerTierId = 'starter' | 'growth' | 'pro' | 'enterprise';
 
 export interface SellerTier {
@@ -84,7 +86,7 @@ export const AD_PLATFORM_MARGIN_PERCENT = 15;
 
 /** Platform income on `spend` ILS of real ad spend — the margin only, not the spend. */
 export function adMarginForSpend(spend: number): number {
-  return Math.round(spend * (AD_PLATFORM_MARGIN_PERCENT / 100) * 100) / 100;
+  return percentOf(spend, AD_PLATFORM_MARGIN_PERCENT);
 }
 
 /** The blended rate a mixed set of sellers actually produced, as a percent of revenue.

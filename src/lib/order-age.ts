@@ -14,13 +14,20 @@
 // Pure + isomorphic (no node deps) so the same result renders SSR and inside
 // the client card builder — import from both.
 
+import { CANCELLABLE_FROM, SHIPPING_STATUS_RULES, type ShippingStatus } from './order-status-rules.js';
+
 export type OrderAgeLevel = 'fresh' | 'aging' | 'overdue';
 
 // States where the seller still owes a shipping action → these escalate by age.
-// 'shipped'/'delivered'/'cancelled' are done from the seller's side.
-const OWES_ACTION: readonly string[] = ['pending', 'processing', 'ready'];
-// Terminal for the chip — nothing to nudge.
-const NO_CHIP: readonly string[] = ['delivered', 'cancelled'];
+// Derived from the status table (order-status-rules.ts) rather than re-listed: a
+// status the seller can still cancel from is, by definition, one they haven't
+// dispatched yet. Re-listing it here meant a new status would silently never
+// escalate — it simply wouldn't appear in an array nobody remembered to update.
+const OWES_ACTION: readonly string[] = CANCELLABLE_FROM;
+// Terminal for the chip — nothing to nudge. Either the parcel arrived or the order
+// is dead; both are "the seller has nothing left to do".
+const NO_CHIP: readonly string[] = (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[])
+  .filter((s) => s === 'delivered' || SHIPPING_STATUS_RULES[s].terminal);
 
 // Untouched past a day → amber; past three days → red/urgent. Tuned for the
 // "ship within 1–2 business days" expectation of a marketplace order.

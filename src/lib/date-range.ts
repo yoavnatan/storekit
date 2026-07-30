@@ -4,6 +4,8 @@
 // a client-only closure inside a Session-A file) — this is the shared home for
 // the same idea, used by the ad SSR panel, the ad API, and the picker client.
 
+import { businessDayISO, businessMonthStartISO, calendarDayISO } from './business-day.js';
+
 export type AdRangePreset = 'today' | '7d' | '30d' | 'thisMonth' | 'custom' | 'lifetime';
 export const AD_RANGE_PRESETS: readonly AdRangePreset[] = ['today', '7d', '30d', 'thisMonth', 'custom', 'lifetime'];
 
@@ -20,6 +22,15 @@ function parseISO(iso: string): Date {
   return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1);
 }
 
+/** Shift a 'YYYY-MM-DD' by whole days. Pure calendar arithmetic done in UTC — the
+ *  input carries no time-of-day, so there is no local midnight for a DST change to
+ *  move and the result is the same in every timezone. */
+export function addDaysISO(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const shifted = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days));
+  return calendarDayISO(shifted);
+}
+
 /** Inclusive whole-day count between two ISO dates (from ≤ to). Min 1. */
 export function daysInRangeInclusive(fromISO: string, toISO: string): number {
   const ms = parseISO(toISO).getTime() - parseISO(fromISO).getTime();
@@ -29,16 +40,19 @@ export function daysInRangeInclusive(fromISO: string, toISO: string): number {
 /** Resolve a preset to a concrete {from,to}. `custom` returns null (caller supplies
  *  the dates). `today` param is injectable for deterministic tests. */
 export function presetRange(preset: AdRangePreset, today: Date = new Date()): { from: string; to: string } | null {
-  const to = toISODate(today);
+  // "Today" is the BUSINESS day (business-day.ts), not the runtime's — on a
+  // production server the runtime's local calendar is UTC, which rolls the date
+  // over at 02:00/03:00 Israel time and would hand back the wrong day to a seller
+  // checking their numbers late at night. Every other bound below is derived from
+  // this string by calendar arithmetic, so the whole range stays on one calendar.
+  const to = businessDayISO(today);
   if (preset === 'today') return { from: to, to };
   if (preset === '7d' || preset === '30d') {
     const days = preset === '7d' ? 7 : 30;
-    const from = new Date(today);
-    from.setDate(from.getDate() - (days - 1));
-    return { from: toISODate(from), to };
+    return { from: addDaysISO(to, -(days - 1)), to };
   }
   if (preset === 'thisMonth') {
-    return { from: toISODate(new Date(today.getFullYear(), today.getMonth(), 1)), to };
+    return { from: businessMonthStartISO(to), to };
   }
   // custom → caller supplies dates. lifetime → NOT a shared window: each campaign
   // reports over its own run period (ad-metrics.ts#campaignLifetimeStats), so

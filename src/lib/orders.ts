@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type { DeliveryMethod } from './shipping.js';
+import { orderCountsAsRevenue } from './order-status-rules.js';
 
 const ORDERS_PATH = path.join(process.cwd(), 'data/orders.json');
 
@@ -60,6 +61,33 @@ export interface Order {
 }
 
 /** This store's private notes on an order as a list, coercing legacy single-string data. */
+/**
+ * Does this order count toward money actually earned?
+ *
+ * THE one predicate for revenue/GMV — seller performance and the admin platform
+ * stats both go through it, because they drifted apart exactly once and the
+ * result was money reported that no longer existed.
+ *
+ * `paymentStatus === 'paid'` alone is not the question. A cancellation
+ * deliberately leaves `paymentStatus` at 'paid' (the charge really did happen;
+ * the refund is a separate event) and moves `shippingStatus` to 'cancelled',
+ * restocking the items. So a cancelled order stayed inside every revenue sum:
+ * the seller's Performance tab and the admin's GMV/commission split would both
+ * keep reporting a sale whose stock had already gone back on the shelf. Nobody
+ * had cancelled a paid order yet in the data, which is the only reason it hadn't
+ * surfaced — it was waiting for the first real one.
+ *
+ * If a partial-refund state is ever added, it belongs here too, not at a call site.
+ *
+ * The rule itself now lives in order-status-rules.ts, as one row per status in a
+ * table with a column per consequence — so a new status cannot be added without
+ * answering "does this count as revenue?" alongside every other question it raises.
+ * This stays the name the rest of the codebase calls.
+ */
+export function countsAsRevenue(o: Pick<Order, 'paymentStatus' | 'shippingStatus'>): boolean {
+  return orderCountsAsRevenue(o);
+}
+
 export function orderStoreNotes(o: Order, storeSlug: string): string[] {
   const v = o.sellerNotes?.[storeSlug] as unknown;
   if (Array.isArray(v)) return v.filter((s): s is string => typeof s === 'string' && s.trim() !== '');
@@ -138,17 +166,34 @@ export function getOrdersBySellerStores(storeSlugs: string[]): Order[] {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-// productId → total units ever ordered (all payment/shipping statuses — a
-// "how popular is this product" signal for the seller, not a fulfillment one).
-export function getPurchasedCountsByStoreSlug(storeSlug: string): Record<string, number> {
+// productId → units actually SOLD (countsAsRevenue orders only — see the note
+// inside). A "how popular is this product" signal for the seller, not a
+// fulfillment one, but popularity measured on sales that stuck.
+/** Pure half of `getPurchasedCountsByStoreSlug` — takes the orders instead of
+ *  reading them, matching how seller-performance.ts / admin-stats.ts are built
+ *  (pure, pre-fetched data). Exported so units can be tested on a real mixed
+ *  order list without mocking the filesystem. */
+export function purchasedCountsFrom(orders: Order[], storeSlug: string): Record<string, number> {
   const counts: Record<string, number> = {};
-  for (const o of readOrders()) {
+  for (const o of orders) {
+    // "Units sold" means sold: same rule as revenue, for the same reason. This
+    // counted EVERY order — payment pending, payment failed, and cancelled
+    // (already restocked) alike — and it is not just a dashboard column. It also
+    // feeds the public storefront's popularity ordering AND `custom_label_1` in
+    // the Merchant/Meta feed (product-labels.ts → performanceTier), where a
+    // product inflated to "bestseller" by failed and cancelled orders pulls real
+    // campaign budget toward itself.
+    if (!countsAsRevenue(o)) continue;
     for (const item of o.items) {
       if (item.storeSlug !== storeSlug) continue;
       counts[item.productId] = (counts[item.productId] ?? 0) + item.qty;
     }
   }
   return counts;
+}
+
+export function getPurchasedCountsByStoreSlug(storeSlug: string): Record<string, number> {
+  return purchasedCountsFrom(readOrders(), storeSlug);
 }
 
 export function updateOrder(id: string, updates: Partial<Omit<Order, 'id' | 'createdAt'>>): Order | null {

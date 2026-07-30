@@ -9,6 +9,11 @@ import { restockProduct } from '../../../lib/store-products.js';
 import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../../lib/seller-orders-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
 import type { Order } from '../../../lib/orders.js';
+import { orderNetForStore } from '../../../lib/admin-stats.js';
+import { recordMoneyEvent } from '../../../lib/money-events.js';
+import { roundMoney, sumMoney, percentOf } from '../../../lib/money.js';
+import { SHIPPING_STATUS_RULES, canTransition, orderHoldsStock, type ShippingStatus } from '../../../lib/order-status-rules.js';
+import { isValidEmail } from '../../../lib/email-address.js';
 
 // Never ship the whole per-store sellerNotes map to the client — on a multi-store
 // order that would expose another store's seller's private notes. Replace it with
@@ -85,10 +90,9 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   // Current slug — orders migrate to it on rename; a client may still send an old (cached) slug.
   const storeSlug = store.slug;
 
-  const validStatuses = ['pending', 'processing', 'ready', 'shipped', 'delivered', 'cancelled'];
-  // A cancellation may only happen before the parcel is on its way — restocking
-  // an order that's already shipped/delivered would inflate inventory.
-  const CANCELLABLE_FROM = ['pending', 'processing', 'ready'];
+  // Derived from the status table rather than re-listed here, so this endpoint can
+  // never accept a status the rules don't describe (or reject one they do).
+  const validStatuses = Object.keys(SHIPPING_STATUS_RULES);
   const updates: Record<string, unknown> = {};
 
   if (typeof shippingStatus === 'string' && validStatuses.includes(shippingStatus)) {
@@ -101,7 +105,11 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     updates['buyerName'] = buyerName.trim();
   }
   if (typeof buyerEmail === 'string' && buyerEmail.trim()) {
-    updates['buyerEmail'] = buyerEmail.trim();
+    // Validated, not just trimmed: this field IS the buyer's notification address, so a typo saved
+    // here silently stops every future order email to them. Reject rather than store it.
+    const trimmed = buyerEmail.trim().toLowerCase();
+    if (!isValidEmail(trimmed)) return json({ error: 'Invalid buyerEmail' }, 400);
+    updates['buyerEmail'] = trimmed;
   }
   if (typeof buyerPhone === 'string') {
     updates['buyerPhone'] = buyerPhone.trim();
@@ -147,7 +155,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     const newSubtotals = { ...original.storeSubtotals };
     if (newSubtotals[storeSlug]) {
       const storeItems = newItems.filter((i) => i.storeSlug === storeSlug);
-      const subtotal   = storeItems.reduce((s, i) => s + i.price * i.qty, 0);
+      const subtotal   = sumMoney(storeItems.map((i) => i.price * i.qty));
       const shipping   = typeof shippingOverride === 'number' && shippingOverride >= 0
         ? shippingOverride
         : (newSubtotals[storeSlug]!.shipping);
@@ -158,20 +166,47 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
         const dtype = d.type === 'percent' || d.type === 'amount' ? d.type : undefined;
         const dval  = typeof d.value === 'number' && d.value >= 0 ? d.value : 0;
         if (dtype && dval > 0) {
-          const base    = subtotal + shipping;
-          const applied = dtype === 'percent' ? Math.min(base * dval / 100, base) : Math.min(dval, base);
-          discountEntry = { type: dtype, value: dval, applied: Math.round(applied * 100) / 100 };
+          // Discounted against the SUBTOTAL, never subtotal + shipping. Two reasons,
+          // and the second one was a live bug:
+          //   1. Shipping is the platform's rate, not the seller's margin
+          //      (AI_INSTRUCTIONS.md → shipping model) — a seller giving away goods
+          //      must not be giving away the carrier's fee too.
+          //   2. Revenue is read as `subtotal − discount` (admin-stats.ts
+          //      #orderNetForStore), which excludes shipping. Discounting against a
+          //      base that INCLUDED shipping meant a 100% discount produced
+          //      `subtotal − (subtotal + shipping)` = NEGATIVE revenue for that
+          //      store, dragging the seller's chart, the platform GMV and the
+          //      commission split below zero. Found by tests/reporting-fuzz.test.ts.
+          const base    = subtotal;
+          const applied = dtype === 'percent' ? Math.min(percentOf(base, dval), base) : Math.min(dval, base);
+          discountEntry = { type: dtype, value: dval, applied: roundMoney(applied) };
         }
       } else if (discount === null) {
+        // An explicit clear.
         discountEntry = undefined;
+      } else {
+        // Not mentioned in this request at all — keep the store's existing discount rather
+        // than dropping it. Silently wiping money the seller never touched is exactly what
+        // a partial update must not do, and the caller may legitimately be sending only the
+        // fields it changed (a second tab editing the same order — see the modal's payload).
+        // Re-applied against the new base, since items or shipping may have just moved.
+        const existing = newSubtotals[storeSlug]!.discount;
+        if (existing) {
+          // Same base as the branch above — see its comment.
+          const base = subtotal;
+          const applied = existing.type === 'percent'
+            ? Math.min(percentOf(base, existing.value), base)
+            : Math.min(existing.value, base);
+          discountEntry = { ...existing, applied: roundMoney(applied) };
+        }
       }
 
       newSubtotals[storeSlug] = { ...newSubtotals[storeSlug]!, subtotal, shipping, discount: discountEntry };
     }
 
-    const totalAmount = Object.values(newSubtotals).reduce(
-      (s, st) => s + st.subtotal + st.shipping - (st.discount?.applied ?? 0), 0
-    );
+    const totalAmount = sumMoney(Object.values(newSubtotals).flatMap(
+      (st) => [st.subtotal, st.shipping, -(st.discount?.applied ?? 0)]
+    ));
 
     updates['items'] = newItems;
     updates['storeSubtotals'] = newSubtotals;
@@ -185,29 +220,65 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   // Capture the pre-change status so the automation layer can tell whether the
   // shipping status actually moved (read only when a status change is in play).
   const changingStatus = typeof updates['shippingStatus'] === 'string';
-  const prevStatus = changingStatus ? (getOrderById(orderId)?.shippingStatus ?? '') : '';
+  const before = getOrderById(orderId);
+  const prevStatus = changingStatus ? (before?.shippingStatus ?? '') : '';
+  const prevNet = before ? orderNetForStore(before, storeSlug) : 0;
 
   if (changingStatus && prevStatus) {
-    // 'cancelled' is terminal — no status change out of it (the stock has been
-    // returned; re-activating would ship an order whose units are gone).
-    if (prevStatus === 'cancelled' && updates['shippingStatus'] !== 'cancelled') {
-      return json({ error: 'Order is cancelled and cannot change status' }, 409);
-    }
-    // A cancellation is only valid before the parcel is on its way.
-    if (updates['shippingStatus'] === 'cancelled' && !CANCELLABLE_FROM.includes(prevStatus)) {
-      return json({ error: 'Order can no longer be cancelled' }, 409);
-    }
+    // Both transition rules come from the status table (lib/order-status-rules.ts):
+    // 'cancelled' is terminal because the stock is already back on the shelf, and a
+    // cancellation is only valid before the parcel is moving. Asking the table means
+    // a future status inherits the right answer instead of needing another `if` here.
+    const verdict = canTransition(prevStatus as ShippingStatus, updates['shippingStatus'] as ShippingStatus);
+    if (!verdict.ok) return json({ error: verdict.reason }, 409);
   }
 
   const updated = updateOrder(orderId, updates as Parameters<typeof updateOrder>[1]);
   if (!updated) return json({ error: 'Order not found' }, 404);
 
+  // Journal every money-relevant mutation before acting on it (lib/money-events.ts).
+  // A status move is a money event even though no amount changes hands: 'cancelled'
+  // is what takes an order OUT of every revenue sum while leaving paymentStatus at
+  // 'paid', so without this entry there is no record of why a seller's reported
+  // revenue dropped between two views of the same period.
   if (prevStatus && updated.shippingStatus !== prevStatus) {
-    // Cancelling returns every reserved unit to stock. Each order is single-store
-    // (checkout creates one order per store), so all items belong to this seller —
-    // safe to restock the lot. Guarded by the prev!==new check above, so a repeat
-    // request can't double-restock.
-    if (updated.shippingStatus === 'cancelled') {
+    await recordMoneyEvent({
+      type: 'shipping_status_changed',
+      orderId,
+      checkoutRef: updated.checkoutRef,
+      storeSlug,
+      amount: orderNetForStore(updated, storeSlug),
+      from: prevStatus,
+      to: updated.shippingStatus,
+      actor: sellerId,
+      detail: !orderHoldsStock(updated)
+        ? 'cancelled — items restocked, order leaves every revenue sum (countsAsRevenue)'
+        : undefined,
+    });
+  }
+  const newNet = orderNetForStore(updated, storeSlug);
+  if (before && newNet !== prevNet) {
+    await recordMoneyEvent({
+      type: 'order_discount_changed',
+      orderId,
+      checkoutRef: updated.checkoutRef,
+      storeSlug,
+      amount: newNet,
+      from: String(prevNet),
+      to: String(newNet),
+      actor: sellerId,
+      detail: 'seller edited items / shipping / discount on this order',
+    });
+  }
+
+  if (prevStatus && updated.shippingStatus !== prevStatus) {
+    // Stock goes back when the order stops holding it — asked of the status table
+    // (holdsStock) rather than tested against 'cancelled', so a future "returned"
+    // or "refunded" status restocks by filling in a row instead of by someone
+    // remembering this line exists. Each order is single-store (checkout creates one
+    // per store), so all items belong to this seller — safe to restock the lot.
+    // Guarded by the prev!==new check above, so a repeat request can't double-restock.
+    if (orderHoldsStock({ shippingStatus: prevStatus as ShippingStatus }) && !orderHoldsStock(updated)) {
       for (const item of updated.items) {
         await restockProduct(item.productId, item.qty, item.selectedVariants);
       }
