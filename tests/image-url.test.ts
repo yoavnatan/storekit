@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { sanitizeImageUrl, sanitizeImageUrls } from '../src/lib/image-url.js';
 
 describe('sanitizeImageUrl', () => {
@@ -74,5 +76,76 @@ describe('sanitizeImageUrls', () => {
 
   it('returns an empty list rather than throwing on a list of junk', () => {
     expect(sanitizeImageUrls([null, undefined, 7, {}])).toEqual([]);
+  });
+});
+
+/** Every .ts and .astro file under src/, so a new route is covered without editing this test. */
+function srcFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    if (statSync(full).isDirectory()) srcFiles(full, out);
+    else if (full.endsWith('.ts') || full.endsWith('.astro')) out.push(full);
+  }
+  return out;
+}
+
+/**
+ * The behaviour above proves the validator works. This proves it is actually REACHED.
+ *
+ * Validation that lives in a module every caller is trusted to remember is the shape that has
+ * already failed here twice: the redirect rule was copy-pasted into four routes and missing from
+ * a fifth (`/api/lang`, an open redirect), and image intake itself shipped unvalidated until
+ * 2026-07-29. So the rule is enforced by grep, the same way tests/safe-redirect.test.ts enforces
+ * its own — a new route that assigns an image field straight out of a request fails here.
+ */
+/**
+ * One definition, shared by the guard and by the test that proves the guard fires. Two copies of
+ * this regex would let the self-check pass while the real scan quietly matched nothing — the same
+ * duplication trap the guard itself exists to catch.
+ */
+const IMAGE_FIELD = '(?:images?|imageUrl|bannerImage|profileImage|thumb(?:nail)?Url|photoUrl|logoUrl|avatarUrl)';
+const REQUEST_SOURCE = '(?:form\\.get(?:All)?\\(|body\\.|body\\[|searchParams\\.get\\(|payload\\.|data\\.)';
+/** `field: <something drawn from the request>` on one line. */
+const UNSAFE_ASSIGNMENT = new RegExp(`\\b${IMAGE_FIELD}\\s*:\\s*[^,;]*${REQUEST_SOURCE}`);
+/** A line is fine if it routes through the validator (directly or via parseImages). */
+const isValidated = (line: string) => line.includes('sanitizeImageUrl') || line.includes('parseImages');
+
+describe('no image URL reaches storage unvalidated', () => {
+  it('assigns an image field from request data only through sanitizeImageUrl', () => {
+    const root = path.join(process.cwd(), 'src');
+    const offenders: string[] = [];
+
+    // `field: <something drawn from the request>` on one line, with no sanitiser in sight.
+
+    for (const file of srcFiles(root)) {
+      if (file.endsWith(path.join('lib', 'image-url.ts'))) continue;
+      readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+        const code = line.trim();
+        if (code.startsWith('//') || code.startsWith('*')) return;
+        if (!UNSAFE_ASSIGNMENT.test(line) || isValidated(line)) return;
+        offenders.push(`${path.relative(process.cwd(), file)}:${i + 1}: ${code}`);
+      });
+    }
+
+    expect(offenders, `pass these through sanitizeImageUrl() from src/lib/image-url.ts:\n${offenders.join('\n')}`)
+      .toEqual([]);
+  });
+
+  it('the guard actually fires — it is not a regex that matches nothing', () => {
+    // The exact shape that shipped before 2026-07-29, and the shape api/store.ts uses today.
+
+    for (const bad of [
+      "      bannerImage: form.get('bannerImage') || undefined,",
+      '      images: body.images,',
+      "      profileImage: searchParams.get('img'),",
+      '      imageUrl: data.imageUrl,',
+    ]) {
+      expect(UNSAFE_ASSIGNMENT.test(bad) && !isValidated(bad), bad).toBe(true);
+    }
+
+    // What api/store.ts actually writes today: matched by the shape, cleared by the validator.
+    const good = "      bannerImage: sanitizeImageUrl(form.get('bannerImage')) || undefined,";
+    expect(UNSAFE_ASSIGNMENT.test(good)).toBe(true);
+    expect(isValidated(good)).toBe(true);
   });
 });

@@ -55,8 +55,13 @@ list is the accumulated cost of past sessions.
   `escapeHtml`/`escH`.
 - **`set:html={JSON.stringify(data)}` inside a `<script>` is an XSS sink** — `</script>` is not
   escaped by `JSON.stringify`. Use `lib/json-script.ts`.
-- **Image URLs are not validated server-side.** Treat any stored URL rendered into markup as
-  attacker-controlled.
+- **Every image URL from a request goes through `lib/image-url.ts`** (`sanitizeImageUrl` /
+  `sanitizeImageUrls`, or `parseImages` for a product form). It validates by SHAPE — https or
+  site-relative — and stores the URL parser's own serialization, so `"`, `<`, `>` and space come
+  back percent-encoded and an attribute breakout is impossible even if a call site forgets to
+  escape. `tests/image-url.test.ts` greps `src/` and fails if a new route assigns an image field
+  straight out of a request. A URL is still not a promise about the bytes behind it, so treat the
+  fetched content as untrusted.
 
 ### Authorization and scoping
 - **A record replayed or returned to a caller must be bound to that caller.** A hard-to-guess
