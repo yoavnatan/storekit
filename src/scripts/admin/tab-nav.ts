@@ -1,5 +1,6 @@
 // Two small pieces of tab-navigation glue for /admin (CURRENT_TASK.md → סשן ב׳):
 import { initGotoPanelLinks } from '../dashboard/ui.js';
+import { stripForeignTabParams } from '../../lib/admin-nav.js';
 
 const TRACKED_TABS = new Set(['sellers', 'stores', 'orders', 'alerts']);
 
@@ -45,8 +46,26 @@ function recordLeft(panel: string): void {
   }).catch(() => {});
 }
 
+// The address bar must describe the tab you are LOOKING at, and nothing else.
+// initDashTabs()'s activateTab only sets `panel`, so every param of every tab
+// visited earlier in the session accumulated in the URL — harmless-looking until
+// a reload or a shared link re-applies a filter belonging to a tab that isn't
+// even open (owner, סשן ד׳: "ה-url params שלהם נשארים גם במעבר ללשוניות אחרות").
+// Hooked on `dashtab:show` rather than on the tab button's click so keyboard
+// arrow-key switching (which activates a tab without dispatching a click) is
+// covered by the same code path.
+function wireTabParamCleanup(): void {
+  document.addEventListener('dashtab:show', (e) => {
+    const panelId = (e.target as HTMLElement | null)?.id;
+    if (!panelId?.startsWith('dash-panel-')) return;
+    const url = stripForeignTabParams(new URL(location.href), panelId.slice('dash-panel-'.length));
+    history.replaceState(null, '', url.toString());
+  });
+}
+
 export function initAdminTabNav(): void {
   initGotoPanelLinks();
+  wireTabParamCleanup();
 
   // initDashTabs() switches tabs entirely client-side with no reload, so this
   // tracks the currently-active tab itself (independent of listener order vs.

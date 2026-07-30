@@ -36,7 +36,7 @@ import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
 import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
 import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
-import { getMoneyEvents, type MoneyEventType } from '../../lib/money-events.js';
+import { getMoneyEvents, isMoneyEventType, type MoneyEventType } from '../../lib/money-events.js';
 import { reconcileOrders } from '../../lib/reconcile.js';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
@@ -58,14 +58,6 @@ const tabs = [
   { id: 'alerts', label: 'התראות ושגיאות' },
   { id: 'moneylog', label: 'יומן כספי' },
 ] as const;
-
-// Money journal (lib/money-events.ts). The type filter is a plain query param
-// validated against the known set — an unknown value shows everything rather than
-// an empty table, same fallback rule the other admin query parsers use.
-const moneyLogAll = getMoneyEvents(500);
-const requestedMoneyType = Astro.url.searchParams.get('mtype') ?? '';
-const moneyLogType = moneyLogAll.some((e) => e.type === requestedMoneyType) ? requestedMoneyType : '';
-const moneyLogEvents = moneyLogType ? moneyLogAll.filter((e) => e.type === moneyLogType as MoneyEventType) : moneyLogAll;
 
 const requestedPanel = Astro.url.searchParams.get('panel');
 const initialPanel = tabs.some((t) => t.id === requestedPanel) ? requestedPanel! : 'overview';
@@ -240,6 +232,18 @@ const analyticsOverview = getAnalyticsOverview(dataRange.from, dataRange.to);
 const sellerFunnel = getSellerFunnel();
 const productNames = new Map<string, string>();
 for (const list of productsByStore.values()) for (const p of list) productNames.set(p.id, p.name);
+
+// ── Money journal tab (lib/money-events.ts) ──
+// The type filter is validated against the event VOCABULARY, never against the
+// types present in the rows just read: checking the data meant that filtering to a
+// type the journal happens not to contain yet fell back to "" and rendered the
+// whole log, so the filter looked broken rather than empty (owner, סשן ד׳). The
+// narrowing is pushed into getMoneyEvents so it applies to the whole journal, and
+// the result paginates like every other list tab (15/page, AdminPager) instead of
+// rendering every row on one page — which is the other half of what looked broken.
+const moneyLogType = isMoneyEventType(sp.get('mtype') ?? '') ? (sp.get('mtype') as MoneyEventType) : undefined;
+const moneyLogEvents = getMoneyEvents(moneyLogType);
+const moneyLogPageResult = paginate(moneyLogEvents, parsePage(sp, 'mlpage'));
 
 // ── "(N) new since last opened" tab badges (CURRENT_TASK.md → סשן ב׳) ──
 // Counted over the UNFILTERED lists on purpose: the badge answers "is there
@@ -454,7 +458,18 @@ const badgeCounts: Record<string, number> = {
       </div>
 
       <div id="dash-panel-moneylog" class="dash-panel" role="tabpanel" aria-labelledby="tab-moneylog" hidden={initialPanel !== 'moneylog'}>
-        <AdminMoneyLogPanel events={moneyLogEvents} totalAll={moneyLogAll.length} activeType={moneyLogType} reconciliation={reconciliation} />
+        <AdminMoneyLogPanel
+          events={moneyLogPageResult.items}
+          activeType={moneyLogType ?? ''}
+          total={moneyLogPageResult.total}
+          page={moneyLogPageResult.page}
+          totalPages={moneyLogPageResult.totalPages}
+          buildUrl={(p) => tabUrl('moneylog', {
+            mtype: moneyLogType,
+            mlpage: p > 1 ? String(p) : undefined,
+          })}
+          reconciliation={reconciliation}
+        />
       </div>
     </div>
   </main>
@@ -472,6 +487,7 @@ const badgeCounts: Record<string, number> = {
   import { initPerformanceTab } from '../../scripts/dashboard/performance.js';
   import { initAdminPlatformPerformance } from '../../scripts/admin/platform-performance.js';
   import { initAdminDataPanel } from '../../scripts/admin/data-panel.js';
+  import { initAdminMoneyLogPanel } from '../../scripts/admin/moneylog.js';
   initDashTabs();
   initAdminSellersPanel();
   initAdminStoresPanel();
@@ -483,4 +499,5 @@ const badgeCounts: Record<string, number> = {
   initPerformanceTab();
   initAdminPlatformPerformance();
   initAdminDataPanel();
+  initAdminMoneyLogPanel();
 </script>

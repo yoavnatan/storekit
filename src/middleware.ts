@@ -1,6 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import type { AstroCookies } from 'astro';
 import { randomUUID } from 'node:crypto';
+import { gzipResponse } from './lib/http-compress.js';
 import { logError, resolveErrorContext } from './lib/error-log.js';
 import { recordPageView } from './lib/store-pageviews.js';
 import { recordProductView } from './lib/product-pageviews.js';
@@ -127,7 +128,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
       else if (pathname === '/checkout') recordAnalyticsEvent('begin_checkout', { vid });
       else if (pathname === '/seller/register') recordAnalyticsEvent('seller_register_view', { vid });
     }
-    return response;
+    // Last thing before it leaves the process, so every SSR route is covered by one rule and the
+    // analytics tap above still sees the real, uncompressed response headers.
+    return gzipResponse(context.request, response);
   } catch (err) {
     const pathname = new URL(context.request.url).pathname;
     logError({

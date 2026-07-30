@@ -12,6 +12,40 @@ export function buildAdminUrl(panel: string, params: Record<string, string | und
   return `/admin?${qp.toString()}`;
 }
 
+// Which query params belong to which admin tab. Every tab's filter/sort/pager
+// state lives in the ONE shared `/admin?` URL, so without an owner per param a
+// tab's state trails the admin into every other tab: `?mtype=…` from the money
+// journal stayed in the address bar through Sellers, Orders and Stores, and came
+// back on the next reload as a filter nobody asked for (owner, סשן ד׳).
+// `tests/admin-tab-params.test.ts` scans the admin page + its query parsers and
+// fails if a param is read but unclaimed here, so a new filter can't silently
+// start leaking again.
+export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
+  overview: [],
+  data: ['datapreset'],
+  sellers: ['sq', 'ssort', 'sblocked', 'spage', 'snew'],
+  stores: ['stq', 'stsort', 'stblocked', 'stpage', 'stnew'],
+  orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opage', 'onew'],
+  attention: ['apage'],
+  performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
+  advertising: ['adpreset', 'adfrom', 'adto'],
+  messages: ['msort', 'munread', 'mpage'],
+  alerts: ['alsort', 'alsource', 'alstore', 'alpage', 'alnew'],
+  moneylog: ['mtype', 'mlpage'],
+};
+
+/** Drops every OTHER tab's params from `url`, keeping `panel` and the params the
+ *  now-active tab owns. Deleting only foreign params (rather than everything but
+ *  `panel`) is what lets a deep link like `?panel=orders&oq=דני` survive the admin
+ *  clicking into Sellers and back. */
+export function stripForeignTabParams(url: URL, activePanel: string): URL {
+  for (const [tab, params] of Object.entries(ADMIN_TAB_PARAMS)) {
+    if (tab === activePanel) continue;
+    for (const param of params) url.searchParams.delete(param);
+  }
+  return url;
+}
+
 // A plain `.join(',')`/`.split(',')` corrupts multi-value filter params (e.g.
 // Orders' store filter) the moment a value itself contains a comma — a store
 // name is free text a seller sets (see stores.ts's createStore/updateStore,
@@ -51,7 +85,14 @@ export async function swapPanel(url: string, panelId: string, reinit: () => void
     const current = document.getElementById(panelId);
     if (!next || !current) throw new Error('panel not found');
     current.innerHTML = next.innerHTML;
-    history.pushState({}, '', url);
+    // Only claim the address bar if this panel is still the one on screen. The
+    // fetch above re-renders the whole dashboard server-side and can take about a
+    // second, which is long enough for the admin to have switched tabs meanwhile —
+    // and pushing then put the LEFT tab's URL (`?panel=moneylog&mtype=…`) back over
+    // the tab they were now looking at, undoing the cleanup in tab-nav.ts. The
+    // content swap still happens either way: the panel is simply ready and correct
+    // for their return.
+    if (!current.hidden) history.pushState({}, '', url);
     reinit();
   } catch {
     window.location.href = url;

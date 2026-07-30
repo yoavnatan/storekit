@@ -94,15 +94,17 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
 
 {totalFiltered === 0 && totalAll > 0 && <p class="admin-empty">לא נמצאו שיחות תואמות.</p>}
 {threads.length === 0 && totalAll === 0 && <p class="admin-empty" id="admin-msg-empty">אין שיחות עדיין.</p>}
+<!-- msg-cq: the table collapses to cards by THIS element's width, not the viewport's (see utils.css) -->
+<div class="msg-cq">
 <div class="msg-table-wrap" hidden={threads.length === 0} id="admin-msg-table-wrap">
     <table class="msg-table" id="admin-msg-table">
       <thead>
         <tr>
           <th class="msg-table__th msg-table__th--status"></th>
-          <th class="msg-table__th">מוכר/ת</th>
-          <th class="msg-table__th">נושא</th>
+          <th class="msg-table__th msg-table__th--from">מוכר/ת</th>
+          <th class="msg-table__th msg-table__th--subject">נושא</th>
           <th class="msg-table__th">תצוגה מקדימה</th>
-          <th class="msg-table__th">תאריך</th>
+          <th class="msg-table__th msg-table__th--date">תאריך</th>
           <th class="msg-table__th msg-table__th--actions"></th>
         </tr>
       </thead>
@@ -146,5 +148,6 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
         })}
       </tbody>
     </table>
+</div>
 </div>
 <AdminPager page={page} totalPages={totalPages} buildUrl={buildUrl} />

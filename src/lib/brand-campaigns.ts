@@ -37,6 +37,12 @@ export interface BrandCampaign {
   status: 'active' | 'paused';
   createdAt: string;
   updatedAt: string;
+  /** When it was paused — the moment its metrics freeze at (ad-metrics.ts#runPeriod). Carried
+   *  here for the same reason AdCampaign carries it: without it, runPeriod falls back to
+   *  `updatedAt`, and `updatedAt` moves on every edit. A paused campaign whose budget was then
+   *  corrected would have its run period stretched to the day of that correction and report
+   *  spend for weeks it never ran. */
+  pausedAt?: string;
 }
 
 export const BRAND_DURATION_OPTIONS: readonly BrandDuration[] = [7, 14, 30];
@@ -155,12 +161,19 @@ export function updateBrandCampaign(id: string, updates: Partial<Pick<BrandCampa
   const all = readAll();
   const idx = all.findIndex((c) => c.id === id);
   if (idx === -1) return undefined;
-  const next = { ...all[idx]! };
+  const prev = all[idx]!;
+  const next = { ...prev };
   if (updates.status === 'active' || updates.status === 'paused') next.status = updates.status;
   if (updates.monthlyBudget !== undefined && Number.isFinite(updates.monthlyBudget) && updates.monthlyBudget >= 0) {
     next.monthlyBudget = Math.round(updates.monthlyBudget);
   }
-  next.updatedAt = new Date().toISOString();
+  const now = new Date().toISOString();
+  // Same stamp/clear the boost twin does (ad-campaigns.ts#updateCampaign), and for the same
+  // reason: on a real status transition only, so a plain budget edit never moves the moment the
+  // metrics froze at.
+  if (updates.status === 'paused' && prev.status !== 'paused') next.pausedAt = now;
+  else if (updates.status === 'active') delete next.pausedAt;
+  next.updatedAt = now;
   all[idx] = next;
   writeAll(all);
   return next;

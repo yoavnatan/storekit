@@ -467,16 +467,14 @@ function initStoreProductLists(): void {
 // controller in ui.ts fires a bubbling `dashtab:show` when a panel becomes
 // active); only a switch *away* from the stores tab, while its search actually
 // has a value, triggers a reset.
-const STORE_URL_PARAMS = ['stq', 'stsort', 'stblocked', 'stpage'];
-
+//
+// The URL half of the reset is NOT here: dropping the params of whichever tab was
+// left is now generic (admin-nav.ts's ADMIN_TAB_PARAMS + tab-nav.ts), so this used
+// to be a second, stores-only copy of that rule — exactly the kind of duplicate
+// that drifts. This function now only re-renders the panel.
 async function resetStoresPanel(): Promise<void> {
   const panel = document.getElementById(PANEL_ID);
   if (!panel) return;
-  // Drop this tab's own query params from the URL (the active tab param was
-  // already set by the tab controller — leave it alone).
-  const u = new URL(location.href);
-  STORE_URL_PARAMS.forEach((k) => u.searchParams.delete(k));
-  history.replaceState(null, '', u.toString());
   // Re-render the unfiltered list. A plain innerHTML swap (no history push,
   // unlike swapPanel) — the admin is already looking at another tab, so this
   // just readies the stores tab for their return.

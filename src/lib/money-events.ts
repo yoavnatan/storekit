@@ -35,23 +35,42 @@ import { roundMoney } from './money.js';
 const EVENTS_PATH = path.join(process.cwd(), 'data/money-events.json');
 const writeLock = new Mutex();
 
-export type MoneyEventType =
-  /** A charge was attempted at the payment provider. `ok` says how it went. */
-  | 'payment_attempted'
-  /** An order row was created off the back of a successful charge. */
-  | 'order_created'
-  /** A repeat submit of an already-completed checkout was served from the ledger
-   *  instead of being charged again (checkout-idempotency.ts). The absence of these
-   *  is not proof of nothing happening — their PRESENCE is proof a double charge was
-   *  caught, which is the thing worth being able to show. */
-  | 'duplicate_checkout_blocked'
-  /** paymentStatus moved (pending → paid, → failed, refunded later). */
-  | 'payment_status_changed'
-  /** shippingStatus moved — including the cancellation that takes an order out of
-   *  every revenue sum while leaving paymentStatus at 'paid'. */
-  | 'shipping_status_changed'
-  /** A seller applied or changed a discount on their slice of an order. */
-  | 'order_discount_changed';
+/**
+ * The vocabulary, as a value rather than a bare union — a reader validating a
+ * user-supplied type (the admin journal's filter) must check it against the set of
+ * types that EXIST, never against the types that happen to appear in the rows it
+ * just loaded. Doing the latter silently turns "show me only the blocked double
+ * charges" into "show me everything" on any journal that has none yet, which is a
+ * filter that lies rather than one that comes back empty.
+ *
+ *   payment_attempted          — a charge was attempted at the payment provider.
+ *   order_created              — an order row was created off a successful charge.
+ *   duplicate_checkout_blocked — a repeat submit of an already-completed checkout was
+ *                                served from the ledger instead of charged again
+ *                                (checkout-idempotency.ts). Their absence proves
+ *                                nothing; their PRESENCE proves a double charge was
+ *                                caught, which is what's worth being able to show.
+ *   payment_status_changed     — paymentStatus moved (pending → paid → failed…).
+ *   shipping_status_changed    — shippingStatus moved, including the cancellation that
+ *                                takes an order out of every revenue sum while leaving
+ *                                paymentStatus at 'paid'.
+ *   order_discount_changed     — a seller applied/changed a discount on their slice.
+ */
+export const MONEY_EVENT_TYPES = [
+  'payment_attempted',
+  'order_created',
+  'duplicate_checkout_blocked',
+  'payment_status_changed',
+  'shipping_status_changed',
+  'order_discount_changed',
+] as const;
+
+export type MoneyEventType = (typeof MONEY_EVENT_TYPES)[number];
+
+/** Type guard for a request-supplied value (`?mtype=`). */
+export function isMoneyEventType(value: string): value is MoneyEventType {
+  return (MONEY_EVENT_TYPES as readonly string[]).includes(value);
+}
 
 export interface MoneyEvent {
   id: string;
@@ -105,15 +124,26 @@ export async function recordMoneyEvent(event: Omit<MoneyEvent, 'id' | 'at'>): Pr
   return entry;
 }
 
-/** Newest-first read, capped. The whole file is read and sorted in memory — fine at
- *  journal scale today, an indexed `ORDER BY at DESC LIMIT n` after the migration.
+/** Newest-first read of the whole journal, optionally narrowed to one type. The file is
+ *  read and sorted in memory — fine at journal scale today, an indexed
+ *  `WHERE type = ? ORDER BY at DESC` after the migration.
  *
- *  Deliberately no per-order / per-store filter parameters: the admin panel reads the
- *  whole recent journal and narrows in the page. When a per-order timeline is actually
- *  built (the obvious next consumer — "what happened to this order" on a dispute), it
- *  is a filter on this result, not speculative query surface to maintain until then. */
-export function getMoneyEvents(limit = 200): MoneyEvent[] {
-  const rows = readEvents();
-  rows.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  return rows.slice(0, limit);
+ *  There is deliberately NO row cap: the admin panel paginates, and a cap would both
+ *  make its "N events" count describe the window rather than the journal, and hide
+ *  older rows of a filtered type behind newer rows of other types — which is exactly
+ *  how the type filter came to look broken (it used to take the newest 500 and narrow
+ *  those). Narrowing therefore belongs HERE, ahead of any slicing a caller does. Still
+ *  no per-order / per-store parameters: when a per-order timeline is actually built (the
+ *  obvious next consumer — "what happened to this order" on a dispute) it is a filter on
+ *  this result, not speculative query surface to maintain until then. */
+export function getMoneyEvents(type?: MoneyEventType): MoneyEvent[] {
+  return selectMoneyEvents(readEvents(), type);
+}
+
+/** The selection itself, over rows already in memory — split out so the ordering and
+ *  the narrowing are unit-testable without a journal file on disk. */
+export function selectMoneyEvents(rows: MoneyEvent[], type?: MoneyEventType): MoneyEvent[] {
+  return rows
+    .filter((e) => !type || e.type === type)
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 }

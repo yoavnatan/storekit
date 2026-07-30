@@ -1,18 +1,25 @@
 ---
 import { formatPrice } from '../../config/store.config.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
-import type { MoneyEvent, MoneyEventType } from '../../lib/money-events.js';
+import { MONEY_EVENT_TYPES, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
 import { businessDayISO } from '../../lib/business-day.js';
+import { buildAdminUrl } from '../../lib/admin-nav.js';
+import AdminPager from './AdminPager.astro';
 
 import type { ReconciliationReport } from '../../lib/reconcile.js';
 
 interface Props {
+  /** One page of events, already filtered + sliced by the page (admin/index.astro). */
   events: MoneyEvent[];
-  totalAll: number;
   activeType: string;
+  /** Rows matching the active filter, across all pages. */
+  total: number;
+  page: number;
+  totalPages: number;
+  buildUrl: (page: number) => string;
   reconciliation: ReconciliationReport;
 }
-const { events, totalAll, activeType, reconciliation } = Astro.props;
+const { events, activeType, total, page, totalPages, buildUrl, reconciliation } = Astro.props;
 
 // Every type gets a label AND a tone, because the tone is the point: a reader
 // scanning this log is looking for the two rows that mean something went wrong, not
@@ -42,9 +49,12 @@ function toneFor(e: MoneyEvent): 'good' | 'bad' | 'warn' | 'plain' {
   return TYPE_META[e.type]?.tone ?? 'plain';
 }
 
+// Driven by the vocabulary, not by the loaded rows — a type with nothing in the
+// journal still gets a chip, and clicking it says so instead of quietly showing
+// everything. Changing the filter always returns to page 1 (no mlpage).
 const FILTERS: Array<{ id: string; label: string }> = [
   { id: '', label: 'הכל' },
-  ...(Object.keys(TYPE_META) as MoneyEventType[]).map((t) => ({ id: t, label: TYPE_META[t].label })),
+  ...MONEY_EVENT_TYPES.map((t) => ({ id: t, label: TYPE_META[t].label })),
 ];
 
 // Grouped by business day (business-day.ts — the same calendar every report buckets
@@ -113,7 +123,7 @@ for (const e of events) {
   <div class="flex flex-wrap gap-1.5 mb-4">
     {FILTERS.map((f) => (
       <a
-        href={`/admin?panel=moneylog${f.id ? `&mtype=${encodeURIComponent(f.id)}` : ''}`}
+        href={buildAdminUrl('moneylog', { mtype: f.id || undefined })}
         class:list={[
           'text-[0.78rem] px-2.5 py-1 rounded-full border no-underline transition-colors',
           activeType === f.id
@@ -124,9 +134,15 @@ for (const e of events) {
     ))}
   </div>
 
+  {total > 0 && (
+    <p class="m-0 mb-3 text-[0.76rem] [color:var(--color-muted)] tabular-nums">
+      {total} אירועים{activeType ? ' מסוג זה' : ''} · עמוד {page} מתוך {totalPages}
+    </p>
+  )}
+
   {events.length === 0 ? (
     <p class="text-[0.85rem] [color:var(--color-muted)] py-8 text-center">
-      {totalAll === 0 ? 'עדיין לא נרשמו אירועים כספיים.' : 'אין אירועים מהסוג הזה.'}
+      {activeType ? 'אין אירועים מהסוג הזה.' : 'עדיין לא נרשמו אירועים כספיים.'}
     </p>
   ) : (
     <div class="flex flex-col gap-5">
@@ -180,4 +196,6 @@ for (const e of events) {
       ))}
     </div>
   )}
+
+  <AdminPager page={page} totalPages={totalPages} buildUrl={buildUrl} />
 </section>
