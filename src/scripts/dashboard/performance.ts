@@ -211,6 +211,52 @@ function paintCharts(summary: PerformanceSummary, i18n: Record<string, string>, 
 }
 
 function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>): void {
+/**
+ * Blank every figure in the panel back to its placeholder while a new range is
+ * being fetched.
+ *
+ * Each element carries its own placeholder geometry in `data-skel` (set once in
+ * dashboard.astro's SKEL map, which the server-rendered placeholders use too) —
+ * so the bar that stands in for a price is price-shaped and the one standing in
+ * for a chart is chart-shaped, and nothing jumps when the real value lands. A
+ * container may ask for several rows with `data-skel-rows`.
+ *
+ * Scoped by the attribute rather than by a panel id on purpose: surfaces that
+ * reuse this module without the seller's tab shell (the admin per-store page)
+ * simply carry no `data-skel`, and this becomes a no-op there.
+ */
+function showRangePending(): void {
+  // Scoped to this panel where there is one: `[data-skel]` is a generic hook and
+  // another panel adopting it must not get blanked by a performance fetch.
+  const root: ParentNode = document.getElementById('dash-panel-performance') ?? document;
+  root.querySelectorAll<HTMLElement>('[data-skel]').forEach((el) => {
+    const rows = Math.max(1, Math.min(20, Number(el.dataset.skelRows ?? 1) || 1));
+    // The value lands inside class="…". It comes from the page's own SKEL map
+    // today, but this is an attribute-interpolation sink either way, and the
+    // repo has already shipped one escaper that skipped `"` — so strip the
+    // characters that could break out rather than trusting the call site.
+    const cls = (el.dataset.skel ?? '').replace(/["'<>&]/g, '');
+    el.innerHTML = Array.from({ length: rows },
+      () => `<span class="skel-bar inline-block align-middle ${cls}" aria-hidden="true"></span>`).join('');
+  });
+  document.getElementById('perf-kpis')?.setAttribute('aria-busy', 'true');
+  document.getElementById('perf-top-products')?.setAttribute('aria-busy', 'true');
+}
+
+/**
+ * The counterpart for a load that will never arrive: replace the placeholders
+ * with an em dash. A shimmer that never resolves reads as "still working" and
+ * the seller waits for a number that is not coming.
+ */
+function showRangeUnavailable(): void {
+  const root: ParentNode = document.getElementById('dash-panel-performance') ?? document;
+  root.querySelectorAll<HTMLElement>('[data-skel]').forEach((el) => {
+    el.innerHTML = '<span style="color:var(--color-muted)">—</span>';
+  });
+  document.getElementById('perf-kpis')?.removeAttribute('aria-busy');
+  document.getElementById('perf-top-products')?.removeAttribute('aria-busy');
+}
+
   lastSummary = summary;
   const revenueEl = document.getElementById('perf-kpi-revenue');
   const ordersEl = document.getElementById('perf-kpi-orders');
@@ -242,6 +288,13 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
   // their bars are the ones most likely to grow while off-screen.
   if (topProducts) { renderTopProducts(topProducts, summary, i18n); armEntrance(topProducts); }
 }
+
+  // Every skeleton above has just been overwritten with a real value, so the
+  // panel is no longer busy. Paired with the aria-busy the server renders when
+  // it skips the summary (dashboard.astro) — without this the region would
+  // stay "busy" forever and a screen reader would never announce the result.
+  document.getElementById('perf-kpis')?.removeAttribute('aria-busy');
+  topProducts?.removeAttribute('aria-busy');
 
 // Delegated from the (persistent) chart container, not the individual
 // <rect> bars — renderSummary() replaces the SVG's innerHTML wholesale on

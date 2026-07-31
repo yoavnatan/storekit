@@ -1,0 +1,30 @@
+---
+/**
+ * The site's one loading placeholder, for a value that is fetched rather than
+ * server-rendered.
+ *
+ * Why it exists: the lazy panels (Performance, Advertising) render their KPI
+ * tiles before the data is fetched, and an unfilled number fell back to `0` /
+ * `0%` / empty. A seller cannot tell a real zero from "not here yet" — they
+ * read it as "I sold nothing" (owner, 2026-07-31: "מאיפה היוזר צריך לדעת שזה
+ * טוען ולא אפס?"). A shimmer says "a number is coming" without ever stating a
+ * wrong one.
+ *
+ * The shimmer itself is `.skel-bar` (utilities/utils.css) — the same treatment
+ * every image grid on the site already uses, so this is the existing language,
+ * not a new one. Sizing comes in as Tailwind utilities via `class`; the caller
+ * matches the shape of the value it stands in for (a price bar is wider than a
+ * count), because a placeholder that doesn't match its content causes a layout
+ * jump the moment it's replaced.
+ *
+ * `aria-hidden` + the caller's `aria-busy`: a screen reader should hear "busy",
+ * never a decorative bar. Every consumer clears `aria-busy` when the real value
+ * lands (performance.ts → renderSummary).
+ */
+interface Props {
+  /** Tailwind sizing utilities, e.g. "w-20 h-[1.15rem]". */
+  class?: string;
+}
+const { class: className = '' } = Astro.props;
+---
+<span class:list={['skel-bar inline-block align-middle', className]} aria-hidden="true"></span>
