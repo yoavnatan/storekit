@@ -22,8 +22,11 @@ import { presetRange } from './date-range.js';
 
 export interface BaselineInput {
   storeId: string;
-  /** Admin kill switch — a blocked store 404s everywhere, feed included. */
-  blocked: boolean;
+  /** Is the store on platform surfaces at all — stores.ts#isStoreDiscoverable? False for an
+   *  admin block, for a store its seller paused, and for a closed one; all three are out of the
+   *  product feed, so the platform campaign has nothing of theirs to carry and the card must not
+   *  claim otherwise. Passed in rather than read here so this stays pure. */
+  discoverable: boolean;
   /** Products a shopper can see (already gated for hidden/blocked). */
   visibleProductCount: number;
 }
@@ -40,7 +43,7 @@ export interface BaselineStatus {
 const BASELINE_WINDOW = '30d' as const;
 
 export function storeBaselineStatus(input: BaselineInput, today: Date = new Date()): BaselineStatus {
-  const active = !input.blocked && isStoreReady({ visibleProductCount: input.visibleProductCount });
+  const active = input.discoverable && isStoreReady({ visibleProductCount: input.visibleProductCount });
   if (!active) return { active: false, impressions: 0 };
   const { from, to } = presetRange(BASELINE_WINDOW, today)!;
   return { active: true, impressions: baselineImpressionsInRange(input.storeId, from, to) };

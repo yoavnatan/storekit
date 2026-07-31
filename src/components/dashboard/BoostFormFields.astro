@@ -103,8 +103,30 @@ const [defaultBudget] = AD_BUDGET_PRESETS;
         preset and a typed amount travel the identical path to the server. `step="1"`, NOT 10:
         with a coarser step the browser refuses to submit anything off the ladder (777 with
         step=10) — and because the field can be hidden at that moment, it refuses SILENTLY, with
-        no bubble and no submit event. min/max mirror the server's own rule (lib/ad-budget.ts). */}
-    <input type="number" id="ad-budget-input" name="monthlyBudget" class="input mt-2" min={MIN_CAMPAIGN_BUDGET} max={MAX_CAMPAIGN_BUDGET} step="1" value={defaultBudget} dir="ltr" aria-labelledby="ad-budget-label" hidden />
+        no bubble and no submit event. min/max mirror the server's own rule (lib/ad-budget.ts).
+        Picking "another amount" EMPTIES this field (advertising.ts#syncBudgetChoice) and it stays
+        empty — no placeholder and no spinner arrows (user, 2026-07-31): the seller is typing one
+        figure he already has in mind, and a greyed range in the box reads as a value that is
+        already there. The range is told to him only if he leaves it — see the error line below.
+        `value` still seeds the field for the presets, which write into it on every change. */}
+    <input
+      type="number"
+      id="ad-budget-input"
+      name="monthlyBudget"
+      class="input mt-2 [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0"
+      min={MIN_CAMPAIGN_BUDGET}
+      max={MAX_CAMPAIGN_BUDGET}
+      step="1"
+      value={defaultBudget}
+      dir="ltr"
+      aria-labelledby="ad-budget-label"
+      aria-describedby="ad-budget-range-error"
+      hidden
+    />
+    {/* Shown when he leaves the field holding something outside the range — never while he is
+        still typing it, since "5" on the way to "500" is not yet a mistake. Text comes from
+        advertising.ts so the limits in it are the constants, not prose that goes stale. */}
+    <p id="ad-budget-range-error" class="m-0 mt-1 text-[0.76rem] [color:var(--color-danger)]" role="alert" hidden></p>
   </div>
 
   <label class="field">

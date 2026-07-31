@@ -41,15 +41,21 @@ export interface ShippingStatusRule {
   /** Does reaching this status tell the buyer anything? Mirrors the copy table in
    *  order-status-copy.ts — internal work states and redundant ones stay quiet. */
   notifiesBuyer: boolean;
+  /** Does this order still owe the buyer something, so the store may not finish closing while
+   *  it exists (store-lifecycle.ts)? A buyer who paid must get their goods — the seller may
+   *  stop SELLING the moment they want (that is what pausing is for), but walking away from a
+   *  parcel that is still their responsibility is not an operational choice. 'shipped' still
+   *  counts: it is moving, and the seller is the one who marks it arrived. */
+  blocksStoreClosure: boolean;
 }
 
 export const SHIPPING_STATUS_RULES: Record<ShippingStatus, ShippingStatusRule> = {
-  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false },
-  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false },
-  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true  },
-  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true  },
-  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false },
-  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true  },
+  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, blocksStoreClosure: true  },
+  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, blocksStoreClosure: true  },
+  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , blocksStoreClosure: true  },
+  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , blocksStoreClosure: true  },
+  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, blocksStoreClosure: false },
+  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , blocksStoreClosure: false },
 };
 
 export interface PaymentStatusRule {
@@ -58,12 +64,17 @@ export interface PaymentStatusRule {
   /** Is this order's outcome still unknown? A pending order is neither a sale nor a
    *  non-sale, and showing it as either is a lie in one direction or the other. */
   awaitingOutcome: boolean;
+  /** Same question as the shipping column, from the money side: does the store still owe
+   *  something here? A failed payment owes nothing — nobody paid — so it must not hold a
+   *  closure open forever. A pending one does: its outcome is unknown, and closing the store
+   *  out from under an order that is about to be confirmed is the worse of the two mistakes. */
+  blocksStoreClosure: boolean;
 }
 
 export const PAYMENT_STATUS_RULES: Record<PaymentStatus, PaymentStatusRule> = {
-  pending: { countsAsRevenue: false, awaitingOutcome: true  },
-  paid:    { countsAsRevenue: true,  awaitingOutcome: false },
-  failed:  { countsAsRevenue: false, awaitingOutcome: false },
+  pending: { countsAsRevenue: false, awaitingOutcome: true , blocksStoreClosure: true  },
+  paid:    { countsAsRevenue: true,  awaitingOutcome: false, blocksStoreClosure: true  },
+  failed:  { countsAsRevenue: false, awaitingOutcome: false, blocksStoreClosure: false },
 };
 
 /** Statuses a seller may move an order TO — everything the UI offers. */
@@ -81,6 +92,14 @@ export function orderCountsAsRevenue(o: Pick<Order, 'paymentStatus' | 'shippingS
  *  for 'cancelled', so a future "returned" status only has to fill in a row. */
 export function orderHoldsStock(o: Pick<Order, 'shippingStatus'>): boolean {
   return SHIPPING_STATUS_RULES[o.shippingStatus]?.holdsStock === true;
+}
+
+/** Is this order still an open obligation on its store? Both halves must agree — a paid parcel
+ *  in transit is open, a cancelled one is not, and a failed payment never was. Read the table
+ *  rather than listing statuses, so a future status only has to fill in its row. */
+export function orderBlocksStoreClosure(o: Pick<Order, 'paymentStatus' | 'shippingStatus'>): boolean {
+  return PAYMENT_STATUS_RULES[o.paymentStatus]?.blocksStoreClosure === true
+    && SHIPPING_STATUS_RULES[o.shippingStatus]?.blocksStoreClosure === true;
 }
 
 /** Is this transition allowed? The two rules the orders API enforces, in one place. */

@@ -31,6 +31,28 @@ export interface RangeStat {
    *  platform's pass-through to the ad network, and only their difference is income. */
   adSpend: number;
   cpc: number;
+  /** Sales ATTRIBUTED to the campaign, and the word is doing real work — the seller reads this
+   *  number as "how many orders did this ad bring me" and it is not that (user asked exactly this,
+   *  CURRENT_TASK.md item 4). The rule the real integration must report under, so the mock and the
+   *  glossary the seller reads can never mean different things:
+   *
+   *  - **Click-through with a lookback window, not "bought immediately".** A buyer who clicks the
+   *    ad, leaves, and returns days later to buy IS counted — Google Ads' default window is 30
+   *    days from the click, Meta's is 7-day-click (+1-day-view). Whether he added to cart on the
+   *    first visit is irrelevant: the click is the attributed event, the purchase only has to land
+   *    inside the window.
+   *  - **It cannot be exact, and that is not a bug we can fix here.** A click on a phone and a
+   *    purchase on a desktop, a cleared cookie or an ad-blocker all break the join; both networks
+   *    fill those gaps with MODELLED conversions. Two networks can also each claim the same sale,
+   *    so summing campaigns can exceed the store's real order count.
+   *  - **The only deterministic version is first-party**: read `gclid`/`fbclid`/`utm_*` off the
+   *    landing URL, keep it in a first-party cookie for the window, and stamp it on the order at
+   *    checkout — then "sales" is a list of real orders, not an estimate. Deliberately NOT built
+   *    yet: nothing produces those parameters until real ad accounts exist, so it would report a
+   *    true 0 next to these mock thousands. Trigger + scope live in `GO_LIVE_CHECKLIST.md` §2.5.
+   *
+   *  Until then the seller-facing label says "משוער"/"(est.)" and the glossary states the window —
+   *  the honest framing the user asked for, not a precision we do not have. */
   conversions: number;
   roas: number;
 }

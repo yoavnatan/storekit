@@ -25,7 +25,7 @@
  *    - it merely sold out             → the platform pauses AND resumes, by itself.
  */
 import { getProductsByStoreId, isProductVisible, type StoreProduct } from './store-products.js';
-import { getStoreById, isStoreVisible } from './stores.js';
+import { getStoreById, canStoreSell } from './stores.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds, type StoreCategory } from './store-categories.js';
 import { getCampaignsByStoreId, getArchivedByStoreId, updateCampaign, archiveCampaign, type AdCampaign } from './ad-campaigns.js';
 import { isCampaignEnded } from './ad-metrics.js';
@@ -93,15 +93,17 @@ function campaignBlockReason(health: CampaignHealth): CampaignPauseReason | null
 
 export type CampaignWithHealth = AdCampaign & { health: CampaignHealth };
 
-/** The store's products as a SHOPPER can reach them. An admin-blocked store 404s on every one of
- *  its pages (stores.ts#isStoreVisible), so its products are unreachable however healthy each row
- *  looks on its own — which means every campaign it runs is buying clicks to a dead page. Modelled
- *  as "the store has no reachable products" rather than as a fourth pause reason: it is the same
- *  fact the product-level check already expresses, and it flows through the existing starve →
- *  pause → refuse-to-resume path unchanged. */
+/** The store's products as a SHOPPER can BUY them. A store that cannot sell — admin-blocked
+ *  (404s on every page), closed, or paused by its own seller (store-status.ts) — has nothing a
+ *  click can convert on, however healthy each product row looks on its own, which means every
+ *  campaign it runs is buying traffic it cannot serve. Modelled as "the store has no reachable
+ *  products" rather than as extra pause reasons: it is the same fact the product-level check
+ *  already expresses, and it flows through the existing starve → pause → refuse-to-resume path
+ *  unchanged. So a seller pausing their store also stops their boosts, without this file or
+ *  store-lifecycle.ts having to know about each other. */
 function reachableProducts(storeId: string): StoreProduct[] {
   const store = getStoreById(storeId);
-  if (store && !isStoreVisible(store)) return [];
+  if (store && !canStoreSell(store)) return [];
   return getProductsByStoreId(storeId);
 }
 

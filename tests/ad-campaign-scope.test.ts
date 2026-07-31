@@ -183,6 +183,22 @@ describe('isValidCampaignBudget — one rule for POST, PATCH and both forms', ()
     expect(isValidCampaignBudget('500')).toBe(false);
     expect(isValidCampaignBudget(null)).toBe(false);
   });
+
+  // Picking "another amount" now hands the seller an EMPTY field (advertising.ts#syncBudgetChoice,
+  // CURRENT_TASK.md item 4), which puts an empty string on the wire path for the first time. This
+  // pins what an empty field actually becomes at each hop, because the failure is silent at both:
+  // parseFloat('') is NaN, and JSON.stringify turns NaN into `null` — so a submit with nothing
+  // typed reaches the route as a MISSING budget, not as a zero. Both are rejected; the client
+  // guard exists only so the seller gets the range in the message instead of a generic error.
+  it('rejects an empty budget field at both hops — parseFloat then JSON', () => {
+    const parsed = parseFloat('');
+    expect(Number.isNaN(parsed)).toBe(true);
+    expect(isValidCampaignBudget(parsed)).toBe(false);
+    const overTheWire = JSON.parse(JSON.stringify({ monthlyBudget: parsed })) as { monthlyBudget: unknown };
+    expect(overTheWire.monthlyBudget).toBeNull();
+    expect(isValidCampaignBudget(overTheWire.monthlyBudget)).toBe(false);
+    expect(buildCampaignInput({ ...base, scope: 'store', monthlyBudget: overTheWire.monthlyBudget }, STORE).ok).toBe(false);
+  });
 });
 
 describe('AD_BUDGET_PRESETS', () => {

@@ -1,9 +1,10 @@
 ---
 export const prerender = false;
 import '../../../../styles/pages/admin.css';
+import AdminStoreStateBadge from '../../../../components/admin/AdminStoreStateBadge.astro';
 import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import { isAdminRequest } from '../../../../lib/admin-auth.js';
-import { getStoreBySlug } from '../../../../lib/stores.js';
+import { getStoreBySlug, isStoreDiscoverable } from '../../../../lib/stores.js';
 import { getSellerById } from '../../../../lib/seller-auth.js';
 import { getProductsByStoreId, isProductVisible } from '../../../../lib/store-products.js';
 import { storeBaselineStatus } from '../../../../lib/ad-baseline.js';
@@ -56,7 +57,7 @@ const d = t.dashboard;
 const adCampaigns = getCampaignsForStore(store.id).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) }));
 const adBaseline = storeBaselineStatus({
   storeId: store.id,
-  blocked: !!store.blocked,
+  discoverable: isStoreDiscoverable(store),
   visibleProductCount: getProductsByStoreId(store.id).filter(isProductVisible).length,
 });
 // Same eligibility rule as the seller's own tab: a boost only makes sense for a product a
@@ -103,7 +104,7 @@ const adBudgetLabelFor = (c: { durationDays?: number }): string => (c.durationDa
             </a>
             <h1 class="text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">
               פרסום · {store.name}
-              {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+              <AdminStoreStateBadge store={store} />
             </h1>
             <p class="muted text-[0.82rem] m-0 mt-1">{seller?.name ?? '—'} · {seller?.email ?? ''}</p>
           </div>

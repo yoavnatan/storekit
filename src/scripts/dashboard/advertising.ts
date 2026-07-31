@@ -283,17 +283,49 @@ export function initAdvertisingTab(): void {
   // path; the select just writes into it and reveals it for "another amount".
   const budgetSelect = document.getElementById('ad-budget-select') as HTMLSelectElement | null;
   const budgetInput = document.getElementById('ad-budget-input') as HTMLInputElement | null;
+  // The one out-of-range message, built from the constants so the numbers in it can never drift
+  // from the rule the server enforces (lib/ad-budget.ts).
+  const budgetError = document.getElementById('ad-budget-range-error');
+  const budgetRangeMessage = (): string => (i18n.adBudgetInvalid ?? 'Invalid budget.')
+    .replace('{min}', formatPrice(MIN_CAMPAIGN_BUDGET))
+    .replace('{max}', formatPrice(MAX_CAMPAIGN_BUDGET));
+  function showBudgetError(show: boolean): void {
+    if (!budgetError) return;
+    budgetError.textContent = show ? budgetRangeMessage() : '';
+    budgetError.hidden = !show;
+  }
+
   function syncBudgetChoice(): boolean {
     if (!budgetSelect || !budgetInput) return false;
     const custom = budgetSelect.value === 'custom';
     budgetInput.hidden = !custom;
-    if (!custom) budgetInput.value = budgetSelect.value;
+    // "Another amount" hands over an EMPTY field (user, CURRENT_TASK.md item 4). Leaving the
+    // last preset in it means the seller has to clear someone else's number before typing his
+    // own, and the real failure is the half-cleared one — a click into "2000" and a typed "25"
+    // ships "252000". A preset still writes its value here on the way out, so the POST path
+    // is unchanged.
+    budgetInput.value = custom ? '' : budgetSelect.value;
+    // Deliberately NOT `required`: the empty field and the out-of-range one get the same Hebrew
+    // message from the same place (the submit guard below), instead of one native browser bubble
+    // in the browser's language for empty and our own wording for everything else.
+    showBudgetError(false); // a preset is always valid, and a fresh empty field is not yet wrong
     return custom;
   }
   budgetSelect?.addEventListener('change', () => {
     // Focus only on a real choice, never on the initial sync — this panel starts hidden, and
     // focusing inside a hidden panel scrolls the page to a field nobody asked for.
-    if (syncBudgetChoice()) { budgetInput?.focus(); budgetInput?.select(); }
+    if (syncBudgetChoice()) budgetInput?.focus(); // no select(): syncBudgetChoice just emptied it
+  });
+  // Told on the way OUT of the field, not on every keystroke: "5" on the way to "500" is not a
+  // mistake yet, and a message that appears mid-word is noise. Once it is up it clears live, so
+  // a correction is acknowledged the moment it is typed rather than at the next blur.
+  budgetInput?.addEventListener('blur', () => {
+    if (!budgetInput || budgetInput.hidden) return;
+    const raw = budgetInput.value.trim();
+    showBudgetError(raw !== '' && !isValidCampaignBudget(parseFloat(raw)));
+  });
+  budgetInput?.addEventListener('input', () => {
+    if (budgetError?.hidden === false && isValidCampaignBudget(parseFloat(budgetInput.value))) showBudgetError(false);
   });
   syncBudgetChoice();
   function updateBudgetMode(): void {
@@ -447,7 +479,7 @@ export function initAdvertisingTab(): void {
     const fd = new FormData(form);
     const scope = String(fd.get('scope') ?? 'store');
     const platform = String(fd.get('platform') ?? 'google');
-    const monthlyBudget = parseFloat(String(fd.get('monthlyBudget') ?? '0'));
+    const monthlyBudget = parseFloat(String(fd.get('monthlyBudget') ?? ''));
     const durationRaw = parseInt(String(fd.get('durationDays') ?? ''), 10);
     const durationDays = Number.isFinite(durationRaw) ? durationRaw : undefined;
     // Audience only applies to a narrowed boost — a store campaign self-targets per product, so
@@ -463,6 +495,20 @@ export function initAdvertisingTab(): void {
     // "Missing productId" — the seller is looking straight at the empty list.
     if (scope === 'products' && !productIds?.length) { showStatus(i18n.adScopeProductsMissing ?? '', true); return; }
     if (scope === 'categories' && !categoryIds?.length) { showStatus(i18n.adScopeCategoriesMissing ?? '', true); return; }
+    // Budget guard, same rule as the server and the inline editor below (lib/ad-budget.ts). Also
+    // the empty-field case: nothing typed parses to NaN, which JSON.stringify sends as `null`, so
+    // without this the seller gets a generic server error about a field he is looking straight at.
+    // The message goes UNDER the field rather than into the form's status line — that is where he
+    // is looking — with the status line kept for the case the field is hidden and cannot show it.
+    if (!isValidCampaignBudget(monthlyBudget)) {
+      if (budgetInput && !budgetInput.hidden) {
+        showBudgetError(true);
+        budgetInput.focus();
+      } else {
+        showStatus(budgetRangeMessage(), true);
+      }
+      return;
+    }
 
     if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('btn--busy'); }
     try {

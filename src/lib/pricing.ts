@@ -13,6 +13,18 @@
  *  net profit" lines in the seller + admin performance views. When the processor is wired,
  *  commissionPercentForTier() is what tells it how to split — same function, real consequence.
  *
+ *  WHEN the monthly fee starts (decided 2026-07-29, and the reasoning is the decision — moved here
+ *  from AI_INSTRUCTIONS.md 2026-07-31 to keep it next to the numbers it governs): **no time-boxed
+ *  trial. The fee starts at the seller's FIRST SALE, capped at 2 months from signup.** A card is
+ *  taken at signup either way, because the ads Authorize/Capture flow needs one on file.
+ *  A 14–30 day trial sat in the spec from 2026-07-21 and was rejected on review: a trial promises
+ *  the value lands inside its window, and at launch — few stores, little traffic — it cannot, so
+ *  day 14 becomes a scheduled cancellation AND sends the seller away concluding "this doesn't
+ *  work". Charging only once the mall has actually sold something for him removes the decision
+ *  moment entirely; the 2-month cap is what stops a dead store sitting free forever.
+ *  Seller-facing wording is "קודם מוכרים. אחר כך משלמים." — never "התחילו בחינם", which is the
+ *  Shopify script and enters a comparison this platform loses (AI_INSTRUCTIONS → Positioning).
+ *
  *  Pure/isomorphic: no I/O, no config beyond this file, so it is trivially testable and safe to
  *  import from anywhere (client bundles included).
  */
