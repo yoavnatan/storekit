@@ -24,6 +24,17 @@ let current: HTMLElement | null = null;
 // tooltip open after the pointer had already left (see the mouseover handler).
 let pending: HTMLElement | null = null;
 
+/** Drop whitespace and the punctuation that only ever JOINS parts — so an accessible name reads
+ *  the same as the words it was built from, wherever the layout put them. An accessible name is
+ *  routinely one string ("Name — ₪120") over what the eye sees as two elements, and the gap
+ *  between them is a line break, an em-dash or both, none of which the shopper reads as content.
+ *  Only separators are dropped: everything that carries meaning survives, so "Sort by price" still
+ *  does not match a column header that says "Price". */
+function squash(s: string): string {
+  // ‎‏؜ are the bidi marks an RTL string picks up around a price or a Latin word.
+  return s.replace(/[\s‎‏؜–—·•|,:;-]+/gu, '');
+}
+
 /** The icon control under `target`, or null if this isn't one. */
 function candidate(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof Element)) return null;
@@ -39,7 +50,8 @@ function candidate(target: EventTarget | null): HTMLElement | null {
   // resolves back up to the trigger and re-showed its tooltip over the open
   // menu (the header's avatar button did exactly that).
   if (el.getAttribute('aria-expanded') === 'true') return null;
-  const label = el.getAttribute('aria-label')?.replace(/\s+/g, ' ').trim();
+  // Only squash() normalizes from here on — the tooltip itself renders the raw attribute.
+  const label = el.getAttribute('aria-label');
   if (!label) return null;
   // Only icon-bearing controls: this exists for a glyph whose meaning isn't
   // written anywhere. Icons here are always inline SVG (or an <img>).
@@ -56,9 +68,19 @@ function candidate(target: EventTarget | null): HTMLElement | null {
   // label is "Sort by price", and that extra word is the whole reason the tooltip is wanted. The
   // reverse direction would have suppressed it. A count badge nested in the button (header bell,
   // cart) is harmless for the same reason — "23" does not contain "open cart".
-  const raw = (el as HTMLElement).innerText ?? el.textContent ?? '';
-  const text = raw.replace(/\s+/g, ' ').trim();
-  if (text.includes(label)) return null;
+  //
+  // Compared through squash() (below), and against the CARD the control sits in, not only the
+  // control itself — two ways the same words on screen used to slip past a plain comparison:
+  //   · The homepage tile is one <a> labelled "Name — ₪120" while the name and the price are two
+  //     separate spans, so the em-dash and the line break between them made a literal `includes`
+  //     false and the tile's own caption floated over it.
+  //   · The store product card's photo is a role="button" labelled with the product name, and the
+  //     name is printed right below the picture — outside the button, inside the card.
+  const key = squash(label);
+  if (!key) return null; // a label of nothing but punctuation labels nothing
+  if (squash((el as HTMLElement).innerText ?? el.textContent ?? '').includes(key)) return null;
+  const card = el.closest<HTMLElement>('li, article, tr');
+  if (card && card !== el && squash(card.innerText ?? card.textContent ?? '').includes(key)) return null;
   return el;
 }
 

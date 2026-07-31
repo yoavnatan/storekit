@@ -89,6 +89,38 @@ describe('which controls get a hover label', () => {
     expect(hover(el)).toBe('מיין לפי מחיר');
   });
 
+  it('stays silent when the card around the control already prints the label', () => {
+    // The store product card: the photo is a role="button" holding an <img> and labelled with the
+    // product name, and the name is printed in full right under the picture. Resting on the photo
+    // drew the product's own name over it (reported by hovering a card, 2026-07-31).
+    const card = mount(`<li class="product-card">
+        <div role="button" aria-label="חולצת פסים"><img src="x.jpg" alt="חולצת פסים"></div>
+        <h3>חולצת פסים</h3>
+      </li>`);
+    expect(hover(card.querySelector('[role="button"]')!)).toBeNull();
+  });
+
+  it('stays silent when the label only joins two on-screen texts', () => {
+    // The homepage carousel tile: ONE <a> whose accessible name is "name — price", with the name
+    // and the price as two separate spans. The em-dash and the line break between them are the
+    // only difference, and a literal comparison called that "not on screen", so every tile in the
+    // moving row carried its own caption as a tooltip.
+    const el = mount(`<a href="/x" aria-label="חולצת פסים — ₪120">
+        <img src="x.jpg" alt="חולצת פסים">
+        <span>חולצת פסים</span><span>₪120</span>
+      </a>`);
+    expect(hover(el)).toBeNull();
+  });
+
+  it('still labels a control in that card whose label is nowhere on it', () => {
+    // The guard on the fix above: the wishlist heart sits in the same card and says nothing.
+    const card = mount(`<li class="product-card">
+        <button aria-label="הוסף למועדפים">${ICON}</button>
+        <h3>חולצת פסים</h3>
+      </li>`);
+    expect(hover(card.querySelector('button')!)).toBe('הוסף למועדפים');
+  });
+
   it('stays silent on a control with no icon at all', () => {
     expect(hover(mount('<button aria-label="שמור">שמירה</button>'))).toBeNull();
   });
