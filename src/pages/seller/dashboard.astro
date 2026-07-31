@@ -1490,32 +1490,52 @@ const orderStatusColors: Record<string, string> = {
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               const noteList   = orderStoreNotes(order, store!.slug);
               return (
-                <div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
-                  <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
-                    <div class="flex flex-col items-start gap-[0.2rem] w-20 sm:w-28 shrink-0">
+                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
+                  <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
+                    {/* No fixed width below 640px: the grid's first column already sizes
+                        to this content, and the 5rem the desktop row uses wrapped the
+                        date onto a second line, making the whole first row 3 lines tall. */}
+                    <div class="flex flex-col items-start gap-[0.2rem] @[640px]/ordcard:w-28 shrink-0 [grid-area:1/1]">
                       <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">
                         #{shortId}
                         {order.shippingStatus === 'pending' && (
-                          <span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="הזמנה חדשה"></span>
+                          <span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label={d.orderNewLabel}></span>
                         )}
                       </span>
-                      <span class="text-[0.72rem] text-[color:var(--color-muted)]">{fmtDate(order.createdAt)}</span>
+                      <span class="text-[0.72rem] text-[color:var(--color-muted)] whitespace-nowrap">{fmtDate(order.createdAt)}</span>
                     </div>
-                    <div class="flex-1 flex items-center gap-3 min-w-0">
-                      <div class="flex flex-col min-w-0 flex-1 gap-[0.15rem]">
+                    <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:flex-1 @[640px]/ordcard:items-center @[640px]/ordcard:gap-3 @[640px]/ordcard:min-w-0">
+                      <div class="flex flex-col min-w-0 flex-1 gap-[0.15rem] [grid-area:1/2]">
                         <span class="text-sm font-semibold text-[color:var(--color-text)] truncate">{order.buyerName}</span>
-                        <span class="text-[0.72rem] text-[color:var(--color-muted)] truncate">{storeItems.length === 1 ? 'מוצר אחד' : `${storeItems.length} מוצרים`}</span>
+                        <span class="text-[0.72rem] text-[color:var(--color-muted)] truncate">{storeItems.length === 1 ? d.orderProductsOne : d.orderProductsMany.replace('{n}', String(storeItems.length))}</span>
                       </div>
-                      {/* Trailing on desktop: price at a FIXED x on every card, then the
-                          age chip pulled right up against the status badge in one shared,
-                          fixed-width slot (they read as a single status cluster). The slot's
-                          fixed width is what keeps the price aligned across all cards; the
-                          status stays full-width and only the age chip yields (clips) in the
-                          rare case both are at their longest. On mobile they stack. */}
-                      <div class="flex flex-col items-end gap-1.5 shrink-0 sm:flex-row sm:items-center sm:gap-4">
-                        <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] w-[6rem] text-end">{formatPrice(storeSub ? storeSub.subtotal + storeSub.shipping : 0)}</span>
-                        <div class="flex items-center justify-end gap-1.5 min-w-0 sm:w-[12rem]">
-                          <span class="order-age-chip-slot flex items-center shrink-0 empty:hidden" set:html={orderAgeChipHtml(order.createdAt, order.shippingStatus, lang)} />
+                      {/* Trailing at ≥640px OF THE CARD (a container query, not the viewport —
+                          the admin copy of this card sits next to a sidebar, so viewport width
+                          says nothing about the room the card actually has): price at a FIXED x
+                          on every card, then the age chip pulled right up against the status
+                          badge in one shared, fixed-width slot (they read as a single status
+                          cluster). The slot's fixed width is what keeps the price aligned across
+                          all cards; the status stays full-width (shrink-0) and only the age chip
+                          yields. 13.5rem, not the 12rem it was: the longest real pair
+                          ("טרם נשלחה · N ימים" + a note chip + "בטיפול" = 210px) overflowed a
+                          192px slot and the chip printed straight through the price — measured,
+                          not theoretical. Past that the chip's own slot shrinks and clips it
+                          (min-w-0 + overflow-hidden, and it carries a title tooltip), which is
+                          what "the chip yields" was always supposed to mean and never did.
+                          Below 640px the header is a 3-column grid instead and these two
+                          wrappers go `display:contents` so their children place directly:
+                          row 1 = id/date · buyer · chevron, row 2 = price · the status cluster.
+                          Stacking them in a column (the previous mobile treatment) gave the
+                          cluster its full 186px min-content beside the buyer name and blew the
+                          card out to 479px at a 375px viewport — the whole card scrolled
+                          sideways and the name collapsed to nothing. The price drops its fixed
+                          slot there and goes text-start in column 1, so it ends at the same x
+                          as the id and date above it — owner: a price in a slot of its own
+                          "לא קשור לכלום". */}
+                      <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
+                        <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatPrice(storeSub ? storeSub.subtotal + storeSub.shipping : 0)}</span>
+                        <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
+                          <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(order.createdAt, order.shippingStatus, lang)} />
                           <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)]" title={noteList.join('\n') || undefined} aria-label={d.orderNoteLabel} hidden={noteList.length === 0}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
                           <button type="button" class="order-card__status-badge inline-flex items-center gap-1 shrink-0 text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95 whitespace-nowrap" style={`background:${orderStatusColors[order.shippingStatus] ?? '#888'}1a;color:${orderStatusColors[order.shippingStatus] ?? '#888'};`} aria-haspopup="listbox" aria-expanded="false" aria-label={`${d.orderShippingStatus}: ${orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}`}>
                             <span class="order-status-badge-label">{orderShippingLabels[order.shippingStatus] ?? order.shippingStatus}</span>
@@ -1524,7 +1544,7 @@ const orderStatusColors: Record<string, string> = {
                         </div>
                       </div>
                     </div>
-                    <svg class="shrink-0 text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                    <svg class="shrink-0 [grid-area:1/3] text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                   </div>
                   <div class="order-card__body border-t border-[color:var(--color-border)] p-4 flex flex-col gap-4 animate-product-menu-open" hidden>
                     <div>
@@ -1548,7 +1568,7 @@ const orderStatusColors: Record<string, string> = {
                           style="font-size:0.75rem"
                         >
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          ערוך פרטים
+                          {d.orderEditDetails}
                         </button>
                       </div>
                       <p class="order-card__info-line order-buyer-name text-sm text-[color:var(--color-text)] my-[0.1rem]"><strong>{order.buyerName}</strong></p>
@@ -1570,7 +1590,7 @@ const orderStatusColors: Record<string, string> = {
                       </ul>
                       {storeSub && (
                         <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
-                          <span>{d.orderShipping}: {storeSub.shipping === 0 ? 'חינם' : formatPrice(storeSub.shipping)}</span>
+                          <span>{d.orderShipping}: {storeSub.shipping === 0 ? d.orderShippingFree : formatPrice(storeSub.shipping)}</span>
                           <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatPrice(storeSub.subtotal + storeSub.shipping)}</strong>
                         </div>
                       )}

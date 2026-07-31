@@ -14,9 +14,35 @@ import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.j
 // <script>. `onAlertsChanged` = the dashboard's updateSwitcherAlertDot (shared
 // with the messages tab), re-run whenever an order's handled state changes.
 export function initOrdersTab(onAlertsChanged: () => void): void {
+  // i18n for the whole tab — FIRST, above every function that reads it. The
+  // file already learned this once: a declaration further down put bindOrderCard
+  // in its temporal dead zone when the init pass ran over the SSR cards, and card
+  // expand/collapse broke entirely.
+  let ordersDashI18n: Record<string, string> = {};
+  try { ordersDashI18n = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
+
+  /** One key, with its `{n}` filled in. No Hebrew fallback: a missing key is an
+   *  i18n bug to see, not to paper over with the wrong language. */
+  const tt = (key: string, n?: number): string => {
+    const raw = ordersDashI18n[key] ?? '';
+    return n === undefined ? raw : raw.replace('{n}', String(n));
+  };
+
+  // The age chip renders its own wording, so it needs the page's language the
+  // same way the server hands it to the SSR card. Read off <html lang> — the one
+  // place the request's language reaches the client without a second copy of the
+  // cookie logic (i18n/index.ts#getLang → BaseLayout).
+  const ordersLang = document.documentElement.lang === 'en' ? 'en' : 'he';
+
   // ── Order cards: accordion + save status/tracking ────────────
   const colorMap = { pending:'#ef4444', processing:'#3b82f6', ready:'#f59e0b', shipped:'#8b5cf6', delivered:'#16a34a', cancelled:'#6b7280' } as Record<string, string>;
-  const labelMap = { pending:'חדשה', processing:'בטיפול', ready:'ממתין לאיסוף', shipped:'נשלח', delivered:'נמסר', cancelled:'בוטלה' } as Record<string, string>;
+  // Status wording is the translations' own (`shipping*`), not a second copy of
+  // it here — this map was Hebrew literals, so an English dashboard labelled
+  // every rebuilt card in Hebrew.
+  const labelMap: Record<string, string> = {
+    pending: tt('shippingPending'), processing: tt('shippingProcessing'), ready: tt('shippingReady'),
+    shipped: tt('shippingShipped'), delivered: tt('shippingDelivered'), cancelled: tt('shippingCancelled'),
+  };
 
   // Body-anchored (position:fixed, clamped to viewport) instead of the old
   // in-card position:absolute — an order near the bottom of a long list
@@ -38,7 +64,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     } else if (tabBtn) {
       const span = document.createElement('span');
       span.className = 'dash-tab-badge';
-      span.setAttribute('aria-label', `${remaining} הזמנות חדשות`);
+      span.setAttribute('aria-label', tt('orderNewCount', remaining));
       span.textContent = String(remaining);
       tabBtn.appendChild(span);
     }
@@ -70,15 +96,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   function refreshOrderAgeChip(card: HTMLElement, status: string): void {
     const slot = card.querySelector<HTMLElement>('.order-age-chip-slot');
     const createdAt = card.dataset.sortDate ?? '';
-    if (slot && createdAt) slot.innerHTML = orderAgeChipHtml(createdAt, status, 'he');
+    if (slot && createdAt) slot.innerHTML = orderAgeChipHtml(createdAt, status, ordersLang);
   }
 
-  // i18n for the orders tab — parsed once, declared up here so it is initialized
-  // BEFORE bindOrderCard (which reads note labels from it) runs on the SSR cards at
-  // init; otherwise the init forEach hit its temporal dead zone and threw, which
-  // broke card expand/collapse entirely.
-  let ordersDashI18n: Record<string, string> = {};
-  try { ordersDashI18n = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
 
   function bindOrderCard(card: HTMLElement): void {
     if (card.dataset.bound === '1') return;
@@ -115,9 +135,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     const TRASH_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
     const CHECK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
     const X_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    const editLabel = ordersDashI18n.orderEditNote ?? 'ערוך';
-    const delLabel  = ordersDashI18n.orderNoteDelete ?? 'מחק הערה';
-    const cancelLabel = ordersDashI18n.orderNoteCancel ?? 'ביטול';
+    const editLabel = tt('orderEditNote');
+    const delLabel  = tt('orderNoteDelete');
+    const cancelLabel = tt('orderNoteCancel');
     function syncNoteChip(): void {
       const noteChip = card.querySelector<HTMLElement>('.order-note-chip');
       if (!noteChip) return;
@@ -313,7 +333,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           if (idSpan && !idSpan.querySelector('.order-new-dot')) {
             const dot = document.createElement('span');
             dot.className = 'order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0';
-            dot.setAttribute('aria-label', 'הזמנה חדשה');
+            dot.setAttribute('aria-label', tt('orderNewLabel'));
             idSpan.appendChild(dot);
           }
         }
@@ -354,7 +374,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.84rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${v}" style="${pending === v ? 'font-weight:700' : ''}"><span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>${labelMap[v] ?? v}</button>`
         ),
         `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-        `<div class="px-2 pb-1"><button type="button" class="btn btn--accent btn--sm w-full order-quick-save">${ordersDashI18n.orderSave ?? 'שמור'}</button></div>`,
+        `<div class="px-2 pb-1"><button type="button" class="btn btn--accent btn--sm w-full order-quick-save">${tt('orderSave')}</button></div>`,
       ].join(''), (portal) => {
         portal.querySelectorAll<HTMLButtonElement>('[data-value]').forEach((opt) => {
           opt.addEventListener('click', () => {
@@ -393,7 +413,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         badge.style.background = `${colorMap.cancelled ?? '#6b7280'}1a`;
         badge.style.color = colorMap.cancelled ?? '#6b7280';
         const badgeLbl = badge.querySelector<HTMLElement>('.order-status-badge-label');
-        if (badgeLbl) badgeLbl.textContent = labelMap.cancelled ?? 'בוטלה';
+        if (badgeLbl) badgeLbl.textContent = labelMap.cancelled;
       }
       card.dataset.shippingStatus = 'cancelled';
       // No longer an actionable "new order" — drop the dot + its notification.
@@ -413,10 +433,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     cancelBtn?.addEventListener('click', () => {
       window.dispatchEvent(new CustomEvent('confirm:open', {
         detail: {
-          title: 'לבטל את ההזמנה?',
-          message: 'הפריטים יוחזרו למלאי והקונה יקבל על כך הודעה. הפעולה אינה הפיכה.',
-          okLabel: 'בטל הזמנה',
-          workingLabel: 'מבטל…',
+          title: tt('orderCancelTitle'),
+          message: tt('orderCancelMsg'),
+          okLabel: tt('orderCancelOk'),
+          workingLabel: tt('orderCancelWorking'),
           onConfirm: () => runOrderCancel(),
         },
       }));
@@ -474,7 +494,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     const storeItems = o.items.filter(i => i.storeSlug === storeSlugForOrders);
     const isNew    = o.shippingStatus === 'pending';
     const notes    = (o.notes ?? []).filter(Boolean);
-    const noteItemsHtml = notes.map((n) => `<li class="order-note-item flex items-start gap-1.5 text-[0.82rem]"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0 mt-[0.15rem] [color:var(--color-muted)]"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span class="order-note-text flex-1 min-w-0 [color:var(--color-text)] whitespace-pre-wrap break-words">${esc(n)}</span><button type="button" class="order-note-edit shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-[var(--radius-sm)] [color:var(--color-muted)] bg-transparent border-0 cursor-pointer transition-colors duration-100 hover:[color:var(--color-primary)]" aria-label="${esc(ordersDashI18n.orderEditNote ?? 'ערוך')}" title="${esc(ordersDashI18n.orderEditNote ?? 'ערוך')}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button><button type="button" class="order-note-del shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-[var(--radius-sm)] [color:var(--color-muted)] bg-transparent border-0 cursor-pointer transition-colors duration-100 hover:[color:var(--color-danger)]" aria-label="${esc(ordersDashI18n.orderNoteDelete ?? 'מחק הערה')}" title="${esc(ordersDashI18n.orderNoteDelete ?? 'מחק הערה')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button></li>`).join('');
+    const noteItemsHtml = notes.map((n) => `<li class="order-note-item flex items-start gap-1.5 text-[0.82rem]"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0 mt-[0.15rem] [color:var(--color-muted)]"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span class="order-note-text flex-1 min-w-0 [color:var(--color-text)] whitespace-pre-wrap break-words">${esc(n)}</span><button type="button" class="order-note-edit shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-[var(--radius-sm)] [color:var(--color-muted)] bg-transparent border-0 cursor-pointer transition-colors duration-100 hover:[color:var(--color-primary)]" aria-label="${esc(tt('orderEditNote'))}" title="${esc(tt('orderEditNote'))}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button><button type="button" class="order-note-del shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-[var(--radius-sm)] [color:var(--color-muted)] bg-transparent border-0 cursor-pointer transition-colors duration-100 hover:[color:var(--color-danger)]" aria-label="${esc(tt('orderNoteDelete'))}" title="${esc(tt('orderNoteDelete'))}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button></li>`).join('');
 
     const itemsHtml = storeItems.map(item => `
       <li class="flex items-center gap-2.5 text-sm">
@@ -493,32 +513,35 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       <input type="hidden" class="order-status-select" data-field="shippingStatus" value="${esc(o.shippingStatus)}" />
     </div>`;
 
-    return `<div class="order-card group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
-      <div class="order-card__header flex items-center gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
-        <div class="flex flex-col items-start gap-[0.2rem] w-20 sm:w-28 shrink-0">
-          <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? '<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="הזמנה חדשה"></span>' : ''}</span>
-          <span class="text-[0.72rem] text-[color:var(--color-muted)]">${esc(fmtOrderDate(o.createdAt))}</span>
+    // Header layout mirrors the SSR card in seller/dashboard.astro exactly — a
+    // 3-column grid below 640px OF THE CARD (container query) and the desktop
+    // row above it. Keep the two in sync; the comment there explains why.
+    return `<div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}" data-shipping-status="${esc(o.shippingStatus)}" data-sort-date="${esc(o.createdAt)}" data-sort-amount="${total}">
+      <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
+        <div class="flex flex-col items-start gap-[0.2rem] @[640px]/ordcard:w-28 shrink-0 [grid-area:1/1]">
+          <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#${esc(shortId)}${isNew ? `<span class="order-new-dot inline-block w-2 h-2 bg-[#ef4444] rounded-full ms-[5px] align-middle shrink-0" aria-label="${esc(tt('orderNewLabel'))}"></span>` : ''}</span>
+          <span class="text-[0.72rem] text-[color:var(--color-muted)] whitespace-nowrap">${esc(fmtOrderDate(o.createdAt))}</span>
         </div>
-        <div class="flex-1 flex items-center gap-3 min-w-0">
-          <div class="flex flex-col min-w-0 flex-1 gap-[0.15rem]">
+        <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:flex-1 @[640px]/ordcard:items-center @[640px]/ordcard:gap-3 @[640px]/ordcard:min-w-0">
+          <div class="flex flex-col min-w-0 flex-1 gap-[0.15rem] [grid-area:1/2]">
             <span class="text-sm font-semibold text-[color:var(--color-text)] truncate">${esc(o.buyerName)}</span>
-            <span class="text-[0.72rem] text-[color:var(--color-muted)] truncate">${storeItems.length === 1 ? 'מוצר אחד' : `${storeItems.length} מוצרים`}</span>
+            <span class="text-[0.72rem] text-[color:var(--color-muted)] truncate">${esc(storeItems.length === 1 ? tt('orderProductsOne') : tt('orderProductsMany', storeItems.length))}</span>
           </div>
-          <div class="flex flex-col items-end gap-1.5 shrink-0 sm:flex-row sm:items-center sm:gap-4">
-            <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] w-[6rem] text-end">${fmtPrice(total)}</span>
-            <div class="flex items-center justify-end gap-1.5 min-w-0 sm:w-[12rem]">
-              <span class="order-age-chip-slot flex items-center shrink-0 empty:hidden">${orderAgeChipHtml(o.createdAt, o.shippingStatus, 'he')}</span>
-              <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)]"${notes.length ? ` title="${esc(notes.join('\n'))}"` : ' hidden'} aria-label="${esc(ordersDashI18n.orderNoteLabel ?? '')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg></span>
+          <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
+            <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">${fmtPrice(total)}</span>
+            <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
+              <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden">${orderAgeChipHtml(o.createdAt, o.shippingStatus, ordersLang)}</span>
+              <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)]"${notes.length ? ` title="${esc(notes.join('\n'))}"` : ' hidden'} aria-label="${esc(tt('orderNoteLabel'))}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg></span>
               <button type="button" class="order-card__status-badge inline-flex items-center gap-1 shrink-0 text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95 whitespace-nowrap" style="background:${esc(color)}1a;color:${esc(color)}" aria-haspopup="listbox" aria-expanded="false"><span class="order-status-badge-label">${esc(label)}</span><svg class="order-status-badge-chevron shrink-0" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
             </div>
           </div>
         </div>
-        <svg class="shrink-0 text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg class="shrink-0 [grid-area:1/3] text-[color:var(--color-muted)] transition-transform duration-[220ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] group-data-[open]:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="order-card__body border-t border-[color:var(--color-border)] p-4 flex flex-col gap-4 animate-product-menu-open" hidden>
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
-            <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em]">לקוח</h3>
+            <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em]">${esc(tt('orderBuyer'))}</h3>
             <button class="btn btn--ghost btn--sm order-edit-buyer-btn" type="button"
               data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"
               data-buyer-name="${esc(o.buyerName)}" data-buyer-email="${esc(o.buyerEmail)}"
@@ -530,50 +553,50 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
               data-discount-value="${esc(String(storeSub.discount?.value ?? 0))}"
               style="font-size:0.75rem">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              ערוך פרטים
+              ${esc(tt('orderEditDetails'))}
             </button>
           </div>
           <p class="order-card__info-line order-buyer-name text-sm text-[color:var(--color-text)] my-[0.1rem]"><strong>${esc(o.buyerName)}</strong></p>
           <p class="order-card__info-line order-buyer-email text-sm text-[color:var(--color-text)] my-[0.1rem]">${esc(o.buyerEmail)}</p>
-          <p class="order-card__info-line order-buyer-phone text-sm text-[color:var(--color-text)] my-[0.1rem]">טלפון: ${esc(o.buyerPhone)}</p>
-          <p class="order-card__info-line order-buyer-address text-sm text-[color:var(--color-text)] my-[0.1rem]">כתובת: ${esc(o.buyerAddress.street)}, ${esc(o.buyerAddress.city)}${o.buyerAddress.zip ? ' ' + esc(o.buyerAddress.zip) : ''}</p>
+          <p class="order-card__info-line order-buyer-phone text-sm text-[color:var(--color-text)] my-[0.1rem]">${esc(tt('orderPhone'))}: ${esc(o.buyerPhone)}</p>
+          <p class="order-card__info-line order-buyer-address text-sm text-[color:var(--color-text)] my-[0.1rem]">${esc(tt('orderAddress'))}: ${esc(o.buyerAddress.street)}, ${esc(o.buyerAddress.city)}${o.buyerAddress.zip ? ' ' + esc(o.buyerAddress.zip) : ''}</p>
         </div>
         <div>
-          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">פריטים</h3>
+          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">${esc(tt('orderItems'))}</h3>
           <ul class="order-card__items list-none p-0 flex flex-col gap-2">${itemsHtml}</ul>
           <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
-            <span>משלוח: ${storeSub.shipping === 0 ? 'חינם' : fmtPrice(storeSub.shipping)}</span>
-            <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: ${fmtPrice(total)}</strong>
+            <span>${esc(tt('orderShipping'))}: ${storeSub.shipping === 0 ? esc(tt('orderShippingFree')) : fmtPrice(storeSub.shipping)}</span>
+            <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtPrice(total)}</strong>
           </div>
         </div>
         <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
           <div class="order-note mb-3">
             <ul class="order-note-list flex flex-col gap-1 mb-1"${notes.length ? '' : ' hidden'}>${noteItemsHtml}</ul>
-            <button type="button" class="order-note-add inline-flex items-center gap-1.5 text-[0.82rem] font-semibold [color:var(--color-primary)] bg-transparent border-0 cursor-pointer py-1 hover:underline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>${ordersDashI18n.orderAddNote ?? 'הוסף הערה'}</button>
-            <div class="order-note-editor mt-1.5" hidden><textarea class="order-note-input input w-full !resize-none" rows="2" maxlength="2000"></textarea><div class="flex items-center justify-between gap-2 mt-1.5"><span class="text-[0.72rem] [color:var(--color-muted)]">${ordersDashI18n.orderNotePrivateHint ?? 'גלוי רק לך'}</span><div class="flex items-center gap-1.5"><button type="button" class="order-note-cancel inline-flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] bg-transparent [color:var(--color-muted)] border border-[color:var(--color-border)] cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-surface)] hover:[color:var(--color-text)]" aria-label="${esc(ordersDashI18n.orderNoteCancel ?? 'ביטול')}" title="${esc(ordersDashI18n.orderNoteCancel ?? 'ביטול')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button><button type="button" class="order-note-save inline-flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] bg-[color:var(--color-primary)] text-white border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95" aria-label="${esc(ordersDashI18n.orderAddNote ?? 'הוסף הערה')}" title="${esc(ordersDashI18n.orderAddNote ?? 'הוסף הערה')}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button></div></div></div>
+            <button type="button" class="order-note-add inline-flex items-center gap-1.5 text-[0.82rem] font-semibold [color:var(--color-primary)] bg-transparent border-0 cursor-pointer py-1 hover:underline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>${tt('orderAddNote')}</button>
+            <div class="order-note-editor mt-1.5" hidden><textarea class="order-note-input input w-full !resize-none" rows="2" maxlength="2000"></textarea><div class="flex items-center justify-between gap-2 mt-1.5"><span class="text-[0.72rem] [color:var(--color-muted)]">${tt('orderNotePrivateHint')}</span><div class="flex items-center gap-1.5"><button type="button" class="order-note-cancel inline-flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] bg-transparent [color:var(--color-muted)] border border-[color:var(--color-border)] cursor-pointer transition-colors duration-100 hover:bg-[color:var(--color-surface)] hover:[color:var(--color-text)]" aria-label="${esc(tt('orderNoteCancel'))}" title="${esc(tt('orderNoteCancel'))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button><button type="button" class="order-note-save inline-flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] bg-[color:var(--color-primary)] text-white border-0 cursor-pointer transition-[filter] duration-100 hover:brightness-95" aria-label="${esc(tt('orderAddNote'))}" title="${esc(tt('orderAddNote'))}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button></div></div></div>
           </div>
-          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">${ordersDashI18n.orderShippingStatus ?? 'סטטוס הזמנה'}</h3>
+          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">${tt('orderShippingStatus')}</h3>
           <div class="flex gap-2 items-center flex-wrap">
             ${statusDropdown}
           </div>
-          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mt-3 mb-2">מספר מעקב</h3>
+          <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mt-3 mb-2">${esc(tt('orderTracking'))}</h3>
           <div class="flex gap-2 items-center flex-wrap">
-            <input type="text" class="order-tracking-input input" data-field="trackingNumber" value="" placeholder="לדוגמה: IL1234567890" style="flex:1" />
-            <button class="order-save-btn btn btn--sm btn--accent" type="button">שמור</button>
+            <input type="text" class="order-tracking-input input" data-field="trackingNumber" value="" placeholder="${esc(tt('orderTrackingPlaceholder'))}" style="flex:1" />
+            <button class="order-save-btn btn btn--sm btn--accent" type="button">${esc(tt('orderSave'))}</button>
           </div>
-          <p class="order-save-status text-[0.8rem] font-semibold text-[color:var(--color-success)] mt-[0.4rem]" hidden aria-live="polite">נשמר ✓</p>
-          ${(CANCELLABLE_FROM as readonly string[]).includes(o.shippingStatus) ? `<button class="order-cancel-btn mt-3 inline-flex items-center gap-[0.3rem] bg-transparent border-0 p-0 cursor-pointer text-[0.78rem] font-semibold text-[color:var(--color-danger)] hover:underline" type="button" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>ביטול הזמנה</button>` : ''}
+          <p class="order-save-status text-[0.8rem] font-semibold text-[color:var(--color-success)] mt-[0.4rem]" hidden aria-live="polite">${esc(tt('orderSaved'))}</p>
+          ${(CANCELLABLE_FROM as readonly string[]).includes(o.shippingStatus) ? `<button class="order-cancel-btn mt-3 inline-flex items-center gap-[0.3rem] bg-transparent border-0 p-0 cursor-pointer text-[0.78rem] font-semibold text-[color:var(--color-danger)] hover:underline" type="button" data-order-id="${esc(o.id)}" data-store-slug="${esc(storeSlugForOrders)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>${esc(tt('orderCancel'))}</button>` : ''}
         </div>
       </div>
     </div>`;
   }
 
   const ORDER_SORT_OPTIONS: { col: 'date' | 'amount' | 'urgency'; dir: 'asc' | 'desc'; label: () => string }[] = [
-    { col: 'urgency', dir: 'asc', label: () => ordersDashI18n.orderSortOptUrgency ?? 'לפי דחיפות' },
-    { col: 'date', dir: 'desc', label: () => ordersDashI18n.orderSortOptDateDesc ?? 'תאריך: חדש — ישן' },
-    { col: 'date', dir: 'asc', label: () => ordersDashI18n.orderSortOptDateAsc ?? 'תאריך: ישן — חדש' },
-    { col: 'amount', dir: 'desc', label: () => ordersDashI18n.orderSortOptAmountDesc ?? 'סכום: גבוה — נמוך' },
-    { col: 'amount', dir: 'asc', label: () => ordersDashI18n.orderSortOptAmountAsc ?? 'סכום: נמוך — גבוה' },
+    { col: 'urgency', dir: 'asc', label: () => tt('orderSortOptUrgency') },
+    { col: 'date', dir: 'desc', label: () => tt('orderSortOptDateDesc') },
+    { col: 'date', dir: 'asc', label: () => tt('orderSortOptDateAsc') },
+    { col: 'amount', dir: 'desc', label: () => tt('orderSortOptAmountDesc') },
+    { col: 'amount', dir: 'asc', label: () => tt('orderSortOptAmountAsc') },
   ];
 
   function getOrderFilterValue(card: HTMLElement, col: string): string {
@@ -582,7 +605,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   }
 
   function orderFilterColumnLabel(col: string): string {
-    if (col === 'status') return ordersDashI18n.filterColStatus ?? 'סטטוס';
+    if (col === 'status') return tt('filterColStatus');
     return col;
   }
 
@@ -640,7 +663,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   const ordersPortal = createFloatingPortal('orders-toolbar-portal');
 
   function openOrdersSort(trigger: HTMLElement): void {
-    ordersPortal.open(trigger, '13rem', () => toolbarMenuTitle(ordersDashI18n.sortByLabel ?? 'מיין לפי') + ORDER_SORT_OPTIONS.map((o) => {
+    ordersPortal.open(trigger, '13rem', () => toolbarMenuTitle(tt('sortByLabel')) + ORDER_SORT_OPTIONS.map((o) => {
       const selected = o.col === ordersSortCol && o.dir === ordersSortDir;
       return `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-sort-col="${o.col}" data-sort-dir="${o.dir}" style="${selected ? 'font-weight:700;color:var(--color-primary)' : ''}">${o.label()}</button>`;
     }).join(''), (portal) => {
@@ -662,14 +685,14 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
       ...values.map((v) => `<label class="product-menu__checkbox-item flex items-center gap-[.4rem] py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer text-[.82rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]"><input type="checkbox" class="cursor-pointer shrink-0" data-order-filter-value="${v}" ${selected.has(v) ? 'checked' : ''}>${orderFilterValueHtml(col, v)}</label>`),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      filterClearButtonHtml('data-orders-filter-clear-col', ordersDashI18n.filterClearColumn ?? 'נקה סינון בעמודה זו', selected.size > 0),
+      filterClearButtonHtml('data-orders-filter-clear-col', tt('filterClearColumn'), selected.size > 0),
     ].join('');
   }
 
   function ordersFilterColumnsHtml(): string {
     const chevronRotate = document.documentElement.dir === 'rtl' ? 90 : -90;
     return [
-      toolbarMenuTitle(ordersDashI18n.filterByLabel ?? 'סנן לפי'),
+      toolbarMenuTitle(tt('filterByLabel')),
       ...ORDER_FILTER_COLUMNS.map((col) => {
         const active = (ordersFilters.get(col)?.size ?? 0) > 0;
         return `<div class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-filter-col="${col}">
@@ -679,7 +702,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         </div>`;
       }).join(''),
       `<div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>`,
-      filterClearButtonHtml('data-orders-filter-clear-all', ordersDashI18n.filterClearAll ?? 'נקה הכל', ordersFilters.size > 0),
+      filterClearButtonHtml('data-orders-filter-clear-all', tt('filterClearAll'), ordersFilters.size > 0),
     ].join('');
   }
 
@@ -807,13 +830,13 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     const nav = document.getElementById('orders-pagination') as HTMLElement | null;
     if (!nav) return;
     if (totalPages <= 1) { nav.hidden = true; nav.innerHTML = ''; return; }
-    const pageInfo = (ordersDashI18n.paginationPageInfo ?? 'עמוד {page} מתוך {total}')
+    const pageInfo = (tt('paginationPageInfo'))
       .replace('{page}', String(ordersCurrentPage)).replace('{total}', String(totalPages));
     nav.hidden = false;
     nav.innerHTML = `
-      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-prev${ordersCurrentPage <= 1 ? ' disabled' : ''}>${esc(ordersDashI18n.paginationPrev ?? 'הקודם')}</button>
+      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-prev${ordersCurrentPage <= 1 ? ' disabled' : ''}>${esc(tt('paginationPrev'))}</button>
       <span class="text-[0.82rem] whitespace-nowrap [color:var(--color-muted)]">${esc(pageInfo)}</span>
-      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-next${ordersCurrentPage >= totalPages ? ' disabled' : ''}>${esc(ordersDashI18n.paginationNext ?? 'הבא')}</button>
+      <button type="button" class="btn btn--ghost btn--sm disabled:opacity-40 disabled:cursor-default" data-page-next${ordersCurrentPage >= totalPages ? ' disabled' : ''}>${esc(tt('paginationNext'))}</button>
     `;
   }
 
@@ -883,8 +906,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           }
           const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
           window.dispatchEvent(new CustomEvent('toast:show', { detail: {
-            title: 'הזמנה חדשה!',
-            body: `הזמנה מ-${o.buyerName} על סך ${fmtPrice(storeSub.subtotal + storeSub.shipping)}`,
+            title: tt('orderNewToastTitle'),
+            body: tt('orderNewToastBody')
+              .replace('{name}', o.buyerName)
+              .replace('{amount}', fmtPrice(storeSub.subtotal + storeSub.shipping)),
             key: o.id,
             href: '/seller/dashboard?panel=orders',
           } }));
@@ -922,7 +947,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   function renderEomItems(items: EomItem[]) {
     const list = document.getElementById('eom-items-list');
     if (!list) return;
-    if (!items.length) { list.innerHTML = '<p style="color:var(--color-muted);font-size:0.82rem;margin:0">אין פריטים</p>'; return; }
+    if (!items.length) { list.innerHTML = `<p style="color:var(--color-muted);font-size:0.82rem;margin:0">${escEom(tt('orderEditNoItems'))}</p>`; return; }
     list.innerHTML = items.map((item) => `
       <div class="eom-item" data-pid="${escEom(item.productId)}">
         ${item.image
@@ -930,7 +955,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           : `<div class="eom-item__img-ph" aria-hidden="true"></div>`}
         <span class="eom-item__name" title="${escEom(item.productName)}">${escEom(item.productName)}</span>
         <span class="eom-item__meta">${item.price.toLocaleString('he-IL')} ₪ × ${item.qty}</span>
-        <button type="button" class="eom-item__del" aria-label="מחק פריט" title="מחק פריט">
+        <button type="button" class="eom-item__del" aria-label="${escEom(tt('orderEditDeleteItem'))}" title="${escEom(tt('orderEditDeleteItem'))}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>`).join('');
@@ -941,8 +966,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         if (!row) return;
         const wasDeleted = row.classList.contains('eom-item--deleted');
         row.classList.toggle('eom-item--deleted', !wasDeleted);
-        btn.setAttribute('title', wasDeleted ? 'מחק פריט' : 'בטל מחיקה');
-        btn.setAttribute('aria-label', wasDeleted ? 'מחק פריט' : 'בטל מחיקה');
+        btn.setAttribute('title', wasDeleted ? tt('orderEditDeleteItem') : tt('orderEditUndoDelete'));
+        btn.setAttribute('aria-label', wasDeleted ? tt('orderEditDeleteItem') : tt('orderEditUndoDelete'));
         updateDiscountPreview();
       });
     });
@@ -1023,7 +1048,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     (document.getElementById('eob-city') as HTMLInputElement).value    = btn.dataset.buyerCity   ?? '';
     (document.getElementById('eob-zip') as HTMLInputElement).value     = btn.dataset.buyerZip    ?? '';
     eomCurrentShipping = parseFloat(btn.dataset.shipping ?? '0') || 0;
-    if (eomShippingAmountEl) eomShippingAmountEl.textContent = eomCurrentShipping > 0 ? `· ${eomCurrentShipping} ₪` : '· חינם';
+    if (eomShippingAmountEl) eomShippingAmountEl.textContent = eomCurrentShipping > 0 ? `· ${eomCurrentShipping} ₪` : `· ${tt('orderShippingFree')}`;
     // Restore existing discount
     const existingDtype = (btn.dataset.discountType ?? 'percent') as 'percent' | 'amount';
     const existingDval  = btn.dataset.discountValue ?? '0';
@@ -1059,7 +1084,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     const zip    = (document.getElementById('eob-zip') as HTMLInputElement).value.trim();
 
     if (!name || !city || !street) {
-      if (editOrderError) { editOrderError.textContent = 'שם, עיר ורחוב הם שדות חובה'; editOrderError.style.display = 'block'; }
+      if (editOrderError) { editOrderError.textContent = tt('orderEditRequired'); editOrderError.style.display = 'block'; }
       return;
     }
 
@@ -1109,7 +1134,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       });
       if (!res.ok) {
         const err = await res.json() as { error?: string };
-        if (editOrderError) { editOrderError.textContent = err.error ?? 'שגיאה בשמירה'; editOrderError.style.display = 'block'; }
+        if (editOrderError) { editOrderError.textContent = err.error ?? tt('orderEditSaveError'); editOrderError.style.display = 'block'; }
         return;
       }
       const { order: savedOrder } = await res.json() as { order: { buyerName: string; buyerEmail: string; buyerPhone: string; buyerAddress: { city: string; street: string; zip?: string }; items: EomItem[]; storeSubtotals: Record<string, { subtotal: number; shipping: number }>; totalAmount: number } };
@@ -1123,8 +1148,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         const buyerAddrEl  = card.querySelector('.order-buyer-address');
         if (buyerNameEl) buyerNameEl.textContent = savedOrder.buyerName;
         if (buyerEmailEl) buyerEmailEl.textContent = savedOrder.buyerEmail;
-        if (buyerPhoneEl) buyerPhoneEl.textContent = `טלפון: ${savedOrder.buyerPhone}`;
-        if (buyerAddrEl) { const a = savedOrder.buyerAddress; buyerAddrEl.textContent = `כתובת: ${a.street}, ${a.city}${a.zip ? ` ${a.zip}` : ''}`; }
+        if (buyerPhoneEl) buyerPhoneEl.textContent = `${tt('orderPhone')}: ${savedOrder.buyerPhone}`;
+        if (buyerAddrEl) { const a = savedOrder.buyerAddress; buyerAddrEl.textContent = `${tt('orderAddress')}: ${a.street}, ${a.city}${a.zip ? ` ${a.zip}` : ''}`; }
 
         // Update items list in card
         const cardItemsEl = card.querySelector('.order-card__items');
@@ -1146,9 +1171,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           const subtotalsEl = card.querySelector<HTMLElement>('.order-card__subtotals');
           if (subtotalsEl) {
             subtotalsEl.innerHTML = `
-              <span>משלוח: ${storeSub.shipping === 0 ? 'חינם' : `${storeSub.shipping.toFixed(2)} ₪`}</span>
-              ${discApplied > 0 ? `<span class="text-[color:var(--color-success)]">הנחה: −${discApplied.toFixed(2)} ₪</span>` : ''}
-              <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: ${total.toFixed(2)} ₪</strong>`;
+              <span>${esc(tt('orderShipping'))}: ${storeSub.shipping === 0 ? esc(tt('orderShippingFree')) : `${storeSub.shipping.toFixed(2)} ₪`}</span>
+              ${discApplied > 0 ? `<span class="text-[color:var(--color-success)]">${escEom(tt('orderEditDiscount'))}: −${discApplied.toFixed(2)} ₪</span>` : ''}
+              <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${total.toFixed(2)} ₪</strong>`;
           }
           const amountEl = card.querySelector('.order-card__amount');
           if (amountEl) amountEl.textContent = `${total.toFixed(2)} ₪`;
@@ -1173,7 +1198,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       if (editOrderSuccess) { editOrderSuccess.style.display = 'block'; }
       setTimeout(() => { editOrderModal?.close(); if (editOrderSuccess) editOrderSuccess.style.display = 'none'; }, 1400);
     } catch {
-      if (editOrderError) { editOrderError.textContent = 'שגיאת רשת, נסה שוב'; editOrderError.style.display = 'block'; }
+      if (editOrderError) { editOrderError.textContent = tt('orderEditNetworkError'); editOrderError.style.display = 'block'; }
     } finally {
       editOrderSaveBtn.disabled = false;
     }

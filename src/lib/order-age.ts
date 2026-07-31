@@ -122,5 +122,10 @@ export function orderAgeChipHtml(
     : (owes && level !== 'fresh' ? 'stalled' : 'inProgress');
   const text = ageLabel(hours, lang, tone);
   const icon = level === 'overdue' ? ALERT_ICON : CLOCK_ICON;
-  return `<span class="inline-flex items-center gap-[0.2rem] text-[0.66rem] font-semibold whitespace-nowrap ${CHIP_CLASSES[level]}" title="${text}">${icon}${text}</span>`;
+  // shrink-0 is load-bearing: the card header's chip slot is allowed to shrink and
+  // clip (that is how the longest chip stops printing through the price), and
+  // without this the chip would absorb the squeeze instead — measured, the 11px
+  // clock SVG went to 0px wide, which is the icon-squishing the owner caught once
+  // already. Pinned, the chip keeps its size and the slot's overflow does the work.
+  return `<span class="inline-flex shrink-0 items-center gap-[0.2rem] text-[0.66rem] font-semibold whitespace-nowrap ${CHIP_CLASSES[level]}" title="${text}">${icon}${text}</span>`;
 }
