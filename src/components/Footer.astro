@@ -17,7 +17,11 @@ const nextLang = lang === 'he' ? 'en' : 'he';
         <li><a href="/terms" class="muted">{t.footer.terms}</a></li>
         <li><a href="/contact" class="muted">{t.footer.contact}</a></li>
         <li>
-          <form method="POST" action={`/api/lang?l=${nextLang}`} class="lang-toggle-form">
+          {/* data-native-submit: no AJAX handler exists for this one on purpose — /api/lang sets
+              the cookie and answers 303 back to the same page, and only a full navigation can
+              re-render the page in the new language. Without the opt-out the dashboard's
+              FormFallbackGuard blocks it and the seller is told saving is unavailable. */}
+          <form method="POST" action={`/api/lang?l=${nextLang}`} class="lang-toggle-form" data-native-submit>
             <button type="submit" class="lang-toggle-btn" aria-label={t.nav.switchLangLabel}>
               {t.nav.switchLang}
             </button>
