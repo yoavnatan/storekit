@@ -81,6 +81,10 @@ const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8',
 function resolves(token: string): boolean {
   if (NOT_REAL.has(token) || token.includes('*')) return true;
   const clean = token.replace(/\/$/, '');
+  // `data/*.json` is runtime state, not source: gitignored, written on demand, and therefore
+  // absent on a fresh checkout while every dev machine has it. CI read those 15 structure lines
+  // as dead paths. Its presence proves nothing either way, so they are taken on trust.
+  if (/^data\/[^/]+\.json$/.test(clean)) return true;
   // join(), not `new URL(rel, base)`: a URL percent-encodes the brackets in a real route path like
   // `src/pages/[key].txt.ts`, so existsSync would be handed `%5Bkey%5D` and answer false. The
   // suffix match below happened to cover for it, which is exactly the kind of accidental pass that

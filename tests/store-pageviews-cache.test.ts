@@ -14,12 +14,24 @@ import { businessDayISO } from '../src/lib/business-day.js';
 // visitor number that is quietly one write stale is the kind of bug nobody sees
 // until the totals stop reconciling.
 
+// `data/*.json` is gitignored runtime state: every dev machine has this file, a fresh CI
+// checkout does not, and reading it at import time failed the whole file there. An empty
+// store is a perfectly good starting point for a cache test — so create one when it is
+// missing, and take it away again rather than leaving a stray file behind.
 const PATH = path.join(process.cwd(), 'data/store-pageviews.json');
+const preexisting = fs.existsSync(PATH);
+if (!preexisting) {
+  fs.mkdirSync(path.dirname(PATH), { recursive: true });
+  fs.writeFileSync(PATH, '{}');
+}
 const original = fs.readFileSync(PATH, 'utf8');
 const SLUG = '__cache-test-store__';
 const today = businessDayISO(new Date());
 
-afterAll(() => { fs.writeFileSync(PATH, original); });
+afterAll(() => {
+  if (preexisting) fs.writeFileSync(PATH, original);
+  else fs.rmSync(PATH, { force: true });
+});
 
 /** recordPageView is fire-and-forget behind a mutex — let its write land. */
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 30));
