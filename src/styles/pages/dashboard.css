@@ -820,9 +820,20 @@ textarea.input { resize: none; }
      card is one row shorter than the old name-spans-both version. Stock/
      purchased/wishlist get full-contrast, slightly bolder text; category/SKU/
      date-added stay smaller + muted (see the per-field rules below). */
+  /* `minmax(0, …)` on the two text columns, not a bare `1fr`/`auto` — both of
+     those floor at min-content, and every cell here inherits the desktop
+     table's `white-space:nowrap`, so a card could not shrink at all. Each row
+     is its OWN grid (no subgrid), sized from its own content: a product with
+     variants carries an extra breakdown chevron in the stock cell, which
+     widened the stats column, and with nothing able to give, that single row
+     ran 5px past the viewport. One row is enough — the whole document turns
+     horizontally scrollable, the page slides sideways under the fixed header,
+     and what the seller sees is the header's own icons drifting (owner,
+     2026-07-31: "האייקונים על ההדר זזים"). Measured at 375px: 380px document,
+     now 375. */
   .products-table tbody tr[data-product-display] {
     display: grid;
-    grid-template-columns: auto auto 1fr auto auto;
+    grid-template-columns: auto auto minmax(0, 1fr) minmax(0, auto) auto;
     grid-template-rows: auto auto auto auto;
     grid-template-areas:
       "check thumb name  stock     actions"
@@ -883,7 +894,20 @@ textarea.input { resize: none; }
     font-weight: 600;
     color: var(--color-text);
     padding-top: 0;
-    white-space: nowrap;
+  }
+
+  /* The other half of the minmax() above: a track allowed to shrink is only
+     useful if its contents can follow. Every cell in this card inherits
+     `white-space:nowrap` from the desktop table (.num / .cat-col / .date-col /
+     .sku-col), which is right for real table columns and wrong for a card —
+     it made each cell an unbreakable block and handed the grid a min-content
+     floor it could not go under. `break-word`, not `anywhere`: a word breaks
+     only when it genuinely has nowhere to go, so "מלאי:" stays intact at every
+     width a phone actually has. */
+  .products-table tr[data-product-display] td {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
   .products-table tr[data-product-display] .actions {
     grid-area: actions;

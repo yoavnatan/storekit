@@ -1,4 +1,5 @@
 import { formatPrice } from '../../config/store.config.js';
+import { rowStateBadge } from '../../lib/store-state-badge.js';
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import type { PerformanceSummary } from '../../lib/seller-performance.js';
 import type { PlatformStoreRow, StoreRowsQuery, StoreSortCol } from '../../lib/platform-performance.js';
@@ -51,7 +52,12 @@ function setText(id: string, text: string): void {
 // ── Store breakdown table ────────────────────────────────────────────────────
 
 function rowHtml(s: PlatformStoreRow): string {
-  const blocked = s.blocked ? ' <span class="admin-badge admin-badge--failed" style="margin-inline-start:0.4rem">חסום</span>' : '';
+  // Same map the SSR panel renders from (lib/store-state-badge.ts) — this table is redrawn on the
+  // client when the range changes, so a private copy here is how the two would come to disagree
+  // about a store the SSR pass had already labelled. Falls back to the legacy `blocked` flag for
+  // a row served by an older deploy mid-rollout.
+  const badge = rowStateBadge(s);
+  const blocked = badge ? ` <span class="admin-badge admin-badge--${badge.variant}" style="margin-inline-start:0.4rem">${badge.label}</span>` : '';
   // Only ever visible in search results (browsing filters these out) — it says
   // "this store exists, it just did nothing in this range", so four zero columns
   // don't read as missing data.

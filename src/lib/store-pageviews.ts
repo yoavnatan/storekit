@@ -29,7 +29,39 @@ function readAll(): PageviewStore {
   catch { return {}; }
 }
 
+// ── Read-through cache, READ paths only ───────────────────────────────────
+// getDailyPageViews is called once PER STORE (platform-performance.ts loops
+// buildPerformanceSummary over every store), so one admin dashboard render
+// parsed this whole 2 MB file 45 times: measured 600ms out of a 664ms render,
+// on EVERY panel swap — search keystroke, sort, filter chip. The cache key is
+// the file's own mtime+size, so a write from any process invalidates it; a
+// stale read is impossible rather than unlikely.
+//
+// Writers below deliberately keep calling the uncached readAll(): a
+// read-modify-write must always start from what is actually on disk, never
+// from a copy this process is holding.
+//
+// JSON-era only. The DB swap replaces the whole read with an indexed query on
+// (storeSlug, date), and this cache goes with it.
+let cache: { key: string; data: PageviewStore } | null = null;
+
+function readCached(): PageviewStore {
+  let key: string;
+  try {
+    // bigint stat for mtimeNs — millisecond mtime plus an unchanged size (a
+    // counter going 1→2 keeps the byte count) leaves a real sub-ms window where
+    // two different files look identical.
+    const st = fs.statSync(PAGEVIEWS_PATH, { bigint: true });
+    key = `${st.mtimeNs}:${st.size}`;
+  } catch { return {}; }
+  if (cache && cache.key === key) return cache.data;
+  const data = readAll();
+  cache = { key, data };
+  return data;
+}
+
 function writeAll(data: PageviewStore): void {
+  cache = null; // the writer's own object is mid-mutation — never seed the cache from it
   fs.writeFileSync(PAGEVIEWS_PATH, JSON.stringify(data, null, 2));
 }
 
@@ -100,9 +132,14 @@ function dateRange(fromISO: string, toISO: string): string[] {
   return dates;
 }
 
-/** Zero-filled daily series across [fromISO, toISO] (both 'YYYY-MM-DD', inclusive) — ready to bucket/union directly, no gaps for days with no traffic. `views` = total loads that day; `visitors` = the distinct visitor ids seen (empty for legacy/demo rows). */
+/** Zero-filled daily series across [fromISO, toISO] (both 'YYYY-MM-DD', inclusive) — ready to bucket/union directly, no gaps for days with no traffic. `views` = total loads that day; `visitors` = the distinct visitor ids seen (empty for legacy/demo rows).
+ *
+ *  READ-ONLY: `visitors` is borrowed from the cache, not copied for you. Sorting or
+ *  pushing to it edits what every later reader in this process sees, and the next
+ *  report would quietly disagree with the file. Copy it first if you need to change it
+ *  (a defensive copy here would clone ~60k ids on every admin render). */
 export function getDailyPageViews(storeSlug: string, fromISO: string, toISO: string): DailyPageView[] {
-  const forStore = readAll()[storeSlug] ?? {};
+  const forStore = readCached()[storeSlug] ?? {};
   return dateRange(fromISO, toISO).map((date) => {
     const b = normalizeBucket(forStore[date]);
     return { date, views: b.total, visitors: b.visitors };

@@ -93,11 +93,35 @@ function rangeKeys(fromISO: string, toISO: string, granularity: PerformanceGranu
 // Axis labels render a pure calendar date, so they are formatted in a fixed zone
 // rather than the runtime's — otherwise the same bucket key reads as a different
 // day on a server west of UTC than it does in the browser that requested it.
+//
+// The formatters are built ONCE, and the label for a given key is memoised.
+// `toLocaleDateString(locale, opts)` looks like a method call but constructs a
+// whole Intl.DateTimeFormat every time (~0.2ms). One axis is only ~31 labels, but
+// the platform performance tab builds the same axis once per store: 45 × 31 calls
+// = ~250ms of a ~280ms aggregation, and the platform aggregator discards every
+// one of those labels anyway (it merges the numbers onto its own axis). Same key
+// → same label forever, so a hit is exactly as correct as a miss.
+const dayLabelFmt = new Intl.DateTimeFormat('he-IL', { day: '2-digit', month: '2-digit', timeZone: BUSINESS_TIMEZONE });
+const monthLabelFmt = new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric', timeZone: BUSINESS_TIMEZONE });
+const labelCache = new Map<string, string>();
+
+function cachedLabel(key: string, build: () => string): string {
+  const hit = labelCache.get(key);
+  if (hit !== undefined) return hit;
+  const label = build();
+  // Bounded so a long-running server can't accumulate one entry per date ever
+  // charted. Cleared wholesale — an axis is rebuilt in full, so a cold cache
+  // costs one range, not one lookup at a time.
+  if (labelCache.size >= 5000) labelCache.clear();
+  labelCache.set(key, label);
+  return label;
+}
+
 function dayLabel(iso: string): string {
-  return new Date(iso + 'T12:00:00Z').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', timeZone: BUSINESS_TIMEZONE });
+  return cachedLabel(`d:${iso}`, () => dayLabelFmt.format(new Date(iso + 'T12:00:00Z')));
 }
 function monthLabel(key: string): string {
-  return new Date(key + '-01T12:00:00Z').toLocaleDateString('he-IL', { month: 'long', year: 'numeric', timeZone: BUSINESS_TIMEZONE });
+  return cachedLabel(`m:${key}`, () => monthLabelFmt.format(new Date(key + '-01T12:00:00Z')));
 }
 
 /** Auto-picks granularity so a chart never has to render 200+ bars: day buckets up to ~62 days, month buckets beyond that. */

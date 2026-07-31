@@ -9,7 +9,14 @@
 // main thread in a way that races both. The reliable fix is to not delegate to
 // native smooth-scroll at all: animate scrollY ourselves and call the positional
 // (always-instant, both-axes-explicit) `window.scrollTo(x, y)` every frame.
-// (AI_INSTRUCTIONS → Architecture → Scroll.)
+// (AI_INSTRUCTIONS → Architecture → Scroll.) `html` keeps `scrollbar-gutter:stable` +
+// `overflow-x:hidden` in reset.css.
+//
+// The other half of "where do I scroll TO", moved here 2026-07-31: the SELLER DASHBOARD STACKS
+// THREE STICKY LAYERS that a JS scroll target has to clear — the fixed site header
+// (`--site-header-h`), the sticky tab strip (`--dash-tabs-h`), and the sticky `.dash-panel-head`,
+// which has no CSS var and must be measured live. Forget the panel head and the target lands
+// hidden underneath it, which looks like the scroll simply failed.
 // `onDone` runs once the last frame has landed (and immediately on the no-op
 // path, so a caller can rely on it firing exactly once either way). It exists
 // for callers that hold something open for the duration of the scroll — the

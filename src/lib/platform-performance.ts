@@ -1,3 +1,4 @@
+import { storeLifecycle, type StoreLifecycle, type StoreLifecycleFlags } from './store-status.js';
 import type { Order } from './orders.js';
 import {
   buildPerformanceSummary,
@@ -27,6 +28,11 @@ export interface PlatformStoreInput {
   slug: string;
   name: string;
   blocked?: boolean;
+  /** Everything else that can take a store off the site (lib/store-status.ts). Carried alongside
+   *  `blocked` rather than replacing it — additive, so an older reader keeps working — but the
+   *  table renders from THIS, because "blocked" alone would report a store its seller paused or
+   *  closed as perfectly normal. */
+  state?: StoreLifecycle;
   /** This store's per-sale commission percent, from its SELLER's pricing tier (lib/pricing.ts).
    *  Passed in per store rather than as one platform-wide rate: sellers sit on different tiers,
    *  so a single number would silently misreport the moment the second tier is sold. Absent = 0. */
@@ -37,7 +43,7 @@ export interface PlatformStoreInput {
  *  the store→seller→tier hop is written, so both admin call sites (the dashboard render and the
  *  AJAX endpoint) can never disagree. Pure: the caller supplies both already-read lists. */
 export function buildPlatformStoreInputs(
-  stores: Array<{ slug: string; name: string; blocked?: boolean; sellerId: string }>,
+  stores: Array<{ slug: string; name: string; sellerId: string } & StoreLifecycleFlags>,
   sellers: Array<{ id: string; tier?: string }>,
 ): PlatformStoreInput[] {
   const tierBySellerId = new Map(sellers.map((s) => [s.id, s.tier]));
@@ -45,6 +51,7 @@ export function buildPlatformStoreInputs(
     slug: s.slug,
     name: s.name,
     blocked: s.blocked,
+    state: storeLifecycle(s),
     commissionPercent: commissionPercentForTier(tierBySellerId.get(s.sellerId)),
   }));
 }
@@ -56,6 +63,8 @@ export interface PlatformStoreRow {
   slug: string;
   name: string;
   blocked: boolean;
+  /** What the row's badge says (lib/store-state-badge.ts). Additive next to `blocked`. */
+  state?: StoreLifecycle;
   revenue: number;      // net of seller discount, paid orders only (same basis as seller tab)
   orders: number;       // orders that included this store, in range
   views: number;        // store page views in range
@@ -238,6 +247,7 @@ export function buildPlatformPerformance(
       slug: store.slug,
       name: store.name,
       blocked: store.blocked ?? false,
+      state: store.state ?? storeLifecycle(store),
       revenue: s.totalRevenue,
       orders: s.totalOrders,
       views: s.totalViews,

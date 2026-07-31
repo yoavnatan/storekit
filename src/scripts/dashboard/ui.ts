@@ -230,40 +230,17 @@ export function initAutoHideStatus(): void {
 }
 
 export function initDashTabs(): void {
-  const tabs   = document.querySelectorAll<HTMLButtonElement>('[role="tab"][data-panel]');
-  const panels = document.querySelectorAll<HTMLElement>('.dash-panel');
+  const tabs = document.querySelectorAll<HTMLButtonElement>('[role="tab"][data-panel]');
 
-  function activateTab(tab: HTMLButtonElement) {
-    tabs.forEach(t => {
-      t.classList.remove('dash-tab--active');
-      t.setAttribute('aria-selected', 'false');
-      t.setAttribute('tabindex', '-1');
-    });
-    panels.forEach(p => { p.hidden = true; });
-    tab.classList.add('dash-tab--active');
-    tab.setAttribute('aria-selected', 'true');
-    tab.setAttribute('tabindex', '0');
-    // Keep the just-activated tab in view when the strip overflows — a
-    // keyboard/click user landing on an off-screen tab (e.g. "settings" on a
-    // narrow window) should see it, not a clipped strip. block:'nearest' so it
-    // never yanks the page vertically (feedback_subtle_scroll).
-    tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    const panel = document.getElementById(`dash-panel-${tab.dataset.panel}`);
-    if (panel) {
-      panel.hidden = false;
-      // Bubbling + inert unless something listens — lets a page react to its
-      // own panel becoming the active one (e.g. the homepage replaying its
-      // card entrance animation) without this shared tab controller knowing
-      // anything about that page's content.
-      panel.dispatchEvent(new CustomEvent('dashtab:show', { bubbles: true }));
-    }
-    const u = new URL(window.location.href);
-    u.searchParams.set('panel', tab.dataset.panel ?? '');
-    history.replaceState(null, '', u.toString());
-  }
+  // Activation itself lives in the inline <DashTabsBoot /> script, which is
+  // already handling clicks by the time this module arrives — that is the whole
+  // point of it (a tab must not wait on a 61 KB bundle over a weak connection).
+  // Here we only add what genuinely needs the module. No click binding: the
+  // boot's delegated listener already covers every tab, and a second one would
+  // just run the same DOM flips twice.
+  const activateTab = (tab: HTMLButtonElement): void => window.__dashTabActivate?.(tab);
 
   tabs.forEach(tab => {
-    tab.addEventListener('click', () => activateTab(tab));
     tab.addEventListener('keydown', (e: KeyboardEvent) => {
       const list = [...tabs];
       const idx  = list.indexOf(tab);
