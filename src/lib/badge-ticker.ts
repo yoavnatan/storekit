@@ -1,6 +1,6 @@
 // Lightweight odometer-style roll for header count badges (cart/wishlist/notif) —
 // no animation library, just a 2-row reel transformed via CSS transition.
-function tickBadge(el: HTMLElement, value: string): void {
+function tickBadge(el: HTMLElement, value: string, animate: boolean): void {
   const prev = el.dataset.tickerValue;
 
   // Server-rendered/inline-seeded badges already paint the final
@@ -18,7 +18,7 @@ function tickBadge(el: HTMLElement, value: string): void {
   const prevNum = prev != null ? Number(prev.replace('+', '')) : NaN;
   const nextNum = Number(value.replace('+', ''));
   const direction: 'up' | 'down' | null =
-    prev == null || Number.isNaN(prevNum) || Number.isNaN(nextNum) || prevNum === nextNum
+    !animate || prev == null || Number.isNaN(prevNum) || Number.isNaN(nextNum) || prevNum === nextNum
       ? null
       : nextNum > prevNum ? 'up' : 'down';
 
@@ -56,9 +56,26 @@ function tickBadge(el: HTMLElement, value: string): void {
 // already visible whose number just changes only ticks (no re-pop), and an
 // SSR-visible badge on first page load never pops (its dataset.tickerValue
 // is seeded server-side, so the first client tick is a same-value no-op).
-export function updateBadge(el: HTMLElement, value: string | null): void {
+//
+// `animate: false` is the PAGE-LOAD RECONCILE: the first client-side read after
+// the SSR/inline seed painted a badge. Whatever it finds is the truth — it was
+// already true before this page existed — so it snaps. Animating it would stage
+// the seeded value as a "previous" number the shopper never had and roll off it
+// on every navigation, which is exactly how a stale seed turns into a visibly
+// unstable header. The seed and the client rule are meant to agree (see
+// Header.astro); this makes a day when they don't a silent correction instead of
+// a flicker on every page.
+export function updateBadge(el: HTMLElement, value: string | null, opts: { animate?: boolean } = {}): void {
+  const animate = opts.animate !== false;
+
   if (value == null) {
     if (el.hidden) return;
+    if (!animate) {
+      el.hidden = true;
+      el.replaceChildren();
+      delete el.dataset.tickerValue;
+      return;
+    }
     el.classList.add('badge-count--closing');
     let done = false;
     const finish = () => {
@@ -74,9 +91,9 @@ export function updateBadge(el: HTMLElement, value: string | null): void {
   }
 
   const wasHidden = el.hidden;
-  tickBadge(el, value);
+  tickBadge(el, value, animate);
   el.hidden = false;
-  if (wasHidden) {
+  if (wasHidden && animate) {
     el.classList.add('badge-count--entering');
     el.addEventListener('animationend', () => el.classList.remove('badge-count--entering'), { once: true });
   }

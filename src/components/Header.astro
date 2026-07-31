@@ -102,10 +102,46 @@ const strEmpty   = t.store.noProductsFound;
 
     <!-- Back-to-store pill (persistent, subtle) — shown whenever we're not already inside a store's own header, so a buyer detoured away by a notification/toast/checkout always has a way back into the store they were shopping in -->
     {!(storeName && storeSlug) && !isHome && (
+      <Fragment>
       <a href="#" id="back-to-store-pill" class="back-to-store-pill" hidden aria-label={lang === 'he' ? 'חזרה לחנות' : 'Back to store'}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={`flex-shrink:0${lang === 'he' ? ';transform:scaleX(-1)' : ''}`}><polyline points="15 18 9 12 15 6"/></svg>
         <span id="back-to-store-pill__name" class="back-to-store-pill__name"></span>
       </a>
+      {/* Filled in HERE, inline and synchronous, rather than from the module script
+          at the bottom of this file. The header row is `justify-content:space-between`,
+          so a child appearing after first paint doesn't just fade in — it re-divides
+          the row's free space and slides the nav sideways. Deferred, that landed as a
+          visible header shift on every navigation to a non-store page. The pill's
+          whole input is one sessionStorage read, so there is no reason for it to
+          happen a frame late. Same reasoning as the cart-badge seed further down;
+          `textContent` (never innerHTML) keeps the stored store name inert. */}
+      <script is:inline>
+        (function () {
+          try {
+            var raw = sessionStorage.getItem('last_store_v1');
+            if (!raw) return;
+            var last = JSON.parse(raw);
+            if (!last || !last.url || !last.name) return;
+            // saveLastStore() only ever stores `location.pathname + location.search`,
+            // so a site-relative path is the ONLY shape that can legitimately be here.
+            // Re-checking it is the same rule lib/safe-redirect.ts enforces for a
+            // request-supplied destination: a stored value is still a destination, and
+            // an href is where `javascript:` becomes execution. `//host` is rejected
+            // too — that is protocol-relative, i.e. off-site.
+            if (last.url.charAt(0) !== '/' || last.url.charAt(1) === '/') return;
+            var pill = document.getElementById('back-to-store-pill');
+            if (!pill) return;
+            pill.href = last.url;
+            var nameEl = document.getElementById('back-to-store-pill__name');
+            if (nameEl) nameEl.textContent = last.name;
+            pill.removeAttribute('hidden');
+          } catch {
+            // Storage blocked (private mode) or a corrupt entry: the pill stays
+            // hidden, which is exactly what a browser with no remembered visit shows.
+          }
+        })();
+      </script>
+      </Fragment>
     )}
 
     <!-- Homepage search (showSearch=true, no storeSlug) -->
@@ -292,7 +328,14 @@ const strEmpty   = t.store.noProductsFound;
                   if (!k || k.indexOf('store_cart_v2_') !== 0) continue;
                   var c = JSON.parse(localStorage.getItem(k) || 'null') || {};
                   var cartItems = c.items ? Object.values(c.items) : [];
-                  cartCount += cartItems.length;
+                  // MUST stay identical to getActiveStoreCarts() in lib/cart.js — an
+                  // unavailable line is listed in the drawer but is not part of what the
+                  // buyer is buying, so it never counts here either. This seed and
+                  // getCount() paint the SAME badge microseconds apart: any drift between
+                  // the two rules makes the badge show one number and then roll to another
+                  // on every single page load (the ticker literally renders the seeded
+                  // value as the "previous" digit). Guarded by tests/header-cart-badge.test.ts.
+                  cartCount += cartItems.filter(function (it) { return !(it && it.gone); }).length;
                 }
                 // Pre-wrap in the same `.badge-ticker__track`/`.badge-ticker__val`
                 // markup badge-ticker.ts's tickBadge() produces, so the module
@@ -392,23 +435,15 @@ const strEmpty   = t.store.noProductsFound;
 <script>
   import { getCount } from '../lib/cart.js';
   import { getWishlistCount } from '../lib/wishlist.js';
-  import { getLastStore } from '../lib/last-store.js';
   import { updateBadge } from '../lib/badge-ticker.js';
   import { cdnThumb } from '../lib/cdn.js';
   // Two historic local names in this file, one implementation.
   import { escapeHtml as escH, escapeHtml as escHtml } from '../lib/html-escape.js';
 
   // ── Back-to-store pill ────────────────────────────────────────
-  {
-    const pill = document.getElementById('back-to-store-pill') as HTMLAnchorElement | null;
-    const last = getLastStore();
-    if (pill && last) {
-      pill.href = last.url;
-      const nameEl = document.getElementById('back-to-store-pill__name');
-      if (nameEl) nameEl.textContent = last.name;
-      pill.hidden = false;
-    }
-  }
+  // Deliberately NOT here: the pill is filled in by an inline script next to its
+  // own markup above, because revealing it from this deferred module re-divided
+  // the space-between header row after first paint and shifted the nav.
 
   function fadeClose(el: HTMLElement, onDone: () => void): void {
     if (el.classList.contains('dropdown--closing')) return;
@@ -424,18 +459,20 @@ const strEmpty   = t.store.noProductsFound;
     setTimeout(finish, 200);
   }
 
-  function refresh() {
+  // `animate: false` on the first call of a page: reconciling against the inline
+  // seed a few lines above is not a change the shopper made, so it must never roll.
+  function refresh(opts?: { animate?: boolean }) {
     const el = document.getElementById('cart-count');
     if (!el) return;
     const count = getCount();
-    updateBadge(el, count > 0 ? String(count) : null);
+    updateBadge(el, count > 0 ? String(count) : null, opts);
   }
 
-  function refreshWishlistCount() {
+  function refreshWishlistCount(opts?: { animate?: boolean }) {
     const el = document.getElementById('wishlist-count');
     if (!el) return;
     const count = getWishlistCount();
-    updateBadge(el, count > 0 ? String(count) : null);
+    updateBadge(el, count > 0 ? String(count) : null, opts);
   }
 
   document.getElementById('wishlist-toggle')?.addEventListener('click', () => {
@@ -453,11 +490,11 @@ const strEmpty   = t.store.noProductsFound;
     window.dispatchEvent(new CustomEvent('cart:open'));
   });
 
-  window.addEventListener('cart:change', refresh);
-  refresh();
+  window.addEventListener('cart:change', () => refresh());
+  refresh({ animate: false });
 
-  window.addEventListener('wishlist:change', refreshWishlistCount);
-  refreshWishlistCount();
+  window.addEventListener('wishlist:change', () => refreshWishlistCount());
+  refreshWishlistCount({ animate: false });
 
   // ── User dropdown ─────────────────────────────────────────────
   const userToggle   = document.getElementById('user-menu-toggle') as HTMLButtonElement | null;
@@ -522,9 +559,9 @@ const strEmpty   = t.store.noProductsFound;
   // happens to be on hand, which can be just an incremental since-filtered batch
   // (see notifications:update below) and would otherwise reset the badge to that
   // batch's own small size instead of the true total.
-  function setBadge(unreadCount: number) {
+  function setBadge(unreadCount: number, opts?: { animate?: boolean }) {
     if (notifCountBadge) {
-      updateBadge(notifCountBadge, unreadCount > 0 ? (unreadCount > 99 ? '99+' : String(unreadCount)) : null);
+      updateBadge(notifCountBadge, unreadCount > 0 ? (unreadCount > 99 ? '99+' : String(unreadCount)) : null, opts);
     }
     document.title = unreadCount > 0 ? `(${unreadCount}) ${originalTitle}` : originalTitle;
   }
@@ -688,9 +725,15 @@ const strEmpty   = t.store.noProductsFound;
   window.addEventListener('notif-refreshed', () => { loadNotifs(); });
 
   if (bellBtn) {
+    // Page-load reconcile against the SSR-seeded bell count. Silent for the same
+    // reason the cart's first refresh is: this fetch answers a question that was
+    // already settled when the page rendered a moment ago, so a difference here is
+    // a stale seed, not news arriving — rolling it would make every navigation
+    // flick the bell. Real arrivals (the 30s poll, notifications:update, opening
+    // the dropdown) still animate.
     fetch('/api/notifications').then(r => r.json()).then((d: { notifications: NotifItem[]; unreadCount: number }) => {
       renderNotifs(d.notifications ?? []);
-      setBadge(d.unreadCount ?? 0);
+      setBadge(d.unreadCount ?? 0, { animate: false });
     }).catch(() => {});
   }
 
