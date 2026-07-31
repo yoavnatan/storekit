@@ -67,6 +67,24 @@ export const MONEY_EVENT_TYPES = [
 
 export type MoneyEventType = (typeof MONEY_EVENT_TYPES)[number];
 
+/**
+ * The Hebrew name of each type, next to the vocabulary rather than in the panel that
+ * renders it — because the admin's free-text search matches these labels too
+ * (admin-moneylog-filter.ts). An owner who types "ביטול" is searching for the word he
+ * is looking at on screen; if the label lived only in the component, the filter would
+ * have had to keep a second copy of it, and the day they drifted the search would
+ * quietly stop finding the rows whose chip still said the old word.
+ * The panel keeps only the TONE (presentational) beside these.
+ */
+export const MONEY_EVENT_LABELS: Record<MoneyEventType, string> = {
+  payment_attempted: 'ניסיון חיוב',
+  order_created: 'הזמנה נוצרה',
+  duplicate_checkout_blocked: 'חיוב כפול נמנע',
+  payment_status_changed: 'סטטוס תשלום השתנה',
+  shipping_status_changed: 'סטטוס משלוח השתנה',
+  order_discount_changed: 'סכום הזמנה שונה',
+};
+
 /** Type guard for a request-supplied value (`?mtype=`). */
 export function isMoneyEventType(value: string): value is MoneyEventType {
   return (MONEY_EVENT_TYPES as readonly string[]).includes(value);

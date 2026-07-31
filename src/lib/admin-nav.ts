@@ -24,14 +24,17 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   overview: [],
   data: ['datapreset'],
   sellers: ['sq', 'ssort', 'sblocked', 'spage', 'snew'],
-  stores: ['stq', 'stsort', 'stblocked', 'stpage', 'stnew'],
+  // `stblocked` is the retired yes/no form of `ststate` — still parsed (parseStoreQuery) so an
+  // older bookmark keeps filtering to blocked stores, so it still has to be owned here or it
+  // would be stripped out of the URL before the parser ever saw it.
+  stores: ['stq', 'stsort', 'ststate', 'stblocked', 'stpage', 'stnew'],
   orders: ['oq', 'osort', 'oship', 'opay', 'ostore', 'opage', 'onew'],
   attention: ['apage'],
   performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
   advertising: ['adpreset', 'adfrom', 'adto'],
   messages: ['msort', 'munread', 'mpage'],
   alerts: ['alsort', 'alsource', 'alstore', 'alpage', 'alnew'],
-  moneylog: ['mtype', 'mlpage'],
+  moneylog: ['mtype', 'mlpage', 'mq', 'mfrom', 'mto', 'mev'],
 };
 
 /** Drops every OTHER tab's params from `url`, keeping `panel` and the params the

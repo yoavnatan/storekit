@@ -1,0 +1,56 @@
+---
+import { formatPrice } from '../../config/store.config.js';
+import type { ReconciliationReport } from '../../lib/reconcile.js';
+
+/**
+ * Live cross-check banner for the money journal (lib/reconcile.ts) — every headline
+ * recomputed by a second, independent route and compared. A test proves the code was
+ * right when it was written; this runs over the REAL data on every page load, which is
+ * the only thing that can tell the owner his numbers are right *now*.
+ *
+ * Its own component since סשן ג׳ only because the journal panel grew a search/date
+ * toolbar around it — this block is unchanged, it just stopped fitting in one file.
+ */
+interface Props {
+  reconciliation: ReconciliationReport;
+}
+const { reconciliation } = Astro.props;
+---
+
+<div
+  class:list={[
+    'rounded-[var(--radius)] border p-3.5 mb-5',
+    reconciliation.clean
+      ? 'border-[color:color-mix(in_srgb,var(--color-success)_35%,var(--color-border))] bg-[color:color-mix(in_srgb,var(--color-success)_7%,transparent)]'
+      : 'border-[color:var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,transparent)]',
+  ]}
+>
+  <div class="flex items-baseline justify-between gap-3 flex-wrap">
+    <strong class="text-[0.9rem]">
+      {reconciliation.clean ? '✓ הנתונים מאוזנים' : `⚠ נמצאו ${reconciliation.discrepancies.length} אי-התאמות`}
+    </strong>
+    <span class="text-[0.76rem] [color:var(--color-muted)]">{reconciliation.checkedOrders} הזמנות נבדקו</span>
+  </div>
+  <p class="m-0 mt-1 text-[0.78rem] [color:var(--color-muted)] leading-relaxed">
+    {reconciliation.clean
+      ? 'כל מספר שמוצג נבדק מול חישוב שני, עצמאי: שורות ההזמנה מול הסכום השמור, סכום ההזמנה מול מרכיביו, והמחזור הכללי מול סכום החנויות. כולם תואמים.'
+      : 'שני חישובים עצמאיים של אותו מספר לא הסכימו. כל שורה למטה מפרטת מה נבדק, מה יצא, ומה זה אומר.'}
+  </p>
+
+  {!reconciliation.clean && (
+    <ul class="m-0 mt-3 ps-0 list-none flex flex-col gap-2.5">
+      {reconciliation.discrepancies.map((d) => (
+        <li class="text-[0.8rem] border-t border-[color:color-mix(in_srgb,var(--color-danger)_25%,transparent)] pt-2.5">
+          <div class="flex flex-wrap items-baseline gap-x-2">
+            <strong>{d.check}</strong>
+            {d.subject && <span class="[color:var(--color-muted)] text-[0.75rem]">{d.subject}</span>}
+          </div>
+          <div class="mt-0.5 tabular-nums text-[0.78rem]">
+            צפוי {formatPrice(d.expected)} · בפועל {formatPrice(d.actual)} · פער {formatPrice(d.drift)}
+          </div>
+          <div class="mt-0.5 [color:var(--color-muted)] text-[0.76rem] leading-relaxed">{d.explanation}</div>
+        </li>
+      ))}
+    </ul>
+  )}
+</div>

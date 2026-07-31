@@ -17,6 +17,7 @@ const QUERY_PARSERS = [
   'src/lib/admin-orders-filter.ts',
   'src/lib/admin-threads-query.ts',
   'src/lib/platform-performance.ts',
+  'src/lib/admin-moneylog-filter.ts',
 ].map((p) => join(process.cwd(), p));
 
 // `panel` is the tab selector itself — owned by no single tab, and the one param

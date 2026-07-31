@@ -265,6 +265,9 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-badge--pending { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); }
 .admin-badge--failed { background: color-mix(in srgb, var(--color-danger) 15%, transparent); color: var(--color-danger); }
 .admin-badge--promo { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
+/* A finished state, not a problem: a closed store (AdminStoreStateBadge) is neither an alert
+   nor a success, so it takes the neutral surface rather than borrowing another badge's colour. */
+.admin-badge--muted { background: var(--color-bg); color: var(--color-muted); }
 
 /* ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ── */
 .admin-ads-conn { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }

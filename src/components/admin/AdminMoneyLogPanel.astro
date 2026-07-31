@@ -1,37 +1,42 @@
 ---
 import { formatPrice } from '../../config/store.config.js';
-import { formatHeDateTime } from '../../lib/format-date.js';
-import { MONEY_EVENT_TYPES, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
+import { formatBusinessTime, formatBusinessDateShort, formatBusinessDayLabel } from '../../lib/format-date.js';
+import { MONEY_EVENT_LABELS, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
 import { businessDayISO } from '../../lib/business-day.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
+import { hasActiveMoneyLogFilters, type MoneyLogQuery } from '../../lib/admin-moneylog-filter.js';
 import AdminPager from './AdminPager.astro';
+import AdminReconciliationCard from './AdminReconciliationCard.astro';
+import AdminMoneyLogToolbar from './AdminMoneyLogToolbar.astro';
 
 import type { ReconciliationReport } from '../../lib/reconcile.js';
 
 interface Props {
   /** One page of events, already filtered + sliced by the page (admin/index.astro). */
   events: MoneyEvent[];
-  activeType: string;
-  /** Rows matching the active filter, across all pages. */
+  query: MoneyLogQuery;
+  /** A `?mev=` permalink whose row isn't in the current result set. */
+  targetMissing: boolean;
+  /** Rows matching the active narrowing, across all pages. */
   total: number;
   page: number;
   totalPages: number;
   buildUrl: (page: number) => string;
   reconciliation: ReconciliationReport;
 }
-const { events, activeType, total, page, totalPages, buildUrl, reconciliation } = Astro.props;
+const { events, query, targetMissing, total, page, totalPages, buildUrl, reconciliation } = Astro.props;
 
-// Every type gets a label AND a tone, because the tone is the point: a reader
-// scanning this log is looking for the two rows that mean something went wrong, not
-// reading all of them. Green = money arrived, red = money stopped counting, amber =
-// something was caught and prevented.
-const TYPE_META: Record<MoneyEventType, { label: string; tone: 'good' | 'bad' | 'warn' | 'plain' }> = {
-  payment_attempted:           { label: 'ניסיון חיוב',        tone: 'plain' },
-  order_created:               { label: 'הזמנה נוצרה',        tone: 'good'  },
-  duplicate_checkout_blocked:  { label: 'חיוב כפול נמנע',     tone: 'warn'  },
-  payment_status_changed:      { label: 'סטטוס תשלום השתנה',  tone: 'plain' },
-  shipping_status_changed:     { label: 'סטטוס משלוח השתנה',  tone: 'plain' },
-  order_discount_changed:      { label: 'סכום הזמנה שונה',    tone: 'warn'  },
+// The tone is the point: a reader scanning this log is looking for the two rows that
+// mean something went wrong, not reading all of them. Green = money arrived, red =
+// money stopped counting, amber = something was caught and prevented. The LABELS live
+// with the vocabulary (money-events.ts) because search matches them too.
+const TYPE_TONE: Record<MoneyEventType, 'good' | 'bad' | 'warn' | 'plain'> = {
+  payment_attempted: 'plain',
+  order_created: 'good',
+  duplicate_checkout_blocked: 'warn',
+  payment_status_changed: 'plain',
+  shipping_status_changed: 'plain',
+  order_discount_changed: 'warn',
 };
 
 const TONE_CLASS: Record<'good' | 'bad' | 'warn' | 'plain', string> = {
@@ -46,26 +51,23 @@ const TONE_CLASS: Record<'good' | 'bad' | 'warn' | 'plain', string> = {
 function toneFor(e: MoneyEvent): 'good' | 'bad' | 'warn' | 'plain' {
   if (e.type === 'shipping_status_changed' && e.to === 'cancelled') return 'bad';
   if (e.type === 'payment_attempted' && e.detail?.startsWith('declined')) return 'bad';
-  return TYPE_META[e.type]?.tone ?? 'plain';
+  return TYPE_TONE[e.type] ?? 'plain';
 }
 
-// Driven by the vocabulary, not by the loaded rows — a type with nothing in the
-// journal still gets a chip, and clicking it says so instead of quietly showing
-// everything. Changing the filter always returns to page 1 (no mlpage).
-const FILTERS: Array<{ id: string; label: string }> = [
-  { id: '', label: 'הכל' },
-  ...MONEY_EVENT_TYPES.map((t) => ({ id: t, label: TYPE_META[t].label })),
-];
-
 // Grouped by business day (business-day.ts — the same calendar every report buckets
-// by, so a row here lands on the day the seller's chart puts it on).
+// by, so a row here lands on the day the seller's chart puts it on). Each row still
+// carries its own date: on a searched page the groups are no longer consecutive days,
+// and a heading scrolled off the top leaves a row with no date at all (owner, סשן ג׳).
 const byDay = new Map<string, MoneyEvent[]>();
 for (const e of events) {
   const day = businessDayISO(new Date(e.at));
-  const list = byDay.get(day) ?? [];
-  list.push(e);
-  byDay.set(day, list);
+  byDay.set(day, [...(byDay.get(day) ?? []), e]);
 }
+
+/** Clicking an order/checkout reference searches for it — the per-order timeline the
+ *  journal was built for ("what happened to this order"), with no extra query surface. */
+const traceUrl = (term: string) => buildAdminUrl('moneylog', { mq: term });
+const highlightId = targetMissing ? '' : query.eventId;
 ---
 
 <section>
@@ -73,103 +75,74 @@ for (const e of events) {
     <h2 class="m-0 mb-1 text-[1.05rem] font-semibold">יומן אירועים כספיים</h2>
     <p class="m-0 text-[0.82rem] [color:var(--color-muted)] leading-relaxed">
       רישום בלבד־הוספה של כל אירוע שמזיז כסף: חיוב, יצירת הזמנה, ביטול, שינוי סכום, וחיוב כפול שנמנע.
-      שורות לא נערכות ולא נמחקות — תיקון נרשם כשורה חדשה. זה מה שמאפשר לשחזר בדיוק מה קרה להזמנה
-      גם אחרי שהנתונים עצמם השתנו.
+      שורות לא נערכות ולא נמחקות — תיקון נרשם כשורה חדשה. לחיצה על מספר הזמנה או אסמכתא מציגה את כל
+      האירועים שלה, וכפתור הקישור שבסוף כל שורה מעתיק קישור ישיר אליה.
     </p>
   </header>
 
-  {/* Reconciliation (lib/reconcile.ts) — every headline recomputed by a second,
-      independent route and compared. A test proves the code was right when it was
-      written; this runs over the REAL data on every page load, which is the only
-      thing that can tell the owner his numbers are right *now*. */}
-  <div
-    class:list={[
-      'rounded-[var(--radius)] border p-3.5 mb-5',
-      reconciliation.clean
-        ? 'border-[color:color-mix(in_srgb,var(--color-success)_35%,var(--color-border))] bg-[color:color-mix(in_srgb,var(--color-success)_7%,transparent)]'
-        : 'border-[color:var(--color-danger)] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,transparent)]',
-    ]}
-  >
-    <div class="flex items-baseline justify-between gap-3 flex-wrap">
-      <strong class="text-[0.9rem]">
-        {reconciliation.clean ? '✓ הנתונים מאוזנים' : `⚠ נמצאו ${reconciliation.discrepancies.length} אי-התאמות`}
-      </strong>
-      <span class="text-[0.76rem] [color:var(--color-muted)]">{reconciliation.checkedOrders} הזמנות נבדקו</span>
-    </div>
-    <p class="m-0 mt-1 text-[0.78rem] [color:var(--color-muted)] leading-relaxed">
-      {reconciliation.clean
-        ? 'כל מספר שמוצג נבדק מול חישוב שני, עצמאי: שורות ההזמנה מול הסכום השמור, סכום ההזמנה מול מרכיביו, והמחזור הכללי מול סכום החנויות. כולם תואמים.'
-        : 'שני חישובים עצמאיים של אותו מספר לא הסכימו. כל שורה למטה מפרטת מה נבדק, מה יצא, ומה זה אומר.'}
-    </p>
+  <AdminReconciliationCard reconciliation={reconciliation} />
+  <AdminMoneyLogToolbar query={query} total={total} />
 
-    {!reconciliation.clean && (
-      <ul class="m-0 mt-3 ps-0 list-none flex flex-col gap-2.5">
-        {reconciliation.discrepancies.map((d) => (
-          <li class="text-[0.8rem] border-t border-[color:color-mix(in_srgb,var(--color-danger)_25%,transparent)] pt-2.5">
-            <div class="flex flex-wrap items-baseline gap-x-2">
-              <strong>{d.check}</strong>
-              {d.subject && <span class="[color:var(--color-muted)] text-[0.75rem]">{d.subject}</span>}
-            </div>
-            <div class="mt-0.5 tabular-nums text-[0.78rem]">
-              צפוי {formatPrice(d.expected)} · בפועל {formatPrice(d.actual)} · פער {formatPrice(d.drift)}
-            </div>
-            <div class="mt-0.5 [color:var(--color-muted)] text-[0.76rem] leading-relaxed">{d.explanation}</div>
-          </li>
-        ))}
-      </ul>
-    )}
-  </div>
-
-  <div class="flex flex-wrap gap-1.5 mb-4">
-    {FILTERS.map((f) => (
-      <a
-        href={buildAdminUrl('moneylog', { mtype: f.id || undefined })}
-        class:list={[
-          'text-[0.78rem] px-2.5 py-1 rounded-full border no-underline transition-colors',
-          activeType === f.id
-            ? 'border-[color:var(--color-primary)] bg-[color:var(--color-primary)] text-white'
-            : 'border-[color:var(--color-border)] [color:var(--color-muted)] hover:border-[color:var(--color-text)]',
-        ]}
-      >{f.label}</a>
-    ))}
-  </div>
-
-  {total > 0 && (
-    <p class="m-0 mb-3 text-[0.76rem] [color:var(--color-muted)] tabular-nums">
-      {total} אירועים{activeType ? ' מסוג זה' : ''} · עמוד {page} מתוך {totalPages}
+  {/* Two different answers, because offering "look in the full journal" when the
+      journal ISN'T narrowed is a link back to the same page — a dead end that reads
+      as the feature being broken rather than as the row being gone. */}
+  {targetMissing && (
+    <p class="rounded-[var(--radius)] border border-[color:var(--color-warning)] bg-[color:color-mix(in_srgb,var(--color-warning)_12%,transparent)] p-3 mb-4 text-[0.8rem] leading-relaxed">
+      {hasActiveMoneyLogFilters(query) ? (
+        <Fragment>
+          האירוע שאליו הקישור מפנה לא נמצא בסינון הנוכחי.
+          <Fragment> </Fragment>
+          <a href={buildAdminUrl('moneylog', { mev: query.eventId })} class="[color:var(--color-primary)]">חפשו אותו ביומן המלא</a>.
+        </Fragment>
+      ) : 'האירוע שאליו הקישור מפנה אינו קיים ביומן.'}
     </p>
   )}
 
   {events.length === 0 ? (
     <p class="text-[0.85rem] [color:var(--color-muted)] py-8 text-center">
-      {activeType ? 'אין אירועים מהסוג הזה.' : 'עדיין לא נרשמו אירועים כספיים.'}
+      {hasActiveMoneyLogFilters(query) ? 'אין אירועים שתואמים לסינון הזה.' : 'עדיין לא נרשמו אירועים כספיים.'}
     </p>
   ) : (
-    <div class="flex flex-col gap-5">
+    <div class="flex flex-col gap-5" id="admin-moneylog-rows" data-highlight={highlightId}>
       {[...byDay.entries()].map(([day, rows]) => (
         <div>
-          <h3 class="m-0 mb-2 text-[0.78rem] font-semibold [color:var(--color-muted)] sticky top-0 bg-[color:var(--color-surface)] py-1">{day}</h3>
-          {/* Scrolls inside its own box rather than pushing the page sideways on a phone. */}
-          <div class="overflow-x-auto">
-            <table class="w-full border-collapse text-[0.82rem] min-w-[38rem]">
+          <h3 class="m-0 mb-2 text-[0.78rem] font-semibold [color:var(--color-muted)]">{formatBusinessDayLabel(day)}</h3>
+          {/* Scrolls inside its own box rather than pushing the page sideways on a phone.
+              `relative` is LOAD-BEARING, not decoration: without it the table's overflow
+              still counted toward `documentElement.scrollWidth` on this RTL page even
+              though the wrapper was scrolling correctly — measured at 375px, 679px of
+              document for a 375px viewport (617px before this table was widened, i.e.
+              the leak predates it). Positioning the wrapper brings it back to exactly
+              375. `overflow-x:clip` and `isolation:isolate` do NOT fix it; `contain:paint`
+              does, but buys nothing extra here. Re-measure before removing. */}
+          <div class="relative overflow-x-auto">
+            <table class="w-full border-collapse text-[0.82rem] min-w-[42rem]">
               <thead>
                 <tr class="text-start [color:var(--color-muted)] text-[0.74rem]">
-                  <th class="text-start font-medium py-1.5 pe-3 whitespace-nowrap">שעה</th>
+                  <th class="text-start font-medium py-1.5 pe-3 whitespace-nowrap">תאריך ושעה</th>
                   <th class="text-start font-medium py-1.5 pe-3">אירוע</th>
                   <th class="text-start font-medium py-1.5 pe-3 whitespace-nowrap">סכום</th>
                   <th class="text-start font-medium py-1.5 pe-3">חנות</th>
                   <th class="text-start font-medium py-1.5 pe-3">פירוט</th>
+                  <th class="text-start font-medium py-1.5"><span class="sr-only">קישור לשורה</span></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((e) => (
-                  <tr class="border-t border-[color:var(--color-border)] align-top">
+                  <tr
+                    data-event-row={e.id}
+                    class:list={[
+                      'border-t border-[color:var(--color-border)] align-top transition-colors',
+                      e.id === highlightId && 'bg-[color:color-mix(in_srgb,var(--color-primary)_10%,transparent)]',
+                    ]}
+                  >
                     <td class="py-2 pe-3 whitespace-nowrap [color:var(--color-muted)] tabular-nums">
-                      {formatHeDateTime(e.at).split(' ').at(-1)}
+                      {formatBusinessDateShort(e.at)}
+                      <span class="block text-[0.75rem] opacity-80">{formatBusinessTime(e.at)}</span>
                     </td>
                     <td class="py-2 pe-3">
                       <span class:list={['inline-block px-2 py-0.5 rounded-full text-[0.72rem] font-medium whitespace-nowrap', TONE_CLASS[toneFor(e)]]}>
-                        {TYPE_META[e.type]?.label ?? e.type}
+                        {MONEY_EVENT_LABELS[e.type] ?? e.type}
                       </span>
                       {e.from && e.to && (
                         <span class="block mt-1 text-[0.72rem] [color:var(--color-muted)]">{e.from} → {e.to}</span>
@@ -181,11 +154,28 @@ for (const e of events) {
                     <td class="py-2 pe-3 [color:var(--color-muted)]">{e.storeSlug ?? '—'}</td>
                     <td class="py-2 pe-3 [color:var(--color-muted)] break-words">
                       {e.detail ?? '—'}
-                      <span class="block mt-0.5 text-[0.7rem] opacity-70">
-                        {e.orderId ? `הזמנה ${e.orderId.slice(0, 8)}` : ''}
-                        {e.checkoutRef ? ` · אסמכתא ${e.checkoutRef}` : ''}
+                      {/* No opacity dimming on this line: the order/checkout refs inside it are
+                          links, and fading them took the one affordance saying so. */}
+                      <span class="block mt-0.5 text-[0.7rem]">
+                        {e.orderId && (
+                          <a href={traceUrl(e.orderId)} title="כל האירועים של הזמנה זו" class="[color:var(--color-primary)] no-underline hover:underline">הזמנה {e.orderId.slice(0, 8)}</a>
+                        )}
+                        {e.checkoutRef && (
+                          <Fragment> · <a href={traceUrl(e.checkoutRef)} title="כל האירועים של אסמכתא זו" class="[color:var(--color-primary)] no-underline hover:underline">אסמכתא {e.checkoutRef}</a></Fragment>
+                        )}
                         {` · ${e.actor}`}
                       </span>
+                    </td>
+                    <td class="py-2 text-center">
+                      <button
+                        type="button"
+                        class="admin-moneylog-link-btn bg-transparent border-0 p-1 cursor-pointer [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors"
+                        data-permalink={buildAdminUrl('moneylog', { mev: e.id })}
+                        aria-label="העתקת קישור ישיר לשורה"
+                        title="העתקת קישור ישיר לשורה"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>
+                      </button>
                     </td>
                   </tr>
                 ))}
