@@ -24,6 +24,7 @@
 <script>
   import { removeFromWishlist, addToWishlist, getWishlistByStore } from '../lib/wishlist.js';
   import { addItem, getCartQty } from '../lib/cart.js';
+  import { fetchUnavailableLines } from '../lib/cart-prices.js';
   import { formatPrice, cdnSrc, cdnThumb } from '../config/store.config.js';
   import { escapeHtml as esc } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
@@ -79,6 +80,26 @@
     }
   }
 
+  // Lines the server says can no longer be bought — a deleted/hidden product, or one whose store
+  // stopped selling. Kept only in memory and never written back to the wishlist: the entry stays
+  // in the list and comes back by itself the moment the store reopens (owner, 2026-07-31).
+  let unavailable = new Set<string>();
+  const lineKey = (storeSlug: string, slug: string) => `${storeSlug}|${slug}`;
+
+  /** Asked on open — the moment of attention, same discipline as the cart's re-pricing. The list
+   *  renders immediately from localStorage and re-renders only if the answer changes something,
+   *  so an offline or slow check costs the shopper nothing. */
+  function refreshAvailability() {
+    const lines = [...getWishlistByStore().entries()].flatMap(([storeSlug, group]) =>
+      group.items.map((item) => ({ storeSlug, slug: item.slug })),
+    );
+    void fetchUnavailableLines(lines).then((gone) => {
+      const changed = gone.size !== unavailable.size || [...gone].some((k) => !unavailable.has(k));
+      unavailable = gone;
+      if (changed) render();
+    });
+  }
+
   function open() {
     if (!panel) return;
     // Item data (name/price/qty) comes from localStorage — already known
@@ -87,6 +108,7 @@
     // for the real (possibly differently-shaped) list is what caused the
     // panel to visibly "jump"/shrink a beat after opening.
     render();
+    refreshAvailability();
     position();
     panel.style.display = 'flex';
     panel.removeAttribute('aria-hidden');
@@ -203,6 +225,9 @@
           // just its raw stock — so this stepper/button can't push the cart
           // past real stock once every unit is already in it.
           const remaining = item.stock != null ? Math.max(0, item.stock - getCartQty(storeSlug, item.slug)) : undefined;
+          // The store stopped selling, or the product is gone: the row keeps its image, name,
+          // price and the link, and loses only the controls that lead nowhere.
+          const isGone = unavailable.has(lineKey(storeSlug, item.slug));
           return `
           ${idx > 0 ? '<div style="height:1px;background:var(--color-border);margin:0 0.4rem"></div>' : ''}
           <div class="wl-item" style="display:flex;flex-direction:column;gap:0.4rem;padding:0.45rem 0.6rem">
@@ -220,6 +245,7 @@
               </div>
             </a>
             <div class="wl-controls" style="display:flex;align-items:center;gap:0.35rem">
+                ${isGone ? `<span style="flex:1;font-size:0.78rem;color:var(--color-muted)">${esc(i18n.unavailable ?? '')}</span>` : `
                 <div class="cart-line__qty" dir="ltr" style="flex-shrink:0">
                   <button data-wl-minus="${esc(item.slug)}" aria-label="${esc(cartI18n.qtyDecrease ?? 'Decrease quantity')}" disabled>−</button>
                   <span data-wl-qty="${esc(item.slug)}" aria-live="polite" aria-atomic="true">1</span>
@@ -237,7 +263,7 @@
                   data-label-added="${esc(i18n.addedToCart ?? 'Added ✓')}"
                   style="flex:1;font-size:0.78rem;white-space:nowrap"
                   ${remaining != null && remaining <= 0 ? 'disabled' : ''}
-                >${esc(i18n.addToCart ?? 'Add to cart')}</button>
+                >${esc(i18n.addToCart ?? 'Add to cart')}</button>`}
                 <button data-wl-rm="${esc(item.slug)}" class="cart-line__rm" aria-label="${esc(i18n.remove ?? 'Remove')}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><circle cx="10" cy="13" r="1.1" fill="currentColor" stroke="none"/><circle cx="14" cy="13" r="1.1" fill="currentColor" stroke="none"/><path d="M9 6V4h6v2"/></svg></button>
             </div>
           </div>`;

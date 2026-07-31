@@ -18,6 +18,15 @@ export interface CartItem {
   qty: number;
   stock?: number;
   selectedVariants?: Record<string, string>;
+  /** The server says this line can no longer be bought — its product was deleted or hidden, or
+   *  its store stopped selling (paused, closed, blocked). Set and CLEARED by applyServerPrices,
+   *  so a store coming back from a pause restores its lines by itself with nothing to click.
+   *
+   *  The line is never removed: a buyer who added three items and finds two has no idea what
+   *  happened, and may believe they bought something they did not. It stays, marked, and is left
+   *  out of every total (decided with the owner 2026-07-31 — the same rule the wishlist follows).
+   *  Display + totals only; /api/checkout re-derives availability server-side regardless. */
+  gone?: boolean;
 }
 
 interface StoreCart {
@@ -170,7 +179,9 @@ export function getActiveStoreCarts(): ActiveStoreCart[] {
       const cart = JSON.parse(localStorage.getItem(key) ?? 'null') as StoreCart | null;
       if (!cart) continue;
       const items = Object.values(cart.items);
-      const count = items.length;
+      // Unavailable lines still render (they are listed, marked), but they are not part of what
+      // the buyer is buying — so the header badge and the per-store count exclude them.
+      const count = items.filter((i) => !i.gone).length;
       if (count > 0) result.push({ storeSlug: cart.storeSlug, storeName: cart.storeName, count, items });
     } catch { /* skip */ }
   }
@@ -181,8 +192,16 @@ export function getCount(): number {
   return getActiveStoreCarts().reduce((s, c) => s + c.count, 0);
 }
 
+/** What this store's line-up costs. An unavailable line contributes nothing — showing it inside
+ *  the total would quote a price checkout is going to refuse. */
 export function getSubtotal(storeSlug: string): number {
-  return getStoreItems(storeSlug).reduce((sum, i) => sum + i.price * i.qty, 0);
+  return getStoreItems(storeSlug).filter((i) => !i.gone).reduce((sum, i) => sum + i.price * i.qty, 0);
+}
+
+/** Does this store's cart still have anything the buyer can actually pay for? A group made up
+ *  entirely of unavailable lines must not offer a checkout button. */
+export function hasBuyableItems(storeSlug: string): boolean {
+  return getStoreItems(storeSlug).some((i) => !i.gone);
 }
 
 /** What a line saves the buyer: the gap between the pre-discount price and what they pay,
@@ -232,6 +251,28 @@ export interface CartServerRow {
   gone?: boolean;
 }
 
+/** Writes the server's availability verdict onto the stored lines — set AND cleared, so a line
+ *  whose store reopened stops being marked without the buyer doing anything. Runs before the
+ *  re-pricing below, which then skips the gone rows: their price is not a number anyone can act
+ *  on, and re-pricing one would announce a change on a line that cannot be bought. */
+function markGoneLines(rows: CartServerRow[]): void {
+  const verdict = new Map<string, boolean>();
+  for (const row of rows) verdict.set(`${row.storeSlug}|${row.slug}`, row.gone === true);
+  const slugs = new Set(rows.map((r) => r.storeSlug));
+  for (const storeSlug of slugs) {
+    const cart = readStoreCart(storeSlug);
+    if (!cart) continue;
+    let changed = false;
+    for (const item of Object.values(cart.items)) {
+      const answer = verdict.get(`${storeSlug}|${item.slug}`);
+      if (answer === undefined) continue;
+      if (answer && !item.gone) { item.gone = true; changed = true; }
+      else if (!answer && item.gone) { delete item.gone; changed = true; }
+    }
+    if (changed) writeStoreCart(cart);
+  }
+}
+
 /** Re-syncs every cart line with the server's answer (see /api/cart/prices): price, strikethrough,
  *  and the stock ceiling. Returns the lines that actually moved, so a caller re-renders only on a
  *  real change — a cart already current must not repaint (memory: a no-op interaction has to be
@@ -241,6 +282,7 @@ export interface CartServerRow {
  *  its price silently becoming something the shopper can't act on. */
 export function applyServerPrices(rows: CartServerRow[]): CartPriceChange[] {
   const changes: CartPriceChange[] = [];
+  markGoneLines(rows);
   const byStore = new Map<string, CartServerRow[]>();
   for (const row of rows) {
     if (row.gone) continue;

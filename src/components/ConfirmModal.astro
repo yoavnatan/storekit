@@ -4,6 +4,12 @@
   <div class="confirm-dialog__inner">
     <h3 class="confirm-dialog__title" id="confirm-title"></h3>
     <p class="confirm-dialog__message" id="confirm-message"></p>
+    {/* The OK button ships in its DANGER skin because that is what almost every
+        confirmation here guards (delete, block, cancel an order). A confirmation
+        on a POSITIVE action — reopening a paused store, calling off a closure —
+        passes tone:'primary' and the two danger classes come off, so red keeps
+        meaning "this one takes something away" instead of just "this is the OK
+        button". See the toneOk() handler below. */}
     <div class="confirm-dialog__actions">
       <button id="confirm-cancel" class="btn btn--ghost"></button>
       <button id="confirm-ok" class="btn btn--danger !bg-[color:var(--color-danger)] hover:opacity-90"></button>
@@ -30,12 +36,23 @@
     if (dialog) dialog.style.transform = '';
   }
 
+  /** Danger unless the caller says otherwise — toggled rather than rewritten so the
+   *  class strings stay literal in the markup above, where Tailwind's scanner can
+   *  still see the arbitrary utility. */
+  function toneOk(tone: string | undefined) {
+    if (!okBtn) return;
+    const danger = tone !== 'primary';
+    okBtn.classList.toggle('btn--danger', danger);
+    okBtn.classList.toggle('!bg-[color:var(--color-danger)]', danger);
+  }
+
   window.addEventListener('confirm:open', (e: Event) => {
     const i18n = getI18n().confirm ?? {};
-    const detail = (e as CustomEvent<{ title?: string; message?: string; okLabel?: string; workingLabel?: string; onConfirm?: () => void | Promise<void> }>).detail;
+    const detail = (e as CustomEvent<{ title?: string; message?: string; okLabel?: string; workingLabel?: string; tone?: 'danger' | 'primary'; onConfirm?: () => void | Promise<void> }>).detail;
     if (titleEl) titleEl.textContent = detail.title ?? i18n.defaultTitle ?? 'Are you sure?';
     if (msgEl) msgEl.textContent = detail.message ?? i18n.defaultMsg ?? 'This action cannot be undone.';
     if (okBtn) okBtn.textContent = detail.okLabel ?? i18n.confirm ?? 'Confirm';
+    toneOk(detail.tone);
     if (cancelBtn) cancelBtn.textContent = i18n.cancel ?? 'Cancel';
     pending = detail.onConfirm ?? null;
     workingLabel = detail.workingLabel ?? i18n.working ?? 'Working…';

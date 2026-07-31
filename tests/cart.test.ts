@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addItem, applyServerPrices, applyStockLimit, getCartQty, getStoreItems, itemSaving, makeCartKey, removeItem, setQty } from '../src/lib/cart.js';
+import { addItem, applyServerPrices, applyStockLimit, getCartQty, getCount, getGrandTotal, getStoreItems, getSubtotal, hasBuyableItems, itemSaving, makeCartKey, removeItem, setQty } from '../src/lib/cart.js';
 
 const STORE = 'test-store';
 const PRODUCT = { slug: 'widget', name: 'Widget', price: 50, image: 'w.png' };
@@ -222,6 +222,72 @@ describe('applyServerPrices — re-pricing a cart that has gone stale', () => {
     expect(changes).toEqual([expect.objectContaining({ from: 50, to: 45 })]);
     expect(getCartQty(STORE, PRODUCT.slug, red)).toBe(3); // the shared-pool stock is NOT this line's ceiling
     expect(getStoreItems(STORE)[0]!.stock).toBe(9);
+  });
+});
+
+/** A line the buyer can no longer buy — its product was deleted or hidden, or its store stopped
+ *  selling. It STAYS in the cart, marked, because silently removing an item someone chose leaves
+ *  them thinking they bought something they did not. What it must never do is reach a number: a
+ *  subtotal that includes it quotes a price checkout is about to refuse.
+ */
+describe('a line that can no longer be bought', () => {
+  const gone = () => applyServerPrices([{ storeSlug: STORE, slug: PRODUCT.slug, price: 50, gone: true }]);
+
+  it('keeps the line in the cart rather than deleting it', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 2);
+    gone();
+    const items = getStoreItems(STORE);
+    expect(items).toHaveLength(1);
+    expect(items[0]!.gone).toBe(true);
+    expect(items[0]!.qty).toBe(2);
+  });
+
+  it('leaves it out of the store subtotal and the grand total', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 2);
+    expect(getSubtotal(STORE)).toBe(100);
+    gone();
+    expect(getSubtotal(STORE)).toBe(0);
+    expect(getGrandTotal()).toBe(0);
+  });
+
+  it('leaves it out of the item count the header badge shows', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 1);
+    addItem(STORE, 'Store', { slug: 'other', name: 'Other', price: 20, image: 'o.png', stock: 5 }, 1);
+    expect(getCount()).toBe(2);
+    gone();
+    expect(getCount()).toBe(1);
+  });
+
+  it('still counts the store as buyable while anything else in it can be bought', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 1);
+    addItem(STORE, 'Store', { slug: 'other', name: 'Other', price: 20, image: 'o.png', stock: 5 }, 1);
+    gone();
+    expect(hasBuyableItems(STORE)).toBe(true);
+  });
+
+  it('reports the store as having nothing buyable once every line is gone', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 1);
+    gone();
+    expect(hasBuyableItems(STORE)).toBe(false);
+  });
+
+  // The requirement that motivated this: a store coming back from a pause must restore its lines
+  // with nothing for the buyer to click.
+  it('un-marks the line by itself once the server says it is available again', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 2);
+    gone();
+    expect(getSubtotal(STORE)).toBe(0);
+    applyServerPrices([{ storeSlug: STORE, slug: PRODUCT.slug, price: 50 }]);
+    expect(getStoreItems(STORE)[0]!.gone).toBeUndefined();
+    expect(getSubtotal(STORE)).toBe(100);
+    expect(getCount()).toBe(1);
+  });
+
+  // Its price is not a number anyone can act on, so a change on it must not be announced.
+  it('does not report a price change on a line that cannot be bought', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 9 }, 1);
+    expect(applyServerPrices([{ storeSlug: STORE, slug: PRODUCT.slug, price: 999, gone: true }])).toEqual([]);
+    expect(getStoreItems(STORE)[0]!.price).toBe(50);
   });
 });
 

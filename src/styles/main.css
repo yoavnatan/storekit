@@ -1,3 +1,27 @@
+/* THIS FILE IS GLOBAL — every byte here loads on every page.
+ *
+ * (Moved out of AI_INSTRUCTIONS.md 2026-07-31: the rule belongs next to the imports it governs,
+ * where anyone about to move a stylesheet in or out will actually meet it.)
+ *
+ * Splitting a legacy pages/*.css file out of here into a direct per-page `import` is allowed ONLY
+ * if every one of its classnames is provably unique to that page — checked programmatically, never
+ * by eye. Short generic names (.field, .btn, .is-loading, .hidden) collide across page files all
+ * the time and quietly rely on this file's import ORDER to cascade correctly.
+ *   • admin.css was split this way (2026-07-15). Admin routes are auth-gated and not indexed, so
+ *     it also keeps that weight off every public/SEO page.
+ *   • dashboard.css and store.css were checked and are NOT safe to split: they carry shared-
+ *     component rules (Header, StoreCard, … reused across routes) and deliberately override
+ *     generic classnames coming from components/*.css.
+ *
+ * The counter-intuitive half (hit on checkout.astro, 2026-07-15): a page-owned <style> block, even
+ * `is:global`, ALREADY gets its own per-route CSS chunk from Astro's bundler — `is:global` only
+ * disables scoping/hashing, not bundling. So converting such a block to Tailwind moves its weight
+ * into the single shared Tailwind output that this file loads everywhere, and can INCREASE the
+ * global bundle. Only genuinely cross-page CSS (dashboard.css / store.css, or a BaseLayout-rendered
+ * component like ProductQuickView.astro) shrinks the global bundle when converted. Check which one
+ * you have before assuming a conversion is a net byte win.
+ */
+
 /* Tailwind CSS v4 — utilities available across the project */
 @import "tailwindcss";
 

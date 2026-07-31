@@ -1,3 +1,22 @@
+/* Button feedback rules (moved out of AI_INSTRUCTIONS.md 2026-07-31 — they are recipes for the
+ * controls defined in this file, needed when you build one, not at every session start). The bans
+ * that stay in the always-read file are the site-wide ones a stranger could break from anywhere:
+ * no native confirm()/alert()/prompt(), and never the `not-allowed` cursor.
+ *
+ *  • :active is scale(0.97). Card-image hover is scale(1.06). Spring is
+ *    cubic-bezier(0.34,1.56,0.64,1); 100-180ms for hover, 220-320ms for springs. No
+ *    border-darkening, and every animation needs a reason.
+ *  • spawnRipple() clips to its own dedicated inner layer, NEVER to the target button: clipping the
+ *    button swallows a corner badge (the avatar alert dot) for as long as overflow:hidden sticks.
+ *  • In-flight (delete / save / inline edit) = disable the control and show `.dot-pulse`
+ *    (utilities/utils.css), not a spinner. ConfirmModal.onConfirm may return a Promise; the dialog
+ *    stays open, disabled, dots showing, until it resolves.
+ *  • A disabled state that is really a brief SUCCESS confirmation (the add-to-cart checkmark) uses
+ *    `.btn--confirmed`, defined below — not the plain disabled look.
+ *  • Disabled controls take cursor:default, enforced globally on :disabled/[aria-disabled] in
+ *    reset.css so the UA default can't reintroduce the banned no-entry cursor. A control that is
+ *    busy rather than disabled takes cursor:progress via `.btn--busy`.
+ */
 .btn {
   display: inline-flex;
   align-items: center;

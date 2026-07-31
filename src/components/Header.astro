@@ -1,4 +1,26 @@
 ---
+// Layout rules this component owns (moved out of AI_INSTRUCTIONS.md 2026-07-31 so they are read by
+// whoever edits the header, not by every session regardless of what it is doing). The two that are
+// still in the always-read file are the ones a stranger could break from outside: the header is
+// `position:fixed` and never sticky, and nothing here may carry an entrance animation.
+//
+//  • Height is pinned INLINE on <header> (`height:3.4rem;box-sizing:border-box`) with a matching
+//    `body{padding-top:3.4rem}`, and must NEVER change. Inline because a `min-height` in header.css
+//    arrives too late — the dev server injects CSS via JS after first paint, so the header would
+//    flash tall and then shrink.
+//  • `.logo` is shared by the platform name AND a store name, and is
+//    `display:inline-flex; line-height:1; font-size:1.3rem` so both render at an identical box in
+//    every context and the row height does not depend on which one is showing. The row itself is
+//    `.site-header .container{height:2rem}` — fixed, not min-height.
+//  • Only the logo/store-name text is a click-to-home target; the rest of the row is inert.
+//  • The row always renders `class="container"` (never the old `container between flex`) — every
+//    page passes `storeMode`, seller register/login/dashboard included, so row layout is one
+//    mechanism everywhere. It carries `min-height:2rem` (the search input's height) so the icons
+//    centre identically with or without a search bar.
+//  • `.user-btn`/`.user-menu` pre-declare `position:relative`/`display:flex` rather than leaving it
+//    to spawnRipple()'s static→relative promotion: the alert dot nests INSIDE `.user-btn`, so a
+//    ripple-triggered position change on first click would silently move the dot's containing
+//    block (fixed 2026-07-16).
 import { store } from '../config/store.config.js';
 import { getLang, getT } from '../i18n/index.js';
 import { getSellerSession } from '../lib/seller-auth.js';

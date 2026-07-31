@@ -6,6 +6,7 @@ import HomeTabEmpty from '../components/HomeTabEmpty.astro';
 import StoreAvatar from '../components/StoreAvatar.astro';
 import StoreDemoBadge from '../components/StoreDemoBadge.astro';
 import HomeProductCard from '../components/HomeProductCard.astro';
+import DashTabsBoot from '../components/dashboard/DashTabsBoot.astro';
 import { store as platform } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
@@ -357,6 +358,8 @@ const jsonLd = {
           </div>
         </div>
       </div>
+
+      <DashTabsBoot />
 
       <div id="dash-panel-liked" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-liked" hidden={activeTab !== 'liked'}>
         {feed.liked.length > 0

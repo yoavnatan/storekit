@@ -4,6 +4,13 @@
 
 <div id="cart-overlay" class="cart-overlay"></div>
 <aside id="cart-drawer" class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-drawer-title" aria-hidden="true">
+  {/* Grab handle — the affordance that says "this sheet can be pulled down". Mobile only:
+      above 600px the drawer is a side panel, where a top handle would mean nothing. It is
+      decorative (the × button and Escape are the real controls), so it is hidden from
+      assistive tech; `touch-none` keeps the browser from claiming the gesture. */}
+  <div id="cart-grab" class="hidden max-[600px]:flex justify-center pt-2 pb-0.5 touch-none" aria-hidden="true">
+    <span class="block w-9 h-1 rounded-full [background:var(--color-border)]"></span>
+  </div>
   <header class="cart-drawer__head flex between">
     <div class="cart-drawer__title-wrap">
       <h2 id="cart-drawer-title">Cart</h2>
@@ -21,12 +28,13 @@
 
 
 <script>
-  import { getActiveStoreCarts, getSubtotal, getGrandTotal, setQtyQuiet, removeItem } from '../lib/cart.js';
+  import { getActiveStoreCarts, getSubtotal, getGrandTotal, hasBuyableItems, setQtyQuiet, removeItem } from '../lib/cart.js';
   import { refreshCartPrices, watchCartPrices } from '../lib/cart-prices.js';
   import { formatPrice, cdnThumb } from '../config/store.config.js';
   import { escapeHtml as esc } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
   import { showToast } from '../lib/toast.js';
+  import { attachSheetDrag } from '../lib/sheet-drag.js';
 
   function getI18n() {
     try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}'); } catch { return {}; }
@@ -179,8 +187,13 @@
               const variantLine = i.selectedVariants && Object.keys(i.selectedVariants).length
                 ? `<div style="font-size:0.72rem;color:var(--color-muted);margin-top:0.1rem">${Object.entries(i.selectedVariants).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(' · ')}</div>`
                 : '';
+              // Unavailable: its store stopped selling, or the product left the catalog. The line
+              // STAYS — a buyer who added three items and finds two does not know what happened,
+              // and may think they bought something they did not. It keeps its photo, name and
+              // link, loses the quantity and price controls, and is out of every total.
+              const gone = i.gone === true;
               return `
-            <div class="cart-line cart-line--link" data-item-slug="${esc(key)}" data-product-slug="${esc(i.slug)}" data-store-slug="${esc(c.storeSlug)}" data-store-name="${esc(c.storeName)}">
+            <div class="cart-line cart-line--link${gone ? ' cart-line--gone' : ''}" data-item-slug="${esc(key)}" data-product-slug="${esc(i.slug)}" data-store-slug="${esc(c.storeSlug)}" data-store-name="${esc(c.storeName)}">
               ${i.image
                 ? `<img src="${esc(cdnThumb(i.image, 112, 112))}" alt="${esc(i.name)}" width="56" height="56" loading="eager" decoding="async">`
                 : placeholderSvg()}
@@ -188,12 +201,13 @@
                 <strong>${esc(i.name)}</strong>
                 ${variantLine}
                 <div class="cart-line__footer">
+                  ${gone ? `<span class="cart-line__price" style="font-weight:500;color:var(--color-muted)">${esc(i18n.unavailable ?? '')}</span>` : `
                   <span class="cart-line__price">${formatPrice(i.price)}</span>
                   <div class="cart-line__qty" dir="ltr">
                     <button data-act="dec" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" aria-label="${esc(i18n.qtyDecrease ?? 'Decrease quantity')} ${esc(i.name)}" ${i.qty <= 1 ? 'disabled' : ''}>−</button>
                     <span aria-live="polite" aria-atomic="true">${i.qty}</span>
                     <button data-act="inc" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" data-stock="${i.stock ?? ''}" aria-label="${esc(i18n.qtyIncrease ?? 'Increase quantity')} ${esc(i.name)}" ${i.stock != null && i.qty >= i.stock ? 'disabled' : ''}>+</button>
-                  </div>
+                  </div>`}
                   <button data-act="rm" data-slug="${esc(key)}" data-store="${esc(c.storeSlug)}" data-name="${esc(i.name)}" aria-label="${esc(i18n.removeOk ?? 'Remove')} ${esc(i.name)}" class="cart-line__rm">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                   </button>
@@ -207,9 +221,9 @@
             <span>${singleStore ? (i18n.cartTotal ?? 'Cart total') : (i18n.subtotal ?? 'Subtotal')}</span>
             <strong>${formatPrice(getSubtotal(c.storeSlug))}</strong>
           </div>
-          <a href="/checkout?store=${esc(c.storeSlug)}" class="btn btn--accent cart-checkout">
+          ${hasBuyableItems(c.storeSlug) ? `<a href="/checkout?store=${esc(c.storeSlug)}" class="btn btn--accent cart-checkout">
             ${i18n.checkout ?? 'Checkout'}
-          </a>
+          </a>` : ''}
         </div>
       </div>`;
     }).join('') +
@@ -303,6 +317,21 @@
 
   document.getElementById('cart-close')?.addEventListener('click', close);
   overlay?.addEventListener('click', close);
+
+  // Pull the sheet down to dismiss it (touch, mobile layout only — see lib/sheet-drag.ts).
+  // `enabled` re-reads the breakpoint and the open state at the start of every gesture, so a
+  // rotation into the desktop layout simply stops offering it. The backdrop fades with the
+  // drag, which is what makes the sheet feel like it is being put away rather than jumping.
+  if (drawer) {
+    attachSheetDrag({
+      sheet: drawer,
+      content: lines,
+      handles: [document.getElementById('cart-grab'), drawer.querySelector<HTMLElement>('.cart-drawer__head')],
+      enabled: () => drawer.classList.contains('is-open') && window.matchMedia('(max-width: 600px)').matches,
+      onDismiss: close,
+      onProgress: (visible) => { if (overlay) overlay.style.opacity = visible === null ? '' : String(visible); },
+    });
+  }
   window.addEventListener('cart:open', () => {
     open();
     // Same reason as the checkout page: the drawer must not quote a price the checkout won't

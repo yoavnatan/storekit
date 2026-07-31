@@ -80,6 +80,41 @@ export function refreshCartPrices(opts: { maxAge?: number } = {}): Promise<CartP
   return pending;
 }
 
+/** Which of these lines can no longer be bought — a deleted or hidden product, or one whose store
+ *  stopped selling (paused, closed, blocked). Keys are `storeSlug|slug`.
+ *
+ *  Lives here, sharing /api/cart/prices, because the wishlist asks the SAME question the cart
+ *  does and the server already answers it in one place (`gone`). A second endpoint, or a
+ *  client-side guess from a stale stock number, is how the two surfaces would start disagreeing
+ *  about what a shopper may buy.
+ *
+ *  It never writes anything: a wishlist entry for a paused store's product stays in the list and
+ *  simply shows as unavailable, so it comes back on its own the moment the store reopens.
+ *  Failure resolves to an EMPTY set — "we could not check" must read as "nothing is known to be
+ *  gone", never as "everything is gone". /api/checkout is the gate that actually refuses.
+ */
+export async function fetchUnavailableLines(lines: Array<{ storeSlug: string; slug: string }>): Promise<Set<string>> {
+  if (!lines.length) return new Set();
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), CHECK_TIMEOUT_MS);
+  try {
+    const res = await fetch('/api/cart/prices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: lines }),
+      signal: abort.signal,
+    });
+    if (!res.ok) return new Set();
+    const data = await res.json() as { ok?: boolean; items?: Array<{ storeSlug: string; slug: string; gone?: boolean }> };
+    if (!data.ok || !Array.isArray(data.items)) return new Set();
+    return new Set(data.items.filter((i) => i.gone).map((i) => `${i.storeSlug}|${i.slug}`));
+  } catch {
+    return new Set();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** True when a line the buyer is about to pay for got MORE expensive — the only case worth
  *  stopping a purchase over. A drop is charged as shown-or-better, so it goes through. */
 export function hasIncrease(changes: CartPriceChange[], isBuying?: (change: CartPriceChange) => boolean): boolean {
