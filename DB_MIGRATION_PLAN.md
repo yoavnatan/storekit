@@ -138,6 +138,11 @@ money_events(id uuid pk, at timestamptz, type, order_id → orders, checkout_ref
 **append-only.** בלי UPDATE ובלי DELETE — תיקון נרשם כשורה חדשה. שווה לאכוף את זה
 ברמת ההרשאות (`REVOKE UPDATE, DELETE`), לא רק בקוד: יומן שאפשר לשכתב לא מוכיח כלום.
 אינדקס על `(order_id, at)` לציר-זמן של הזמנה, ועל `(at DESC)` לתצוגת האדמין.
+מאז סשן ג׳ לשונית היומן באדמין גם **מחפשת טקסט חופשי** (מספר הזמנה, אסמכתא, חנות,
+פירוט) בתוך חלון תאריכים — היום זו סריקה בזיכרון על כל היומן
+(`src/lib/admin-moneylog-filter.ts`). ב-DB זה הופך ל-`WHERE at BETWEEN … AND (…)`,
+ולכן צריך גם אינדקס trigram (`pg_trgm` על `order_id/checkout_ref/store_slug/detail`)
+או `tsvector` — בלעדיו החיפוש הופך ל-seq scan על טבלה שרק גדלה ולא נמחקת ממנה כלום.
 
 ```
 checkout_idempotency(key text PRIMARY KEY, status, checkout_ref, order_ids uuid[],

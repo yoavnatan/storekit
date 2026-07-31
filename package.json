@@ -11,6 +11,7 @@
     "preview": "astro preview",
     "astro": "astro",
     "test": "vitest run",
+    "verify": "node scripts/verify.mjs",
     "lint": "eslint . --suppressions-location .eslint-baseline.json --pass-on-unpruned-suppressions --quiet",
     "lint:fix": "eslint . --fix",
     "lint:all": "eslint .",

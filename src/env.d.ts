@@ -8,4 +8,8 @@ interface Window {
   /** The store's verified custom hostname when the page is served on it (else ''); set by
    *  initCustomDomainLinks so the shared product modal builds clean root-relative URLs. */
   __customStoreHost?: string;
+  /** Switches a `.dash-tabs` strip to the given tab. Defined by the inline
+   *  <DashTabsBoot /> script so tabs work before the page's JS bundle lands;
+   *  initDashTabs() (keyboard arrows) calls it rather than re-implementing it. */
+  __dashTabActivate?: (tab: HTMLElement) => void;
 }

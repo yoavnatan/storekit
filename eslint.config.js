@@ -5,6 +5,17 @@
 // Scope on purpose: type errors stay with `astro check`, behaviour stays with vitest.
 // This layer only hunts bug patterns and dead code. Style-only Sonar rules are off —
 // a lint run nobody can read is a lint run nobody runs.
+//
+// How the baseline got honest (moved here from AI_INSTRUCTIONS.md 2026-07-31, where it was
+// costing every session a read it almost never needed): the first `.eslint-baseline.json` was
+// generated from an uncommitted working tree, so 17 of its 106 findings sat in 11 files that
+// were not in git at all — frozen as "pre-existing" by timing rather than by review. All 17
+// were triaged on 2026-07-30: 3 were real bugs and were fixed, 3 rules were switched off below
+// with the reason stated at each (`no-inverted-boolean-check` in particular wanted `!(x > 0)`
+// rewritten as `x <= 0`, which is a *different* check — NaN fails every comparison), and the
+// rest became local disables that name why. `super-linear-regex` is a warning, not an error,
+// because only 2 of its 19 findings were real. The baseline is now 62 errors across 25 files
+// and may only ever shrink.
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';

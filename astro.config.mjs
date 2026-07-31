@@ -71,6 +71,11 @@ export default defineConfig({
   // fetch their HTML on hover/touch-start, so the click that follows renders from
   // cache instead of waiting on the server. Genuine navigations only — Back keeps
   // using bfcache, which is still the one path that restores with zero work.
+  // Marked today: the product page's "לחנות" link and StoreCard.
+  // The limit worth knowing before you try to work around it (moved here from AI_INSTRUCTIONS.md
+  // 2026-07-31): prefetch binds only to links PRESENT AT LOAD, so a link built later via innerHTML
+  // — the quick-view modal's "לדף המוצר המלא" — cannot use it, and `astro:prefetch`'s prefetch()
+  // refuses it too, because while the modal is open that URL *is* the current URL.
   prefetch: { prefetchAll: false, defaultStrategy: 'hover' },
 
   // Passthrough: Cloudinary handles optimization via URL transforms (f_auto,q_auto,w_N).

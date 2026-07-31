@@ -7,7 +7,8 @@
 # because it makes the gap invisible. So this enforces it.
 #
 # Two costs are managed rather than ignored:
-#   • Serially the three take ~106s. Run concurrently they take about as long as the slowest (~40s).
+#   • Running them is delegated to `scripts/verify.mjs --all`, which runs them concurrently and warm
+#     off their own caches (~40s, against ~115s serial and uncached).
 #   • Re-running them when nothing changed is pure waste, so a successful run is recorded against the
 #     same content fingerprint the review gate uses. A turn that changed no code exits instantly.
 #
@@ -38,30 +39,17 @@ if [ "$attempts" -ge 2 ]; then
   exit 0
 fi
 
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-
 cd "$REPO_ROOT" || exit 0
 
-# Concurrent — they are independent read-only checks.
-( npx astro check           >"$TMP/tsc"  2>&1; echo $? >"$TMP/tsc.rc"  ) &
-( npm run --silent lint     >"$TMP/lint" 2>&1; echo $? >"$TMP/lint.rc" ) &
-( npx vitest run            >"$TMP/test" 2>&1; echo $? >"$TMP/test.rc" ) &
-wait
+# `scripts/verify.mjs` owns the running: concurrent, cached, and it formats its own failure output.
+# The hook keeps only what is its own — the fingerprint, the attempt bound, the block decision. Two
+# copies of "how do I run the checks" is how the gate and the checkpoint drift apart.
+# --all, never the scoped default: a check skipped because its file was committed earlier in the
+# session is still a check that did not run, and this is the last gate before the turn ends.
+failed="$(node scripts/verify.mjs --all --compact 2>&1)"
+rc=$?
 
-failed=""
-# astro check exits non-zero on error; its own summary line is the useful part.
-[ "$(cat "$TMP/tsc.rc" 2>/dev/null || echo 1)" != "0" ] && failed="${failed}
---- astro check ---
-$(grep -E 'error ts\(|^- [0-9]+ error' "$TMP/tsc" | sed 's/\x1b\[[0-9;]*m//g' | head -12)"
-[ "$(cat "$TMP/lint.rc" 2>/dev/null || echo 1)" != "0" ] && failed="${failed}
---- npm run lint (new problems only; the baseline is excluded) ---
-$(tail -25 "$TMP/lint")"
-[ "$(cat "$TMP/test.rc" 2>/dev/null || echo 1)" != "0" ] && failed="${failed}
---- npm test ---
-$(grep -E '✗|×|FAIL|Tests  ' "$TMP/test" | head -15)"
-
-if [ -z "$failed" ]; then
+if [ "$rc" = "0" ]; then
   date -u +"%Y-%m-%dT%H:%M:%SZ" > "$STATE_DIR/green-$fp"
   rm -f "$attempts_file"
   exit 0
