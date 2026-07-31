@@ -296,7 +296,13 @@ const requestedPageSize = parseInt(Astro.url.searchParams.get('psize') ?? '20', 
 const productsPageSize = PRODUCTS_PAGE_SIZE_OPTIONS.includes(requestedPageSize) ? requestedPageSize : 20;
 const filteredSortedProducts = filterAndSortSellerProducts(products, productCategoryPaths, wishlistCounts, purchasedCounts, sellerProductQuery);
 const productsPage = paginate(filteredSortedProducts, parsePage(Astro.url.searchParams, 'ppage'), productsPageSize);
-const initialPanel = Astro.url.searchParams.get('panel') ?? 'overview';
+// Validated against the real panel list, never taken raw: every panel renders
+// `hidden={initialPanel !== <its name>}`, so an unknown value (a typo, a stale
+// bookmark, a link someone edited) hid ALL of them and served a dashboard with
+// an empty body. Fall back to the landing tab instead.
+const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'advertising', 'messages', 'promotions', 'settings'] as const;
+const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
+const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
 // Performance + Advertising are the two heaviest tabs to render server-side —
 // buildPerformanceSummary() reads the page-view buckets and aggregates every
 // order, and the ad cards each run a seeded mock-metrics pass. They're rarely
@@ -714,6 +720,40 @@ const orderStatusColors: Record<string, string> = {
       </div>
       <DashTabsBoot />
 
+      {/* Hydration bar. Server-rendered VISIBLE and removed by the panel loader
+          once the open panel's JS is in place — the only direction that works,
+          since a bar shown by JS could never report that JS hasn't arrived.
+          Until then the panel's dropdowns and buttons genuinely cannot answer a
+          click (owner, 2026-07-31: "אי אפשר לפתוח דרופדאונים"), so this says so
+          instead of leaving the seller tapping a dead control.
+          The 0.25s delayed fade-in is what keeps it off a normal load: hydration
+          usually finishes first and the bar is removed before it was ever
+          painted — the same "don't flash a loader" rule performance.ts applies
+          to its own fetch. */}
+      {/* Two elements, not one: the sweep spends the `animation` shorthand, so
+          the delayed fade has to sit on a wrapper or it would replace it.
+          Deliberately NOT `.skel-bar` — that gradient is tuned to sit under a
+          photo and read as barely-there, and here it was invisible (owner,
+          2026-07-31: "הלואדר קצת בלתי נראה"). A primary-coloured sweep on the
+          site's own `skeleton-shimmer` keyframe is the same language, at the
+          contrast a progress signal needs. */}
+      {/* Flush under the tab strip, never on it: `.dash-tabs` owns a 1px
+          bottom border and the active `.dash-tab` overlaps it upward with its
+          own 2.5px indicator (margin-bottom:-1px), so anything taller here
+          reads as swallowing both. 2px, directly below, no margins.
+          The track stays in the DOM after loading and only the sweep is
+          removed — taking the whole element out would shift every panel up by
+          its height the instant hydration finished. */}
+      {/* `.progress-sweep` (utilities/utils.css) owns the loop — it is built so
+          its last frame equals its first, which a background-position shimmer
+          could not be. The delayed fade sits on a wrapper because the sweep has
+          already spent its `animation` on the loop. */}
+      <div id="dash-hydrating-bar" class="h-[2px] overflow-hidden" role="status" aria-label={d.dashHydrating}>
+        <span class="block h-full opacity-0 [animation:fade-in_0.2s_ease_0.25s_forwards]">
+          <span class="progress-sweep block h-full"></span>
+        </span>
+      </div>
+
       {/* Raised by tab-sync.ts when another tab of this same store saves something —
           advisory only, the seller chooses when to take the fresh data. */}
       <StaleDataBar message={d.staleDataMsg} refreshLabel={d.staleDataRefresh} dismissLabel={d.staleDataDismiss} />
@@ -768,7 +808,7 @@ const orderStatusColors: Record<string, string> = {
       </div>
 
       <!-- ── Panel: Products ── -->
-      <div id="dash-panel-products" class="dash-panel" role="tabpanel" aria-labelledby="tab-products" hidden={initialPanel !== 'products'}>
+      <div id="dash-panel-products" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-products" hidden={initialPanel !== 'products'}>
         {showTabHints && <TabHint text={d.tabHintProducts} />}
 
         <div>
@@ -1473,7 +1513,7 @@ const orderStatusColors: Record<string, string> = {
       </div>
 
       <!-- ── Panel: Orders ── -->
-      <div id="dash-panel-orders" class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
+      <div id="dash-panel-orders" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
         {showTabHints && <TabHint text={d.tabHintOrders} />}
         <div class="dash-panel-head flex flex-col items-start mb-4 gap-[0.6rem] py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0">{d.ordersTitle}</h2>
@@ -1691,7 +1731,7 @@ const orderStatusColors: Record<string, string> = {
       </div>
 
       <!-- ── Panel: Performance ── -->
-      <div id="dash-panel-performance" class="dash-panel" role="tabpanel" aria-labelledby="tab-performance" hidden={initialPanel !== 'performance'}>
+      <div id="dash-panel-performance" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-performance" hidden={initialPanel !== 'performance'}>
         {showTabHints && <TabHint text={d.tabHintPerformance} />}
         <div class="dash-panel-head mb-5 py-[0.6rem] border-b [border-color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
           <div>
@@ -1844,7 +1884,7 @@ const orderStatusColors: Record<string, string> = {
       </div>
 
       <!-- ── Panel: Advertising ── -->
-      <div id="dash-panel-advertising" class="dash-panel" role="tabpanel" aria-labelledby="tab-advertising" hidden={initialPanel !== 'advertising'}>
+      <div id="dash-panel-advertising" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-advertising" hidden={initialPanel !== 'advertising'}>
         {showTabHints && <TabHint text={d.tabHintAdvertising} />}
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
           <h2 class="m-0 text-base font-semibold">{d.adTitle}</h2>
@@ -1997,7 +2037,7 @@ const orderStatusColors: Record<string, string> = {
 
       <!-- ── Panel: Messages ── -->
       <!-- msg-cq: the table below collapses to cards by THIS element's width, not the viewport's (see utils.css) -->
-      <div id="dash-panel-messages" class="dash-panel msg-cq" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
+      <div id="dash-panel-messages" data-hydrating class="dash-panel msg-cq" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
         {showTabHints && <TabHint text={d.tabHintMessages} />}
         {/* Sticky header carrying the search + sort/filter, matching Orders
             (CURRENT_TASK 2 — Messages previously had neither a sticky head nor
@@ -2081,12 +2121,12 @@ const orderStatusColors: Record<string, string> = {
       <script is:inline type="application/json" id="dash-store-sale" set:html={jsonForScript(store?.sale ?? null)} />
 
       <!-- ── Panel: Promotions ── -->
-      <div id="dash-panel-promotions" class="dash-panel" role="tabpanel" aria-labelledby="tab-promotions" hidden={initialPanel !== 'promotions'}>
+      <div id="dash-panel-promotions" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-promotions" hidden={initialPanel !== 'promotions'}>
         <PromotionsPanel store={store} products={products} categories={storeCategoryList} selectedScopeLabel={t.store.saleOnSelected} storeScopeLabel={t.store.saleOnWholeStore} andMoreLabel={t.store.saleAndMore} d={d} />
       </div>
 
       <!-- ── Panel: Settings ── -->
-      <div id="dash-panel-settings" class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden={initialPanel !== 'settings'}>
+      <div id="dash-panel-settings" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden={initialPanel !== 'settings'}>
         {showTabHints && <TabHint text={d.tabHintSettings} />}
         {/* Head stays INSIDE the form on purpose: its sticky scope is the form, so the
             "save changes" bar rides only over the fields it actually saves and releases
@@ -2732,33 +2772,39 @@ const orderStatusColors: Record<string, string> = {
 </dialog>
 
 <script>
-  import { initCropModal } from '../../scripts/dashboard/crop-modal.js';
-  import { initCleanupModal } from '../../scripts/dashboard/cleanup-modal.js';
-  import { initGalleryWidget } from '../../scripts/dashboard/gallery.js';
-  import { bindExistingRows, initAddProduct, initDeleteProduct, initProductVisibilityToggle, initProductMenus, initProductsToolbar, initSpecsEditors, initVariantEditors, initTagsEditor, initRemoveConfirm, initStockBreakdowns, initBulkSelect, initThumbs, initInlineEdit, initViewProduct, initPagination, initStickyOffsets } from '../../scripts/dashboard/products.js';
-  import { initCsvImport } from '../../scripts/dashboard/csv-import.js';
-  import { initFeedSync } from '../../scripts/dashboard/feed-sync.js';
-  import { initCustomDomain } from '../../scripts/dashboard/custom-domain.js';
-  import { initStoreLifecycle } from '../../scripts/dashboard/store-lifecycle.js';
-  import { initStoreUrl } from '../../scripts/dashboard/store-url.js';
+  /* ── Why this file loads in two stages ────────────────────────────────────
+     Everything below used to be one module: 21 static imports, ~245 KB raw /
+     61 KB gzipped, all of it downloaded and executed before ANY control on the
+     page answered a click. Only one panel is ever on screen, so the seller was
+     waiting on the JS of seven panels to use one — on a weak connection that
+     showed up as dropdowns that simply did not open (owner, 2026-07-31).
+
+     Stage 1 (static, below) is the shell only: tabs, the store switcher, the
+     settings form, the cross-tab sync. Stage 2 is one dynamic import per panel,
+     run when that panel is first shown — so the open tab is interactive after
+     its own chunk, not after all of them. The rest are pulled in on idle, so a
+     later tab switch is still instant.
+
+     Adding a panel feature: put its module in that panel's LOADERS entry, not
+     in the static list up here — a static import silently moves it back into
+     the blocking bundle and undoes this. Order INSIDE a loader still matters
+     (see the products one). */
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks, initStorePreviewLink } from '../../scripts/dashboard/ui.js';
   import { initUnsavedGuard } from '../../scripts/dashboard/unsaved-guard.js';
   import { initDashTabSync } from '../../scripts/dashboard/tab-sync.js';
-  import { initStoreImageWidget } from '../../scripts/dashboard/store-image.js';
-  import { initCategoryTreeEditor } from '../../scripts/dashboard/category-tree.js';
-  import { initCategoryPicker } from '../../scripts/dashboard/category-picker.js';
-  import { initPerformanceTab } from '../../scripts/dashboard/performance.js';
-  import { initAdvertisingTab } from '../../scripts/dashboard/advertising.js';
-  import { initOrdersTab } from '../../scripts/dashboard/orders.js';
-  import { initMessagesTab } from '../../scripts/dashboard/messages.js';
-  import { initPromotionsTab } from '../../scripts/dashboard/promotions.js';
   import { initDiscountFields } from '../../scripts/dashboard/discount-field.js';
-  import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../../scripts/dashboard/select-dropdown.js';
-  import { initAllStoreCategoryPickers } from '../../scripts/store-category-picker.js';
+  // Stage 1 on purpose, small as it is: it is what reports a STAGE 2 chunk that
+  // never arrived, so it cannot be behind the same dynamic import that failed.
+  import { showErrorToast } from '../../lib/toast.js';
 
   const uploadCfg = document.getElementById('upload-config');
   const CLOUD  = uploadCfg?.dataset.cloud  ?? '';
   const PRESET = uploadCfg?.dataset.preset ?? '';
+
+  function dashI18n(): Record<string, string> {
+    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; }
+    catch { return {}; }
+  }
 
   // clean status params from URL + handle deep-link params
   {
@@ -2772,100 +2818,14 @@ const orderStatusColors: Record<string, string> = {
   initDashTabSync(uploadCfg?.dataset.storeId ?? '');
   initDashTabs();
   initGotoPanelLinks();
-  initPerformanceTab();
-  initAdvertisingTab();
-  initPromotionsTab();
   initDiscountFields();
-
-  // Deep-link: ?panel=messages&msg=<id>
-  {
-    const params = new URLSearchParams(window.location.search);
-    const panel  = params.get('panel');
-    const msgId  = params.get('msg');
-    if (panel) {
-      const tabBtn = document.querySelector<HTMLButtonElement>(`[role="tab"][data-panel="${panel}"]`);
-      if (tabBtn) tabBtn.click();
-      if (msgId && panel === 'messages') {
-        requestAnimationFrame(() => {
-          const card = document.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(msgId)}"]`);
-          if (card) { card.click(); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-        });
-      }
-    }
-    if (msgId) {
-      const u = new URL(window.location.href);
-      u.searchParams.delete('msg');
-      history.replaceState(null, '', u.toString());
-    }
-  }
-
-  initCropModal();
-  initCleanupModal();
-
-  {
-    let dashI18n: Record<string, string> = {};
-    try { dashI18n = JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard ?? {}; } catch { /* noop */ }
-    const labels = {
-      upload: dashI18n.uploadImage ?? 'Upload image',
-      change: dashI18n.storeImageChange ?? 'Change image',
-      remove: dashI18n.removeImage ?? 'Remove',
-      uploading: dashI18n.uploadingImage ?? 'Uploading image…',
-    };
-    initStoreImageWidget({
-      frameId: 'banner-frame', fileInputId: 'banner-file-input', hiddenInputId: 'banner-image-input',
-      uploadBtnId: 'banner-upload-btn', removeBtnId: 'banner-remove-btn',
-      aspect: 3, vpWidth: 420, previewWidth: 900, cloud: CLOUD, preset: PRESET, labels,
-    });
-    initStoreImageWidget({
-      frameId: 'avatar-frame', fileInputId: 'avatar-file-input', hiddenInputId: 'avatar-image-input',
-      uploadBtnId: 'avatar-upload-btn', removeBtnId: 'avatar-remove-btn',
-      aspect: 1, vpWidth: 220, previewWidth: 200, cloud: CLOUD, preset: PRESET, labels,
-    });
-  }
-  initSpecsEditors();
-  // Registered before the editors below: its document-level click listener
-  // must see the pre-click "is anything armed?" state before either editor's
-  // own listener arms a *new* confirm on this same click — otherwise the
-  // just-armed span looks like a stale one (its trigger element just got
-  // replaced) and gets cancelled in the same event that armed it.
-  initRemoveConfirm();
-  initVariantEditors();
-  initTagsEditor();
-  initStockBreakdowns();
-  document.querySelectorAll<Element>('.gallery-widget').forEach(g => initGalleryWidget(g));
-  bindExistingRows(CLOUD, PRESET);
-  document.querySelectorAll<HTMLElement>('.category-picker').forEach(initCategoryPicker);
-  initAddProduct(CLOUD, PRESET);
-  initProductMenus();
-  initDeleteProduct();
-  initProductVisibilityToggle();
   initSettingsForm();
   initUnsavedGuard();
   initStorePreviewLink();
   initStoreHours();
-  initCategoryTreeEditor();
   initFormToggles();
   initStoreSwitcher();
   initAutoHideStatus();
-  initProductsToolbar();
-  initBulkSelect(CLOUD, PRESET);
-  initCsvImport();
-  initFeedSync();
-  initCustomDomain();
-  initStoreLifecycle();
-  initStoreUrl();
-  initThumbs();
-  initInlineEdit();
-  initPagination();
-  {
-    // Page-size native <select> → app dropdown (compact pill matching the
-    // sort/filter chips beside it). Keeps the select as value source, so
-    // initPagination's `change` listener is untouched (CURRENT_TASK 2).
-    const pageSizeSelect = document.getElementById('products-page-size') as HTMLSelectElement | null;
-    if (pageSizeSelect) initSelectDropdown(pageSizeSelect, { triggerClassName: COMPACT_TRIGGER_CLASS });
-  }
-  initStickyOffsets();
-  initViewProduct();
 
   // Keeps the store-switcher title dot (and this store's own row-dot in the
   // dropdown) in sync as orders get handled / messages get read — without a
@@ -2910,9 +2870,233 @@ const orderStatusColors: Record<string, string> = {
     }
   }
 
-  // Orders + Messages tabs — extracted to their own modules; both share the
-  // switcher-alert refresh above (called on order-status / mark-read changes).
-  initOrdersTab(updateSwitcherAlertDot);
-  initMessagesTab(updateSwitcherAlertDot);
-  initAllStoreCategoryPickers();
+  // ── Stage 2: one chunk per panel ─────────────────────────────────────────
+  // The image editors are shared (product photos in Products, banner/avatar in
+  // Settings), so they get their own memoised loader rather than being pulled
+  // into whichever panel happens to hydrate first.
+  let editorsPromise: Promise<void> | null = null;
+  function imageEditors(): Promise<void> {
+    editorsPromise ??= (async () => {
+      const [crop, cleanup] = await Promise.all([
+        import('../../scripts/dashboard/crop-modal.js'),
+        import('../../scripts/dashboard/cleanup-modal.js'),
+      ]);
+      crop.initCropModal();
+      cleanup.initCleanupModal();
+    })();
+    return editorsPromise;
+  }
+
+  const LOADERS: Record<string, () => Promise<void>> = {
+    products: async () => {
+      const [p, gallery, csv, picker, select] = await Promise.all([
+        import('../../scripts/dashboard/products.js'),
+        import('../../scripts/dashboard/gallery.js'),
+        import('../../scripts/dashboard/csv-import.js'),
+        import('../../scripts/dashboard/category-picker.js'),
+        import('../../scripts/dashboard/select-dropdown.js'),
+        imageEditors(),
+      ]);
+      p.initSpecsEditors();
+      // Registered before the editors below: its document-level click listener
+      // must see the pre-click "is anything armed?" state before either editor's
+      // own listener arms a *new* confirm on this same click — otherwise the
+      // just-armed span looks like a stale one (its trigger element just got
+      // replaced) and gets cancelled in the same event that armed it.
+      p.initRemoveConfirm();
+      p.initVariantEditors();
+      p.initTagsEditor();
+      p.initStockBreakdowns();
+      document.querySelectorAll<Element>('.gallery-widget').forEach((g) => gallery.initGalleryWidget(g));
+      p.bindExistingRows(CLOUD, PRESET);
+      document.querySelectorAll<HTMLElement>('.category-picker').forEach(picker.initCategoryPicker);
+      p.initAddProduct(CLOUD, PRESET);
+      p.initProductMenus();
+      p.initDeleteProduct();
+      p.initProductVisibilityToggle();
+      p.initProductsToolbar();
+      p.initBulkSelect(CLOUD, PRESET);
+      csv.initCsvImport();
+      p.initThumbs();
+      p.initInlineEdit();
+      p.initPagination();
+      // Page-size native <select> → app dropdown (compact pill matching the
+      // sort/filter chips beside it). Keeps the select as value source, so
+      // initPagination's `change` listener is untouched (CURRENT_TASK 2).
+      const pageSizeSelect = document.getElementById('products-page-size') as HTMLSelectElement | null;
+      if (pageSizeSelect) select.initSelectDropdown(pageSizeSelect, { triggerClassName: select.COMPACT_TRIGGER_CLASS });
+      p.initStickyOffsets();
+      p.initViewProduct();
+    },
+
+    orders: async () => {
+      const { initOrdersTab } = await import('../../scripts/dashboard/orders.js');
+      initOrdersTab(updateSwitcherAlertDot);
+    },
+
+    messages: async () => {
+      const { initMessagesTab } = await import('../../scripts/dashboard/messages.js');
+      initMessagesTab(updateSwitcherAlertDot);
+    },
+
+    performance: async () => {
+      const { initPerformanceTab } = await import('../../scripts/dashboard/performance.js');
+      initPerformanceTab();
+    },
+
+    advertising: async () => {
+      const { initAdvertisingTab } = await import('../../scripts/dashboard/advertising.js');
+      initAdvertisingTab();
+    },
+
+    promotions: async () => {
+      const { initPromotionsTab } = await import('../../scripts/dashboard/promotions.js');
+      initPromotionsTab();
+    },
+
+    settings: async () => {
+      const [img, tree, domain, lifecycle, url, feed, storeCats] = await Promise.all([
+        import('../../scripts/dashboard/store-image.js'),
+        import('../../scripts/dashboard/category-tree.js'),
+        import('../../scripts/dashboard/custom-domain.js'),
+        import('../../scripts/dashboard/store-lifecycle.js'),
+        import('../../scripts/dashboard/store-url.js'),
+        import('../../scripts/dashboard/feed-sync.js'),
+        import('../../scripts/store-category-picker.js'),
+        imageEditors(),
+      ]);
+      const i18n = dashI18n();
+      const labels = {
+        upload: i18n.uploadImage ?? 'Upload image',
+        change: i18n.storeImageChange ?? 'Change image',
+        remove: i18n.removeImage ?? 'Remove',
+        uploading: i18n.uploadingImage ?? 'Uploading image…',
+      };
+      img.initStoreImageWidget({
+        frameId: 'banner-frame', fileInputId: 'banner-file-input', hiddenInputId: 'banner-image-input',
+        uploadBtnId: 'banner-upload-btn', removeBtnId: 'banner-remove-btn',
+        aspect: 3, vpWidth: 420, previewWidth: 900, cloud: CLOUD, preset: PRESET, labels,
+      });
+      img.initStoreImageWidget({
+        frameId: 'avatar-frame', fileInputId: 'avatar-file-input', hiddenInputId: 'avatar-image-input',
+        uploadBtnId: 'avatar-upload-btn', removeBtnId: 'avatar-remove-btn',
+        aspect: 1, vpWidth: 220, previewWidth: 200, cloud: CLOUD, preset: PRESET, labels,
+      });
+      tree.initCategoryTreeEditor();
+      domain.initCustomDomain();
+      lifecycle.initStoreLifecycle();
+      url.initStoreUrl();
+      feed.initFeedSync();
+      storeCats.initAllStoreCategoryPickers();
+    },
+  };
+
+  const hydrated = new Map<string, Promise<void>>();
+  function hydrate(panel: string): Promise<void> {
+    let running = hydrated.get(panel);
+    if (!running) {
+      // A panel that fails to load must not block the others, and must not be
+      // retried on every tab switch — the entry stays, rejected once, logged once.
+      // Object.hasOwn, not a bare lookup: `panel` comes from a DOM id, and a
+      // plain object literal answers "constructor"/"toString" from its
+      // prototype — calling one of those would throw where an unknown panel
+      // should simply do nothing.
+      const loader = Object.hasOwn(LOADERS, panel) ? LOADERS[panel] : undefined;
+      let failed = false;
+      running = (loader?.() ?? Promise.resolve())
+        .catch((err) => { failed = true; console.error(`panel "${panel}" failed to load`, err); })
+        .then(() => {
+          const el = document.getElementById(`dash-panel-${panel}`);
+          el?.removeAttribute('data-hydrating');
+          // Every control in this tab is now permanently dead — the chunk is not
+          // coming and nothing retries it. A console line is not a user-facing
+          // message, and silence here is the same dead-button report the pulse
+          // and the replay below exist to answer, only unrecoverable. Say it,
+          // and only when the seller is actually looking at this tab: the idle
+          // prefetch warms all seven, and a toast for one they never opened is
+          // noise about a problem they do not have yet.
+          if (failed && el && !el.hidden) {
+            showErrorToast(dashI18n().dashPanelLoadFailed ?? 'This tab did not load. Please reload the page and try again.');
+          }
+          // A menu the seller already tried to open while this panel was still
+          // arriving (recorded by <DashTabsBoot />). Now that its handler exists,
+          // give them what they asked for instead of a tap that vanished.
+          // …but only while that panel is still the one on screen. A menu
+          // popping open inside a hidden panel — or in a tab the seller left
+          // ten seconds ago — is a surprise, not the thing they asked for.
+          const pending = window.__dashPendingClick;
+          const replay = pending?.isConnected && el && !el.hidden && el.contains(pending) ? pending : null;
+          // The waiting pulse stops BEFORE the replay, not after: the replayed
+          // handler is arbitrary panel code, and if it throws, a control left
+          // pulsing forever on top of the failure is the worse of the two bugs.
+          el?.querySelectorAll<HTMLElement>('[data-opening]').forEach((n) => n.removeAttribute('data-opening'));
+          if (replay) { window.__dashPendingClick = null; replay.click(); }
+        })
+        // A throw in any of the above must not leave an unhandled rejection —
+        // silent there, and it hides exactly this kind of ordering bug.
+        .catch((err) => { console.error(`panel "${panel}" post-load step failed`, err); });
+      hydrated.set(panel, running);
+    }
+    return running;
+  }
+
+  // A panel switched to later hydrates on the way in. Registered before the
+  // deep-link block below, which relies on it.
+  document.addEventListener('dashtab:show', (e) => {
+    const id = (e.target as HTMLElement | null)?.id ?? '';
+    if (id.startsWith('dash-panel-')) void hydrate(id.slice('dash-panel-'.length));
+  });
+
+  // What the seller is actually looking at goes first — including a tab the
+  // inline <DashTabsBoot /> already switched to while this module was still in
+  // flight. The bar goes only when that panel can answer a click.
+  {
+    const open = document.querySelector<HTMLElement>('[role="tab"].dash-tab--active')?.dataset.panel;
+    void (open ? hydrate(open) : Promise.resolve()).then(() => {
+      // The sweep goes, the 3px track stays: removing the whole bar would shift
+      // every panel up by its height the instant hydration finished.
+      const bar = document.getElementById('dash-hydrating-bar');
+      bar?.firstElementChild?.remove();
+      bar?.removeAttribute('role');
+      // Everything else, once the browser is idle: a later tab switch then costs
+      // nothing, without any of it competing with the panel on screen.
+      const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
+      idle(() => { Object.keys(LOADERS).forEach((id) => void hydrate(id)); });
+    });
+  }
+
+  // Deep-link: ?panel=messages&msg=<id>
+  {
+    const params = new URLSearchParams(window.location.search);
+    const panel  = params.get('panel');
+    const msgId  = params.get('msg');
+    if (panel) {
+      // CSS.escape: `panel` is request-supplied, and a value carrying a quote or
+      // bracket makes this an invalid selector — querySelector then THROWS, and
+      // everything initialised after this block silently never runs. Same
+      // treatment `msgId` already gets below.
+      const tabBtn = document.querySelector<HTMLButtonElement>(`[role="tab"][data-panel="${CSS.escape(panel)}"]`);
+      // The SERVER already renders ?panel=… as the open tab, so clicking it here
+      // re-activated a tab that was already active — a no-op the seller could see
+      // (feedback_noop_interactions_invisible), and on a refresh it ran while the
+      // browser was still restoring the scroll position. The panel's own lazy
+      // loaders listen for `dashtab:show`, so fire just that for the tab that is
+      // already open, and click only when the deep link disagrees with the DOM.
+      if (tabBtn && !tabBtn.classList.contains('dash-tab--active')) tabBtn.click();
+      else document.getElementById(`dash-panel-${panel}`)?.dispatchEvent(new CustomEvent('dashtab:show', { bubbles: true }));
+      if (msgId && panel === 'messages') {
+        // After the messages chunk, not on the next frame: the thread card's own
+        // click handler ships with that module.
+        void hydrate('messages').then(() => requestAnimationFrame(() => {
+          const card = document.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(msgId)}"]`);
+          if (card) { card.click(); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+        }));
+      }
+    }
+    if (msgId) {
+      const u = new URL(window.location.href);
+      u.searchParams.delete('msg');
+      history.replaceState(null, '', u.toString());
+    }
+  }
 </script>

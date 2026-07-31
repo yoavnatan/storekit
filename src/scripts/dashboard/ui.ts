@@ -300,7 +300,10 @@ export function initDashTabs(): void {
       strip.scrollLeft += rtl ? -e.deltaY : e.deltaY;
       e.preventDefault();
     }, { passive: false });
-    strip.querySelector<HTMLElement>('.dash-tab--active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // Horizontal only, via the boot's shared helper — see its comment for why a
+    // scrollIntoView here scrolled the whole page instead (sticky strip).
+    const active = strip.querySelector<HTMLElement>('.dash-tab--active');
+    if (active) window.__dashTabReveal?.(active);
   });
 }
 

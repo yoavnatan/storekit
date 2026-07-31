@@ -86,6 +86,61 @@
   .dot-pulse__dot { animation: none; opacity: 0.75; }
 }
 
+/* ── Indeterminate progress sweep (the seller dashboard's hydration bar) ──
+   ONE glow that crosses the bar, leaves, and comes back for another lap — the
+   look the owner picked (2026-07-31), with the stutter taken out of it.
+
+   Two earlier versions were both wrong, and for opposite reasons:
+     1. `skeleton-shimmer` on background-position — a 400% travel against a 220%
+        tile, so each cycle ended mid-pattern and snapped to a different phase.
+     2. A repeating gradient translated by exactly one period — mathematically
+        seamless, but continuous glows with no gap. Not the same thing at all;
+        the owner wanted a lap, not a conveyor belt.
+
+   The fix is to make the seam UNOBSERVABLE rather than to align it: the glow is
+   half the bar wide and travels from fully past one edge to fully past the
+   other, so at both ends of the cycle there is nothing on screen to jump.
+   translateX percentages resolve against the ELEMENT's own width, and the glow
+   is half the frame — so ±200% is exactly one frame-width of travel past each
+   edge, clearing it completely on both ends. Left to right (owner's call). */
+@keyframes progress-sweep {
+  from { transform: translateX(-200%); }
+  to   { transform: translateX(200%); }
+}
+.progress-sweep {
+  width: 50%;
+  background-image: linear-gradient(90deg, transparent 0%, var(--color-primary) 50%, transparent 100%);
+  animation: progress-sweep 0.95s linear infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-sweep { animation: none; width: 100%; opacity: 0.5; }
+}
+
+/* ── Tapped-before-its-JS-arrived (DashTabsBoot.astro sets [data-opening]) ──
+   A menu trigger whose panel is still loading cannot open yet. The click IS
+   remembered and replayed the moment that panel is wired — but a tap that shows
+   nothing for a second reads as a broken button, and that is the report that
+   kept coming back (owner, 2026-07-31, three times over). So the control answers
+   immediately: it pulses, exactly like `.dot-pulse` above says "working" for an
+   in-flight save, and stops when the menu actually opens.
+
+   A single opacity animation on the trigger itself, deliberately: these triggers
+   are flex rows with their own chevrons and badges, and a ::before/::after or a
+   size change would reflow each one differently. Progress cursor, never the
+   banned `not-allowed` — the control is busy, not forbidden. */
+@keyframes ctl-waiting {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+[data-opening] {
+  animation: ctl-waiting 0.9s ease-in-out infinite;
+  cursor: progress;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-opening] { animation: none; opacity: 0.6; }
+}
+
 /* ── Shared dialog (MessageCompose) ──────────────────────── */
 .bd-dialog {
   border: none;

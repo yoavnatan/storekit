@@ -32,6 +32,30 @@
     var earlyPanel = null;
     var hydrated = false;
 
+    /**
+     * Keep a tab horizontally visible inside an overflowing strip — by scrolling
+     * the STRIP, never the page.
+     *
+     * This used to be `tab.scrollIntoView({block:'nearest', inline:'nearest'})`,
+     * which looks safe and is not: the seller dashboard's strip is `position:
+     * sticky`, and scrollIntoView targets an element's STATIC position, so the
+     * browser scrolled the whole document back up to where the strip would sit
+     * unstuck — near the top. On a refresh (which restores the seller's scroll)
+     * that read as the page jumping down, up, and down again: restore → this call
+     * → the browser re-applying its restoration a frame later (owner, 2026-07-31).
+     * Adjusting `scrollLeft` by the visual overshoot does the one thing that was
+     * ever wanted and cannot touch the vertical axis. It is direction-agnostic:
+     * RTL reports scrollLeft negative, but in both directions a POSITIVE delta
+     * moves the view toward the visual right.
+     */
+    window.__dashTabReveal = function (tab) {
+      var strip = tab.closest('.dash-tabs');
+      if (!strip || strip.scrollWidth <= strip.clientWidth + 1) return;
+      var t = tab.getBoundingClientRect(), s = strip.getBoundingClientRect();
+      if (t.left < s.left) strip.scrollLeft += t.left - s.left;
+      else if (t.right > s.right) strip.scrollLeft += t.right - s.right;
+    };
+
     window.__dashTabActivate = function (tab) {
       var name = tab.getAttribute('data-panel') || '';
       var tabs = document.querySelectorAll('[role="tab"][data-panel]');
@@ -48,7 +72,7 @@
       tab.setAttribute('tabindex', '0');
       // Keep the just-activated tab in view when the strip overflows, without
       // ever yanking the page vertically (feedback_subtle_scroll).
-      tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      window.__dashTabReveal(tab);
 
       var panel = document.getElementById('dash-panel-' + name);
       if (panel) {
@@ -69,8 +93,29 @@
     // calls (the overview stat cards' [data-goto-panel] jump).
     document.addEventListener('click', function (e) {
       var target = e.target instanceof Element ? e.target : null;
-      var tab = target && target.closest('[role="tab"][data-panel]');
-      if (tab) window.__dashTabActivate(tab);
+      if (!target) return;
+      var tab = target.closest('[role="tab"][data-panel]');
+      if (tab) { window.__dashTabActivate(tab); return; }
+
+      // Second job: a menu opened from inside a panel whose JS has not arrived
+      // yet. The trigger is real, the handler is not, so the tap did nothing and
+      // said nothing (owner, 2026-07-31: "אי אפשר לפתוח את בוררי הזמן... בלי שום
+      // מושג מה קורה"). Remember it, and the panel's loader clicks it again the
+      // moment that panel is wired — so the picker just opens, a beat late.
+      // Deliberately ONLY `aria-haspopup` triggers: replaying a click is safe
+      // exactly because opening a menu changes nothing. A save/delete button
+      // must never be replayed, and none of them match this.
+      var opener = target.closest('[aria-haspopup="true"]');
+      if (opener && opener.closest('.dash-panel[data-hydrating]')) {
+        // Answer the tap NOW. Remembering it is not enough on its own: a control
+        // that shows nothing for a second reads as broken, which is the report
+        // that kept coming back. [data-opening] pulses the trigger (utils.css)
+        // until the real menu opens.
+        var previous = document.querySelector('[data-opening]');
+        if (previous && previous !== opener) previous.removeAttribute('data-opening');
+        opener.setAttribute('data-opening', '');
+        window.__dashPendingClick = opener;
+      }
     });
 
     document.addEventListener('DOMContentLoaded', function () {

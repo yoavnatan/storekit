@@ -41,6 +41,53 @@ describe('DashTabsBoot', () => {
     expect(ui).not.toMatch(/dispatchEvent\(new CustomEvent\('dashtab:show'/);
   });
 
+  it('reveals a tab by scrolling the STRIP, never the page', () => {
+    // `.seller-dash .dash-tabs` is position:sticky, and scrollIntoView targets an
+    // element's STATIC position — so bringing the active tab "into view" scrolled
+    // the whole document up to where the strip sits unstuck. On a refresh, which
+    // restores the seller's scroll, that was a visible jump down→up→down (owner,
+    // 2026-07-31, Performance tab). Both call sites must use __dashTabReveal.
+    const files = ['src/components/dashboard/DashTabsBoot.astro', 'src/scripts/dashboard/ui.ts'];
+    for (const rel of files) {
+      const src = readFileSync(join(process.cwd(), rel), 'utf8');
+      expect(src, rel).toContain('__dashTabReveal');
+      expect(src.replace(/^\s*(\/\/|\*|\/\*).*$/gm, ''), rel).not.toMatch(/dash-tab[^\n]*scrollIntoView|scrollIntoView[^\n]*\{\s*block/);
+    }
+  });
+
+  it('does not re-activate the tab the server already opened', () => {
+    // ?panel=… is server-rendered as the open tab, so clicking it on load was a
+    // no-op the seller could see — it fired during the browser's scroll
+    // restoration. Only a deep link that disagrees with the DOM may click.
+    const page = readFileSync(join(process.cwd(), 'src/pages/seller/dashboard.astro'), 'utf8');
+    expect(page).toMatch(/!tabBtn\.classList\.contains\('dash-tab--active'\)\)\s*tabBtn\.click\(\)/);
+  });
+
+  it('treats ?panel= as untrusted — validated server-side, escaped in the selector', () => {
+    // Every panel renders `hidden={initialPanel !== <name>}`, so an unknown value
+    // hid all of them and served an empty dashboard; and the raw value was
+    // interpolated into a querySelector, where a quote throws a DOMException and
+    // kills every init call after it (crop modal, cleanup modal, …).
+    const page = readFileSync(join(process.cwd(), 'src/pages/seller/dashboard.astro'), 'utf8');
+    expect(page).toMatch(/PANEL_NAMES[\s\S]{0,200}includes\(requestedPanel\)/);
+    expect(page).toContain('data-panel="${CSS.escape(panel)}"');
+  });
+
+  it('stops the waiting pulse BEFORE replaying the click, not after', () => {
+    // A menu trigger tapped before its panel's JS arrived gets [data-opening]
+    // (it pulses) and its click is replayed on hydration. Clearing the pulse
+    // after `.click()` looked equivalent and was not: the replayed handler is
+    // panel code, and whatever it did left the attribute in place — the control
+    // pulsed forever behind an open menu (caught 2026-07-31 by measuring, after
+    // the code read as correct).
+    const page = readFileSync(join(process.cwd(), 'src/pages/seller/dashboard.astro'), 'utf8');
+    const clear = page.indexOf("removeAttribute('data-opening')");
+    const replay = page.indexOf('replay.click()');
+    expect(clear, 'the pulse must be cleared').toBeGreaterThan(-1);
+    expect(replay, 'the click must be replayed').toBeGreaterThan(-1);
+    expect(clear).toBeLessThan(replay);
+  });
+
   it('the boot script is inline — a network fetch would defeat the whole point', () => {
     const boot = readFileSync(join(process.cwd(), 'src/components/dashboard/DashTabsBoot.astro'), 'utf8');
     expect(boot).toContain('<script is:inline>');
