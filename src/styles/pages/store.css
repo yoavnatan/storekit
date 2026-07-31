@@ -63,6 +63,7 @@ body:has(.store-page) { background: var(--color-surface); }
    *different* effective ratio per viewport width, so object-fit:cover
    re-cropped the seller's already-cropped image a second time, silently. */
 .store-banner__image-wrap {
+  position: relative;
   border-radius: var(--radius);
   overflow: hidden;
   border: 1px solid var(--color-border);
@@ -70,11 +71,41 @@ body:has(.store-page) { background: var(--color-surface); }
   aspect-ratio: 3 / 1;
 }
 
+/* The banner is the biggest image on the page and the one the shopper looks at
+   first, yet it was the only one with no loading state — an empty bordered 3/1
+   box while the photo was on the wire, next to product cards that do shimmer.
+   Same treatment as .product-card__img-wrap below: UNDER the image, never
+   gating its visibility (see store-card.css), so a warm cache paints the photo
+   immediately and the shimmer is simply never seen. */
+.store-banner__image-wrap.is-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+    var(--color-surface) 75%
+  );
+  background-size: 400% 100%;
+  /* Slower than the 1.4s the cards use: the same sweep across a full-width 3/1
+     box travels ~4x the distance, and at card speed it reads as a strobe. */
+  animation: skeleton-shimmer 2.6s ease infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .store-banner__image-wrap.is-loading::before { animation: none; }
+}
+
 .store-banner__bg {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  /* Above the shimmer below, which is painted by the wrap's ::before. */
+  position: relative;
+  z-index: 1;
 }
 
 /* Minor rhythm inside the details block: every gap between name / tagline /

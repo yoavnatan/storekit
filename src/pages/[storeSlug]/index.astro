@@ -271,7 +271,7 @@ const pmI18n = {
     ) : shopStore.bannerImage && (
       <div class="store-banner-pin">
         <div class="container">
-          <div class="store-banner__image-wrap">
+          <div class="store-banner__image-wrap is-loading">
             <img
               src={cdnSrc(shopStore.bannerImage, 1600)}
               srcset={`${cdnSrc(shopStore.bannerImage, 800)} 800w, ${cdnSrc(shopStore.bannerImage, 1200)} 1200w, ${cdnSrc(shopStore.bannerImage, 1600)} 1600w, ${cdnSrc(shopStore.bannerImage, 2048)} 2048w`}
@@ -794,6 +794,7 @@ const pmI18n = {
   import { PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
   import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
   import { initCustomDomainLinks } from '../../lib/custom-domain-links.js';
+  import { initImageSkeletons } from '../../lib/img-skeleton.js';
   import { initChipScroller } from '../../lib/chip-scroller.js';
   import { initStickyBar } from '../../lib/sticky-bar.js';
   import { resolvePrice, type StoreSale } from '../../lib/discounts.js';
@@ -1981,6 +1982,10 @@ const pmI18n = {
   }
 
   document.querySelectorAll<HTMLElement>('.product-card').forEach(initImageSkeleton);
+
+  // The banner shimmer clears the same way — via the shared helper, since the
+  // banner is a single image with no deferred-slide complication.
+  initImageSkeletons('.store-banner__image-wrap');
 
   function getPMI18n(): Record<string, string> {
     try { return JSON.parse(document.getElementById('pm-i18n')?.textContent ?? '{}') as Record<string, string>; }
