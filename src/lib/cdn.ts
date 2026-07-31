@@ -93,6 +93,22 @@ export function cdnSrc(url: string, w = 400): string {
 export const LIGHTBOX_WIDTHS = [800, 1200, 1600] as const;
 
 /**
+ * Whether the delivery URL for `url` can have its pixels read back in a canvas
+ * — i.e. whether it is safe to put `crossorigin="anonymous"` on that <img>.
+ *
+ * It lives here because the answer is a fact about Cloudinary, and this file
+ * owns every Cloudinary fact: Cloudinary delivery sends
+ * `access-control-allow-origin: *`, so anything `deliver()` routes through it is
+ * readable. Anything it hands back untouched (relative path, dev-only host, no
+ * cloud configured) is NOT — and there `crossorigin` would stop the image
+ * loading altogether rather than merely leaving the canvas tainted, so callers
+ * must ask before tagging. Width is irrelevant to the answer.
+ */
+export function cdnIsSampleable(url: string): boolean {
+  return cdnSrc(url).startsWith('https://res.cloudinary.com/');
+}
+
+/**
  * Responsive `srcset` (width descriptors) — pair with a `sizes` attribute so
  * hi-DPI screens get enough pixels and the photo stays sharp (a single width
  * gets browser-upscaled → visibly blurry).

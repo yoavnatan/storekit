@@ -58,9 +58,19 @@
      dense outline rather than a glow. The tight one starts AT the avatar's edge so the halo stays
      attached to the picture, the wide one carries it outward and is what does the diffusing. Low
      mixes on purpose — the two overlap where they meet, and anything stronger stacks into a rim. */
+  /* `--store-glow` is the store's OWN colour — set on the card server-side from
+     its generated mark, or on the client from the uploaded logo's pixels
+     (scripts/store-glow.ts, which clamps it into a band that stays visible at
+     these mixes and refuses a white/greyscale logo outright).
+     The fallback for every one of those refusals is a light grey, not the
+     platform accent: a blue halo around a black-and-white logo claims a colour
+     the store doesn't have. Lightened from the site's own neutral rather than
+     picked as a fresh hex, and only part-way — pushed further toward white it
+     stops being visible at all, which is a missing halo, not a quiet one. */
+  --glow: var(--store-glow, color-mix(in srgb, var(--color-muted) 70%, #fff));
   box-shadow:
-    0 0 6px 1px color-mix(in srgb, var(--color-accent) 12%, transparent),
-    0 0 18px 5px color-mix(in srgb, var(--color-accent) 14%, transparent);
+    0 0 6px 1px color-mix(in srgb, var(--glow) 12%, transparent),
+    0 0 18px 5px color-mix(in srgb, var(--glow) 14%, transparent);
   opacity: 0;
   transition: opacity 0.24s ease;
   pointer-events: none;

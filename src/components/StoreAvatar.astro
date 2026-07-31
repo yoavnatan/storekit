@@ -1,5 +1,6 @@
 ---
 import { cdnSrc } from '../config/store.config.js';
+import { cdnIsSampleable } from '../lib/cdn.js';
 import { storeMark, storeMarkGradient } from '../lib/store-mark.js';
 
 interface Props {
@@ -10,13 +11,25 @@ interface Props {
   profileImage?: string;
   size?: number;
   class?: string;
+  /** Opt in to having this picture's own colour read off it on the client
+   *  (scripts/store-glow.ts). Only the caller knows whether anything on the page
+   *  uses the result, and the `crossorigin` it requires is not free to hand to
+   *  every avatar on the site — see `sampleable` below. */
+  sampleColor?: boolean;
 }
 
-const { name, slug, profileImage, size = 40, class: className = '' } = Astro.props;
+const { name, slug, profileImage, size = 40, class: className = '', sampleColor = false } = Astro.props;
 // Same identity the PNG endpoint renders for this store: one hue per store, so a
 // store with no uploaded picture is still recognisable from list to list — the
 // old fallback painted every such store the identical grey-blue.
 const mark = storeMark(slug || name, name);
+
+// `crossorigin` is not a safe default: on a host that sends no
+// `access-control-allow-origin` it stops the image loading ENTIRELY instead of
+// merely leaving the canvas unreadable — so ask cdn.ts, which owns that fact,
+// before tagging. A URL it can't route through Cloudinary stays untagged and
+// the card simply keeps its default halo.
+const sampleable = !!profileImage && sampleColor && cdnIsSampleable(profileImage);
 ---
 
 {profileImage ? (
@@ -27,6 +40,8 @@ const mark = storeMark(slug || name, name);
     width={size}
     height={size}
     loading="lazy"
+    crossorigin={sampleable ? 'anonymous' : undefined}
+    data-glow={sampleable ? '' : undefined}
     class={`rounded-full object-cover flex-shrink-0 ${className}`}
     style={`width:${size}px;height:${size}px;border:1px solid var(--color-border);box-shadow:var(--shadow-xs)`}
   />

@@ -5,6 +5,7 @@ import StoreDemoBadge from './StoreDemoBadge.astro';
 import { storeHomeHref } from '../lib/custom-domain.js';
 import type { Store } from '../lib/stores.js';
 import { isStoreSaleLive, isSaleScoped } from '../lib/discounts.js';
+import { storeMark } from '../lib/store-mark.js';
 
 interface Props {
   store: Store;
@@ -48,6 +49,13 @@ const saleChipPercent = saleLive && store.sale && !isSaleScoped(store.sale) ? st
 
 const storeHref = storeHomeHref(store);
 const isExternalStore = storeHref.startsWith('http');
+
+// The avatar halo takes the store's own colour rather than the platform accent.
+// A store WITH a picture has that colour read off the pixels on the client
+// (scripts/store-glow.ts) — it can't be known here. A store without one already
+// has a hue server-side: its generated mark carries one, and the halo matching
+// the circle it surrounds costs nothing and needs no JS.
+const markGlow = store.profileImage ? undefined : storeMark(store.slug || store.name, store.name).hue;
 ---
 
 <a
@@ -58,10 +66,11 @@ const isExternalStore = storeHref.startsWith('http');
   data-store-name={store.name.toLowerCase()}
   data-tagline={(store.tagline || store.description || '').toLowerCase()}
   role={role}
+  style={markGlow ? `--store-glow:${markGlow}` : undefined}
 >
   <div class="store-card__head">
     <span class="store-card__avatar-wrap">
-      <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={40} />
+      <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={40} sampleColor={true} />
     </span>
     <div class="store-card__title-group">
       <span class="store-card__name" dir="auto">{store.name}</span>
@@ -122,3 +131,12 @@ const isExternalStore = storeHref.startsWith('http');
     ))}
   </div>
 </a>
+
+<!-- Component-level on purpose: Astro hoists and dedupes this once per page, so
+     the glow script ships only with the pages that actually render store cards
+     (homepage, /stores, search, seller dashboard) instead of riding the layout
+     onto checkout. -->
+<script>
+  import { initStoreGlow } from '../scripts/store-glow.js';
+  initStoreGlow();
+</script>
