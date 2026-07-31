@@ -1,8 +1,10 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getSellerSession } from '../../../lib/seller-auth.js';
+import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug, getOrderById, updateOrder, orderStoreNotes } from '../../../lib/orders.js';
+import { settleStoreClosure } from '../../../lib/store-lifecycle.js';
+import { sendStoreLifecycleEmail } from '../../../lib/email/store-lifecycle-email.js';
 import type { StoreSubtotal } from '../../../lib/orders.js';
 import { notifyOrderStatusChanged } from '../../../lib/order-notify.js';
 import { restockProduct } from '../../../lib/store-products.js';
@@ -287,6 +289,27 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     // carrier webhook later), the buyer gets told. No-op if no buyer account —
     // see order-notify.ts.
     notifyOrderStatusChanged(updated, prevStatus, { storeName: store.name, storeSlug: store.slug });
+    // A seller who asked to close the store while orders were still open gets that closure
+    // completed HERE, the moment the last one stops being an open obligation — rather than
+    // having to come back and press the button a second time (store-lifecycle.ts). No-op unless
+    // a closure is actually pending and actually unblocked, so it costs one status read on a
+    // status change and nothing at all otherwise.
+    const justClosed = settleStoreClosure(store.slug);
+    // The one state change in this whole feature the seller did NOT just click a button for — it
+    // happened because they finished an order. Without this mail the store would close silently
+    // and they would find out by visiting it. Not awaited; it never throws.
+    if (justClosed) {
+      const seller = getSellerById(store.sellerId);
+      if (seller) {
+        void sendStoreLifecycleEmail({
+          to: seller.email,
+          sellerName: seller.name,
+          store: justClosed,
+          state: 'closed',
+          openOrders: 0,
+        });
+      }
+    }
   }
 
   return json({ ok: true, order: scopeOrder(updated, storeSlug) });

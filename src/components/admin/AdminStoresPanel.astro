@@ -7,10 +7,13 @@
 // block/unblock endpoint (/api/admin/moderation) the Sellers tab already
 // calls, wired independently in stores.ts (see that file's header comment
 // for why it doesn't share the Sellers tab's .admin-block-toggle class).
-import type { AdminSortDir, AdminStoreSortCol, StoreRow } from '../../lib/admin-stats.js';
+import type { AdminSortDir, AdminStoreSortCol, StoreRow, StoreStateFilter } from '../../lib/admin-stats.js';
+import { STORE_STATE_FILTERS } from '../../lib/admin-stats.js';
+import { storeLifecycle } from '../../lib/store-status.js';
 import { formatPrice } from '../../config/store.config.js';
 import AdminPager from './AdminPager.astro';
 import StoreAvatar from '../StoreAvatar.astro';
+import AdminStoreStateBadge from './AdminStoreStateBadge.astro';
 import AdminNewBadge from './AdminNewBadge.astro';
 import AdminNewOnlyToggle from './AdminNewOnlyToggle.astro';
 
@@ -19,7 +22,8 @@ interface Props {
   q: string;
   sortCol: AdminStoreSortCol;
   sortDir: AdminSortDir;
-  blockedOnly: boolean;
+  state: StoreStateFilter;
+  stateCounts: Record<StoreStateFilter, number>;
   newSince: string;  // ISO — anything created after this is what the tab's "(N)" counted
   newOnly: boolean;
   newCount: number;
@@ -29,7 +33,19 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { storeRows, q, sortCol, sortDir, blockedOnly, newSince, newOnly, newCount, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+const { storeRows, q, sortCol, sortDir, state, stateCounts, newSince, newOnly, newCount, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+
+// The state chips. Labels come from the same map the row badges use, so a chip and the badge on
+// the rows it filters to can never say different words for the same state.
+const STATE_LABELS: Record<StoreStateFilter, string> = {
+  all: 'הכל', active: 'פעילות', paused: 'מוקפאות', closing: 'לקראת סגירה', closed: 'סגורות', blocked: 'חסומות',
+};
+// An empty state is not worth a chip — on a healthy platform that would be four zeros between the
+// admin and the two filters they actually use. "הכל" and "פעילות" always show so the row never
+// collapses to nothing, and the selected one always shows so it can be switched off again.
+const stateChips = STORE_STATE_FILTERS.filter(
+  (f) => f === 'all' || f === 'active' || f === state || stateCounts[f] > 0,
+);
 
 const sortLabels: Record<string, string> = {
   'name:asc': 'שם: א — ת',
@@ -54,19 +70,27 @@ const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w)
   <p class="admin-empty">אין חנויות עדיין.</p>
 ) : (
   <Fragment>
-    <div class="flex flex-wrap items-center gap-2 mb-4" id="admin-stores-toolbar" data-sort-col={sortCol} data-sort-dir={sortDir} data-blocked-only={blockedOnly ? '1' : ''} data-new-only={newOnly ? '1' : ''}>
+    <div class="flex flex-wrap items-center gap-2 mb-4" id="admin-stores-toolbar" data-sort-col={sortCol} data-sort-dir={sortDir} data-state={state} data-new-only={newOnly ? '1' : ''}>
       <button type="button" id="admin-stores-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
         <span id="admin-stores-sort-label">{sortLabels[`${sortCol}:${sortDir}`] ?? sortLabels['name:asc']}</span>
         <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
-      <button
-        type="button"
-        id="admin-stores-blocked-toggle"
-        class="table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] border"
-        style={blockedOnly ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
-        aria-pressed={blockedOnly}
-      >חסומות בלבד</button>
+      {/* One chip per store state, each carrying its count — so "how many are paused, and how many
+          are waiting to close" is answered by LOOKING, before any filtering. The counts are over
+          every store, not the current page. */}
+      {stateChips.map((f) => (
+        <button
+          type="button"
+          class="table-toolbar-btn admin-stores-state-chip inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] border"
+          data-state={f}
+          style={state === f ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
+          aria-pressed={state === f}
+        >
+          {STATE_LABELS[f]}
+          <span class="opacity-70 tabular-nums">{stateCounts[f]}</span>
+        </button>
+      ))}
       {(newCount > 0 || newOnly) && <AdminNewOnlyToggle id="admin-stores-new-toggle" active={newOnly} count={newCount} />}
     </div>
 
@@ -74,8 +98,14 @@ const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w)
 
     <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
     <ul class="admin-store-list" id="admin-store-list">
-      {storeRows.map(({ store, seller, productCount, revenue }) => {
+      {storeRows.map(({ store, seller, productCount, revenue, openOrders }) => {
         const promoWeight = store.promoWeight ?? 0;
+        // Only for a store waiting to close: it answers the one question the badge raises —
+        // why is it still here, and how far off is the closure. Anywhere else this number is
+        // ordinary day-to-day work and would just be noise on every row.
+        const closingNote = storeLifecycle(store) === 'closing'
+          ? (openOrders === 1 ? 'ממתינה להזמנה פתוחה אחת' : `ממתינה ל-${openOrders} הזמנות פתוחות`)
+          : '';
         return (
           <li class="admin-store-row">
             <div class="admin-store-row__info">
@@ -84,10 +114,13 @@ const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w)
                 <span class="admin-store-row__name">
                   {store.name}
                   {store.createdAt > newSince && <AdminNewBadge />}
-                  {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+                  <AdminStoreStateBadge store={store} />
                   {promoWeight > 0 && <span class="admin-badge admin-badge--promo" data-promo-badge>{promoLabel(promoWeight)}</span>}
                 </span>
-                <span class="admin-store-row__seller muted">{seller?.name ?? '—'} · {seller?.email ?? ''}</span>
+                <span class="admin-store-row__seller muted">
+                  {seller?.name ?? '—'} · {seller?.email ?? ''}
+                  {closingNote && <span class="[color:var(--color-warning)]"> · {closingNote}</span>}
+                </span>
               </div>
             </div>
             {productCount > 0 ? (

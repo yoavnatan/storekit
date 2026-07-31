@@ -140,6 +140,18 @@ export const translations = {
       addedToCart: 'נוסף לעגלה',
       toCheckout: 'לתשלום',
       outOfStock: 'אזל מהמלאי',
+      // The two states a shopper can land on (lib/store-status.ts). One line each and a way out —
+      // nothing else (user, 2026-07-31): a shopper who followed a link here can do exactly one
+      // useful thing, and a paragraph explaining the situation is not it.
+      //
+      // Halted is deliberately NOT worded as a holiday or as "out of stock" — the store is
+      // running, it just isn't taking orders, and "כרגע" carries the temporariness on its own.
+      haltedTitle: 'החנות אינה פעילה כרגע',
+      // The KEY names the HTTP status (410 Gone); the wording deliberately does not. Closing is a
+      // business decision a seller makes about their own store, not a penalty, and a public page
+      // is no place to announce that someone's business shut down (user, 2026-07-31).
+      goneTitle: 'החנות אינה זמינה',
+      backHome: 'לדף הבית',
       inStockLabel: 'במלאי',
       badgeNew: 'חדש',
       saleBadge: 'מבצע',
@@ -180,6 +192,8 @@ export const translations = {
     cart: {
       title: 'העגלה שלך',
       empty: 'העגלה ריקה',
+      // A line that can no longer be bought. Stays in the cart, marked, out of every total.
+      unavailable: 'לא זמין כרגע',
       subtotal: 'סכום לחנות',
       cartTotal: 'סה"כ בעגלה',
       checkout: 'לתשלום',
@@ -295,6 +309,10 @@ export const translations = {
       colPrice: 'מחיר',
       colStock: 'מלאי',
       colDateAdded: 'נוסף בתאריך',
+      // Card-only label (the mobile product list), where the date sits right beside it —
+      // "בתאריך" then repeats what the value already says, and the extra ~35px was enough
+      // to wrap the whole details column onto a second line at 375px.
+      colDateAddedShort: 'נוסף',
       // The hearts column's header is a bare icon, so this is its only name — used by the
       // sort button's aria-label (and therefore by its hover tooltip).
       colWishlist: 'מועדפים',
@@ -502,6 +520,38 @@ export const translations = {
       cdCheck: 'בדוק אימות',
       cdRemove: 'הסר דומיין',
       cdVisit: 'פתח את האתר',
+      // Store lifecycle (lib/store-status.ts). Both verbs act on THE STORE — "הקפא את החנות" /
+      // "סגור את החנות" — never on the sales: the button names the STATE and the confirm dialog
+      // explains the consequence, so the four state lines read as one set (פעילה · מוקפאת ·
+      // לקראת סגירה · סגורה). "עצור מכירות" was rejected because it left the two buttons acting
+      // on different objects (user, 2026-07-31). Never worded as a holiday — this is an
+      // operational halt, and the shopper-facing copy uses different words again (store.*).
+      lcTitle: 'מצב פעילות החנות',
+      lcHint: 'הקפאה זמנית של החנות, או סגירתה. שום נתון לא נמחק — ההזמנות, ההכנסות והדוחות נשמרים בכל מצב.',
+      lcStateActive: 'החנות פעילה ומוכרת',
+      lcStatePaused: 'החנות מוקפאת',
+      lcStateClosing: 'החנות תיסגר בסיום ההזמנות הפתוחות',
+      lcStateClosed: 'החנות סגורה',
+      lcStateBlocked: 'החנות חסומה על ידי הצוות',
+      lcActiveNote: 'הכל פעיל: החנות מופיעה בקניון, בחיפוש ובגוגל, וניתן לקנות בה.',
+      lcPausedNote: 'החנות לא מקבלת הזמנות והוסרה מהקניון, מהחיפוש ומהפיד לפרסום. דף החנות מציג הודעה לקונים במקום הקטלוג. קמפיינים פעילים נעצרים לבד — הנתונים שנצברו נשמרים.',
+      lcClosingNote: 'המכירות כבר הופסקו. ברגע שההזמנה הפתוחה האחרונה תסומן כנמסרה או תבוטל, החנות תיסגר לבד — אין צורך לחזור לכאן.',
+      lcClosedNote: 'החנות אינה מופיעה באתר. הנתונים ההיסטוריים שלה נשמרו במלואם.',
+      lcPause: 'הקפא את החנות',
+      lcResume: 'החזר לפעילות',
+      lcCancelClose: 'בטל את הסגירה',
+      lcClose: 'סגור את החנות',
+      lcOpenOrders: 'הזמנות פתוחות: {n}',
+      lcPauseConfirmTitle: 'להקפיא את החנות?',
+      lcPauseConfirmBody: 'החנות תפסיק לקבל הזמנות מיד ותוסר מהקניון ומהחיפוש. אפשר להחזיר אותה לפעילות בכל רגע.',
+      lcResumeConfirmTitle: 'להחזיר את החנות לפעילות?',
+      lcResumeConfirmBody: 'החנות תחזור למכור ותופיע שוב בקניון ובחיפוש. שים לב: קמפיינים שנעצרו לא חוזרים לבד — צריך להפעיל אותם מחדש בלשונית הפרסום.',
+      lcCancelCloseConfirmTitle: 'לבטל את הסגירה?',
+      lcCancelCloseConfirmBody: 'הסגירה תבוטל והחנות תחזור לפעילות מלאה.',
+      lcCloseConfirmTitle: 'לסגור את החנות?',
+      lcCloseConfirmBody: 'המכירות ייעצרו מיד. אם יש הזמנות פתוחות, החנות תיסגר סופית רק אחרי שתסיים לטפל בכולן. אחרי הסגירה לא ניתן לפתוח את החנות מחדש.',
+      lcResumedToast: 'החנות חזרה לפעילות.',
+      lcFailed: 'הפעולה נכשלה, נסה שוב.',
       cdCopied: 'הועתק.',
       cdInvalid: 'כתובת דומיין לא תקינה.',
       cdRegisterFailed: 'החיבור נכשל, נסה שוב.',
@@ -1164,6 +1214,9 @@ export const translations = {
       removeLabel: 'הסר מהרשימה',
       savedCount: 'שמרו',
       addToCart: 'הוסף לעגלה',
+      // The row stays in the list — only its controls go (WishlistDrawer). A store that comes
+      // back from a pause brings its products back here on its own.
+      unavailable: 'לא זמין כרגע',
       addedToCart: 'נוסף ✓',
       removeFailed: 'לא ניתן היה להסיר מהמועדפים',
       removeFailedBody: 'המוצר הוחזר לרשימה.',
@@ -1292,6 +1345,9 @@ export const translations = {
       addedToCart: 'Added to cart',
       toCheckout: 'Checkout',
       outOfStock: 'Out of stock',
+      haltedTitle: 'This store is not active right now',
+      goneTitle: 'This store is not available',
+      backHome: 'Back to home',
       inStockLabel: 'In stock',
       badgeNew: 'New',
       saleBadge: 'Sale',
@@ -1326,6 +1382,7 @@ export const translations = {
     cart: {
       title: 'Your cart',
       empty: 'Your cart is empty',
+      unavailable: 'Not available right now',
       subtotal: 'Subtotal',
       cartTotal: 'Cart total',
       checkout: 'Checkout',
@@ -1439,6 +1496,7 @@ export const translations = {
       colPrice: 'Price',
       colStock: 'Stock',
       colDateAdded: 'Date added',
+      colDateAddedShort: 'Added',
       colWishlist: 'Wishlisted',
       colPurchased: 'Purchased',
       sortOptPurchasedDesc: 'Most purchased',
@@ -1641,6 +1699,32 @@ export const translations = {
       cdCheck: 'Check verification',
       cdRemove: 'Remove domain',
       cdVisit: 'Open site',
+      lcTitle: 'Store activity',
+      lcHint: 'Put the store on hold temporarily, or close it. Nothing is deleted — orders, revenue and reports are kept in every state.',
+      lcStateActive: 'Store is open and selling',
+      lcStatePaused: 'Store is on hold',
+      lcStateClosing: 'Closing once the open orders are done',
+      lcStateClosed: 'Store is closed',
+      lcStateBlocked: 'Store is blocked by the team',
+      lcActiveNote: 'Everything is live: the store appears in the mall, in search and on Google, and can be bought from.',
+      lcPausedNote: 'The store takes no orders and is out of the mall, search and the ad feed. Its page shows a notice to shoppers instead of the catalog. Running campaigns stop by themselves — their accrued figures are kept.',
+      lcClosingNote: 'Sales have already stopped. The moment the last open order is delivered or cancelled, the store closes by itself — no need to come back here.',
+      lcClosedNote: 'The store is off the site. All of its historical data was kept.',
+      lcPause: 'Pause the store',
+      lcResume: 'Reopen the store',
+      lcCancelClose: 'Cancel the closure',
+      lcClose: 'Close the store',
+      lcOpenOrders: 'Open orders: {n}',
+      lcPauseConfirmTitle: 'Pause the store?',
+      lcPauseConfirmBody: 'The store stops taking orders immediately and leaves the mall and search. You can reopen it at any time.',
+      lcResumeConfirmTitle: 'Reopen the store?',
+      lcResumeConfirmBody: 'The store starts selling again and returns to the mall and search. Note: campaigns that were stopped do not resume on their own — restart them in the Advertising tab.',
+      lcCancelCloseConfirmTitle: 'Cancel the closure?',
+      lcCancelCloseConfirmBody: 'The closure is called off and the store returns to full activity.',
+      lcCloseConfirmTitle: 'Close the store?',
+      lcCloseConfirmBody: 'Sales stop immediately. If any orders are still open, the store closes for good only once you have handled them all. A closed store cannot be reopened.',
+      lcResumedToast: 'The store is live again.',
+      lcFailed: 'That did not work, please try again.',
       cdCopied: 'Copied.',
       cdInvalid: 'Invalid domain name.',
       cdRegisterFailed: 'Connection failed, please try again.',
@@ -2284,6 +2368,7 @@ export const translations = {
       removeLabel: 'Remove from wishlist',
       savedCount: 'saved',
       addToCart: 'Add to cart',
+      unavailable: 'Not available right now',
       addedToCart: 'Added ✓',
       removeFailed: 'Could not remove from wishlist',
       removeFailedBody: 'The item was restored to your list.',

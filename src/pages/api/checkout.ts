@@ -1,7 +1,7 @@
 export const prerender = false;
 import crypto from 'node:crypto';
 import type { APIContext } from 'astro';
-import { getStoreBySlug, getStoreBySlugOrPrevious, isStoreVisible } from '../../lib/stores.js';
+import { getStoreBySlug, getStoreBySlugOrPrevious, canStoreSell } from '../../lib/stores.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
 import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD, isProductVisible } from '../../lib/store-products.js';
 import { createOrder } from '../../lib/orders.js';
@@ -204,11 +204,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // downstream keys off store.slug (the current one) for consistency with the order records.
     const store = getStoreBySlugOrPrevious(storeSlug);
     if (!store) return abort({ error: `Store not found: ${storeSlug}` }, 400);
-    // Admin-blocked store (see admin-moderation.ts) — reject the whole checkout
-    // rather than silently drop the item, same as "not found". A store or product
-    // going blocked *while a cart sits open* is a realistic mid-session admin
-    // action, not just a hard-to-hit deleted-product race.
-    if (!isStoreVisible(store)) return abort({ error: `Store not found: ${storeSlug}` }, 400);
+    // A store that may not sell — admin-blocked (admin-moderation.ts), closed, or paused by
+    // its own seller (store-status.ts) — rejects the whole checkout rather than silently
+    // dropping the item, same as "not found". A store changing state *while a cart sits open*
+    // is a realistic mid-session event, not just a hard-to-hit deleted-product race: this is the
+    // gate that makes "stop selling" mean it, whatever the buyer's page still shows.
+    if (!canStoreSell(store)) return abort({ error: `Store not found: ${storeSlug}` }, 400);
 
     // Server-side price lookup — never trust client-sent prices
     const product = getProductBySlug(store.id, productSlug);

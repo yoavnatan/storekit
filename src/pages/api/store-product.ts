@@ -1,6 +1,6 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
-import { getStoreBySlugOrPrevious, isStoreVisible } from '../../lib/stores.js';
+import { getStoreBySlugOrPrevious, isStoreVisible, canStoreSell } from '../../lib/stores.js';
 import { getProductBySlug, isProductVisible } from '../../lib/store-products.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { recordProductView } from '../../lib/product-pageviews.js';
@@ -71,5 +71,11 @@ export const GET: APIRoute = ({ url, cookies, request }) => {
     variants:    product.variants ?? [],
     variantStock: product.variantStock ?? {},
     variantImages: product.variantImages ?? {},
+    // Additive flag (never removed, never repurposed — Hard rules → backward-compatible API):
+    // the store is reachable but not selling right now (store-status.ts). The quick-view shows
+    // a notice in place of the buy control instead of reporting stock 0, which would be a
+    // different and untrue reason. An older client that ignores it still can't complete a
+    // purchase — /api/checkout is the gate that actually refuses.
+    storeHalted: !canStoreSell(store),
   });
 };

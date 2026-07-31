@@ -36,8 +36,8 @@ const STORE_SORT_OPTIONS: { col: StoreSortCol; dir: 'asc' | 'desc'; label: strin
   { col: 'products', dir: 'desc', label: 'מוצרים: רב — מעט' },
 ];
 
-// Same pattern as sellers.ts's wireSellersToolbar (sort portal + a single
-// blocked-only toggle button, no column→values filter menu needed).
+// Same pattern as sellers.ts's wireSellersToolbar (sort portal + filter chips, no
+// column→values filter menu needed).
 function wireStoresToolbar(): void {
   const root = document.getElementById('admin-stores-toolbar');
   if (!root) return;
@@ -45,7 +45,7 @@ function wireStoresToolbar(): void {
   const state = root.dataset;
   let sortCol = (state.sortCol as StoreSortCol) || 'name';
   let sortDir = (state.sortDir as 'asc' | 'desc') || 'asc';
-  let blockedOnly = state.blockedOnly === '1';
+  let storeState = state.state || 'all';
   let newOnly = state.newOnly === '1';
 
   function buildStoresNavUrl(): string {
@@ -53,7 +53,7 @@ function wireStoresToolbar(): void {
     return buildAdminUrl('stores', {
       stq: searchInput?.value.trim() || undefined,
       stsort: (sortCol !== 'name' || sortDir !== 'asc') ? `${sortCol}:${sortDir}` : undefined,
-      stblocked: blockedOnly ? '1' : undefined,
+      ststate: storeState !== 'all' ? storeState : undefined,
       stnew: newOnly ? '1' : undefined,
     });
   }
@@ -79,10 +79,14 @@ function wireStoresToolbar(): void {
     });
   });
 
-  const blockedToggle = document.getElementById('admin-stores-blocked-toggle') as HTMLButtonElement | null;
-  blockedToggle?.addEventListener('click', () => {
-    blockedOnly = !blockedOnly;
-    navigate();
+  // State chips (AdminStoresPanel). Clicking the selected one clears the filter, so a chip is
+  // always its own way back out — the same behaviour the single toggle had.
+  root.querySelectorAll<HTMLButtonElement>('.admin-stores-state-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const picked = chip.dataset['state'] ?? 'all';
+      storeState = picked === storeState ? 'all' : picked;
+      navigate();
+    });
   });
 
   // "חדשים בלבד" — matters most on this tab: it sorts by name by default, so a

@@ -9,12 +9,14 @@ import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
 import BoostFormFields from '../../components/dashboard/BoostFormFields.astro';
 import CampaignHistory from '../../components/dashboard/CampaignHistory.astro';
 import StaleDataBar from '../../components/dashboard/StaleDataBar.astro';
+import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
 import { getSellerById, getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS } from '../../lib/stores.js';
+import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
+import { openOrderCount } from '../../lib/store-lifecycle.js';
 import { cnameTarget, storeHomeHref } from '../../lib/custom-domain.js';
 import { DEFAULT_STORE_HOURS } from '../../lib/store-hours.js';
 import {
@@ -58,11 +60,11 @@ import { campaignLifetimeStats, campaignRunPeriod } from '../../lib/ad-metrics.j
 import { shortDate } from '../../lib/date-range.js';
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
-import { buildBarChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
+import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
 import StoreCategoryPicker from '../../components/StoreCategoryPicker.astro';
 import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
 import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
-import { getVisibleStores } from '../../lib/stores.js';
+import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
 
 // Splits `total` across `count` rows as evenly as possible (remainder to the
 // first rows) so seeding legacy combos never silently changes the sum.
@@ -369,10 +371,27 @@ const adCampaigns = (store && advIsInitial) ? getCampaignsForStore(store.id).map
 const adBaseline = store
   ? storeBaselineStatus({
     storeId: store.id,
-    blocked: !!store.blocked,
+    discoverable: isStoreDiscoverable(store),
     visibleProductCount: products.filter(isProductVisible).length,
   })
   : { active: false, impressions: 0 };
+// Store activity (lib/store-status.ts): what the seller may switch, and what the current state
+// costs them. Open orders are read once here so the "close" path can say up front how many
+// remain — the API re-reads them at the moment of the click, which is the count that decides.
+const lifecycleState = store ? storeLifecycle(store) : 'active';
+const lifecycleOpenOrders = store ? openOrderCount(store.slug) : 0;
+const lifecycleStateLabel =
+  lifecycleState === 'paused'  ? d.lcStatePaused
+  : lifecycleState === 'closing' ? d.lcStateClosing
+  : lifecycleState === 'closed'  ? d.lcStateClosed
+  : lifecycleState === 'blocked' ? d.lcStateBlocked
+  : d.lcStateActive;
+const lifecycleNote =
+  lifecycleState === 'paused'  ? d.lcPausedNote
+  : lifecycleState === 'closing' ? d.lcClosingNote
+  : lifecycleState === 'closed'  ? d.lcClosedNote
+  : lifecycleState === 'blocked' ? ''
+  : d.lcActiveNote;
 // Budget-fee note: show the real management-fee % once it's set in the config;
 // until then (null = undecided) fall back to the rate-less phrasing.
 // One number, from the module that books it (pricing.ts) — a config override still wins.
@@ -413,14 +432,32 @@ const adRunPeriodLabel = (c: { status: string; runPeriod?: { start: string; end:
 };
 
 const perfIsRtl = getDir(lang) === 'rtl';
+// animate:false on every chart the server renders. These exist so the tab is never blank
+// (and so a no-JS seller still gets real charts), but performance.ts replaces all of them
+// within a frame or two with the same charts rendered at the container's MEASURED width —
+// the fixed 640-unit viewBox here is stretched to fit, which is not the same geometry.
+// Whoever owns the entrance animation must be the one drawing that final geometry: animating
+// here meant the swap either cut the animation off partway or, once it waited politely for
+// it to end, shifted the whole chart the instant it finished. The client's first paint
+// animates instead (performance.ts, paintedOnce).
+const perfChartOpts = { emptyMessage: d.perfNoData, rtl: perfIsRtl, animate: false };
 const perfRevenueChartSvg = perfSummary
-  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })), { color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: d.perfNoData, rtl: perfIsRtl })
+  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice })
+  : '';
+// Orders over time — the same buckets as the revenue bars, in the OTHER unit. Revenue alone
+// cannot tell "five big baskets" from "fifty small ones", and that is the difference between a
+// pricing problem and a traffic problem. A line, not bars: on this dashboard bars carry ₪ and
+// lines carry counts (visitors are lines too), so the form says which unit you are reading before
+// the axis does. --color-primary, the same accent the revenue chart uses, because both are the
+// sales story — the traffic accent stays reserved for the visits chart.
+const perfOrdersChartSvg = perfSummary
+  ? buildLineChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.orders })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: (v) => String(v) })
   : '';
 const perfVisitorsChartSvg = perfSummary
   ? buildMultiLineChartSvg([
       { points: perfSummary.points.map((p) => ({ label: p.label, value: p.uniqueVisitors })), color: 'var(--color-accent)', fill: true, label: d.perfUniqueVisitors },
       { points: perfSummary.points.map((p) => ({ label: p.label, value: p.views })), color: 'var(--color-muted)', dashed: true, label: d.perfVisitors },
-    ], { valueFormatter: (v) => String(v), emptyMessage: d.perfNoData, rtl: perfIsRtl })
+    ], { ...perfChartOpts, valueFormatter: (v) => String(v) })
   : '';
 // Shown in the chart slots while the tab is lazy-loading its data (perfSummary
 // undefined because this wasn't the landing tab). Replaced wholesale by
@@ -650,6 +687,7 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'settings' ? 0 : -1}
         ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>{d.tabSettings}</button>
       </div>
+      <DashTabsBoot />
 
       {/* Raised by tab-sync.ts when another tab of this same store saves something —
           advisory only, the seller chooses when to take the fresh data. */}
@@ -1190,7 +1228,7 @@ const orderStatusColors: Record<string, string> = {
                       <span class="purchased-col-label">{d.colPurchased}: </span>
                       {(purchasedCounts[p.id] ?? 0) > 0 ? purchasedCounts[p.id] : <span style="color:var(--color-border)">—</span>}
                     </td>
-                    <td class="date-col"><span class="date-col-label">{d.colDateAdded}: </span>{fmtDateAdded(p.createdAt)}</td>
+                    <td class="date-col"><span class="date-col-label">{d.colDateAddedShort}: </span>{fmtDateAdded(p.createdAt)}</td>
                     <td class="actions actions-col">
                       <div class="product-menu relative inline-block">
                         <button class="product-menu__btn inline-flex items-center justify-center w-7 h-7 bg-transparent border-0 rounded-full cursor-pointer [color:var(--color-muted)] opacity-50 transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] hover:[color:var(--color-text)] hover:opacity-100 aria-expanded:bg-[color-mix(in_srgb,var(--color-muted)_12%,transparent)] aria-expanded:[color:var(--color-text)] aria-expanded:opacity-100 active:scale-90" type="button" aria-label={d.menuLabel ?? 'אפשרויות'} aria-expanded="false" aria-haspopup="true">
@@ -1711,6 +1749,12 @@ const orderStatusColors: Record<string, string> = {
             <div id="perf-revenue-chart" set:html={perfRevenueChartSvg || perfChartSkeleton}></div>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4">
+            <h3 class="m-0 mb-3 text-[0.9rem] font-semibold">{d.perfOrders}</h3>
+            <div id="perf-orders-chart" set:html={perfOrdersChartSvg || perfChartSkeleton}></div>
+          </div>
+          {/* Full width on its own row: two series plus a legend, and it is the only chart here
+              whose shape is read against the two above it rather than on its own. */}
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-4 lg:col-span-2">
             <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
               <h3 class="m-0 text-[0.9rem] font-semibold">{d.perfVisitorsChartTitle}</h3>
               <div class="flex items-center gap-3 text-[0.72rem] [color:var(--color-muted)]">
@@ -2254,6 +2298,33 @@ const orderStatusColors: Record<string, string> = {
         </div>
           );
         })()}
+
+        {/* Store activity — pause / reopen / close (lib/store-status.ts). Outside the settings
+            FORM on purpose, like the categories tree and the custom domain above it: these are
+            single-verb state changes that save the moment they are confirmed, and putting them
+            under a "save changes" button would suggest they wait for it. Badged as such. */}
+        <div id="lifecycle-section" data-store-id={store.id} data-state={lifecycleState} data-open-orders={String(lifecycleOpenOrders)}>
+          <div class="mt-8 mb-5 pb-[.875rem] border-b border-[color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
+            <h2 class="text-base font-semibold text-[color:var(--color-text)] m-0">{d.lcTitle}</h2>
+            <span class="inline-flex items-center gap-1 text-[0.7rem] font-medium text-[color:var(--color-muted)] bg-[color:var(--color-bg)] border border-[color:var(--color-border)] rounded-full py-[0.15rem] px-[0.5rem]">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              {d.settingsAutoSaved}
+            </span>
+          </div>
+          <p class="muted text-[0.8rem] leading-[1.5] mt-1 mb-3">{d.lcHint}</p>
+
+          <p id="lc-state" class="m-0 text-[0.9rem] font-semibold">{lifecycleStateLabel}</p>
+          <p id="lc-note" class="muted text-[0.8rem] leading-[1.55] mt-1 mb-3 max-w-[60ch]">{lifecycleNote}</p>
+          <p id="lc-open-orders" class="muted text-[0.8rem] m-0 mb-3" hidden={lifecycleOpenOrders === 0}>
+            {d.lcOpenOrders.replace('{n}', String(lifecycleOpenOrders))}
+          </p>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" class="btn btn--ghost btn--sm" id="lc-pause" hidden={lifecycleState !== 'active'}>{d.lcPause}</button>
+            <button type="button" class="btn btn--sm" id="lc-resume" hidden={lifecycleState !== 'paused' && lifecycleState !== 'closing'}>{lifecycleState === 'closing' ? d.lcCancelClose : d.lcResume}</button>
+            <button type="button" class="btn btn--ghost btn--sm !text-[color:var(--color-danger)]" id="lc-close" hidden={lifecycleState !== 'active' && lifecycleState !== 'paused'}>{d.lcClose}</button>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -2614,6 +2685,7 @@ const orderStatusColors: Record<string, string> = {
   import { initCsvImport } from '../../scripts/dashboard/csv-import.js';
   import { initFeedSync } from '../../scripts/dashboard/feed-sync.js';
   import { initCustomDomain } from '../../scripts/dashboard/custom-domain.js';
+  import { initStoreLifecycle } from '../../scripts/dashboard/store-lifecycle.js';
   import { initStoreUrl } from '../../scripts/dashboard/store-url.js';
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks, initStorePreviewLink } from '../../scripts/dashboard/ui.js';
   import { initUnsavedGuard } from '../../scripts/dashboard/unsaved-guard.js';
@@ -2726,6 +2798,7 @@ const orderStatusColors: Record<string, string> = {
   initCsvImport();
   initFeedSync();
   initCustomDomain();
+  initStoreLifecycle();
   initStoreUrl();
   initThumbs();
   initInlineEdit();

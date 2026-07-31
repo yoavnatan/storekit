@@ -21,10 +21,17 @@ const PRODUCTS: Record<string, {
 
 const STORE = { id: 's1', slug: 'test-store', name: 'Test Store', sellerId: 'seller-1' };
 
-vi.mock('../src/lib/stores.js', () => ({
-  getStoreBySlugOrPrevious: (slug: string) => (slug === STORE.slug ? STORE : null),
-  isStoreVisible: () => true,
-}));
+// Lookup stubbed, lifecycle rule REAL (store-status.js is pure) — same reason as the
+// store-products mock below: a hand-written `() => true` would have kept this suite green after
+// the route moved from "is the store reachable" to "may it still sell".
+vi.mock('../src/lib/stores.js', async () => {
+  const status = await import('../src/lib/store-status.js');
+  return {
+    ...status,
+    getStoreBySlugOrPrevious: (slug: string) => (slug === STORE.slug ? STORE : null),
+    isStoreVisible: status.isStoreReachable,
+  };
+});
 // Only the file-reading lookups are replaced. `getEffectiveStock` stays REAL: it is the pure
 // function that decides which bucket a line reads, and re-implementing it here would let this test
 // keep passing after the real resolution changed — which is the one thing it exists to catch.

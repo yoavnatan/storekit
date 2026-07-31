@@ -2,7 +2,7 @@
 export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible } from '../../lib/stores.js';
+import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice } from '../../lib/stores.js';
 import { OG_IMAGE_FORMAT, storeImageUrl } from '../../lib/store-image.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
 import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
@@ -31,9 +31,27 @@ if (!shopStore) {
   if (moved) return Astro.redirect(`/${moved.slug}/${productSlug}`, 301);
   return Astro.redirect('/404');
 }
-// Admin-blocked store or product (see admin-moderation.ts) — 404, same
-// reasoning as the store page itself.
-if (!isStoreVisible(shopStore)) return Astro.redirect('/404');
+// Not serving a storefront at all: an admin block (admin-moderation.ts) answers 404, so the store
+// stops accumulating crawl/index signal while it is under review; a store its seller closed for
+// good answers 410 Gone, which drops it from the index faster and more definitively.
+//
+// REWRITTEN, not redirected (2026-07-31). A redirect made the store's own URL answer 302 and put
+// the real status on /404 — so a crawler recorded "this store moved to an error page" instead of
+// "this store is gone", which is a weaker and slower signal, and the address bar left the URL the
+// shopper actually followed. A rewrite renders the same page AT this URL and carries its status
+// (404.astro sets it), which is what both Google and the shopper should be given.
+if (!isStoreVisible(shopStore)) {
+  return Astro.rewrite(storeHttpStatus(shopStore) === 410 ? '/store-gone' : '/404');
+}
+// Operational halt by the seller (store-status.ts). The URL keeps working — no redirect, no 404,
+// so every existing link still resolves — but it serves the notice INSTEAD of the catalog: a
+// shopper cannot do anything with a product they are not allowed to buy, and a grid of disabled
+// buttons reads as a broken page rather than a closed one (decided with the owner 2026-07-31).
+// Rewritten here, before any product/category/sale/page-view work, so a halted store costs
+// nothing to serve. /api/checkout refuses it regardless of what any page renders.
+if (showsPausedNotice(shopStore)) {
+  return Astro.rewrite('/store-unavailable');
+}
 // A showcase store's products stay browsable by direct link (that's the point of
 // the demo) but must never be indexed — the store page, sitemap and product feed
 // apply the same rule; see lib/demo-stores.ts.

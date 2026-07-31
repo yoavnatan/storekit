@@ -1,0 +1,25 @@
+---
+/** One badge saying what state a store is in, for the admin's store lists.
+ *
+ *  A component rather than an inline check in each panel: four admin surfaces list stores, and
+ *  the five states (lib/store-status.ts) have to read the same in all of them. The label and
+ *  colour themselves live in lib/store-state-badge.ts, because the Performance table renders its
+ *  rows from JSON on the client and cannot use a component — one map, two renderers.
+ */
+import { storeStateBadge, rowStateBadge } from '../../lib/store-state-badge.js';
+import type { StoreLifecycle, StoreLifecycleFlags } from '../../lib/store-status.js';
+
+interface Props {
+  /** A whole store record — the usual case. */
+  store?: StoreLifecycleFlags;
+  /** …or a wire row carrying the resolved state, for a surface that ships JSON rather than
+   *  records (the platform performance table). Exactly one of the two is given. */
+  row?: { state?: StoreLifecycle; blocked?: boolean };
+  /** Spacing for how this instance sits in its row; the component owns only its own look. */
+  class?: string;
+}
+const { store, row, class: className } = Astro.props;
+const badge = row ? rowStateBadge(row) : store ? storeStateBadge(store) : null;
+---
+
+{badge && <span class:list={[`admin-badge admin-badge--${badge.variant}`, className]}>{badge.label}</span>}

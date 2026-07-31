@@ -16,7 +16,7 @@ const decrementStock = vi.fn(async (id: string, qty: number, _selectedVariants?:
 });
 const restockProduct = vi.fn(async (_id: string, _qty: number, _selectedVariants?: Record<string, string>): Promise<StockAdjustResult> => ({ ok: true, before: 0, after: 0 }));
 
-const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; address?: string; shipping?: { selfPickup?: boolean }; blocked?: boolean; demo?: boolean; previousSlugs?: string[]; sale?: { active: boolean; title: string; percent?: number } }> = {
+const STORES: Record<string, { id: string; slug: string; name: string; sellerId: string; address?: string; shipping?: { selfPickup?: boolean }; blocked?: boolean; pausedAt?: string; closePendingAt?: string; closedAt?: string; demo?: boolean; previousSlugs?: string[]; sale?: { active: boolean; title: string; percent?: number } }> = {
   'test-store': {
     id: 's1',
     slug: 'test-store',
@@ -34,12 +34,21 @@ const getUserCart = vi.fn((_id: string): UserCartData => ({ cart: {}, wishlist: 
 const saveUserCart = vi.fn();
 const logError = vi.fn();
 
-vi.mock('../src/lib/stores.js', () => ({
-  getStoreBySlug: (slug: string) => STORES[slug] ?? null,
-  getStoreBySlugOrPrevious: (slug: string) =>
-    STORES[slug] ?? Object.values(STORES).find((s) => s.previousSlugs?.includes(slug)) ?? null,
-  isStoreVisible: (store: { blocked?: boolean }) => !store.blocked,
-}));
+// Only the fs-backed LOOKUPS are stubbed. The lifecycle predicates come from the real
+// store-status.js (pure, no fs) rather than being re-implemented here: `isStoreVisible: !blocked`
+// used to be a copy of the rule, and the moment "may this store sell" grew past `blocked` — a
+// seller pause, a pending closure — the copy went on answering the old question and this suite
+// would have kept passing while checkout let a closed store take money.
+vi.mock('../src/lib/stores.js', async () => {
+  const status = await import('../src/lib/store-status.js');
+  return {
+    ...status,
+    getStoreBySlug: (slug: string) => STORES[slug] ?? null,
+    getStoreBySlugOrPrevious: (slug: string) =>
+      STORES[slug] ?? Object.values(STORES).find((s) => s.previousSlugs?.includes(slug)) ?? null,
+    isStoreVisible: status.isStoreReachable,
+  };
+});
 vi.mock('../src/lib/store-products.js', () => ({
   getProductBySlug: (_storeId: string, slug: string) => PRODUCTS[slug] ?? null,
   decrementStock: (id: string, qty: number, selectedVariants?: Record<string, string>) => decrementStock(id, qty, selectedVariants),
@@ -280,6 +289,52 @@ describe('POST /api/checkout — server-side price re-validation', () => {
       expect(createOrder).not.toHaveBeenCalled();
     } finally {
       delete STORES['test-store']!.blocked;
+    }
+  });
+
+  // The seller's own halt is a MONEY gate, not a UI state: a shopper whose cart was filled before
+  // the pause — or who calls this route directly — must not be able to buy from a store that has
+  // stopped selling. Each state gets its own case rather than one loop, because they reach the
+  // gate by different flags and a single shared assertion would hide one of them going stale.
+  it('rejects checkout from a store its seller paused', async () => {
+    STORES['test-store']!.pausedAt = '2026-07-31T10:00:00.000Z';
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(res.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+    } finally {
+      delete STORES['test-store']!.pausedAt;
+    }
+  });
+
+  it('rejects checkout from a store waiting to close', async () => {
+    STORES['test-store']!.closePendingAt = '2026-07-31T10:00:00.000Z';
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(res.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+    } finally {
+      delete STORES['test-store']!.closePendingAt;
+    }
+  });
+
+  it('rejects checkout from a closed store', async () => {
+    STORES['test-store']!.closedAt = '2026-07-31T10:00:00.000Z';
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(res.status).toBe(400);
+      expect(createOrder).not.toHaveBeenCalled();
+    } finally {
+      delete STORES['test-store']!.closedAt;
     }
   });
 

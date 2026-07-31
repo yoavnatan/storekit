@@ -1,5 +1,6 @@
 ---
 import type { AdminSellerSortCol, AdminSortDir, SellerCardData } from '../../lib/admin-stats.js';
+import AdminStoreStateBadge from './AdminStoreStateBadge.astro';
 import { formatPrice } from '../../config/store.config.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
 import AdminPager from './AdminPager.astro';
@@ -126,7 +127,7 @@ const sortLabels: Record<string, string> = {
               <a class="admin-store-link" href={buildAdminUrl('stores', { stq: store.name })} title={`נהל את "${store.name}" בלשונית החנויות`}>
                 <span class="admin-store-block__name">
                   {store.name}
-                  {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+                  <AdminStoreStateBadge store={store} />
                 </span>
                 <span class="admin-store-block__nums">{products.length} מוצרים</span>
                 <span class="admin-store-block__nums">{formatPrice(revenue.totalRevenue)} סה"כ · {formatPrice(revenue.monthRevenue)} החודש</span>

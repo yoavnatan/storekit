@@ -6,7 +6,7 @@ import StoreDemoBadge from '../../components/StoreDemoBadge.astro';
 import StoreDemoBanner from '../../components/StoreDemoBanner.astro';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
-import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible } from '../../lib/stores.js';
+import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice } from '../../lib/stores.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
 import { getDemoStores } from '../../lib/stores.js';
 import { isStoreReady } from '../../lib/store-readiness.js';
@@ -38,10 +38,27 @@ if (!shopStore) {
   if (moved) return Astro.redirect(`/${moved.slug}${Astro.url.search}`, 301);
   return Astro.redirect('/404');
 }
-// Admin-blocked store (see admin-moderation.ts) — 404s like a nonexistent
-// store rather than rendering, so it stops accumulating crawl/index signal
-// while it's under review.
-if (!isStoreVisible(shopStore)) return Astro.redirect('/404');
+// Not serving a storefront at all: an admin block (admin-moderation.ts) answers 404, so the store
+// stops accumulating crawl/index signal while it is under review; a store its seller closed for
+// good answers 410 Gone, which drops it from the index faster and more definitively.
+//
+// REWRITTEN, not redirected (2026-07-31). A redirect made the store's own URL answer 302 and put
+// the real status on /404 — so a crawler recorded "this store moved to an error page" instead of
+// "this store is gone", which is a weaker and slower signal, and the address bar left the URL the
+// shopper actually followed. A rewrite renders the same page AT this URL and carries its status
+// (404.astro sets it), which is what both Google and the shopper should be given.
+if (!isStoreVisible(shopStore)) {
+  return Astro.rewrite(storeHttpStatus(shopStore) === 410 ? '/store-gone' : '/404');
+}
+// Operational halt by the seller (store-status.ts). The URL keeps working — no redirect, no 404,
+// so every existing link still resolves — but it serves the notice INSTEAD of the catalog: a
+// shopper cannot do anything with a product they are not allowed to buy, and a grid of disabled
+// buttons reads as a broken page rather than a closed one (decided with the owner 2026-07-31).
+// Rewritten here, before any product/category/sale/page-view work, so a halted store costs
+// nothing to serve. /api/checkout refuses it regardless of what any page renders.
+if (showsPausedNotice(shopStore)) {
+  return Astro.rewrite('/store-unavailable');
+}
 
 // SEO: once the seller's own domain is verified it becomes the store's home — every hit on the
 // platform path (including the old default URL the store used for months) 301s there so all the

@@ -1,0 +1,56 @@
+---
+/** 410 Gone — a store that is permanently off the site.
+ *
+ *  Reached when a SELLER closed their own store (lib/store-lifecycle.ts) — this is their business
+ *  decision, not a penalty, and the copy reflects that: the page says the store is not available
+ *  and says nothing whatsoever about why. Announcing "this business has closed" on a public page
+ *  publishes a fact about a real person's livelihood that a shopper does not need and the seller
+ *  never agreed to (user, 2026-07-31). The route NAME is the HTTP status; the words are not.
+ *
+ *  Its own route rather than a `?gone=` branch on 404.astro, and the reason is measured, not
+ *  stylistic: **Astro forces a 404 on anything rewritten to `/404`**, so the 410 that page tried
+ *  to set was silently overwritten and a closed store answered 404 like any missing page. The
+ *  distinction is the whole point — 404 says "nothing here, maybe later", 410 says "this is gone,
+ *  drop it", and Google acts on the second faster and more definitively.
+ *
+ *  Reached by `Astro.rewrite()` from the store and product pages, so the status and the copy land
+ *  on the store's OWN url instead of on a redirect target.
+ */
+export const prerender = false;
+Astro.response.status = 410;
+
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoresBySellerId } from '../lib/stores.js';
+import { getLang, getT } from '../i18n/index.js';
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const dir = lang === 'he' ? 'rtl' : 'ltr';
+
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? getStoresBySellerId(sellerId).length > 0 : false;
+---
+
+<BaseLayout
+  title={t.store.goneTitle}
+  description={t.store.goneTitle}
+  noindex={true}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  {/* The 404 page's own shape — a heading and a way back — rather than a bespoke card. One line
+      is the whole message; anything more is the page explaining itself to someone who only wants
+      to get on with their shopping. */}
+  <section class="section container center" dir={dir}>
+    {/* `!` because tokens.css is imported UNLAYERED, so its bare `h1 { font-size: clamp(1.8rem,
+        4vw, 2.6rem) }` outranks any @layer'd utility — without it the size silently does nothing
+        (AI_INSTRUCTIONS → Hard rules). That hero scale belongs to a page with content under it;
+        here the heading IS the content, one short line, and at 2.6rem it shouted. */}
+    <h1 class="!text-[1.35rem] !font-semibold">{t.store.goneTitle}</h1>
+    <p style="margin-top:1rem"><a href="/" class="btn">{t.store.backHome}</a></p>
+  </section>
+</BaseLayout>

@@ -2,10 +2,12 @@
 export const prerender = false;
 import '../../styles/pages/admin.css';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import { isAdminRequest } from '../../lib/admin-auth.js';
-import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductsByStoreMap, getStoreRows, getStoreRevenueMap, filterAndSortSellerCards, filterAndSortStoreRows, parseSellerQuery, parseStoreQuery } from '../../lib/admin-stats.js';
+import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductsByStoreMap, getStoreRows, getStoreRevenueMap, filterAndSortSellerCards, filterAndSortStoreRows, parseSellerQuery, parseStoreQuery, countStoreStates } from '../../lib/admin-stats.js';
 import { getAllSellers } from '../../lib/seller-auth.js';
-import { getAllStores } from '../../lib/stores.js';
+import { getAllStores, isStoreDiscoverable } from '../../lib/stores.js';
+import { countOpenOrdersByStore } from '../../lib/store-lifecycle.js';
 import { getAllOrders } from '../../lib/orders.js';
 import { filterAndSortOrders, getOrderStoreNames, parseOrderQuery } from '../../lib/admin-orders-filter.js';
 import { getAllAdminThreads } from '../../lib/admin-messages.js';
@@ -36,7 +38,8 @@ import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
 import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
 import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
-import { getMoneyEvents, isMoneyEventType, type MoneyEventType } from '../../lib/money-events.js';
+import { getMoneyEvents } from '../../lib/money-events.js';
+import { parseMoneyLogQuery, filterMoneyEvents, eventPage } from '../../lib/admin-moneylog-filter.js';
 import { reconcileOrders } from '../../lib/reconcile.js';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
@@ -121,7 +124,11 @@ const sellerPageResult = paginate(sellerCardsFiltered, parsePage(sp, 'spage'));
 
 // ── Stores tab ──
 const storeQuery = parseStoreQuery(sp);
-const storeRowsAll = getStoreRows(stores, sellers, productsByStore, revenueByStore);
+// Open-order counts come off the orders already read above, not one file read per store — the
+// only place they are shown is a store waiting to close, but the count has to exist before the
+// rows are filtered so the chips can be built from the same list.
+const storeRowsAll = getStoreRows(stores, sellers, productsByStore, revenueByStore, countOpenOrdersByStore(allOrders));
+const storeStateCounts = countStoreStates(storeRowsAll);
 const storeRowsFiltered = keepNewOnly(filterAndSortStoreRows(storeRowsAll, storeQuery), newOnly.stores, newSince.stores, (r) => r.store.createdAt);
 const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
@@ -139,10 +146,13 @@ const attentionAll = getStoresNeedingAttention(stores, sellers, productsByStore)
 const attentionPageResult = paginate(attentionAll, parsePage(sp, 'apage'));
 
 // ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ──
-// Feed = the exact set the product feed exports: visible stores carrying at least
-// one visible product. Reuses the already-fetched stores/productsByStore so this
+// Feed = the exact set the product feed exports: stores a platform surface may carry, holding at
+// least one visible product. Gated on isStoreDiscoverable rather than `!blocked` — the feed
+// itself runs off getIndexableStores, which also drops a store its seller paused or closed, and
+// an inline `!blocked` copy here would have gone on counting those and over-reported what the
+// platform is actually advertising. Reuses the already-fetched stores/productsByStore so this
 // tab adds no extra JSON reads.
-const feedStores = stores.filter((s) => !s.blocked && (productsByStore.get(s.id) ?? []).some((p) => !p.blocked));
+const feedStores = stores.filter((s) => isStoreDiscoverable(s) && (productsByStore.get(s.id) ?? []).some((p) => !p.blocked));
 const feedProductCount = feedStores.reduce((sum, s) => sum + (productsByStore.get(s.id) ?? []).filter((p) => !p.blocked).length, 0);
 const brandCampaigns = getAllBrandCampaigns();
 const adCampaigns = getAllCampaigns();
@@ -233,17 +243,23 @@ const sellerFunnel = getSellerFunnel();
 const productNames = new Map<string, string>();
 for (const list of productsByStore.values()) for (const p of list) productNames.set(p.id, p.name);
 
-// ── Money journal tab (lib/money-events.ts) ──
-// The type filter is validated against the event VOCABULARY, never against the
-// types present in the rows just read: checking the data meant that filtering to a
-// type the journal happens not to contain yet fell back to "" and rendered the
-// whole log, so the filter looked broken rather than empty (owner, סשן ד׳). The
-// narrowing is pushed into getMoneyEvents so it applies to the whole journal, and
-// the result paginates like every other list tab (15/page, AdminPager) instead of
-// rendering every row on one page — which is the other half of what looked broken.
-const moneyLogType = isMoneyEventType(sp.get('mtype') ?? '') ? (sp.get('mtype') as MoneyEventType) : undefined;
-const moneyLogEvents = getMoneyEvents(moneyLogType);
-const moneyLogPageResult = paginate(moneyLogEvents, parsePage(sp, 'mlpage'));
+// ── Money journal tab ──
+// Type narrowing happens inside getMoneyEvents so it covers the WHOLE journal before
+// any slicing (money-events.ts's header says why); search/date-window/permalink are a
+// filter over its result (admin-moneylog-filter.ts's header says why). Paginates
+// 15/page like every other list tab. The one rule that lives HERE because it is about
+// this page's URL: a `?mev=` permalink picks the page holding that row, but an explicit
+// ?mlpage always wins — otherwise the next arrow click snaps back to the linked row.
+const moneyLogQuery = parseMoneyLogQuery(sp);
+const moneyLogEvents = filterMoneyEvents(getMoneyEvents(moneyLogQuery.type), moneyLogQuery);
+const moneyLogTargetPage = eventPage(moneyLogEvents, moneyLogQuery.eventId);
+const moneyLogPageResult = paginate(
+  moneyLogEvents,
+  sp.get('mlpage') ? parsePage(sp, 'mlpage') : (moneyLogTargetPage ?? 1),
+);
+// Linked row that this filter/journal doesn't contain — said out loud, never silently
+// swallowed into "here's page 1".
+const moneyLogTargetMissing = moneyLogQuery.eventId !== '' && moneyLogTargetPage === null;
 
 // ── "(N) new since last opened" tab badges (CURRENT_TASK.md → סשן ב׳) ──
 // Counted over the UNFILTERED lists on purpose: the badge answers "is there
@@ -296,6 +312,7 @@ const badgeCounts: Record<string, number> = {
           );
         })}
       </div>
+      <DashTabsBoot />
 
       <div id="dash-panel-overview" class="dash-panel" role="tabpanel" aria-labelledby="tab-overview" hidden={initialPanel !== 'overview'}>
         <AdminOverviewPanel overview={overview} attentionCount={attentionAll.length} />
@@ -342,7 +359,8 @@ const badgeCounts: Record<string, number> = {
           q={storeQuery.q}
           sortCol={storeQuery.sortCol}
           sortDir={storeQuery.sortDir}
-          blockedOnly={storeQuery.blockedOnly}
+          state={storeQuery.state}
+          stateCounts={storeStateCounts}
           newSince={newSince.stores}
           newOnly={newOnly.stores}
           newCount={badgeCounts.stores}
@@ -353,7 +371,7 @@ const badgeCounts: Record<string, number> = {
           buildUrl={(p) => tabUrl('stores', {
             stq: storeQuery.q || undefined,
             stsort: (storeQuery.sortCol !== 'name' || storeQuery.sortDir !== 'asc') ? `${storeQuery.sortCol}:${storeQuery.sortDir}` : undefined,
-            stblocked: storeQuery.blockedOnly ? '1' : undefined,
+            ststate: storeQuery.state !== 'all' ? storeQuery.state : undefined,
             stnew: newOnly.stores ? '1' : undefined,
             stpage: p > 1 ? String(p) : undefined,
           })}
@@ -460,12 +478,16 @@ const badgeCounts: Record<string, number> = {
       <div id="dash-panel-moneylog" class="dash-panel" role="tabpanel" aria-labelledby="tab-moneylog" hidden={initialPanel !== 'moneylog'}>
         <AdminMoneyLogPanel
           events={moneyLogPageResult.items}
-          activeType={moneyLogType ?? ''}
+          query={moneyLogQuery}
+          targetMissing={moneyLogTargetMissing}
           total={moneyLogPageResult.total}
           page={moneyLogPageResult.page}
           totalPages={moneyLogPageResult.totalPages}
           buildUrl={(p) => tabUrl('moneylog', {
-            mtype: moneyLogType,
+            mtype: moneyLogQuery.type,
+            mq: moneyLogQuery.q || undefined,
+            mfrom: moneyLogQuery.from || undefined,
+            mto: moneyLogQuery.to || undefined,
             mlpage: p > 1 ? String(p) : undefined,
           })}
           reconciliation={reconciliation}

@@ -1,6 +1,6 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
-import { getStoreBySlugOrPrevious, isStoreVisible } from '../../../lib/stores.js';
+import { getStoreBySlugOrPrevious, canStoreSell } from '../../../lib/stores.js';
 import { getProductBySlug, isProductVisible, getEffectiveStock } from '../../../lib/store-products.js';
 import { resolvePrice } from '../../../lib/discounts.js';
 
@@ -82,7 +82,10 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Tolerates a renamed store the same way checkout does, so an older cart still re-prices.
     const store = getStoreBySlugOrPrevious(storeSlug);
-    const product = store && isStoreVisible(store) ? getProductBySlug(store.id, slug) : null;
+    // canStoreSell, not merely "reachable": a line from a store that stopped selling is
+    // reported `gone`, exactly like a deleted product, so the drawer stops quoting a price
+    // checkout would refuse a moment later.
+    const product = store && canStoreSell(store) ? getProductBySlug(store.id, slug) : null;
     if (!product || !isProductVisible(product)) {
       items.push({ storeSlug, slug, price: 0, gone: true });
       continue;

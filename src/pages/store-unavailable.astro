@@ -1,0 +1,54 @@
+---
+/** The page a shopper sees at a paused store's OWN url.
+ *
+ *  Reached by `Astro.rewrite()` from the store and product pages, never by a redirect: the URL in
+ *  the address bar stays the store's own, the status stays 200, and no link anywhere breaks — the
+ *  shopper simply gets this content instead of a catalog. That is also why the store page can
+ *  hand off BEFORE reading products, categories, sale scope and page-views: a halted store does
+ *  no work at all.
+ *
+ *  Deliberately just the message (decided with the owner 2026-07-31). Showing the catalog with
+ *  every buy button disabled reads as a broken page — "why is there no button?" — and a shopper
+ *  cannot do a single thing with a product they are not allowed to buy. One line and a link home
+ *  is the whole job; it does not name the store, because that is not something a shopper can act
+ *  on, and looking it up would mean a file read to render a browser tab title.
+ *
+ *  Never indexed: this is a temporary state, and letting it into search would put "not available"
+ *  in front of the store's own name in Google.
+ */
+export const prerender = false;
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoresBySellerId } from '../lib/stores.js';
+import { getLang, getT } from '../i18n/index.js';
+
+const lang = getLang(Astro.cookies);
+const t = getT(lang);
+const dir = lang === 'he' ? 'rtl' : 'ltr';
+
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? getStoresBySellerId(sellerId).length > 0 : false;
+---
+
+<BaseLayout
+  title={t.store.haltedTitle}
+  description={t.store.haltedTitle}
+  noindex={true}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  {/* Same shape as /store-gone and the 404 page: one line and a way back. The store's own name
+      is not shown — it adds nothing a shopper can act on, and the heading already says the one
+      thing they came here to find out. */}
+  <section class="section container center" dir={dir}>
+    {/* `!` because tokens.css is imported UNLAYERED, so its bare `h1 { font-size: clamp(1.8rem,
+        4vw, 2.6rem) }` outranks any @layer'd utility — without it the size silently does nothing
+        (AI_INSTRUCTIONS → Hard rules). That hero scale belongs to a page with content under it;
+        here the heading IS the content, one short line, and at 2.6rem it shouted. */}
+    <h1 class="!text-[1.35rem] !font-semibold">{t.store.haltedTitle}</h1>
+    <p style="margin-top:1rem"><a href="/" class="btn">{t.store.backHome}</a></p>
+  </section>
+</BaseLayout>

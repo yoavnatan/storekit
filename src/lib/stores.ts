@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { filterShopperStores, isDemoStore } from './demo-stores.js';
+import { isStoreReachable, isStoreDiscoverable } from './store-status.js';
 import type { StoreSale } from './discounts.js';
 
 const STORES_PATH = path.join(process.cwd(), 'data/stores.json');
@@ -107,6 +108,17 @@ export interface Store {
    *  what makes the URL editable without losing SEO. Newest-last, capped, never contains the current
    *  slug. See renameStoreSlug + getStoreByPreviousSlug. */
   previousSlugs?: string[];
+  /** Seller-owned lifecycle — an operational halt or a permanent closure. All three are plain
+   *  timestamps, all absent by default, and NONE of them deletes anything: the store record, its
+   *  products, its orders, its ad spend and every historical total derived from them survive
+   *  whatever state it is in, because that history happened. What each state means for shoppers,
+   *  search engines and checkout is one table in lib/store-status.ts — read it there rather than
+   *  testing these fields directly. Written only through lib/store-lifecycle.ts. */
+  pausedAt?: string;
+  /** Closure requested while orders were still open: the store stops selling at once and closes
+   *  by itself when the last one is done (store-lifecycle.ts#settleStoreClosure). */
+  closePendingAt?: string;
+  closedAt?: string;
   createdAt: string;
 }
 
@@ -157,6 +169,7 @@ export const RESERVED_SLUGS = new Set<string>([
   'store', 'stores', 'search', 'checkout', 'cart', 'wishlist', 'account',
   'admin', 'api', 'seller', 'buyer', '404', 'index',
   'sitemap-content', 'llms', 'robots', 'favicon', '_astro', '_image', '_actions',
+  'store-unavailable', 'store-gone',
 ]);
 
 /** A usable store slug: non-empty and not a reserved platform route. */
@@ -318,17 +331,26 @@ export function renameStoreSlug(storeId: string, newSlug: string): Store | null 
   return stores[idx]!;
 }
 
-/** false for an admin-blocked store (see admin-moderation.ts). Every public discovery/purchase
- *  surface must gate through this — not repeat `!store.blocked` inline — so a future call site
- *  can't forget the check the way a few already did (found in review, 2026-07-14). */
+/** Does the store's own URL still serve a storefront? False for an admin block (404) and for a
+ *  completed closure (410) — true for a seller's operational pause, which deliberately keeps the
+ *  page up with a notice. Every public surface must gate through one of these three predicates —
+ *  not repeat `!store.blocked` inline — so a future call site can't forget the check the way a
+ *  few already did (found in review, 2026-07-14). The rules are one table: lib/store-status.ts.
+ *
+ *  Which one to reach for: `isStoreVisible` = may this URL render at all; `isStoreDiscoverable`
+ *  = may a platform surface link to or index it; `canStoreSell` = may money move. */
 export function isStoreVisible(store: Store): boolean {
-  return !store.blocked;
+  return isStoreReachable(store);
 }
 
-/** getAllStores(), pre-filtered to non-blocked — the version every public discovery surface
- *  (homepage, /stores, search) should call instead of getAllStores() + an inline filter. */
+export { isStoreDiscoverable, canStoreSell, storeLifecycle, storeHttpStatus, showsPausedNotice } from './store-status.js';
+export type { StoreLifecycle } from './store-status.js';
+
+/** getAllStores(), pre-filtered to what a platform surface may LIST — the version every public
+ *  discovery surface (homepage, /stores, search, sitemap, feed) should call instead of
+ *  getAllStores() + an inline filter. Excludes blocked, closed, closing and paused stores. */
 export function getVisibleStores(): Store[] {
-  return readStores().filter(isStoreVisible);
+  return readStores().filter(isStoreDiscoverable);
 }
 
 /** What a SHOPPER-facing discovery surface lists (homepage, /stores, site search):

@@ -15,6 +15,12 @@ import { productsToCsv, productsToFeedJson } from '../../../lib/store-products-b
 export const GET: APIRoute = ({ params, url }) => {
   const noindex = { 'X-Robots-Tag': 'noindex', 'Cache-Control': 'no-store' };
   const store = getStoreByExportToken(params.token ?? '');
+  // `store.blocked` on purpose, NOT canStoreSell/isStoreDiscoverable: this is not a shopper or an
+  // ad surface, it is the seller's own catalog flowing to the seller's own POS/ERP behind their
+  // own secret token. A seller who pauses the storefront is usually pausing it BECAUSE they are
+  // reorganising stock, and cutting their inventory pipe at that exact moment would be the
+  // opposite of helpful. An admin block is the one state that stops it — that one is the platform
+  // acting against the store, not the seller acting on their own.
   if (!store || store.blocked) return new Response('Not found', { status: 404, headers: noindex });
 
   const products = getProductsByStoreId(store.id);

@@ -30,6 +30,11 @@ vi.mock('../src/lib/stores.js', () => ({
   getStoresBySellerId: () => [STORE],
   findStoreBySlugOrPrevious: (stores: { slug: string; previousSlugs?: string[] }[], slug: string) =>
     stores.find((s) => s.slug === slug || s.previousSlugs?.includes(slug)),
+  // A status change now also settles a pending store closure (store-lifecycle.ts), which reads
+  // the store back by slug. Left REAL rather than stubbing settleStoreClosure away: this fixture
+  // store has no pending closure, so the real function must return on its first check — that it
+  // is a genuine no-op for an ordinary store is worth exercising, not mocking out.
+  getStoreBySlug: (slug: string) => (slug === STORE.slug ? STORE : null),
 }));
 vi.mock('../src/lib/orders.js', () => ({
   getOrdersByStoreSlug: () => [],

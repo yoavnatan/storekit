@@ -1,3 +1,4 @@
+import { storeLifecycle, type StoreLifecycle } from './store-status.js';
 import type { Seller } from './seller-auth.js';
 import type { Store } from './stores.js';
 import type { Order } from './orders.js';
@@ -192,6 +193,10 @@ export interface StoreRow {
   seller: Seller | undefined;
   productCount: number;
   revenue: StoreRevenue;
+  /** Orders this store still owes something on (lib/store-lifecycle.ts). Only ever SHOWN for a
+   *  store waiting to close, where it is the answer to the admin's actual question — why has it
+   *  not closed yet, and how far off is it. 0 when the caller supplied no counts. */
+  openOrders: number;
 }
 
 // Flat, top-level "one row per store" view for the admin Stores tab — unlike
@@ -199,7 +204,13 @@ export interface StoreRow {
 // accordion), this is a plain list an admin can scan/search across every
 // store regardless of who owns it. Sorted by store name since that's what an
 // admin searching for a specific store is scanning for, not seller identity.
-export function getStoreRows(stores: Store[], sellers: Seller[], productsByStore: Map<string, StoreProduct[]>, revenueByStore: Map<string, StoreRevenue>): StoreRow[] {
+export function getStoreRows(
+  stores: Store[],
+  sellers: Seller[],
+  productsByStore: Map<string, StoreProduct[]>,
+  revenueByStore: Map<string, StoreRevenue>,
+  openOrdersByStore: Map<string, number> = new Map(),
+): StoreRow[] {
   const sellerById = new Map(sellers.map((s) => [s.id, s]));
   return stores
     .map((store) => ({
@@ -207,6 +218,7 @@ export function getStoreRows(stores: Store[], sellers: Seller[], productsByStore
       seller: sellerById.get(store.sellerId),
       productCount: productsByStore.get(store.id)?.length ?? 0,
       revenue: revenueByStore.get(store.slug) ?? EMPTY_REVENUE,
+      openOrders: openOrdersByStore.get(store.slug) ?? 0,
     }))
     .sort((a, b) => a.store.name.localeCompare(b.store.name, 'he'));
 }
@@ -250,7 +262,22 @@ export interface AdminStoreQuery {
   q: string;
   sortCol: AdminStoreSortCol;
   sortDir: AdminSortDir;
-  blockedOnly: boolean;
+  /** Which lifecycle state to list, or every one. Replaces the old blocked-only toggle: with five
+   *  states (lib/store-status.ts) a yes/no switch could no longer answer "which stores did their
+   *  sellers pause, and which are waiting to close". */
+  state: StoreStateFilter;
+}
+
+export type StoreStateFilter = StoreLifecycle | 'all';
+
+/** How many stores sit in each state, over the WHOLE list — computed before any filter, so the
+ *  chips keep showing what exists while one of them is selected. Search deliberately does narrow
+ *  them: "how many of the stores called X are paused" is a real question, "how many are paused
+ *  out of the ones I am already looking at only the paused of" is not. */
+export function countStoreStates(rows: StoreRow[]): Record<StoreStateFilter, number> {
+  const counts = { all: rows.length, active: 0, paused: 0, closing: 0, closed: 0, blocked: 0 };
+  for (const r of rows) counts[storeLifecycle(r.store)]++;
+  return counts;
 }
 
 export function filterAndSortSellerCards(cards: SellerCardData[], query: AdminSellerQuery): SellerCardData[] {
@@ -273,7 +300,7 @@ export function filterAndSortStoreRows(rows: StoreRow[], query: AdminStoreQuery)
   const nq = normSearch(query.q);
   const filtered = rows.filter((r) => {
     if (nq && !storeSearchMatch(nq, r)) return false;
-    if (query.blockedOnly && !r.store.blocked) return false;
+    if (query.state !== 'all' && storeLifecycle(r.store) !== query.state) return false;
     return true;
   });
 
@@ -303,10 +330,21 @@ export function parseSellerQuery(sp: URLSearchParams): AdminSellerQuery {
 
 const VALID_STORE_SORT_COMBOS = new Set(['name:asc', 'name:desc', 'revenue:desc', 'revenue:asc', 'products:desc']);
 
+/** Every value the state filter accepts — the chip row's order, and the whitelist a hand-edited
+ *  query param is checked against. */
+export const STORE_STATE_FILTERS = ['all', 'active', 'paused', 'closing', 'closed', 'blocked'] as const;
+
 export function parseStoreQuery(sp: URLSearchParams): AdminStoreQuery {
   const requested = sp.get('stsort') ?? 'name:asc';
   const [sortCol, sortDir] = (VALID_STORE_SORT_COMBOS.has(requested) ? requested : 'name:asc').split(':') as [AdminStoreSortCol, AdminSortDir];
-  return { q: (sp.get('stq') ?? '').trim(), sortCol, sortDir, blockedOnly: sp.get('stblocked') === '1' };
+  // `stblocked=1` is the parameter this filter used when it was a yes/no toggle. Still honoured
+  // so an admin's existing bookmark keeps meaning what it meant, and so a link shared before this
+  // change doesn't silently widen to every store.
+  const requestedState = sp.get('ststate') ?? (sp.get('stblocked') === '1' ? 'blocked' : 'all');
+  const state = (STORE_STATE_FILTERS as readonly string[]).includes(requestedState)
+    ? requestedState as StoreStateFilter
+    : 'all';
+  return { q: (sp.get('stq') ?? '').trim(), sortCol, sortDir, state };
 }
 
 export function getStoresNeedingAttention(stores: Store[], sellers: Seller[], productsByStore: Map<string, StoreProduct[]>): AttentionEntry[] {
