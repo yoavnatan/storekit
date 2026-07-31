@@ -110,10 +110,62 @@ let lastChartWidth = 0;
 // renders 1:1 (viewBox px === CSS px) and the axis text is exact, never a
 // downscaled 640-unit chart squeezed into a narrower 2-column card. 0 while the
 // panel is still display:none (nothing to measure yet).
-function chartPixelWidth(): number {
-  const w = document.getElementById('perf-revenue-chart')?.clientWidth ?? 0;
+// Measured PER CHART, not once for all of them: the visits chart spans the full grid row while
+// revenue and orders are half-width, so one shared number would render its SVG at half size and
+// let the browser stretch it — the blurry axis text this measurement exists to avoid.
+function chartPixelWidth(id = 'perf-revenue-chart'): number {
+  const w = document.getElementById(id)?.clientWidth ?? 0;
   return w > 0 ? Math.round(w) : 640;
 }
+
+// Entrance animations are ARMED by a paint, not fired by it.
+//
+// Two things go wrong when a paint plays the animation immediately. A refresh restores
+// the seller's scroll position, so the panel is routinely laid out with half its charts
+// below the fold — those spent their entrance where nobody was looking, and scrolling
+// down reached a chart that was simply already there. And a CSS animation RESTARTS every
+// time its element goes display:none → visible, which is exactly what the tab strip does
+// to this panel: leaving the tab and coming back replayed the entrance, but only for the
+// charts whose last paint happened to carry the classes — the "sometimes it animates,
+// sometimes it doesn't" (owner, 2026-07-31).
+//
+// So: hold the animation at its first frame (.chart-hold, tokens.css), release it when
+// the element actually reaches the viewport, and strip the animation classes once they
+// have played. The DOM at rest then carries no animation at all, and there is nothing
+// left for a display flip to restart.
+function armEntrance(container: HTMLElement | null): void {
+  if (!container || container.querySelector('.animate-bar-grow, .animate-line-draw, .animate-top-bar-grow') === null) return;
+
+  // One listener per container, not per paint — the container survives every repaint.
+  if (!container.dataset.entranceWired) {
+    container.dataset.entranceWired = '1';
+    container.addEventListener('animationend', (e) => {
+      (e.target as Element).classList.remove('animate-bar-grow', 'animate-line-draw', 'animate-top-bar-grow');
+    });
+  }
+
+  const release = () => container.classList.remove('chart-hold');
+  if (!('IntersectionObserver' in window)) { release(); return; }
+  container.classList.add('chart-hold');
+  // Added synchronously in the same task as the innerHTML write, so no frame escapes
+  // un-held. threshold 0.15: a chart counts as seen once a sliver of it is, not only
+  // when the whole 200px box has cleared the fold.
+  const io = new IntersectionObserver((entries) => {
+    if (!entries.some((en) => en.isIntersecting)) return;
+    io.disconnect();
+    release();
+  }, { threshold: 0.15 });
+  io.observe(container);
+}
+
+// The server renders its charts deliberately STATIC (animate:false — dashboard.astro
+// and the two admin performance surfaces), because they get replaced within a frame or
+// two by this module's first paint at the real measured width. The entrance therefore
+// belongs to whichever paint first lands at that width: animating on the server meant
+// the swap either froze it partway or, once deferred until it finished, moved the whole
+// chart's geometry the instant it ended — a visible jump at the worst possible moment.
+// Every LATER repaint is a resize and must not replay it.
+let paintedOnce = false;
 
 // `animate` is true only for a genuine data change (range-picker fetch). A
 // resize-driven repaint (ResizeObserver) passes false: it re-renders solely to
@@ -123,13 +175,26 @@ function chartPixelWidth(): number {
 function paintCharts(summary: PerformanceSummary, i18n: Record<string, string>, animate = false): void {
   const width = chartPixelWidth();
   lastChartWidth = width;
+  paintedOnce = true;
   const revenueChart = document.getElementById('perf-revenue-chart');
+  const ordersChart = document.getElementById('perf-orders-chart');
   const visitorsChart = document.getElementById('perf-visitors-chart');
   if (revenueChart) {
     revenueChart.innerHTML = buildBarChartSvg(
       summary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })),
       { width, color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: i18n.perfNoData, rtl: chartRtl, animate }
     );
+    armEntrance(revenueChart);
+  }
+  // Orders per bucket — same axis as the revenue bars, the other unit (see dashboard.astro's
+  // perfOrdersChartSvg for why it is a line and why it shares the revenue accent). Absent on the
+  // admin surfaces, which render only the two original charts.
+  if (ordersChart) {
+    ordersChart.innerHTML = buildLineChartSvg(
+      summary.points.map((p) => ({ label: p.label, value: p.orders })),
+      { width: chartPixelWidth('perf-orders-chart'), color: 'var(--color-primary)', valueFormatter: (v) => String(v), emptyMessage: i18n.perfNoData, rtl: chartRtl, animate }
+    );
+    armEntrance(ordersChart);
   }
   if (visitorsChart) {
     visitorsChart.innerHTML = buildMultiLineChartSvg(
@@ -139,8 +204,9 @@ function paintCharts(summary: PerformanceSummary, i18n: Record<string, string>, 
         { points: summary.points.map((p) => ({ label: p.label, value: p.uniqueVisitors })), color: 'var(--color-accent)', fill: true, label: i18n.perfUniqueVisitors },
         { points: summary.points.map((p) => ({ label: p.label, value: p.views })), color: 'var(--color-muted)', dashed: true, label: i18n.perfVisitors },
       ],
-      { width, valueFormatter: (v) => String(v), emptyMessage: i18n.perfNoData, rtl: chartRtl, animate }
+      { width: chartPixelWidth('perf-visitors-chart'), valueFormatter: (v) => String(v), emptyMessage: i18n.perfNoData, rtl: chartRtl, animate }
     );
+    armEntrance(visitorsChart);
   }
 }
 
@@ -172,7 +238,9 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
   paintCharts(summary, i18n, true);
 
   const topProducts = document.getElementById('perf-top-products');
-  if (topProducts) renderTopProducts(topProducts, summary, i18n);
+  // Same treatment as the charts: these rows sit at the very bottom of the panel, so
+  // their bars are the ones most likely to grow while off-screen.
+  if (topProducts) { renderTopProducts(topProducts, summary, i18n); armEntrance(topProducts); }
 }
 
 // Delegated from the (persistent) chart container, not the individual
@@ -180,7 +248,7 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
 // every range-picker fetch, which would otherwise silently drop any
 // listener bound to a bar directly.
 function initChartTooltips(): void {
-  ['perf-revenue-chart', 'perf-visitors-chart', 'pperf-revenue-chart', 'pperf-views-chart'].forEach((id) => {
+  ['perf-revenue-chart', 'perf-orders-chart', 'perf-visitors-chart', 'pperf-revenue-chart', 'pperf-views-chart'].forEach((id) => {
     const container = document.getElementById(id);
     if (!container) return;
     // Tint the visits (line) tooltips to the chart's own accent colour; the
@@ -492,14 +560,30 @@ export function initPerformanceTab(): void {
   // may be display:none at load) and whenever it changes. The SSR charts use a
   // fixed 640-unit viewBox that gets downscaled into a narrow 2-column card,
   // shrinking the axis text; rendering at the measured width keeps it crisp.
+  // The top-products bars are the one entrance the SERVER renders live (the charts' SSR
+  // copy is static because the client repaints them anyway; these rows are never
+  // repainted, so taking their animation away would mean a no-JS page lost it for good).
+  // Arm that copy here, so it gets the same hold-until-visible + strip-once-played
+  // treatment as everything the client paints — without this it was the one thing on the
+  // panel that still replayed its animation on every tab switch.
+  armEntrance(document.getElementById('perf-top-products'));
+
   const revChart = document.getElementById('perf-revenue-chart');
   if (revChart && 'ResizeObserver' in window) {
     let rafId = 0;
     const ro = new ResizeObserver(() => {
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
+        // revChart.clientWidth, not chartPixelWidth() — the latter falls back to 640 for a
+        // hidden panel, which would read as a real measurement and paint (and animate) a
+        // chart nobody can see.
         const w = chartPixelWidth();
-        if (lastSummary && w > 0 && w !== lastChartWidth) paintCharts(lastSummary, i18n);
+        // `!paintedOnce` also fires the very first paint when the measured width happens to
+        // equal the SSR one, which the width comparison alone would skip — leaving the
+        // server's static chart on screen and the entrance never played.
+        if (lastSummary && revChart.clientWidth > 0 && (!paintedOnce || w !== lastChartWidth)) {
+          paintCharts(lastSummary, i18n, !paintedOnce);
+        }
         // Repaint the per-product charts too (if a product is showing) so they
         // stay crisp at the new width — no re-fetch, same as the store charts.
         if (lastProductSummary) paintProductCharts(lastProductSummary, false);

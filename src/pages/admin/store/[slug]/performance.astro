@@ -1,6 +1,7 @@
 ---
 export const prerender = false;
 import '../../../../styles/pages/admin.css';
+import AdminStoreStateBadge from '../../../../components/admin/AdminStoreStateBadge.astro';
 import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import PerfProductSection from '../../../../components/dashboard/PerfProductSection.astro';
 import { isAdminRequest } from '../../../../lib/admin-auth.js';
@@ -64,16 +65,19 @@ const summary = buildPerformanceSummary(storeOrders, store.slug, fromISO, toISO,
 const summaryJson = jsonForScript(summary);
 
 const isRtl = dir === 'rtl';
+// animate:false — performance.ts repaints these at the measured container width and its
+// first paint owns the entrance animation (see dashboard.astro for the full reasoning).
+const chartOpts = { emptyMessage: d.perfNoData, rtl: isRtl, animate: false };
 const revenueChartSvg = buildBarChartSvg(
   summary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })),
-  { color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: d.perfNoData, rtl: isRtl },
+  { ...chartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice },
 );
 const visitorsChartSvg = buildMultiLineChartSvg(
   [
     { points: summary.points.map((p) => ({ label: p.label, value: p.uniqueVisitors })), color: 'var(--color-accent)', fill: true, label: d.perfUniqueVisitors },
     { points: summary.points.map((p) => ({ label: p.label, value: p.views })), color: 'var(--color-muted)', dashed: true, label: d.perfVisitors },
   ],
-  { valueFormatter: (v) => String(v), emptyMessage: d.perfNoData, rtl: isRtl },
+  { ...chartOpts, valueFormatter: (v) => String(v) },
 );
 ---
 
@@ -89,7 +93,7 @@ const visitorsChartSvg = buildMultiLineChartSvg(
             </a>
             <h1 class="text-[1.3rem] font-bold m-0 leading-[1.2] text-[color:var(--color-text)]">
               ביצועים · {store.name}
-              {store.blocked && <span class="admin-badge admin-badge--failed">חסום</span>}
+              <AdminStoreStateBadge store={store} />
             </h1>
             <p class="muted text-[0.82rem] m-0 mt-1">{seller?.name ?? '—'} · {seller?.email ?? ''}</p>
           </div>

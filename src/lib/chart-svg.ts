@@ -31,10 +31,12 @@ export interface BarChartOptions {
   // RTL (Hebrew): y-axis gutter on the right instead of the left. The value
   // scale then sits on the reading-start side, matching the page direction.
   rtl?: boolean;
-  // Play the entrance animation (bars grow / line draws itself). Default true
-  // for the initial paint; the client passes false when re-rendering purely to
-  // match a new container width (ResizeObserver) so a resize doesn't replay the
-  // whole animation (performance.ts).
+  // Emit the entrance animation's classes (bars grow / line draws itself). Defaults
+  // true, but on the seller + admin performance surfaces every SSR call passes false
+  // and only the client's first paint passes true: the two render at different widths,
+  // so whoever draws the FINAL geometry has to be the one that animates (see the note
+  // above this file's <svg> tag, and performance.ts). A resize repaint passes false too,
+  // so dragging the window doesn't replay it.
   animate?: boolean;
 }
 
@@ -105,6 +107,55 @@ function yAxisSvg(max: number, width: number, chartH: number, rtl: boolean, gutt
   }).join('');
 }
 
+// Smooth curve through the points, as an SVG path `d` (monotone cubic /
+// Fritsch–Carlson). Each segment is a cubic bézier whose control points come
+// from slopes that are clamped so the curve can never overshoot a point's own
+// value: a plain Catmull-Rom spline bulges past a local min/max, which here
+// would dip the area fill below the zero baseline after a drop to 0 and invent
+// peaks the data doesn't have. Flat runs and direction changes get a zero
+// tangent, so the line stays soft but always passes exactly through the dots.
+function smoothPathD(pts: Array<{ x: number; y: number }>): string {
+  const n = pts.length;
+  if (n < 2) return '';
+  const start = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+  if (n === 2) return `${start} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`;
+
+  const dx: number[] = [];
+  const slope: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(pts[i + 1].x - pts[i].x);
+    slope.push(dx[i] === 0 ? 0 : (pts[i + 1].y - pts[i].y) / dx[i]);
+  }
+  // Initial tangents: the average of the two neighbouring slopes, flattened to 0
+  // at a direction change (a peak/valley) so the curve turns there instead of
+  // shooting past the point.
+  const m = [slope[0]];
+  for (let i = 1; i < n - 1; i++) m.push(slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2);
+  m.push(slope[n - 2]);
+  // Fritsch–Carlson clamp: keep each tangent pair inside the circle of radius 3
+  // around its segment slope — the condition that guarantees monotonicity.
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / slope[i];
+    const b = m[i + 1] / slope[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const t = 3 / Math.sqrt(s);
+      m[i] = t * a * slope[i];
+      m[i + 1] = t * b * slope[i];
+    }
+  }
+
+  const segs = [];
+  for (let i = 0; i < n - 1; i++) {
+    const third = dx[i] / 3;
+    const c1x = pts[i].x + third, c1y = pts[i].y + m[i] * third;
+    const c2x = pts[i + 1].x - third, c2y = pts[i + 1].y - m[i + 1] * third;
+    segs.push(`C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${pts[i + 1].x.toFixed(1)},${pts[i + 1].y.toFixed(1)}`);
+  }
+  return start + segs.join(' ');
+}
+
 export function buildBarChartSvg(points: BarChartPoint[], opts: BarChartOptions = {}): string {
   const width = opts.width ?? 640;
   const height = opts.height ?? 200;
@@ -148,18 +199,28 @@ export function buildBarChartSvg(points: BarChartPoint[], opts: BarChartOptions 
   }).join('');
 
   // preserveAspectRatio="none": stretch the viewBox to fill the container box
-  // exactly (no letterbox/offset). Height is fixed (200) so the vertical scale
-  // is always 1 — axis text keeps its full pixel height; only horizontal metrics
-  // stretch, and rendering at the measured container width (performance.ts)
-  // keeps that ratio ~1 so there's no visible distortion.
+  // exactly (no letterbox/offset). Height is fixed so the vertical scale is always
+  // 1 — axis text keeps its full pixel height; only horizontal metrics stretch, and
+  // rendering at the measured container width (performance.ts) keeps that ratio ~1
+  // so there's no visible distortion.
+  //
+  // `height:${height}px` as an inline STYLE, not just the height attribute: reset.css
+  // sets `svg { height: auto }`, which outranks the attribute and derives the rendered
+  // height from the viewBox ratio instead — so the SSR chart (fixed 640 viewBox in a
+  // 597px card) came out 186.6px tall and the client's repaint at the measured width
+  // came out 200px, and every chart visibly grew on the handoff. It also silently
+  // squashed the axis text by the same 6%, which is exactly what the paragraph above
+  // says cannot happen.
+  //
   // style="direction:ltr" (not just the dir attribute, which SVG text ignores):
   // forces the axis text-anchors to resolve start=left / end=right even on an
   // RTL page, so the edge date/number labels can't bidi-flip and clip.
-  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr">${axis}${bars}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr;height:${height}px">${axis}${bars}</svg>`;
 }
 
 // Line variant of buildBarChartSvg (same options + tooltip contract) — a soft
-// area fill under a stroked polyline with a dot per point. Per-point full-height
+// area fill under a stroked smooth curve (smoothPathD) with a dot per point.
+// Per-point full-height
 // transparent hit rects carry class="chart-bar" + data-label/data-value so the
 // EXISTING initChartTooltips() wiring (performance.ts) lights up on hover with
 // no extra code. The line draws itself in on render (animate-line-draw).
@@ -193,13 +254,15 @@ export function buildLineChartSvg(points: BarChartPoint[], opts: BarChartOptions
     return { x, y };
   });
 
-  const linePts = xy.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ');
-  // Single point → no polyline to draw; fall back to just the dot + hit area.
+  const curve = smoothPathD(xy);
+  // Single point → no line to draw; fall back to just the dot + hit area. The
+  // area reuses the exact same curve, then closes down to the baseline, so fill
+  // and stroke can never drift apart.
   const areaPath = n > 1
-    ? `<path d="M${xy[0].x.toFixed(1)},${baseline.toFixed(1)} L${linePts.replace(/ /g, ' L')} L${xy[n - 1].x.toFixed(1)},${baseline.toFixed(1)} Z" fill="${color}" fill-opacity="0.08" stroke="none"/>`
+    ? `<path d="${curve} L${xy[n - 1].x.toFixed(1)},${baseline.toFixed(1)} L${xy[0].x.toFixed(1)},${baseline.toFixed(1)} Z" fill="${color}" fill-opacity="0.08" stroke="none"/>`
     : '';
   const line = n > 1
-    ? `<polyline class="chart-line${animate ? ' animate-line-draw' : ''}" pathLength="1" points="${linePts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
+    ? `<path class="chart-line${animate ? ' animate-line-draw' : ''}" pathLength="1" d="${curve}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
     : '';
 
   // One group per point: a full-height transparent hit rect (tooltip target,
@@ -224,7 +287,7 @@ export function buildLineChartSvg(points: BarChartPoint[], opts: BarChartOptions
   // Fills the container width exactly; the fixed height keeps text at full pixel
   // height; the explicit ltr direction keeps the axis labels from bidi-flipping
   // (and clipping) on an RTL page.
-  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr">${axis}${areaPath}${line}${pointGroups}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr;height:${height}px">${axis}${areaPath}${line}${pointGroups}</svg>`;
 }
 
 export interface LineSeries {
@@ -271,9 +334,9 @@ export function buildMultiLineChartSvg(series: LineSeries[], opts: BarChartOptio
   // Paint reversed so series[0] (the primary) ends up visually on top.
   const layers = [...clean].reverse().map((s) => {
     const xy = s.points.map((p, i) => ({ x: xOf(i), y: yOf(p.value) }));
-    const linePts = xy.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ');
+    const curve = smoothPathD(xy);
     const area = s.fill && n > 1
-      ? `<path d="M${xy[0].x.toFixed(1)},${baseline.toFixed(1)} L${linePts.replace(/ /g, ' L')} L${xy[n - 1].x.toFixed(1)},${baseline.toFixed(1)} Z" fill="${s.color}" fill-opacity="0.08" stroke="none"/>`
+      ? `<path d="${curve} L${xy[n - 1].x.toFixed(1)},${baseline.toFixed(1)} L${xy[0].x.toFixed(1)},${baseline.toFixed(1)} Z" fill="${s.color}" fill-opacity="0.08" stroke="none"/>`
       : '';
     // A dashed secondary skips the .chart-line class (whose CSS forces
     // stroke-dasharray:1 for the draw animation) so its inline dash survives —
@@ -284,7 +347,7 @@ export function buildMultiLineChartSvg(series: LineSeries[], opts: BarChartOptio
     const cls = s.dashed ? '' : `chart-line${animate ? ' animate-line-draw' : ''}`;
     const dash = s.dashed ? ' stroke-dasharray="4 3" stroke-opacity="0.75"' : ' pathLength="1"';
     const line = n > 1
-      ? `<polyline class="${cls}"${dash} points="${linePts}" fill="none" stroke="${s.color}" stroke-width="${s.dashed ? 1.5 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`
+      ? `<path class="${cls}"${dash} d="${curve}" fill="none" stroke="${s.color}" stroke-width="${s.dashed ? 1.5 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`
       : '';
     return area + line;
   }).join('');
@@ -304,7 +367,7 @@ export function buildMultiLineChartSvg(series: LineSeries[], opts: BarChartOptio
     return `<g class="chart-point"><rect class="chart-bar" x="${rx.toFixed(1)}" y="${AXIS.padTop}" width="${rw.toFixed(1)}" height="${chartH.toFixed(1)}" fill="transparent" data-label="${escXml(primary.points[i].label)}" data-value="${escXml(combined)}"></rect>${dots}${label}</g>`;
   }).join('');
 
-  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr">${axis}${layers}${pointGroups}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="${escXml(opts.emptyMessage ?? 'chart')}" preserveAspectRatio="none" style="direction:ltr;height:${height}px">${axis}${layers}${pointGroups}</svg>`;
 }
 
 export interface PieSlice { label: string; value: number; color: string }

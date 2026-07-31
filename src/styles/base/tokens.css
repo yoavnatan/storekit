@@ -45,6 +45,25 @@
      the name the codebase already uses everywhere: var(--radius). */
   --radius: var(--radius-md);
 
+  /* "Tactile depth" — the site's depth language since 2026-07-07 (product / home / store /
+     dashboard / checkout / cart / quick-view). Which token a surface takes is NOT a taste call;
+     it follows from what kind of surface it is (moved here from AI_INSTRUCTIONS.md 2026-07-31,
+     so the rule sits on the tokens it hands out):
+       • Lone / hero surface (a single image wrap, a detail card):
+         border 1.5px + --shadow-card, going to --shadow-card-hover on hover.
+       • Secondary / repeated card (a grid or list item):
+         lighter border 1px + --shadow-xs → --shadow-card-hover on hover. shadow-card at rest
+         reads heavy once it is multiplied across a grid.
+       • Full-width list row (an order card, a table row): NO shadow on hover — tint the
+         border-color instead. The shadow's blur/spread is calibrated for spaced grid cards and
+         reads excessive flush against its neighbours.
+     Qty steppers stay flat always (border 1px, no inset shadow, no fill — a filled pill read as
+     disabled). No translateY hover-lift on a card whose image already hover-zooms; the ONE
+     exception is the homepage product card, which keeps translateY(-5px) deliberately as a felt
+     differentiator from the in-store product card. An image container that may hold a
+     background-removed (transparent) photo takes background: var(--color-surface), never
+     --color-bg and never none, plus a border-bottom between image and body when both are white.
+     Restrained on purpose: not neumorphism, not brutalist neon borders. */
   --shadow-xs: 0 1px 2px rgba(23, 27, 38, 0.06);
   --shadow-card: 0 1px 2px rgba(23, 27, 38, 0.04), 0 10px 24px -8px rgba(23, 27, 38, 0.14);
   --shadow-card-hover: 0 2px 4px rgba(23, 27, 38, 0.05), 0 16px 36px -8px rgba(23, 27, 38, 0.18);
@@ -136,7 +155,7 @@
   from { opacity: 0; transform: rotate(-18deg) scale(0.9); }
   to   { opacity: 1; transform: none; }
 }
-/* Visitors line chart (chart-svg.ts buildLineChartSvg) — the polyline draws
+/* Visitors line chart (chart-svg.ts buildLineChartSvg) — the curve path draws
    itself left-to-right. pathLength="1" normalises the length so one keyframe
    works for any point count; dasharray:1 (full length) stays after so the line
    is solid at rest. */
@@ -145,6 +164,14 @@
   from { stroke-dashoffset: 1; }
   to   { stroke-dashoffset: 0; }
 }
+/* A performance chart / top-products list whose entrance is HELD because it was painted
+   below the fold — performance.ts adds this and removes it when the container reaches the
+   viewport (IntersectionObserver). paused, not a delay: the hold has no known length, it
+   lasts until the seller scrolls there. Only ever set by JS, so a no-JS page can never end
+   up holding an animation forever. */
+.chart-hold .animate-bar-grow,
+.chart-hold .animate-line-draw,
+.chart-hold .animate-top-bar-grow { animation-play-state: paused; }
 /* Line-chart point highlight — when a point's column is hovered (the same
    column whose data is in the tooltip), its dot grows a touch and shifts a
    shade (a color-agnostic brightness change, so it works for any line colour). */

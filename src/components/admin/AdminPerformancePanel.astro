@@ -1,5 +1,6 @@
 ---
 import { formatPrice } from '../../config/store.config.js';
+import AdminStoreStateBadge from './AdminStoreStateBadge.astro';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
 import type { PerformanceSummary } from '../../lib/seller-performance.js';
 import type { StoreRowsPage } from '../../lib/platform-performance.js';
@@ -31,14 +32,17 @@ const stores = storePage.rows;
 // a product named `</script>…` can't break out (same guard as the per-store page).
 const summaryJson = jsonForScript(summary);
 
+// animate:false — performance.ts repaints these at the measured container width and its
+// first paint owns the entrance animation (see dashboard.astro for the full reasoning).
+const chartOpts = { emptyMessage: d.perfNoData, rtl: isRtl, animate: false };
 const revenueChartSvg = buildBarChartSvg(
   summary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })),
-  { color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: d.perfNoData, rtl: isRtl },
+  { ...chartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice },
 );
 const visitorsChartSvg = buildMultiLineChartSvg([
   { points: summary.points.map((p) => ({ label: p.label, value: p.uniqueVisitors })), color: 'var(--color-accent)', fill: true, label: d.perfUniqueVisitors },
   { points: summary.points.map((p) => ({ label: p.label, value: p.views })), color: 'var(--color-muted)', dashed: true, label: d.perfVisitors },
-], { emptyMessage: d.perfNoData, rtl: isRtl });
+], chartOpts);
 
 const cols = [
   { col: 'revenue', label: d.perfRevenue },
@@ -264,7 +268,7 @@ const pageLabel = d.perfStorePageOf.replace('{page}', String(storePage.page)).re
           <tr>
             <td>
               <a href={`/admin/store/${s.slug}/performance?from=performance`} class="admin-link font-medium">{s.name}</a>
-              {s.blocked && <span class="admin-badge admin-badge--failed" style="margin-inline-start:0.4rem">חסום</span>}
+              <AdminStoreStateBadge row={s} class="ms-[0.4rem]" />
               {!s.active && <span class="block text-[0.72rem] [color:var(--color-muted)]">{d.perfStoreNoActivity}</span>}
             </td>
             <td>{formatPrice(s.revenue)}</td>
