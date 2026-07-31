@@ -4,6 +4,7 @@ import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg, buildDonut
 import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/seller-performance.js';
 import { showTooltip, showTooltipAtPoint, hideTooltip, mountTooltipIn, initInfoTooltips } from '../tooltip.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { showErrorToast } from '../../lib/toast.js';
 import { businessDayISO, businessMonthStartISO, calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
 import { addDaysISO } from '../../lib/date-range.js';
 
@@ -210,7 +211,6 @@ function paintCharts(summary: PerformanceSummary, i18n: Record<string, string>, 
   }
 }
 
-function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>): void {
 /**
  * Blank every figure in the panel back to its placeholder while a new range is
  * being fetched.
@@ -257,6 +257,7 @@ function showRangeUnavailable(): void {
   document.getElementById('perf-top-products')?.removeAttribute('aria-busy');
 }
 
+function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>): void {
   lastSummary = summary;
   const revenueEl = document.getElementById('perf-kpi-revenue');
   const ordersEl = document.getElementById('perf-kpi-orders');
@@ -287,7 +288,6 @@ function showRangeUnavailable(): void {
   // Same treatment as the charts: these rows sit at the very bottom of the panel, so
   // their bars are the ones most likely to grow while off-screen.
   if (topProducts) { renderTopProducts(topProducts, summary, i18n); armEntrance(topProducts); }
-}
 
   // Every skeleton above has just been overwritten with a real value, so the
   // panel is no longer busy. Paired with the aria-busy the server renders when
@@ -295,6 +295,7 @@ function showRangeUnavailable(): void {
   // stay "busy" forever and a screen reader would never announce the result.
   document.getElementById('perf-kpis')?.removeAttribute('aria-busy');
   topProducts?.removeAttribute('aria-busy');
+}
 
 // Delegated from the (persistent) chart container, not the individual
 // <rect> bars — renderSummary() replaces the SVG's innerHTML wholesale on
@@ -472,6 +473,29 @@ export function initPerformanceTab(): void {
   const trigger = document.getElementById('perf-range-trigger');
   const label = document.getElementById('perf-range-label');
   const i18n = getI18n();
+
+  // The range the figures currently ON SCREEN belong to. Seeded from what the
+  // server rendered and re-captured only when a load actually rendered, so a
+  // failed switch can put the picker back where the numbers are. Without it the
+  // trigger names the range the seller just chose while every figure below it
+  // is still the previous one's — the same misreading the in-flight
+  // placeholders exist to prevent, only permanent and silent.
+  let shownRange = {
+    preset: picker.dataset.activePreset ?? '',
+    label: label?.textContent ?? '',
+    from: fromInput?.value ?? '',
+    to: toInput?.value ?? '',
+  };
+  function captureShownRange(from: string, to: string): void {
+    shownRange = { preset: picker!.dataset.activePreset ?? '', label: label?.textContent ?? '', from, to };
+  }
+  function restoreShownRange(): void {
+    if (shownRange.preset) picker!.dataset.activePreset = shownRange.preset;
+    else delete picker!.dataset.activePreset;
+    if (label) label.textContent = shownRange.label;
+    if (fromInput) fromInput.value = shownRange.from;
+    if (toInput) toInput.value = shownRange.to;
+  }
 
   // Direction for the y-axis side (right in Hebrew). Read from the charts grid's
   // data attribute (server-rendered from the request lang), fall back to <html>.
@@ -665,6 +689,15 @@ export function initPerformanceTab(): void {
   async function loadRange(from: string, to: string): Promise<void> {
     if (loading) return;
     loading = true;
+    // Every figure on screen belongs to the range the seller just left. Leaving
+    // them up while the new one is in flight presents last month's revenue as
+    // this month's — the seller has no way to tell which one they are reading
+    // (owner, 2026-07-31: "רואים עדיין את הנתונים של הזמן הקודם"). So blank them
+    // to placeholders, but only if the fetch is still running at 180ms: on a
+    // fast response the swap would be a flicker and nothing else, the same
+    // threshold the breakdown modal above already uses.
+    let rendered = false;
+    const pendingTimer = window.setTimeout(showRangePending, 180);
     try {
       // A surrounding page may pin extra query params onto every range fetch
       // (the admin tab keeps its store-table search/sort/page here) so a range
@@ -674,13 +707,42 @@ export function initPerformanceTab(): void {
       const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}&from=${from}&to=${to}${extra}`);
       if (!res.ok) return;
       const data = await res.json() as { ok?: boolean; summary?: PerformanceSummary };
-      if (data.summary) renderSummary(data.summary, i18n);
+      if (data.summary) { renderSummary(data.summary, i18n); rendered = true; }
       // Let a surrounding page augment the same fetch with its own extra data
       // (the admin platform tab's per-store breakdown + GMV split card read
       // `stores`/`totalStores` off this response). Harmless where unlistened.
       document.dispatchEvent(new CustomEvent('perf:loaded', { detail: data }));
-    } catch { /* keep last-known data on a transient network failure */ }
-    finally { loading = false; }
+    } catch { /* handled by the restore below, same as any other failed path */ }
+    finally {
+      window.clearTimeout(pendingTimer);
+      // Released FIRST: everything below paints, and a throw in any of it would
+      // otherwise leave the guard latched and every later range switch a no-op.
+      loading = false;
+      if (rendered) captureShownRange(from, to);
+      else {
+        // Nothing replaced the figures: a non-2xx status, a body with no
+        // summary, or a thrown fetch. All three leave a shimmer up forever
+        // unless something puts figures back — and one `catch` covers only the
+        // third, which is why this sits in `finally` and keys off `rendered`.
+        // Deliberately NOT gated on whether the 180ms placeholders were painted:
+        // a failure that comes back faster than that leaves the SERVER-rendered
+        // skeletons on screen instead, and those shimmer just as forever.
+        if (lastSummary) {
+          // Last-known figures, and the picker put back to the range they are
+          // actually from. Restoring the numbers without the label is what makes
+          // last month's revenue read as this month's.
+          renderSummary(lastSummary, i18n);
+          restoreShownRange();
+        } else {
+          // Nothing to fall back to (the very first load failed). Say so rather
+          // than animate a placeholder that will never be filled.
+          showRangeUnavailable();
+        }
+        // Always out loud. A range switch that silently does nothing reads as a
+        // dead control, and a silent revert reads as never having been clicked.
+        showErrorToast(i18n.perfErrorLoading ?? 'Error loading data.');
+      }
+    }
   }
 
   function applyPreset(preset: Preset): void {
