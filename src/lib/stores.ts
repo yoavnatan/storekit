@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { filterShopperStores, isDemoStore } from './demo-stores.js';
 import { isStoreReachable, isStoreDiscoverable } from './store-status.js';
 import type { StoreSale } from './discounts.js';
+import { trimDashes } from './url-base.js';
 
 const STORES_PATH = path.join(process.cwd(), 'data/stores.json');
 
@@ -151,11 +152,14 @@ function writeStores(stores: Store[]): void {
  *  which is exactly why the store-creation form asks for a separate latin URL name instead of
  *  deriving the slug from a Hebrew store name (which used to yield junk like "--"). */
 export function normalizeSlug(input: string): string {
-  return input.toLowerCase().trim()
+  const collapsed = input.toLowerCase().trim()
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/-+/g, '-');
+  // Edge trim via url-base.ts — the hand-rolled `^-+|-+$` here was quadratic (4.7s at 64k dashes)
+  // on a slug the seller POSTs, and stayed safe only because the collapse above happened to run
+  // first. See trimDashes' header.
+  return trimDashes(collapsed);
 }
 
 /** Top-level path segments a store slug must NEVER equal — every one is a real platform route

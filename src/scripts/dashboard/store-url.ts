@@ -4,6 +4,8 @@
 // every slug-derived display (top address, view-store link, custom-domain fixed address, feed URLs)
 // updates at once — a deliberate exception to in-place updates, since the slug is the store identity.
 
+import { trimDashes } from '../../lib/url-base.js';
+
 interface UrlResponse { ok: boolean; error?: string; slug?: string }
 
 function getI18n(): Record<string, string> {
@@ -20,7 +22,10 @@ function errMsg(i: Record<string, string>, error?: string): string {
 }
 
 const clean = (v: string) => v.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
-const trimEdges = (v: string) => v.replace(/^-+|-+$/g, '');
+// Runs on every keystroke against the raw input, so the quadratic `^-+|-+$` form was the one place
+// this class had no accidental protection: a pasted run of dashes froze the seller's tab for
+// seconds per character. url-base.ts#trimDashes scans instead. See its header.
+const trimEdges = trimDashes;
 
 export function initStoreUrl(): void {
   const root = document.getElementById('store-url');

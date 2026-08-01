@@ -60,6 +60,7 @@ const host = new URL(platformConfig.url).hostname;
   // This card renders on its own page (no store yet), so the dashboard's own init
   // never runs here — the picker has to be armed locally.
   import { initAllStoreCategoryPickers } from '../../scripts/store-category-picker.js';
+  import { trimDashes } from '../../lib/url-base.js';
   initAllStoreCategoryPickers();
 
   // Live-sanitize the store-URL field to a valid slug + preview the full address as the seller
@@ -73,7 +74,9 @@ const host = new URL(platformConfig.url).hostname;
       const pos = slugInput.selectionStart;
       slugInput.value = clean(slugInput.value);
       try { slugInput.setSelectionRange(pos, pos); } catch { /* ignore */ }
-      if (preview) preview.textContent = `${host}/${slugInput.value.replace(/^-+|-+$/g, '') || 'my-store'}`;
+      // trimDashes, not `^-+|-+$` — this runs per keystroke on the raw field, where that form is
+      // quadratic and a pasted run of dashes freezes the tab (url-base.ts#trimDashes).
+      if (preview) preview.textContent = `${host}/${trimDashes(slugInput.value) || 'my-store'}`;
     };
     slugInput.addEventListener('input', update);
   }
