@@ -859,6 +859,11 @@ export const translations = {
       adConfirmDeleteMsg: 'הקמפיין ייעצר מיד ויעבור ל״קמפיינים קודמים״ עם המספרים שצבר. משלמים רק על מה שכבר רץ בפועל — למשל אם בחרת שבוע וביטלת אחרי יומיים, תחויב רק על היומיים. שאר התקציב לא ייגבה, ומכאן לא יירד עוד כסף.',
       ordersTitle: 'הזמנות',
       noOrders: 'עדיין לא נכנסו הזמנות.',
+      // Shown when orders exist but none match the toolbar's search/filter — distinct from
+      // noOrders above, which means the store has never had one.
+      ordersFilterEmpty: 'אין הזמנות שתואמות לחיפוש או לסינון.',
+      messagesFilterEmpty: 'אין הודעות שתואמות לחיפוש או לסינון.',
+      messagesNoneYet: 'אין הודעות עדיין.',
       orderNum: 'הזמנה מס׳',
       orderDate: 'תאריך',
       orderBuyer: 'לקוח',
@@ -1193,6 +1198,9 @@ export const translations = {
       shippingDelivered: 'נמסר',
       shippingCancelled: 'בוטלה',
       freeShipping: 'חינם',
+      // A discount the seller gave on this order after it was placed — shown so the store's
+      // total reads as items + משלוח − הנחה instead of a number that just looks too low.
+      orderDiscount: 'הנחה',
       trackingNumber: 'מספר מעקב',
       menuBtn: 'פתח תפריט',
       closeDrawer: 'סגור תפריט',
@@ -2057,6 +2065,9 @@ export const translations = {
       adConfirmDeleteMsg: 'The campaign stops immediately and moves to "Past campaigns" with the numbers it accrued. You only pay for what actually ran — e.g. if you picked a week and cancel after two days, you\'re charged only for those two days. The rest of the budget won\'t be charged, and no more money comes out from here on.',
       ordersTitle: 'Orders',
       noOrders: 'No orders yet.',
+      ordersFilterEmpty: 'No orders match your search or filters.',
+      messagesFilterEmpty: 'No messages match your search or filters.',
+      messagesNoneYet: 'No messages yet.',
       orderNum: 'Order #',
       orderDate: 'Date',
       orderBuyer: 'Customer',
@@ -2368,6 +2379,7 @@ export const translations = {
       shippingDelivered: 'Delivered',
       shippingCancelled: 'Cancelled',
       freeShipping: 'Free',
+      orderDiscount: 'Discount',
       trackingNumber: 'Tracking number',
       menuBtn: 'Open menu',
       closeDrawer: 'Close menu',

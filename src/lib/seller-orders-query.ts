@@ -1,6 +1,7 @@
 import type { Order } from './orders.js';
 import { SHIPPING_STATUS_RULES, type ShippingStatus } from './order-status-rules.js';
 import { decodeList } from './admin-nav.js';
+import { storeSliceTotal } from './order-totals.js';
 
 // Server-side counterpart of the seller dashboard's Orders tab toolbar
 // (src/pages/seller/dashboard.astro's inline script) — pagination means the
@@ -20,12 +21,21 @@ export type SellerOrderSortDir = 'asc' | 'desc';
 const URGENCY_GROUP: Record<string, number> = {
   pending: 0, processing: 0, ready: 0, shipped: 1, delivered: 2, cancelled: 3,
 };
+/** The statuses the seller's Orders filter menu can express, in workflow order — the one
+ *  source both this module and the client toolbar (scripts/dashboard/orders.ts) read.
+ *  'ready' (ממתין לאיסוף) is deliberately absent: no seller can set it today, and it returns
+ *  as a carrier-driven state once Sendit is wired (GO_LIVE §5) — same omission as the admin
+ *  orders filter. A status the menu cannot show must not sit in the default selection either,
+ *  or the first filter change silently drops rows the page had already shown. */
+export const ORDER_FILTER_STATUSES: string[] = (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[])
+  .filter((s) => s !== 'ready');
+
 /** "Active" = the order is still live: neither delivered nor terminal. Derived from
  *  the status table (order-status-rules.ts) rather than re-listed, so a status added
  *  there is filterable here on the same commit instead of being silently absent from
  *  the seller's default view. */
-export const ORDER_ACTIVE_STATUSES: string[] = (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[])
-  .filter((s) => s !== 'delivered' && !SHIPPING_STATUS_RULES[s].terminal);
+export const ORDER_ACTIVE_STATUSES: string[] = ORDER_FILTER_STATUSES
+  .filter((s) => s !== 'delivered' && !SHIPPING_STATUS_RULES[s as ShippingStatus].terminal);
 
 export interface SellerOrderQuery {
   q: string;
@@ -53,8 +63,9 @@ export function parseSellerOrderQuery(sp: URLSearchParams): SellerOrderQuery {
 }
 
 function orderAmount(o: Order, storeSlug: string): number {
-  const sub = o.storeSubtotals[storeSlug];
-  return sub ? sub.subtotal + sub.shipping : 0;
+  // Same total the card shows (order-totals.ts) — sorting by a pre-discount figure put a
+  // discounted order above one that actually took more money.
+  return storeSliceTotal(o.storeSubtotals[storeSlug]);
 }
 
 function orderSearchHaystack(o: Order): string {

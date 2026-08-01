@@ -4,6 +4,9 @@ import { CANCELLABLE_FROM } from '../../lib/order-status-rules.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { applyStockAttentionFilter } from './products.js';
 import { registerPanelRefresh } from './tab-sync.js';
+import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
+import { storeSliceTotal } from '../../lib/order-totals.js';
+import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { cdnThumb } from '../../lib/cdn.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
 import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
@@ -453,13 +456,15 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // (ORDER_FILTER_COLUMNS today only has 'status', but the mechanism is
   // ready for more columns later without restructuring). Default selection
   // replicates the old "active" preset.
-  // 'ready' (ממתין לאיסוף) is intentionally omitted from the filter — no seller can
-  // set it today; it returns as a carrier-driven state once Sendit is wired
-  // (GO_LIVE §5). Same omission as the admin orders filter, keeping the filter in
-  // sync with the states orders actually reach. (OWES_ACTION still lists it so a
-  // future 'ready' order stays cancellable — that's business logic, not the UI.)
-  const ACTIVE_STATUSES = new Set(['pending', 'processing', 'shipped']);
-  const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+  // Both lists come from seller-orders-query.ts, which is also what the SSR page and
+  // /api/seller/orders parse against — a second copy here drifted once already: the
+  // server's default view included 'ready' while this file's did not, so the first
+  // filter change would have silently dropped rows the page had shown. ('ready' is
+  // omitted from the menu itself — no seller can set it until Sendit is wired,
+  // GO_LIVE §5. OWES_ACTION still lists it so a future 'ready' order stays
+  // cancellable — that's business logic, not the UI.)
+  const ACTIVE_STATUSES = new Set(ORDER_ACTIVE_STATUSES);
+  const ORDER_STATUSES = ORDER_FILTER_STATUSES;
   const ORDER_FILTER_COLUMNS = ['status']; // add more column keys here (+ a case in getOrderFilterValue) if warranted later
   const ordersFilters = new Map<string, Set<string>>([['status', new Set(ACTIVE_STATUSES)]]);
   let ordersSortCol: 'date' | 'amount' | 'urgency' = 'date';
@@ -490,7 +495,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     const color    = colorMap[o.shippingStatus] ?? '#888';
     const label    = labelMap[o.shippingStatus] ?? o.shippingStatus;
     const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
-    const total    = storeSub.subtotal + storeSub.shipping;
+    const total    = storeSliceTotal(storeSub);
     const storeItems = o.items.filter(i => i.storeSlug === storeSlugForOrders);
     const isNew    = o.shippingStatus === 'pending';
     const notes    = (o.notes ?? []).filter(Boolean);
@@ -566,6 +571,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           <ul class="order-card__items list-none p-0 flex flex-col gap-2">${itemsHtml}</ul>
           <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
             <span>${esc(tt('orderShipping'))}: ${storeSub.shipping === 0 ? esc(tt('orderShippingFree')) : fmtPrice(storeSub.shipping)}</span>
+            ${storeSub.discount?.applied ? `<span class="text-[color:var(--color-success)]">${esc(tt('orderEditDiscount'))}: −${fmtPrice(storeSub.discount.applied)}</span>` : ''}
             <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtPrice(total)}</strong>
           </div>
         </div>
@@ -850,7 +856,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       if (!btn || btn.disabled) return;
       ordersCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
       applyOrdersPagination();
-      document.getElementById('orders-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const list = document.getElementById('orders-list');
+      if (list) scrollBelowPinnedChrome(list);
     });
   }
   initOrdersPagination();
@@ -909,7 +916,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             title: tt('orderNewToastTitle'),
             body: tt('orderNewToastBody')
               .replace('{name}', o.buyerName)
-              .replace('{amount}', fmtPrice(storeSub.subtotal + storeSub.shipping)),
+              .replace('{amount}', fmtPrice(storeSliceTotal(storeSub))),
             key: o.id,
             href: '/seller/dashboard?panel=orders',
           } }));
@@ -1167,13 +1174,13 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         const storeSub = savedOrder.storeSubtotals?.[storeSlug] as { subtotal: number; shipping: number; discount?: { type: string; value: number; applied: number } } | undefined;
         if (storeSub) {
           const discApplied = storeSub.discount?.applied ?? 0;
-          const total = storeSub.subtotal + storeSub.shipping - discApplied;
+          const total = storeSliceTotal(storeSub);
           const subtotalsEl = card.querySelector<HTMLElement>('.order-card__subtotals');
           if (subtotalsEl) {
             subtotalsEl.innerHTML = `
-              <span>${esc(tt('orderShipping'))}: ${storeSub.shipping === 0 ? esc(tt('orderShippingFree')) : `${storeSub.shipping.toFixed(2)} ₪`}</span>
-              ${discApplied > 0 ? `<span class="text-[color:var(--color-success)]">${escEom(tt('orderEditDiscount'))}: −${discApplied.toFixed(2)} ₪</span>` : ''}
-              <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${total.toFixed(2)} ₪</strong>`;
+              <span>${esc(tt('orderShipping'))}: ${storeSub.shipping === 0 ? esc(tt('orderShippingFree')) : fmtPrice(storeSub.shipping)}</span>
+              ${discApplied > 0 ? `<span class="text-[color:var(--color-success)]">${escEom(tt('orderEditDiscount'))}: −${fmtPrice(discApplied)}</span>` : ''}
+              <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtPrice(total)}</strong>`;
           }
           const amountEl = card.querySelector('.order-card__amount');
           if (amountEl) amountEl.textContent = `${total.toFixed(2)} ₪`;

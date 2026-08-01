@@ -8,6 +8,7 @@ import { buildPlatformPerformance } from '../src/lib/platform-performance.js';
 import { getPlatformOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
 import { businessDayISO, businessMonthKey, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
 import { roundMoney } from '../src/lib/money.js';
+import { storeSliceTotal } from '../src/lib/order-totals.js';
 
 /**
  * INVARIANTS — statements that must hold for EVERY input, not examples of bugs
@@ -164,6 +165,29 @@ describe('every order closes on its own arithmetic', () => {
       discount: { type: 'percent', value: 10, applied: 12.01 },
     }), 'fixture');
   });
+});
+
+// The number the seller reads on an order card, and the number that same order contributes to
+// their revenue, are two different questions (revenue excludes the carrier's fee) — but they are
+// answered from the same row, so they must differ by EXACTLY the shipping. They didn't: the card
+// dropped the seller's discount entirely, so a discounted order displayed more than it earned.
+describe('an order card agrees with the revenue that order produces', () => {
+  const cases: [string, Parameters<typeof makeOrder>[1]][] = [
+    ['no discount', { items: [{ productId: 'p1', price: 19.99, qty: 3 }], shipping: 25 }],
+    ['percent discount', { items: [{ productId: 'p1', price: 33.33, qty: 3 }], shipping: 19.9, discount: { type: 'percent', value: 10, applied: 10 } }],
+    ['free shipping', { items: [{ productId: 'p1', price: 50, qty: 1 }], shipping: 0, discount: { type: 'amount', value: 5, applied: 5 } }],
+  ];
+  for (const [name, spec] of cases) {
+    it(`card total − shipping = the store's net revenue (${name})`, () => {
+      const order = makeOrder('inv', spec);
+      const sub = order.storeSubtotals[STORE]!;
+      expectSameMoney(
+        roundMoney(storeSliceTotal(sub) - sub.shipping),
+        orderNetForStore(order, STORE),
+        `${name}: the card and the revenue sum read the same row`,
+      );
+    });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

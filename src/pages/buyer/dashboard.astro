@@ -11,6 +11,7 @@ import { getLang, getT } from '../../i18n/index.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { filterBuyerOrders, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
+import { storeSliceTotal } from '../../lib/order-totals.js';
 
 const userId = getSellerSession(Astro.cookies);
 if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
@@ -124,7 +125,6 @@ const shipLabel: Record<string, string> = {
       border-radius: var(--radius-lg);
       padding: 0.9rem 1rem;
       margin-bottom: 0.5rem;
-      box-shadow: var(--shadow-xs);
     }
     .my-user-info { min-width: 0; }
     .my-avatar {
@@ -141,7 +141,6 @@ const shipLabel: Record<string, string> = {
       border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
       padding: 0.4rem;
-      box-shadow: var(--shadow-xs);
       display: flex;
       flex-direction: column;
       gap: 2px;
@@ -185,8 +184,11 @@ const shipLabel: Record<string, string> = {
 
       /* The dock is the sticky element, not the bar itself: the bar floats
          inside it as a card (same recipe as the sidebar's .my-nav — surface,
-         1px border, radius-lg, shadow-xs — so mobile reads as the desktop
-         side menu moved to the top). The wrapper earns its place because its
+         1px border, radius-lg, and no shadow either). Sticky is NOT by itself a
+         reason for one: the dock around this bar is painted opaque in the page's
+         own --color-bg, so nothing is ever visible sliding under the card — the
+         dock hides it first. A shadow here would be drawing a gap that does not
+         exist (user, 2026-08-01). Elevation rule: base/tokens.css. The wrapper earns its place because its
          rest position IS its stuck position, so the card never shifts — not
          even on the first pixel of scroll, which a card with its own top
          margin would. Its padding also sets the card's inset: inline padding
@@ -218,7 +220,6 @@ const shipLabel: Record<string, string> = {
         background: var(--color-surface);
         border: 1px solid var(--color-border);
         border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-xs);
       }
       .my-topbar-title {
         /* Intentionally not flex:1 — only the button and this text itself
@@ -265,7 +266,7 @@ const shipLabel: Record<string, string> = {
         background: var(--color-surface);
         pointer-events: auto;
         padding: 1.25rem 0.75rem 2rem;
-        box-shadow: -6px 0 32px rgba(0,0,0,0.14);
+        box-shadow: var(--shadow-sheet);
         transform: translateX(100%);
         visibility: hidden;
         transition: transform 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94), visibility 0s 0.26s;
@@ -311,11 +312,10 @@ const shipLabel: Record<string, string> = {
       background: var(--color-surface);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-lg); margin-bottom: 0.75rem;
-      box-shadow: var(--shadow-xs);
       overflow: hidden;
       transition: border-color 0.15s ease;
     }
-    /* A full shadow-card-hover lift is too heavy for a wide, stacked list
+    /* A full shadow-hover lift is too heavy for a wide, stacked list
        row (it's calibrated for compact grid cards) — a border tint is
        enough to signal "clickable" here. */
     .o-card:hover { border-color: color-mix(in srgb, var(--color-text) 20%, var(--color-border)); }
@@ -428,7 +428,7 @@ const shipLabel: Record<string, string> = {
       transition: background 0.12s, color 0.12s;
     }
     .o-subtab-btn:hover { color: var(--color-text); }
-    .o-subtab-btn.is-active { background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-xs); }
+    .o-subtab-btn.is-active { background: var(--color-surface); color: var(--color-text); }
     .o-subtab-count { font-size: 0.68rem; color: var(--color-muted); }
     .o-subtab-btn.is-active .o-subtab-count { color: var(--color-accent); }
     .o-search-wrap { position: relative; flex: 1; min-width: 160px; max-width: 280px; }
@@ -446,7 +446,8 @@ const shipLabel: Record<string, string> = {
     .o-search-input::-webkit-search-cancel-button,
     .o-search-input::-webkit-search-decoration { display: none; -webkit-appearance: none; appearance: none; }
     .o-search-input::-ms-clear, .o-search-input::-ms-reveal { display: none; }
-    .o-search-input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-text) 8%, transparent); }
+    /* The shared field-focus treatment (components/forms.css) — was a grey 8% halo. */
+    .o-search-input:focus { border-color: var(--color-primary); }
     /* Chrome ignores autocomplete="off" for a field it heuristically treats
        as "identity" data (this page also has a real autocomplete="email"
        profile field, #edit-email, elsewhere in the same DOM) and force-fills
@@ -503,9 +504,10 @@ const shipLabel: Record<string, string> = {
       background: var(--color-surface);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-lg); padding: 1rem; margin-bottom: 0.75rem;
-      box-shadow: var(--shadow-xs);
     }
-    .m-card--unread { box-shadow: var(--shadow-xs), inset 2px 0 0 var(--color-accent); }
+    /* The unread stripe is an INSET shadow — a mark drawn on the card, not
+       elevation, so it is unaffected by the flat-at-rest rule. */
+    .m-card--unread { box-shadow: inset 2px 0 0 var(--color-accent); }
     .m-card__top  { display: flex; justify-content: space-between; margin-bottom: 0.25rem; }
     .m-to   { font-size: 0.74rem; color: var(--color-muted); }
     .m-date { font-size: 0.72rem; color: var(--color-muted); }
@@ -538,7 +540,8 @@ const shipLabel: Record<string, string> = {
       transition: border-color 0.15s;
       box-sizing: border-box;
     }
-    .prof-input:focus { border-color: var(--color-accent); }
+    /* Shared field-focus treatment (components/forms.css) — was --color-accent. */
+    .prof-input:focus { border-color: var(--color-primary); }
     .prof-divider {
       border: none; border-top: 1px solid var(--color-border);
       margin: 1.25rem 0;
@@ -737,7 +740,8 @@ const shipLabel: Record<string, string> = {
                         {sub && (
                           <div class="o-store-sub">
                             <span>{t.checkout.shipping}: {sub.shipping === 0 ? t.buyerDashboard.freeShipping : fmtPrice(sub.shipping)}</span>
-                            <strong>{fmtPrice(sub.subtotal + sub.shipping)}</strong>
+                            {sub.discount?.applied ? <span>{t.buyerDashboard.orderDiscount}: −{fmtPrice(sub.discount.applied)}</span> : null}
+                            <strong>{fmtPrice(storeSliceTotal(sub))}</strong>
                           </div>
                         )}
                       </div>
@@ -997,6 +1001,7 @@ const shipLabel: Record<string, string> = {
   data-date-locale={dateLocale}
   data-order-items={t.buyerDashboard.orderItems}
   data-free-shipping={t.buyerDashboard.freeShipping}
+  data-order-discount={t.buyerDashboard.orderDiscount}
   data-tracking-number={t.buyerDashboard.trackingNumber}
   data-shipping-label={t.checkout.shipping}
   data-ship-pending={t.buyerDashboard.shippingPending}
@@ -1022,6 +1027,7 @@ const shipLabel: Record<string, string> = {
   import { filterClearButtonHtml } from '../../lib/toolbar-portal.js';
   import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
   import { showErrorToast } from '../../lib/toast.js';
+  import { storeSliceTotal } from '../../lib/order-totals.js';
 
   const _i18nEl = document.getElementById('buyer-i18n') as HTMLElement;
   const I = {
@@ -1043,6 +1049,7 @@ const shipLabel: Record<string, string> = {
     dateLocale:      _i18nEl.dataset.dateLocale       ?? 'he-IL',
     orderItems:      _i18nEl.dataset.orderItems       ?? 'Items',
     freeShipping:    _i18nEl.dataset.freeShipping     ?? 'Free',
+    orderDiscount:   _i18nEl.dataset.orderDiscount    ?? 'Discount',
     trackingNumber:  _i18nEl.dataset.trackingNumber   ?? 'Tracking number',
     shippingLabel:   _i18nEl.dataset.shippingLabel    ?? 'Shipping',
     shipPending:     _i18nEl.dataset.shipPending      ?? 'New',
@@ -1838,7 +1845,7 @@ const shipLabel: Record<string, string> = {
     id: string; checkoutRef?: string; createdAt: string; totalAmount: number;
     shippingStatus: string; trackingNumber?: string;
     items: { storeSlug: string; storeName: string; productName: string; qty: number; price: number; image?: string }[];
-    storeSubtotals: Record<string, { subtotal: number; shipping: number }>;
+    storeSubtotals: Record<string, { subtotal: number; shipping: number; discount?: { applied: number } }>;
   }
 
   const shipLabelClient: Record<string, string> = {
@@ -1871,7 +1878,8 @@ const shipLabel: Record<string, string> = {
       const subHtml = sub ? `
         <div class="o-store-sub">
           <span>${escB(I.shippingLabel)}: ${sub.shipping === 0 ? escB(I.freeShipping) : fmtPriceBuyer(sub.shipping)}</span>
-          <strong>${fmtPriceBuyer(sub.subtotal + sub.shipping)}</strong>
+          ${sub.discount?.applied ? `<span>${escB(I.orderDiscount)}: −${fmtPriceBuyer(sub.discount.applied)}</span>` : ''}
+          <strong>${fmtPriceBuyer(storeSliceTotal(sub))}</strong>
         </div>` : '';
       return `
         <div class="o-store-group">

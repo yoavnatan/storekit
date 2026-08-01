@@ -46,6 +46,7 @@ import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/
 import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
+import { storeSliceTotal } from '../../lib/order-totals.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, generateCombos, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
@@ -509,6 +510,12 @@ const unshippedOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pro
 const sellerOrderQuery = parseSellerOrderQuery(Astro.url.searchParams);
 const filteredSortedOrders = filterAndSortSellerOrders(storeOrders, store?.slug ?? '', sellerOrderQuery);
 const ordersPage = paginate(filteredSortedOrders, parsePage(Astro.url.searchParams, 'opage'), 15);
+// The toolbar's filter badge is SSR-computed (same as AdminOrdersPanel.astro) because
+// the first paint ALREADY shows a filtered list — the default "active" preset. Leaving
+// it hidden until the client's refreshOrdersFilterBadge() first runs (only on a filter/
+// sort/page change) told the seller "no filter" while rows were in fact being hidden.
+// One entry per filter column, so a second column later just joins the array.
+const ordersActiveFilterCount = [sellerOrderQuery.shippingStatus].filter((v) => v.length > 0).length;
 
 // Alerts per store for store-switcher dots (pending orders or unread messages)
 const storeAlerts: Record<string, boolean> = allStores.length > 1 ? getSellerStoreAlerts(sellerId) : {};
@@ -772,35 +779,35 @@ const orderStatusColors: Record<string, string> = {
               the matching filter (wired in the inline script below), so a click lands on
               exactly the counted rows; their number turns coloured only when there's
               something to act on, muted "all clear" otherwise. */}
-          <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)] cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-card-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="orders">
+          <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="orders">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.tabOrders}</dt>
             <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeOrders.length}</dd>
           </button>
-          <button type="button" id="ov-new-orders" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)] cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-card-hover)] hover:[border-color:var(--color-primary)]">
+          <button type="button" id="ov-new-orders" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.ovNewOrders}</dt>
             <dd class={`m-0 text-[1.15rem] font-bold ${newOrdersCount > 0 ? '[color:var(--color-accent)]' : '[color:var(--color-muted)]'}`}>{newOrdersCount}</dd>
           </button>
-          <button type="button" id="ov-unshipped" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)] cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-card-hover)] hover:[border-color:var(--color-primary)]">
+          <button type="button" id="ov-unshipped" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.ovUnshipped}</dt>
             <dd class={`m-0 text-[1.15rem] font-bold ${unshippedOrdersCount > 0 ? '[color:var(--color-warning)]' : '[color:var(--color-muted)]'}`}>{unshippedOrdersCount}</dd>
           </button>
-          <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)] cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-card-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="products">
+          <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="products">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.products}</dt>
             <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{productCount}</dd>
           </button>
-          <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)] cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-card-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="products">
+          <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="products">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.inStock}</dt>
             <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{inStockCount}</dd>
           </button>
-          <button type="button" id="ov-stock-attention" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)] cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-card-hover)] hover:[border-color:var(--color-primary)]">
+          <button type="button" id="ov-stock-attention" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.ovStockAttention}</dt>
             <dd class={`m-0 text-[1.15rem] font-bold ${stockAlertCount > 0 ? '[color:var(--color-danger)]' : '[color:var(--color-muted)]'}`}>{stockAlertCount}</dd>
           </button>
-          <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)] cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-card-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="products">
+          <button type="button" class="text-start bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 cursor-pointer transition-[box-shadow,border-color] duration-200 hover:[box-shadow:var(--shadow-hover)] hover:[border-color:var(--color-primary)]" data-goto-panel="products">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.stockValue}</dt>
             <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{formatPrice(totalStockValue)}</dd>
           </button>
-          <div class="bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+          <div class="bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.78rem] [color:var(--color-muted)] font-medium mb-1">{d.favoritedBy}</dt>
             <dd class="m-0 text-[1.15rem] font-bold [color:var(--color-text)]">{storeFavoriteCount}</dd>
           </div>
@@ -1536,7 +1543,7 @@ const orderStatusColors: Record<string, string> = {
               <button type="button" id="orders-filter-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="true" aria-expanded="false">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                 <span class="toolbar-btn-label">{d.filterByLabel}</span>
-                <span id="orders-filter-count" class="filter-count-badge inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-primary)] text-white text-[.68rem] font-bold leading-none" hidden>0</span>
+                <span id="orders-filter-count" class="filter-count-badge inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[color:var(--color-primary)] text-white text-[.68rem] font-bold leading-none" hidden={ordersActiveFilterCount === 0}>{ordersActiveFilterCount}</span>
                 <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
             </div>
@@ -1546,7 +1553,7 @@ const orderStatusColors: Record<string, string> = {
           <p class="seller-msg-empty">{d.noOrders}</p>
         ) : (
           <Fragment>
-          <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>אין הזמנות בקטגוריה זו.</p>
+          <p class="seller-msg-empty" id="orders-filter-empty" hidden={ordersPage.total > 0}>{d.ordersFilterEmpty}</p>
           <div class="flex flex-col gap-3" id="orders-list">
             {ordersPage.items.map((order) => {
               const storeItems = order.items.filter((i) => i.storeSlug === store!.slug);
@@ -1555,7 +1562,7 @@ const orderStatusColors: Record<string, string> = {
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               const noteList   = orderStoreNotes(order, store!.slug);
               return (
-                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSub ? storeSub.subtotal + storeSub.shipping : 0}>
+                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotal(storeSub)}>
                   <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     {/* No fixed width below 640px: the grid's first column already sizes
                         to this content, and the 5rem the desktop row uses wrapped the
@@ -1598,7 +1605,7 @@ const orderStatusColors: Record<string, string> = {
                           as the id and date above it — owner: a price in a slot of its own
                           "לא קשור לכלום". */}
                       <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
-                        <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatPrice(storeSub ? storeSub.subtotal + storeSub.shipping : 0)}</span>
+                        <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatPrice(storeSliceTotal(storeSub))}</span>
                         <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
                           <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(order.createdAt, order.shippingStatus, lang)} />
                           <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)]" title={noteList.join('\n') || undefined} aria-label={d.orderNoteLabel} hidden={noteList.length === 0}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
@@ -1656,7 +1663,11 @@ const orderStatusColors: Record<string, string> = {
                       {storeSub && (
                         <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
                           <span>{d.orderShipping}: {storeSub.shipping === 0 ? d.orderShippingFree : formatPrice(storeSub.shipping)}</span>
-                          <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatPrice(storeSub.subtotal + storeSub.shipping)}</strong>
+                          {/* The three renderers of this row (here, buildOrderCard, and the
+                              post-save patch in orders.ts) must stay identical — the discount
+                              line and the total both used to exist in only one of them. */}
+                          {storeSub.discount?.applied ? <span class="text-[color:var(--color-success)]">{d.orderEditDiscount}: −{formatPrice(storeSub.discount.applied)}</span> : null}
+                          <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatPrice(storeSliceTotal(storeSub))}</strong>
                         </div>
                       )}
                     </div>
@@ -1759,19 +1770,19 @@ const orderStatusColors: Record<string, string> = {
             here, a screen reader would otherwise announce the placeholder row as
             if it were the result. performance.ts clears it in renderSummary(). */}
         <dl id="perf-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5" aria-live="polite" aria-busy={perfSummary ? undefined : 'true'}>
-          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfRevenue}</dt>
             <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue" data-skel={SKEL.revenue}>{perfSummary ? formatPrice(perfSummary.totalRevenue) : <SkelBar class={SKEL.revenue} />}</dd>
           </div>
-          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfOrders}</dt>
             <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-orders" data-skel={SKEL.orders}>{perfSummary ? perfSummary.totalOrders : <SkelBar class={SKEL.orders} />}</dd>
           </div>
-          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfAvgOrder}</dt>
             <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg" data-skel={SKEL.avg}>{perfSummary ? formatPrice(perfSummary.avgOrderValue) : <SkelBar class={SKEL.avg} />}</dd>
           </div>
-          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <div class="flex items-center gap-1 mb-1">
               <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfVisitors}</dt>
               <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfVisitsHint} aria-label={d.perfVisitsHint}>
@@ -1780,7 +1791,7 @@ const orderStatusColors: Record<string, string> = {
             </div>
             <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-visitors" data-skel={SKEL.visitors}>{perfSummary ? perfSummary.totalViews : <SkelBar class={SKEL.visitors} />}</dd>
           </div>
-          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <div class="flex items-center gap-1 mb-1">
               <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfUniqueVisitors}</dt>
               <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfUniqueVisitorsHint} aria-label={d.perfUniqueVisitorsHint}>
@@ -1789,7 +1800,7 @@ const orderStatusColors: Record<string, string> = {
             </div>
             <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-unique" data-skel={SKEL.unique}>{perfSummary ? perfSummary.totalUniqueVisitors : <SkelBar class={SKEL.unique} />}</dd>
           </div>
-          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+          <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <div class="flex items-center gap-1 mb-1">
               <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfConversion}</dt>
               <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfConversionHint} aria-label={d.perfConversionHint}>
@@ -2111,7 +2122,7 @@ const orderStatusColors: Record<string, string> = {
               </tbody>
             </table>
           </div>
-          <p class="seller-msg-empty" id="msg-filter-empty" hidden={messagesPage.total > 0}>{messageRows.length === 0 ? 'אין הודעות עדיין.' : 'אין הודעות שתואמות לחיפוש/סינון.'}</p>
+          <p class="seller-msg-empty" id="msg-filter-empty" hidden={messagesPage.total > 0}>{messageRows.length === 0 ? d.messagesNoneYet : d.messagesFilterEmpty}</p>
           <nav id="msg-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label="הודעות" data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
       </div>
 
@@ -2662,7 +2673,7 @@ const orderStatusColors: Record<string, string> = {
 </div>
 
 <!-- ── Edit Order Details Modal ── -->
-<dialog id="edit-order-modal" aria-labelledby="eom-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(520px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
+<dialog id="edit-order-modal" aria-labelledby="eom-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(520px,96vw);box-shadow:var(--shadow-overlay);background:var(--color-surface);margin:auto">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border);flex-shrink:0">
     <h2 id="eom-title" style="font-size:0.95rem;font-weight:700;margin:0">ערוך פרטי הזמנה</h2>
     <button id="edit-order-modal-close" type="button" aria-label="סגור" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);border:none;background:none;color:var(--color-muted);cursor:pointer;transition:background 0.1s">
@@ -2753,7 +2764,7 @@ const orderStatusColors: Record<string, string> = {
 {/* Revenue-breakdown modal — opened by clicking a bar in the "revenue over
     time" chart (performance.ts). Shows a donut of which products made up that
     day/month's revenue. Content is injected client-side. */}
-<dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(440px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
+<dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(440px,96vw);box-shadow:var(--shadow-overlay);background:var(--color-surface);margin:auto">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">
     <div>
       <h2 id="pbm-title" style="font-size:0.95rem;font-weight:700;margin:0">{d.perfBreakdownTitle}</h2>

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { filterAndSortSellerOrders, type SellerOrderQuery } from '../src/lib/seller-orders-query';
+import { filterAndSortSellerOrders, parseSellerOrderQuery, ORDER_FILTER_STATUSES, type SellerOrderQuery } from '../src/lib/seller-orders-query';
 import type { Order } from '../src/lib/orders';
+import { readFileSync } from 'node:fs';
 
 // Minimal Order factory — the urgency sort only reads shippingStatus + createdAt,
 // but the type needs storeSubtotals present for the amount branch not under test.
@@ -50,5 +51,42 @@ describe('filterAndSortSellerOrders — urgency sort', () => {
     const activeOnly: SellerOrderQuery = { ...urgencyQuery, shippingStatus: ['pending', 'processing', 'ready', 'shipped'] };
     const sorted = filterAndSortSellerOrders(orders, 's', activeOnly).map((o) => o.id);
     expect(sorted).toEqual(['pending']);
+  });
+});
+
+// A fresh Orders tab already renders a FILTERED list (the "active" preset), so the
+// toolbar's filter badge has to say so on the very first paint. It used to be a
+// hardcoded hidden "0" that only came alive when the client re-fetched after some
+// other filter change — the seller saw "no filter" over a filtered list.
+describe('seller dashboard — Orders filter badge is SSR-computed', () => {
+  const dashboard = readFileSync(new URL('../src/pages/seller/dashboard.astro', import.meta.url), 'utf8');
+
+  it('defaults to a non-empty status filter, i.e. one active filter column', () => {
+    expect(parseSellerOrderQuery(new URLSearchParams()).shippingStatus.length).toBeGreaterThan(0);
+  });
+
+  it('an explicitly cleared ?ostatus= means no active filter column', () => {
+    expect(parseSellerOrderQuery(new URLSearchParams('ostatus=')).shippingStatus).toEqual([]);
+  });
+
+  it('the default view only holds statuses the filter menu can express', () => {
+    // Otherwise the SSR page shows a status (e.g. a future carrier-set 'ready') that the
+    // client's first re-fetch drops, with no visible change in the filter.
+    for (const s of parseSellerOrderQuery(new URLSearchParams()).shippingStatus) {
+      expect(ORDER_FILTER_STATUSES).toContain(s);
+    }
+  });
+
+  it('the client toolbar reads both lists from this module, never a second copy', () => {
+    const client = readFileSync(new URL('../src/scripts/dashboard/orders.ts', import.meta.url), 'utf8');
+    expect(client).toContain('ORDER_ACTIVE_STATUSES');
+    expect(client).toContain('ORDER_FILTER_STATUSES');
+    expect(client).not.toMatch(/const (ACTIVE_STATUSES|ORDER_STATUSES) = (new Set\(\[|\[)'/);
+  });
+
+  it('binds the badge to that count instead of a hardcoded hidden 0', () => {
+    const badge = dashboard.split('\n').find((l) => l.includes('id="orders-filter-count"')) ?? '';
+    expect(badge).toContain('hidden={ordersActiveFilterCount === 0}');
+    expect(badge).toContain('{ordersActiveFilterCount}');
   });
 });
