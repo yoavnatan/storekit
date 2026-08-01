@@ -27,7 +27,10 @@ vi.mock('../src/lib/stores.js', () => ({
   getStoresBySellerId: () => [STORE],
   findStoreBySlugOrPrevious: (stores: { slug: string }[], slug: string) => stores.find((s) => s.slug === slug),
 }));
-vi.mock('../src/lib/orders.js', () => ({
+vi.mock('../src/lib/orders.js', async () => ({
+  // Real, never stubbed: it is the check that binds an order id to the caller's store
+  // (tests/seller-orders-scope.test.ts owns it). A stub here would mock the guard away.
+  orderBelongsToStore: (await vi.importActual<typeof import('../src/lib/orders')>('../src/lib/orders')).orderBelongsToStore,
   getOrdersByStoreSlug: () => [],
   getOrderById: (id: string) => (id === ORDER.id ? { ...ORDER } : null),
   updateOrder: (id: string, u: Partial<OrderFixture>) => {

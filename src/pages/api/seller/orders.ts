@@ -2,7 +2,7 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
-import { getOrdersByStoreSlug, getOrderById, updateOrder, orderStoreNotes } from '../../../lib/orders.js';
+import { getOrdersByStoreSlug, getOrderById, updateOrder, orderStoreNotes, orderBelongsToStore } from '../../../lib/orders.js';
 import { settleStoreClosure } from '../../../lib/store-lifecycle.js';
 import { sendStoreLifecycleEmail } from '../../../lib/email/store-lifecycle-email.js';
 import type { StoreSubtotal } from '../../../lib/orders.js';
@@ -92,6 +92,15 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   // Current slug — orders migrate to it on rename; a client may still send an old (cached) slug.
   const storeSlug = store.slug;
 
+  // The session proves which STORES this seller owns — never which orders, and an order id is
+  // not a permission (lib/orders.ts#orderBelongsToStore). Bind the two before a single field is
+  // read or written, otherwise a seller can cancel/restock/rewrite an order belonging to someone
+  // else's store just by pairing its id with their own slug. 404, not 403: a caller with no claim
+  // on this order learns nothing about whether it exists.
+  // One read, reused below — nothing mutates the file before updateOrder() at the end.
+  const existing = getOrderById(orderId);
+  if (!existing || !orderBelongsToStore(existing, storeSlug)) return json({ error: 'Order not found' }, 404);
+
   // Derived from the status table rather than re-listed here, so this endpoint can
   // never accept a status the rules don't describe (or reject one they do).
   const validStatuses = Object.keys(SHIPPING_STATUS_RULES);
@@ -131,8 +140,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   // full replacement list for this store; an empty list clears just this store's key.
   // Each note trimmed + capped like the product note; the list itself is bounded.
   if (Array.isArray(sellerNotes)) {
-    const current = getOrderById(orderId);
-    if (!current) return json({ error: 'Order not found' }, 404);
+    const current = existing;
     const cleaned = (sellerNotes as unknown[])
       .map((n) => (typeof n === 'string' ? n.trim().slice(0, 2000) : ''))
       .filter((n) => n !== '')
@@ -148,8 +156,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     || (discount !== undefined && discount !== null);
 
   if (hasOrderEdit) {
-    const original = getOrderById(orderId);
-    if (!original) return json({ error: 'Order not found' }, 404);
+    const original = existing;
 
     const deleteSet = new Set<string>(Array.isArray(itemDeletes) ? (itemDeletes as string[]).filter((x) => typeof x === 'string') : []);
     const newItems = original.items.filter((i) => !deleteSet.has(i.productId));
@@ -222,9 +229,9 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   // Capture the pre-change status so the automation layer can tell whether the
   // shipping status actually moved (read only when a status change is in play).
   const changingStatus = typeof updates['shippingStatus'] === 'string';
-  const before = getOrderById(orderId);
-  const prevStatus = changingStatus ? (before?.shippingStatus ?? '') : '';
-  const prevNet = before ? orderNetForStore(before, storeSlug) : 0;
+  const before = existing;
+  const prevStatus = changingStatus ? before.shippingStatus : '';
+  const prevNet = orderNetForStore(before, storeSlug);
 
   if (changingStatus && prevStatus) {
     // Both transition rules come from the status table (lib/order-status-rules.ts):
@@ -259,7 +266,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     });
   }
   const newNet = orderNetForStore(updated, storeSlug);
-  if (before && newNet !== prevNet) {
+  if (newNet !== prevNet) {
     await recordMoneyEvent({
       type: 'order_discount_changed',
       orderId,

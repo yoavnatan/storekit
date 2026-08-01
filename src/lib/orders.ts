@@ -132,9 +132,26 @@ export function getAllOrders(): Order[] {
   return readOrders();
 }
 
+/** Is this order one of `storeSlug`'s to see and to manage?
+ *
+ *  **Every by-id order mutation must go through this.** A seller session proves which STORES the
+ *  seller owns — it says nothing about which ORDERS, and an order id is not a permission. Without
+ *  this bind, `PATCH /api/seller/orders` accepted any orderId as long as the *slug* alongside it was
+ *  the caller's own, which let one seller move another seller's order to 'cancelled' (restocking
+ *  that seller's inventory and mailing their buyer), rewrite the buyer's name/address, or delete
+ *  items and recompute the total. Fixed 2026-08-02; `tests/seller-orders-scope.test.ts` keeps it.
+ *
+ *  The `storeSubtotals` key is checked as well as the items: a seller who deletes the last item of
+ *  their own order must not lock themselves out of it — the subtotal key survives that edit. */
+export function orderBelongsToStore(order: Pick<Order, 'items' | 'storeSubtotals'>, storeSlug: string): boolean {
+  if (!storeSlug) return false;
+  return order.items.some((i) => i.storeSlug === storeSlug)
+    || (order.storeSubtotals ?? {})[storeSlug] !== undefined;
+}
+
 export function getOrdersByStoreSlug(storeSlug: string): Order[] {
   return readOrders()
-    .filter((o) => o.items.some((i) => i.storeSlug === storeSlug))
+    .filter((o) => orderBelongsToStore(o, storeSlug))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 

@@ -14,7 +14,10 @@ interface OrderFixture {
   id: string;
   buyerId?: string;
   shippingStatus: string;
-  items: { productId: string; qty: number; selectedVariants?: Record<string, string> }[];
+  // storeSlug + storeSubtotals are what bind the order to a store — the API refuses to touch
+  // an order that carries neither, so a fixture without them is not a real order.
+  items: { productId: string; qty: number; storeSlug: string; selectedVariants?: Record<string, string> }[];
+  storeSubtotals: Record<string, { subtotal: number; shipping: number }>;
 }
 let ORDER: OrderFixture;
 
@@ -36,7 +39,10 @@ vi.mock('../src/lib/stores.js', () => ({
   // is a genuine no-op for an ordinary store is worth exercising, not mocking out.
   getStoreBySlug: (slug: string) => (slug === STORE.slug ? STORE : null),
 }));
-vi.mock('../src/lib/orders.js', () => ({
+vi.mock('../src/lib/orders.js', async () => ({
+  // Real, never stubbed: it is the check that binds an order id to the caller's store
+  // (tests/seller-orders-scope.test.ts owns it). A stub here would mock the guard away.
+  orderBelongsToStore: (await vi.importActual<typeof import('../src/lib/orders')>('../src/lib/orders')).orderBelongsToStore,
   getOrdersByStoreSlug: () => [],
   getOrderById: (id: string) => getOrderById(id),
   updateOrder: (id: string, u: Partial<OrderFixture>) => updateOrder(id, u),
@@ -74,9 +80,10 @@ beforeEach(() => {
     buyerId: 'buyer-1',
     shippingStatus: 'processing',
     items: [
-      { productId: 'p1', qty: 2, selectedVariants: { size: 'M' } },
-      { productId: 'p2', qty: 1 },
+      { productId: 'p1', qty: 2, storeSlug: STORE.slug, selectedVariants: { size: 'M' } },
+      { productId: 'p2', qty: 1, storeSlug: STORE.slug },
     ],
+    storeSubtotals: { [STORE.slug]: { subtotal: 300, shipping: 0 } },
   };
 });
 
