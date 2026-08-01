@@ -5,6 +5,7 @@ import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-loc
 import { SYSTEM_SENDER_LABEL } from '../../lib/seller-messages-query.js';
 import { showErrorToast } from '../../lib/toast.js';
 import { registerPanelRefresh } from './tab-sync.js';
+import { scrollBelowPinnedChrome } from './scroll-utils.js';
 
 // Messages tab: buyer<->seller threads and admin<->seller "system" threads in
 // ONE table (both normalized to the same row shape server-side — see
@@ -671,7 +672,8 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       if (!btn || btn.disabled) return;
       messagesCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
       applyMessagesPagination();
-      document.querySelector('.msg-table-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const wrap = document.querySelector<HTMLElement>('.msg-table-wrap');
+      if (wrap) scrollBelowPinnedChrome(wrap);
     });
   }
   initMessagesPagination();

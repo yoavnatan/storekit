@@ -3,7 +3,7 @@ import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery,
 import { showStatus } from './status.js';
 import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
-import { animateScrollTo } from './scroll-utils.js';
+import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { comboKey, generateCombos, canonicalDimName, LOW_STOCK_THRESHOLD, resolveVariantStockMap, type VariantDimension } from '../../lib/variant-combo.js';
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
@@ -1685,17 +1685,15 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
 // 'start'}) targets the viewport's y:0, which the fixed site header would
 // then cover; computing the exact target ourselves lands it right where it
 // sticks instead, no matter where the row was on the page.
-// animateScrollTo (JS-computed smooth scroll, RTL-safe) lives in scroll-utils.ts
-// now that advertising.ts reuses it too — see that file for the RTL rationale.
+// The offset used to come from `--site-header-h`, which NOTHING in this codebase defines — the read
+// returned '' , parseFloat gave NaN, `|| 0` made it 0, and the row landed at y:0 under the header:
+// exactly the bug this function was written to avoid. scroll-utils measures the live bars instead.
 function scrollStickyHeaderIntoView(container: HTMLElement, headerSelector: string): void {
   const header = container.querySelector<HTMLElement>(headerSelector);
   if (!header) return;
 
-  const scrollToHeader = () => {
-    const offset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--site-header-h')) || 0;
-    const top = header.getBoundingClientRect().top + window.scrollY - offset;
-    animateScrollTo(top);
-  };
+  // margin 0: this header is itself sticky and should land flush at its own pinned offset.
+  const scrollToHeader = () => scrollBelowPinnedChrome(header, 0);
   scrollToHeader();
 
   // This is the container's first time visible, so its lazy-loaded gallery images (or, for the
@@ -2124,7 +2122,8 @@ export function initPagination(): void {
     if (!btn || btn.disabled) return;
     productsCurrentPage += btn.hasAttribute('data-page-prev') ? -1 : 1;
     applyPagination();
-    document.getElementById('products-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const table = document.getElementById('products-table');
+    if (table) scrollBelowPinnedChrome(table);
   });
 
   sizeSelect?.addEventListener('change', () => {

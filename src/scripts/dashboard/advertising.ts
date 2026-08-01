@@ -6,7 +6,7 @@ import { initSelectDropdown, refreshSelectDropdown } from './select-dropdown.js'
 import { roasTierChipHtml, ctrTierChipHtml } from '../../lib/ad-tier.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { presetRange, shortDate } from '../../lib/date-range.js';
-import { animateScrollTo } from './scroll-utils.js';
+import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { campaignScopeName, campaignTargetingLabel, campaignHealthNote, campaignFeeOf, type AdScopeKind, type CampaignHealthView } from '../../lib/ad-scope-label.js';
 import { MIN_CAMPAIGN_BUDGET, MAX_CAMPAIGN_BUDGET, isValidCampaignBudget } from '../../lib/ad-budget.js';
 import { initProductMultiPicker, readProductOptions, type ProductPickerOption } from './product-multi-picker.js';
@@ -173,32 +173,14 @@ export function initAdvertisingTab(): void {
   form.querySelectorAll<HTMLSelectElement>('select').forEach((sel) => initSelectDropdown(sel));
 
   // Baseline card's boost CTA jumps down to the boost card (seller tab only —
-  // null-safe on the admin per-store view where the CTA is absent). Manual
-  // window scroll rather than scrollIntoView: the seller dashboard stacks THREE
-  // sticky layers — fixed site header (--site-header-h) + sticky tab strip
-  // (--dash-tabs-h) + the sticky panel head ("פרסום ושיווק", .dash-panel-head,
-  // no CSS var so it's measured live). The card must clear all three or it lands
-  // hidden beneath the pinned panel head. Land its top just below them + a small
-  // margin so the whole boost section sits clear, matching the intended level.
+  // null-safe on the admin per-store view where the CTA is absent). The card has
+  // to clear the whole pinned stack — fixed site header + sticky tab strip +
+  // sticky panel head ("פרסום ושיווק") — or it lands hidden beneath the panel
+  // head. scroll-utils.ts measures all three live and does the RTL-safe scroll.
   document.getElementById('ad-boost-jump')?.addEventListener('click', () => {
-    const target = document.getElementById('ad-boost-card') ?? form;
-    const root = getComputedStyle(document.documentElement);
-    const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const toPx = (v: string, fallback: number): number => {
-      const n = parseFloat(v);
-      if (!Number.isFinite(n)) return fallback;
-      return v.trim().endsWith('rem') ? n * remPx : n;
-    };
-    const headerH = toPx(root.getPropertyValue('--site-header-h'), 3.3 * remPx);
-    const tabsH = toPx(root.getPropertyValue('--dash-tabs-h'), 2.9 * remPx);
-    const panelHeadH = document
-      .querySelector<HTMLElement>('#dash-panel-advertising .dash-panel-head')
-      ?.getBoundingClientRect().height ?? 0;
-    const margin = 0.75 * remPx; // small breathing room; kept below the baseline card's mb (1rem) so its green tint doesn't peek above
-    const top = target.getBoundingClientRect().top + window.scrollY - headerH - tabsH - panelHeadH - margin;
-    // animateScrollTo (not native smooth-scroll) — the latter drifts scrollX on
-    // this RTL site (AI_INSTRUCTIONS → Scroll; shared impl in scroll-utils.ts).
-    animateScrollTo(Math.max(0, top));
+    // 12px of breathing room, kept below the baseline card's mb (1rem) so its green tint
+    // doesn't peek above the pinned head.
+    scrollBelowPinnedChrome(document.getElementById('ad-boost-card') ?? form, 12);
   });
 
   // The seller tab's product scope is a tick-list (the shared dashboard picker), so one product

@@ -44,6 +44,11 @@ export default tseslint.config(
       // of the repo, root-anchored for the same reason.
       '.tmp-*',
       '.*.mjs', '.*.cjs',
+      // The `<name>.tmp.<ext>` infix form of the same convention. Safe as an
+      // unanchored basename pattern for the reason the dotted ones are not
+      // enough on their own: `.tmp.` in the middle of a filename is never a
+      // real module here, only a scratch probe somebody left behind.
+      '*.tmp.mjs', '*.tmp.cjs', '*.tmp.js', '*.tmp.ts',
     ],
   },
 

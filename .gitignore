@@ -57,6 +57,15 @@ pics/
 .tmp-*
 .*.mjs
 .*.cjs
+# ...and the same for the `<name>.tmp.<ext>` infix form. Added 2026-08-01 after a
+# `tabs-probe.tmp.mjs` at the repo root turned `npm run lint` red for an unrelated
+# session — exactly the failure the paragraph above exists to prevent, just with the
+# marker in the middle of the name instead of at the front. Nothing real here is
+# named `*.tmp.*`.
+*.tmp.mjs
+*.tmp.cjs
+*.tmp.js
+*.tmp.ts
 
 # Claude Code internal memory mirror (never source)
 .claude-memory/

@@ -12,11 +12,11 @@
 // (AI_INSTRUCTIONS → Architecture → Scroll.) `html` keeps `scrollbar-gutter:stable` +
 // `overflow-x:hidden` in reset.css.
 //
-// The other half of "where do I scroll TO", moved here 2026-07-31: the SELLER DASHBOARD STACKS
-// THREE STICKY LAYERS that a JS scroll target has to clear — the fixed site header
-// (`--site-header-h`), the sticky tab strip (`--dash-tabs-h`), and the sticky `.dash-panel-head`,
-// which has no CSS var and must be measured live. Forget the panel head and the target lands
-// hidden underneath it, which looks like the scroll simply failed.
+// The other half of "where do I scroll TO", moved here 2026-07-31: EVERY PAGE has the fixed site
+// header covering the top of the viewport, and the SELLER DASHBOARD STACKS TWO MORE STICKY LAYERS
+// under it — the tab strip and the open panel's sticky head. Forget them and the target lands
+// hidden underneath, which looks like the scroll simply failed (or overshot). `pinnedTopChrome` /
+// `scrollBelowPinnedChrome` below own that math for all of them; nothing should re-derive it.
 // `onDone` runs once the last frame has landed (and immediately on the no-op
 // path, so a caller can rely on it firing exactly once either way). It exists
 // for callers that hold something open for the duration of the scroll — the
@@ -62,28 +62,58 @@ export function animateScrollTo(targetY: number, duration = 380, onDone?: () => 
   requestAnimationFrame(step);
 }
 
-/** Scroll a products-tab panel (CSV import, external-inventory sync) so its top sits just below the
- *  three stacked sticky layers — fixed site header (--site-header-h) + sticky tab strip
- *  (--dash-tabs-h) + the sticky products toolbar (--products-toolbar-h). Plain scrollIntoView ignores
- *  those, landing the panel's title hidden beneath the pinned toolbar when the user opens it from far
- *  down the list. Mirrors advertising.ts's boost-jump offset math. */
-export function scrollProductsPanelIntoView(el: HTMLElement): void {
-  const rootStyle = getComputedStyle(document.documentElement);
-  const remPx = parseFloat(rootStyle.fontSize) || 16;
-  const toPx = (v: string, fallback: number): number => {
-    const n = parseFloat(v);
-    if (!Number.isFinite(n)) return fallback;
-    return v.trim().endsWith('rem') ? n * remPx : n;
+/** Total height of the bars this site pins to the TOP of the viewport above `el`, measured live in
+ *  the DOM rather than read from CSS vars (`--site-header-h` and friends are only ever *referenced*
+ *  with fallbacks — nothing defines them, so a var read is really a guess).
+ *
+ *  Everywhere: the site header is `position:fixed` (components/header.css), so it covers the top of
+ *  the viewport on every page. On the seller dashboard two more layers stack under it — the sticky
+ *  tab strip and the open panel's own sticky head (`.dash-panel-head`, or `.products-header` on the
+ *  products tab). A closed panel carries `hidden`, so its head measures 0 and drops out by itself.
+ *
+ *  A bar only counts while it is ACTUALLY pinned: dashboard.css deliberately drops
+ *  `.products-header` (and the table's own column headers) to `position:static` while an edit row is
+ *  open, so that only the edit row's header stays pinned. Reading the computed position keeps this
+ *  function honest about that instead of adding phantom height for a bar that scrolls away. */
+export function pinnedTopChrome(el: HTMLElement): number {
+  const barH = (sel: string, root: ParentNode): number => {
+    const bar = root.querySelector<HTMLElement>(sel);
+    if (!bar) return 0;
+    const pos = getComputedStyle(bar).position;
+    return pos === 'sticky' || pos === 'fixed' ? bar.getBoundingClientRect().height : 0;
   };
-  const headerH = toPx(rootStyle.getPropertyValue('--site-header-h'), 3.3 * remPx);
-  const tabsH = toPx(rootStyle.getPropertyValue('--dash-tabs-h'), 2.9 * remPx);
-  const toolbarH = toPx(rootStyle.getPropertyValue('--products-toolbar-h'), 3.4 * remPx);
-  const stack = headerH + tabsH + toolbarH;
+  let stack = barH('.site-header', document);
+  const dash = el.closest('.seller-dash');
+  if (dash) {
+    stack += barH('.dash-tabs', dash);
+    const panel = el.closest<HTMLElement>('.dash-panel');
+    if (panel) stack += barH('.dash-panel-head', panel) + barH('.products-header', panel);
+  }
+  return stack;
+}
+
+/** Scroll `el` to just BELOW that pinned chrome. This is the replacement for
+ *  `scrollIntoView({block:'start'})`, which parks the target's top edge at viewport top — i.e.
+ *  underneath the fixed header — so the thing you scrolled to (a section heading, the first row of a
+ *  new page of results) lands hidden and the scroll reads as having overshot. Reported on checkout:
+ *  opening the payment accordion left "פרטי תשלום" behind the header (2026-08-01).
+ *
+ *  `edge: 'bottom'` parks the element's BOTTOM at the chrome line instead — "scroll just PAST this",
+ *  used when the thing above the target would otherwise peek out as a sliver under the header. The
+ *  whitespace the layout already puts between them becomes the breathing room, so pair it with
+ *  margin 0. Ceiled, so a fractional rect can't leave a hairline of that element showing. */
+export function scrollBelowPinnedChrome(el: HTMLElement, margin = 12, edge: 'top' | 'bottom' = 'top'): void {
+  const rect = el.getBoundingClientRect();
+  const y = (edge === 'bottom' ? rect.bottom : rect.top) + window.scrollY - pinnedTopChrome(el) - margin;
+  animateScrollTo(Math.max(0, Math.ceil(y)));
+}
+
+/** Scroll a products-tab panel (CSV import, external-inventory sync) so its top sits just below the
+ *  sticky stack, but ONLY when it is actually hidden. */
+export function scrollProductsPanelIntoView(el: HTMLElement): void {
   const rectTop = el.getBoundingClientRect().top;
-  // Only scroll when the panel's TOP is actually hidden — tucked under the sticky stack (scrolled
-  // past it) or below the fold. If it's already visible in the viewport (e.g. the user was near the
-  // top of the list), leave the scroll position alone rather than yanking the page down.
-  if (rectTop >= stack && rectTop < window.innerHeight) return;
-  const margin = 0.5 * remPx; // small breathing room below the pinned toolbar
-  animateScrollTo(Math.max(0, rectTop + window.scrollY - stack - margin));
+  // If the panel's top is already visible in the viewport (e.g. the user was near the top of the
+  // list), leave the scroll position alone rather than yanking the page down.
+  if (rectTop >= pinnedTopChrome(el) && rectTop < window.innerHeight) return;
+  animateScrollTo(Math.max(0, rectTop + window.scrollY - pinnedTopChrome(el) - 8));
 }

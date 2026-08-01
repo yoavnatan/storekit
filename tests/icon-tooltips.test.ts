@@ -141,6 +141,21 @@ describe('which controls get a hover label', () => {
     expect(hover(mount(`<button aria-label="יחס המרה" data-tooltip="הסבר">${ICON}</button>`))).toBeNull();
     expect(hover(mount(`<button aria-label="העתק" title="העתק">${ICON}</button>`))).toBeNull();
   });
+
+  // The explicit opt-out, for a control whose content IS the thing — a product
+  // photo does not need "click to zoom" floating over it, nor its own name over
+  // each thumbnail (user, 2026-08-01). The aria-label must survive: this turns
+  // off the hover label, never the accessible name.
+  it('stays silent on a control marked data-no-tooltip', () => {
+    const el = mount(`<button aria-label="לחצו להגדלה" data-no-tooltip><img src="/x.jpg" alt=""></button>`);
+    expect(hover(el)).toBeNull();
+    expect(el.getAttribute('aria-label')).toBe('לחצו להגדלה');
+  });
+
+  it('still labels the same control once the opt-out is gone', () => {
+    const el = mount(`<button aria-label="לחצו להגדלה"><img src="/x.jpg" alt=""></button>`);
+    expect(hover(el)).toBe('לחצו להגדלה');
+  });
 });
 
 describe('moving between controls', () => {

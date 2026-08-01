@@ -1,4 +1,5 @@
 import { reportClientError } from '../error-reporter.js';
+import { arrowStep, wrapIndex } from '../../lib/arrow-step.js';
 import { markDashboardStale, conflictMessage } from './tab-sync.js';
 
 const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
@@ -244,19 +245,29 @@ export function initDashTabs(): void {
     tab.addEventListener('keydown', (e: KeyboardEvent) => {
       const list = [...tabs];
       const idx  = list.indexOf(tab);
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        const next = list[(idx + 1) % list.length] as HTMLButtonElement;
-        next.focus(); activateTab(next);
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        const prev = list[(idx - 1 + list.length) % list.length] as HTMLButtonElement;
-        prev.focus(); activateTab(prev);
-      }
+      // Horizontal arrows go through arrowStep(), which mirrors them in RTL —
+      // this strip runs right→left in Hebrew, so ArrowRight has to walk
+      // BACKWARD through the source order to reach the tab that is actually to
+      // the right (owner, 2026-08-01). The vertical pair never flips:
+      // `direction` mirrors the inline axis only.
+      const step = arrowStep(e.key, tab)
+        || (e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0);
+      if (step === 0) return;
+      e.preventDefault();
+      const target = list[wrapIndex(idx, step, list.length)] as HTMLButtonElement;
+      target.focus(); activateTab(target);
     });
   });
 
-  tabs.forEach((tab, i) => tab.setAttribute('tabindex', i === 0 ? '0' : '-1'));
+  // Roving tabindex: exactly ONE tab is in the Tab order, and it must be the
+  // SELECTED one — that is what makes Tab land on the tab you are actually on
+  // and Shift+Tab leave from there. This used to hardcode index 0, which quietly
+  // overrode both the SSR value and whatever __dashTabActivate had already set:
+  // land on /?panel=liked and focus went to "discover" instead (owner,
+  // 2026-08-01). Falls back to the first tab only when nothing is marked
+  // selected, so a strip is never left with no way in.
+  const selected = [...tabs].find(t => t.getAttribute('aria-selected') === 'true') ?? tabs[0];
+  tabs.forEach(tab => tab.setAttribute('tabindex', tab === selected ? '0' : '-1'));
 
   // A section-tab strip (.dash-tabs) scrolls horizontally when it overflows, but
   // a mouse-only user with no sideways scroll wheel can't reach the hidden tabs

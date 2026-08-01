@@ -45,6 +45,13 @@ function candidate(target: EventTarget | null): HTMLElement | null {
   // already labels this control — ours would be the second one.
   if (el.dataset.tooltip !== undefined) return null;
   if (el.hasAttribute('title')) return null;
+  // Explicit opt-OUT, for the case the heuristics below cannot see: a control
+  // whose CONTENT is the thing itself, so naming it adds nothing a sighted user
+  // did not already have. A product photo is the example this was added for
+  // (user, 2026-08-01) — "click to zoom" over the picture you are looking at,
+  // and the product's own name over each thumbnail of it. The aria-label stays,
+  // because a screen reader still needs it; only the hover label goes.
+  if (el.dataset.noTooltip !== undefined) return null;
   // An open menu/dropdown needs no label: the thing it opened is on screen, and
   // the panel is often rendered INSIDE the trigger — so hovering into the menu
   // resolves back up to the trigger and re-showed its tooltip over the open
