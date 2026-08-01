@@ -213,13 +213,16 @@ const jsonLd = {
        treatment as a store page's own banner (.store-banner), then the rest
        of the page continues on the standard gray background below — same
        banner→content structure, just roomier/centered instead of a thin
-       strip, plus a dense repeating dot-pattern layer slowly breathing
-       (scale in/out) behind the title (see home.css). ── -->
+       strip, plus a dense repeating dot-pattern layer behind the title.
+       The pattern is `bg-fixed`: the dots are pinned to the viewport, so
+       scrolling slides the hero over a grid that never itself moves. It
+       used to breathe (scale in/out on a 16s loop) — endless motion in
+       the corner of the eye, replaced by that stillness. ── -->
   <section class="home-hero relative overflow-hidden bg-[color:var(--color-surface)]">
     <div
-      class="home-hero__pattern absolute -inset-1/4 w-[150%] h-[150%] z-0 pointer-events-none opacity-60
+      class="home-hero__pattern absolute inset-0 z-0 pointer-events-none opacity-60
              bg-[radial-gradient(circle,var(--color-border)_1.5px,transparent_1.6px)] bg-[length:30px_30px]
-             animate-[home-hero-pattern-breathe_16s_ease-in-out_infinite] motion-reduce:animate-none"
+             bg-fixed"
       aria-hidden="true"
     ></div>
     <div class="container relative z-[1] pt-12 pb-10 sm:pt-16 sm:pb-12 min-h-[260px] sm:min-h-[340px] flex flex-col items-center justify-center text-center gap-2">
@@ -307,7 +310,7 @@ const jsonLd = {
                 bg-[color:var(--color-surface)] text-[color:var(--color-text)]
                 flex items-center justify-center cursor-pointer
                 [transition:box-shadow_0.15s,opacity_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
-                hover:shadow-[var(--shadow-card-hover)]"
+                hover:shadow-[var(--shadow-hover)]"
               tabindex="-1"
               aria-label={lang === 'he' ? 'הלשוניות הקודמות' : 'Previous tabs'}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -346,7 +349,7 @@ const jsonLd = {
                 bg-[color:var(--color-surface)] text-[color:var(--color-text)]
                 flex items-center justify-center cursor-pointer
                 [transition:box-shadow_0.15s,opacity_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
-                hover:shadow-[var(--shadow-card-hover)]"
+                hover:shadow-[var(--shadow-hover)]"
               tabindex="-1"
               aria-label={lang === 'he' ? 'הלשוניות הבאות' : 'More tabs'}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -456,7 +459,7 @@ const jsonLd = {
                         bg-[color:var(--color-surface)] text-[color:var(--color-text)]
                         flex items-center justify-center cursor-pointer
                         [transition:box-shadow_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
-                        hover:shadow-[var(--shadow-card-hover)] active:scale-[0.91]"
+                        hover:shadow-[var(--shadow-hover)] active:scale-[0.91]"
                       aria-pressed="false"
                       aria-label={lang === 'he' ? 'השהה החלפה אוטומטית' : 'Pause auto-rotation'}>
                       <svg class="home-spotlight-pause__pause" width="13" height="13" viewBox="0 0 24 24"
@@ -475,7 +478,7 @@ const jsonLd = {
                         bg-[color:var(--color-surface)] text-[color:var(--color-text)]
                         flex items-center justify-center cursor-pointer
                         [transition:box-shadow_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
-                        hover:shadow-[var(--shadow-card-hover)] active:scale-[0.91]"
+                        hover:shadow-[var(--shadow-hover)] active:scale-[0.91]"
                       aria-label={lang === 'he' ? 'החנות הקודמת' : 'Previous store'}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                            stroke-width="2.5" aria-hidden="true"
@@ -490,7 +493,7 @@ const jsonLd = {
                         bg-[color:var(--color-surface)] text-[color:var(--color-text)]
                         flex items-center justify-center cursor-pointer
                         [transition:box-shadow_0.15s,transform_0.13s_cubic-bezier(0.34,1.56,0.64,1)]
-                        hover:shadow-[var(--shadow-card-hover)] active:scale-[0.91]"
+                        hover:shadow-[var(--shadow-hover)] active:scale-[0.91]"
                       aria-label={lang === 'he' ? 'החנות הבאה' : 'Next store'}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                            stroke-width="2.5" aria-hidden="true"
@@ -678,6 +681,7 @@ const jsonLd = {
   // smooth-scroll on this RTL site (AI_INSTRUCTIONS → Architecture → Scroll).
   import { animateScrollTo } from '../scripts/dashboard/scroll-utils.js';
   import { playReveal, armBelowFoldReveal } from '../lib/scroll-reveal.js';
+  import { initStickyBar } from '../lib/sticky-bar.js';
 
   // Landing on the platform home is a deliberate exit from any store context —
   // don't let a stale "back to store" pill follow the buyer into checkout/dashboard afterward.
@@ -687,6 +691,10 @@ const jsonLd = {
   // hidden-toggling, ?panel= URL sync via history.replaceState) — reused
   // unchanged, see AI_INSTRUCTIONS.md → Homepage.
   initDashTabs();
+  // Marks the tab strip `.is-stuck` while it is pinned under the header, which is
+  // what cancels the header's own shadow (header.css) — butted against this bar
+  // the header is not covering page content any more.
+  initStickyBar(document.getElementById('home-tabs-bar'), 3.4);
 
   // ── Sliding tab underline (CURRENT_TASK.md → סשן ג׳) — one shared bar that
   // travels the full width of the tab row to the tab that was just ACTIVATED.

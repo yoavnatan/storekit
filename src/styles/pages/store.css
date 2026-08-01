@@ -45,6 +45,33 @@ body:has(.store-page) { background: var(--color-surface); }
   background: var(--color-surface);
   padding-top: 0.9rem;
   padding-bottom: 1.5rem;
+  transition: box-shadow 0.18s ease;
+}
+
+/* KEEP. Re-examined 2026-08-02, in the same pass that deleted the header's shadow and
+   the glass row's, and this one survives on the grounds that killed those two.
+   Both layers are `--color-surface`: the curtain is WHITE travelling over WHITE, with no
+   border on its leading edge. There is no value difference to separate them (the header
+   had one), and no blur saying which is in front (the glass row had one) — so with no
+   shadow the edge is not merely subtle, it is invisible, and the banner appears to be
+   erased from the top rather than covered. A faint ink shadow is also at its most legible
+   over a white ground, which is exactly the ground it has here.
+   Upward only (--shadow-bar-up): the banner it covers is the thing above it, and
+   nothing bleeds down onto .store-below, which sits flush beneath.
+
+   And ONLY once the page has actually scrolled. At rest the curtain is not
+   covering anything — it is simply the next block under the banner in normal
+   flow, and a shadow there is the same false gap as the header's used to be
+   (user, 2026-08-01). `.site-header.is-stuck` is exactly "the page has moved"
+   (lib/sticky-bar.ts#initHeaderScrolled), so it is the flag rather than a second
+   mechanism measuring the same scroll.
+
+   Not a competing signal either — and since 2026-08-02 that needs no arrangement at all:
+   the header carries no shadow in any state, so this is now the ONLY depth on screen
+   during the whole phase. (It used to be a hand-off, with two rules in header.css turning
+   the header's own shadow off and back on around this crossing; they went with it.) */
+body:has(.site-header.is-stuck) .store-banner {
+  box-shadow: var(--shadow-bar-up);
 }
 
 /* Products layer — grey, flush under the white details, continues the cover. */
@@ -56,8 +83,9 @@ body:has(.store-page) { background: var(--color-surface); }
   padding-top: 0.75rem;
 }
 
-/* Banner image — its own framed block (radius + hugging shadow + hairline
-   border, the hero-surface language). aspect-ratio must match the dashboard
+/* Banner image — its own framed block (radius + hairline border; no shadow,
+   it sits in the page rather than over it — elevation rule in base/tokens.css,
+   same call as the product page's hero image). aspect-ratio must match the dashboard
    crop tool's fixed 3:1 (seller/dashboard.astro's #banner-frame + the banner
    widget's `aspect:3`) exactly — a height clamp() here once produced a
    *different* effective ratio per viewport width, so object-fit:cover
@@ -67,7 +95,6 @@ body:has(.store-page) { background: var(--color-surface); }
   border-radius: var(--radius);
   overflow: hidden;
   border: 1px solid var(--color-border);
-  box-shadow: 0 1px 2px rgba(23, 27, 38, 0.05), 0 4px 12px -7px rgba(23, 27, 38, 0.13);
   aspect-ratio: 3 / 1;
 }
 
@@ -295,7 +322,11 @@ body:has(.store-page) { background: var(--color-surface); }
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
   backdrop-filter: blur(14px) saturate(1.05);
   -webkit-backdrop-filter: blur(14px) saturate(1.05);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  /* NO SHADOW, deliberately (2026-08-02, and the reasoning is on the deleted --shadow-bar
+     in base/tokens.css). The blur IS the depth cue here — content behind this row visibly
+     goes out of focus, which says "in front" far louder than a 10% shadow, and the
+     border-bottom above draws the edge. Glass plus a drop shadow is the ~2020 Dribbble
+     take; system glass (iOS nav bars, macOS toolbars) is hairline-only. */
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -326,7 +357,9 @@ body:has(.store-page) { background: var(--color-surface); }
   padding-bottom: 0.25rem;
   transition: border-color 0.15s;
 }
-.local-search-row:focus-within { border-color: var(--color-muted); }
+/* Shared field-focus treatment (components/forms.css). The row carries the border rather than
+   the input, so it focuses with :focus-within — same colour, same meaning. */
+.local-search-row:focus-within { border-color: var(--color-primary); }
 .local-search-row__icon {
   flex-shrink: 0;
   color: var(--color-muted);
@@ -430,20 +463,25 @@ body:has(.store-page) { background: var(--color-surface); }
      label that wraps, a font swapping in, a zoom level, sub-pixel rounding) would
      have made a one-line horizontal chip row nudge up and down, which is the kind
      of drift that reads as breakage and has no visible affordance to undo it.
-     Safe against the shadow-clipping this rule otherwise guards: `hidden` clips at
-     the PADDING box, so the bleed budget below still holds the chip's shadow, and
-     the mask already forces a layer that clips to the border box regardless.
+     Safe against the outset-clipping this rule otherwise guards: `hidden` clips at
+     the PADDING box, so the bleed budget below still holds the chip's focus ring,
+     and the mask already forces a layer that clips to the border box regardless.
      Vertical swipes still scroll the page, since the row cannot consume them. */
   overflow-y: hidden;
   scroll-behavior: smooth;
   scroll-snap-type: x proximity;
   scrollbar-width: none;
-  /* The `.edge-fade` mask (utilities/utils.css) puts this row in its own
-     compositing layer, which clips strictly to its box — without a bleed budget
-     the pressed chip's `--shadow-xs` (0 1px 2px, so ~3px of real bleed) would be
-     cut off square at the row's own top/bottom edge. Padding + equal negative
-     margin buys the room back without changing the row's layout position, the
-     same trick `.home-shelf` uses for its much larger hover shadow. */
+  /* Vertical bleed budget. The `.edge-fade` mask (utils.css) puts this row in
+     its own compositing layer that clips strictly to its box, and `overflow-y:
+     hidden` clips at the padding box, so anything a chip draws OUTSIDE its
+     border box needs room bought here. It used to be the pressed chip's
+     `--shadow-xs`; the chips carry no shadow at all now (elevation rule,
+     base/tokens.css), but the KEYBOARD FOCUS RING still needs exactly these
+     4px — reset.css draws `outline: 2px` at `outline-offset: 2px`, so a
+     focused chip reaches 4px past its border box and a 0-padding row would
+     slice the ring flat top and bottom. Padding + equal negative margin buys
+     the room without moving the row; `.home-shelf` uses the same trick for its
+     much larger hover shadow. */
   padding-block: 4px;
   margin-block: -4px;
 }
@@ -475,7 +513,7 @@ body:has(.store-page) { background: var(--color-surface); }
    one of them gets edited alone later. */
 .category-filters-arrow:hover {
   background: color-mix(in srgb, var(--color-surface) 95%, transparent);
-  box-shadow: var(--shadow-card-hover);
+  box-shadow: var(--shadow-hover);
 }
 .category-filters-arrow--prev { inset-inline-start: 0.2rem; }
 .category-filters-arrow--next { inset-inline-end: 0.2rem; }
@@ -543,13 +581,14 @@ body:has(.store-page) { background: var(--color-surface); }
   scroll-snap-align: start;
 }
 
+/* Fill + border-color + weight carry the pressed state on their own. No shadow:
+   at chip size 2px of blur is invisible, and a third signal for one state is
+   exactly the decoration the elevation rule (base/tokens.css) rules out. */
 .category-chip[aria-pressed="true"] {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: #fff;
   font-weight: 500;
-  /* Tactile depth (see product page): pressed chips get a soft lift */
-  box-shadow: var(--shadow-xs);
 }
 
 .category-chip:hover {
@@ -609,7 +648,7 @@ body:has(.store-page) { background: var(--color-surface); }
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-card);
   padding: 0.3rem;
   min-width: 9rem;
   white-space: nowrap;
@@ -737,7 +776,7 @@ body:has(.store-page) { background: var(--color-surface); }
   z-index: 100;
   display: flex;
   flex-direction: column;
-  box-shadow: 4px 0 40px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-sheet);
   transform: translateX(-100%);
   visibility: hidden;
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0.28s;
@@ -745,7 +784,7 @@ body:has(.store-page) { background: var(--color-surface); }
 [dir="rtl"] .category-drawer {
   left: auto;
   right: 0;
-  box-shadow: -4px 0 40px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-sheet);
   transform: translateX(100%);
 }
 .category-drawer.is-open {
@@ -844,7 +883,7 @@ body:has(.store-page) { background: var(--color-surface); }
 
 #sort-trigger[aria-expanded="true"] {
   border-color: transparent;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.11);
+  box-shadow: var(--shadow-hover);
 }
 
 #sort-trigger:focus {
@@ -881,7 +920,7 @@ body:has(.store-page) { background: var(--color-surface); }
   from { opacity: 0; transform: translateY(14px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-.product-card--entering { animation: product-card-enter 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.product-card--entering { animation: product-card-enter 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
 @media (prefers-reduced-motion: reduce) {
   .product-card--entering { animation: none; }
 }
@@ -907,17 +946,15 @@ body:has(.store-page) { background: var(--color-surface); }
 .load-more-btn:active { transform: scale(0.97); }
 .load-more-btn:disabled { cursor: default; opacity: 0.7; }
 
-/* Tactile depth (see product page's related-card): secondary/list-item
-   card, so a 1px border + shadow-xs at rest (the stronger 1.5px/shadow-card
-   pairing is for lone hero surfaces — repeated across a whole grid it
-   reads as heavy) — deepens on hover. No translateY — the inner image
-   already zooms on hover, and lifting the whole card too doubles the
-   motion. */
+/* Flat at rest — a card in a grid sits in the page, it does not float over it
+   (elevation rule, base/tokens.css); the 1px border on --color-surface is the
+   whole separation from --color-bg. Depth arrives on hover only. No translateY —
+   the inner image already zooms on hover, and lifting the whole card too doubles
+   the motion. */
 .product-card {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
   transition: box-shadow 0.22s ease, border-color 0.22s ease;
   cursor: pointer;
 }
@@ -937,7 +974,7 @@ body:has(.store-page) { background: var(--color-surface); }
 }
 
 .product-card:hover {
-  box-shadow: var(--shadow-card-hover);
+  box-shadow: var(--shadow-hover);
 }
 
 /* cursor:pointer on the card is inherited by everything inside it,
@@ -1274,7 +1311,7 @@ body:has(.store-page) { background: var(--color-surface); }
   object-fit: contain;
   border-radius: var(--radius);
   display: block;
-  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-overlay);
   user-select: none;
   -webkit-user-drag: none;
   background: var(--color-surface);

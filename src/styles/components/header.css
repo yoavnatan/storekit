@@ -7,8 +7,27 @@
   right: 0;
   z-index: 50;
   background: var(--color-surface);
+  /* THE HEADER HAS NO SHADOW. Not at rest, not scrolled, not ever — the 1px border is
+     the whole separation, and it is enough because the bar is `#ffffff` over a `#f7f8fa`
+     page: the two surfaces already differ in value, so a shadow on top of that is a
+     second signal for a job the first one finished.
+
+     History, so this is not re-derived a third time. 2026-08-01: the at-rest shadow went
+     (3% and 2% black, invisible — a declaration with no job) and moved to `.is-stuck`,
+     on the argument that a fixed bar earns depth once content really passes underneath.
+     That brought a whole machinery with it: three `:has()` rules turning it back OFF
+     wherever another bar pinned flush beneath, plus two more for the store page's
+     curtain. 2026-08-02, the user asked the better question — does the header need any
+     of them, or does it just read cheap? A drop shadow under a full-width bar is the
+     signature of the 2015-18 Material era; a hairline rule is a typographic convention
+     older than any of it, and it dates the page to nothing. Restraint is the treatment
+     that stays timeless (user: "כמה שיותר קלאסי ועל זמני"). All five rules deleted with
+     the shadow — there is nothing left to switch on or off.
+
+     `.is-stuck` is still set on the header by lib/sticky-bar.ts: the store page reads it
+     (`body:has(.site-header.is-stuck) .store-banner`) to know the page has moved. It no
+     longer means anything about depth. */
   border-bottom: 1px solid var(--color-border);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
   padding-block: 0.65rem;
 }
 
@@ -131,7 +150,7 @@ nav a:hover { color: var(--color-text); }
    Scale-only (no translate): a badge popping onto its icon corner, unlike a
    dropdown sliding in from a direction. */
 .badge-count--entering {
-  animation: badge-pop-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: badge-pop-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
 .badge-count--closing {
   animation: badge-pop-out 0.16s ease-in forwards;
@@ -194,7 +213,7 @@ nav a:hover { color: var(--color-text); }
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-card);
   z-index: 60;
   padding: 0.3rem;
 }
@@ -324,10 +343,18 @@ nav a:hover { color: var(--color-text); }
   outline: none;
   transition: border-color 0.15s;
 }
+/* Focus = the border takes the brand colour, which is what every other input on the site
+   already does (the dashboard toolbars' `focus:border-[color:var(--color-primary)]`). The
+   shadow that used to live here was the third and last of the header's shadows and the least
+   defensible of them: an input does not float over anything, so elevation was never the right
+   language for "you are typing here". Worse, `border-color` was set to the SAME value as at
+   rest, so that faint shadow was carrying the entire focus state on its own — with `outline:
+   none` above, a keyboard user got almost nothing. Removing it without this line would have
+   left no focus indication at all. */
 .header-search__input:focus {
-  border-color: var(--color-border);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
+  border-color: var(--color-primary);
 }
+
 .header-search__input[type="search"]::-webkit-search-cancel-button { opacity: 0.5; cursor: pointer; }
 
 .header-search__icon {
@@ -347,7 +374,7 @@ nav a:hover { color: var(--color-text); }
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.13);
+  box-shadow: var(--shadow-card);
   padding: 0.3rem;
   /* Cap to the viewport so a long results list scrolls inside the dropdown
      instead of running past the bottom edge of the page (dvh accounts for

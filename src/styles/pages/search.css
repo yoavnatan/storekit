@@ -71,11 +71,11 @@
   color: inherit;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-xs);
   overflow: hidden;
+  /* Flat at rest, depth on hover only — elevation rule in base/tokens.css. */
   transition: box-shadow 0.15s;
 }
-.search-product-card:hover { box-shadow: var(--shadow-card-hover); }
+.search-product-card:hover { box-shadow: var(--shadow-hover); }
 
 .search-product-card__img-wrap {
   position: relative;

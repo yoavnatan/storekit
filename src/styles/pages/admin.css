@@ -25,7 +25,6 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   padding: 1rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
   border-radius: var(--radius);
 }
 .admin-msg-compose .field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; }
@@ -95,10 +94,11 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 1rem;
 }
+/* Flat at rest, depth on hover — these are clickable, but they sit in the grid
+   rather than over it (elevation rule, base/tokens.css). */
 .admin-stat-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
   border-radius: var(--radius);
   padding: 1.1rem 1rem;
   text-align: center;
@@ -111,7 +111,7 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
    specificity or source order, so a Tailwind hover class on the same
    property this rule already sets would silently never win. */
 .admin-stat-card:hover {
-  box-shadow: var(--shadow-card-hover);
+  box-shadow: var(--shadow-hover);
   border-color: var(--color-primary);
 }
 .admin-stat-card dt { font-size: 0.78rem; color: var(--color-muted); font-weight: 500; margin-bottom: 0.4rem; }
@@ -123,7 +123,6 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
 .admin-seller-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
   border-radius: var(--radius);
   padding: 0;
 }
@@ -508,7 +507,6 @@ tr[data-alert-row].admin-alerts-row--resolved .admin-alerts-message { text-decor
   gap: 0.75rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
   border-radius: var(--radius);
   padding: 0.75rem 1rem;
 }
@@ -554,7 +552,6 @@ button.admin-store-row__count { padding: 0; text-align: start; }
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
   border-radius: var(--radius);
   padding: 0.75rem 1rem;
 }

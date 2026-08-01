@@ -416,7 +416,7 @@ const strEmpty   = t.store.noProductsFound;
   <div
     id="mobile-search-panel"
     hidden
-    style="position:fixed;z-index:60;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 8px 32px rgba(0,0,0,0.13);padding:0.4rem 0.5rem"
+    style="position:fixed;z-index:60;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:0.4rem 0.5rem"
   >
     <div id="mobile-search-slot"></div>
   </div>
@@ -426,19 +426,24 @@ const strEmpty   = t.store.noProductsFound;
   <div
     id="home-mobile-search-panel"
     hidden
-    style="position:fixed;z-index:60;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:0 8px 32px rgba(0,0,0,0.13);padding:0.4rem 0.5rem"
+    style="position:fixed;z-index:60;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:0.4rem 0.5rem"
   >
     <div id="home-mobile-search-slot"></div>
   </div>
 )}
 
 <script>
+  import { initHeaderScrolled } from '../lib/sticky-bar.js';
   import { getCount } from '../lib/cart.js';
   import { getWishlistCount } from '../lib/wishlist.js';
   import { updateBadge } from '../lib/badge-ticker.js';
   import { cdnThumb } from '../lib/cdn.js';
   // Two historic local names in this file, one implementation.
   import { escapeHtml as escH, escapeHtml as escHtml } from '../lib/html-escape.js';
+
+  // Fades the header's shadow in the moment the page is scrolled at all — at the
+  // top it is covering nothing, so it carries only its border (header.css).
+  initHeaderScrolled(document.querySelector<HTMLElement>('.site-header'));
 
   // ── Back-to-store pill ────────────────────────────────────────
   // Deliberately NOT here: the pill is filled in by an inline script next to its

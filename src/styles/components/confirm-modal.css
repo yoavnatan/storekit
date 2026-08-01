@@ -3,7 +3,7 @@
   border-radius: var(--radius-lg);
   padding: 0;
   width: min(420px, 90vw);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-overlay);
   position: fixed;
   inset: 0;
   margin: auto;

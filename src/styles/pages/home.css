@@ -1,15 +1,8 @@
-/* ── Hero — layout (position/padding/min-height/flex/typography) and the
-   decorative dot-pattern (position/size/gradient/opacity) are Tailwind
-   utility classes directly on the elements in index.astro (Hard rules →
-   Tailwind v4 only). Only the `@keyframes` itself has to live in CSS —
-   Tailwind can't define a keyframe animation as a utility class — applied
-   via the arbitrary-value syntax `animate-[home-hero-pattern-breathe_16s_
-   ease-in-out_infinite]` on the element (same pattern as
-   `ProductQuickView.astro`'s `animate-[skeleton-shimmer_...]`). */
-@keyframes home-hero-pattern-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.22); }
-}
+/* ── Hero — layout and the decorative dot-pattern are Tailwind utility
+   classes directly on the elements in index.astro (Hard rules → Tailwind
+   v4 only), including the `bg-fixed` that pins the dots to the viewport.
+   Nothing about the hero needs CSS here any more: its `@keyframes
+   home-hero-pattern-breathe` went out with the breathing animation. */
 
 /* ── First-visit arrival for the ONE shelf a visitor lands on (HomeShelf's
    `eagerFirst` row; applied there as `animate-[shelf-arrive_…]`, same
@@ -396,7 +389,7 @@
   pointer-events: none;
 }
 
-.home-carousel-btn:hover { box-shadow: var(--shadow-card-hover); }
+.home-carousel-btn:hover { box-shadow: var(--shadow-hover); }
 .home-carousel-btn:active { transform: translateY(-50%) scale(0.91); }
 .home-carousel-btn--prev { inset-inline-start: 0.375rem; }
 .home-carousel-btn--next { inset-inline-end: 0.375rem; }
@@ -487,20 +480,20 @@
   flex-direction: column;
   text-decoration: none;
   color: inherit;
-  /* Tactile depth (see product page's related-card): secondary/list-item
-     card, so a 1px border + shadow-xs at rest (the stronger 1.5px/shadow-card
-     pairing is for lone hero surfaces — repeated across a whole grid it
-     reads as heavy) — deepens on hover. Homepage cards keep the
-     lift-on-hover (unlike the store page's product-card, which
-     deliberately stays flat) — a deliberate differentiator between the
-     mall homepage and an individual store. */
+  /* Flat at rest — 1px border on --color-surface is the whole separation from
+     --color-bg (elevation rule, base/tokens.css); a card in a grid does not
+     float, and the old at-rest shadow multiplied across the shelf read as a
+     grey haze rather than depth. Homepage cards keep the lift-on-hover (unlike
+     the store page's product-card, which deliberately stays flat) — a
+     deliberate differentiator between the mall homepage and an individual
+     store. */
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
   transition: box-shadow 0.22s ease, border-color 0.22s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .home-product-card:hover {
-  box-shadow: var(--shadow-card-hover);
+  /* Deep variant — the card rises, so the taller of the two hover shadows. */
+  box-shadow: var(--shadow-hover-deep);
   transform: translateY(-5px);
 }
 
@@ -599,8 +592,8 @@
 /* Was a full-bleed `background: var(--color-primary)` band with a radial glow
    layer. Removed 2026-07-28: a dark marketing slab is the one element on this
    page that isn't a light card, and it read as pasted in from another site.
-   Now it's the same "tactile depth" lone surface as any hero card on the site —
-   the section itself contributes nothing but rhythm.
+   Now it's an ordinary surface card like any other on the site (1.5px border,
+   no shadow) — the section itself contributes nothing but rhythm.
    This block IS convertible to utilities (nothing here collides) — left as CSS
    only because it sits in an already-loaded page stylesheet; convert it the next
    time this section is touched for a real reason. */
@@ -620,7 +613,6 @@
   background: var(--color-surface);
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-card);
 }
 
 /* ── Mobile: cart chips full width ────────────────────────────── */

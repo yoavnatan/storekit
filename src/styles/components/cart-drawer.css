@@ -33,7 +33,7 @@
   z-index: 100;
   display: flex;
   flex-direction: column;
-  box-shadow: -4px 0 40px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-sheet);
   transform: translateX(100%);
   visibility: hidden;
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0.28s;
@@ -43,7 +43,7 @@
 [dir="rtl"] .cart-drawer {
   right: auto;
   left: 0;
-  box-shadow: 4px 0 40px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-sheet);
   transform: translateX(-100%);
 }
 
@@ -64,7 +64,7 @@
     width: 100%;
     max-height: 82vh;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.18);
+    box-shadow: var(--shadow-sheet);
     transform: translateY(100%);
   }
   .cart-drawer.is-open {
@@ -112,7 +112,7 @@
   line-height: 1.35;
   border-radius: var(--radius-sm);
   padding: 0.4rem 0.6rem;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-card);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-4px) scale(0.97);
@@ -243,15 +243,29 @@
   font-size: 0.88rem;
 }
 .cart-store-group__subtotal span { color: var(--color-muted); }
-/* Compact per-store CTA sitting at the row's end — the sitewide .cart-checkout
-   is full-width (kept for the grand-total "pay all" button); here it shrinks to
-   fit just "לתשלום" so the drawer's per-store rows read cleanly. */
-.cart-store-group__foot .cart-checkout {
+/* Compact per-store CTA sitting at the row's end — with several stores this
+   button is one of several parallel actions, and the drawer's primary CTA is
+   the full-width "pay all stores" under the grand total. Shrinking it to fit
+   just "לתשלום" is what keeps that hierarchy readable. */
+.cart-store-group__foot--multi .cart-checkout {
   width: auto;
   flex-shrink: 0;
   padding: 0.4rem 0.95rem;
   font-size: 0.82rem;
   white-space: nowrap;
+}
+/* One store means no grand total and nothing to be parallel to: this IS the
+   drawer's primary CTA, so it stacks under the total at full width and keeps
+   the sitewide .btn sizing. A compact button here would promise other options
+   that don't exist — and hand the most important action the smallest target. */
+.cart-store-group__foot--single {
+  display: grid;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+.cart-store-group__foot--single .cart-store-group__subtotal {
+  justify-content: space-between;
+  font-size: 0.92rem;
 }
 
 .cart-grand-total {

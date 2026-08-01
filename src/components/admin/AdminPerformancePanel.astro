@@ -75,19 +75,19 @@ const pageLabel = d.perfStorePageOf.replace('{page}', String(storePage.page)).re
 </div>
 
 <dl id="perf-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5" aria-live="polite">
-  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
     <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfRevenue}</dt>
     <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue">{formatPrice(summary.totalRevenue)}</dd>
   </div>
-  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
     <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfOrders}</dt>
     <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-orders">{summary.totalOrders}</dd>
   </div>
-  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
     <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfAvgOrder}</dt>
     <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg">{formatPrice(summary.avgOrderValue)}</dd>
   </div>
-  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
     <div class="flex items-center gap-1 mb-1">
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfVisitors}</dt>
       <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfVisitsHint} aria-label={d.perfVisitsHint}>
@@ -96,7 +96,7 @@ const pageLabel = d.perfStorePageOf.replace('{page}', String(storePage.page)).re
     </div>
     <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-visitors">{summary.totalViews}</dd>
   </div>
-  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
     <div class="flex items-center gap-1 mb-1">
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfUniqueVisitors}</dt>
       <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfUniqueVisitorsHint} aria-label={d.perfUniqueVisitorsHint}>
@@ -105,7 +105,7 @@ const pageLabel = d.perfStorePageOf.replace('{page}', String(storePage.page)).re
     </div>
     <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-unique">{summary.totalUniqueVisitors}</dd>
   </div>
-  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+  <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
     <div class="flex items-center gap-1 mb-1">
       <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfConversion}</dt>
       <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfConversionHint} aria-label={d.perfConversionHint}>
@@ -292,7 +292,7 @@ const pageLabel = d.perfStorePageOf.replace('{page}', String(storePage.page)).re
 
 {/* Revenue-breakdown modal — opened by clicking a revenue bar (performance.ts),
     shows a donut of the platform's product composition for that period. */}
-<dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(440px,96vw);box-shadow:0 16px 56px rgba(0,0,0,0.26);background:var(--color-surface);margin:auto">
+<dialog id="perf-breakdown-modal" aria-labelledby="pbm-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(440px,96vw);box-shadow:var(--shadow-overlay);background:var(--color-surface);margin:auto">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border)">
     <div>
       <h2 id="pbm-title" style="font-size:0.95rem;font-weight:700;margin:0">{d.perfBreakdownTitle}</h2>

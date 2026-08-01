@@ -625,7 +625,7 @@ textarea.input { resize: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-xs);
   pointer-events: none;
 }
 
@@ -1028,7 +1028,7 @@ textarea.input { resize: none; }
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-overlay);
 }
 
 .crop-panel h3 { margin: 0; font-size: 1rem; }
@@ -1109,7 +1109,7 @@ textarea.input { resize: none; }
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-overlay);
 }
 
 .cleanup-panel h3 { margin: 0; font-size: 1rem; }
@@ -1300,6 +1300,20 @@ textarea.input { resize: none; }
 
 .dash-tab:hover { color: var(--color-text); }
 
+/* The keyboard focus ring is drawn INSIDE the tab, not around it. `.dash-tabs`
+   is a scroller (`overflow-x:auto` + `overflow-y:hidden`) and clips at its
+   padding box, while the tabs fill its height exactly — so reset.css's default
+   `outline-offset: 2px` put the ring 4px outside the tab's border box, where
+   the strip sliced its top and bottom off and left what read as a stray line
+   beside the first tab (owner, 2026-08-01). Negative offset instead of buying
+   4px of padding here on purpose: this strip's measured height feeds
+   `--dash-tabs-h`, which four sticky `top:` rules and two scroll-offset
+   calculations depend on, so growing it by 8px would move unrelated furniture.
+   The tab's own 0.65rem of vertical padding leaves the inset ring plenty of
+   room, and its background is transparent, so it stays legible on the active
+   tab too. */
+.dash-tab:focus-visible { outline-offset: -2px; }
+
 .dash-tab--active {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
@@ -1328,9 +1342,22 @@ textarea.input { resize: none; }
    children pinned to each edge, so a tab dissolves into the bar's own colour as
    it reaches the edge — an opaque "there's more" hint, no see-through, no dark.
    A negative margin removes their layout footprint so they overlay, not push,
-   the tabs. Each hides (opacity 0) once the strip is scrolled to that end. */
+   the tabs. Each shows only while there is still strip to scroll that way.
+
+   HIDDEN IS THE DEFAULT (same rule the `.home-tabs-arrow` pair follows, and for
+   the same reason). These spans are created by JS, and `syncEdges()` reads
+   `strip.scrollWidth` — a forced layout — BEFORE it toggles `at-start`/`at-end`,
+   so a fade that defaulted to opacity 1 got its first computed style resolved
+   while still fully lit, and the class toggle a line later then *transitioned* it
+   back out. On every load, at both ends, the strip's own background washed over
+   the outermost tab labels for 150ms: the homepage tabs "flickering white" on
+   refresh (owner, 2026-08-02). Painting the resting state by default means the
+   only transition left is the real one, when a scroll actually reaches an edge —
+   and a strip whose module never ran now shows no fades at all rather than two
+   that fade nothing. */
 .dash-tab-fade {
   position: sticky;
+  opacity: 0;
   align-self: stretch;
   flex: 0 0 auto;
   /* Also span the strip's own inline padding, so the fade reaches the true edge
@@ -1353,8 +1380,8 @@ textarea.input { resize: none; }
 .dash-tab-fade--end   { inset-inline-end: calc(-1 * var(--dash-tab-pad, 0px));   margin-inline-start: calc(-1.8rem - var(--dash-tab-pad, 0px)); background: linear-gradient(to left, var(--dash-tab-fade-bg, var(--color-surface)), transparent); }
 [dir="rtl"] .dash-tab-fade--start { background: linear-gradient(to left, var(--dash-tab-fade-bg, var(--color-surface)), transparent); }
 [dir="rtl"] .dash-tab-fade--end   { background: linear-gradient(to right, var(--dash-tab-fade-bg, var(--color-surface)), transparent); }
-.dash-tabs.at-start .dash-tab-fade--start,
-.dash-tabs.at-end .dash-tab-fade--end { opacity: 0; }
+.dash-tabs.is-scrollable:not(.at-start) .dash-tab-fade--start,
+.dash-tabs.is-scrollable:not(.at-end) .dash-tab-fade--end { opacity: 1; }
 
 /* Sticky title bar — used on panels that carry a control (Orders/Messages:
    search+sort+filter; Settings: save button; Performance: the date-range picker;

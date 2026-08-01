@@ -1,10 +1,10 @@
 /* ── Store card — compact store preview (homepage shelves + /stores directory) ──
-   Secondary/repeated card treatment: 1px border + shadow-xs at rest, deepens on
-   hover — same family as product-card, but with its own bit of depth/color
-   play (soft accent glow behind the avatar, gentle lift, preview-image zoom)
-   since a store card is a "who", not a "what", and can afford a touch more
-   personality than a flat product tile. Still restrained — one soft glow, one
-   lift, no gradients-on-gradients. */
+   Flat at rest (1px border on --color-surface, no shadow — elevation rule in
+   base/tokens.css), depth only on hover — same family as product-card, but with
+   its own bit of depth/color play (soft accent glow behind the avatar, gentle
+   lift, preview-image zoom) since a store card is a "who", not a "what", and can
+   afford a touch more personality than a flat product tile. Still restrained —
+   one soft glow, one lift, no gradients-on-gradients. */
 .store-card {
   display: flex;
   flex-direction: column;
@@ -13,14 +13,15 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
-  box-shadow: var(--shadow-xs);
   text-decoration: none;
   color: inherit;
   transition: box-shadow 0.24s ease, border-color 0.24s ease, transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .store-card:hover {
-  box-shadow: var(--shadow-card-hover);
+  /* The deep variant: this card rises 4px, so its shadow has to be the taller
+     one — see the two hover tokens in base/tokens.css. */
+  box-shadow: var(--shadow-hover-deep);
   /* Navy (--color-primary), not the accent blue — the hover edge should read as
      the platform's own dark tone (user, 2026-07-28). Navy is darker than the
      accent, so a lower mix keeps the same perceived weight. */
@@ -226,14 +227,16 @@
      the element into its own compositing layer, which clips strictly to the
      box's own bounds — a hover shadow that only *happened* to fit before
      (barely) now reads as a hard-cut line right under the card. Bottom
-     budget sized off --shadow-card-hover's actual second layer
-     (16px offset + 36px blur - 8px spread ≈ 44px of real visual bleed),
-     not guessed — the first attempt at 1.75rem/28px was still short of that
-     and still clipped, visibly, on hover. */
-  padding-top: 18px;
-  margin-top: -18px;
-  padding-bottom: 3rem;
-  margin-bottom: -2.5rem;
+     budget sized off --shadow-hover-deep's actual second layer
+     (12px offset + 26px blur - 8px spread = 30px of real visual bleed, less
+     the 4px the card rises), not guessed — an earlier attempt short of the
+     figure still clipped, visibly, on hover. Both pairs cancel out in layout
+     (net +8px at the bottom, as before), so retuning them when the shadow
+     tokens were softened on 2026-08-01 moved nothing on the page. */
+  padding-top: 12px;
+  margin-top: -12px;
+  padding-bottom: 2rem;
+  margin-bottom: -1.5rem;
   /* Same shadow-bleed reasoning, horizontally — the first/last card's hover
      shadow was clipping at the row's own left/right edge (not scroll-mask
      related — that's --fade-start/--fade-end and the mask rules below). */
@@ -450,9 +453,9 @@
   overflow-x: auto;
   scrollbar-width: none;
   /* Small, deliberately modest buffer — .home-category-pill:hover uses its
-     own small custom shadow now (not --shadow-card-hover, which was built
-     for a big card's 36px blur and way oversized for a small pill; chasing
-     an exact buffer for that was the wrong fix). This just needs to comfortably
+     own small custom shadow now (not a shared hover token, which is sized for
+     a card and oversized for a small pill; chasing an exact buffer for that
+     was the wrong fix). This just needs to comfortably
      fit that smaller shadow, same masking-forces-clip reasoning as
      .home-shelf/.home-carousel, just a much smaller budget. */
   padding-block: 8px 14px;
@@ -477,7 +480,6 @@
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
-  box-shadow: var(--shadow-xs);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
@@ -499,7 +501,24 @@
   from { opacity: 0; transform: translateY(14px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-.card-reveal-play { animation: card-reveal 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+/* `backwards`, NOT `both` — this is the fix for "the homepage cards only
+   sometimes lift on hover" (reported 2026-08-01, and it had been reported once
+   before). A filling animation sits in the ANIMATION origin of the cascade,
+   which outranks every normal author declaration: with `both`, this class —
+   which nothing ever removes — pinned `transform: translateY(0) scale(1)` on the
+   card forever, so `.home-product-card:hover { transform: translateY(-5px) }`
+   silently lost and the card could not rise. Only cards that were BELOW THE FOLD
+   at load get this class (scroll-reveal.ts), which is exactly why the lift
+   worked on some cards and not others, with no error anywhere.
+   `backwards` keeps the half that was actually needed — the from-state applies
+   during the stagger `animation-delay`, so a card cannot flash in before its
+   turn — and drops the forwards fill, which bought nothing: this animation's
+   `to` keyframe IS the element's resting state, so ending with no fill lands on
+   the same pixels and hands the cascade back to `:hover`.
+   (The store page hit the identical trap and solved it the other way, with an
+   `animationend` listener that removes `.product-card--entering`. This is the
+   same fix without the JS.) */
+.card-reveal-play { animation: card-reveal 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
 @media (prefers-reduced-motion: reduce) {
   .card-reveal-pending { opacity: 1; }
   .card-reveal-play { animation: none; }

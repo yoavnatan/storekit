@@ -216,7 +216,7 @@
             </div>`;
             }).join('')}
         </div>
-        <div class="cart-store-group__foot">
+        <div class="cart-store-group__foot cart-store-group__foot--${singleStore ? 'single' : 'multi'}">
           <div class="cart-store-group__subtotal">
             <span>${singleStore ? (i18n.cartTotal ?? 'Cart total') : (i18n.subtotal ?? 'Subtotal')}</span>
             <strong>${formatPrice(getSubtotal(c.storeSlug))}</strong>

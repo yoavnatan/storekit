@@ -44,15 +44,27 @@
 .add-to-cart { align-self: flex-start; }
 
 /* ── Tactile depth pass (product page only) ──────────────────────────
-   Crisper borders + soft layered shadows so key surfaces read as
-   raised/recessed, without going full neumorphism or brutalist. */
+   Crisper borders so key surfaces read as their own object. No shadow at
+   rest: the hero image sits IN the page, it does not float over it (see the
+   elevation rule on --shadow-* in base/tokens.css). Border + white surface
+   against --color-bg is the whole frame — the shadow was a third frame around
+   a photo that already had two. The hover shadow stays because the image is
+   the lightbox trigger, and it now reads as a real change rather than a
+   slightly deeper version of a shadow that was already sitting there. */
 .product-detail-page #main-img-wrap {
   background: var(--color-surface);
   border: 1.5px solid var(--color-border);
-  box-shadow: var(--shadow-card);
   transition: box-shadow 0.25s ease;
 }
-.product-detail-page #main-img-wrap:hover { box-shadow: var(--shadow-card-hover); }
+/* The SHALLOW hover token, and deliberately so on the biggest surface on the
+   site. --shadow-hover-deep was tried here on 2026-08-01 and rejected the same
+   day: sizing the shadow up so it would "read" across that width made it loud
+   against a site that is now flat everywhere else — the deep one is legible
+   precisely because it is out of place. The hover here does not need to
+   announce itself; a barely-there shadow on a surface that carries no shadow at
+   rest is already a state change, and restraint is the house style (user's
+   call, and the reason his reading beat the argument from visibility). */
+.product-detail-page #main-img-wrap:hover { box-shadow: var(--shadow-hover); }
 
 /* Skeleton shimmer while the initial image loads — @keyframes skeleton-shimmer
    lives in utils.css; .is-loading is removed by JS once the image fires load/error.
@@ -71,9 +83,11 @@
   animation: skeleton-shimmer 1.4s ease infinite;
 }
 
-.product-detail-page .thumb-btn { background: var(--color-surface); box-shadow: var(--shadow-xs); }
+.product-detail-page .thumb-btn { background: var(--color-surface); }
 
-.product-detail-page .variant-opt[aria-pressed="true"] { box-shadow: var(--shadow-xs); }
+/* No shadow on the pressed variant: fill + border-color + weight already carry
+   the selected state, and a third signal at 2px blur on a chip is invisible
+   anyway (elevation rule, base/tokens.css). */
 
 /* Missing-variant feedback (product page + its related-item modal) — a subtle
    shake + temporary ring on whichever dimension wasn't chosen yet, toggled
@@ -96,21 +110,20 @@
   40%, 60% { transform: translateX(4px); }
 }
 
-.product-detail-page .details-card { box-shadow: var(--shadow-card); }
-
+/* .details-card carries no shadow — it is a page section in normal flow, and
+   `.card` (components/cards.css) already gives it surface + border. */
 
 .product-detail-page .related-card {
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 .product-detail-page .related-card:hover {
-  /* A tighter hover shadow than the shared --shadow-card-hover: these related
+  /* A tighter hover shadow than the shared --shadow-hover: these related
      cards are small (170px) and sit in a horizontal scroller whose overflow
      clips the shadow, so the room needed on the track scales with the shadow's
      depth. A snug shadow keeps that clearance tiny — so the track's height
      stays as it was before this shadow was ever added. */
-  box-shadow: 0 3px 10px -3px rgba(23, 27, 38, 0.16);
+  box-shadow: 0 3px 10px -3px rgba(23, 27, 38, 0.12);
   transform: translateY(-2px);
 }
 
@@ -150,7 +163,7 @@
     border-top: 1px solid var(--color-border);
     padding: 0.75rem 1rem;
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-bar-up);
     opacity: 0;
     transform: translateY(12px);
     pointer-events: none;

@@ -45,28 +45,129 @@
      the name the codebase already uses everywhere: var(--radius). */
   --radius: var(--radius-md);
 
-  /* "Tactile depth" — the site's depth language since 2026-07-07 (product / home / store /
-     dashboard / checkout / cart / quick-view). Which token a surface takes is NOT a taste call;
-     it follows from what kind of surface it is (moved here from AI_INSTRUCTIONS.md 2026-07-31,
-     so the rule sits on the tokens it hands out):
-       • Lone / hero surface (a single image wrap, a detail card):
-         border 1.5px + --shadow-card, going to --shadow-card-hover on hover.
-       • Secondary / repeated card (a grid or list item):
-         lighter border 1px + --shadow-xs → --shadow-card-hover on hover. shadow-card at rest
-         reads heavy once it is multiplied across a grid.
-       • Full-width list row (an order card, a table row): NO shadow on hover — tint the
-         border-color instead. The shadow's blur/spread is calibrated for spaced grid cards and
-         reads excessive flush against its neighbours.
-     Qty steppers stay flat always (border 1px, no inset shadow, no fill — a filled pill read as
-     disabled). No translateY hover-lift on a card whose image already hover-zooms; the ONE
-     exception is the homepage product card, which keeps translateY(-5px) deliberately as a felt
-     differentiator from the in-store product card. An image container that may hold a
-     background-removed (transparent) photo takes background: var(--color-surface), never
-     --color-bg and never none, plus a border-bottom between image and body when both are white.
+  /* "Tactile depth" — the site's depth language since 2026-07-07, RE-SCOPED 2026-08-01 after a
+     site-wide audit found 279 shadow declarations, most of them at rest on surfaces sitting flat
+     in the page. The rule below replaces the old three-tier "which card gets which shadow"
+     table, which asked how IMPORTANT a surface was; the answer was always "a bit", so every
+     surface ended up with one and the signal stopped meaning anything.
+
+     THE RULE, one sentence: a shadow means "this floats ABOVE the page", so only something that
+     genuinely floats carries one at rest. Not a decoration, not a way to make a card look
+     finished — a statement about the z-axis, and a false one on anything in normal flow.
+
+       • FLOATS → shadow at rest. Dropdowns and popovers, modals/dialogs, toasts, the cart
+         preview and drawer, tooltips, fixed/sticky bars (mobile cart bar, StaleDataBar), badges
+         overlaying an image, and arrow buttons overlaying a scroller. These leave the flow and
+         cover content underneath; the shadow is what says so.
+       • IN FLOW → NO shadow at rest, however important the surface is. A card, a tile, a hero
+         product image, a page section, a chip, a thumbnail, a table row: 1px --color-border on
+         --color-surface already separates it from --color-bg. That is the whole treatment.
+       • HOVER → --shadow-hover, or --shadow-hover-deep only if the surface actually rises, and
+         only where hover means something (the surface is
+         clickable). Because rest is flat, the hover shadow now reads as a real change rather
+         than a slightly deeper version of what was already there — which is the point of
+         emptying the rest state, not a side effect. A full-width row still takes a border-color
+         tint instead: the shadow's blur is calibrated for spaced grid cards and reads excessive
+         flush against its neighbours.
+       • Pressed / selected states are carried by fill + border-color + weight, never by adding a
+         shadow as a third signal — at chip size a 1px/2px shadow is invisible anyway.
+
+     --shadow-xs stays in the file for the few genuinely floating hairline cases and for hover on
+     small controls; --shadow-card is for floating panels. A NEW at-rest --shadow-card on
+     anything in flow is the thing this rule exists to prevent (tests/design-shadow-rule.test.ts
+     enforces it over src/**).
+
+     Unchanged by the re-scope: qty steppers stay flat always (border 1px, no inset shadow, no
+     fill — a filled pill read as disabled). No translateY hover-lift on a card whose image
+     already hover-zooms; the ONE exception is the homepage product card, which keeps
+     translateY(-5px) deliberately as a felt differentiator from the in-store product card. An
+     image container that may hold a background-removed (transparent) photo takes
+     background: var(--color-surface), never --color-bg and never none, plus a border-bottom
+     between image and body when both are white.
      Restrained on purpose: not neumorphism, not brutalist neon borders. */
   --shadow-xs: 0 1px 2px rgba(23, 27, 38, 0.06);
   --shadow-card: 0 1px 2px rgba(23, 27, 38, 0.04), 0 10px 24px -8px rgba(23, 27, 38, 0.14);
-  --shadow-card-hover: 0 2px 4px rgba(23, 27, 38, 0.05), 0 16px 36px -8px rgba(23, 27, 38, 0.18);
+
+  /* The two hover depths — shallow and deep. They are TWO because a shadow is
+     cast by a GAP, and on this site exactly one thing widens it: the surface
+     RISING. A card that lifts must throw a taller, softer shadow than one that
+     stays put — one value for both made the still card look like it was hovering
+     in mid-air and the rising card look glued down (user, 2026-08-01).
+
+     SIZE is NOT a second trigger, and that was tested: the deep token was given
+     to the product page's hero image the same day, on the argument that 16px
+     disappears across the largest surface on the site. Rejected on sight — on a
+     site that is flat at rest everywhere, the deep shadow reads as loud rather
+     than as proportionate, and "big enough to notice" is not the goal. A big
+     surface gets the shallow one like everything else that stays put. Don't
+     re-walk this.
+     Both were toned down the same day: the single old value was
+     `0 16px 36px -8px @ 0.18`, sized back when every card already carried a
+     shadow at rest and hover only had to out-shout it. With rest now flat, that
+     much blur reads as coarse — the change from nothing to something is doing
+     the work, so it does not need to be loud.
+       --shadow-hover      → the default. ANY surface that stays put, whatever
+                             its size. ~16px of real bleed.
+       --shadow-hover-deep → the surface actually rises (translateY(-4/-5px)).
+                             ~30px of real bleed.
+     Those bleed figures (offset + blur - spread) are what a horizontal scroller's
+     padding/negative-margin budget is sized off, since a mask or filter clips the
+     shadow to the track's own box — see .home-shelf in components/store-card.css. */
+  /* --shadow-bar IS GONE (2026-08-02). It was the step for a full-width fixed/sticky bar
+     with content scrolling under it, and it had exactly two consumers, both of which
+     turned out not to need it:
+       • the site header — `#ffffff` over a `#f7f8fa` page with a 1px border between
+         them. The value difference plus the rule already separate the two surfaces; the
+         shadow was a second signal for a finished job, and a drop shadow under a
+         full-width bar is the 2015-18 Material signature (header.css has the full note).
+       • the store page's frosted filter row — and this is the more interesting one.
+         A shadow says "an opaque object is blocking the light". That surface TRANSMITS
+         light: a 14px backdrop-blur is itself the depth cue, and a much stronger one,
+         because you can see the content behind it go out of focus. Stacking a drop
+         shadow on top is not just redundant, it contradicts what the blur just said —
+         which is exactly why system glass (iOS nav bars, macOS toolbars) carries a
+         hairline separator and no shadow, while glass-with-a-drop-shadow is the
+         Dribbble "glassmorphism" look of ~2020. The user's question, and he was right.
+     If a future opaque full-width bar genuinely needs depth, re-add it here with the
+     surface named — don't reach for --shadow-card, whose 24px bloom is sized for a
+     spaced grid card and spills down the page from an edge-to-edge bar. */
+
+  /* Pointing UP: a surface whose top edge passes over content — the store page's curtain
+     riding over the pinned banner, a modal footer with more list scrolled behind it.
+     Deliberately faint: it marks one edge sliding over one surface, and the page already
+     has other signals near it. These are all opaque, so the reasoning above doesn't
+     apply — there is no blur doing the work instead. */
+  --shadow-bar-up: 0 -4px 16px rgba(23, 27, 38, 0.06);
+
+  --shadow-hover: 0 1px 2px rgba(23, 27, 38, 0.04), 0 6px 16px -6px rgba(23, 27, 38, 0.11);
+  --shadow-hover-deep: 0 2px 4px rgba(23, 27, 38, 0.04), 0 12px 26px -8px rgba(23, 27, 38, 0.13);
+
+  /* The two OVERLAY steps — a surface that covers the page, not one that sits on it.
+     Added 2026-08-02 after the user called the drawer and header shadows "cheap, not
+     modern", and he was right about the mechanism: every overlay on the site had
+     hand-rolled its own `rgba(0,0,0,…)` — 18 declarations, blurs from 14px to 60px,
+     opacities from 6% to 22%, all in PURE BLACK while every token above is the site's
+     blue-grey ink (23,27,38). Pure black over a warm-white page is what reads as cheap;
+     a big blur is what reads as dated. Both are now one decision made here.
+
+     --shadow-overlay → a dialog/modal centred over a scrim. Downward bias, because it
+                        is centred in the viewport and light falls from above.
+     --shadow-sheet   → a panel anchored to a viewport EDGE and slid in: the cart drawer
+                        (side), the mobile bottom sheet, the store's category drawer.
+                        Deliberately offsetless — three of its four sides are off-screen,
+                        so a directional value only ever produced a different answer per
+                        side (the old file had one for LTR, one for RTL, one for mobile).
+                        One value, any edge.
+
+     Both are lighter than what they replace ON PURPOSE: these panels already sit on a
+     dimmed backdrop, which is the real separation. The shadow only softens the panel's
+     edge — when it also has to shout, you get two signals doing one job, which is the
+     per-component invention the design line exists to stop.
+
+     Menus, popovers and toasts are NOT overlays in this sense — they stay on
+     --shadow-card, the floating-panel step, so a dropdown and a toast never disagree. */
+  --shadow-overlay: 0 12px 40px -12px rgba(23, 27, 38, 0.20);
+  --shadow-sheet: 0 0 32px -6px rgba(23, 27, 38, 0.16);
 
   --max-width: 1160px;
 }
@@ -94,15 +195,15 @@
   --radius-lg: 14px;
 
   /* Shared dialog entrance animations (@theme → animate-* utilities) */
-  --animate-modal-in: modal-in 120ms ease-out both;
+  --animate-modal-in: modal-in 120ms ease-out backwards;
   --animate-fade-in: fade-in 100ms ease-out both;
-  --animate-status-pop: status-pop 0.13s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  --animate-status-pop: status-pop 0.13s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
   --animate-product-menu-open: product-menu-open 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
-  --animate-bulk-bar-in: bulk-bar-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  --animate-bar-grow: bar-grow 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-bulk-bar-in: bulk-bar-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  --animate-bar-grow: bar-grow 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
   --animate-top-bar-grow: top-bar-grow 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-donut-in: donut-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  --animate-line-draw: line-draw 0.6s ease-out both;
+  --animate-donut-in: donut-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  --animate-line-draw: line-draw 0.6s ease-out backwards;
 }
 @keyframes modal-in {
   from { opacity: 0; transform: translateY(8px) scale(.99); }

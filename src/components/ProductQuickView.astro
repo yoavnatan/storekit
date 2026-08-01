@@ -87,13 +87,16 @@ const strHalted    = t.store.haltedTitle;
 
 <script>
   import { cdnSrc } from '../config/store.config.js';
+  import { initOverflowShadow } from '../lib/sticky-bar.js';
   import { setLightboxImage, resetLightboxImage, lightboxWidth, warmLightboxImage, neighbourIndexes } from '../lib/lightbox-image.js';
+  import { arrowStep, wrapIndex } from '../lib/arrow-step.js';
   import { priceHtml, saleBadgeHtml } from '../lib/price-html.js';
   import type { PriceView } from '../lib/discounts.js';
   import { escapeHtml as pqvEsc } from '../lib/html-escape.js';
   import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
   import { initReadMore } from '../lib/read-more.js';
   import { initLiquidDots } from '../lib/carousel-dots.js';
+  import { scrollBelowPinnedChrome } from '../scripts/dashboard/scroll-utils.js';
 
   const pqvDialog = document.getElementById('pqv-dialog') as HTMLDialogElement | null;
   const pqvBody   = document.getElementById('pqv-body');
@@ -218,7 +221,7 @@ const strHalted    = t.store.haltedTitle;
         : '';
 
       pqvBody!.innerHTML = `<div class="animate-fade-in flex flex-col flex-1 min-h-0 overflow-hidden">
-        <div class="overflow-y-auto flex-1 min-h-0 [-webkit-overflow-scrolling:touch]">
+        <div class="overflow-y-auto flex-1 min-h-0 [-webkit-overflow-scrolling:touch]" data-pqv-scroll>
           ${imgAreaHtml}
           <div class="pt-3.5 px-5 pb-5">
             <a href="/${pqvEsc(storeSlug)}" class="text-xs font-bold text-[color:var(--color-muted)] no-underline tracking-[.05em] uppercase inline-block mb-1.5 transition-colors duration-[140ms] hover:text-[color:var(--color-text)]">${pqvEsc(storeName)}</a>
@@ -230,7 +233,7 @@ const strHalted    = t.store.haltedTitle;
             ${variantsHtml}
           </div>
         </div>
-        <div class="shrink-0 pt-3 px-5 pb-[1.125rem] border-t border-[color:var(--color-border)] shadow-[0_-4px_16px_rgba(0,0,0,.06)]">
+        <div class="shrink-0 pt-3 px-5 pb-[1.125rem] border-t border-[color:var(--color-border)]" data-pqv-foot>
           <div class="flex items-center gap-3 mb-3"${p.storeHalted ? ' hidden' : ''}>
             <span class="text-sm text-[color:var(--color-muted)]">${pqvEsc(strings.qty)}</span>
             <div class="inline-flex items-center border border-[color:var(--color-border)] rounded-[var(--radius)] overflow-hidden h-9" dir="ltr" role="group" aria-label="${pqvEsc(strings.qty)}">
@@ -251,6 +254,13 @@ const strHalted    = t.store.haltedTitle;
           <a href="/${pqvEsc(storeSlug)}/${pqvEsc(p.slug)}" class="block text-center mt-2 text-xs text-[color:var(--color-muted)] no-underline hover:underline"${newTab ? ' target="_blank" rel="noopener"' : ''}>${pqvEsc(strings.viewFull)}</a>
         </div>
       </div>`;
+
+      // The footer's upward shadow only while something is actually behind it —
+      // re-wired per render because this whole subtree is rebuilt by innerHTML.
+      initOverflowShadow(
+        pqvBody!.querySelector<HTMLElement>('[data-pqv-scroll]'),
+        pqvBody!.querySelector<HTMLElement>('[data-pqv-foot]'),
+      );
 
       let pqvImgIdx = 0;
 
@@ -360,7 +370,9 @@ const strHalted    = t.store.haltedTitle;
             paymentSection.setAttribute('aria-hidden', 'false');
             toPaymentBtn?.setAttribute('aria-expanded', 'true');
           }
-          setTimeout(() => toPaymentBtn?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+          // Same landing spot as the accordion's own handler in checkout.astro: past the button's
+          // bottom, so the header line is followed by the "פרטי תשלום" heading and nothing else.
+          setTimeout(() => { if (toPaymentBtn) scrollBelowPinnedChrome(toPaymentBtn, 0, 'bottom'); }, 120);
         } else {
           window.location.href = '/checkout?pay=1';
         }
@@ -433,8 +445,10 @@ const strHalted    = t.store.haltedTitle;
   document.addEventListener('keydown', (e) => {
     if (!colb?.open) return;
     if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
-    if (e.key === 'ArrowLeft')  { lbIdx = (lbIdx - 1 + lbImages.length) % lbImages.length; showLbImg(); }
-    if (e.key === 'ArrowRight') { lbIdx = (lbIdx + 1) % lbImages.length; showLbImg(); }
+    // arrowStep() mirrors the pair in RTL, so the arrow always moves the
+    // gallery the way it points on screen (lib/arrow-step.ts).
+    const step = arrowStep(e.key, colb);
+    if (step !== 0) { lbIdx = wrapIndex(lbIdx, step, lbImages.length); showLbImg(); }
   });
 
   // PQV close handlers

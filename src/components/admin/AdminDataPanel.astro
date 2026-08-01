@@ -116,7 +116,7 @@ const rateCards = [
 {/* ── Headline rates ── */}
 <dl class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
   {rateCards.map((c) => (
-    <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+    <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
       <div class="flex items-center gap-1 mb-1">
         <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{c.label}</dt>
         <InfoTip text={c.hint} />

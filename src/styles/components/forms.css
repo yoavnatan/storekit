@@ -8,7 +8,28 @@
   border-radius: var(--radius);
   background: var(--color-bg);
 }
+/* THE focus treatment for every text field on this site — the border takes the brand colour,
+   and nothing else changes. Settled 2026-08-02, when the user noticed the buyer dashboard's
+   search focused differently from the header's and asked which was right; there turned out to
+   be SIX treatments for this one job (an outline ring here, a grey 8% halo on the buyer search,
+   a black border on the message textarea, a muted border on the store's local search, the brand
+   border on the seller toolbars, and the header's own). Why the border won:
+     • It changes a property the field ALREADY has. No new geometry, so nothing to clip when a
+       field sits inside a horizontal scroller (see project memory on clipped focus rings) and
+       nothing to knock the layout about.
+     • A colourless grey halo says "fogged", not "you are typing here" — it reads as a disabled
+       or hover state, and it disappears entirely on `--color-bg`.
+     • It is the quietest change that still says the thing, which is what keeps it from dating.
+   THE LINE IS THE WHOLE SIGNAL — no ring, on any field, in any focus mode (user, explicitly).
+   My first attempt kept the reset's `:where(:focus-visible)` ring on top "for keyboard users",
+   which was wrong on the facts, not just on taste: a TEXT FIELD matches `:focus-visible` even
+   when it is focused by POINTER (the browser assumes you are about to type), so that ring fired
+   on every single click and put a 2px brand-coloured box around every input on the site. Hence
+   `outline: none` here, deliberately: it applies to the whole family in one place instead of
+   each field switching the ring off and back on.
+   The reset's ring is untouched for everything that is NOT a text field — buttons, links, cards,
+   tabs — where `:focus-visible` really does mean keyboard, and where the ring belongs. */
 .input:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+  border-color: var(--color-primary);
+  outline: none;
 }

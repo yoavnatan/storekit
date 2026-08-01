@@ -64,7 +64,7 @@ const i18n = {
   <div id="pm-backdrop"
        style="position:absolute;inset:0;background:rgba(0,0,0,0.58);cursor:pointer"></div>
   <div id="pm-panel"
-       style="position:relative;z-index:1;background:white;border-radius:var(--radius-lg);width:min(100%,680px);max-height:90vh;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.35);display:flex;flex-direction:column">
+       style="position:relative;z-index:1;background:white;border-radius:var(--radius-lg);width:min(100%,680px);max-height:90vh;overflow:hidden;box-shadow:var(--shadow-overlay);display:flex;flex-direction:column">
     <button id="pm-close" aria-label={i18n.close}
             style="position:absolute;top:0.65rem;inset-inline-end:0.65rem;z-index:10;width:2rem;height:2rem;border-radius:50%;background:rgba(255,255,255,0.95);color:var(--color-muted);border:1px solid var(--color-border);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s,color 0.15s">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -72,15 +72,19 @@ const i18n = {
     <div id="pm-scroll" style="overflow-y:auto;flex:1 1 auto;min-height:0">
       <div id="pm-body"></div>
     </div>
-    <div id="pm-footer" style="flex-shrink:0;padding:0.875rem 1.25rem 1.125rem;border-top:1px solid var(--color-border);box-shadow:0 -4px 16px rgba(0,0,0,0.06)"></div>
+    <!-- No constant shadow: `.overflow-shadow` is added by initOverflowShadow only
+         while something is really scrolled behind this footer (utils.css). -->
+    <div id="pm-footer" style="flex-shrink:0;padding:0.875rem 1.25rem 1.125rem;border-top:1px solid var(--color-border)"></div>
   </div>
 </div>
 
 <script>
+  import { initOverflowShadow } from '../lib/sticky-bar.js';
   import { addItem, getCartQty } from '../lib/cart.js';
   import { isWishlisted, toggleWishlist } from '../lib/wishlist.js';
   import { cdnSrc, formatPrice } from '../config/store.config.js';
   import { setLightboxImage, resetLightboxImage, lightboxWidth, warmLightboxImage, neighbourIndexes } from '../lib/lightbox-image.js';
+  import { arrowStep } from '../lib/arrow-step.js';
   import { escapeHtml as escHtml } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
   import { trackAddToCart } from '../lib/tracking.js';
@@ -110,6 +114,9 @@ const i18n = {
   const pmBody       = document.getElementById('pm-body')       as HTMLDivElement | null;
   const pmFooter     = document.getElementById('pm-footer')     as HTMLDivElement | null;
   const pmPanel      = document.getElementById('pm-panel')      as HTMLDivElement | null;
+
+  // The footer's shadow appears only while content is genuinely hidden behind it.
+  initOverflowShadow(document.getElementById('pm-scroll'), pmFooter);
 
   const i18n: Record<string, string> = (() => {
     try { return JSON.parse(productModal?.dataset.i18n ?? '{}') as Record<string, string>; }
@@ -249,7 +256,7 @@ const i18n = {
   }, { passive: true });
   lightbox?.addEventListener('touchend', (e: TouchEvent) => {
     const dx = e.changedTouches[0].clientX - touchStartX;
-    if (Math.abs(dx) > 50) dx < 0 ? nextLbImage() : prevLbImage();
+    if (Math.abs(dx) > 50) { if (dx < 0) nextLbImage(); else prevLbImage(); }
   }, { passive: true });
 
   // ── Open by slug: fetch product data, then render ─────────────
@@ -415,6 +422,14 @@ const i18n = {
           </div>
           ${pmWishBtnHtml}
         </div>`
+      // This chip STAYS, and it is not the duplicate the product page had. The two
+      // surfaces are not built the same: on the page, the live stock line sits
+      // ABOVE the cart block and renders whatever the stock is, so the chip
+      // repeated it. Here, `#pm-stock-note` is inside the `stock > 0` branch
+      // above — out of stock, this chip is the ONLY thing that says so. Removing
+      // it on the assumption the two matched left the modal silent (caught by the
+      // user within minutes, 2026-08-01). Check where the stock line actually
+      // renders before treating these two as one fix.
       : `<div style="display:flex;flex-direction:column;gap:0.75rem">
           <span class="badge badge--muted self-start">${i18n.outOfStock ?? 'אזל מהמלאי'}</span>
           ${pmWishBtnHtml}
@@ -806,8 +821,13 @@ const i18n = {
       if (productModal?.hidden === false) { closeProductModal(); return; }
     }
     if (lightbox?.hidden === false) {
-      if (e.key === 'ArrowLeft')  { prevLbImage(); return; }
-      if (e.key === 'ArrowRight') { nextLbImage(); return; }
+      // arrowStep() mirrors the pair in RTL, so the arrow always moves the
+      // gallery the way it points on screen (lib/arrow-step.ts).
+      const step = arrowStep(e.key, lightbox);
+      if (step !== 0) {
+        if (step > 0) nextLbImage(); else prevLbImage();
+        return;
+      }
     }
     if (e.key === 'Tab') {
       if (lightbox?.hidden === false) {

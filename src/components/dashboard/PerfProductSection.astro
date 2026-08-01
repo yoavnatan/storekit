@@ -52,7 +52,7 @@ const d = getT(lang).dashboard;
   <!-- Results, painted client-side on selection. -->
   <div id="perf-product-result" hidden>
     <dl class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4" aria-live="polite">
-      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
         <div class="flex items-center gap-1 mb-1">
           <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfProductViews}</dt>
           <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfProductViewsHint} aria-label={d.perfProductViewsHint}>
@@ -61,15 +61,15 @@ const d = getT(lang).dashboard;
         </div>
         <dd class="m-0 text-[1.05rem] font-bold" id="pperf-kpi-views">0</dd>
       </div>
-      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
         <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfProductUnits}</dt>
         <dd class="m-0 text-[1.05rem] font-bold" id="pperf-kpi-units">0</dd>
       </div>
-      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
         <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfProductRevenue}</dt>
         <dd class="m-0 text-[1.05rem] font-bold" id="pperf-kpi-revenue">—</dd>
       </div>
-      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3 shadow-[var(--shadow-xs)]">
+      <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
         <div class="flex items-center gap-1 mb-1">
           <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium">{d.perfProductConversion}</dt>
           <button type="button" class="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full [color:var(--color-muted)] hover:[color:var(--color-primary)] transition-colors duration-100 cursor-help bg-transparent border-0 p-0" data-tooltip={d.perfProductConversionHint} aria-label={d.perfProductConversionHint}>

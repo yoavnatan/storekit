@@ -8,7 +8,7 @@
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.09);
+  box-shadow: var(--shadow-hover);
 }
 
 /* A card used as a page SECTION, not as a clickable object: hover depth on

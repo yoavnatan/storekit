@@ -149,7 +149,7 @@
   width: min(720px, 95vw);
   max-height: 88vh;
   margin: auto;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+  box-shadow: var(--shadow-overlay);
   overflow: hidden;
 }
 .bd-dialog::backdrop {
@@ -171,11 +171,11 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.14);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
 }
 .notif-dropdown:not([hidden]) {
-  animation: notif-drop-in 0.18s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  animation: notif-drop-in 0.18s cubic-bezier(0.34,1.56,0.64,1) backwards;
 }
 @keyframes notif-drop-in {
   from { opacity: 0; transform: translateY(-6px) scale(0.97); }
@@ -356,7 +356,8 @@
   transition: border-color 0.15s;
   box-sizing: border-box;
 }
-.seller-msg-reply-textarea:focus { border-color: var(--color-text); }
+/* Shared field-focus treatment (components/forms.css) — was --color-text, a sixth answer. */
+.seller-msg-reply-textarea:focus { border-color: var(--color-primary); }
 .seller-msg-reply-send {
   align-self: flex-end;
   padding: 0.4rem 1rem;
@@ -482,7 +483,7 @@
 }
 .contact-store-btn:hover {
   background: var(--color-surface);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+  box-shadow: var(--shadow-hover);
   transform: scale(1.02);
 }
 .contact-store-btn:active { transform: scale(0.97); }
@@ -538,14 +539,15 @@
   width: 3px;
   background: var(--color-accent);
 }
-.toast-card:hover { box-shadow: var(--shadow-card-hover); border-color: color-mix(in srgb, var(--color-text) 18%, var(--color-border)); }
+.toast-card:hover { box-shadow: var(--shadow-hover); border-color: color-mix(in srgb, var(--color-text) 18%, var(--color-border)); }
 .toast-card__body-wrap { flex: 1 1 auto; min-width: 0; }
 .toast-card__title { font-size: 0.86rem; font-weight: 600; color: var(--color-text); line-height: 1.35; }
 .toast-card__body { font-size: 0.78rem; color: var(--color-muted); margin-top: 2px; line-height: 1.4; }
-/* Desktop: a lone floating card reads better with a touch more presence than
-   a repeated grid card gets — same "lone/hero surface" treatment (1.5px
-   border + shadow-card) the design system already uses for a single image
-   wrap/detail card, still no icon, still tighter than the old generic version. */
+/* Desktop: the toast genuinely floats over the page, so it is one of the few
+   surfaces that keeps a shadow at rest (elevation rule, base/tokens.css) — and
+   at desktop size it takes the deeper `--shadow-card`, since that is the thing
+   telling the eye it is covering content rather than sitting in it. Still no
+   icon, still tighter than the old generic version. */
 @media (min-width: 641px) {
   .toast-container { max-width: min(400px, calc(100vw - 2rem)); }
   .toast-card { border-width: 1.5px; padding: 0.9rem 1.1rem 0.9rem 1.25rem; gap: 0.65rem; box-shadow: var(--shadow-card); }
@@ -629,7 +631,7 @@
   line-height: 1;
   letter-spacing: 0.01em;
   box-shadow: 0 2px 6px color-mix(in srgb, var(--color-sale) 35%, transparent);
-  animation: sale-badge-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: sale-badge-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
 @keyframes sale-badge-in {
   from { opacity: 0; transform: scale(0.82); }
@@ -639,8 +641,8 @@
   .sale-badge { animation: none; }
 }
 
-/* Store-wide sale strip — `.card`'s own recipe (`--color-surface`, 1.5px `--color-border`, `--radius`,
-   `--shadow-xs`) with the discount figure as the single coloured thing on it. Nothing here is invented
+/* Store-wide sale strip — `.card`'s own recipe (`--color-surface`, 1.5px `--color-border`,
+   `--radius`) with the discount figure as the single coloured thing on it. Nothing here is invented
    for this component, and that is the point: nine bespoke treatments were tried first and every one
    failed on screen. The short list, so the path is not re-walked — a saturated green fill (an ad pasted
    over the store); a 1px outline on a 3% tint (milky, unfinished); that outline with a warm second hue
@@ -654,9 +656,10 @@
    Two constraints are load-bearing. Green is already SPOKEN FOR: `--color-sale`'s token comment says
    the sale price, the badge and this banner share one green "so a shopper learns the mark once", so
    spending it on a frame dilutes that mark — and a coloured frame reads seasonal, failing the
-   category-agnostic test (Hard rules → Design line). And the shadow must be `--shadow-xs`, never
-   `--shadow-card`: Hard rules already says a full-width row must not carry the card shadow, whose
-   24px bloom landed on the site's tagline and dimmed it.
+   category-agnostic test (Hard rules → Design line). And the strip carries NO shadow at all since
+   2026-08-01: it is a full-width section sitting in the page, not a panel floating over it
+   (elevation rule, base/tokens.css). The `--shadow-card` it never had would have been worse still
+   — its 24px bloom landed on the site's tagline and dimmed it.
    No hover state: this is a page SECTION, not a clickable object — same reason `.card--flat` exists.
    The figure sits inside the copy cluster at the reading start; pinned to the far edge it read as
    unrelated to the words it describes. */
@@ -668,7 +671,6 @@
   background: var(--color-surface);
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-xs);
   color: var(--color-text);
 }
 
@@ -715,10 +717,25 @@
      the edge read as border-and-fill blended together instead of as a line.
    - `background-clip: padding-box` for the same reason — it keeps the fill from reaching under the
      border in the first place.
-   - a 1px shadow and no inset highlight: an `inset 0 1px 0` white line drew a second ring just
-     inside the first, and at this radius it does not follow the curve cleanly.
+   - no shadow at all (2026-08-01, was `0 1px 1.5px` of the hue at 10%): a chip sits in the card,
+     it does not float over it, and the elevation rule in base/tokens.css keeps a shadow for
+     things that actually do. At 1.5px of blur it was never depth anyway — just a slightly muddier
+     bottom edge. An `inset 0 1px 0` white highlight was tried instead and is also out: it drew a
+     second ring just inside the border, and at this radius it does not follow the curve cleanly.
    Promoted out of StoreDemoBadge's inline style, whose own comment said it stayed inline because it
    was "one component, not a repeated utility". It is now three, which is the trigger. */
+/* A pinned panel footer's upward shadow, and ONLY while something is scrolled
+   behind it — toggled by lib/sticky-bar.ts#initOverflowShadow. Same rule that ended
+   up removing the site header's shadow altogether: a shadow claims something is
+   underneath, so on a modal whose content fits it was drawing a seam over nothing. The footer's border-top
+   divides the regions on its own. */
+.overflow-shadow { box-shadow: var(--shadow-bar-up); }
+
+/* THE finish for every chip in a store card's badge row: fill, border and (once) shadow come
+   from here, and a chip differs ONLY by --badge-hue. Geometry has to match too — 0.68rem text,
+   1.5 line-height, full pill — because a private copy is how a row's chips drift apart one edit
+   at a time. (Moved here from AI_INSTRUCTIONS.md 2026-08-02: the rule stays there, the numbers
+   live next to the code they describe.) */
 .badge-finish {
   --badge-hue: var(--color-muted);
   border: 1px solid color-mix(in srgb, var(--badge-hue) 28%, var(--color-surface));
@@ -728,7 +745,6 @@
     color-mix(in srgb, var(--badge-hue) 5%, var(--color-surface)) 100%
   );
   background-clip: padding-box;
-  box-shadow: 0 1px 1.5px color-mix(in srgb, var(--badge-hue) 10%, transparent);
 }
 
 /* Compact "sale running" chip for discovery surfaces (StoreCard), where the

@@ -1,7 +1,8 @@
 /* Auth screens (seller login + register). Noindex, auth-only — a dedicated
    shared stylesheet keeps both pages visually identical without duplicating
-   ~40 utilities across two files. Tactile-depth "lone/hero surface": a single
-   branded card, border 1.5px + --shadow-card. */
+   ~40 utilities across two files. A single branded card: 1.5px border + the
+   brand accent bar, no shadow — it sits in the page rather than floating over
+   it (elevation rule, base/tokens.css). */
 
 .auth-wrap {
   max-width: 27rem;
@@ -18,7 +19,6 @@
   background: var(--color-surface);
   border: 1.5px solid var(--color-border);
   border-radius: calc(var(--radius) * 2);
-  box-shadow: var(--shadow-card);
   padding: 2rem 1.75rem 1.75rem;
 }
 /* Brand accent — the exact site .btn gradient across the top edge. */

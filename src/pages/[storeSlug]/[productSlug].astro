@@ -262,7 +262,8 @@ const pmI18n = {
                style="aspect-ratio:1/1;border-radius:var(--radius)"
                role={images.length > 0 ? 'button' : undefined}
                tabindex={images.length > 0 ? '0' : undefined}
-               aria-label={images.length > 0 ? t.product.clickToZoom : undefined}>
+               aria-label={images.length > 0 ? t.product.clickToZoom : undefined}
+               data-no-tooltip>
             {images.length > 0
               ? <div id="main-slides"
                      class="flex w-full h-full overflow-x-scroll overflow-y-hidden cursor-zoom-in [scroll-snap-type:x_mandatory] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [touch-action:pan-x] [overscroll-behavior-inline:contain] [&::-webkit-scrollbar]:hidden">
@@ -270,14 +271,19 @@ const pmI18n = {
                     <div class="relative shrink-0 w-full h-full [scroll-snap-align:start] [scroll-snap-stop:always]">
                       {/* Plain <img> (not <Image />) to carry a hi-DPI srcset — the main image
                           renders ~560px CSS wide on desktop, so a lone w_800 delivery is upscaled
-                          → soft on retina. srcset+sizes keeps the seller's photo sharp at every DPR. */}
+                          → soft on retina. srcset+sizes keeps the seller's photo sharp at every DPR.
+                          fetchpriority: the first slide is the LCP candidate, every other one is
+                          something the shopper may never scroll to — so it is explicitly LOW,
+                          whether it ends up fetched by the idle warm-up below or by a real swipe.
+                          Left at default they queue alongside whatever the page is still loading. */}
                       <img id={i === 0 ? 'main-img' : undefined} src={cdnSrc(img, 800)}
                            srcset={cdnSrcSet(img, [600, 800, 1200, 1600]) || undefined}
                            sizes="(max-width: 767px) 94vw, 560px"
                            alt={i === 0 ? product.name : ''}
                            width={800} height={800}
                            class="w-full h-full object-cover block"
-                           loading={i === 0 ? 'eager' : 'lazy'} fetchpriority={i === 0 ? 'high' : undefined} decoding="async" />
+                           loading={i === 0 ? 'eager' : 'lazy'}
+                           fetchpriority={i === 0 ? 'high' : 'low'} decoding="async" />
                     </div>
                   ))}
                 </div>
@@ -299,12 +305,12 @@ const pmI18n = {
                 <button
                   type="button"
                   role="listitem"
-                  data-img-src={cdnSrc(img, 800)}
                   data-img-index={String(i)}
                   class="thumb-btn is-loading flex-shrink-0 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
                   style={`width:4rem;height:4rem;border-radius:var(--radius);border-color:${i === 0 ? 'var(--color-text)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
                   aria-pressed={i === 0 ? 'true' : 'false'}
                   aria-label={`${product.name} ${i + 1}`}
+                  data-no-tooltip
                 >
                   <Image src={cdnSrc(img, 128)} alt="" width={64} height={64}
                          style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy" />
@@ -423,9 +429,14 @@ const pmI18n = {
                Top-aligned (no mt-auto): pinning the CTA to the column's bottom made
                it track the image column's height — extra thumbnails or a variant-less
                product opened a dead gap between the title and the buttons. -->
+          {/* No "out of stock" chip here: the live stock line right above (#stock-status-text)
+              already says exactly that, in the danger colour and with its own warning icon, and
+              two identical phrases stacked on top of each other is not emphasis (user,
+              2026-08-01). Out of stock therefore renders no cart row at all — the wishlist
+              button below stays, so the column is never empty. */}
           <div class="flex flex-col gap-3">
             {product.stock <= 0
-              ? <span class="badge badge--muted self-start">{t.store.outOfStock}</span>
+              ? null
               : (
                 <div id="product-cta-row" class="flex items-center gap-3">
                   <div dir="ltr" class="qty-stepper flex items-center flex-shrink-0 overflow-hidden"
@@ -718,6 +729,7 @@ const pmI18n = {
   import { spawnRipple } from '../../lib/ripple.js';
   import { trackViewContent, trackAddToCart } from '../../lib/tracking.js';
   import { comboKey } from '../../lib/variant-combo.js';
+  import { arrowStep } from '../../lib/arrow-step.js';
   import { isColorVariant } from '../../lib/color-variants.js';
   import { initReadMore } from '../../lib/read-more.js';
   import { saveLastStore } from '../../lib/last-store.js';
@@ -962,18 +974,47 @@ const pmI18n = {
   // back-navigation. Images are switched via the thumbnail strip and the
   // lightbox arrows; the page scrolls normally over the image.
 
-  // Warm the browser cache for the other gallery images at the same width
-  // the main image uses, once the page is idle — so by the time a thumbnail
-  // is actually clicked, the swap is instant instead of a fresh fetch.
+  // Warm the rest of the gallery once the page is idle, so scrolling the strip
+  // shows a photo that is already decoded instead of starting a download.
+  //
+  // Done by flipping the slides' own `loading` to eager — NOT by fetching a URL
+  // computed here. That was the previous version and it did not work: it warmed
+  // `data-img-src` (a plain w_800 delivery), while each slide is a srcset+sizes
+  // image, so the browser resolved a DIFFERENT candidate (w_1200 on a desktop
+  // 2x screen) and the warmed bytes were for a URL nothing ever requested. The
+  // fetch still happened at scroll time, which is exactly the delay this was
+  // supposed to remove (reported 2026-08-01). Letting the element itself do the
+  // asking means the candidate can never disagree — there is no second copy of
+  // the width logic to drift.
+  //
+  // Native lazy-loading is what makes the warm-up necessary in the first place:
+  // its heuristic is the VIEWPORT, and a slide sitting off to the side inside a
+  // horizontal scroller is outside it, so nothing downloads until the user has
+  // already scrolled to it.
+  //
+  // AFTER `load`, and only then idle — not idle alone. requestIdleCallback fires
+  // whenever the main thread has a gap, which during page load happens BETWEEN
+  // long tasks, while subresources are still on the wire; speculative gallery
+  // bytes would then be competing with the page the shopper is waiting for. The
+  // `load` gate makes that impossible, and the idle step after it keeps the warm-up
+  // off the thread while anything else is still running. Combined with
+  // fetchpriority="low" on those slides, this can only ever use bandwidth nothing
+  // else wants.
   const runWhenIdle = (cb: () => void) => {
-    if ('requestIdleCallback' in window) window.requestIdleCallback(cb);
-    else setTimeout(cb, 800);
+    const idle = () => {
+      if ('requestIdleCallback' in window) window.requestIdleCallback(cb);
+      else setTimeout(cb, 800);
+    };
+    if (document.readyState === 'complete') idle();
+    else window.addEventListener('load', idle, { once: true });
   };
   runWhenIdle(() => {
-    thumbBtns.forEach((btn, i) => {
-      if (i === 0) return;
-      const src = btn.dataset.imgSrc;
-      if (src) new Image().src = src;
+    // Speculative bytes: Data Saver or a 2G connection means the shopper would
+    // rather wait for what they asked for. Same rule as lib/lightbox-image.ts.
+    const conn = (navigator as { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    if (conn?.saveData || /^(slow-)?2g$/.test(conn?.effectiveType ?? '')) return;
+    mainSlides?.querySelectorAll<HTMLImageElement>('img[loading="lazy"]').forEach((img) => {
+      img.loading = 'eager';
     });
   });
 
@@ -1070,8 +1111,12 @@ const pmI18n = {
   document.addEventListener('keydown', (e) => {
     if (!lightbox || lightbox.hidden) return;
     if (e.key === 'Escape') closeLightbox();
-    if (e.key === 'ArrowLeft') goLightbox(pageLang === 'he' ? 1 : -1);
-    if (e.key === 'ArrowRight') goLightbox(pageLang === 'he' ? -1 : 1);
+    // Was the same mirroring written inline off `pageLang`; it now shares the
+    // one copy in lib/arrow-step.ts, which keys off the computed `direction`
+    // rather than the language — the same answer, from the thing that actually
+    // decided which way the pixels went.
+    const step = arrowStep(e.key, lightbox);
+    if (step !== 0) goLightbox(step > 0 ? 1 : -1);
   });
 
   // ── Qty stepper ────────────────────────────────────────────────────
@@ -1370,7 +1415,7 @@ const pmI18n = {
     hint.className = 'login-hint-popup';
     hint.setAttribute('role', 'status');
     hint.innerHTML = `<span>כדי לשלוח הודעה יש <a href="${loginUrl}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">להתחבר</a></span>`;
-    hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.11);font-size:0.8rem;color:var(--color-text)';
+    hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:var(--shadow-card);font-size:0.8rem;color:var(--color-text)';
     hint.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease', fill: 'forwards' });
     const container = btn.parentElement ?? btn;
     container.appendChild(hint);
