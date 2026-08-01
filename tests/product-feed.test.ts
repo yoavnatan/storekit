@@ -69,6 +69,34 @@ describe('buildFeedItems', () => {
     expect(buildFeedItems(product({ images: ['https://cdn/x.jpg'], price: 0 }), CTX)).toEqual([]);
   });
 
+  // Merchant Center / Meta Catalog reject a row whose image_link is relative, and they
+  // reject it silently — the product would just stop being advertised with no signal.
+  // sanitizeImageUrl stores a site-relative `/path` intact by design, so the feed is
+  // where it has to become absolute.
+  it('resolves a stored site-relative image against the feed origin', () => {
+    const rows = buildFeedItems(product({ images: ['/uploads/a.jpg', '/uploads/b.jpg'] }), CTX);
+    expect(rows[0]!.imageLink).toBe('https://shop.example/uploads/a.jpg');
+    expect(rows[0]!.additionalImageLinks).toEqual(['https://shop.example/uploads/b.jpg']);
+  });
+
+  it('keeps the product in the feed when only SOME of its images are unusable', () => {
+    const rows = buildFeedItems(product({ images: ['javascript:alert(1)', 'https://cdn/ok.jpg'] }), CTX);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.imageLink).toBe('https://cdn/ok.jpg');
+    expect(rows[0]!.additionalImageLinks).toEqual([]);
+  });
+
+  it('skips the product only when NO image survives', () => {
+    expect(buildFeedItems(product({ images: ['javascript:alert(1)', '//evil.example/x.png'] }), CTX)).toEqual([]);
+  });
+
+  it('every emitted image_link is absolute, whatever the stored spelling', () => {
+    const rows = buildFeedItems(product({ images: ['/uploads/a.jpg', 'https://cdn/b.jpg'] }), CTX);
+    for (const url of [rows[0]!.imageLink, ...rows[0]!.additionalImageLinks]) {
+      expect(url).toMatch(/^https?:\/\//);
+    }
+  });
+
   it('expands variants into item_group_id rows with color/size and per-combo stock', () => {
     const rows = buildFeedItems(product({
       images: ['https://cdn/x.jpg'],
@@ -106,5 +134,71 @@ describe('toMerchantXml', () => {
     const xml = toMerchantXml(rows, meta);
     expect(xml).toContain('https://cdn/i.jpg?a=1&amp;b=2');
     expect(xml).toContain('<g:identifier_exists>no</g:identifier_exists>');
+  });
+
+  // The blast radius here is the whole platform, not one listing: XML 1.0 forbids these
+  // characters outright — they cannot be escaped into legality — so ONE of them anywhere
+  // makes the document unparseable and Merchant Center drops EVERY store's products. A
+  // description pasted out of Word carries U+000B and nothing upstream strips it.
+  it('strips XML-illegal control characters instead of emitting an unparseable document', () => {
+    const VT = String.fromCharCode(0x0b); // vertical tab — the Word/Excel paste artefact
+    const NUL = String.fromCharCode(0x00);
+    const rows = buildFeedItems(product({
+      name: `שמלה${VT}כחולה`,
+      description: `תיאור${NUL}`,
+      images: [`https://cdn/x.jpg`],
+    }), CTX);
+    const xml = toMerchantXml(rows, meta);
+    // eslint-disable-next-line no-control-regex -- asserting the absence of control characters
+    expect(xml).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
+    expect(xml).toContain('<![CDATA[שמלהכחולה]]>'); // the text survives, only the byte goes
+  });
+
+  it('drops a lone surrogate — an emoji cut in half is just as illegal as a control char', () => {
+    const LONE_HIGH = String.fromCharCode(0xd83d); // the first half of 😀, with no partner
+    const rows = buildFeedItems(product({ name: `מוצר${LONE_HIGH}`, images: ['https://cdn/x.jpg'] }), CTX);
+    const xml = toMerchantXml(rows, meta);
+    expect(xml).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+    expect(xml).toContain('<![CDATA[מוצר]]>');
+  });
+
+  it('keeps a WHOLE emoji — the strip must not eat valid surrogate pairs', () => {
+    const rows = buildFeedItems(product({ name: 'מוצר 😀', images: ['https://cdn/x.jpg'] }), CTX);
+    expect(toMerchantXml(rows, meta)).toContain('<![CDATA[מוצר 😀]]>');
+  });
+});
+
+// Every one of these is a SILENT rejection at Merchant Center: the product sits on the
+// storefront looking fine while no ad ever runs behind it, and nothing in the dashboard says so.
+describe('feed values Google/Meta reject outright', () => {
+  it('falls back to the title when the seller left the description empty', () => {
+    // api/product.ts defaults description to '' — only `name` is enforced — but `description`
+    // is a REQUIRED Merchant attribute.
+    const f = buildProductFeedAttributes(product({ name: 'חולצה כחולה', description: '' }), { storeName: 'x' });
+    expect(f.description).toBe('חולצה כחולה');
+  });
+
+  it('does not overwrite a description the seller did write', () => {
+    const f = buildProductFeedAttributes(product({ name: 'חולצה', description: 'כותנה 100%' }), { storeName: 'x' });
+    expect(f.description).toBe('כותנה 100%');
+  });
+
+  it('caps title at 150 and description at 5000 characters', () => {
+    const f = buildProductFeedAttributes(product({ name: 'x'.repeat(400), description: 'y'.repeat(9000) }), { storeName: 'x' });
+    expect(f.title).toHaveLength(150);
+    expect(f.description).toHaveLength(5000);
+  });
+
+  it('never cuts a surrogate pair in half when capping', () => {
+    // 149 plain chars + one emoji: the 150th slot would land mid-pair, so the emoji goes whole.
+    const f = buildProductFeedAttributes(product({ name: `${'a'.repeat(149)}😀` }), { storeName: 'x' });
+    expect(f.title).toHaveLength(149);
+    expect(f.title).not.toMatch(/[\uD800-\uDBFF]$/);
+  });
+
+  it('trims surrounding whitespace off both fields', () => {
+    const f = buildProductFeedAttributes(product({ name: '  חולצה  ', description: '  תיאור  ' }), { storeName: 'x' });
+    expect(f.title).toBe('חולצה');
+    expect(f.description).toBe('תיאור');
   });
 });

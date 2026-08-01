@@ -62,6 +62,28 @@ export function sanitizeImageUrl(raw: unknown): string | null {
   } catch { return null; }
 }
 
+/**
+ * The feed form: the same validation, but resolved to an ABSOLUTE URL.
+ *
+ * `sanitizeImageUrl` deliberately keeps a site-relative `/path` as a path (rule 1
+ * above) — correct for storage and for rendering a page, wrong for a product feed:
+ * Google Merchant Center and Meta Catalog reject a row whose `image_link` isn't
+ * absolute, and they reject it silently, so a seller's product would just quietly
+ * stop being advertised. Resolving against the feed's own origin keeps the product
+ * IN the feed instead of dropping it over a spelling the app itself accepts.
+ *
+ * Returns `null` for anything the validator rejects, or when `baseUrl` isn't a
+ * usable origin — the caller skips that image rather than emitting a broken row.
+ */
+export function toAbsoluteImageUrl(raw: unknown, baseUrl: string): string | null {
+  const url = sanitizeImageUrl(raw);
+  if (url === null) return null;
+  if (!url.startsWith('/')) return url; // already absolute — sanitize guarantees https://
+  try {
+    return new URL(url, baseUrl).href;
+  } catch { return null; }
+}
+
 /** The list form: drops every entry that isn't a usable image URL, keeping order
  *  and de-duplicating (two spellings of one URL normalize to the same string). */
 export function sanitizeImageUrls(raw: unknown[]): string[] {

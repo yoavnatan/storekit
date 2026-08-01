@@ -1,7 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { sanitizeImageUrl, sanitizeImageUrls } from '../src/lib/image-url.js';
+import { sanitizeImageUrl, sanitizeImageUrls, toAbsoluteImageUrl } from '../src/lib/image-url.js';
+
+describe('toAbsoluteImageUrl', () => {
+  const ORIGIN = 'https://shop.example';
+
+  it('leaves an already-absolute https URL untouched', () => {
+    const url = 'https://res.cloudinary.com/demo/image/upload/v1/photo.jpg';
+    expect(toAbsoluteImageUrl(url, ORIGIN)).toBe(url);
+  });
+
+  it('resolves a site-relative path against the given origin', () => {
+    expect(toAbsoluteImageUrl('/uploads/a.jpg', ORIGIN)).toBe('https://shop.example/uploads/a.jpg');
+  });
+
+  it('applies the same rejections as the validator it wraps', () => {
+    expect(toAbsoluteImageUrl('javascript:alert(1)', ORIGIN)).toBeNull();
+    expect(toAbsoluteImageUrl('//evil.example/x.png', ORIGIN)).toBeNull();
+    expect(toAbsoluteImageUrl('http://insecure.example/x.png', ORIGIN)).toBeNull();
+    expect(toAbsoluteImageUrl('', ORIGIN)).toBeNull();
+  });
+
+  it('is a null rather than a throw when the origin is unusable', () => {
+    expect(toAbsoluteImageUrl('/uploads/a.jpg', 'not-a-url')).toBeNull();
+  });
+});
 
 describe('sanitizeImageUrl', () => {
   it('keeps a normal https image URL untouched', () => {

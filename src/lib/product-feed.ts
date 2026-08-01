@@ -4,6 +4,8 @@ import { deriveProductLabels } from './product-labels.js';
 import { generateCombos, comboKey, canonicalDimName } from './variant-combo.js';
 import { isColorVariant } from './color-variants.js';
 import { resolvePrice, type StoreSale } from './discounts.js';
+import { toAbsoluteImageUrl } from './image-url.js';
+import { urlSegment } from './url-base.js';
 
 // Maps a StoreProduct to the standard Google Merchant Center / Meta Catalog
 // product-feed attributes. The whole point (see CURRENT_TASK.md item 14): the
@@ -61,6 +63,23 @@ export interface FeedContext {
   nowMs?: number;
 }
 
+// Google Merchant / Meta Catalog hard limits. Over them the item is REJECTED, and rejected
+// silently — the seller sees a product on the storefront and no ad behind it, with nothing
+// anywhere saying why. Cut here rather than at the XML layer so every future consumer of a
+// FeedItem (a JSON catalog, a per-store feed) inherits the same compliant values.
+const TITLE_MAX = 150;
+const DESCRIPTION_MAX = 5000;
+
+/** Cut to `max` CHARACTERS without splitting a surrogate pair — slicing an emoji in half
+ *  produces a lone surrogate, which is exactly what XML_ILLEGAL would then have to strip,
+ *  turning a length fix into mojibake at the end of every long title. */
+function clampText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const last = cut.charCodeAt(max - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedContext): FeedAttributes {
   const inferText = [ctx.categoryPath, product.name, ...(product.tags ?? [])];
   const g = inferAudienceGender(inferText);
@@ -88,10 +107,17 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
     nowMs: ctx.nowMs,
   });
 
+  // `description` is a REQUIRED Merchant attribute, but the product form defaults it to ''
+  // (api/product.ts) — only `name` is enforced. An empty one is a disapproval, so fall back to
+  // the title: never invented copy, always non-empty, and it describes the item as well as the
+  // seller chose to. Both fields trimmed + capped; see TITLE_MAX/DESCRIPTION_MAX.
+  const title = clampText(product.name.trim(), TITLE_MAX);
+  const description = clampText(product.description.trim() || title, DESCRIPTION_MAX);
+
   return {
     id: product.id,
-    title: product.name,
-    description: product.description,
+    title,
+    description,
     availability: product.stock > 0 ? 'in_stock' : 'out_of_stock',
     price: pv.basePrice,
     ...(pv.isDiscounted ? { salePrice: pv.price } : {}),
@@ -137,15 +163,24 @@ function comboRowId(productId: string, key: string): string {
 }
 
 /** Expand one product into its feed rows (variant combos → item_group_id rows).
- *  Returns [] when a required field is missing (no image, or price ≤ 0) so the
+ *  Returns [] when a required field is missing (no usable image, or price ≤ 0) so the
  *  caller simply skips it rather than emitting a row the platforms would reject. */
 export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): FeedItem[] {
   const base = buildProductFeedAttributes(product, ctx);
-  const images = product.images ?? [];
+  // Every image the platforms are handed must be an ABSOLUTE url, and one bad entry
+  // must not cost the product its listing: `toAbsoluteImageUrl` resolves a stored
+  // site-relative path (which sanitizeImageUrl accepts by design) against this feed's
+  // own origin, and drops only the entries that are unusable — so a product ships as
+  // long as ANY of its images survives, and is skipped only when none does.
+  const images = (product.images ?? [])
+    .map((img) => toAbsoluteImageUrl(img, ctx.baseUrl))
+    .filter((url): url is string => url !== null);
   const imageLink = images[0];
   if (!imageLink || product.price <= 0) return [];
   const additionalImageLinks = images.slice(1, 11); // Google caps additional images at 10
-  const link = `${ctx.baseUrl}/${ctx.storeSlug}/${product.slug}`;
+  // Encoded per segment: slugs carry Hebrew (store-products.ts#slugify) and Merchant Center
+  // validates this as a URL, not as display text.
+  const link = `${ctx.baseUrl}/${urlSegment(ctx.storeSlug)}/${urlSegment(product.slug)}`;
 
   const variants = product.variants ?? [];
   if (!variants.length) {
@@ -177,12 +212,34 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
 
 export interface FeedChannelMeta { title: string; link: string; description: string; currency: string; }
 
+/**
+ * Characters XML 1.0 forbids OUTRIGHT — the C0 controls except tab/LF/CR, the two
+ * non-characters, and an unpaired surrogate. Unlike `&` or `<` these cannot be escaped
+ * into legality: a numeric reference to them is just as illegal as the raw byte. One of
+ * them anywhere in the document makes the WHOLE feed unparseable, so Merchant Center
+ * drops every product of every store, not the one row that carried it — the widest
+ * possible version of "my products stopped appearing".
+ *
+ * They reach us because nothing upstream forbids them: a description pasted out of Word
+ * or Excel carries U+000B, and both JSON and a form POST pass it through untouched.
+ * Stripped rather than replaced — they carry no meaning a shopper would miss.
+ */
+const XML_ILLEGAL =
+  // eslint-disable-next-line no-control-regex -- matching the control characters IS the point here
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/** The one gate every text value passes through on its way into the document — both
+ *  escapers below call it, so a new field cannot bypass it by picking the other one. */
+function xmlText(s: string): string {
+  return s.replace(XML_ILLEGAL, '');
+}
+
 function xmlEscape(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  return xmlText(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 // CDATA for free text; a literal "]]>" inside would close the section early, so split it.
 function cdata(s: string): string {
-  return `<![CDATA[${s.replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
+  return `<![CDATA[${xmlText(s).replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
 }
 
 function itemXml(it: FeedItem, currency: string): string {
