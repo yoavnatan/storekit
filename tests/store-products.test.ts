@@ -10,7 +10,7 @@ vi.mock('node:fs', () => ({
   },
 }));
 
-const { decrementStock, restockProduct, getEffectiveStock, isProductVisible, countStockAlerts } = await import('../src/lib/store-products.js');
+const { decrementStock, restockProduct, getEffectiveStock, isProductVisible, countStockAlerts, slugify } = await import('../src/lib/store-products.js');
 
 beforeEach(() => {
   db = [
@@ -21,6 +21,39 @@ beforeEach(() => {
       variantStock: { 'Size=S': 2 },
     },
   ];
+});
+
+// This is a Hebrew marketplace and its sellers are not required to know English. Under the old
+// `[^a-z0-9-]` strip a Hebrew name slugified to '', so EVERY Hebrew-named product in a store fell
+// back to the same base and got a counter — /store/product, /store/product-2, /store/product-3 —
+// throwing away the strongest keyword the URL can carry, for most of the catalogue.
+describe('slugify', () => {
+  it('keeps a Hebrew name as the slug instead of collapsing it to nothing', () => {
+    expect(slugify('חולצה כחולה')).toBe('חולצה-כחולה');
+  });
+
+  it('gives two different Hebrew products two different slugs', () => {
+    expect(slugify('שמלת ערב')).not.toBe(slugify('נעלי ספורט'));
+  });
+
+  it('still lowercases and hyphenates a Latin name exactly as before', () => {
+    expect(slugify('Blue Shirt')).toBe('blue-shirt');
+  });
+
+  it('keeps digits and mixed scripts', () => {
+    expect(slugify('חולצה Nike 42')).toBe('חולצה-nike-42');
+  });
+
+  it('drops everything a path must not carry — separators, punctuation, invisible marks', () => {
+    expect(slugify('a/b?c#d%e.f')).toBe('abcdef');
+    expect(slugify(`שמלה${String.fromCharCode(0x200f)}`)).toBe('שמלה'); // RTL mark from a paste
+    expect(slugify(`שמלה${String.fromCharCode(0x0b)}`)).toBe('שמלה');   // control char
+  });
+
+  it('collapses and trims runs of hyphens rather than emitting them', () => {
+    expect(slugify('  חולצה   ---  כחולה  ')).toBe('חולצה-כחולה');
+    expect(slugify('!!!')).toBe(''); // caller falls back to 'product'
+  });
 });
 
 describe('decrementStock', () => {

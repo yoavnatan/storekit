@@ -5,7 +5,7 @@ import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { store as platform } from '../config/store.config.js';
 import { buildUrlSetXml, toSitemapDate, type SitemapEntry } from '../lib/sitemap.js';
 import { isStoreReady } from '../lib/store-readiness.js';
-import { stripTrailingSlashes } from '../lib/url-base.js';
+import { stripTrailingSlashes, urlSegment } from '../lib/url-base.js';
 
 // Dynamic content sitemap for the SEO pages that @astrojs/sitemap CANNOT see:
 // every store page (/[slug]) and product page (/[slug]/[product]) is
@@ -39,15 +39,17 @@ export async function GET(_ctx: APIContext): Promise<Response> {
     // platform domain a thin/soft-404 page for no gain (see lib/store-readiness.ts).
     const visibleProducts = getVisibleProductsByStoreId(s.id);
     if (!isStoreReady({ visibleProductCount: visibleProducts.length })) continue;
+    // Percent-encoded per segment: product slugs carry Hebrew, and the sitemap protocol requires
+    // <loc> to be an escaped URL — an unencoded one is a validation error, not a rendering nicety.
     entries.push({
-      loc: `${baseUrl}/${s.slug}`,
+      loc: `${baseUrl}/${urlSegment(s.slug)}`,
       lastmod: toSitemapDate(s.createdAt),
       changefreq: 'daily',
       priority: '0.8',
     });
     for (const p of visibleProducts) {
       entries.push({
-        loc: `${baseUrl}/${s.slug}/${p.slug}`,
+        loc: `${baseUrl}/${urlSegment(s.slug)}/${urlSegment(p.slug)}`,
         lastmod: toSitemapDate(p.createdAt),
         changefreq: 'weekly',
         priority: '0.7',

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { comboKey } from './variant-combo.js';
+import { trimDashes } from './url-base.js';
 import type { ProductDiscount } from './discounts.js';
 export { LOW_STOCK_THRESHOLD } from './variant-combo.js';
 import { Mutex } from './mutex.js';
@@ -79,8 +80,32 @@ export function writeProducts(products: StoreProduct[]): void {
   fs.writeFileSync(PRODUCTS_PATH, JSON.stringify(products, null, 2));
 }
 
+/**
+ * A product's URL segment, derived from its name — the seller never types it.
+ *
+ * **Keeps letters in ANY script, not just a-z.** This is a Hebrew marketplace whose sellers are
+ * not required to know English: under the old `[^a-z0-9-]` strip, "חולצה כחולה" produced the empty
+ * string, so every Hebrew-named product in a store fell back to the same `product` base and was
+ * disambiguated by a counter — `/store/product`, `/store/product-2`, `/store/product-3`. That threw
+ * away the single strongest on-page keyword signal a product URL carries, on the site's primary
+ * language, for the majority of the catalogue (SEO is the platform's #1 goal). Hebrew in a path is
+ * ordinary and fully indexable — Google reads it as the word, and browsers percent-encode it on the
+ * wire — but a URL that ESCAPES the path must encode it, so every machine-read emitter (sitemap,
+ * product feed, canonical/og:url) goes through `productPathSegment` in url-base.ts.
+ *
+ * `\p{L}\p{N}` also drops what a path must never carry — `/`, `?`, `#`, `%`, `.`, control
+ * characters and the invisible RTL/LTR marks a Hebrew paste brings along — since none of those are
+ * a letter or a number. Existing products keep their stored slug (this runs at creation only), so
+ * no indexed URL moves.
+ */
 export function slugify(name: string): string {
-  return name.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const collapsed = name.toLowerCase().trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^\p{L}\p{N}-]/gu, '')
+    .replace(/-+/g, '-');
+  // Edge trim via url-base.ts, never a hand-rolled `^-+|-+$` — that form is quadratic on a name
+  // that arrives with the request (measured: 4.7s at 64k dashes). See trimDashes' header.
+  return trimDashes(collapsed);
 }
 
 interface CreateProductInput {

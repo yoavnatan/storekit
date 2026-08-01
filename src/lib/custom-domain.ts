@@ -10,6 +10,7 @@
 // never go offline if the custom domain's DNS/SSL lapses.
 
 import { store as platform } from '../config/store.config.js';
+import { urlSegment } from './url-base.js';
 import { isReservedSlug, type Store } from './stores.js';
 import { createCloudflareProvider } from './custom-domain-cloudflare.js';
 import { serverEnv } from './runtime-env.js';
@@ -95,14 +96,17 @@ export function hasActiveCustomDomain(store: Pick<Store, 'customDomain'>): boole
  *  duplicate content. No active domain → the platform path is the canonical. */
 export function storeCanonicalUrl(store: Pick<Store, 'slug' | 'customDomain'>): string {
   if (hasActiveCustomDomain(store)) return `https://${store.customDomain!.hostname}`;
-  return `${platform.url}/${store.slug}`;
+  return `${platform.url}/${urlSegment(store.slug)}`;
 }
 
 /** The canonical URL for a product page — the custom-domain-served product lives at /<productSlug>
  *  (root-relative, no store slug), matching how the middleware serves a custom host. */
 export function productCanonicalUrl(store: Pick<Store, 'slug' | 'customDomain'>, productSlug: string): string {
-  if (hasActiveCustomDomain(store)) return `https://${store.customDomain!.hostname}/${productSlug}`;
-  return `${platform.url}/${store.slug}/${productSlug}`;
+  // Per-segment encoding — a product slug is Hebrew for most of this catalogue, and a canonical
+  // that differs from the URL Google actually fetched points at a different page than the one it
+  // sits on (url-base.ts#urlSegment).
+  if (hasActiveCustomDomain(store)) return `https://${store.customDomain!.hostname}/${urlSegment(productSlug)}`;
+  return `${platform.url}/${urlSegment(store.slug)}/${urlSegment(productSlug)}`;
 }
 
 /** When a store has an active custom domain and the current request is NOT already on it, returns the
