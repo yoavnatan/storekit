@@ -47,7 +47,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // composition, not just the tab's top-5 leaderboard).
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
 
-  const orders = getOrdersByStoreSlug(storeSlug);
+  const orders = await getOrdersByStoreSlug(storeSlug);
 
   // ?productId=… → single-product drill-down (sales + views for that product,
   // same range/axis). The product must belong to THIS store, else a crafted id

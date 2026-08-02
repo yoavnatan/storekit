@@ -28,15 +28,24 @@
  */
 import { getStoreById, getStoreBySlug, updateStore, type Store } from './stores.js';
 import { storeLifecycle, type StoreLifecycle } from './store-status.js';
-import { getOrdersByStoreSlug, type Order } from './orders.js';
-import { orderBlocksStoreClosure } from './order-status-rules.js';
+import { countOrdersByStoreSlug, type Order } from './orders.js';
+import {
+  orderBlocksStoreClosure,
+  CLOSURE_BLOCKING_PAYMENT_STATUSES,
+  CLOSURE_BLOCKING_SHIPPING_STATUSES,
+} from './order-status-rules.js';
 import { getCampaignsByStoreId, archiveCampaign } from './ad-campaigns.js';
 
 /** Orders this store still owes something on — the ones that hold a closure open. Paid-and-
  *  undelivered and awaiting-payment both count; cancelled, delivered and failed do not. The rule
  *  itself is a column in order-status-rules.ts so a new order status has to answer the question. */
-export function openOrderCount(storeSlug: string): number {
-  return getOrdersByStoreSlug(storeSlug).filter(orderBlocksStoreClosure).length;
+export async function openOrderCount(storeSlug: string): Promise<number> {
+  // A COUNT, not a filtered fetch. The predicate below is the same table's two columns handed to
+  // the query as lists (orders.ts#countOrdersByStoreSlug), so the answer cannot drift from
+  // `orderBlocksStoreClosure` beside it — which matters here more than anywhere: this number is
+  // the gate on a store being allowed to close, and a store that closes while an order is open is
+  // a buyer whose parcel nobody owns.
+  return countOrdersByStoreSlug(storeSlug, CLOSURE_BLOCKING_PAYMENT_STATUSES, CLOSURE_BLOCKING_SHIPPING_STATUSES);
 }
 
 /** The same count for a caller that has ALREADY read the orders — the admin dashboard reads every
@@ -79,7 +88,7 @@ export async function pauseStore(storeId: string): Promise<LifecycleChange> {
   if (refusal) return { ok: false, error: refusal };
   const updated = store.pausedAt ? store : await updateStore(storeId, { pausedAt: new Date().toISOString() });
   if (!updated) return { ok: false, error: 'החנות לא נמצאה.' };
-  return { ok: true, store: updated, state: storeLifecycle(updated), openOrders: openOrderCount(updated.slug) };
+  return { ok: true, store: updated, state: storeLifecycle(updated), openOrders: await openOrderCount(updated.slug) };
 }
 
 /** Back to selling. Also the "cancel the closure" action — a pending closure is just a pause
@@ -92,7 +101,7 @@ export async function resumeStore(storeId: string): Promise<LifecycleChange> {
   if (refusal) return { ok: false, error: refusal };
   const updated = await updateStore(storeId, { pausedAt: undefined, closePendingAt: undefined });
   if (!updated) return { ok: false, error: 'החנות לא נמצאה.' };
-  return { ok: true, store: updated, state: storeLifecycle(updated), openOrders: openOrderCount(updated.slug) };
+  return { ok: true, store: updated, state: storeLifecycle(updated), openOrders: await openOrderCount(updated.slug) };
 }
 
 /** The final step, shared by the immediate close and the deferred one. Archives every live boost
@@ -117,7 +126,7 @@ export async function requestStoreClosure(storeId: string): Promise<LifecycleCha
   const refusal = refuseIfNotSellerControlled(store);
   if (refusal) return { ok: false, error: refusal };
 
-  const openOrders = openOrderCount(store.slug);
+  const openOrders = await openOrderCount(store.slug);
   const updated = openOrders === 0
     ? await finalizeClosure(store)
     // pausedAt as well as closePendingAt: `closing` already implies "not selling" in the status
@@ -150,6 +159,6 @@ export async function requestStoreClosure(storeId: string): Promise<LifecycleCha
 export async function settleStoreClosure(storeSlug: string): Promise<Store | null> {
   const store = await getStoreBySlug(storeSlug);
   if (!store || storeLifecycle(store) !== 'closing') return null;
-  if (openOrderCount(store.slug) > 0) return null;
+  if (await openOrderCount(store.slug) > 0) return null;
   return finalizeClosure(store);
 }

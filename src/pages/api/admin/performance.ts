@@ -54,7 +54,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // per-period composition, not just the top-5 leaderboard).
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
 
-  const orders = getOrdersByStoreSlug(storeSlug);
+  const orders = await getOrdersByStoreSlug(storeSlug);
 
   // ?productId=… → single-product drill-down, same as the seller twin. Product
   // must belong to the requested store (defence-in-depth even though admin sees

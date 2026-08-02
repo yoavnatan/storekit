@@ -47,7 +47,7 @@ const d = t.dashboard;
 // runs — identical setup to the seller dashboard's performance tab so the two
 // stay visually in lockstep (see src/pages/seller/dashboard.astro). Range
 // changes re-fetch from /api/admin/performance (admin-guarded) client-side.
-const storeOrders: Order[] = getOrdersByStoreSlug(store.slug);
+const storeOrders: Order[] = await getOrdersByStoreSlug(store.slug);
 const storeProductsList = await getProductsByStoreId(store.id);
 const today = new Date();
 const toLocalISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
@@ -69,7 +69,7 @@ const isRtl = dir === 'rtl';
 // first paint owns the entrance animation (see dashboard.astro for the full reasoning).
 const chartOpts = { emptyMessage: d.perfNoData, rtl: isRtl, animate: false };
 const revenueChartSvg = buildBarChartSvg(
-  summary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })),
+  summary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })),
   { ...chartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice },
 );
 const visitorsChartSvg = buildMultiLineChartSvg(
@@ -127,7 +127,7 @@ const visitorsChartSvg = buildMultiLineChartSvg(
         <dl id="perf-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5" aria-live="polite">
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfRevenue}</dt>
-            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue">{formatPrice(summary.totalRevenue)}</dd>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue">{formatPrice(summary.totalRevenueAgorot)}</dd>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfOrders}</dt>
@@ -135,7 +135,7 @@ const visitorsChartSvg = buildMultiLineChartSvg(
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfAvgOrder}</dt>
-            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg">{formatPrice(summary.avgOrderValue)}</dd>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg">{formatPrice(summary.avgOrderValueAgorot)}</dd>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <div class="flex items-center gap-1 mb-1">
@@ -179,15 +179,15 @@ const visitorsChartSvg = buildMultiLineChartSvg(
           <dl class="m-0 flex flex-col gap-2 text-[0.86rem]">
             <div class="flex items-center justify-between gap-3">
               <dt class="[color:var(--color-muted)]">{d.perfGrossRevenue}</dt>
-              <dd class="m-0 font-medium" id="perf-gross">{formatPrice(summary.totalRevenue)}</dd>
+              <dd class="m-0 font-medium" id="perf-gross">{formatPrice(summary.totalRevenueAgorot)}</dd>
             </div>
             <div class="flex items-center justify-between gap-3">
               <dt class="[color:var(--color-muted)]">{d.perfCommission} <span class="text-[0.78rem]">(<span id="perf-commission-rate">{summary.commissionRate}</span>%)</span></dt>
-              <dd class="m-0 font-medium [color:var(--color-danger)]" id="perf-commission">−{formatPrice(summary.platformCommission)}</dd>
+              <dd class="m-0 font-medium [color:var(--color-danger)]" id="perf-commission">−{formatPrice(summary.platformCommissionAgorot)}</dd>
             </div>
             <div class="flex items-center justify-between gap-3 pt-2 border-t [border-color:var(--color-border)]">
               <dt class="font-semibold">{d.perfNetProfit}</dt>
-              <dd class="m-0 font-bold text-[1.02rem] [color:var(--color-success)]" id="perf-net">{formatPrice(summary.netProfit)}</dd>
+              <dd class="m-0 font-bold text-[1.02rem] [color:var(--color-success)]" id="perf-net">{formatPrice(summary.netProfitAgorot)}</dd>
             </div>
           </dl>
         </div>
@@ -217,14 +217,14 @@ const visitorsChartSvg = buildMultiLineChartSvg(
               <p class="muted text-[0.85rem] m-0">{d.perfTopProductsEmpty}</p>
             )}
             {summary.topProducts.map((tp, tpIdx) => {
-              const totalRevenue = Math.max(summary.topProducts.reduce((s, x) => s + x.revenue, 0), 1);
-              const pct = Math.round((tp.revenue / totalRevenue) * 100);
+              const totalRevenue = Math.max(summary.topProducts.reduce((s, x) => s + x.revenueAgorot, 0), 1);
+              const pct = Math.round((tp.revenueAgorot / totalRevenue) * 100);
               return (
                 <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
                   <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style={`width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(tpIdx * 60, 300)}ms`}></div>
                   <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
                     <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">{tp.name}</span>
-                    <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{pct}%</strong> · {tp.units} {d.perfUnitsSold} · {formatPrice(tp.revenue)}</span>
+                    <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{pct}%</strong> · {tp.units} {d.perfUnitsSold} · {formatPrice(tp.revenueAgorot)}</span>
                   </div>
                 </div>
               );

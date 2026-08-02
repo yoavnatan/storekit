@@ -81,6 +81,28 @@ export const PAYMENT_STATUS_RULES: Record<PaymentStatus, PaymentStatusRule> = {
 export const CANCELLABLE_FROM: ShippingStatus[] = (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[])
   .filter((s) => SHIPPING_STATUS_RULES[s].cancellableFrom);
 
+/**
+ * The same columns as lists, for the queries that have to ask this question in SQL.
+ *
+ * A `WHERE payment_status = 'paid' AND shipping_status <> 'cancelled'` inside a query is a second
+ * copy of the table — the exact thing the table exists to prevent, just written in another
+ * language, where no compiler and no `tests/order-status-rules.test.ts` can see it. Derived here
+ * and passed in as a parameter, a new status row propagates into every query that reads it, and a
+ * status the table says nothing about cannot silently answer "yes" to a SQL predicate.
+ */
+const shippingWhere = (column: keyof ShippingStatusRule): ShippingStatus[] =>
+  (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[]).filter((s) => SHIPPING_STATUS_RULES[s][column]);
+const paymentWhere = (column: keyof PaymentStatusRule): PaymentStatus[] =>
+  (Object.keys(PAYMENT_STATUS_RULES) as PaymentStatus[]).filter((s) => PAYMENT_STATUS_RULES[s][column]);
+
+/** Both halves of `orderCountsAsRevenue`, as the two lists a query ANDs together. */
+export const REVENUE_PAYMENT_STATUSES = paymentWhere('countsAsRevenue');
+export const REVENUE_SHIPPING_STATUSES = shippingWhere('countsAsRevenue');
+
+/** Both halves of `orderBlocksStoreClosure`. */
+export const CLOSURE_BLOCKING_PAYMENT_STATUSES = paymentWhere('blocksStoreClosure');
+export const CLOSURE_BLOCKING_SHIPPING_STATUSES = shippingWhere('blocksStoreClosure');
+
 /** Does this order count toward money actually earned? Both halves must agree —
  *  see orders.ts#countsAsRevenue, which is the name the rest of the codebase uses. */
 export function orderCountsAsRevenue(o: Pick<Order, 'paymentStatus' | 'shippingStatus'>): boolean {

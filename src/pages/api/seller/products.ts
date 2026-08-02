@@ -39,7 +39,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   const categories = await getCategoriesByStoreId(store.id);
   const categoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(categories, p.categoryId) : '']));
   const wishlistCounts = getAllWishlistCounts();
-  const purchasedCounts = getPurchasedCountsByStoreSlug(store.slug);
+  const purchasedCounts = await getPurchasedCountsByStoreSlug(store.slug);
 
   const filtered = filterAndSortSellerProducts(products, categoryPaths, wishlistCounts, purchasedCounts, query);
   const { items, totalPages, total } = paginate(filtered, page, pageSize);

@@ -51,13 +51,13 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // full per-period composition, not just the top-5 leaderboard).
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
 
-  const orders = getAllOrders();
+  const orders = await getAllOrders();
   const sellers = await getAllSellers();
   const stores = buildPlatformStoreInputs(await getAllStores(), sellers);
   const result = buildPlatformPerformance(orders, stores, from, to, granularity, topLimit);
   const page = selectStoreRows(result.stores, parseStoreRowsQuery(url.searchParams));
   const revenue = buildPlatformRevenue(
-    result.summary.platformCommission,
+    result.summary.platformCommissionAgorot,
     result.summary.commissionRate,
     sellers,
     getAllCampaigns(),

@@ -44,7 +44,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // domain + key (indexnow.ts).
   pingStoreChange(result.store);
 
-  const openOrders = result.state === 'closing' ? result.openOrders : openOrderCount(result.store.slug);
+  const openOrders = result.state === 'closing' ? result.openOrders : await openOrderCount(result.store.slug);
 
   // Every seller-driven state gets a letter — including reopening, which is not the harmless
   // mirror of pausing it looks like: the storefront comes back on its own, the boost campaigns

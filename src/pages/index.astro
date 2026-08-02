@@ -12,7 +12,7 @@ import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
 import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
 import { getVisibleProductsByStoreIds } from '../lib/store-products.js';
-import { getAllOrders } from '../lib/orders.js';
+import { getOrdersByBuyer } from '../lib/orders.js';
 import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
 import { getUserCart } from '../lib/user-carts.js';
 import { parseRecentStores, mergeStoreSlugs } from '../lib/recent-stores.js';
@@ -69,9 +69,9 @@ const buyerEmail = sellerId ? (await getSellerById(sellerId))?.email : undefined
 const previousStoreSlugs: string[] = [];
 if (sellerId || buyerEmail) {
   const seenSlugs = new Set<string>();
-  const myOrders = getAllOrders()
-    .filter((o) => o.buyerId === sellerId || (!!buyerEmail && o.buyerEmail === buyerEmail))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // A WHERE on this buyer, newest-first, instead of every order on the platform filtered in
+  // memory — on the homepage, which every visitor loads (orders.ts#getOrdersByBuyer).
+  const myOrders = await getOrdersByBuyer(sellerId ?? undefined, buyerEmail);
   for (const order of myOrders) {
     for (const item of order.items) {
       if (!seenSlugs.has(item.storeSlug)) { seenSlugs.add(item.storeSlug); previousStoreSlugs.push(item.storeSlug); }

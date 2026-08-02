@@ -29,7 +29,7 @@ export const GET: APIRoute = async ({ url }) => {
   // Blocked individual products (see admin-moderation.ts) never appear in the
   // store's own "load more" pagination either.
   // Same popularity signal the page's SSR render uses, so paged results rank identically.
-  const purchasedUnits = getPurchasedCountsByStoreSlug(store.slug);
+  const purchasedUnits = await getPurchasedCountsByStoreSlug(store.slug);
   // `sale` rides along so a "price: low to high" page orders by what the shopper would pay.
   const filtered = filterAndSortProducts(await getVisibleProductsByStoreId(store.id), { categoryIds, sort, q, purchasedUnits, sale: store.sale });
   const products = filtered.slice(offset, offset + PRODUCTS_PAGE_SIZE);

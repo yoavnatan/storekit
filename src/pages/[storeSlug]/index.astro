@@ -118,7 +118,7 @@ const chipLevelCategories = storeCategories
 
 const categoryIds = selectedCategory ? resolveCategoryFilterIds(storeCategories, selectedCategory.id) : undefined;
 // Popularity signal for the 'default' ranking — lifetime units sold per product in this store.
-const purchasedUnits = getPurchasedCountsByStoreSlug(shopStore.slug);
+const purchasedUnits = await getPurchasedCountsByStoreSlug(shopStore.slug);
 const filteredProducts = filterAndSortProducts(allProducts, { categoryIds, sort: initSort, q: initQ, purchasedUnits, sale: shopStore.sale });
 const products = filteredProducts.slice(0, PRODUCTS_PAGE_SIZE);
 const hasMoreProducts = filteredProducts.length > products.length;

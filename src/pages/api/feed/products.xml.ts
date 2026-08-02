@@ -3,7 +3,7 @@ import type { APIContext } from 'astro';
 import { getIndexableStores } from '../../../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../../../lib/store-products.js';
 import { getCategoriesByStoreId, categoryPath } from '../../../lib/store-categories.js';
-import { getPurchasedCountsByStoreSlug } from '../../../lib/orders.js';
+import { getPurchasedCountsByStoreSlugs } from '../../../lib/orders.js';
 import { store as platform } from '../../../config/store.config.js';
 import { buildFeedItems, toMerchantXml, type FeedItem } from '../../../lib/product-feed.js';
 import { stripTrailingSlashes } from '../../../lib/url-base.js';
@@ -35,9 +35,15 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   const baseUrl = stripTrailingSlashes(platform.url);
   const items: FeedItem[] = [];
 
-  for (const store of await getIndexableStores()) {
+  const stores = await getIndexableStores();
+  // ONE query for every store's sold-units, ahead of the loop. Per-store inside it was a file
+  // read before and would be a round trip per store now — the N+1 shape §8 flagged when
+  // `store-categories` moved, in the very next module (DB_MIGRATION_PLAN.md §8).
+  const purchasedByStore = await getPurchasedCountsByStoreSlugs(stores.map((s) => s.slug));
+
+  for (const store of stores) {
     const categories = await getCategoriesByStoreId(store.id);
-    const purchased = getPurchasedCountsByStoreSlug(store.slug);
+    const purchased = purchasedByStore.get(store.slug) ?? {};
     for (const product of await getVisibleProductsByStoreId(store.id)) {
       const cPath = product.categoryId ? categoryPath(categories, product.categoryId) : undefined;
       items.push(...buildFeedItems(product, {

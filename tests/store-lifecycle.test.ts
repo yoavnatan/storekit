@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import crypto from 'node:crypto';
 import type { Order } from '../src/lib/orders.js';
 import type { AdCampaign } from '../src/lib/ad-campaigns.js';
 
@@ -10,15 +11,19 @@ import type { AdCampaign } from '../src/lib/ad-campaigns.js';
  *  back and press the button again once the parcels landed — so it defers instead.
  *
  *  **Half of this file reads Postgres and half still reads JSON, on purpose.** Stores moved in
- *  stage 2 (DB_MIGRATION_PLAN.md §8); orders and campaigns have not yet. So the store is a real
- *  row and the other two stay behind the file mock — which is exactly the state the application
- *  itself is in mid-migration, and the reason the mock below has to delegate anything it does not
- *  own to the real `fs` instead of answering for every path: the test database is loaded from a
- *  file too, and a mock that swallowed that read reported a broken schema rather than a mocked one.
+ *  stage 2 and orders followed with the money (DB_MIGRATION_PLAN.md §8); ad campaigns have not.
+ *  So two of the three are real rows and the campaigns stay behind the file mock — which is
+ *  exactly the state the application itself is in mid-migration, and the reason the mock below has
+ *  to delegate anything it does not own to the real `fs` instead of answering for every path: the
+ *  test database is loaded from a file too, and a mock that swallowed that read reported a broken
+ *  schema rather than a mocked one.
+ *
+ *  `openOrderCount` is a COUNT query now, so the orders it counts have to exist as rows —
+ *  `writeOrders` below is what puts them there, and it is the only reason this file talks SQL.
  */
-const files: Record<string, unknown[]> = { orders: [], campaigns: [] };
+const files: Record<string, unknown[]> = { campaigns: [] };
 const keyFor = (p: string): keyof typeof files | null =>
-  p.includes('ad-campaigns') ? 'campaigns' : p.includes('orders') ? 'orders' : null;
+  p.includes('ad-campaigns') ? 'campaigns' : null;
 
 vi.mock('node:fs', async (importOriginal) => {
   const real = await importOriginal<typeof import('node:fs')>();
@@ -50,10 +55,18 @@ const STORE_ID = '22222222-2222-4222-8222-0000000000f1';
 const SELLER_ID = '11111111-1111-4111-8111-000000000001';
 const SLUG = 'my-store';
 
-const order = (id: string, extra: Partial<Order> = {}): Order =>
-  ({ id, buyerName: 'A', buyerEmail: 'a@b.c', buyerPhone: '', buyerAddress: '',
-     items: [{ productId: 'p1', productName: 'P', storeSlug: SLUG, storeName: 'My Store', price: 10, qty: 1, image: '' }],
-     shippingAmount: 0, totalAmount: 10, paymentRef: id, paymentStatus: 'paid', shippingStatus: 'pending',
+/** A stable uuid per short test name, so `order('o1')` still reads as `o1` while the column
+ *  gets the uuid it requires. */
+const ORDER_IDS = new Map<string, string>();
+const orderId = (name: string): string => {
+  if (!ORDER_IDS.has(name)) ORDER_IDS.set(name, crypto.randomUUID());
+  return ORDER_IDS.get(name)!;
+};
+
+const order = (name: string, extra: Partial<Order> = {}): Order =>
+  ({ id: orderId(name), buyerName: 'A', buyerEmail: 'a@b.c', buyerPhone: '', buyerAddress: '',
+     items: [{ productId: 'p1', productName: 'P', storeSlug: SLUG, storeName: 'My Store', priceAgorot: 10, qty: 1, image: '' }],
+     shippingAgorot: 0, totalAgorot: 10, paymentRef: orderId(name), paymentStatus: 'paid', shippingStatus: 'pending',
      createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z', ...extra }) as Order;
 
 const campaign = (id: string, extra: Partial<AdCampaign> = {}): AdCampaign =>
@@ -69,9 +82,36 @@ async function storeRowCount(): Promise<number> {
   return rows[0]!.n;
 }
 
+/**
+ * Write these orders as the only orders in the database.
+ *
+ * One row per order plus one `order_stores` row per store the order names — which is what
+ * `countOrdersByStoreSlug` reads, so an order written without its slice would be invisible to the
+ * very count under test.
+ */
+async function writeOrders(orders: Order[]): Promise<void> {
+  await query('DELETE FROM order_items');
+  await query('DELETE FROM order_stores');
+  await query('DELETE FROM orders');
+  for (const o of orders) {
+    await query(
+      `INSERT INTO orders (id, buyer_name, buyer_email, total_agorot, payment_status, shipping_status, created_at)
+       VALUES ($1, 'A', 'a@b.c', $2, $3, $4, $5)`,
+      [o.id, o.totalAgorot, o.paymentStatus, o.shippingStatus, o.createdAt],
+    );
+    for (const slug of new Set(o.items.map((i) => i.storeSlug))) {
+      await query(
+        `INSERT INTO order_stores (order_id, store_slug, store_name, subtotal_agorot, shipping_agorot)
+         VALUES ($1, $2, 'S', $3, 0)`,
+        [o.id, slug, o.totalAgorot],
+      );
+    }
+  }
+}
+
 beforeEach(async () => {
-  files.orders = [];
   files.campaigns = [];
+  await writeOrders([]);
   await query('DELETE FROM stores WHERE id = $1', [STORE_ID]);
   await query(
     `INSERT INTO stores (id, seller_id, slug, name, tagline, description, colors, created_at)
@@ -116,33 +156,36 @@ describe('pause and resume', () => {
 // them (one re-reads the file per store, one groups orders the admin already loaded), so this is
 // the invariant that stops them from ever answering differently.
 describe('the two open-order counters agree', () => {
-  it('gives the same number per store, whichever way it is asked', () => {
-    files.orders = [
+  it('gives the same number per store, whichever way it is asked', async () => {
+    const orders = [
       order('o1'),
       order('o2', { shippingStatus: 'shipped' }),
       order('o3', { shippingStatus: 'delivered' }),
       order('o4', { paymentStatus: 'failed' }),
       order('o5', { shippingStatus: 'cancelled' }),
       // Another store's order must not land in this store's count.
-      order('o6', { items: [{ productId: 'p9', productName: 'X', storeSlug: 'other-store', storeName: 'Other', price: 5, qty: 1, image: '' }] } as Partial<Order>),
+      order('o6', { items: [{ productId: 'p9', productName: 'X', storeSlug: 'other-store', storeName: 'Other', priceAgorot: 5, qty: 1, image: '' }] } as Partial<Order>),
     ];
-    const map = countOpenOrdersByStore(files.orders as Order[]);
-    expect(map.get(SLUG) ?? 0).toBe(openOrderCount(SLUG));
+    await writeOrders(orders);
+    // One is a COUNT query, the other groups orders the admin already loaded. They must not drift.
+    const map = countOpenOrdersByStore(orders);
+    expect(map.get(SLUG) ?? 0).toBe(await openOrderCount(SLUG));
     expect(map.get(SLUG)).toBe(2);
     expect(map.get('other-store')).toBe(1);
   });
 
   // One order naming the same store twice (two lines from one shop) is ONE obligation, not two —
   // otherwise the admin's "waiting on 4 orders" would outrun the seller's list of 2.
-  it('counts an order once however many of its lines belong to the store', () => {
-    files.orders = [order('o1', {
+  it('counts an order once however many of its lines belong to the store', async () => {
+    const orders = [order('o1', {
       items: [
-        { productId: 'p1', productName: 'A', storeSlug: SLUG, storeName: 'My Store', price: 10, qty: 1, image: '' },
-        { productId: 'p2', productName: 'B', storeSlug: SLUG, storeName: 'My Store', price: 20, qty: 1, image: '' },
+        { productId: 'p1', productName: 'A', storeSlug: SLUG, storeName: 'My Store', priceAgorot: 10, qty: 1, image: '' },
+        { productId: 'p2', productName: 'B', storeSlug: SLUG, storeName: 'My Store', priceAgorot: 20, qty: 1, image: '' },
       ],
     } as Partial<Order>)];
-    expect(countOpenOrdersByStore(files.orders as Order[]).get(SLUG)).toBe(1);
-    expect(openOrderCount(SLUG)).toBe(1);
+    await writeOrders(orders);
+    expect(countOpenOrdersByStore(orders).get(SLUG)).toBe(1);
+    expect(await openOrderCount(SLUG)).toBe(1);
   });
 });
 
@@ -170,16 +213,16 @@ describe('closing with nothing owed', () => {
 });
 
 describe('closing while orders are still open', () => {
-  beforeEach(() => { files.orders = [order('o1'), order('o2', { shippingStatus: 'shipped' })]; });
+  beforeEach(async () => { await writeOrders([order('o1'), order('o2', { shippingStatus: 'shipped' })]); });
 
-  it('counts only orders that still owe the buyer something', () => {
-    files.orders = [
+  it('counts only orders that still owe the buyer something', async () => {
+    await writeOrders([
       order('o1'),                                        // paid, pending  → open
       order('o2', { shippingStatus: 'delivered' }),       // done
       order('o3', { shippingStatus: 'cancelled' }),       // done
       order('o4', { paymentStatus: 'failed' }),           // nobody paid
-    ];
-    expect(openOrderCount(SLUG)).toBe(1);
+    ]);
+    expect(await openOrderCount(SLUG)).toBe(1);
   });
 
   // The heart of it: the seller wants no more sales, but two parcels are still out. The store
@@ -194,11 +237,11 @@ describe('closing while orders are still open', () => {
 
   it('completes the closure by itself when the last open order is done', async () => {
     await requestStoreClosure(STORE_ID);
-    files.orders = [order('o1', { shippingStatus: 'delivered' }), order('o2', { shippingStatus: 'shipped' })];
+    await writeOrders([order('o1', { shippingStatus: 'delivered' }), order('o2', { shippingStatus: 'shipped' })]);
     expect(await settleStoreClosure(SLUG)).toBeNull();          // one still in transit
     expect(storeLifecycle(await current())).toBe('closing');
 
-    files.orders = [order('o1', { shippingStatus: 'delivered' }), order('o2', { shippingStatus: 'delivered' })];
+    await writeOrders([order('o1', { shippingStatus: 'delivered' }), order('o2', { shippingStatus: 'delivered' })]);
     expect(await settleStoreClosure(SLUG)).not.toBeNull();
     expect(storeLifecycle(await current())).toBe('closed');
   });
@@ -208,7 +251,7 @@ describe('closing while orders are still open', () => {
     expect((await resumeStore(STORE_ID)).ok).toBe(true);
     expect(storeLifecycle(await current())).toBe('active');
     // And a later settle must not resurrect the cancelled intent.
-    files.orders = [];
+    await writeOrders([]);
     expect(await settleStoreClosure(SLUG)).toBeNull();
     expect(storeLifecycle(await current())).toBe('active');
   });

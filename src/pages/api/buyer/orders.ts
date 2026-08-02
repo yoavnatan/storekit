@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
-import { getAllOrders } from '../../../lib/orders.js';
+import { getOrdersByBuyer } from '../../../lib/orders.js';
 import { filterBuyerOrders, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../../lib/buyer-orders-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
 
@@ -20,9 +20,9 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   if (!seller) return json({ error: 'User not found' }, 404);
 
   const url = new URL(request.url);
-  const orders = getAllOrders()
-    .filter((o) => o.buyerId === userId || o.buyerEmail === seller.email)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // One WHERE, not "every order on the platform, then filter". Already newest-first from the
+  // query, on the same id-OR-email match a guest checkout needs (orders.ts#getOrdersByBuyer).
+  const orders = await getOrdersByBuyer(userId, seller.email);
 
   const query = parseBuyerOrderQuery(url.searchParams);
   const filtered = filterBuyerOrders(orders, query);

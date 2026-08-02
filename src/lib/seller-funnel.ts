@@ -63,7 +63,7 @@ export async function getSellerFunnel(): Promise<SellerFunnel> {
     await getAllSellers(),
     await getAllStores(),
     await getAllProducts(),
-    getAllOrders(),
+    await getAllOrders(),
     getLifetimeEventSessions('seller_register_view'),
   );
 }

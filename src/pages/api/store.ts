@@ -275,7 +275,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Migrate the durable slug-keyed data (analytics + saved favorites/recent) and notify the index.
     await renameStoreSlugInPageviews(oldSlug, newSlug);
     renameStoreSlugInUserData(oldSlug, newSlug);
-    renameStoreSlugInOrders(oldSlug, newSlug);
+    // Awaited, not fired and forgotten: it is two UPDATEs in a transaction now, and returning 200
+    // before it lands means the seller's dashboard can reload on the new slug while its orders are
+    // still under the old one — an empty orders tab, and a swallowed error if it fails.
+    await renameStoreSlugInOrders(oldSlug, newSlug);
     pingStoreChange(updated);
     return json({ ok: true, slug: newSlug });
   }
