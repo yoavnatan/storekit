@@ -1,8 +1,10 @@
 // Two small pieces of tab-navigation glue for /admin (CURRENT_TASK.md → סשן ב׳):
 import { initGotoPanelLinks } from '../dashboard/ui.js';
 import { stripForeignTabParams } from '../../lib/admin-nav.js';
-
-const TRACKED_TABS = new Set(['sellers', 'stores', 'orders', 'alerts']);
+// The same list the server validates against (lib/admin-tabs.ts) — a copy here is how a tab the
+// client reports becomes a tab the route answers 400 to. That module imports nothing, which is
+// what lets browser code have it; `admin-tab-views.ts` cannot come here, it imports the database.
+import { isTrackedAdminTab } from '../../lib/admin-tabs.js';
 
 // Everything that says "this tab has new rows" is cleared together, the moment
 // the tab is left — the count on the tab, the "חדש" chip on each row, and the
@@ -38,7 +40,7 @@ function clearTabBadge(panel: string): void {
 // sort / pager, all of which re-fetch this same route) wiped the marks
 // mid-session. Now the server only reads the boundary; this is the only writer.
 function recordLeft(panel: string): void {
-  if (!TRACKED_TABS.has(panel)) return;
+  if (!isTrackedAdminTab(panel)) return;
   fetch('/api/admin/tab-view', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -81,7 +83,7 @@ export function initAdminTabNav(): void {
       if (panel === activePanel) return; // re-clicking the tab you're already on — not a "leave"
       const leftPanel = activePanel;
       activePanel = panel;
-      if (TRACKED_TABS.has(leftPanel)) clearTabBadge(leftPanel);
+      if (isTrackedAdminTab(leftPanel)) clearTabBadge(leftPanel);
       recordLeft(leftPanel);
     });
   });
@@ -92,7 +94,7 @@ export function initAdminTabNav(): void {
   // sendBeacon survives page teardown where fetch does not; the endpoint reads
   // the body as JSON regardless of the Blob's content type.
   window.addEventListener('pagehide', () => {
-    if (!TRACKED_TABS.has(activePanel)) return;
+    if (!isTrackedAdminTab(activePanel)) return;
     navigator.sendBeacon('/api/admin/tab-view', new Blob([JSON.stringify({ tab: activePanel })], { type: 'application/json' }));
   });
 }
