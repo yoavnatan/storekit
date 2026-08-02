@@ -45,6 +45,72 @@ types.setTypeParser(20, (value: string) => Number(value));
 
 let pool: pg.Pool | undefined;
 
+/**
+ * What one statement returns. `rowCount` is deliberately part of the contract and not an
+ * afterthought: for the atomic stock decrement (§7.5) the number of affected rows IS the answer —
+ * 1 means sold, 0 means there was not enough and the sale must be refused — and the same holds for
+ * every `UPDATE … WHERE` that encodes a precondition.
+ */
+export interface QueryOutcome<Row> { rows: Row[]; rowCount: number }
+
+/** The minimal surface every `lib/` module codes against — a pooled connection or a transaction. */
+export interface Queryable {
+  query<Row>(text: string, params?: readonly unknown[]): Promise<QueryOutcome<Row>>;
+}
+
+/** A whole database: statements, transactions, and a way to shut it down. */
+export interface Database extends Queryable {
+  transaction<T>(run: (tx: Queryable) => Promise<T>): Promise<T>;
+  close(): Promise<void>;
+}
+
+/**
+ * The database this process talks to — swappable, and that is the point.
+ *
+ * **Why this seam exists (DB_MIGRATION_PLAN.md §8 stage 2).** Stage 2 replaces `lib/*` module by
+ * module, file read → query. The moment the first module flips, every test that touches it needs a
+ * Postgres — and there are 120 test files. Requiring a running server to run `npm test` would mean
+ * the suite stops being the quality gate the plan leans on (§9.1: "all tests pass unchanged"), on a
+ * branch that stays broken in the middle for many sessions.
+ *
+ * `tests/helpers/test-db.ts` therefore installs PGlite here — Postgres compiled to WASM, in-process:
+ * the same parser, planner and constraint machinery, which is what makes a green suite mean
+ * something. The alternative, mocking each module, would test the mocks.
+ *
+ * It is also why `lib/` never imports a `pg` type. Modules take `Queryable`; only this file knows
+ * the driver.
+ */
+let active: Database | undefined;
+
+/**
+ * Point every query in the process at `db` — tests only; pass `undefined` to go back to Postgres.
+ *
+ * Production never calls this: the default is the real pool, reached lazily, so a repo that has not
+ * finished the migration still starts without `DATABASE_URL`.
+ */
+export function setDatabase(db: Database | undefined): void {
+  active = db;
+}
+
+/** The database in force right now — the injected one, else the pooled Postgres connection. */
+export function getDatabase(): Database {
+  return active ?? poolDatabase;
+}
+
+/**
+ * The real one. `rowCount` is `number | null` in `pg` (null for statements that return no count);
+ * normalising it to 0 here means a caller reading the affected-row count never has to consider a
+ * third case that cannot happen for the statements we run.
+ */
+const poolDatabase: Database = {
+  async query<Row>(text: string, params: readonly unknown[] = []) {
+    const result = await getPool().query(text, params as unknown[]);
+    return { rows: result.rows as Row[], rowCount: result.rowCount ?? 0 };
+  },
+  transaction: withPooledTransaction,
+  close: closePool,
+};
+
 /** The connection string, or undefined while this environment still runs on JSON files. */
 export function databaseUrl(): string | undefined {
   return serverEnv('DATABASE_URL');
@@ -145,23 +211,20 @@ export function getPool(): pg.Pool {
 }
 
 /** Run one statement. Parameters are `$1, $2, …` — never string-interpolate a value into SQL. */
-export async function query<Row extends pg.QueryResultRow = pg.QueryResultRow>(
+export async function query<Row>(
   text: string,
   params: readonly unknown[] = [],
-): Promise<pg.QueryResult<Row>> {
-  return getPool().query<Row>(text, params as unknown[]);
+): Promise<QueryOutcome<Row>> {
+  return getDatabase().query<Row>(text, params);
 }
 
 /** The rows of one statement, which is what nearly every caller actually wants. */
-export async function rows<Row extends pg.QueryResultRow = pg.QueryResultRow>(
-  text: string,
-  params: readonly unknown[] = [],
-): Promise<Row[]> {
+export async function rows<Row>(text: string, params: readonly unknown[] = []): Promise<Row[]> {
   return (await query<Row>(text, params)).rows;
 }
 
 /** The first row, or undefined — for a lookup by primary key or unique column. */
-export async function firstRow<Row extends pg.QueryResultRow = pg.QueryResultRow>(
+export async function firstRow<Row>(
   text: string,
   params: readonly unknown[] = [],
 ): Promise<Row | undefined> {
@@ -172,15 +235,25 @@ export async function firstRow<Row extends pg.QueryResultRow = pg.QueryResultRow
  * Run several statements on ONE connection inside a transaction, committing on return and rolling
  * back on any throw.
  *
- * The callback receives the client and MUST use it — a `query()` call inside the callback goes to
- * a different pooled connection and is therefore outside the transaction, which is the classic way
- * a "transactional" checkout half-commits.
+ * The callback receives the transaction and MUST use it — a top-level `query()` call inside the
+ * callback goes to a different pooled connection and is therefore outside the transaction, which is
+ * the classic way a "transactional" checkout half-commits.
  */
-export async function withTransaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+export async function withTransaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
+  return getDatabase().transaction(fn);
+}
+
+async function withPooledTransaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
   const client = await getPool().connect();
+  const tx: Queryable = {
+    async query<Row>(text: string, params: readonly unknown[] = []) {
+      const result = await client.query(text, params as unknown[]);
+      return { rows: result.rows as Row[], rowCount: result.rowCount ?? 0 };
+    },
+  };
   try {
     await client.query('BEGIN');
-    const result = await fn(client);
+    const result = await fn(tx);
     await client.query('COMMIT');
     return result;
   } catch (err) {
