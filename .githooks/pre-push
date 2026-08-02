@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# Runs on every `git push`. Two jobs: back up Claude Code memory, and report any lint problem
-# this push introduces.
+# Runs on every `git push`. Two jobs: back up Claude Code memory, and REFUSE the push if the same
+# checks CI runs are not green.
 #
-# NOTHING here blocks the push. The blocking gate lives in CI (.github/workflows/ci.yml), which
-# cannot be skipped and does not sit between you and a push. A local hook that can be bypassed
-# with --no-verify is a reminder, not a gate, so it is written as one.
+# This hook used to block nothing, on the reasoning that the real gate is CI and a hook that
+# `--no-verify` can bypass is only a reminder. Half of that is still true — see the bypass note at
+# the bottom — but the conclusion was wrong, and 2026-08-02 is why: CI runs ON the pushed commit,
+# so it can only ever tell you `main` is ALREADY broken. There is no arrangement in which CI is
+# green before the push; the push is what starts it. Between the push and the fix, the default
+# branch is red, and that window is the whole problem.
+#
+# The unbypassable version of this is branch protection (or a ruleset) requiring the `verify` check
+# before anything lands on `main` — GitHub refuses the merge itself, with no local cooperation. It
+# is deliberately NOT set up here: this repository is private on a free plan, and both mechanisms
+# answer "Upgrade to GitHub Pro or make this repository public". If that ever changes, that is the
+# gate to build, and this hook goes back to being a courtesy.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,18 +43,30 @@ else
   )
 fi
 
-# ── 2. Lint notice ──────────────────────────────────────────────────────────────
-# `npm run lint` measures against .eslint-baseline.json, so the pre-existing backlog is silent and
-# only NEW problems can appear here. Skip it entirely if dependencies are not installed.
-if [ -x "$REPO_ROOT/node_modules/.bin/eslint" ]; then
-  lint_output="$(cd "$REPO_ROOT" && npm run --silent lint 2>&1)"
-  if [ -n "$lint_output" ]; then
-    echo "" >&2
-    echo "[pre-push] NOTICE: this push introduces lint problems. CI will fail on them." >&2
-    echo "$lint_output" >&2
-    echo "[pre-push] Pushing anyway — fix them and push again, or run: npm run lint:fix" >&2
-    echo "" >&2
-  fi
+# ── 2. The gate ─────────────────────────────────────────────────────────────────
+# `npm run verify` is what CI runs (type check, lint against .eslint-baseline.json so only NEW
+# problems surface, and the tests). It skips the checks nothing touched, so the usual cost is a
+# fraction of the full run.
+#
+# Lint alone would not be enough, and that is not hypothetical either: the CI failure that led here
+# was a TEST failure — a suite that only ever ran against gitignored files imported an empty
+# directory on the runner. A gate that cannot see the tests cannot see the thing that broke.
+if [ ! -d "$REPO_ROOT/node_modules" ]; then
+  echo "[pre-push] node_modules is missing — cannot verify. Run: npm ci" >&2
+  exit 1
+fi
+
+if ! (cd "$REPO_ROOT" && npm run --silent verify); then
+  echo "" >&2
+  echo "[pre-push] REFUSED: verification is red, and CI will fail on the same thing." >&2
+  echo "[pre-push] Fix it and push again, or run: npm run lint:fix" >&2
+  echo "" >&2
+  # A bypass exists — `git push --no-verify` — and removing it is not possible from inside a hook.
+  # It is named here on purpose: the point of this gate is not to make a red push impossible, it is
+  # to make it a decision someone takes deliberately rather than one they take by not looking.
+  echo "[pre-push] Deliberate override (it will turn main red): git push --no-verify" >&2
+  echo "" >&2
+  exit 1
 fi
 
 exit 0
