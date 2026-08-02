@@ -48,7 +48,7 @@ const initialUnreadLabel = initialUnreadCount > 99 ? '99+' : String(initialUnrea
 // to start hidden until that resolved, flashing empty then reappearing.
 const hasStoreForAlert = Astro.props.hasStore || storeMode || sellerMode;
 const sellerIdForAlert = hasStoreForAlert ? getSellerSession(Astro.cookies) : null;
-const initialSellerAlert = sellerIdForAlert ? sellerHasAnyAlert(sellerIdForAlert) : false;
+const initialSellerAlert = sellerIdForAlert ? await sellerHasAnyAlert(sellerIdForAlert) : false;
 const logo = store.logo;
 
 

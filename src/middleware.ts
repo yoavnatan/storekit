@@ -60,7 +60,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // so this block is a no-op for all normal platform traffic.
     if (!/\.[a-z0-9]+$/i.test(pathname)) {
       const host = context.request.headers.get('host') ?? reqUrl.host;
-      const cdStore = host ? getStoreByCustomDomain(host) : null;
+      const cdStore = host ? await getStoreByCustomDomain(host) : null;
       if (cdStore) {
         const target = resolveCustomDomainRewrite(cdStore.slug, pathname);
         if (target) return context.rewrite(target + reqUrl.search);
@@ -95,7 +95,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     let ownerViewingOwnStore = false;
     if (pathMatch && !isReservedSlug(pathMatch[1]!) && !pathMatch[1]!.includes('.')) {
       try {
-        const st = getStoreBySlug(pathMatch[1]!);
+        const st = await getStoreBySlug(pathMatch[1]!);
         // A seller looking at their own storefront is not a visit. The dashboard's
         // "צפה בחנות" button sends them here constantly while they set the store
         // up — and because that page IS the live store (no preview mode), every

@@ -10,7 +10,7 @@ const t = getT(lang);
 const c = t.checkout;
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
-const hasStore = userId ? getStoresBySellerId(userId).length > 0 : false;
+const hasStore = userId ? (await getStoresBySellerId(userId)).length > 0 : false;
 ---
 
 <BaseLayout title={c.successTitle} description={c.successDesc} noindex={true} isLoggedIn={isLoggedIn} hasStore={hasStore} hideNav={true} showSearch={true}>

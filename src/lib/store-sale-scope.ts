@@ -66,8 +66,8 @@ export function resolveSaleScope(storeId: string, categoryIds: string[]): SaleSc
  *  the ones that survive — only losing them all switches the sale off, rather than silently
  *  widening it to the whole store, since "30% on coats" with the coats category gone is a
  *  promise nobody can read. */
-export function refreshStoreSaleScope(storeId: string): void {
-  const store = getStoreById(storeId);
+export async function refreshStoreSaleScope(storeId: string): Promise<void> {
+  const store = await getStoreById(storeId);
   const sale = store?.sale;
   const picks = salePickedCategoryIds(sale);
   if (!store || !sale || !picks.length) return;
@@ -75,7 +75,7 @@ export function refreshStoreSaleScope(storeId: string): void {
   const scope = resolveSaleScope(storeId, picks);
   if (scope?.categoryIds?.length) {
     if (sameIds(scope.categoryIds, sale.categoryIds ?? []) && sameIds(scope.pickedCategoryIds ?? [], picks)) return;
-    updateStore(storeId, { sale: { ...sale, categoryId: scope.categoryId, pickedCategoryIds: scope.pickedCategoryIds, categoryIds: scope.categoryIds } });
+    await updateStore(storeId, { sale: { ...sale, categoryId: scope.categoryId, pickedCategoryIds: scope.pickedCategoryIds, categoryIds: scope.categoryIds } });
     return;
   }
 
@@ -83,7 +83,7 @@ export function refreshStoreSaleScope(storeId: string): void {
   delete next.categoryId;
   delete next.pickedCategoryIds;
   delete next.categoryIds;
-  updateStore(storeId, { sale: next });
+  await updateStore(storeId, { sale: next });
 }
 
 /** The banner's scope line for a category-scoped sale: the seller's own picks, named. One pick

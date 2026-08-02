@@ -19,7 +19,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
 
   const url = new URL(request.url);
   const storeSlug = url.searchParams.get('storeSlug');
-  const stores = getStoresBySellerId(sellerId);
+  const stores = await getStoresBySellerId(sellerId);
   const store = findStoreBySlugOrPrevious(stores, storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
@@ -28,12 +28,12 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // baseline exposure card is a separate stable lifetime figure rendered SSR,
   // so it isn't part of this response.
   const range = resolveAdRange(url.searchParams);
-  // getCampaignsForStore (not the raw accessor): it attaches each campaign's health and pauses
+  // await getCampaignsForStore (not the raw accessor): it attaches each campaign's health and pauses
   // any that has nothing left on the storefront to advertise (ad-campaign-health.ts).
-  const campaigns = getCampaignsForStore(store.id).map((c) => withCampaignStats(c, range));
+  const campaigns = (await getCampaignsForStore(store.id)).map((c) => withCampaignStats(c, range));
   // History rides along in the same response: the two lists are rendered together, and a second
   // round trip for a block that is usually collapsed would be a request nobody asked for.
-  const archived = getCampaignHistory(store.id).map((c) => withCampaignStats(c, range));
+  const archived = (await getCampaignHistory(store.id)).map((c) => withCampaignStats(c, range));
   return json({ ok: true, campaigns, archived });
 }
 
@@ -47,7 +47,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   if (typeof body.storeSlug !== 'string') return json({ error: 'Missing storeSlug' }, 400);
 
-  const stores = getStoresBySellerId(sellerId);
+  const stores = await getStoresBySellerId(sellerId);
   const store = findStoreBySlugOrPrevious(stores, body.storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
@@ -71,7 +71,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   const { id, storeSlug, monthlyBudget, status } = body;
   if (typeof id !== 'string' || typeof storeSlug !== 'string') return json({ error: 'Missing id or storeSlug' }, 400);
 
-  const stores = getStoresBySellerId(sellerId);
+  const stores = await getStoresBySellerId(sellerId);
   const store = findStoreBySlugOrPrevious(stores, storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
@@ -84,7 +84,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   // Refused while the campaign has nothing to advertise, or nothing anyone can buy — the reason
   // travels as a code so the wording stays in the seller's language (ad-campaign-health.ts).
   if (status === 'active') {
-    const blocked = resumeBlockReason(store.id, id);
+    const blocked = await resumeBlockReason(store.id, id);
     if (blocked) {
       const code = blocked === 'out-of-stock' ? 'CAMPAIGN_OUT_OF_STOCK'
         : blocked === 'ended' ? 'CAMPAIGN_ENDED'
@@ -110,7 +110,7 @@ export async function DELETE({ request, cookies }: APIContext): Promise<Response
   const { id, storeSlug } = body;
   if (typeof id !== 'string' || typeof storeSlug !== 'string') return json({ error: 'Missing id or storeSlug' }, 400);
 
-  const stores = getStoresBySellerId(sellerId);
+  const stores = await getStoresBySellerId(sellerId);
   const store = findStoreBySlugOrPrevious(stores, storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 

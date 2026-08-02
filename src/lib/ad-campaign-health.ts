@@ -101,8 +101,8 @@ export type CampaignWithHealth = AdCampaign & { health: CampaignHealth };
  *  already expresses, and it flows through the existing starve → pause → refuse-to-resume path
  *  unchanged. So a seller pausing their store also stops their boosts, without this file or
  *  store-lifecycle.ts having to know about each other. */
-function reachableProducts(storeId: string): StoreProduct[] {
-  const store = getStoreById(storeId);
+async function reachableProducts(storeId: string): Promise<StoreProduct[]> {
+  const store = await getStoreById(storeId);
   if (store && !canStoreSell(store)) return [];
   return getProductsByStoreId(storeId);
 }
@@ -123,8 +123,8 @@ function reachableProducts(storeId: string): StoreProduct[] {
  *  a reporting lag measured in one page view, not a spend that keeps running, because nothing
  *  charges off that roll-up.
  */
-export function getCampaignsForStore(storeId: string): CampaignWithHealth[] {
-  const products = reachableProducts(storeId);
+export async function getCampaignsForStore(storeId: string): Promise<CampaignWithHealth[]> {
+  const products = await reachableProducts(storeId);
   const categories = getCategoriesByStoreId(storeId);
   const live: CampaignWithHealth[] = [];
 
@@ -180,8 +180,8 @@ export const CAMPAIGN_HISTORY_LIMIT = 50;
 /** The store's cancelled and finished campaigns, newest first, with the same health shape the
  *  live ones carry so one renderer draws both. Read-only by construction — nothing here sweeps,
  *  resumes or re-budgets. */
-export function getCampaignHistory(storeId: string): CampaignWithHealth[] {
-  const products = reachableProducts(storeId);
+export async function getCampaignHistory(storeId: string): Promise<CampaignWithHealth[]> {
+  const products = await reachableProducts(storeId);
   const categories = getCategoriesByStoreId(storeId);
   return getArchivedByStoreId(storeId).slice(0, CAMPAIGN_HISTORY_LIMIT).map((campaign) => ({
     ...campaign,
@@ -200,8 +200,8 @@ export function getCampaignHistory(storeId: string): CampaignWithHealth[] {
  *  exists twice is one that gets relaxed once. An unknown id passes — the update itself then
  *  fails on its own ownership check, which is the error the caller should see.
  */
-export function resumeBlockReason(storeId: string, campaignId: string): CampaignBlockReason | null {
-  const current = getCampaignsForStore(storeId).find((c) => c.id === campaignId);
+export async function resumeBlockReason(storeId: string, campaignId: string): Promise<CampaignBlockReason | null> {
+  const current = (await getCampaignsForStore(storeId)).find((c) => c.id === campaignId);
   // Not in the live list: either it is history (finished or cancelled — over either way), or the
   // id is not this store's, which the update's own ownership check reports better than we can.
   if (!current) {

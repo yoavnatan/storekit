@@ -5,7 +5,7 @@ import { sellerHasAnyAlert } from '../../../lib/seller-alerts.js';
 
 export const GET: APIRoute = async ({ cookies }) => {
   const sellerId = getSellerSession(cookies);
-  const hasAlert = sellerId ? sellerHasAnyAlert(sellerId) : false;
+  const hasAlert = sellerId ? await sellerHasAnyAlert(sellerId) : false;
 
   return new Response(JSON.stringify({ hasAlert }), {
     headers: { 'Content-Type': 'application/json' },

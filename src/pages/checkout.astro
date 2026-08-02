@@ -29,7 +29,7 @@ const prefillEmail = sessionSeller?.email ?? '';
 // has an address) and, for self-pickup, the address to collect from. Prices are the
 // central SHIPPING_RATES sent once below — the seller never sets them.
 const storeShipping: Record<string, { methods: DeliveryMethod[]; address: string | null; demo?: boolean }> = {};
-for (const s of getVisibleStores()) {
+for (const s of await getVisibleStores()) {
   const offersSelfPickup = !!s.shipping?.selfPickup && !!s.address;
   storeShipping[s.slug] = {
     methods: availableDeliveryMethods(offersSelfPickup),

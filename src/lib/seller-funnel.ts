@@ -61,7 +61,7 @@ export function buildSellerFunnel(
 export async function getSellerFunnel(): Promise<SellerFunnel> {
   return buildSellerFunnel(
     await getAllSellers(),
-    getAllStores(),
+    await getAllStores(),
     readProducts(),
     getAllOrders(),
     getLifetimeEventSessions('seller_register_view'),

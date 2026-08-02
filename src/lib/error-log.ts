@@ -51,7 +51,7 @@ export async function resolveErrorContext(
     // getStoreBySlug filter — a non-store route (/checkout, /search, …) simply returns null.
     const storeMatch = pathname.match(/^\/([^/]+)(?:\/|$)/);
     if (storeMatch?.[1]) {
-      const store = getStoreBySlug(storeMatch[1]);
+      const store = await getStoreBySlug(storeMatch[1]);
       if (store) { ctx.storeSlug = store.slug; ctx.storeName = store.name; }
     }
 
@@ -59,7 +59,7 @@ export async function resolveErrorContext(
     if (accountId) {
       const account = await getSellerById(accountId);
       if (account) {
-        const ownStore = getStoreBySellerId(accountId);
+        const ownStore = await getStoreBySellerId(accountId);
         ctx.actorId = accountId;
         ctx.actorLabel = account.email;
         ctx.actorRole = ownStore ? 'seller' : 'buyer';

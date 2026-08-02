@@ -20,7 +20,7 @@ import { isLaunchMode, showShelfInvite, planLaunchShelf, launchInviteCount, MIN_
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId    = getSellerSession(Astro.cookies);
-const sellerStore = sellerId ? getStoreBySellerId(sellerId) : null;
+const sellerStore = sellerId ? await getStoreBySellerId(sellerId) : null;
 const isLoggedIn  = !!sellerId;
 const hasStore    = !!sellerStore;
 
@@ -46,7 +46,7 @@ const previewLimit = previewParam === 'launch' ? 2
 // a page that immediately 404s, and defeats the point of blocking it.
 // filterShopperStores() then drops the platform's own showcase stores once there
 // are enough real ones; their pages stay reachable by link either way.
-const visibleStores = getVisibleStores();
+const visibleStores = await getVisibleStores();
 const previewedStores = previewLimit === null || previewParam === 'blank'
   ? (previewParam === 'blank' ? [] : visibleStores)
   : (() => {

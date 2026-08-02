@@ -27,7 +27,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
 
   const storeId = url.searchParams.get('storeId') ?? '';
-  const store = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+  const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
   if (!store) return json({ ok: false, error: 'Not authorized' }, 403);
 
   const sp = url.searchParams;

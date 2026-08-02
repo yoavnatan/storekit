@@ -53,7 +53,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
 
   const orders = getAllOrders();
   const sellers = await getAllSellers();
-  const stores = buildPlatformStoreInputs(getAllStores(), sellers);
+  const stores = buildPlatformStoreInputs(await getAllStores(), sellers);
   const result = buildPlatformPerformance(orders, stores, from, to, granularity, topLimit);
   const page = selectStoreRows(result.stores, parseStoreRowsQuery(url.searchParams));
   const revenue = buildPlatformRevenue(

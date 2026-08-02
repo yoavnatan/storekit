@@ -413,6 +413,6 @@ describe('history: cancelled and finished campaigns', () => {
     const [row] = await load();
     expect(row?.status).toBe('paused');            // not resumed for him
     const mod = await import('../src/lib/ad-campaign-health.js');
-    expect(mod.resumeBlockReason('s1', 'c1')).toBeNull(); // but the button now works
+    expect(await mod.resumeBlockReason('s1', 'c1')).toBeNull(); // but the button now works
   });
 });

@@ -16,13 +16,13 @@ function json(data: unknown, status = 200) {
   });
 }
 
-export const GET: APIRoute = ({ url, cookies, request }) => {
+export const GET: APIRoute = async ({ url, cookies, request }) => {
   const storeSlug   = url.searchParams.get('store') ?? '';
   const productSlug = url.searchParams.get('product') ?? '';
 
   if (!storeSlug || !productSlug) return json({ error: 'Missing params' }, 400);
 
-  const store = getStoreBySlugOrPrevious(storeSlug);
+  const store = await getStoreBySlugOrPrevious(storeSlug);
   if (!store || !isStoreVisible(store)) return json({ error: 'Store not found' }, 404);
 
   const product = getProductBySlug(store.id, productSlug);

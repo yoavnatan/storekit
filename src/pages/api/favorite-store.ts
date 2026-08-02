@@ -22,7 +22,7 @@ export async function POST({ cookies, request }: APIContext): Promise<Response> 
 
   // Tolerate a previous slug (store URL renamed since the page loaded) and always store the CURRENT
   // slug — favorites are migrated to the current slug on rename, so this keeps toggles consistent.
-  const store = getStoreBySlugOrPrevious(storeSlug);
+  const store = await getStoreBySlugOrPrevious(storeSlug);
   if (!store) {
     return new Response('Store not found', { status: 404 });
   }

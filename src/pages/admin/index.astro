@@ -79,7 +79,7 @@ const tabUrl = buildAdminUrl;
 // admin-stats.ts's functions used to each independently re-read sellers/
 // stores/products, multiplying JSON-file reads on every dashboard load.
 const sellers = await getAllSellers();
-const stores = getAllStores();
+const stores = await getAllStores();
 const allOrders = getAllOrders();
 const productsByStore = getProductsByStoreMap();
 

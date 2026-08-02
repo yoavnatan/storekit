@@ -31,7 +31,7 @@ const back = backFrom === 'performance'
   : backFrom === 'advertising'
     ? { href: '/admin?panel=advertising', label: 'חזרה לפרסום' }
     : { href: '/admin?panel=stores', label: 'חזרה לחנויות' };
-const store = getStoreBySlug(slug);
+const store = await getStoreBySlug(slug);
 // Unknown slug → back to the origin tab rather than a bare 404.
 if (!store) {
   return Astro.redirect(back.href);

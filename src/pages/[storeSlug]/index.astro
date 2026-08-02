@@ -30,11 +30,11 @@ import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
 const { storeSlug: slug } = Astro.params;
 if (!slug) return Astro.redirect('/404');
 
-const shopStore = getStoreBySlug(slug);
+const shopStore = await getStoreBySlug(slug);
 if (!shopStore) {
   // The seller may have renamed the store URL — 301 an old slug to the current one so links +
   // Google's index carry over instead of 404-ing (see renameStoreSlug).
-  const moved = getStoreByPreviousSlug(slug);
+  const moved = await getStoreByPreviousSlug(slug);
   if (moved) return Astro.redirect(`/${moved.slug}${Astro.url.search}`, 301);
   return Astro.redirect('/404');
 }
@@ -86,7 +86,7 @@ const storeReady = isStoreReady({ visibleProductCount: allProducts.length });
 const isDemo = isDemoStore(shopStore);
 // Position in the showcase set, which is what picks the banner's colour — so the
 // three of them never come out the same shade (see StoreDemoBanner).
-const demoIndex = isDemo ? Math.max(0, getDemoStores().findIndex((s) => s.id === shopStore.id)) : 0;
+const demoIndex = isDemo ? Math.max(0, (await getDemoStores()).findIndex((s) => s.id === shopStore.id)) : 0;
 // Quiet per-product label for a showcase store. Every product in such a store is
 // one, so this is a muted line, not the pill the STORE gets — the same markup has
 // to exist in the JS card renderer further down (SSR/AJAX parity).

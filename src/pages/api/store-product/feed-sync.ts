@@ -23,7 +23,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
 
   const body = await request.json() as { storeId?: string; commit?: boolean };
-  const store = getStoresBySellerId(sellerId).find((s) => s.id === (body.storeId ?? ''));
+  const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === (body.storeId ?? ''));
   if (!store) return json({ ok: false, error: 'Not authorized' }, 403);
 
   const url = store.feedSync?.url?.trim();
@@ -47,7 +47,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (body.commit && resBody.ok) {
     const lastSyncAt = new Date().toISOString();
-    updateStore(store.id, { feedSync: { ...store.feedSync, lastSyncAt } });
+    await updateStore(store.id, { feedSync: { ...store.feedSync, lastSyncAt } });
     return json({ ...resBody, lastSyncAt }, status);
   }
   return json(resBody, status);

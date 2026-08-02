@@ -2,8 +2,8 @@ import { getStoresBySellerId } from './stores.js';
 import { getOrdersByStoreSlug } from './orders.js';
 import { getMessagesBySeller, getMessageReplies } from './messages.js';
 
-export function getSellerStoreAlerts(sellerId: string): Record<string, boolean> {
-  const stores = getStoresBySellerId(sellerId);
+export async function getSellerStoreAlerts(sellerId: string): Promise<Record<string, boolean>> {
+  const stores = await getStoresBySellerId(sellerId);
   const msgs = getMessagesBySeller(sellerId);
   const alerts: Record<string, boolean> = {};
   for (const s of stores) {
@@ -20,6 +20,6 @@ export function getSellerStoreAlerts(sellerId: string): Record<string, boolean> 
   return alerts;
 }
 
-export function sellerHasAnyAlert(sellerId: string): boolean {
-  return Object.values(getSellerStoreAlerts(sellerId)).some(Boolean);
+export async function sellerHasAnyAlert(sellerId: string): Promise<boolean> {
+  return Object.values(await getSellerStoreAlerts(sellerId)).some(Boolean);
 }

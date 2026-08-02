@@ -12,9 +12,9 @@ import { productsToCsv, productsToFeedJson } from '../../../lib/store-products-b
 // mirror image of the inbound sync (/api/store-product/feed-sync). Never indexed (X-Robots-Tag) and
 // never cached (stock changes constantly). Rotating/clearing the token instantly kills the old URL.
 
-export const GET: APIRoute = ({ params, url }) => {
+export const GET: APIRoute = async ({ params, url }) => {
   const noindex = { 'X-Robots-Tag': 'noindex', 'Cache-Control': 'no-store' };
-  const store = getStoreByExportToken(params.token ?? '');
+  const store = await getStoreByExportToken(params.token ?? '');
   // `store.blocked` on purpose, NOT canStoreSell/isStoreDiscoverable: this is not a shopper or an
   // ad surface, it is the seller's own catalog flowing to the seller's own POS/ERP behind their
   // own secret token. A seller who pauses the storefront is usually pausing it BECAUSE they are

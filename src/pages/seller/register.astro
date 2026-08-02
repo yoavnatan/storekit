@@ -23,7 +23,7 @@ const safeNext = safeRedirectPath(Astro.url.searchParams.get('next'), '/', ['/se
 // point never expires, unlike the showcase stores' presence in shopper discovery.
 // First showcase store that actually has something on its shelves; nothing renders
 // if the showcase seeder was never run, so this can't become a dead link.
-const showcase = getDemoStores().find((s) => getVisibleProductsByStoreId(s.id).length > 0) ?? null;
+const showcase = (await getDemoStores()).find((s) => getVisibleProductsByStoreId(s.id).length > 0) ?? null;
 
 const oauthError = Astro.url.searchParams.get('error');
 const oauthErrorMsg =

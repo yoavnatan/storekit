@@ -23,11 +23,11 @@ import { jsonForScript } from '../../lib/json-script.js';
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
 
-const shopStore = getStoreBySlug(storeSlug);
+const shopStore = await getStoreBySlug(storeSlug);
 if (!shopStore) {
   // Store URL renamed → 301 the old slug (keeping the product path) to the current one, preserving
   // SEO + shared links instead of 404-ing (see renameStoreSlug).
-  const moved = getStoreByPreviousSlug(storeSlug);
+  const moved = await getStoreByPreviousSlug(storeSlug);
   if (moved) return Astro.redirect(`/${moved.slug}/${productSlug}`, 301);
   return Astro.redirect('/404');
 }

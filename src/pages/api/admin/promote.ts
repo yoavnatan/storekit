@@ -22,11 +22,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (denied) return denied;
 
   const body = await request.json().catch(() => null) as { storeSlug?: string; weight?: unknown } | null;
-  const store = body?.storeSlug ? getStoreBySlug(body.storeSlug) : null;
+  const store = body?.storeSlug ? await getStoreBySlug(body.storeSlug) : null;
   if (!store) return new Response(JSON.stringify({ error: 'Store not found' }), { status: 404, headers: json });
 
   const raw = Number(body?.weight);
   const weight = Number.isFinite(raw) ? Math.max(0, Math.min(MAX_PROMO_WEIGHT, Math.round(raw))) : 0;
-  updateStore(store.id, { promoWeight: weight });
+  await updateStore(store.id, { promoWeight: weight });
   return new Response(JSON.stringify({ ok: true, weight }), { headers: json });
 };

@@ -49,10 +49,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const action = body?.action ?? '';
 
   if (action === 'block-store' || action === 'unblock-store') {
-    const store = body?.storeSlug ? getStoreBySlug(body.storeSlug) : null;
+    const store = body?.storeSlug ? await getStoreBySlug(body.storeSlug) : null;
     if (!store) return new Response(JSON.stringify({ error: 'Store not found' }), { status: 404, headers: json });
     const blocked = action === 'block-store';
-    updateStore(store.id, { blocked });
+    await updateStore(store.id, { blocked });
     notifySellerOfModeration(store.sellerId, store.name, 'store', blocked);
     return new Response(JSON.stringify({ ok: true, blocked }), { headers: json });
   }
@@ -60,7 +60,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (action === 'block-product' || action === 'unblock-product') {
     const product = body?.productId ? getProductById(body.productId) : null;
     if (!product) return new Response(JSON.stringify({ error: 'Product not found' }), { status: 404, headers: json });
-    const store = getStoreById(product.storeId);
+    const store = await getStoreById(product.storeId);
     if (!store) return new Response(JSON.stringify({ error: 'Store not found' }), { status: 404, headers: json });
     const blocked = action === 'block-product';
     updateProduct(product.id, { blocked });

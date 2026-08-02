@@ -13,6 +13,6 @@ function json(data: unknown, status = 200) {
 // together, so a product hit can show which store it belongs to.
 export const GET: APIRoute = async ({ url }) => {
   const q = url.searchParams.get('q') ?? '';
-  const { stores, products } = searchSite(q);
+  const { stores, products } = await searchSite(q);
   return json({ ok: true, stores, products });
 };

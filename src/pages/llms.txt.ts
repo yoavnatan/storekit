@@ -23,7 +23,7 @@ const STORE_LIST_CAP = 50;
 
 export async function GET(_ctx: APIContext): Promise<Response> {
   const baseUrl = stripTrailingSlashes(platform.url);
-  const stores = getIndexableStores();
+  const stores = await getIndexableStores();
   const shown = stores.slice(0, STORE_LIST_CAP);
 
   const storeLines = shown

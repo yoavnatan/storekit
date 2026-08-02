@@ -12,15 +12,15 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function authorizeStore(sellerId: string, storeId: string): boolean {
-  return !!getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+async function authorizeStore(sellerId: string, storeId: string): Promise<boolean> {
+  return !!(await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
 }
 
-export const GET: APIRoute = ({ url, cookies }) => {
+export const GET: APIRoute = async ({ url, cookies }) => {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ error: 'Not authenticated' }, 401);
   const storeId = url.searchParams.get('storeId') ?? '';
-  if (!storeId || !authorizeStore(sellerId, storeId)) return json({ error: 'Not authorized' }, 403);
+  if (!storeId || !await authorizeStore(sellerId, storeId)) return json({ error: 'Not authorized' }, 403);
 
   const csv = productsToCsv(getProductsByStoreId(storeId), getCategoriesByStoreId(storeId), getLang(cookies));
   return new Response(csv, {
@@ -38,7 +38,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   const body = await request.json() as { storeId?: string; csv?: string; commit?: boolean };
   const storeId = body.storeId ?? '';
-  if (!storeId || !authorizeStore(sellerId, storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
+  if (!storeId || !await authorizeStore(sellerId, storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
 
   const { status, body: resBody } = runProductImport({
     storeId, sellerId, csv: String(body.csv ?? ''),

@@ -33,7 +33,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'save-settings') {
     const storeId = String(form.get('storeId') || '');
-    const stores = getStoresBySellerId(sellerId);
+    const stores = await getStoresBySellerId(sellerId);
     const target = stores.find((s) => s.id === storeId) ?? stores[0];
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
 
@@ -83,7 +83,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const selfPickup = (merged.shipping as { selfPickup?: boolean } | undefined)?.selfPickup === true;
     if (selfPickup && !address) return json({ ok: false, error: 'כדי לאפשר איסוף עצמי יש להזין כתובת חנות.' }, 400);
 
-    const saved = updateStore(target.id, {
+    const saved = await updateStore(target.id, {
       name,
       tagline: String(merged.tagline ?? ''),
       description: String(merged.description ?? ''),
@@ -110,7 +110,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // same spam/keyword-stuffing gate as product text before they can reach a storefront.
   if (action === 'save-store-sale') {
     const storeId = String(form.get('storeId') || '');
-    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
 
     // Scope resolved + ownership-checked server-side; a blank/foreign category or product id
@@ -143,7 +143,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // An active sale needs something to say — an empty banner would render as a blank strip.
     if (sale?.active && !sale.title) return json({ ok: false, error: 'sale-title-required' }, 400);
 
-    updateStore(target.id, { sale });
+    await updateStore(target.id, { sale });
     // Prices/badges on every product page in this store just changed — re-notify the index.
     pingStoreChange(target);
     return json({ ok: true, sale: sale ?? null });
@@ -155,7 +155,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // pinning it to a product list here would silently NARROW it.
   if (action === 'add-to-store-sale') {
     const storeId = String(form.get('storeId') || '');
-    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
     const sale = target.sale;
     if (!sale?.active) return json({ ok: false, error: 'no-active-sale' }, 400);
@@ -165,7 +165,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const scope = resolveSaleProductScope(target.id, [...sale.productIds, ...requested]);
     if (!scope?.productIds?.length) return json({ ok: false, error: 'No products selected.' }, 400);
 
-    updateStore(target.id, { sale: { ...sale, productIds: scope.productIds } });
+    await updateStore(target.id, { sale: { ...sale, productIds: scope.productIds } });
     pingStoreChange(target);
     // No per-product discount changed, so every row's own chip stays as it was.
     return json({ ok: true, count: scope.productIds.length, applied: [] });
@@ -173,7 +173,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'save-feed-config') {
     const storeId = String(form.get('storeId') || '');
-    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
 
     // Empty = clear the saved URL. A non-empty value must at least be an http(s) URL — the deep
@@ -191,7 +191,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       }
     } catch { /* malformed mapping → save just the URL */ }
 
-    updateStore(target.id, {
+    await updateStore(target.id, {
       feedSync: { ...target.feedSync, url: url || undefined, mapping },
     });
     return json({ ok: true });
@@ -199,13 +199,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'gen-export-token' || action === 'clear-export-token') {
     const storeId = String(form.get('storeId') || '');
-    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
     // 192-bit random — the token is the only credential guarding the outbound feed, so it must be
     // long enough to be unguessable. Regenerating (gen on an existing token) rotates it, instantly
     // invalidating the URL the seller shared before.
     const token = action === 'gen-export-token' ? crypto.randomBytes(24).toString('hex') : undefined;
-    updateStore(target.id, { feedExportToken: token });
+    await updateStore(target.id, { feedExportToken: token });
     return json({ ok: true, token });
   }
 
@@ -214,9 +214,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const color = String(form.get('color') || '').trim().toLowerCase();
     // Only a 6-digit hex is ever stored — never trust the client-sent value.
     if (!/^#[0-9a-f]{6}$/.test(color)) return json({ ok: false, error: 'Invalid color.' }, 400);
-    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
-    const colors = addStoreBgColor(target.id, color);
+    const colors = await addStoreBgColor(target.id, color);
     return json({ ok: true, colors });
   }
 
@@ -224,13 +224,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   //    own domain. The local /<slug> path is unaffected throughout: it stays live + canonical. ──
   if (action === 'set-custom-domain' || action === 'check-custom-domain' || action === 'remove-custom-domain') {
     const storeId = String(form.get('storeId') || '');
-    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
     const provider = getCustomDomainProvider();
 
     if (action === 'remove-custom-domain') {
       if (target.customDomain) await provider.remove(target.customDomain.hostname);
-      updateStore(target.id, { customDomain: undefined });
+      await updateStore(target.id, { customDomain: undefined });
       return json({ ok: true });
     }
 
@@ -238,7 +238,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       if (!target.customDomain) return json({ ok: false, error: 'no-domain' }, 400);
       const { status } = await provider.checkStatus(target.customDomain.hostname);
       if (status !== target.customDomain.status) {
-        updateStore(target.id, { customDomain: { ...target.customDomain, status } });
+        await updateStore(target.id, { customDomain: { ...target.customDomain, status } });
       }
       return json({ ok: true, status });
     }
@@ -249,10 +249,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!hostname) return json({ ok: false, error: 'invalid-domain' }, 400);
     // A custom domain must be globally unique — another store already claiming it would make routing
     // ambiguous (getStoreByCustomDomain is first-match). Reject before registering with the provider.
-    if (isCustomDomainTaken(hostname, target.id)) return json({ ok: false, error: 'domain-taken' }, 409);
+    if (await isCustomDomainTaken(hostname, target.id)) return json({ ok: false, error: 'domain-taken' }, 409);
     const { ok, verification, error } = await provider.register(hostname);
     if (!ok) return json({ ok: false, error: error || 'register-failed' }, 502);
-    updateStore(target.id, { customDomain: { hostname, status: 'pending', addedAt: new Date().toISOString() } });
+    await updateStore(target.id, { customDomain: { hostname, status: 'pending', addedAt: new Date().toISOString() } });
     return json({ ok: true, hostname, verification });
   }
 
@@ -260,17 +260,17 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   //    one (see stores.ts renameStoreSlug + the store/product routes), and slug-keyed data is migrated. ──
   if (action === 'change-store-url') {
     const storeId = String(form.get('storeId') || '');
-    const target = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
 
     const newSlug = normalizeSlug(String(form.get('slug') || ''));
     if (!newSlug) return json({ ok: false, error: 'invalid-slug' }, 400);
     if (newSlug === target.slug) return json({ ok: true, slug: newSlug });        // no-op
     if (isReservedSlug(newSlug)) return json({ ok: false, error: 'reserved-slug' }, 409);
-    if (isSlugTaken(newSlug, target.id)) return json({ ok: false, error: 'slug-taken' }, 409);
+    if (await isSlugTaken(newSlug, target.id)) return json({ ok: false, error: 'slug-taken' }, 409);
 
     const oldSlug = target.slug;
-    const updated = renameStoreSlug(target.id, newSlug);
+    const updated = await renameStoreSlug(target.id, newSlug);
     if (!updated) return json({ ok: false, error: 'Store not found.' }, 404);
     // Migrate the durable slug-keyed data (analytics + saved favorites/recent) and notify the index.
     await renameStoreSlugInPageviews(oldSlug, newSlug);

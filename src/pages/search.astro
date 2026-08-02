@@ -5,14 +5,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import StoreCard from '../components/StoreCard.astro';
 import { store as platform, formatPrice } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
-import { getStoresBySellerId, getStoreBySlug } from '../lib/stores.js';
+import { getStoresBySellerId, getStoreBySlug, type Store } from '../lib/stores.js';
 import { getVisibleProductsByStoreId } from '../lib/store-products.js';
 import { searchSite } from '../lib/site-search.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId   = getSellerSession(Astro.cookies);
 const isLoggedIn = !!sellerId;
-const hasStore   = sellerId ? getStoresBySellerId(sellerId).length > 0 : false;
+const hasStore   = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
 
 const lang = getLang(Astro.cookies);
 const t    = getT(lang);
@@ -22,21 +22,21 @@ const q = (Astro.url.searchParams.get('q') ?? '').trim();
 // Larger caps than the header dropdown's short preview (see site-search.ts) —
 // this page is the real destination, not a teaser.
 const { stores: storeHits, products } = q
-  ? searchSite(q, { storeLimit: 24, productLimit: 60, imageWidth: 300 })
+  ? await searchSite(q, { storeLimit: 24, productLimit: 60, imageWidth: 300 })
   : { stores: [], products: [] };
 
 // Store hits come back as the trimmed-down search shape (name/slug/tagline) —
 // re-fetch the full Store + its product preview images per hit so this page
 // can reuse the same StoreCard the homepage/directory already use, instead of
 // a second, thinner store-card design living only here.
-const storeCards = storeHits
-  .map((hit) => {
-    const store = getStoreBySlug(hit.slug);
+const storeCards = (await Promise.all(storeHits
+  .map(async (hit) => {
+    const store = await getStoreBySlug(hit.slug);
     if (!store) return null;
     const previewImages = getVisibleProductsByStoreId(store.id).map((p) => p.images?.[0]).filter((u): u is string => !!u);
     return { store, previewImages };
-  })
-  .filter((c): c is { store: NonNullable<ReturnType<typeof getStoreBySlug>>; previewImages: string[] } => !!c);
+  })))
+  .filter((c): c is { store: Store; previewImages: string[] } => !!c);
 
 const hasResults = storeCards.length > 0 || products.length > 0;
 

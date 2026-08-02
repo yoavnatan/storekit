@@ -15,7 +15,7 @@ import { getLang, getT } from '../i18n/index.js';
 const PAGE_SIZE = 24;
 
 const sellerId    = getSellerSession(Astro.cookies);
-const sellerStore = sellerId ? getStoreBySellerId(sellerId) : null;
+const sellerStore = sellerId ? await getStoreBySellerId(sellerId) : null;
 const isLoggedIn  = !!sellerId;
 const hasStore    = !!sellerStore;
 
@@ -41,7 +41,7 @@ const previewLimit = previewParam === 'launch' ? 2
 // the directory — same reasoning as the homepage feed. filterShopperStores() also
 // drops the platform's own showcase stores once there are enough real ones
 // (lib/demo-stores.ts).
-const visibleStores = getVisibleStores();
+const visibleStores = await getVisibleStores();
 const previewedStores = previewParam === 'blank'
   ? []
   : previewLimit === null

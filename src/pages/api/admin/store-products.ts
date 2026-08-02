@@ -29,7 +29,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const storeSlug = url.searchParams.get('storeSlug');
   if (!storeSlug) return json({ error: 'Missing storeSlug' }, 400);
 
-  const store = getStoreBySlug(storeSlug);
+  const store = await getStoreBySlug(storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();

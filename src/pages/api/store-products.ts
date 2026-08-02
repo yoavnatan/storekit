@@ -17,7 +17,7 @@ function json(data: unknown, status = 200) {
 // filterAndSortProducts() the page's own initial SSR render uses, so results never drift.
 export const GET: APIRoute = async ({ url }) => {
   const storeSlug = url.searchParams.get('store') ?? '';
-  const store = storeSlug ? getStoreBySlugOrPrevious(storeSlug) : null;
+  const store = storeSlug ? await getStoreBySlugOrPrevious(storeSlug) : null;
   if (!store || !isStoreVisible(store)) return json({ ok: false, error: 'Store not found.' }, 404);
 
   const category = url.searchParams.get('category') ?? '';

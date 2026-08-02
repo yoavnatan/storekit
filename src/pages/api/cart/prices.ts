@@ -81,7 +81,7 @@ export const POST: APIRoute = async ({ request }) => {
     const selectedVariants = named && Object.keys(named).length ? named : undefined;
 
     // Tolerates a renamed store the same way checkout does, so an older cart still re-prices.
-    const store = getStoreBySlugOrPrevious(storeSlug);
+    const store = await getStoreBySlugOrPrevious(storeSlug);
     // canStoreSell, not merely "reachable": a line from a store that stopped selling is
     // reported `gone`, exactly like a deleted product, so the drawer stops quoting a price
     // checkout would refuse a moment later.

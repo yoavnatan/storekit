@@ -26,7 +26,7 @@ export async function GET({ params }: APIContext): Promise<Response> {
   const format = parseStoreImageFile(params.file ?? '');
   if (!format) return new Response('Not found', { status: 404 });
 
-  const store = getStoreBySlug(params.slug ?? '');
+  const store = await getStoreBySlug(params.slug ?? '');
   if (!store) return new Response('Not found', { status: 404 });
 
   const { width, height } = STORE_IMAGE_FORMATS[format];

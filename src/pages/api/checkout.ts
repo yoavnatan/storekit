@@ -103,7 +103,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   for (const raw of items) {
     const rawSlug = (raw as CartItemInput).storeSlug;
     const slug = typeof rawSlug === 'string' ? rawSlug.trim() : '';
-    const preStore = slug ? getStoreBySlugOrPrevious(slug) : null;
+    const preStore = slug ? await getStoreBySlugOrPrevious(slug) : null;
     if (!preStore) continue;
     // Showcase store (lib/demo-stores.ts, GO_LIVE_CHECKLIST.md §6.2). Adding a demo
     // store's product to the cart is deliberately allowed — a prospective seller is
@@ -202,7 +202,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // Tolerate a previous slug: if the seller renamed the store URL after this item entered the
     // cart, the client still sends the OLD slug — resolve it so the purchase never fails. Everything
     // downstream keys off store.slug (the current one) for consistency with the order records.
-    const store = getStoreBySlugOrPrevious(storeSlug);
+    const store = await getStoreBySlugOrPrevious(storeSlug);
     if (!store) return abort({ error: `Store not found: ${storeSlug}` }, 400);
     // A store that may not sell — admin-blocked (admin-moderation.ts), closed, or paused by
     // its own seller (store-status.ts) — rejects the whole checkout rather than silently
@@ -300,7 +300,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     : {};
   let totalShipping = 0;
   for (const [storeSlug, data] of Object.entries(storeSubtotals)) {
-    const store = getStoreBySlug(storeSlug);
+    const store = await getStoreBySlug(storeSlug);
     const offersSelfPickup = !!store?.shipping?.selfPickup && !!store?.address;
     const method = normalizeDeliveryMethod(clientMethods[storeSlug], offersSelfPickup);
     data.deliveryMethod = method;
@@ -383,7 +383,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         detail: `${storeItems.length} item(s); paymentRef=${payment.paymentRef ?? '—'}`,
       });
 
-      const store = getStoreBySlug(storeSlug);
+      const store = await getStoreBySlug(storeSlug);
       if (store) {
         createNotification({
           userId: store.sellerId,

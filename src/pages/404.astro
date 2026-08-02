@@ -14,7 +14,7 @@ Astro.response.status = 404;
 
 const sellerId   = getSellerSession(Astro.cookies);
 const isLoggedIn = !!sellerId;
-const hasStore   = sellerId ? getStoresBySellerId(sellerId).length > 0 : false;
+const hasStore   = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
 ---
 <BaseLayout
   title="Page not found"

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Store } from '../src/lib/stores.js';
 import type { Order } from '../src/lib/orders.js';
 import type { AdCampaign } from '../src/lib/ad-campaigns.js';
 
@@ -9,32 +8,47 @@ import type { AdCampaign } from '../src/lib/ad-campaigns.js';
  *  The case that motivated the whole feature is the last describe block: orders are undelivered,
  *  and meanwhile the seller wants nothing more sold. Refusing the close would have made him come
  *  back and press the button again once the parcels landed — so it defers instead.
+ *
+ *  **Half of this file reads Postgres and half still reads JSON, on purpose.** Stores moved in
+ *  stage 2 (DB_MIGRATION_PLAN.md §8); orders and campaigns have not yet. So the store is a real
+ *  row and the other two stay behind the file mock — which is exactly the state the application
+ *  itself is in mid-migration, and the reason the mock below has to delegate anything it does not
+ *  own to the real `fs` instead of answering for every path: the test database is loaded from a
+ *  file too, and a mock that swallowed that read reported a broken schema rather than a mocked one.
  */
+const files: Record<string, unknown[]> = { orders: [], campaigns: [] };
+const keyFor = (p: string): keyof typeof files | null =>
+  p.includes('ad-campaigns') ? 'campaigns' : p.includes('orders') ? 'orders' : null;
 
-// Path-keyed so the three JSON files this touches (stores, orders, campaigns) stay separate.
-const files: Record<string, unknown[]> = { stores: [], orders: [], campaigns: [] };
-const keyFor = (p: string): keyof typeof files =>
-  p.includes('ad-campaigns') ? 'campaigns' : p.includes('orders') ? 'orders' : 'stores';
-
-vi.mock('node:fs', () => ({
-  default: {
-    readFileSync: (p: string) => JSON.stringify(files[keyFor(p)]),
-    writeFileSync: (p: string, data: string) => { files[keyFor(p)] = JSON.parse(data); },
-    existsSync: () => true,
-    mkdirSync: () => undefined,
-  },
-}));
+vi.mock('node:fs', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:fs')>();
+  return {
+    default: {
+      ...real,
+      readFileSync: (...args: Parameters<typeof real.readFileSync>) => {
+        const key = typeof args[0] === 'string' ? keyFor(args[0]) : null;
+        return key ? JSON.stringify(files[key]) : real.readFileSync(...args);
+      },
+      writeFileSync: (...args: Parameters<typeof real.writeFileSync>) => {
+        const key = typeof args[0] === 'string' ? keyFor(args[0]) : null;
+        if (key) { files[key] = JSON.parse(String(args[1])); return; }
+        real.writeFileSync(...args);
+      },
+      existsSync: () => true,
+      mkdirSync: () => undefined,
+    },
+  };
+});
 
 const { pauseStore, resumeStore, requestStoreClosure, settleStoreClosure, openOrderCount, countOpenOrdersByStore } =
   await import('../src/lib/store-lifecycle.js');
 const { storeLifecycle } = await import('../src/lib/store-status.js');
+const { getStoreById, updateStore } = await import('../src/lib/stores.js');
+const { query } = await import('../src/lib/db.js');
 
-const STORE_ID = 'st1';
+const STORE_ID = '22222222-2222-4222-8222-0000000000f1';
+const SELLER_ID = '11111111-1111-4111-8111-000000000001';
 const SLUG = 'my-store';
-
-const store = (extra: Partial<Store> = {}): Store =>
-  ({ id: STORE_ID, sellerId: 'sel1', slug: SLUG, name: 'My Store', tagline: '', description: '',
-     colors: { primary: '#000', accent: '#111' }, createdAt: '2026-01-01T00:00:00.000Z', ...extra }) as Store;
 
 const order = (id: string, extra: Partial<Order> = {}): Order =>
   ({ id, buyerName: 'A', buyerEmail: 'a@b.c', buyerPhone: '', buyerAddress: '',
@@ -46,42 +60,54 @@ const campaign = (id: string, extra: Partial<AdCampaign> = {}): AdCampaign =>
   ({ id, storeId: STORE_ID, storeSlug: SLUG, scope: 'store', platform: 'both', monthlyBudget: 300,
      status: 'active', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z', ...extra }) as AdCampaign;
 
-const current = (): Store => (files.stores as Store[]).find((s) => s.id === STORE_ID)!;
+/** The store as it stands right now — re-read, never a cached object. */
+const current = async () => (await getStoreById(STORE_ID))!;
 
-beforeEach(() => {
-  files.stores = [store()];
+/** How many store rows carry this id — the "nothing is deleted" assertion. */
+async function storeRowCount(): Promise<number> {
+  const { rows } = await query<{ n: number }>('SELECT COUNT(*)::int AS n FROM stores WHERE id = $1', [STORE_ID]);
+  return rows[0]!.n;
+}
+
+beforeEach(async () => {
   files.orders = [];
   files.campaigns = [];
+  await query('DELETE FROM stores WHERE id = $1', [STORE_ID]);
+  await query(
+    `INSERT INTO stores (id, seller_id, slug, name, tagline, description, colors, created_at)
+     VALUES ($1, $2, $3, 'My Store', '', '', '{"primary":"#000","accent":"#111"}'::jsonb, '2026-01-01T00:00:00.000Z')`,
+    [STORE_ID, SELLER_ID, SLUG],
+  );
 });
 
 describe('pause and resume', () => {
-  it('stops selling immediately, and reopening puts it straight back', () => {
-    expect(pauseStore(STORE_ID).ok).toBe(true);
-    expect(storeLifecycle(current())).toBe('paused');
-    expect(resumeStore(STORE_ID).ok).toBe(true);
-    expect(storeLifecycle(current())).toBe('active');
+  it('stops selling immediately, and reopening puts it straight back', async () => {
+    expect((await pauseStore(STORE_ID)).ok).toBe(true);
+    expect(storeLifecycle(await current())).toBe('paused');
+    expect((await resumeStore(STORE_ID)).ok).toBe(true);
+    expect(storeLifecycle(await current())).toBe('active');
   });
 
   // A second dashboard tab must not be able to move the moment the pause began — pausedAt is
   // what a future "paused since" reading would rest on.
-  it('is idempotent: pausing twice keeps the first timestamp', () => {
-    pauseStore(STORE_ID);
-    const first = current().pausedAt;
-    pauseStore(STORE_ID);
-    expect(current().pausedAt).toBe(first);
+  it('is idempotent: pausing twice keeps the first timestamp', async () => {
+    await pauseStore(STORE_ID);
+    const first = (await current()).pausedAt;
+    await pauseStore(STORE_ID);
+    expect((await current()).pausedAt).toBe(first);
   });
 
-  it('never lets a seller pause-and-reopen out of an admin block', () => {
-    files.stores = [store({ blocked: true })];
-    expect(pauseStore(STORE_ID).ok).toBe(false);
-    expect(resumeStore(STORE_ID).ok).toBe(false);
-    expect(storeLifecycle(current())).toBe('blocked');
+  it('never lets a seller pause-and-reopen out of an admin block', async () => {
+    await updateStore(STORE_ID, { blocked: true });
+    expect((await pauseStore(STORE_ID)).ok).toBe(false);
+    expect((await resumeStore(STORE_ID)).ok).toBe(false);
+    expect(storeLifecycle(await current())).toBe('blocked');
   });
 
-  it('refuses any transition once the store is closed', () => {
-    files.stores = [store({ closedAt: '2026-07-20T00:00:00.000Z' })];
-    expect(pauseStore(STORE_ID).ok).toBe(false);
-    expect(resumeStore(STORE_ID).ok).toBe(false);
+  it('refuses any transition once the store is closed', async () => {
+    await updateStore(STORE_ID, { closedAt: '2026-07-20T00:00:00.000Z' });
+    expect((await pauseStore(STORE_ID)).ok).toBe(false);
+    expect((await resumeStore(STORE_ID)).ok).toBe(false);
   });
 });
 
@@ -121,21 +147,21 @@ describe('the two open-order counters agree', () => {
 });
 
 describe('closing with nothing owed', () => {
-  it('closes on the spot', () => {
-    const res = requestStoreClosure(STORE_ID);
+  it('closes on the spot', async () => {
+    const res = await requestStoreClosure(STORE_ID);
     expect(res.ok && res.state).toBe('closed');
-    expect(current().closedAt).toBeTruthy();
+    expect((await current()).closedAt).toBeTruthy();
   });
 
-  it('keeps the store record — closing is a flag, never a delete', () => {
-    requestStoreClosure(STORE_ID);
-    expect((files.stores as Store[]).length).toBe(1);
-    expect(current().slug).toBe(SLUG);
+  it('keeps the store record — closing is a flag, never a delete', async () => {
+    await requestStoreClosure(STORE_ID);
+    expect(await storeRowCount()).toBe(1);
+    expect((await current()).slug).toBe(SLUG);
   });
 
-  it('archives running boost campaigns instead of deleting them, so past spend survives', () => {
+  it('archives running boost campaigns instead of deleting them, so past spend survives', async () => {
     files.campaigns = [campaign('c1'), campaign('c2', { status: 'paused' })];
-    requestStoreClosure(STORE_ID);
+    await requestStoreClosure(STORE_ID);
     const rows = files.campaigns as AdCampaign[];
     expect(rows).toHaveLength(2);
     expect(rows.every((c) => c.archivedAt)).toBe(true);
@@ -158,40 +184,40 @@ describe('closing while orders are still open', () => {
 
   // The heart of it: the seller wants no more sales, but two parcels are still out. The store
   // stops selling now, and the closure waits — rather than being refused.
-  it('stops selling at once and leaves the closure pending', () => {
-    const res = requestStoreClosure(STORE_ID);
+  it('stops selling at once and leaves the closure pending', async () => {
+    const res = await requestStoreClosure(STORE_ID);
     expect(res.ok && res.state).toBe('closing');
     expect(res.ok && res.openOrders).toBe(2);
-    expect(current().closedAt).toBeUndefined();
-    expect(current().pausedAt).toBeTruthy();
+    expect((await current()).closedAt).toBeUndefined();
+    expect((await current()).pausedAt).toBeTruthy();
   });
 
-  it('completes the closure by itself when the last open order is done', () => {
-    requestStoreClosure(STORE_ID);
+  it('completes the closure by itself when the last open order is done', async () => {
+    await requestStoreClosure(STORE_ID);
     files.orders = [order('o1', { shippingStatus: 'delivered' }), order('o2', { shippingStatus: 'shipped' })];
-    expect(settleStoreClosure(SLUG)).toBeNull();          // one still in transit
-    expect(storeLifecycle(current())).toBe('closing');
+    expect(await settleStoreClosure(SLUG)).toBeNull();          // one still in transit
+    expect(storeLifecycle(await current())).toBe('closing');
 
     files.orders = [order('o1', { shippingStatus: 'delivered' }), order('o2', { shippingStatus: 'delivered' })];
-    expect(settleStoreClosure(SLUG)).not.toBeNull();
-    expect(storeLifecycle(current())).toBe('closed');
+    expect(await settleStoreClosure(SLUG)).not.toBeNull();
+    expect(storeLifecycle(await current())).toBe('closed');
   });
 
-  it('lets the seller call the closure off, which reopens the store', () => {
-    requestStoreClosure(STORE_ID);
-    expect(resumeStore(STORE_ID).ok).toBe(true);
-    expect(storeLifecycle(current())).toBe('active');
+  it('lets the seller call the closure off, which reopens the store', async () => {
+    await requestStoreClosure(STORE_ID);
+    expect((await resumeStore(STORE_ID)).ok).toBe(true);
+    expect(storeLifecycle(await current())).toBe('active');
     // And a later settle must not resurrect the cancelled intent.
     files.orders = [];
-    expect(settleStoreClosure(SLUG)).toBeNull();
-    expect(storeLifecycle(current())).toBe('active');
+    expect(await settleStoreClosure(SLUG)).toBeNull();
+    expect(storeLifecycle(await current())).toBe('active');
   });
 
-  it('does nothing for a store with no closure pending', () => {
+  it('does nothing for a store with no closure pending', async () => {
     files.orders = [];
-    expect(settleStoreClosure(SLUG)).toBeNull();
-    pauseStore(STORE_ID);
-    expect(settleStoreClosure(SLUG)).toBeNull();
-    expect(storeLifecycle(current())).toBe('paused');
+    expect(await settleStoreClosure(SLUG)).toBeNull();
+    await pauseStore(STORE_ID);
+    expect(await settleStoreClosure(SLUG)).toBeNull();
+    expect(storeLifecycle(await current())).toBe('paused');
   });
 });

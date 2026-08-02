@@ -25,7 +25,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     return json({ error: 'Missing or invalid storeSlug/from/to' }, 400);
   }
 
-  const stores = getStoresBySellerId(sellerId);
+  const stores = await getStoresBySellerId(sellerId);
   const store = findStoreBySlugOrPrevious(stores, reqSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
   // Current slug — orders migrate to it on rename; a client may still send an old (cached) slug.

@@ -22,7 +22,7 @@ if (!seller) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
 
-const hasStore = getStoresBySellerId(userId).length > 0;
+const hasStore = (await getStoresBySellerId(userId)).length > 0;
 
 const orders = getAllOrders()
   .filter((o) => o.buyerId === userId || o.buyerEmail === seller.email)
@@ -53,7 +53,7 @@ const unreadThreadsCount = messages.filter((m) =>
 ).length;
 const showMsgStatusControls = unreadThreadsCount > 0 && unreadThreadsCount < messages.length;
 
-const allStores = getAllStores();
+const allStores = await getAllStores();
 const storeProfileById = new Map(allStores.map((s) => [s.id, s.profileImage]));
 const storeSlugById = new Map(allStores.map((s) => [s.id, s.slug]));
 

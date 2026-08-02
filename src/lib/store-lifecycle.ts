@@ -72,12 +72,12 @@ function refuseIfNotSellerControlled(store: Store): string | null {
 /** Stop selling, keep the storefront up. Idempotent: pausing an already-paused (or closing)
  *  store changes nothing rather than re-stamping the timestamp, so a second dashboard tab
  *  can't move the moment the pause began. */
-export function pauseStore(storeId: string): LifecycleChange {
-  const store = getStoreById(storeId);
+export async function pauseStore(storeId: string): Promise<LifecycleChange> {
+  const store = await getStoreById(storeId);
   if (!store) return { ok: false, error: 'החנות לא נמצאה.' };
   const refusal = refuseIfNotSellerControlled(store);
   if (refusal) return { ok: false, error: refusal };
-  const updated = store.pausedAt ? store : updateStore(storeId, { pausedAt: new Date().toISOString() });
+  const updated = store.pausedAt ? store : await updateStore(storeId, { pausedAt: new Date().toISOString() });
   if (!updated) return { ok: false, error: 'החנות לא נמצאה.' };
   return { ok: true, store: updated, state: storeLifecycle(updated), openOrders: openOrderCount(updated.slug) };
 }
@@ -85,12 +85,12 @@ export function pauseStore(storeId: string): LifecycleChange {
 /** Back to selling. Also the "cancel the closure" action — a pending closure is just a pause
  *  with an intent attached, so undoing it clears both flags and there is no second button to
  *  build or to get out of step with this one. */
-export function resumeStore(storeId: string): LifecycleChange {
-  const store = getStoreById(storeId);
+export async function resumeStore(storeId: string): Promise<LifecycleChange> {
+  const store = await getStoreById(storeId);
   if (!store) return { ok: false, error: 'החנות לא נמצאה.' };
   const refusal = refuseIfNotSellerControlled(store);
   if (refusal) return { ok: false, error: refusal };
-  const updated = updateStore(storeId, { pausedAt: undefined, closePendingAt: undefined });
+  const updated = await updateStore(storeId, { pausedAt: undefined, closePendingAt: undefined });
   if (!updated) return { ok: false, error: 'החנות לא נמצאה.' };
   return { ok: true, store: updated, state: storeLifecycle(updated), openOrders: openOrderCount(updated.slug) };
 }
@@ -98,7 +98,7 @@ export function resumeStore(storeId: string): LifecycleChange {
 /** The final step, shared by the immediate close and the deferred one. Archives every live boost
  *  campaign on the way out: archiveCampaign stops it, freezes its metrics at this instant and
  *  keeps the row (money it already spent is a fact — ad-campaigns.ts#archivedAt). */
-function finalizeClosure(store: Store): Store | null {
+async function finalizeClosure(store: Store): Promise<Store | null> {
   for (const campaign of getCampaignsByStoreId(store.id)) {
     if (!campaign.archivedAt) archiveCampaign(campaign.id, store.id);
   }
@@ -111,19 +111,19 @@ function finalizeClosure(store: Store): Store | null {
 
 /** Close the store — now if nothing is owed, otherwise as soon as everything is.
  *  Either way the store stops selling immediately, which is the half the seller asked for. */
-export function requestStoreClosure(storeId: string): LifecycleChange {
-  const store = getStoreById(storeId);
+export async function requestStoreClosure(storeId: string): Promise<LifecycleChange> {
+  const store = await getStoreById(storeId);
   if (!store) return { ok: false, error: 'החנות לא נמצאה.' };
   const refusal = refuseIfNotSellerControlled(store);
   if (refusal) return { ok: false, error: refusal };
 
   const openOrders = openOrderCount(store.slug);
   const updated = openOrders === 0
-    ? finalizeClosure(store)
+    ? await finalizeClosure(store)
     // pausedAt as well as closePendingAt: `closing` already implies "not selling" in the status
     // table, but carrying the pause explicitly means cancelling the closure has one obvious
     // meaning (clear both, back to active) rather than depending on which flag was set first.
-    : updateStore(storeId, {
+    : await updateStore(storeId, {
         closePendingAt: store.closePendingAt ?? new Date().toISOString(),
         pausedAt: store.pausedAt ?? new Date().toISOString(),
       });
@@ -147,8 +147,8 @@ export function requestStoreClosure(storeId: string): LifecycleChange {
  *  moving to 'failed' stops blocking a closure with nobody here to notice, and the store sits in
  *  `closing` until some unrelated order happens to change shipping status. That webhook must call
  *  this — logged with its trigger in GO_LIVE_CHECKLIST.md §3. */
-export function settleStoreClosure(storeSlug: string): Store | null {
-  const store = getStoreBySlug(storeSlug);
+export async function settleStoreClosure(storeSlug: string): Promise<Store | null> {
+  const store = await getStoreBySlug(storeSlug);
   if (!store || storeLifecycle(store) !== 'closing') return null;
   if (openOrderCount(store.slug) > 0) return null;
   return finalizeClosure(store);

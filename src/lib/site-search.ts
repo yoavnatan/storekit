@@ -49,7 +49,7 @@ export interface SiteSearchOptions {
 // Scans every product on every request (same JSON-file-era tradeoff already accepted
 // for sellerHasAnyAlert — see AI_INSTRUCTIONS.md → Hard rules → Scalability; becomes an
 // indexed/full-text query once this is a real DB, no shape change needed here).
-export function searchSite(rawQuery: string, options: SiteSearchOptions = {}): { stores: StoreSearchHit[]; products: ProductSearchHit[] } {
+export async function searchSite(rawQuery: string, options: SiteSearchOptions = {}): Promise<{ stores: StoreSearchHit[]; products: ProductSearchHit[] }> {
   const q = rawQuery.trim();
   if (!q) return { stores: [], products: [] };
 
@@ -61,7 +61,7 @@ export function searchSite(rawQuery: string, options: SiteSearchOptions = {}): {
   // search — same reasoning as the homepage/directory feeds. Showcase stores are
   // included only while the mall is thin (lib/demo-stores.ts): search is a
   // shopper-discovery surface, so it follows the same rule the homepage does.
-  const stores = getShopperStores();
+  const stores = await getShopperStores();
   const storeById = new Map(stores.map((s) => [s.id, s]));
 
   const allProducts = readProducts();

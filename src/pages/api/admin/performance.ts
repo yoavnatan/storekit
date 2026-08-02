@@ -34,7 +34,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     return json({ error: 'Missing or invalid storeSlug/from/to' }, 400);
   }
 
-  const store = getStoreBySlug(storeSlug);
+  const store = await getStoreBySlug(storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
   // Cap the window so a crafted ?from= far in the past can't force building an

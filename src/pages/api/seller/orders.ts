@@ -40,7 +40,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const reqSlug = url.searchParams.get('storeSlug');
   if (!reqSlug) return json({ error: 'Missing storeSlug' }, 400);
 
-  const stores = getStoresBySellerId(sellerId);
+  const stores = await getStoresBySellerId(sellerId);
   const store = findStoreBySlugOrPrevious(stores, reqSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
@@ -86,7 +86,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     return json({ error: 'Missing orderId or storeSlug' }, 400);
   }
 
-  const stores = getStoresBySellerId(sellerId);
+  const stores = await getStoresBySellerId(sellerId);
   const store = findStoreBySlugOrPrevious(stores, reqSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
   // Current slug — orders migrate to it on rename; a client may still send an old (cached) slug.
@@ -301,7 +301,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     // having to come back and press the button a second time (store-lifecycle.ts). No-op unless
     // a closure is actually pending and actually unblocked, so it costs one status read on a
     // status change and nothing at all otherwise.
-    const justClosed = settleStoreClosure(store.slug);
+    const justClosed = await settleStoreClosure(store.slug);
     // The one state change in this whole feature the seller did NOT just click a button for — it
     // happened because they finished an order. Without this mail the store would close silently
     // and they would find out by visiting it. Not awaited; it never throws.

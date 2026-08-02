@@ -108,7 +108,7 @@ function variantCombosData(variants: VariantDimension[], variantStock: Record<st
 }
 
 const categoryUsage: Record<string, number> = {};
-for (const s of getVisibleStores()) {
+for (const s of await getVisibleStores()) {
   for (const c of s.categories ?? []) {
     const key = c.trim();
     if (key) categoryUsage[key] = (categoryUsage[key] ?? 0) + 1;
@@ -150,10 +150,10 @@ if (Astro.request.method === 'POST') {
     if (!name) {
       error = d.storeNameRequired;
     } else {
-      const stores = getStoresBySellerId(sellerId);
+      const stores = await getStoresBySellerId(sellerId);
       const target = stores.find((s) => s.id === storeId) ?? stores[0];
       if (target) {
-        updateStore(target.id, { name, tagline, description, colors: target.colors });
+        await updateStore(target.id, { name, tagline, description, colors: target.colors });
         return Astro.redirect(`/seller/dashboard?store=${target.id}&saved=1`);
       }
     }
@@ -166,14 +166,14 @@ if (Astro.request.method === 'POST') {
       error = d.storeNameRequired;
     } else if (!slug) {
       error = d.storeUrlRequired;
-    } else if (!canOpenAnotherStore(sellerId)) {
+    } else if (!await canOpenAnotherStore(sellerId)) {
       // Server-side gate — the entry point is hidden at the cap, but a hidden link is not a guard.
       error = d.storeLimitReached;
     } else {
-      const { id: newStoreId } = createStore(sellerId, { name, slug, tagline, description });
+      const { id: newStoreId } = await createStore(sellerId, { name, slug, tagline, description });
       // Same sanitizer the settings endpoint uses — the picker is convenience, this is the rule.
       const initialCategories = sanitizeStoreCategories(String(form.get('categories') ?? '').split(','));
-      if (initialCategories.length) updateStore(newStoreId, { categories: initialCategories });
+      if (initialCategories.length) await updateStore(newStoreId, { categories: initialCategories });
       return Astro.redirect(`/seller/dashboard?store=${newStoreId}`);
     }
   } else if (action === 'add-product') {
@@ -215,7 +215,7 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const allStores = getStoresBySellerId(sellerId);
+const allStores = await getStoresBySellerId(sellerId);
 const hasNoStore = allStores.length === 0;
 // `?new=1` opens the SAME store-creation card an empty account gets — that's the entry point
 // for a seller opening an additional store (store switcher → "פתיחת חנות נוספת"). All of a
@@ -373,7 +373,7 @@ const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrde
 // "what did this specific campaign achieve" figure (CURRENT_TASK.md item 3),
 // which pausing FREEZES rather than erases (item 1). The range picker above the
 // list re-fetches a windowed "recent activity" view over other periods.
-const adCampaigns = (store && advIsInitial) ? getCampaignsForStore(store.id).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) })) : [];
+const adCampaigns = (store && advIsInitial) ? (await getCampaignsForStore(store.id)).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) })) : [];
 // Baseline is the platform-funded free exposure the store has accrued to date —
 // a stable lifetime total, deliberately NOT windowed by the campaign picker.
 const adBaseline = store
@@ -518,7 +518,7 @@ const ordersPage = paginate(filteredSortedOrders, parsePage(Astro.url.searchPara
 const ordersActiveFilterCount = [sellerOrderQuery.shippingStatus].filter((v) => v.length > 0).length;
 
 // Alerts per store for store-switcher dots (pending orders or unread messages)
-const storeAlerts: Record<string, boolean> = allStores.length > 1 ? getSellerStoreAlerts(sellerId) : {};
+const storeAlerts: Record<string, boolean> = allStores.length > 1 ? await getSellerStoreAlerts(sellerId) : {};
 // The header dot should point the seller TO the alert — so it only fires when
 // a store OTHER than the one currently open has something unhandled. If the
 // seller is already looking at the store with the alert, they can already

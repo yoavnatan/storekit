@@ -1,13 +1,28 @@
-import fs from 'node:fs';
-import path from 'node:path';
+/**
+ * The store record — the second module moved off `data/*.json` (DB_MIGRATION_PLAN.md §8 stage 2).
+ *
+ * Every exported reader and writer here is a query now, so all of them are `async` and all ~58
+ * callers `await` (§3). The types and the answers are unchanged; what moved is where they come
+ * from, plus the four things a file could not do and the database does:
+ *
+ *   · **Slug uniqueness is the index, not a scan before the write (§7.4).** Two sellers opening a
+ *     store in the same moment used to both find the slug free and both take it.
+ *   · **`previousSlugs` is its own table** (`store_previous_slugs`, §4). A 301 lookup is an indexed
+ *     hit on a primary key instead of an array scan across every store, and the same table is what
+ *     keeps a retired slug reserved against a *new* store claiming it.
+ *   · **`customDomain.hostname` is a column, not a JSONB field**, because the middleware resolves it
+ *     on every request that arrives — including the ones that are not a store at all.
+ *   · **A deleted store is `deleted_at`, never a missing row (§7.9)** — its orders are financial
+ *     records and must keep pointing at something. Every read here filters it out, so "deleted" and
+ *     "not found" stay the same answer to the rest of the app.
+ */
 import crypto from 'node:crypto';
 import { filterShopperStores, isDemoStore } from './demo-stores.js';
 import { isStoreReachable, isStoreDiscoverable } from './store-status.js';
 import type { StoreSale } from './discounts.js';
 import { toSlug } from './url-base.js';
 import { confusableSkeleton } from './slug-confusable.js';
-
-const STORES_PATH = path.join(process.cwd(), 'data/stores.json');
+import { NO_SUCH_UUID, firstRow, isUuid, query, rows, withTransaction, type Queryable } from './db.js';
 
 export interface StoreColors {
   primary: string;
@@ -139,13 +154,139 @@ export function byPromoWeight(a: Store, b: Store): number {
   return (b.promoWeight ?? 0) - (a.promoWeight ?? 0);
 }
 
-function readStores(): Store[] {
-  try { return JSON.parse(fs.readFileSync(STORES_PATH, 'utf8')) as Store[]; }
-  catch { return []; }
+/**
+ * One store row.
+ *
+ * Selected explicitly rather than `SELECT *`, so a column a later migration adds cannot silently
+ * change what this module returns. `previous_slugs` is not a column at all — it is aggregated from
+ * `store_previous_slugs` in the same statement, so every reader gets the whole record in one
+ * round-trip instead of an N+1 per store on a list page.
+ */
+const COLUMNS = `s.id, s.seller_id, s.slug, s.name, s.tagline, s.description, s.colors,
+    s.categories, s.shipping, s.banner_image, s.profile_image, s.sale, s.address,
+    s.address_visible, s.hours, s.hours_visible, s.blocked, s.demo, s.promo_weight, s.bg_colors,
+    s.feed_sync, s.feed_export_token, s.custom_domain_hostname, s.custom_domain_status,
+    s.custom_domain_added_at, s.paused_at, s.close_pending_at, s.closed_at, s.created_at,
+    (SELECT array_agg(p.slug::text ORDER BY p.replaced_at, p.slug)
+       FROM store_previous_slugs p WHERE p.store_id = s.id) AS previous_slugs`;
+
+/** The same columns unqualified, for `RETURNING` on an INSERT — where there is no alias to hang
+ *  `s.` on, and no previous slug to aggregate because the store is one statement old. */
+const INSERT_RETURNING = COLUMNS
+  .slice(0, COLUMNS.indexOf('(SELECT'))
+  .replace(/\bs\./g, '')
+  .replace(/,\s*$/, '');
+
+/**
+ * `FROM` plus the one predicate that is never optional: a soft-deleted store is gone as far as the
+ * application is concerned (§7.9). Written once so no query can forget it — the failure mode is a
+ * closed-and-deleted store reappearing on the homepage, which nothing would report.
+ */
+const FROM_LIVE = 'FROM stores s WHERE s.deleted_at IS NULL';
+
+/** §7.13: a table has no natural order. Ascending `created_at` is the order the JSON file gave, so
+ *  no discovery surface reshuffles on the way over; `id` breaks a same-millisecond tie. */
+const ORDER = 'ORDER BY s.created_at, s.id';
+
+interface StoreRow {
+  id: string;
+  seller_id: string;
+  slug: string;
+  name: string;
+  tagline: string;
+  description: string;
+  colors: StoreColors | null;
+  categories: string[] | null;
+  shipping: StoreShipping | null;
+  banner_image: string | null;
+  profile_image: string | null;
+  sale: StoreSale | null;
+  address: string | null;
+  address_visible: boolean;
+  hours: StoreHours | null;
+  hours_visible: boolean;
+  blocked: boolean;
+  demo: boolean;
+  promo_weight: number;
+  bg_colors: string[] | null;
+  feed_sync: Store['feedSync'] | null;
+  feed_export_token: string | null;
+  custom_domain_hostname: string | null;
+  custom_domain_status: 'pending' | 'active' | null;
+  custom_domain_added_at: Date | string | null;
+  paused_at: Date | string | null;
+  close_pending_at: Date | string | null;
+  closed_at: Date | string | null;
+  created_at: Date | string | null;
+  previous_slugs: string[] | null;
 }
 
-function writeStores(stores: Store[]): void {
-  fs.writeFileSync(STORES_PATH, JSON.stringify(stores, null, 2));
+/** A `timestamptz` back to the ISO string every call site already reads. */
+function iso(value: Date | string | null): string | undefined {
+  if (value === null) return undefined;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
+/**
+ * Row → `Store`, in the exact shape the rest of the app reads today.
+ *
+ * **Absent, not `null`.** Every optional field on the interface is written only when it has a
+ * value, because ~40 call sites are written as `store.sale?.active` / `store.address ?? ''` and a
+ * `null` behaves differently from a missing key under `??` and under `JSON.stringify`. The three
+ * ARRAYS go the other way and are always present (possibly empty): every consumer already reads
+ * them as `(store.categories ?? [])`, and an always-array removes the branch instead of preserving
+ * a distinction — absent vs `[]` — that nothing in the app has ever acted on.
+ */
+function toStore(row: StoreRow): Store {
+  const store: Store = {
+    id: row.id,
+    sellerId: row.seller_id,
+    slug: row.slug,
+    name: row.name,
+    tagline: row.tagline,
+    description: row.description,
+    colors: (row.colors ?? {}) as StoreColors,
+    categories: row.categories ?? [],
+    shipping: (row.shipping ?? {}) as StoreShipping,
+    bgColors: row.bg_colors ?? [],
+    previousSlugs: row.previous_slugs ?? [],
+    createdAt: iso(row.created_at) ?? '',
+  };
+  if (row.banner_image) store.bannerImage = row.banner_image;
+  if (row.profile_image) store.profileImage = row.profile_image;
+  if (row.sale) store.sale = row.sale;
+  if (row.address) store.address = row.address;
+  if (row.address_visible) store.addressVisible = true;
+  if (row.hours) store.hours = row.hours;
+  if (row.hours_visible) store.hoursVisible = true;
+  if (row.blocked) store.blocked = true;
+  if (row.demo) store.demo = true;
+  if (row.promo_weight) store.promoWeight = row.promo_weight;
+  if (row.feed_sync) store.feedSync = row.feed_sync;
+  if (row.feed_export_token) store.feedExportToken = row.feed_export_token;
+  if (row.custom_domain_hostname && row.custom_domain_status) {
+    store.customDomain = {
+      hostname: row.custom_domain_hostname,
+      status: row.custom_domain_status,
+      addedAt: iso(row.custom_domain_added_at) ?? '',
+    };
+  }
+  const pausedAt = iso(row.paused_at);
+  if (pausedAt) store.pausedAt = pausedAt;
+  const closePendingAt = iso(row.close_pending_at);
+  if (closePendingAt) store.closePendingAt = closePendingAt;
+  const closedAt = iso(row.closed_at);
+  if (closedAt) store.closedAt = closedAt;
+  return store;
+}
+
+async function selectStores(where: string, params: readonly unknown[] = []): Promise<Store[]> {
+  return (await rows<StoreRow>(`SELECT ${COLUMNS} ${FROM_LIVE} AND ${where} ${ORDER}`, params)).map(toStore);
+}
+
+async function selectStore(where: string, params: readonly unknown[] = []): Promise<Store | null> {
+  const row = await firstRow<StoreRow>(`SELECT ${COLUMNS} ${FROM_LIVE} AND ${where} ${ORDER} LIMIT 1`, params);
+  return row ? toStore(row) : null;
 }
 
 /** Turn free text into a store URL slug — `url-base.ts#toSlug`, which is also what product slugs
@@ -208,86 +349,140 @@ export const MAX_STORES_PER_SELLER = 5;
 
 /** True when the seller has room for another store. Callers MUST check this server-side before
  *  createStore() — hiding the button is not the guard. */
-export function canOpenAnotherStore(sellerId: string): boolean {
-  return getStoresBySellerId(sellerId).length < MAX_STORES_PER_SELLER;
+export async function canOpenAnotherStore(sellerId: string): Promise<boolean> {
+  if (!isUuid(sellerId)) return false;
+  const row = await firstRow<{ n: number }>(
+    'SELECT COUNT(*)::int AS n FROM stores WHERE seller_id = $1 AND deleted_at IS NULL',
+    [sellerId],
+  );
+  return (row?.n ?? 0) < MAX_STORES_PER_SELLER;
 }
 
-export function createStore(sellerId: string, { name, slug: rawSlug, tagline = '', description = '' }: CreateStoreInput): Store {
-  const stores = readStores();
+/**
+ * How many bumped slugs to try before giving up on `foo-2, foo-3, …` and appending randomness.
+ * Sequential bumping is what a seller expects to see; past a couple of dozen collisions the
+ * readable form has stopped being informative and the loop only has to terminate.
+ */
+const SLUG_BUMP_ATTEMPTS = 24;
+
+/**
+ * Open a store, giving it a slug nobody else holds.
+ *
+ * **The uniqueness check IS the insert (§7.4).** The file version read every store, looked for the
+ * slug, then wrote — so two sellers registering `keramika` in the same moment both found it free
+ * and the second silently overwrote the first's URL. Here the attempt either lands or comes back
+ * with zero rows, and zero rows means "taken" no matter who else was mid-write.
+ *
+ * A slug is taken by TWO tables, which is why the statement carries a `NOT EXISTS` beside the
+ * `ON CONFLICT`: `stores.slug` for a live store, and `store_previous_slugs` for one some store used
+ * to have. Handing a retired slug to a new store would silently break the original owner's 301 —
+ * the new store's live slug wins resolution and the old link stops arriving where it was pointed.
+ */
+export async function createStore(sellerId: string, { name, slug: rawSlug, tagline = '', description = '' }: CreateStoreInput): Promise<Store> {
   const base = normalizeSlug(rawSlug ?? '') || normalizeSlug(name) || 'store';
-  let slug = base;
-  let n = 2;
-  // Bump on a slug that ANY store already claims (current OR previous — old slugs stay reserved so
-  // 301s never break) OR a reserved route name (a root-level store can't own a real platform path).
-  while (stores.some((s) => storeClaimsSlug(s, slug)) || isReservedSlug(slug)) { slug = `${base}-${n++}`; }
 
-  const store: Store = {
-    id: crypto.randomUUID(),
-    sellerId,
-    slug,
-    name,
-    tagline,
-    description,
-    colors: { primary: '#1e7a46', accent: '#f97316' },
-    createdAt: new Date().toISOString(),
-  };
-  stores.push(store);
-  writeStores(stores);
-  return store;
+  for (let attempt = 0; attempt <= SLUG_BUMP_ATTEMPTS + 1; attempt += 1) {
+    const slug = attempt === 0 ? base
+      : attempt <= SLUG_BUMP_ATTEMPTS ? `${base}-${attempt + 1}`
+      : `${base}-${crypto.randomBytes(4).toString('hex')}`;
+    // A root-level store can never own a real platform path — that route would shadow it forever.
+    if (isReservedSlug(slug)) continue;
+
+    const row = await firstRow<StoreRow>(
+      `INSERT INTO stores (id, seller_id, slug, name, tagline, description, colors, created_at)
+       SELECT $1, $2, $3, $4, $5, $6, $7::jsonb, now()
+        WHERE NOT EXISTS (SELECT 1 FROM store_previous_slugs WHERE slug = $3)
+       ON CONFLICT (slug) DO NOTHING
+       RETURNING ${INSERT_RETURNING}`,
+      [
+        crypto.randomUUID(), sellerId, slug, name, tagline, description,
+        JSON.stringify({ primary: '#1e7a46', accent: '#f97316' }),
+      ],
+    );
+    if (row) return toStore({ ...row, previous_slugs: null });
+  }
+  // Unreachable in practice — the last attempt carries 32 bits of randomness. Throwing beats
+  // returning a store the caller would then have to null-check for the first time.
+  throw new Error(`Could not find a free slug for "${name}"`);
 }
 
-export function getStoreBySellerId(sellerId: string): Store | null {
-  return readStores().find((s) => s.sellerId === sellerId) ?? null;
+/** The seller's first store (oldest), or null. Kept for the call sites that predate multi-store. */
+export async function getStoreBySellerId(sellerId: string): Promise<Store | null> {
+  if (!isUuid(sellerId)) return null;
+  return selectStore('s.seller_id = $1', [sellerId]);
 }
 
-export function getStoresBySellerId(sellerId: string): Store[] {
-  return readStores().filter((s) => s.sellerId === sellerId);
+export async function getStoresBySellerId(sellerId: string): Promise<Store[]> {
+  if (!isUuid(sellerId)) return [];
+  return selectStores('s.seller_id = $1', [sellerId]);
 }
 
 /** Stored slugs are NFKC (normalizeSlug), so the incoming one is folded the same way before it is
  *  compared: now that a slug can be Hebrew, the SAME word can arrive spelled a second way — a link
  *  pasted out of a source using presentation forms, or a decomposed paste — and an exact match
- *  would 404 a store that plainly exists. Case is deliberately NOT folded: `/MyStore` still misses,
- *  as it always has, rather than quietly minting a second URL for one page. */
-export function getStoreBySlug(slug: string): Store | null {
+ *  would 404 a store that plainly exists.
+ *
+ *  **Case is deliberately NOT folded, and the column being `citext` is why that needs saying.**
+ *  `citext` is there so `Acme` and `acme` can never become two stores (§7.11) — a uniqueness rule.
+ *  Resolution is the opposite question: if `/MyStore` also served the page, one store would sit at
+ *  every capitalisation of its name, which is duplicate content pointing at one canonical. The
+ *  `::text` comparison beside the indexed one keeps the file version's answer — `/MyStore` misses —
+ *  while the index still does the work of finding the candidate row. */
+export async function getStoreBySlug(slug: string): Promise<Store | null> {
+  if (!slug) return null;
   const wanted = slug.normalize('NFKC');
-  return readStores().find((s) => s.slug === wanted) ?? null;
+  // Two parameters for one value on purpose: `$1` is inferred as `citext` from the indexed
+  // comparison, and reusing it under a `::text` cast would leave its type ambiguous to the planner.
+  return selectStore('s.slug = $1 AND s.slug::text = $2', [wanted, wanted]);
 }
 
-export function getStoreById(id: string): Store | null {
-  return readStores().find((s) => s.id === id) ?? null;
+export async function getStoreById(id: string): Promise<Store | null> {
+  if (!isUuid(id)) return null;
+  return selectStore('s.id = $1', [id]);
 }
 
 /** Resolves the unguessable per-store export token to its store (the outbound-feed counterpart to the
  *  inbound sync — another system pulls this store's live catalog from a tokenized URL, no login). The
- *  token IS the credential, so it must be long/random (see /api/store.ts gen-export-token). Linear
- *  scan today; an indexed lookup at DB-migration time (same signature). */
-export function getStoreByExportToken(token: string): Store | null {
+ *  token IS the credential, so it must be long/random (see /api/store.ts gen-export-token). */
+export async function getStoreByExportToken(token: string): Promise<Store | null> {
   if (!token) return null;
-  return readStores().find((s) => s.feedExportToken === token) ?? null;
+  return selectStore('s.feed_export_token = $1', [token]);
 }
 
-export function getAllStores(): Store[] {
-  return readStores();
+/**
+ * Every store, including blocked and closed ones — the admin roster and the platform-wide totals.
+ *
+ * Still unbounded, and still on the list for §3 along with `getAllSellers`/`getAllOrders`: at
+ * 100,000 stores a function that returns all of them is a bug, and its handful of callers all
+ * aggregate afterwards, which is work the database should be doing. Left as-is deliberately so the
+ * three move together rather than one call site at a time.
+ */
+export async function getAllStores(): Promise<Store[]> {
+  return (await rows<StoreRow>(`SELECT ${COLUMNS} ${FROM_LIVE} ${ORDER}`)).map(toStore);
 }
 
 /** Resolves an inbound request Host to the store that owns it as an ACTIVE custom domain — the
  *  routing counterpart the middleware calls on every custom-host request. Only a verified
  *  (status 'active') hostname is served; a 'pending' one is ignored so an unverified domain can
- *  never hijack routing. Host is lowercased + port-stripped to match the stored normalized form.
- *  Linear scan today; an indexed lookup at DB-migration time (same signature). */
-export function getStoreByCustomDomain(hostname: string): Store | null {
+ *  never hijack routing. Host is lowercased + port-stripped to match the stored normalized form. */
+export async function getStoreByCustomDomain(hostname: string): Promise<Store | null> {
   const h = hostname.toLowerCase().replace(/:\d+$/, '').trim();
   if (!h) return null;
-  return readStores().find((s) => s.customDomain?.status === 'active' && s.customDomain.hostname === h) ?? null;
+  return selectStore(`s.custom_domain_status = 'active' AND s.custom_domain_hostname = $1`, [h]);
 }
 
 /** True if ANY store other than `exceptStoreId` has already registered this hostname (pending OR
  *  active). A custom domain must be globally unique — two stores claiming the same host would make
  *  routing ambiguous (first-match wins). Enforced when a seller sets their domain (see /api/store.ts). */
-export function isCustomDomainTaken(hostname: string, exceptStoreId: string): boolean {
+export async function isCustomDomainTaken(hostname: string, exceptStoreId: string): Promise<boolean> {
   const h = hostname.toLowerCase().trim();
-  return readStores().some((s) => s.id !== exceptStoreId && s.customDomain?.hostname === h);
+  if (!h) return false;
+  const row = await firstRow<{ one: number }>(
+    `SELECT 1 AS one FROM stores
+      WHERE deleted_at IS NULL AND custom_domain_hostname = $1 AND id <> $2::uuid LIMIT 1`,
+    [h, isUuid(exceptStoreId) ? exceptStoreId : NO_SUCH_UUID],
+  );
+  return Boolean(row);
 }
 
 /** True if a store CLAIMS this slug — either as its current slug OR in its previousSlugs. A previous
@@ -299,17 +494,30 @@ export function storeClaimsSlug(store: Pick<Store, 'slug' | 'previousSlugs'>, sl
 
 /** True if `slug` is claimed (current OR previously) by some store OTHER than exceptStoreId — the
  *  cross-store uniqueness check for a rename/create. Reserving old slugs preserves everyone's 301s. A
- *  store's OWN previous slug is excluded (exceptStoreId), so it can freely rename back to it. */
-export function isSlugTaken(slug: string, exceptStoreId: string): boolean {
-  return readStores().some((s) => s.id !== exceptStoreId && storeClaimsSlug(s, slug));
+ *  store's OWN previous slug is excluded (exceptStoreId), so it can freely rename back to it.
+ *
+ *  One statement over the two tables that can hold a claim. `citext` on both columns is what makes
+ *  this the same answer for `Acme` and `acme` — the uniqueness side of the choice explained on
+ *  getStoreBySlug. */
+export async function isSlugTaken(slug: string, exceptStoreId: string): Promise<boolean> {
+  if (!slug) return false;
+  const except = isUuid(exceptStoreId) ? exceptStoreId : NO_SUCH_UUID;
+  const row = await firstRow<{ one: number }>(
+    `SELECT 1 AS one FROM stores WHERE slug = $1 AND id <> $2::uuid AND deleted_at IS NULL
+     UNION ALL
+     SELECT 1 AS one FROM store_previous_slugs WHERE slug = $1 AND store_id <> $2::uuid
+     LIMIT 1`,
+    [slug.normalize('NFKC'), except],
+  );
+  return Boolean(row);
 }
 
 /** Resolve a slug to its store by the CURRENT slug, falling back to a PREVIOUS slug (renamed since).
  *  Critical for checkout: a buyer's cart holds the slug from when the item was added, so a URL rename
  *  mid-purchase must NOT make the store "not found" and fail the order. Callers should key downstream
  *  work off the returned store.slug (the current one), not the slug they passed in. */
-export function getStoreBySlugOrPrevious(slug: string): Store | null {
-  return getStoreBySlug(slug) ?? getStoreByPreviousSlug(slug);
+export async function getStoreBySlugOrPrevious(slug: string): Promise<Store | null> {
+  return (await getStoreBySlug(slug)) ?? (await getStoreByPreviousSlug(slug));
 }
 
 /** Find a store within an already-fetched list by its current slug OR any previous slug. Used by the
@@ -322,9 +530,12 @@ export function findStoreBySlugOrPrevious(stores: Store[], slug: string | null):
 
 /** Resolve a slug that USED to belong to a store (renamed since) → that store, so the route can 301
  *  to its current slug. A live slug always wins first: callers check getStoreBySlug before this. */
-export function getStoreByPreviousSlug(slug: string): Store | null {
+export async function getStoreByPreviousSlug(slug: string): Promise<Store | null> {
   if (!slug) return null;
-  return readStores().find((s) => s.slug !== slug && s.previousSlugs?.includes(slug)) ?? null;
+  return selectStore(
+    `s.slug <> $1 AND EXISTS (SELECT 1 FROM store_previous_slugs p WHERE p.store_id = s.id AND p.slug = $1)`,
+    [slug.normalize('NFKC')],
+  );
 }
 
 /** The previousSlugs list after renaming oldSlug→newSlug: keep history + add oldSlug, drop newSlug
@@ -334,19 +545,52 @@ export function computeNextPreviousSlugs(current: string[] | undefined, oldSlug:
   return Array.from(new Set(list)).slice(-MAX_PREVIOUS_SLUGS);
 }
 
-/** Change a store's URL slug, remembering the old one for 301 redirects (getStoreByPreviousSlug).
- *  The caller MUST have validated newSlug (normalized, non-empty, not reserved, not taken). The
- *  slug-keyed side stores (page-views, favorites) are migrated by the caller, not here. */
-export function renameStoreSlug(storeId: string, newSlug: string): Store | null {
-  const stores = readStores();
-  const idx = stores.findIndex((s) => s.id === storeId);
-  if (idx === -1) return null;
-  const oldSlug = stores[idx]!.slug;
-  if (oldSlug === newSlug) return stores[idx]!;
-  const previousSlugs = computeNextPreviousSlugs(stores[idx]!.previousSlugs, oldSlug, newSlug);
-  stores[idx] = { ...stores[idx]!, slug: newSlug, previousSlugs };
-  writeStores(stores);
-  return stores[idx]!;
+/**
+ * Change a store's URL slug, remembering the old one for 301 redirects (getStoreByPreviousSlug).
+ * The caller MUST have validated newSlug (normalized, non-empty, not reserved, not taken). The
+ * slug-keyed side stores (page-views, favorites) are migrated by the caller, not here.
+ *
+ * One transaction, because a rename that renamed the store but failed to record the old slug would
+ * 404 every link that ever pointed at it, with nothing to reconstruct them from.
+ *
+ * `computeNextPreviousSlugs` still decides the list — it holds the revert rule and the cap and it is
+ * unit-tested — and the whole set is then rewritten, with `replaced_at` spread by a microsecond per
+ * position so reading it back yields exactly the order the rule produced. Nothing reads `replaced_at`
+ * as a date; it exists to give the set an order, and this is what makes that order the intended one
+ * rather than alphabetical-by-accident.
+ */
+export async function renameStoreSlug(storeId: string, newSlug: string): Promise<Store | null> {
+  if (!isUuid(storeId)) return null;
+  return withTransaction(async (tx) => {
+    const current = await selectStoreTx(tx, storeId);
+    if (!current) return null;
+    if (current.slug === newSlug) return current;
+
+    const previousSlugs = computeNextPreviousSlugs(current.previousSlugs, current.slug, newSlug);
+    await tx.query('DELETE FROM store_previous_slugs WHERE store_id = $1', [storeId]);
+    // Also releases the incoming slug if ANOTHER store retired it — the caller has already
+    // established it is free (isSlugTaken), and a stale row here would break the unique index.
+    await tx.query('DELETE FROM store_previous_slugs WHERE slug = $1', [newSlug]);
+    if (previousSlugs.length) {
+      await tx.query(
+        `INSERT INTO store_previous_slugs (slug, store_id, replaced_at)
+         SELECT value, $1, now() + (ord::double precision * interval '1 microsecond')
+           FROM unnest($2::text[]) WITH ORDINALITY AS t(value, ord)`,
+        [storeId, previousSlugs],
+      );
+    }
+    await tx.query('UPDATE stores SET slug = $2 WHERE id = $1', [storeId, newSlug]);
+    return selectStoreTx(tx, storeId);
+  });
+}
+
+/** The same read as `getStoreById`, on a specific connection — a transaction must not reach for a
+ *  second pooled one, which would sit outside it and read pre-commit state. */
+async function selectStoreTx(tx: Queryable, storeId: string): Promise<Store | null> {
+  const { rows: found } = await tx.query<StoreRow>(
+    `SELECT ${COLUMNS} ${FROM_LIVE} AND s.id = $1`, [storeId],
+  );
+  return found[0] ? toStore(found[0]) : null;
 }
 
 /** Does the store's own URL still serve a storefront? False for an admin block (404) and for a
@@ -366,23 +610,27 @@ export type { StoreLifecycle } from './store-status.js';
 
 /** getAllStores(), pre-filtered to what a platform surface may LIST — the version every public
  *  discovery surface (homepage, /stores, search, sitemap, feed) should call instead of
- *  getAllStores() + an inline filter. Excludes blocked, closed, closing and paused stores. */
-export function getVisibleStores(): Store[] {
-  return readStores().filter(isStoreDiscoverable);
+ *  getAllStores() + an inline filter. Excludes blocked, closed, closing and paused stores.
+ *
+ *  `NOT blocked` is pushed into SQL (it is half of the `stores_live_idx` partial predicate, so the
+ *  blocked rows are not even in the index); the lifecycle half stays in `isStoreDiscoverable` so
+ *  the status table remains the single definition of what each state means. */
+export async function getVisibleStores(): Promise<Store[]> {
+  return (await selectStores('NOT s.blocked')).filter(isStoreDiscoverable);
 }
 
 /** What a SHOPPER-facing discovery surface lists (homepage, /stores, site search):
  *  getVisibleStores() with the platform's own showcase stores dropped as soon as
  *  there are real stores to show instead. See lib/demo-stores.ts. */
-export function getShopperStores(): Store[] {
-  return filterShopperStores(getVisibleStores());
+export async function getShopperStores(): Promise<Store[]> {
+  return filterShopperStores(await getVisibleStores());
 }
 
 /** What a SEARCH ENGINE or an outbound feed may see: getVisibleStores() minus every
  *  showcase store, always. Sitemap, llms.txt, the Merchant/Meta product feed and
  *  IndexNow all gate through this — fabricated catalog must never be advertised. */
-export function getIndexableStores(): Store[] {
-  return getVisibleStores().filter((s) => !isDemoStore(s));
+export async function getIndexableStores(): Promise<Store[]> {
+  return (await getVisibleStores()).filter((s) => !isDemoStore(s));
 }
 
 /** The platform's showcase stores, oldest first. Unlike the shopper surfaces this
@@ -390,30 +638,116 @@ export function getIndexableStores(): Store[] {
  *  live forever, which is why it reads its own list instead of getShopperStores().
  *  Empty list = the showcase seeder was never run; every call site must degrade to
  *  rendering nothing rather than to a dead link. */
-export function getDemoStores(): Store[] {
-  return getVisibleStores()
+export async function getDemoStores(): Promise<Store[]> {
+  return (await getVisibleStores())
     .filter(isDemoStore)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
-export function updateStore(storeId: string, updates: Partial<Omit<Store, 'id' | 'sellerId' | 'createdAt'>>): Store | null {
-  const stores = readStores();
-  const idx = stores.findIndex((s) => s.id === storeId);
-  if (idx === -1) return null;
-  stores[idx] = { ...stores[idx]!, ...updates };
-  writeStores(stores);
-  return stores[idx]!;
+/**
+ * Which field maps to which column, and how its value reaches SQL.
+ *
+ * `slug` and `previousSlugs` are deliberately absent: they are one thing (a URL plus the 301s that
+ * keep pointing at it) and `renameStoreSlug` is their only writer. A `updateStore(id, { slug })`
+ * would move the URL and abandon every old link in the same statement.
+ *
+ * Every flag casts through `Boolean` rather than passing the value along, because §7.12 is exactly
+ * this column set: a `NULL` in a flag column answers neither `= true` nor `= false`, and the store
+ * drops out of every filtered query with no error anywhere.
+ */
+const UPDATABLE: Record<string, { sql: string; value: (v: unknown) => unknown }> = {
+  name:           { sql: 'name = $', value: (v) => String(v ?? '') },
+  tagline:        { sql: 'tagline = $', value: (v) => String(v ?? '') },
+  description:    { sql: 'description = $', value: (v) => String(v ?? '') },
+  colors:         { sql: 'colors = $::jsonb', value: (v) => JSON.stringify(v ?? {}) },
+  categories:     { sql: 'categories = $::text[]', value: (v) => (v as string[] | undefined) ?? [] },
+  shipping:       { sql: 'shipping = $::jsonb', value: (v) => JSON.stringify(v ?? {}) },
+  bannerImage:    { sql: 'banner_image = $', value: (v) => v ?? null },
+  profileImage:   { sql: 'profile_image = $', value: (v) => v ?? null },
+  sale:           { sql: 'sale = $::jsonb', value: (v) => (v == null ? null : JSON.stringify(v)) },
+  address:        { sql: 'address = $', value: (v) => v ?? null },
+  addressVisible: { sql: 'address_visible = $', value: (v) => Boolean(v) },
+  hours:          { sql: 'hours = $::jsonb', value: (v) => (v == null ? null : JSON.stringify(v)) },
+  hoursVisible:   { sql: 'hours_visible = $', value: (v) => Boolean(v) },
+  blocked:        { sql: 'blocked = $', value: (v) => Boolean(v) },
+  demo:           { sql: 'demo = $', value: (v) => Boolean(v) },
+  promoWeight:    { sql: 'promo_weight = $', value: (v) => Number(v) || 0 },
+  bgColors:       { sql: 'bg_colors = $::text[]', value: (v) => (v as string[] | undefined) ?? [] },
+  feedSync:       { sql: 'feed_sync = $::jsonb', value: (v) => (v == null ? null : JSON.stringify(v)) },
+  feedExportToken: { sql: 'feed_export_token = $', value: (v) => v ?? null },
+  pausedAt:       { sql: 'paused_at = $::timestamptz', value: (v) => v ?? null },
+  closePendingAt: { sql: 'close_pending_at = $::timestamptz', value: (v) => v ?? null },
+  closedAt:       { sql: 'closed_at = $::timestamptz', value: (v) => v ?? null },
+};
+
+export type StoreUpdate = Partial<Omit<Store, 'id' | 'sellerId' | 'createdAt' | 'slug' | 'previousSlugs'>>;
+
+/**
+ * Write the fields this call actually carries, and only those.
+ *
+ * **A key that is PRESENT with the value `undefined` means "clear it"; a key that is ABSENT means
+ * "don't touch it".** That distinction is not a nicety — it is what the callers already rely on:
+ * `resumeStore` passes `{ pausedAt: undefined, closePendingAt: undefined }` to clear two timestamps,
+ * and the store settings form passes `bannerImage: undefined` when the seller removed the image.
+ * The file version got this for free from object spread; here it means building the `SET` list from
+ * `Object.keys`, never from the values. Reading the record and writing it back whole would be the
+ * obvious alternative and is the bug it looks like a simplification of: a save carrying only the
+ * opening hours, racing a rename in another tab, would put the old name back (lib/record-rev.ts).
+ */
+export async function updateStore(storeId: string, updates: StoreUpdate): Promise<Store | null> {
+  if (!isUuid(storeId)) return null;
+
+  const sets: string[] = [];
+  const params: unknown[] = [storeId];
+  for (const key of Object.keys(updates)) {
+    // `Object.hasOwn`, not a truthy lookup: `UPDATABLE['toString']` resolves to the inherited
+    // Function.prototype method, which is truthy and has no `.sql` — a crash the moment a call
+    // site passes a parsed request body instead of a literal.
+    if (!Object.hasOwn(UPDATABLE, key)) continue;
+    const spec = UPDATABLE[key]!;
+    params.push(spec.value((updates as Record<string, unknown>)[key]));
+    sets.push(spec.sql.replace('$', `$${params.length}`));
+  }
+
+  // customDomain is three columns, so it cannot sit in the table above — and it is all-or-nothing:
+  // clearing it must clear the status too, or a hostname-less 'active' row would be left behind.
+  if ('customDomain' in updates) {
+    const cd = updates.customDomain;
+    params.push(cd?.hostname ?? null, cd?.status ?? null, cd?.addedAt ?? null);
+    sets.push(`custom_domain_hostname = $${params.length - 2}`);
+    sets.push(`custom_domain_status = $${params.length - 1}`);
+    sets.push(`custom_domain_added_at = $${params.length}::timestamptz`);
+  }
+
+  if (!sets.length) return getStoreById(storeId);
+
+  const { rows: updated } = await query<{ id: string }>(
+    `UPDATE stores SET ${sets.join(', ')} WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
+    params,
+  );
+  return updated.length ? await getStoreById(storeId) : null;
 }
 
-/** Prepends a background colour to the store's saved palette (deduped, newest-first, capped),
- *  returning the resulting list — the caller must have already validated the hex + ownership. */
-export function addStoreBgColor(storeId: string, hex: string): string[] | null {
-  const stores = readStores();
-  const idx = stores.findIndex((s) => s.id === storeId);
-  if (idx === -1) return null;
-  const current = stores[idx]!.bgColors ?? [];
-  const next = [hex, ...current.filter((c) => c.toLowerCase() !== hex.toLowerCase())].slice(0, MAX_STORE_BG_COLORS);
-  stores[idx] = { ...stores[idx]!, bgColors: next };
-  writeStores(stores);
-  return next;
+/**
+ * Prepends a background colour to the store's saved palette (deduped, newest-first, capped),
+ * returning the resulting list — the caller must have already validated the hex + ownership.
+ *
+ * Read-modify-write inside a transaction with the row locked, rather than as two statements: the
+ * dedupe is case-insensitive and the cap counts positions, neither of which an array operator
+ * expresses without becoming unreadable. `FOR UPDATE` is what makes it safe anyway — two tabs
+ * saving a colour at once serialise instead of one overwriting the other's list.
+ */
+export async function addStoreBgColor(storeId: string, hex: string): Promise<string[] | null> {
+  if (!isUuid(storeId)) return null;
+  return withTransaction(async (tx) => {
+    const { rows: found } = await tx.query<{ bg_colors: string[] | null }>(
+      'SELECT bg_colors FROM stores WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [storeId],
+    );
+    if (!found[0]) return null;
+    const current = found[0].bg_colors ?? [];
+    const next = [hex, ...current.filter((c) => c.toLowerCase() !== hex.toLowerCase())].slice(0, MAX_STORE_BG_COLORS);
+    await tx.query('UPDATE stores SET bg_colors = $2::text[] WHERE id = $1', [storeId, next]);
+    return next;
+  });
 }

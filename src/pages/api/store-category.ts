@@ -13,13 +13,13 @@ function json(data: unknown, status = 200) {
   });
 }
 
-function ownsStore(sellerId: string, storeId: string): boolean {
-  return getStoresBySellerId(sellerId).some((s) => s.id === storeId);
+async function ownsStore(sellerId: string, storeId: string): Promise<boolean> {
+  return (await getStoresBySellerId(sellerId)).some((s) => s.id === storeId);
 }
 
-function ownsCategory(sellerId: string, categoryId: string): boolean {
+async function ownsCategory(sellerId: string, categoryId: string): Promise<boolean> {
   const category = getCategoryById(categoryId);
-  return !!category && ownsStore(sellerId, category.storeId);
+  return !!category && await ownsStore(sellerId, category.storeId);
 }
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -31,10 +31,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'create-category') {
     const storeId = String(form.get('storeId') || '');
-    if (!ownsStore(sellerId, storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
+    if (!await ownsStore(sellerId, storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
     const name = String(form.get('name') || '');
     const parentIdRaw = String(form.get('parentId') || '');
-    if (parentIdRaw && !ownsCategory(sellerId, parentIdRaw)) return json({ ok: false, error: 'Not authorized' }, 403);
+    if (parentIdRaw && !await ownsCategory(sellerId, parentIdRaw)) return json({ ok: false, error: 'Not authorized' }, 403);
     const spamHit = findSpamKeyword(name);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
     const stuffingHit = findKeywordStuffing(name);
@@ -45,13 +45,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // The tree just changed, so a category-scoped sale's flattened scope may be stale (a new
     // subcategory belongs inside it; a deleted one no longer exists). Re-resolve before the
     // storefront reads it — see store-sale-scope.ts for why the list is stored, not computed.
-    refreshStoreSaleScope(storeId);
+    await refreshStoreSaleScope(storeId);
     return json({ ok: true, tree: buildCategoryTree(getCategoriesByStoreId(storeId)) });
   }
 
   if (action === 'rename-category') {
     const categoryId = String(form.get('categoryId') || '');
-    if (!ownsCategory(sellerId, categoryId)) return json({ ok: false, error: 'Not authorized' }, 403);
+    if (!await ownsCategory(sellerId, categoryId)) return json({ ok: false, error: 'Not authorized' }, 403);
     const name = String(form.get('name') || '');
     const spamHit = findSpamKeyword(name);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
@@ -66,21 +66,21 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (action === 'delete-category') {
     const categoryId = String(form.get('categoryId') || '');
     const category = getCategoryById(categoryId);
-    if (!category || !ownsStore(sellerId, category.storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
+    if (!category || !await ownsStore(sellerId, category.storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
 
     const result = deleteCategory(categoryId);
     if ('error' in result) return json({ ok: false, error: result.error }, 400);
     // The tree just changed, so a category-scoped sale's flattened scope may be stale (a new
     // subcategory belongs inside it; a deleted one no longer exists). Re-resolve before the
     // storefront reads it — see store-sale-scope.ts for why the list is stored, not computed.
-    refreshStoreSaleScope(category.storeId);
+    await refreshStoreSaleScope(category.storeId);
     return json({ ok: true, tree: buildCategoryTree(getCategoriesByStoreId(category.storeId)) });
   }
 
   if (action === 'move-category') {
     const categoryId = String(form.get('categoryId') || '');
     const category = getCategoryById(categoryId);
-    if (!category || !ownsStore(sellerId, category.storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
+    if (!category || !await ownsStore(sellerId, category.storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
     const direction = form.get('direction') === 'down' ? 'down' : 'up';
 
     const result = moveCategory(categoryId, direction);

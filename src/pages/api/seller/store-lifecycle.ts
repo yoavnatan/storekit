@@ -29,12 +29,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   // Ownership from the session's own store list, never from the request — the id is
   // attacker-controlled, and this is a state change on a whole storefront.
-  const store = getStoresBySellerId(sellerId).find((s) => s.id === String(body?.storeId ?? ''));
+  const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === String(body?.storeId ?? ''));
   if (!store) return json({ ok: false, error: 'החנות לא נמצאה.' }, 404);
 
-  const result = action === 'pause' ? pauseStore(store.id)
-    : action === 'resume' ? resumeStore(store.id)
-    : requestStoreClosure(store.id);
+  const result = action === 'pause' ? await pauseStore(store.id)
+    : action === 'resume' ? await resumeStore(store.id)
+    : await requestStoreClosure(store.id);
 
   if (!result.ok) return json({ ok: false, error: result.error }, 409);
 

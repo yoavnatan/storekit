@@ -37,7 +37,7 @@ const back = backFrom === 'advertising'
   : backFrom === 'performance'
     ? { href: '/admin?panel=performance', label: 'חזרה לביצועים' }
     : { href: '/admin?panel=stores', label: 'חזרה לחנויות' };
-const store = getStoreBySlug(slug);
+const store = await getStoreBySlug(slug);
 // Unknown slug → back to the origin tab rather than a bare 404.
 if (!store) {
   return Astro.redirect(back.href);
@@ -54,7 +54,7 @@ const d = t.dashboard;
 // store's campaigns directly (CURRENT_TASK.md item 2). Product names come from
 // Astro expressions (auto-escaped) here and escHtml() in the client re-render,
 // so the cross-tenant view is XSS-safe without a set:html blob.
-const adCampaigns = getCampaignsForStore(store.id).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) }));
+const adCampaigns = (await getCampaignsForStore(store.id)).map((c) => ({ ...c, stats: campaignLifetimeStats(c), runPeriod: campaignRunPeriod(c) }));
 const adBaseline = storeBaselineStatus({
   storeId: store.id,
   discoverable: isStoreDiscoverable(store),

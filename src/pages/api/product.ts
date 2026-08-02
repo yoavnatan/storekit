@@ -61,7 +61,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'add-product') {
     const storeId = String(form.get('storeId') || '');
-    const stores = getStoresBySellerId(sellerId);
+    const stores = await getStoresBySellerId(sellerId);
     const ownerStore = stores.find((s) => s.id === storeId);
     if (!ownerStore) return json({ ok: false, error: 'Not authorized' }, 403);
 
@@ -114,7 +114,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const productId = String(form.get('productId') || '');
     const product = getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const ownedStores = getStoresBySellerId(sellerId);
+    const ownedStores = await getStoresBySellerId(sellerId);
     if (!ownedStores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
 
     const submittedPrice = parseFloat(String(form.get('price') || '0'));
@@ -228,7 +228,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const productId = String(form.get('productId') || '');
     const product = getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = getStoresBySellerId(sellerId);
+    const stores = await getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
 
     const patch: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {};
@@ -297,7 +297,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const productId = String(form.get('productId') || '');
     const product = getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = getStoresBySellerId(sellerId);
+    const stores = await getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
     if (!product.variants?.length) return json({ ok: false, error: 'Product has no variants.' }, 400);
 
@@ -341,7 +341,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!productId) return json({ ok: false, error: 'Missing productId.' }, 400);
     const product = getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = getStoresBySellerId(sellerId);
+    const stores = await getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
     const updated = updateProduct(productId, { images });
     warmImageDerivations(images.filter((u) => !(product.images ?? []).includes(u)));
@@ -352,7 +352,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const productId = String(form.get('productId') || '');
     const product = getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = getStoresBySellerId(sellerId);
+    const stores = await getStoresBySellerId(sellerId);
     const visStore = stores.find((s) => s.id === product.storeId);
     if (!visStore) return json({ ok: false, error: 'Not authorized.' }, 403);
     // A seller can only flip their own take-down flag; an admin `blocked` product
@@ -375,7 +375,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // batch; a blank/zero value clears instead of storing an inert discount.
   if (action === 'bulk-discount') {
     const storeId = String(form.get('storeId') || '');
-    const ownerStore = getStoresBySellerId(sellerId).find((s) => s.id === storeId);
+    const ownerStore = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
     if (!ownerStore) return json({ ok: false, error: 'Not authorized' }, 403);
 
     const ids = String(form.get('productIds') || '').split(',').map((v) => v.trim()).filter(Boolean);
@@ -407,7 +407,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const productId = String(form.get('productId') || '');
     const product = getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = getStoresBySellerId(sellerId);
+    const stores = await getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
     deleteProduct(productId);
     return json({ ok: true, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });

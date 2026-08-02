@@ -35,7 +35,7 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   const baseUrl = stripTrailingSlashes(platform.url);
   const items: FeedItem[] = [];
 
-  for (const store of getIndexableStores()) {
+  for (const store of await getIndexableStores()) {
     const categories = getCategoriesByStoreId(store.id);
     const purchased = getPurchasedCountsByStoreSlug(store.slug);
     for (const product of getVisibleProductsByStoreId(store.id)) {
