@@ -564,6 +564,22 @@ export async function getProductBySlug(storeId: string, slug: string): Promise<S
  *  mutating API returns to keep it live can never drift. `threshold` is
  *  variant-combo.ts#LOW_STOCK_THRESHOLD, passed in by callers so this data-layer
  *  module stays free of the variant helper dependency. */
+/**
+ * ⚠️ OPEN BUG, found 2026-08-02, deliberately not fixed here — it needs a decision, not a patch.
+ *
+ * This counts on `p.stock`, and `adjustStock`'s combo branch never touches `p.stock`: it moves the
+ * bucket row. So a product whose combos ALL carry their own bucket drains bucket by bucket while
+ * `p.stock` stays frozen at whatever the last save wrote, and the low-stock badge never lights for
+ * a product sold combo-by-combo. A partially-counted product is fine — its uncounted combos sell
+ * from `p.stock` through the `shared` branch, which does decrement it.
+ *
+ * The reason this is not a one-line fix: `p.stock` currently means TWO things (the shared pool when
+ * any combo is uncounted, the sum of the buckets when none is), so "also decrement it" is right in
+ * one case and steals from the pooled combos in the other. The clean answer is to make `p.stock`
+ * always and only the pool — then sellable = `p.stock + SUM(buckets)` and this query is correct by
+ * construction — but that changes what `stock` means to `isProductInStock`, the storefront, the
+ * Merchant feed's `availability` and every shopper-facing read, which is a migration-owner call.
+ */
 export async function countStockAlerts(storeId: string, threshold: number): Promise<number> {
   if (!isUuid(storeId)) return 0;
   const row = await firstRow<{ count: number }>(
