@@ -13,19 +13,18 @@
  * A re-run purges the previous demo set first; real seller data is never touched.
  * Demo sellers all share the password `demo1234` — log in as any of them.
  *
- * **Half database, half files, and that split is the migration's own.** Sellers,
- * stores, categories and products are Postgres rows since stage 2 of
- * DB_MIGRATION_PLAN.md (DATABASE_URL required); orders, page-view buckets,
- * favourite and wishlist counters are still `data/*.json` because their modules
- * have not moved yet, and they are seeded there so the demo dashboards keep
- * rendering revenue and analytics. Each half moves when its module does.
+ * **Half database, half files, and that split is the migration's own.** Sellers, stores,
+ * categories, products and — since the `orders` module moved — orders are Postgres rows
+ * (DB_MIGRATION_PLAN.md stage 2, DATABASE_URL required); page-view buckets and the favourite /
+ * wishlist counters are still `data/*.json` because their modules have not moved yet, and they are
+ * seeded there so the demo analytics keep rendering. Each half moves when its module does.
  * Until this was translated the seeder wrote four files nobody reads any more —
  * it ran, printed "✅ Demo seed complete", and created nothing.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { openSeedClient, purge, writeCatalog } from './lib/seed-db.mjs';
+import { openSeedClient, purge, purgeOrdersOfStores, writeCatalog } from './lib/seed-db.mjs';
 
 const ROOT = process.cwd();
 const DATA = (f) => path.join(ROOT, 'data', f);
@@ -178,17 +177,22 @@ async function run(db) {
   );
   const realWishKeys = new Set(realProductRows.map((r) => r.slug));
 
-  let orders = read('orders.json', []).filter((o) => Object.keys(o.storeSubtotals || {}).some((sl) => realSlugs.has(sl)));
+  // Orders are rows now (DB_MIGRATION_PLAN.md §8 — `orders`), so the seeder no longer carries the
+  // real ones through a read/filter/rewrite of `data/orders.json`. `writeCatalog` deletes exactly
+  // the demo stores' orders and leaves every other order untouched, which is the same guarantee
+  // the filter used to provide and one the database can actually enforce.
+  const orders = [];
   const pageviews = {}, favCounts = {}, wishCounts = {};
   for (const [k, v] of Object.entries(read('store-pageviews.json', {}))) if (realSlugs.has(k)) pageviews[k] = v;
   for (const [k, v] of Object.entries(read('store-favorite-counts.json', {}))) if (realSlugs.has(k)) favCounts[k] = v;
   for (const [k, v] of Object.entries(read('wishlist-counts.json', {}))) if (realWishKeys.has(k)) wishCounts[k] = v;
 
   if (process.argv.includes('--clean')) {
+    // Orders first, while the demo stores still exist to identify them by slug.
+    const removedOrders = await purgeOrdersOfStores(db, DEMO_STORES, [DEMO_EMAIL_SUFFIX]);
     const removed = await purge(db, { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] });
-    write('orders.json', orders);
     write('store-pageviews.json', pageviews); write('store-favorite-counts.json', favCounts); write('wishlist-counts.json', wishCounts);
-    console.log(`\n🧹 Demo data removed — ${removed.stores} store(s), ${removed.sellers} account(s). Real (non-@demo.local) data preserved.\n`);
+    console.log(`\n🧹 Demo data removed — ${removed.stores} store(s), ${removed.sellers} account(s), ${removedOrders} order(s). Real (non-@demo.local) data preserved.\n`);
     return;
   }
 
@@ -310,10 +314,9 @@ async function run(db) {
   // with no demo data at all.
   await writeCatalog(db, {
     purge: { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] },
-    sellers, stores, categories, products,
+    sellers, stores, categories, products, orders,
   });
 
-  write('orders.json', orders);
   write('store-pageviews.json', pageviews);
   write('store-favorite-counts.json', favCounts);
   write('wishlist-counts.json', wishCounts);

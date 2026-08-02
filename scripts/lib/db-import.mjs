@@ -295,16 +295,21 @@ export async function importAll(db, { dataDir = path.join(process.cwd(), 'data')
       o.paymentRef || null, o.paymentStatus ?? 'pending', o.shippingStatus ?? 'pending',
       o.trackingNumber || null, o.createdAt ?? null, o.updatedAt ?? o.createdAt ?? null,
     ]);
-    for (const it of o.items ?? []) {
+    for (const [position, it] of (o.items ?? []).entries()) {
       // Order lines have no id in the JSON (they were an array). A deterministic id derived from
       // the order keeps the import re-runnable: a second run produces the same ids and conflicts
       // instead of duplicating every line.
+      //
+      // `position` is the array INDEX, and it is the only thing that carries the sequence across —
+      // the id above is a hash, so sorting by it would shuffle the buyer's confirmation email
+      // against the seller's packing list (migration 0004).
       itemRows.push([
         deterministicUuid(`${o.id}:${itemSeq++}`), o.id,
         isUuid(it.productId) ? it.productId : null,
         it.productName ?? '', it.productSlug ?? '', it.storeSlug ?? '', it.storeName ?? '',
         toAgorot(it.price), Math.max(1, Number(it.qty) || 1), it.image || null,
         it.selectedVariants ? JSON.stringify(it.selectedVariants) : null,
+        position,
       ]);
     }
     for (const [slug, sub] of Object.entries(o.storeSubtotals ?? {})) {
@@ -328,7 +333,7 @@ export async function importAll(db, { dataDir = path.join(process.cwd(), 'data')
   ], orderRows));
   note('order_items', await insertMany(db, 'order_items', [
     'id', 'order_id', 'product_id', 'product_name', 'product_slug', 'store_slug', 'store_name',
-    'price_agorot', 'qty', 'image', 'selected_variants',
+    'price_agorot', 'qty', 'image', 'selected_variants', 'position',
   ], itemRows));
   note('order_stores', await insertMany(db, 'order_stores', [
     'order_id', 'store_slug', 'store_name', 'subtotal_agorot', 'shipping_agorot', 'delivery_method',

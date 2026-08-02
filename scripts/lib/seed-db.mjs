@@ -18,6 +18,7 @@
  * Scripts run under plain node and cannot import TypeScript, which is why this is `.mjs` and why
  * it talks SQL rather than calling `src/lib/store-products.ts`.
  */
+import { randomUUID } from 'node:crypto';
 import { toAgorot } from './db-import.mjs';
 import { createClient, requireDatabaseUrl } from './pg-connect.mjs';
 
@@ -68,7 +69,34 @@ export async function purge(db, scope) {
   return { stores, sellers };
 }
 
-/** Every live (non-deleted) store slug — what the JSON-backed leftovers (orders, page-view and
+/**
+ * Delete the orders belonging to the stores a purge is about to remove.
+ *
+ * **`purge` alone cannot do this, and that is not an oversight in the schema.** An order names its
+ * store by SLUG, not by foreign key (§4 — a sold line is a snapshot, so a deleted store must not
+ * take financial history with it), which means `DELETE FROM stores` cascades to that store's
+ * products and categories and leaves its orders behind pointing at a slug nothing answers to. In
+ * production that is exactly right. For a seeder it is a leak: every `npm run seed:demo` would
+ * strand another set of demo orders that no store page, no revenue figure and no `--clean` could
+ * ever reach again.
+ *
+ * Children first, because `order_items`/`order_stores` reference `orders` with `ON DELETE RESTRICT`
+ * — the same rule that protects a real order from a careless cascade.
+ */
+export async function purgeOrdersOfStores(db, storeWhere, params = []) {
+  const { rows } = await db.query(
+    `SELECT DISTINCT os.order_id FROM order_stores os
+      WHERE os.store_slug IN (SELECT slug::text FROM stores WHERE ${storeWhere})`, params,
+  );
+  const ids = rows.map((r) => r.order_id);
+  if (!ids.length) return 0;
+  await db.query('DELETE FROM order_items WHERE order_id = ANY($1::uuid[])', [ids]);
+  await db.query('DELETE FROM order_stores WHERE order_id = ANY($1::uuid[])', [ids]);
+  const res = await db.query('DELETE FROM orders WHERE id = ANY($1::uuid[])', [ids]);
+  return res.rowCount ?? 0;
+}
+
+/** Every live (non-deleted) store slug — what the JSON-backed leftovers (page-view and
  *  wishlist buckets) have to be filtered against now that stores themselves live in the database. */
 export async function liveStoreSlugs(db, where = 'true', params = []) {
   const { rows } = await db.query(`SELECT slug::text AS slug FROM stores WHERE deleted_at IS NULL AND ${where}`, params);
@@ -98,13 +126,21 @@ export async function productSlugs(db, where = 'true', params = []) {
  * `StoreProduct`), so a seeder builds what it always built and only the destination changed.
  * Categories are inserted parents-before-children, because `parent_id` is self-referencing.
  *
+ * `orders` are written here too, since `orders` moved. Their money arrives in ILS, like the
+ * product prices beside them, and converts through the same `toAgorot` — a seeder builds the plain
+ * numbers a person would type, and this file is the one place that decides what an agora is.
+ *
  * @param {{ purge?: { storeWhere?: string, sellerWhere?: string, params?: unknown[] },
- *           sellers?: any[], stores?: any[], categories?: any[], products?: any[] }} catalog
+ *           sellers?: any[], stores?: any[], categories?: any[], products?: any[],
+ *           orders?: any[] }} catalog
  */
 export async function writeCatalog(db, catalog) {
-  const { purge: scope, sellers = [], stores = [], categories = [], products = [] } = catalog;
+  const { purge: scope, sellers = [], stores = [], categories = [], products = [], orders = [] } = catalog;
   await db.query('BEGIN');
   try {
+    // Orders before the stores that own them: `purge` deletes the stores, and once they are gone
+    // there is no slug left to recognise their orders by (see purgeOrdersOfStores).
+    if (scope?.storeWhere) await purgeOrdersOfStores(db, scope.storeWhere, scope.params ?? []);
     if (scope) await purge(db, scope);
     await insertMany(db, 'sellers', ['id', 'name', 'email', 'password_hash', 'created_at'],
       sellers.map((s) => [s.id, s.name ?? '', s.email, s.passwordHash ?? '', s.createdAt ?? null]));
@@ -161,12 +197,52 @@ export async function writeCatalog(db, catalog) {
     await insertMany(db, 'product_variant_stock', ['product_id', 'combo_key', 'stock', 'sku'], variantStock);
     await insertMany(db, 'product_variant_images', ['product_id', 'option_value', 'url'], variantImages);
 
+    const orderItems = [];
+    const orderStores = [];
+    for (const o of orders) {
+      // `position` carries the line order, which an array had for free and a table does not
+      // (migration 0004) — a seeded order should read the same way a real one does.
+      (o.items ?? []).forEach((it, position) => orderItems.push([
+        randomUUID(), o.id, it.productId ?? null, it.productName ?? '', it.productSlug ?? '',
+        it.storeSlug ?? '', it.storeName ?? '', toAgorot(it.price), Math.max(1, Number(it.qty) || 1),
+        it.image || null, it.selectedVariants ? JSON.stringify(it.selectedVariants) : null, position,
+      ]));
+      for (const [slug, sub] of Object.entries(o.storeSubtotals ?? {})) {
+        orderStores.push([
+          o.id, slug, sub.storeName ?? '', toAgorot(sub.subtotal), toAgorot(sub.shipping),
+          sub.deliveryMethod || null,
+        ]);
+      }
+    }
+    await insertMany(db, 'orders', [
+      'id', 'checkout_ref', 'buyer_id', 'buyer_name', 'buyer_email', 'buyer_phone',
+      'buyer_city', 'buyer_street', 'buyer_zip', 'shipping_agorot', 'total_agorot',
+      'payment_ref', 'payment_status', 'shipping_status', 'tracking_number', 'created_at', 'updated_at',
+    ], orders.map((o) => [
+      o.id, o.checkoutRef || null, o.buyerId || null,
+      o.buyerName ?? '', o.buyerEmail ?? '', o.buyerPhone ?? '',
+      o.buyerAddress?.city ?? '', o.buyerAddress?.street ?? '', o.buyerAddress?.zip || null,
+      toAgorot(o.shippingAmount), toAgorot(o.totalAmount),
+      o.paymentRef || null, o.paymentStatus ?? 'paid', o.shippingStatus ?? 'pending',
+      o.trackingNumber || null, o.createdAt ?? null, o.updatedAt ?? o.createdAt ?? null,
+    ]));
+    await insertMany(db, 'order_items', [
+      'id', 'order_id', 'product_id', 'product_name', 'product_slug', 'store_slug', 'store_name',
+      'price_agorot', 'qty', 'image', 'selected_variants', 'position',
+    ], orderItems);
+    await insertMany(db, 'order_stores', [
+      'order_id', 'store_slug', 'store_name', 'subtotal_agorot', 'shipping_agorot', 'delivery_method',
+    ], orderStores);
+
     await db.query('COMMIT');
   } catch (err) {
     await db.query('ROLLBACK').catch(() => {});
     throw err;
   }
-  return { sellers: sellers.length, stores: stores.length, categories: categories.length, products: products.length };
+  return {
+    sellers: sellers.length, stores: stores.length,
+    categories: categories.length, products: products.length, orders: orders.length,
+  };
 }
 
 /** No row precedes its own parent — what a self-referencing foreign key needs when links are
