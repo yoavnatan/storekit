@@ -6,16 +6,26 @@
  * clean e-commerce background — so the storefront looks like a real shop, and
  * every dashboard surface (revenue, analytics, orders) has data to render.
  *
- *   node scripts/seed-demo-data.mjs           # seed (needs internet for images)
- *   node scripts/seed-demo-data.mjs --clean   # remove all demo data, keep real
+ *   npm run seed:demo             # seed (needs internet for images)
+ *   npm run seed:demo -- --clean  # remove all demo data, keep real
  *
  * Idempotent: everything it creates is tagged to demo sellers (email @demo.local).
  * A re-run purges the previous demo set first; real seller data is never touched.
  * Demo sellers all share the password `demo1234` — log in as any of them.
+ *
+ * **Half database, half files, and that split is the migration's own.** Sellers,
+ * stores, categories and products are Postgres rows since stage 2 of
+ * DB_MIGRATION_PLAN.md (DATABASE_URL required); orders, page-view buckets,
+ * favourite and wishlist counters are still `data/*.json` because their modules
+ * have not moved yet, and they are seeded there so the demo dashboards keep
+ * rendering revenue and analytics. Each half moves when its module does.
+ * Until this was translated the seeder wrote four files nobody reads any more —
+ * it ran, printed "✅ Demo seed complete", and created nothing.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { openSeedClient, purge, writeCatalog } from './lib/seed-db.mjs';
 
 const ROOT = process.cwd();
 const DATA = (f) => path.join(ROOT, 'data', f);
@@ -138,28 +148,54 @@ async function fullCatalog() {
 // ----------------------------------------------------------------------------
 const MAX_PER_STORE = 24;
 
+/** Everything a demo run creates hangs off a `@demo.local` account, which is what makes "remove
+ *  the demo set and keep every real row" one predicate rather than a judgement call. */
+const DEMO_SELLERS = `email LIKE '%' || $1`;
+/** @param {string} storeAlias table alias the predicate is written against ('' for an unaliased DELETE). */
+const demoStores = (storeAlias = '') => `${storeAlias}seller_id IN (SELECT id FROM sellers WHERE ${DEMO_SELLERS})`;
+const DEMO_STORES = demoStores();
+
 async function main() {
-  const sellers = read('sellers.json', []).filter((s) => !s.email.endsWith(DEMO_EMAIL_SUFFIX));
-  const realSlugs = new Set(read('stores.json', []).filter((st) => sellers.some((s) => s.id === st.sellerId)).map((s) => s.slug));
-  const stores = read('stores.json', []).filter((st) => realSlugs.has(st.slug));
-  const realStoreIds = new Set(stores.map((s) => s.id));
-  let products = read('store-products.json', []).filter((p) => realStoreIds.has(p.storeId));
-  let categories = read('store-categories.json', []).filter((c) => realStoreIds.has(c.storeId));
+  const db = await openSeedClient();
+  try {
+    await run(db);
+  } finally {
+    await db.end();
+  }
+}
+
+async function run(db) {
+  // What survives a purge: the stores of real sellers, and their products' slugs. Read as a query
+  // rather than derived from the files, because sellers/stores/products are rows now — the JSON
+  // leftovers below (orders, page views, counters) are what still has to be filtered by hand.
+  const { rows: realStoreRows } = await db.query(
+    `SELECT slug::text AS slug FROM stores WHERE deleted_at IS NULL AND NOT (${DEMO_STORES})`, [DEMO_EMAIL_SUFFIX],
+  );
+  const realSlugs = new Set(realStoreRows.map((r) => r.slug));
+  const { rows: realProductRows } = await db.query(
+    `SELECT p.slug::text AS slug FROM store_products p JOIN stores s ON s.id = p.store_id
+      WHERE s.deleted_at IS NULL AND NOT (${demoStores('s.')})`, [DEMO_EMAIL_SUFFIX],
+  );
+  const realWishKeys = new Set(realProductRows.map((r) => r.slug));
+
   let orders = read('orders.json', []).filter((o) => Object.keys(o.storeSubtotals || {}).some((sl) => realSlugs.has(sl)));
   const pageviews = {}, favCounts = {}, wishCounts = {};
   for (const [k, v] of Object.entries(read('store-pageviews.json', {}))) if (realSlugs.has(k)) pageviews[k] = v;
   for (const [k, v] of Object.entries(read('store-favorite-counts.json', {}))) if (realSlugs.has(k)) favCounts[k] = v;
-  const realWishKeys = new Set(products.map((p) => p.slug));
   for (const [k, v] of Object.entries(read('wishlist-counts.json', {}))) if (realWishKeys.has(k)) wishCounts[k] = v;
 
   if (process.argv.includes('--clean')) {
-    write('sellers.json', sellers); write('stores.json', stores); write('store-products.json', products);
-    write('store-categories.json', categories); write('orders.json', orders);
+    const removed = await purge(db, { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] });
+    write('orders.json', orders);
     write('store-pageviews.json', pageviews); write('store-favorite-counts.json', favCounts); write('wishlist-counts.json', wishCounts);
-    console.log('\n🧹 Demo data removed. Real (non-@demo.local) data preserved.\n');
+    console.log(`\n🧹 Demo data removed — ${removed.stores} store(s), ${removed.sellers} account(s). Real (non-@demo.local) data preserved.\n`);
     return;
   }
 
+  const sellers = [];
+  const stores = [];
+  const products = [];
+  const categories = [];
   const pwHash = hashPassword(DEMO_PASSWORD);
   const usedStoreSlugs = new Set(realSlugs);
   let sellerN = 0, storeN = 0, prodTotal = 0, orderTotal = 0;
@@ -188,11 +224,13 @@ async function main() {
       const [primary, accent] = pick(PALETTES);
       const priceJitter = 0.9 + rnd() * 0.3;
 
-      const catIds = vert.hebCats.map((name, order) => {
-        const id = uuid();
-        categories.push({ id, storeId, name, parentId: null, order, createdAt });
-        return id;
-      });
+      // Staged, not pushed: a store with no fetched products is skipped below, and a category
+      // left behind for a store that was never written is a foreign-key violation now that these
+      // are rows rather than lines in a file.
+      const storeCategories = vert.hebCats.map((name, order) => (
+        { id: uuid(), storeId, name, parentId: null, order, createdAt }
+      ));
+      const catIds = storeCategories.map((c) => c.id);
 
       const tintHex = canTint ? TINT[storeName] : null;
       const chosen = shuffle(catalog).slice(0, limit);
@@ -209,9 +247,11 @@ async function main() {
           tags: (dj.tags || []).slice(0, 5), createdAt: iso(NOW - int(1, 200) * DAY),
         };
         if (variants.length) { p.variants = variants; p.variantStock = buildVariantStock(variants); }
-        products.push(p); storeProducts.push(p); prodTotal++;
+        storeProducts.push(p); prodTotal++;
       });
       if (!storeProducts.length) { storeN++; continue; }
+      products.push(...storeProducts);
+      categories.push(...storeCategories);
 
       stores.push({
         id: storeId, sellerId: seller.id, slug: storeSlug, name: storeName,
@@ -265,10 +305,14 @@ async function main() {
 
   if (!prodTotal) { console.error('\n❌ No products fetched — is there internet access? Nothing written.\n'); process.exit(1); }
 
-  write('sellers.json', sellers);
-  write('stores.json', stores);
-  write('store-products.json', products);
-  write('store-categories.json', categories);
+  // Purge + write as one transaction (seed-db.mjs#writeCatalog): everything above was network
+  // work, and a run that failed after deleting the previous set would leave the dev environment
+  // with no demo data at all.
+  await writeCatalog(db, {
+    purge: { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] },
+    sellers, stores, categories, products,
+  });
+
   write('orders.json', orders);
   write('store-pageviews.json', pageviews);
   write('store-favorite-counts.json', favCounts);
@@ -277,7 +321,7 @@ async function main() {
   console.log(`\n✅ Demo seed complete — real product photos from DummyJSON.`);
   console.log(`   stores: +${storeN}   products: +${prodTotal}   orders: +${orderTotal}`);
   console.log(`   login as any demo seller — email sellerN@demo.local  /  password ${DEMO_PASSWORD}`);
-  console.log(`   remove it all later with:  node scripts/seed-demo-data.mjs --clean\n`);
+  console.log(`   remove it all later with:  npm run seed:demo -- --clean\n`);
 }
 
 main().catch((e) => { console.error('seed failed:', e); process.exit(1); });

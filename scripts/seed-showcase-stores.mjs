@@ -3,8 +3,8 @@
  * Showcase-store seeder — the three platform-owned "חנות לדוגמה" stores
  * (GO_LIVE_CHECKLIST.md §6.2, src/lib/demo-stores.ts).
  *
- *   node scripts/seed-showcase-stores.mjs           # create/refresh the three
- *   node scripts/seed-showcase-stores.mjs --clean   # remove them
+ *   npm run seed:showcase             # create/refresh the three
+ *   npm run seed:showcase -- --clean  # remove them
  *
  * Different from scripts/seed-demo-data.mjs in kind, not just in size: that one
  * builds a big fake catalog for DEVELOPMENT and gets wiped before launch. These
@@ -28,15 +28,15 @@
  * Product photos come from DummyJSON (free, keyless) exactly like the dev seeder
  * — real photos of real objects. Needs internet on the seeding run only; the
  * image URLs it writes are permanent.
+ *
+ * **Writes to Postgres** (DATABASE_URL required) since stage 2 of
+ * DB_MIGRATION_PLAN.md moved sellers/stores/categories/products off `data/*.json`.
+ * Until this was translated it wrote four files nobody reads any more — it ran,
+ * printed "✅ 3 showcase stores", and created nothing.
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import crypto from 'node:crypto';
+import { openSeedClient, purge, writeCatalog } from './lib/seed-db.mjs';
 
-const ROOT = process.cwd();
-const DATA = (f) => path.join(ROOT, 'data', f);
-const read = (f, def) => { try { return JSON.parse(fs.readFileSync(DATA(f), 'utf8')); } catch { return def; } };
-const write = (f, v) => fs.writeFileSync(DATA(f), JSON.stringify(v, null, 2));
 const uuid = () => crypto.randomUUID();
 
 /** The platform's own seller account. Every showcase store hangs off this one
@@ -299,49 +299,48 @@ function weekHours() {
 
 async function main() {
   const clean = process.argv.includes('--clean');
-
-  let sellers = read('sellers.json', []);
-  let stores = read('stores.json', []);
-  let products = read('store-products.json', []);
-  let categories = read('store-categories.json', []);
-
-  // Purge the previous showcase set — matched on the flag itself plus the platform
-  // account, so it works even if a slug was edited by hand. Real data is untouched:
-  // no real store carries `demo: true` and no real seller uses OWNER_EMAIL.
-  const owner = sellers.find((s) => s.email === OWNER_EMAIL) ?? null;
-  const staleStoreIds = new Set(
-    stores.filter((s) => s.demo === true || (owner && s.sellerId === owner.id)).map((s) => s.id),
-  );
-  if (staleStoreIds.size) {
-    stores = stores.filter((s) => !staleStoreIds.has(s.id));
-    products = products.filter((p) => !staleStoreIds.has(p.storeId));
-    categories = categories.filter((c) => !staleStoreIds.has(c.storeId));
+  const db = await openSeedClient();
+  try {
+    await seed(db, clean);
+  } finally {
+    await db.end();
   }
+}
+
+async function seed(db, clean) {
+  // The previous showcase set — matched on the flag itself plus the platform account, so it is
+  // found even if a slug was edited by hand. Real data is never in it: no real store carries
+  // `demo = true` and no real seller uses OWNER_EMAIL. Deleting a store cascades to its categories,
+  // products, images and per-combo stock (seed-db.mjs#purge).
+  const STALE_STORES = 'demo = true OR seller_id IN (SELECT id FROM sellers WHERE email = $1)';
 
   if (clean) {
-    sellers = sellers.filter((s) => s.email !== OWNER_EMAIL);
-    write('sellers.json', sellers);
-    write('stores.json', stores);
-    write('store-products.json', products);
-    write('store-categories.json', categories);
-    console.log(`\n🧹 Removed ${staleStoreIds.size} showcase store(s) + the platform seller account. Real data untouched.\n`);
+    const removed = await purge(db, { storeWhere: STALE_STORES, sellerWhere: 'email = $1', params: [OWNER_EMAIL] });
+    console.log(`\n🧹 Removed ${removed.stores} showcase store(s) + ${removed.sellers} platform seller account(s). Real data untouched.\n`);
     return;
   }
 
-  // Reuse the existing platform account when there is one (its password and any
-  // orders/messages against it survive a re-seed); create it on the first run.
-  const ownerId = owner?.id ?? uuid();
-  if (!owner) {
-    sellers.push({
-      id: ownerId,
-      email: OWNER_EMAIL,
-      passwordHash: hashPassword(OWNER_PASSWORD),
-      name: OWNER_NAME,
-      createdAt: iso(NOW),
-    });
-  }
+  // Reuse the existing platform account when there is one (its password and any orders/messages
+  // against it survive a re-seed); create it on the first run.
+  const { rows: existingOwner } = await db.query('SELECT id FROM sellers WHERE email = $1', [OWNER_EMAIL]);
+  const ownerId = existingOwner[0]?.id ?? uuid();
+  const sellers = existingOwner[0] ? [] : [{
+    id: ownerId,
+    email: OWNER_EMAIL,
+    passwordHash: hashPassword(OWNER_PASSWORD),
+    name: OWNER_NAME,
+    createdAt: iso(NOW),
+  }];
 
-  const taken = new Set(stores.map((s) => s.slug));
+  // Slugs a REAL store holds. The set about to be replaced is excluded, or a re-seed would find
+  // its own previous stores in the way and skip all three.
+  const { rows: takenRows } = await db.query(
+    `SELECT slug::text AS slug FROM stores WHERE deleted_at IS NULL AND NOT (${STALE_STORES})`, [OWNER_EMAIL],
+  );
+  const taken = new Set(takenRows.map((r) => r.slug));
+  const stores = [];
+  const products = [];
+  const categories = [];
   let added = 0;
   let productTotal = 0;
 
@@ -364,11 +363,13 @@ async function main() {
 
     const storeId = uuid();
     const createdAt = iso(NOW - int(20, 60) * DAY);
-    const catIds = spec.hebCats.map((name, order) => {
-      const id = uuid();
-      categories.push({ id, storeId, name, parentId: null, order, createdAt });
-      return id;
-    });
+    // Staged, not pushed: a store that turns out to be under MIN_PRODUCTS_FOR_LOAD_MORE is skipped
+    // below, and a category left behind for a store that was never written is a foreign-key
+    // violation now that these are rows rather than lines in a file.
+    const storeCategories = spec.hebCats.map((name, order) => (
+      { id: uuid(), storeId, name, parentId: null, order, createdAt }
+    ));
+    const catIds = storeCategories.map((c) => c.id);
 
     // Only products we have Hebrew copy for. An Israeli mall's flagship demo store
     // showing English product names undoes the whole point of it, so a missing
@@ -410,6 +411,7 @@ async function main() {
     }
 
     products.push(...storeProducts);
+    categories.push(...storeCategories);
     productTotal += storeProducts.length;
 
     stores.push({
@@ -442,20 +444,22 @@ async function main() {
   }
 
   if (!added) {
-    console.error('\n❌ Nothing seeded — no products fetched (check internet access). Files unchanged.\n');
+    console.error('\n❌ Nothing seeded — no products fetched (check internet access). Database unchanged.\n');
     process.exit(1);
   }
 
-  write('sellers.json', sellers);
-  write('stores.json', stores);
-  write('store-products.json', products);
-  write('store-categories.json', categories);
+  // Purge + write as one transaction: everything above this line was network work, and a run that
+  // fails after deleting the old set would take the site's only finished stores down with it.
+  await writeCatalog(db, {
+    purge: { storeWhere: STALE_STORES, params: [OWNER_EMAIL] },
+    sellers, stores, categories, products,
+  });
 
   console.log(`\n✅ ${added} showcase store(s), ${productTotal} products.`);
   console.log(`   They are noindex, out of the sitemap/feed/IndexNow, uncheckoutable, and`);
   console.log(`   leave the shopper surfaces on their own once there are 5 real stores.`);
   console.log(`   Platform account: ${OWNER_EMAIL} / ${OWNER_PASSWORD}`);
-  console.log(`   Remove with:  node scripts/seed-showcase-stores.mjs --clean\n`);
+  console.log(`   Remove with:  npm run seed:showcase -- --clean\n`);
 }
 
 main().catch((e) => { console.error('showcase seed failed:', e); process.exit(1); });
