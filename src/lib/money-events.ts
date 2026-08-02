@@ -1,8 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import crypto from 'node:crypto';
-import { Mutex } from './mutex.js';
-import { roundMoney } from './money.js';
+import { query, rows } from './db.js';
+import { BUSINESS_TIMEZONE } from './business-day.js';
 
 /**
  * Append-only journal of every event that moves, or claims to move, money.
@@ -25,15 +23,21 @@ import { roundMoney } from './money.js';
  *     which is strictly worse — so failures here are swallowed after being surfaced to
  *     the error log.
  *
- * JSON-file era, same as the rest of `data/` (AI_INSTRUCTIONS.md → Scalability): the
- * append is mutex-serialised so concurrent requests cannot interleave a
- * read-modify-write. After the DB migration this becomes an INSERT into an
- * append-only table and the mutex goes away — the exported signatures do not change.
- * See DB_MIGRATION_PLAN.md.
+ * **Moved to Postgres with `orders` (DB_MIGRATION_PLAN.md §4/§8).** An append is now a single
+ * `INSERT`, so the `Mutex` that serialised the old read-modify-write is gone with it — and with it
+ * the ceiling it imposed: a mutex holds inside one node process, so two instances appending
+ * concurrently would each read the file, each append their own entry, and each write back a file
+ * missing the other's. A journal that loses entries under load is worse than no journal, because
+ * it is still believed.
+ *
+ * It had to move in the same change as `orders` for the same reason `checkout-idempotency` did:
+ * an order written to a table and its `order_created` entry written to a file are two systems that
+ * can disagree, and the whole value of this file is being the record that survives when they do.
+ *
+ * The append-only rule is enforced at the ROLE level in production, not here — the schema comment
+ * on `money_events` carries the `REVOKE UPDATE, DELETE` that makes it true (a GO_LIVE step, since
+ * the role name is environment-specific). There is deliberately no `updateMoneyEvent` to grep for.
  */
-
-const EVENTS_PATH = path.join(process.cwd(), 'data/money-events.json');
-const writeLock = new Mutex();
 
 /**
  * The vocabulary, as a value rather than a bare union — a reader validating a
@@ -102,9 +106,10 @@ export interface MoneyEvent {
   /** Ties the (possibly multi-store) orders of one checkout together. */
   checkoutRef?: string;
   storeSlug?: string;
-  /** The amount at stake, ILS. For a status change this is the order's own total —
-   *  what stops or starts counting as revenue because of this event. */
-  amount?: number;
+  /** The amount at stake, in integer agorot (§7.7 — the unit flipped with `orders`; see that
+   *  module's header for why the field was RENAMED rather than reinterpreted). For a status change
+   *  this is the order's own total — what stops or starts counting as revenue because of it. */
+  amountAgorot?: number;
   /** What changed, for the status/discount events. */
   from?: string;
   to?: string;
@@ -114,9 +119,43 @@ export interface MoneyEvent {
   detail?: string;
 }
 
-function readEvents(): MoneyEvent[] {
-  try { return JSON.parse(fs.readFileSync(EVENTS_PATH, 'utf8')) as MoneyEvent[]; }
-  catch { return []; }
+interface EventRow {
+  id: string;
+  at: Date | string;
+  type: string;
+  order_id: string | null;
+  checkout_ref: string | null;
+  store_slug: string | null;
+  amount_agorot: string | number | null;
+  from_value: string | null;
+  to_value: string | null;
+  actor: string;
+  detail: string | null;
+}
+
+function toEvent(row: EventRow): MoneyEvent {
+  const event: MoneyEvent = {
+    id: row.id,
+    at: row.at instanceof Date ? row.at.toISOString() : new Date(row.at).toISOString(),
+    // The column is plain `text` — a journal must be able to record an event of a type this
+    // deploy has never heard of rather than refuse to show the row. Callers that care narrow by
+    // `MONEY_EVENT_TYPES`, which is why that list is a value and not a bare union.
+    type: row.type as MoneyEventType,
+    actor: row.actor,
+  };
+  if (row.order_id) event.orderId = row.order_id;
+  if (row.checkout_ref) event.checkoutRef = row.checkout_ref;
+  if (row.store_slug) event.storeSlug = row.store_slug;
+  // `bigint` comes back from `pg` as a string and from PGlite as a number; untouched, the admin's
+  // free-text search would match '1250' one way and 1250 the other.
+  if (row.amount_agorot !== null && row.amount_agorot !== undefined) {
+    const n = Number(row.amount_agorot);
+    if (Number.isFinite(n)) event.amountAgorot = n;
+  }
+  if (row.from_value !== null) event.from = row.from_value;
+  if (row.to_value !== null) event.to = row.to_value;
+  if (row.detail) event.detail = row.detail;
+  return event;
 }
 
 /**
@@ -126,42 +165,70 @@ function readEvents(): MoneyEvent[] {
 export async function recordMoneyEvent(event: Omit<MoneyEvent, 'id' | 'at'>): Promise<MoneyEvent> {
   const entry: MoneyEvent = {
     ...event,
-    ...(event.amount !== undefined ? { amount: roundMoney(event.amount) } : {}),
+    // Agorot are integers by definition; a caller handing over a fraction means a bug upstream,
+    // and rounding it here keeps the row writable rather than turning the journal write into the
+    // thing that fails the charge it was recording.
+    ...(event.amountAgorot !== undefined ? { amountAgorot: Math.round(event.amountAgorot) } : {}),
     id: crypto.randomUUID(),
     at: new Date().toISOString(),
   };
-  await writeLock.run(() => {
-    try {
-      const all = readEvents();
-      all.push(entry);
-      fs.writeFileSync(EVENTS_PATH, JSON.stringify(all, null, 2));
-    } catch {
-      // Deliberately swallowed — see the header. The operation itself still stands.
-    }
-  });
+  try {
+    await query(
+      `INSERT INTO money_events (id, at, type, order_id, checkout_ref, store_slug,
+                                 amount_agorot, from_value, to_value, actor, detail)
+       VALUES ($1, $2::timestamptz, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [
+        entry.id, entry.at, entry.type, entry.orderId ?? null, entry.checkoutRef ?? null,
+        entry.storeSlug ?? null, entry.amountAgorot ?? null, entry.from ?? null, entry.to ?? null,
+        entry.actor, entry.detail ?? null,
+      ],
+    );
+  } catch {
+    // Deliberately swallowed — see the header. The operation itself still stands.
+  }
   return entry;
 }
 
-/** Newest-first read of the whole journal, optionally narrowed to one type. The file is
- *  read and sorted in memory — fine at journal scale today, an indexed
- *  `WHERE type = ? ORDER BY at DESC` after the migration.
+/** Newest-first read of the journal, narrowed to one type and/or a business-day window.
+ *
+ *  Both narrowings are pushed into SQL. The type one has to be (see below); the DAY one is here
+ *  because the journal is the one table nothing is ever deleted from, so "the admin opened the
+ *  money log" must not mean "read every event ever recorded". The window is expressed in the
+ *  platform's business calendar (§7.8) — `AT TIME ZONE 'Asia/Jerusalem'`, the same conversion
+ *  `business-day.ts` does in JS, so a row found by searching a date here is the row the seller's
+ *  chart counts on that day. UTC would move the boundary by two or three hours and silently file
+ *  every after-midnight event under the wrong day on both screens.
  *
  *  There is deliberately NO row cap: the admin panel paginates, and a cap would both
  *  make its "N events" count describe the window rather than the journal, and hide
  *  older rows of a filtered type behind newer rows of other types — which is exactly
  *  how the type filter came to look broken (it used to take the newest 500 and narrow
- *  those). Narrowing therefore belongs HERE, ahead of any slicing a caller does. Still
- *  no per-order / per-store parameters: when a per-order timeline is actually built (the
- *  obvious next consumer — "what happened to this order" on a dispute) it is a filter on
- *  this result, not speculative query surface to maintain until then. */
-export function getMoneyEvents(type?: MoneyEventType): MoneyEvent[] {
-  return selectMoneyEvents(readEvents(), type);
+ *  those). Narrowing therefore belongs HERE, ahead of any slicing a caller does.
+ *
+ *  Free-text search stays in memory over the result, in `admin-moneylog-filter.ts`: it matches
+ *  the Hebrew LABEL of a type as well as the stored columns, and the labels do not exist in the
+ *  database. The trigram indexes (0001/0004) are what a future pushdown of the column half would
+ *  use. */
+export async function getMoneyEvents(type?: MoneyEventType, fromDay?: string, toDay?: string): Promise<MoneyEvent[]> {
+  const found = await rows<EventRow>(
+    `SELECT id, at, type, order_id, checkout_ref, store_slug, amount_agorot,
+            from_value, to_value, actor, detail
+       FROM money_events
+      WHERE ($1::text IS NULL OR type = $1::text)
+        AND ($2::date IS NULL OR (at AT TIME ZONE $4::text)::date >= $2::date)
+        AND ($3::date IS NULL OR (at AT TIME ZONE $4::text)::date <= $3::date)
+      ORDER BY at DESC, id`,
+    [type ?? null, fromDay || null, toDay || null, BUSINESS_TIMEZONE],
+  );
+  return found.map(toEvent);
 }
 
-/** The selection itself, over rows already in memory — split out so the ordering and
- *  the narrowing are unit-testable without a journal file on disk. */
-export function selectMoneyEvents(rows: MoneyEvent[], type?: MoneyEventType): MoneyEvent[] {
-  return rows
+/** The selection itself, over rows already in memory — split out so the ordering and the
+ *  narrowing are unit-testable without a database, and kept in step with the query above
+ *  DELIBERATELY: two events appended inside one transaction share an `at` to the microsecond, so
+ *  without the `id` tie-break the pair swaps places between two loads of the same page. */
+export function selectMoneyEvents(events: MoneyEvent[], type?: MoneyEventType): MoneyEvent[] {
+  return events
     .filter((e) => !type || e.type === type)
-    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }

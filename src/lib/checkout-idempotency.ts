@@ -1,7 +1,5 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import { Mutex } from './mutex.js';
+import { firstRow, query, withTransaction } from './db.js';
 
 /**
  * Stops a buyer being charged twice for one checkout.
@@ -35,15 +33,20 @@ import { Mutex } from './mutex.js';
  *   releaseCheckout(key)   — drops the marker when the attempt failed, so an
  *                            immediate retry isn't told to wait out the TTL.
  *
- * JSON-file era (AI_INSTRUCTIONS.md → Scalability). Note the single-process
- * assumption: `Mutex` serialises within ONE node process, so this is airtight for
- * today's single-instance deploy and becomes a unique index on `key` plus a
- * transaction after the DB migration — where it is airtight across instances too.
- * That upgrade is REQUIRED before running a second instance; see DB_MIGRATION_PLAN.md.
+ * **THE MUTEX IS GONE, AND THAT IS THE ENTIRE POINT OF MOVING THIS FILE
+ * (DB_MIGRATION_PLAN.md §4).** The JSON version serialised its read-modify-write with an
+ * in-process `Mutex`, which is airtight for exactly one node process and worth nothing across two:
+ * two instances meant two mutexes, two requests both reading "no record", and two charges for one
+ * purchase — the failure this module exists to prevent, reintroduced by the deploy that scaled it.
+ * The claim is now `INSERT … ON CONFLICT DO UPDATE … WHERE <the record is stale>`, one statement,
+ * whose affected-row count IS the verdict: 1 = the key is ours, 0 = somebody else holds it, at any
+ * number of instances. That upgrade was the documented gate on running more than one; it is done.
+ *
+ * It also had to move in the same change as `orders`. The two are one operation from the buyer's
+ * side — charge, write the order rows, record that this key is spent — and a ledger in a file
+ * beside orders in a transaction means a process that dies between them leaves a paid order whose
+ * key says the checkout never completed. The next retry charges again.
  */
-
-const LEDGER_PATH = path.join(process.cwd(), 'data/checkout-idempotency.json');
-const lock = new Mutex();
 
 /** How long a completed key is replayable. Long enough to cover any plausible retry,
  *  short enough that the ledger stays small. Past this, a repeat submit is treated as
@@ -83,7 +86,7 @@ export type CheckoutClaim =
  *
  * Keyed on the email rather than the session, deliberately: the same attempt must produce the same
  * owner whether the buyer is logged in or a guest, and a guest has no session to key on. It is
- * hashed because the ledger is a bookkeeping file that has no reason to hold a second copy of a
+ * hashed because the ledger is a bookkeeping table that has no reason to hold a second copy of a
  * buyer's address.
  *
  * This raises the bar; it is not a secret. An attacker who knew both a completed key and the
@@ -100,31 +103,69 @@ export function isValidIdempotencyKey(key: unknown): key is string {
   return typeof key === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(key);
 }
 
-function readLedger(): CheckoutRecord[] {
-  try {
-    const all = JSON.parse(fs.readFileSync(LEDGER_PATH, 'utf8')) as CheckoutRecord[];
-    const cutoff = Date.now() - TTL_MS;
-    return all.filter((r) => new Date(r.at).getTime() >= cutoff);
-  } catch { return []; }
+interface LedgerRow {
+  key: string;
+  status: 'pending' | 'complete';
+  owner: string | null;
+  checkout_ref: string | null;
+  order_ids: string[] | null;
+  at: Date | string;
 }
 
-function writeLedger(records: CheckoutRecord[]): void {
-  try { fs.writeFileSync(LEDGER_PATH, JSON.stringify(records, null, 2)); }
-  catch { /* see completeCheckout — a ledger failure must never undo a real charge */ }
+function toRecord(row: LedgerRow): CheckoutRecord {
+  const record: CheckoutRecord = {
+    key: row.key,
+    status: row.status,
+    at: row.at instanceof Date ? row.at.toISOString() : new Date(row.at).toISOString(),
+  };
+  if (row.owner) record.owner = row.owner;
+  if (row.checkout_ref) record.checkoutRef = row.checkout_ref;
+  if (row.order_ids?.length) record.orderIds = row.order_ids;
+  return record;
 }
 
 /**
  * Atomically decide what this request is allowed to do with `key`.
  *
- * The read and the `pending` write happen inside one lock turn, which is what stops
- * two simultaneous submits from both seeing "no record" and both charging.
+ * One statement does the deciding. The `INSERT` wins when nothing holds the key; the `ON CONFLICT`
+ * branch takes it over only when what is there is STALE — expired outright, or a `pending` claim
+ * older than `PENDING_TTL_MS`, meaning the process that made it died mid-checkout. Anything else
+ * fails the `WHERE`, updates nothing, and returns zero rows, which is how this request learns it
+ * did not get the key. There is no window between deciding and writing, because they are the same
+ * statement; the mutex the file version needed was only ever an approximation of that.
+ *
+ * The read that follows a zero-row claim is what distinguishes the three ways of losing: a
+ * completed record belonging to this buyer is a replay, one belonging to someone else is a
+ * conflict, and a live `pending` marker is another attempt in flight.
  */
 export async function claimCheckout(key: string, owner: string): Promise<CheckoutClaim> {
-  return lock.run(() => {
-    const all = readLedger();
-    const existing = all.find((r) => r.key === key);
+  return withTransaction(async (tx) => {
+    const nowMs = Date.now();
+    const expiredAt = new Date(nowMs - TTL_MS).toISOString();
+    const pendingCutoff = new Date(nowMs - PENDING_TTL_MS).toISOString();
 
-    if (existing?.status === 'complete') {
+    const claimed = await tx.query<{ key: string }>(
+      `INSERT INTO checkout_idempotency (key, status, owner, at)
+       VALUES ($1, 'pending', $2, now())
+       ON CONFLICT (key) DO UPDATE
+          SET status = 'pending', owner = $2, checkout_ref = NULL, order_ids = '{}', at = now()
+        WHERE checkout_idempotency.at < $3::timestamptz
+           OR (checkout_idempotency.status = 'pending' AND checkout_idempotency.at < $4::timestamptz)
+       RETURNING key`,
+      [key, owner, expiredAt, pendingCutoff],
+    );
+    if (claimed.rows.length) return { status: 'claimed' };
+
+    const [row] = (await tx.query<LedgerRow>(
+      'SELECT key, status, owner, checkout_ref, order_ids, at FROM checkout_idempotency WHERE key = $1',
+      [key],
+    )).rows;
+    // The row was there a statement ago; if it is gone now another request expired it out from
+    // under us, and the honest answer is "someone else is working on this key" rather than a
+    // second charge.
+    if (!row) return { status: 'in_progress' };
+
+    if (row.status === 'complete') {
       // A completed record is replayed only to the buyer who produced it. Without this check the
       // key IS the authorisation, and the replay response carries the original `orderIds` and
       // `checkoutRef` — so anyone presenting a matching key would be handed another buyer's order
@@ -138,36 +179,62 @@ export async function claimCheckout(key: string, owner: string): Promise<Checkou
       // even apply to this branch: `status === 'complete'` means the charge already happened, so
       // refusing here returns 409 and charges nothing. There is no double-charge risk to trade
       // against, which left a permanent bypass guarding an empty set.
-      if (existing.owner !== owner) return { status: 'conflict' };
-      return { status: 'replay', record: existing };
+      if (row.owner !== owner) return { status: 'conflict' };
+      return { status: 'replay', record: toRecord(row) };
     }
-    if (existing?.status === 'pending' && Date.now() - new Date(existing.at).getTime() < PENDING_TTL_MS) {
-      return { status: 'in_progress' };
-    }
-
-    writeLedger([...all.filter((r) => r.key !== key), { key, status: 'pending', owner, at: new Date().toISOString() }]);
-    return { status: 'claimed' };
+    return { status: 'in_progress' };
   });
 }
 
-/** Turn our claim into the replayable result. Call this as soon as the orders exist. */
+/**
+ * Turn our claim into the replayable result. Call this as soon as the orders exist.
+ *
+ * A failure here is swallowed on purpose, exactly as the file version swallowed a write error: the
+ * charge has already succeeded and the order rows are the source of truth for the purchase. Losing
+ * the key costs this one checkout its replay protection — throwing, and unwinding the caller over
+ * a bookkeeping failure, would undo a purchase that really happened.
+ */
 export async function completeCheckout(key: string, checkoutRef: string, orderIds: string[], owner: string): Promise<void> {
-  await lock.run(() => {
-    const all = readLedger().filter((r) => r.key !== key);
-    // `owner` is carried onto the completed record, not just the pending one — the completed record
-    // is the only one a replay ever reads.
-    all.push({ key, status: 'complete', owner, checkoutRef, orderIds, at: new Date().toISOString() });
-    writeLedger(all);
-    // A write failure here is swallowed by writeLedger on purpose: the charge has
-    // already succeeded and the order rows are the source of truth for the purchase.
-    // Losing the key costs this one checkout its replay protection — undoing the
-    // purchase over a bookkeeping failure would be far worse.
-  });
+  try {
+    await query(
+      `INSERT INTO checkout_idempotency (key, status, owner, checkout_ref, order_ids, at)
+       VALUES ($1, 'complete', $2, $3, $4::text[], now())
+       ON CONFLICT (key) DO UPDATE
+          SET status = 'complete', owner = $2, checkout_ref = $3, order_ids = $4::text[], at = now()`,
+      // `owner` is carried onto the completed record, not just the pending one — the completed
+      // record is the only one a replay ever reads.
+      [key, owner, checkoutRef, orderIds],
+    );
+  } catch { /* see above — a ledger failure must never undo a real charge */ }
 }
 
-/** Drop a claim whose attempt failed, so the buyer's next try isn't told to wait. */
+/** Drop a claim whose attempt failed, so the buyer's next try isn't told to wait.
+ *  Scoped to `pending`: a completed record is the replay protection itself and deleting it here
+ *  would turn a late-failing caller's cleanup into permission to charge the buyer again. */
 export async function releaseCheckout(key: string): Promise<void> {
-  await lock.run(() => {
-    writeLedger(readLedger().filter((r) => !(r.key === key && r.status === 'pending')));
-  });
+  try {
+    await query(`DELETE FROM checkout_idempotency WHERE key = $1 AND status = 'pending'`, [key]);
+  } catch { /* same reasoning as completeCheckout */ }
+}
+
+/**
+ * Drop records past the replay window.
+ *
+ * The file version did this implicitly — every read filtered by TTL and every write rewrote the
+ * file without the expired rows, so the ledger could not grow. A table does not clean itself, and
+ * `claimCheckout` deliberately does NOT delete on the read path: an expired row is taken over by
+ * the `ON CONFLICT` branch when its key comes back, and a `DELETE` on every checkout would put an
+ * unbounded scan in front of the one request that must never be slow.
+ *
+ * Not wired to a scheduler yet — there is no scheduler (DB_MIGRATION_PLAN §8 stage 4 is where one
+ * arrives, and GO_LIVE §6.1 is already waiting for it). Exported and tested so that when it lands,
+ * the job is a call rather than a design.
+ */
+export async function purgeExpiredCheckouts(): Promise<number> {
+  const row = await firstRow<{ count: string | number }>(
+    `WITH gone AS (DELETE FROM checkout_idempotency WHERE at < $1::timestamptz RETURNING 1)
+     SELECT COUNT(*)::bigint AS count FROM gone`,
+    [new Date(Date.now() - TTL_MS).toISOString()],
+  );
+  return Number(row?.count ?? 0);
 }

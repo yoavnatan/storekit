@@ -1,5 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CheckoutRecord } from '../src/lib/checkout-idempotency.js';
+import { beforeEach, describe, expect, it } from 'vitest';
+import crypto from 'node:crypto';
+import { getDatabase, query, setDatabase, type Database } from '../src/lib/db.js';
+import {
+  checkoutOwner,
+  claimCheckout,
+  completeCheckout,
+  isValidIdempotencyKey,
+  purgeExpiredCheckouts,
+  releaseCheckout,
+} from '../src/lib/checkout-idempotency.js';
 
 /**
  * The double-charge guard.
@@ -8,30 +17,20 @@ import type { CheckoutRecord } from '../src/lib/checkout-idempotency.js';
  * twice — a lost response, a refresh, an impatient second click — and each one ends
  * in a real second charge the moment a live gateway sits behind paymentProvider.
  * The mock provider approving everything is what makes this invisible today.
+ *
+ * **It used to mock `node:fs`, and rewriting it is the point of moving the module**
+ * (DB_MIGRATION_PLAN.md §4/§8). A mocked filesystem cannot show the property the move was for: the
+ * JSON version serialised its read-modify-write with an in-process `Mutex`, airtight for one node
+ * process and worth nothing across two — two instances, two mutexes, two requests both reading
+ * "no record", two charges. Against a real primary key the concurrent case below is decided by the
+ * database, which is the assertion that could not be written before.
  */
-
-let ledger: CheckoutRecord[] = [];
-let failWrites = false;
-
-vi.mock('node:fs', () => ({
-  default: {
-    readFileSync: () => JSON.stringify(ledger),
-    writeFileSync: (_path: string, data: string) => {
-      if (failWrites) throw new Error('disk full');
-      ledger = JSON.parse(data);
-    },
-  },
-}));
-
-const { claimCheckout, completeCheckout, releaseCheckout, isValidIdempotencyKey, checkoutOwner } =
-  await import('../src/lib/checkout-idempotency.js');
 
 const KEY = 'co-11111111-2222-3333-4444-555555555555';
 const OWNER = checkoutOwner('buyer@example.com');
 
-beforeEach(() => {
-  ledger = [];
-  failWrites = false;
+beforeEach(async () => {
+  await query('DELETE FROM checkout_idempotency');
 });
 
 describe('a repeat submit of a completed checkout is never charged again', () => {
@@ -61,8 +60,20 @@ describe('two submits racing each other', () => {
     // Both fire before either finishes — the exact double-click case a disabled
     // button does not cover once the request is already in flight.
     const [a, b] = await Promise.all([claimCheckout(KEY, OWNER), claimCheckout(KEY, OWNER)]);
-    const statuses = [a.status, b.status].sort();
-    expect(statuses).toEqual(['claimed', 'in_progress']);
+    expect([a!.status, b!.status].sort()).toEqual(['claimed', 'in_progress']);
+  });
+
+  it('lets exactly ONE of five simultaneous submits through', async () => {
+    // The claim is one statement — `INSERT … ON CONFLICT DO UPDATE … WHERE <stale>` — whose
+    // affected-row count IS the verdict. Being honest about what this proves: PGlite runs on one
+    // connection, so these five serialise rather than truly collide, and what is pinned here is
+    // that the DECISION lives in the statement — five attempts, one winner, no second charge.
+    // Proving it across processes needs the real server (§9.5, stage 3). What matters is that the
+    // mutex is gone: the verdict is the database's now, so there is no per-process lock left to
+    // be right about.
+    const claims = await Promise.all(Array.from({ length: 5 }, () => claimCheckout(KEY, OWNER)));
+    expect(claims.filter((c) => c.status === 'claimed')).toHaveLength(1);
+    expect(claims.filter((c) => c.status === 'in_progress')).toHaveLength(4);
   });
 
   it('the loser is refused rather than queued behind the winner', async () => {
@@ -99,13 +110,40 @@ describe('an abandoned claim is reclaimable', () => {
   it('a pending marker older than the TTL no longer blocks', async () => {
     // The process died between claiming and charging. Nothing will ever complete or
     // release this key, so it must not block the buyer forever.
-    ledger = [{ key: KEY, status: 'pending', at: new Date(Date.now() - 10 * 60 * 1000).toISOString() }];
+    await claimCheckout(KEY, OWNER);
+    await query(`UPDATE checkout_idempotency SET at = now() - interval '10 minutes' WHERE key = $1`, [KEY]);
     expect((await claimCheckout(KEY, OWNER)).status).toBe('claimed');
   });
 
   it('but a fresh one still does', async () => {
-    ledger = [{ key: KEY, status: 'pending', at: new Date(Date.now() - 5_000).toISOString() }];
+    await claimCheckout(KEY, OWNER);
+    await query(`UPDATE checkout_idempotency SET at = now() - interval '5 seconds' WHERE key = $1`, [KEY]);
     expect((await claimCheckout(KEY, OWNER)).status).toBe('in_progress');
+  });
+});
+
+describe('expiry', () => {
+  it('treats the same key a day later as the new purchase it almost certainly is', async () => {
+    await claimCheckout(KEY, OWNER);
+    await completeCheckout(KEY, 'REF123', ['order-a'], OWNER);
+    await query(`UPDATE checkout_idempotency SET at = now() - interval '25 hours' WHERE key = $1`, [KEY]);
+    expect((await claimCheckout(KEY, OWNER)).status).toBe('claimed');
+  });
+
+  it('has a purge for the rows the file version dropped on every read', async () => {
+    // The JSON ledger could not grow: every read filtered by TTL and every write rewrote the file
+    // without the expired rows. A table does not clean itself, and `claimCheckout` deliberately
+    // does NOT delete on the read path — an unbounded scan in front of the one request that must
+    // never be slow is the wrong trade.
+    const fresh = 'co-99999999-8888-7777-6666-555555555555';
+    await claimCheckout(KEY, OWNER);
+    await completeCheckout(KEY, 'REF123', ['order-a'], OWNER);
+    await claimCheckout(fresh, OWNER);
+    await query(`UPDATE checkout_idempotency SET at = now() - interval '25 hours' WHERE key = $1`, [KEY]);
+
+    expect(await purgeExpiredCheckouts()).toBe(1);
+    const { rows } = await query<{ key: string }>('SELECT key FROM checkout_idempotency');
+    expect(rows.map((r) => r.key)).toEqual([fresh]);
   });
 });
 
@@ -113,10 +151,22 @@ describe('a ledger write failure never undoes a real purchase', () => {
   it('completeCheckout swallows the error rather than throwing into the checkout', async () => {
     // The charge already happened and the orders exist. Throwing here would send the
     // buyer an error for a purchase that went through — inviting exactly the second
-    // submit this module exists to prevent.
+    // submit this module exists to prevent. The failure is injected through the db seam
+    // (db.ts#setDatabase), which is what replaced the old mocked `writeFileSync`.
     await claimCheckout(KEY, OWNER);
-    failWrites = true;
-    await expect(completeCheckout(KEY, 'REF123', ['order-a'], OWNER)).resolves.toBeUndefined();
+    const real = getDatabase();
+    const broken: Database = {
+      query: () => Promise.reject(new Error('connection lost')),
+      transaction: () => Promise.reject(new Error('connection lost')),
+      close: () => Promise.resolve(),
+    };
+    setDatabase(broken);
+    try {
+      await expect(completeCheckout(KEY, 'REF123', ['order-a'], OWNER)).resolves.toBeUndefined();
+      await expect(releaseCheckout(KEY)).resolves.toBeUndefined();
+    } finally {
+      setDatabase(real);
+    }
   });
 });
 
