@@ -152,9 +152,9 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Only the store id travels: the server looks the seller and the shop name up from it
+          // rather than believing a payload that could name one shop and deliver to another.
           toStoreId: currentDetail.storeId,
-          toSellerId: currentDetail.sellerId,
-          toStoreName: currentDetail.storeName,
           subject,
           content,
           productRef: currentDetail.productRef,
