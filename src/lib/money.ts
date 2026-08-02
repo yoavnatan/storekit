@@ -42,3 +42,27 @@ export function sumMoney(amounts: readonly number[]): number {
 export function percentOf(amount: number, percent: number): number {
   return roundMoney((amount * percent) / 100);
 }
+
+/**
+ * ILS → the integer agorot a `*_agorot bigint` column holds (§7.7), and back.
+ *
+ * **This is the boundary, and it is deliberately only the boundary.** The columns store integers
+ * because that is where the rounding error stops accumulating; the application still passes ILS
+ * numbers around, because flipping the unit everywhere — every price render, cart line, discount,
+ * feed field and order total — is a change to make once, with `orders`, not one module at a time.
+ * So a module that has moved to Postgres converts on read and on write and hands the rest of the
+ * app exactly the number it handed it before.
+ *
+ * `toAgorot` rounds by `roundMoney`'s rule, EPSILON nudge included, because the two must agree to
+ * the agora: `scripts/lib/db-import.mjs` imported the existing catalog with that rule, and a write
+ * that rounded the other way would move a price by a shekel per hundred on the first save.
+ */
+export function toAgorot(ils: number): number {
+  const n = Number(ils);
+  return Number.isFinite(n) ? Math.round((n + Number.EPSILON) * 100) : 0;
+}
+
+export function fromAgorot(agorot: number): number {
+  const n = Number(agorot);
+  return Number.isFinite(n) ? n / 100 : 0;
+}

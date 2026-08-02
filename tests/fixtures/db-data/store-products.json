@@ -32,10 +32,10 @@
       }
     ],
     "variantStock": {
-      "צבע:אדום": 3
+      "צבע=אדום": 3
     },
     "variantSku": {
-      "צבע:כחול": "AG-1-BLUE"
+      "צבע=כחול": "AG-1-BLUE"
     },
     "variantImages": {
       "אדום": "https://cdn.test/red.webp"

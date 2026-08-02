@@ -247,9 +247,12 @@ export async function importAll(db, { dataDir = path.join(process.cwd(), 'data')
     for (const [combo, stock] of Object.entries(p.variantStock ?? {})) {
       variantStockRows.push([p.id, combo, Math.max(0, Number(stock) || 0), p.variantSku?.[combo] ?? null]);
     }
-    // A per-combo SKU with no stock entry still needs its row, or the code is silently lost.
+    // A per-combo SKU with no stock entry still needs its row, or the code is silently lost — but
+    // its stock is NULL, not 0. `variantStock` is a partial map and a missing key means "sells from
+    // the shared pool"; writing 0 would mean "sold out" and would quietly take that combo off the
+    // shelf (migration 0003).
     for (const [combo, sku] of Object.entries(p.variantSku ?? {})) {
-      if (!(combo in (p.variantStock ?? {}))) variantStockRows.push([p.id, combo, 0, sku]);
+      if (!(combo in (p.variantStock ?? {}))) variantStockRows.push([p.id, combo, null, sku]);
     }
     for (const [option, url] of Object.entries(p.variantImages ?? {})) {
       if (url) variantImageRows.push([p.id, option, url]);
