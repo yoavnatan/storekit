@@ -21,6 +21,7 @@ import { claimCheckout, completeCheckout, releaseCheckout, isValidIdempotencyKey
 import { recordMoneyEvent } from '../../lib/money-events.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { toAgorot, fromAgorot, formatAgorot } from '../../lib/money.js';
+import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -68,12 +69,9 @@ function describeStockAlertProduct(productName: string, selectedVariants?: Recor
 }
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
-  let body: CheckoutBody;
-  try {
-    body = await request.json() as CheckoutBody;
-  } catch {
-    return json({ error: 'Invalid JSON body' }, 400);
-  }
+  const read = await readJsonBody<CheckoutBody>(request, BODY_LIMIT.collection);
+  if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON body' }, read.status);
+  const body = read.value;
 
   const { buyerName, buyerEmail, buyerPhone, buyerAddress, items, deliveryMethods, idempotencyKey } = body;
 
@@ -461,7 +459,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // order commits (never client-side) so an ad-blocker or a closed tab can't
     // drop it; the sn_vid session ties it back to this shopper's earlier
     // add_to_cart for the cart-abandonment math. Fire-and-forget, never throws.
-    recordAnalyticsEvent('purchase', {
+    void recordAnalyticsEvent('purchase', {
       vid: cookies.get('sn_vid')?.value,
       productIds: decremented.map((d) => d.productId),
     });

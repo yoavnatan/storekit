@@ -1,5 +1,6 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
+import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import {
   getNotificationsForUser,
@@ -31,7 +32,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const userId = getSellerSession(cookies);
   if (!userId) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
 
-  const body = await request.json() as { action: string; id?: string; relatedId?: string };
+  const read = await readJsonBody<{ action: string; id?: string; relatedId?: string }>(request, BODY_LIMIT.control);
+  if (!read.ok) return new Response(JSON.stringify({ error: 'Invalid body' }), { status: read.status });
+  const body = read.value;
 
   if (body.action === 'mark-all-read') {
     await markAllReadForUser(userId);

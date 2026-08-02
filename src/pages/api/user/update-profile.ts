@@ -2,14 +2,15 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession, updateSeller } from '../../../lib/seller-auth.js';
 import { isValidEmail } from '../../../lib/email-address.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   const userId = getSellerSession(cookies);
   if (!userId) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
 
-  let body: { name?: string; email?: string; currentPassword?: string; newPassword?: string };
-  try { body = await request.json(); }
-  catch { return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 }); }
+  const read = await readJsonBody<{ name?: string; email?: string; currentPassword?: string; newPassword?: string }>(request, BODY_LIMIT.form);
+  if (!read.ok) return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: read.status });
+  const body = read.value;
 
   const name  = body.name?.trim();
   const email = body.email?.trim().toLowerCase();

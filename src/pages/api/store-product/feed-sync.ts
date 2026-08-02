@@ -4,6 +4,7 @@ import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId, updateStore } from '../../../lib/stores.js';
 import { fetchFeedCsv } from '../../../lib/feed-fetch.js';
 import { parseCsv } from '../../../lib/csv-bulk.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { guessMapping, buildCanonicalCsv, type MappableKey } from '../../../lib/feed-mapping.js';
 import { runProductImport } from '../../../lib/store-products-import.js';
 
@@ -22,7 +23,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
 
-  const body = await request.json() as { storeId?: string; commit?: boolean };
+  const read = await readJsonBody<{ storeId?: string; commit?: boolean }>(request, BODY_LIMIT.control);
+  if (!read.ok) return json({ ok: false, error: 'Invalid body' }, read.status);
+  const body = read.value;
   const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === (body.storeId ?? ''));
   if (!store) return json({ ok: false, error: 'Not authorized' }, 403);
 

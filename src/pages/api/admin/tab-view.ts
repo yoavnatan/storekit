@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth.js';
 import { recordTabView, type TrackedAdminTab } from '../../../lib/admin-tab-views.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
 const TRACKED_TABS = new Set<TrackedAdminTab>(['sellers', 'stores', 'orders', 'alerts']);
 
@@ -13,7 +14,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  const body = await request.json().catch(() => null) as { tab?: string } | null;
+  const read = await readJsonBody<{ tab?: string }>(request, BODY_LIMIT.control);
+  const body = read.ok ? read.value : null;
   const tab = body?.tab;
   if (!tab || !TRACKED_TABS.has(tab as TrackedAdminTab)) {
     return new Response(JSON.stringify({ error: 'invalid tab' }), { status: 400, headers: { 'Content-Type': 'application/json' } });

@@ -4,6 +4,7 @@ import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
 import { getCategoriesByStoreId } from '../../../lib/store-categories.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { productsToCsv } from '../../../lib/store-products-bulk.js';
 import { runProductImport } from '../../../lib/store-products-import.js';
 import { getLang } from '../../../i18n/index.js';
@@ -36,7 +37,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
 
-  const body = await request.json() as { storeId?: string; csv?: string; commit?: boolean };
+  const read = await readJsonBody<{ storeId?: string; csv?: string; commit?: boolean }>(request, BODY_LIMIT.upload);
+  if (!read.ok) return json({ ok: false, error: read.status === 413 ? 'הקובץ גדול מדי' : 'Invalid body' }, read.status);
+  const body = read.value;
   const storeId = body.storeId ?? '';
   if (!storeId || !await authorizeStore(sellerId, storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
 

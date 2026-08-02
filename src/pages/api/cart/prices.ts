@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { getStoreBySlugOrPrevious, canStoreSell } from '../../../lib/stores.js';
 import { getProductBySlug, isProductVisible, getEffectiveStock } from '../../../lib/store-products.js';
 import { resolvePrice } from '../../../lib/discounts.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
 /** A cart lives in the buyer's browser and can sit there for days. Prices do not: a seller can
  *  start a sale, end one, or change a price while an item waits in a cart. This re-prices those
@@ -60,9 +61,9 @@ function json(data: unknown, status = 200): Response {
 }
 
 export const POST: APIRoute = async ({ request }) => {
-  let body: { items?: unknown };
-  try { body = await request.json() as { items?: unknown }; }
-  catch { return json({ ok: false, error: 'Invalid JSON body' }, 400); }
+  const read = await readJsonBody<{ items?: unknown }>(request, BODY_LIMIT.collection);
+  if (!read.ok) return json({ ok: false, error: read.status === 413 ? 'Body too large' : 'Invalid JSON body' }, read.status);
+  const body = read.value;
 
   const lines = Array.isArray(body.items) ? body.items.slice(0, MAX_LINES) : [];
 

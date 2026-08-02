@@ -4,6 +4,7 @@ import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
 import { pauseStore, resumeStore, requestStoreClosure, openOrderCount } from '../../../lib/store-lifecycle.js';
 import { pingStoreChange } from '../../../lib/indexnow.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { sendStoreLifecycleEmail } from '../../../lib/email/store-lifecycle-email.js';
 
 /** The seller's own pause / reopen / close switch. Its own route rather than another `_action`
@@ -23,7 +24,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
 
-  const body = await request.json().catch(() => null) as { action?: unknown; storeId?: unknown } | null;
+  const read = await readJsonBody<{ action?: unknown; storeId?: unknown }>(request, BODY_LIMIT.control);
+  const body = read.ok ? read.value : null;
   const action = ACTIONS.find((a) => a === body?.action) as LifecycleAction | undefined;
   if (!action) return json({ ok: false, error: 'Unknown action' }, 400);
 

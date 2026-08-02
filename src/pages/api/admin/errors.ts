@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getRecentErrors, clearErrorLog, setErrorResolved } from '../../../lib/error-log.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
 const json = { 'Content-Type': 'application/json' };
 
@@ -15,7 +16,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  const body = await request.json();
+  const read = await readJsonBody<{ action?: string; id?: string; resolved?: unknown }>(request, BODY_LIMIT.control);
+  if (!read.ok) return new Response(JSON.stringify({ error: 'Invalid body' }), { status: read.status, headers: json });
+  const body = read.value;
   if (body.action === 'clear') {
     clearErrorLog();
     return new Response(JSON.stringify({ ok: true }), { headers: json });

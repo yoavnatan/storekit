@@ -1,18 +1,18 @@
 import type { APIRoute } from 'astro';
 import { adjustWishlistCount } from '../../lib/wishlist-counts.js';
+import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request }) => {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return new Response(JSON.stringify({ ok: false, error: 'Bad JSON' }), {
-      status: 400,
+  const read = await readJsonBody(request, BODY_LIMIT.control);
+  if (!read.ok) {
+    return new Response(JSON.stringify({ ok: false, error: read.status === 413 ? 'Body too large' : 'Bad JSON' }), {
+      status: read.status,
       headers: { 'Content-Type': 'application/json' },
     });
   }
+  const body = read.value;
 
   const { action, productSlug } = body as { action?: string; productSlug?: string };
 

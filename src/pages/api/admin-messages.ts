@@ -1,5 +1,6 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
+import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import {
   getAdminThreadById,
@@ -36,8 +37,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: json });
 
-  let body: Record<string, unknown>;
-  try { body = await request.json(); } catch { return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400, headers: json }); }
+  const read = await readJsonBody<Record<string, unknown>>(request, BODY_LIMIT.form);
+  if (!read.ok) return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: read.status, headers: json });
+  const body = read.value;
 
   const threadId = String(body.threadId ?? '');
   const thread = await getAdminThreadById(threadId);

@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth.js';
 import { updatePlatformAdSettings, type PlatformAdSettings } from '../../../lib/platform-ads.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
 const json = { 'Content-Type': 'application/json' };
 
@@ -13,7 +14,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  const body = await request.json().catch(() => null) as { baselineStatus?: unknown; lifetimeBudget?: unknown } | null;
+  const read = await readJsonBody<{ baselineStatus?: unknown; lifetimeBudget?: unknown }>(request, BODY_LIMIT.control);
+  const body = read.ok ? read.value : null;
   const updates: Partial<PlatformAdSettings> = {};
 
   if (body?.baselineStatus === 'active' || body?.baselineStatus === 'paused') {

@@ -2,6 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getStoreBySlug, updateStore, MAX_PROMO_WEIGHT } from '../../../lib/stores.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
 const json = { 'Content-Type': 'application/json' };
 
@@ -21,7 +22,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  const body = await request.json().catch(() => null) as { storeSlug?: string; weight?: unknown } | null;
+  const read = await readJsonBody<{ storeSlug?: string; weight?: unknown }>(request, BODY_LIMIT.control);
+  const body = read.ok ? read.value : null;
   const store = body?.storeSlug ? await getStoreBySlug(body.storeSlug) : null;
   if (!store) return new Response(JSON.stringify({ error: 'Store not found' }), { status: 404, headers: json });
 

@@ -4,6 +4,7 @@ import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug, getOrderById, updateOrder, orderStoreNotes, orderBelongsToStore } from '../../../lib/orders.js';
 import { settleStoreClosure } from '../../../lib/store-lifecycle.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { sendStoreLifecycleEmail } from '../../../lib/email/store-lifecycle-email.js';
 import type { StoreSubtotal } from '../../../lib/orders.js';
 import { notifyOrderStatusChanged } from '../../../lib/order-notify.js';
@@ -65,7 +66,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return json({ error: 'Unauthorized' }, 401);
 
-  let body: {
+  const read = await readJsonBody<{
     orderId?: unknown; storeSlug?: unknown;
     shippingStatus?: unknown; trackingNumber?: unknown;
     buyerName?: unknown; buyerEmail?: unknown; buyerPhone?: unknown;
@@ -74,12 +75,9 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     shippingOverride?: unknown;
     discount?: unknown;
     sellerNotes?: unknown;
-  };
-  try {
-    body = await request.json() as typeof body;
-  } catch {
-    return json({ error: 'Invalid JSON' }, 400);
-  }
+  }>(request, BODY_LIMIT.collection);
+  if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON' }, read.status);
+  const body = read.value;
 
   const { orderId, storeSlug: reqSlug, shippingStatus, trackingNumber, buyerName, buyerEmail, buyerPhone, buyerAddress, itemDeletes, shippingOverride, discount, sellerNotes } = body;
 

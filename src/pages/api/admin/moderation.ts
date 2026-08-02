@@ -4,6 +4,7 @@ import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getStoreBySlug, getStoreById, updateStore } from '../../../lib/stores.js';
 import { getProductById, updateProduct } from '../../../lib/store-products.js';
 import { createAdminThread } from '../../../lib/admin-messages.js';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { createNotification } from '../../../lib/notifications.js';
 import { withTransaction } from '../../../lib/db.js';
 
@@ -50,7 +51,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  const body = await request.json().catch(() => null) as { action?: string; storeSlug?: string; productId?: string } | null;
+  const read = await readJsonBody<{ action?: string; storeSlug?: string; productId?: string }>(request, BODY_LIMIT.control);
+  const body = read.ok ? read.value : null;
   const action = body?.action ?? '';
 
   if (action === 'block-store' || action === 'unblock-store') {

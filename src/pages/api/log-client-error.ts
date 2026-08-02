@@ -1,23 +1,23 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { logError, resolveErrorContext } from '../../lib/error-log.js';
+import { readJsonBody } from '../../lib/request-body.js';
 
 const MAX_MESSAGE_LEN = 500;
 const MAX_STACK_LEN = 2000;
-// Generous ceiling on the raw request body itself — rejected before it's
-// buffered/parsed, so an oversized payload can't force a full JSON.parse of
-// arbitrary size (the per-field length caps below only trim *after* parsing).
+// Generous ceiling on the raw request body itself, enforced against the bytes that actually arrive
+// — the per-field caps below only trim AFTER parsing, so without this an unauthenticated sender
+// chooses how much memory a JSON.parse here allocates (request-body.ts says why the
+// `Content-Length` header this used to read is not the same check).
 const MAX_BODY_BYTES = 20_000;
 
 // Intentionally unauthenticated — any page (buyer, seller, or anonymous
 // visitor) can report a client-side JS error here. Only the admin-guarded
 // GET/clear in api/admin/errors.ts requires a login.
 export const POST: APIRoute = async ({ request, cookies }) => {
-  const contentLength = Number(request.headers.get('content-length') ?? 0);
-  if (contentLength > MAX_BODY_BYTES) return new Response(null, { status: 413 });
-
-  let body: unknown;
-  try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
+  const read = await readJsonBody(request, MAX_BODY_BYTES);
+  if (!read.ok) return new Response(null, { status: read.status });
+  const body = read.value;
 
   const message = typeof (body as { message?: unknown })?.message === 'string'
     ? (body as { message: string }).message.slice(0, MAX_MESSAGE_LEN)

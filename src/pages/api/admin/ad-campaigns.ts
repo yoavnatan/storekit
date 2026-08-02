@@ -1,5 +1,6 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
+import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getStoreBySlug } from '../../../lib/stores.js';
 import { createCampaign, updateCampaign, archiveCampaign } from '../../../lib/ad-campaigns.js';
@@ -46,9 +47,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  let body: { storeSlug?: unknown; scope?: unknown; productId?: unknown; productIds?: unknown; categoryIds?: unknown; platform?: unknown; monthlyBudget?: unknown; durationDays?: unknown; audience?: unknown };
-  try { body = await request.json() as typeof body; }
-  catch { return json({ error: 'Invalid JSON' }, 400); }
+  const read = await readJsonBody<{ storeSlug?: unknown; scope?: unknown; productId?: unknown; productIds?: unknown; categoryIds?: unknown; platform?: unknown; monthlyBudget?: unknown; durationDays?: unknown; audience?: unknown }>(request, BODY_LIMIT.form);
+  if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON' }, read.status);
+  const body = read.value;
 
   if (typeof body.storeSlug !== 'string') return json({ error: 'Missing storeSlug' }, 400);
 
@@ -68,9 +69,9 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  let body: { id?: unknown; storeSlug?: unknown; monthlyBudget?: unknown; status?: unknown };
-  try { body = await request.json() as typeof body; }
-  catch { return json({ error: 'Invalid JSON' }, 400); }
+  const read = await readJsonBody<{ id?: unknown; storeSlug?: unknown; monthlyBudget?: unknown; status?: unknown }>(request, BODY_LIMIT.form);
+  if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON' }, read.status);
+  const body = read.value;
 
   const { id, storeSlug, monthlyBudget, status } = body;
   if (typeof id !== 'string' || typeof storeSlug !== 'string') return json({ error: 'Missing id or storeSlug' }, 400);
@@ -104,9 +105,9 @@ export async function DELETE({ request, cookies }: APIContext): Promise<Response
   const denied = requireAdmin(cookies);
   if (denied) return denied;
 
-  let body: { id?: unknown; storeSlug?: unknown };
-  try { body = await request.json() as typeof body; }
-  catch { return json({ error: 'Invalid JSON' }, 400); }
+  const read = await readJsonBody<{ id?: unknown; storeSlug?: unknown }>(request, BODY_LIMIT.form);
+  if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON' }, read.status);
+  const body = read.value;
 
   const { id, storeSlug } = body;
   if (typeof id !== 'string' || typeof storeSlug !== 'string') return json({ error: 'Missing id or storeSlug' }, 400);

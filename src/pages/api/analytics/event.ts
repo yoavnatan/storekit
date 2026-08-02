@@ -1,6 +1,8 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { recordAnalyticsEvent } from '../../../lib/analytics.js';
+import { isUuid } from '../../../lib/db.js';
+import { readJsonBody } from '../../../lib/request-body.js';
 
 // Client-reportable funnel events. Deliberately a tiny whitelist: only
 // add_to_cart is a genuinely client-side action with no reliable server tap
@@ -14,19 +16,24 @@ const MAX_BODY_BYTES = 2_000;
 // The session id comes from the httpOnly `sn_vid` cookie set in middleware, NOT
 // from the body, so a client can't forge which session an event belongs to.
 export const POST: APIRoute = async ({ request, cookies }) => {
-  const contentLength = Number(request.headers.get('content-length') ?? 0);
-  if (contentLength > MAX_BODY_BYTES) return new Response(null, { status: 413 });
-
-  let body: unknown;
-  try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
+  const read = await readJsonBody(request, MAX_BODY_BYTES);
+  if (!read.ok) return new Response(null, { status: read.status });
+  const body = read.value;
 
   const type = (body as { type?: unknown })?.type;
   if (typeof type !== 'string' || !CLIENT_EVENTS.has(type)) return new Response(null, { status: 400 });
 
+  // Only a real product id shape is recorded. In the JSON era an invented id merely added a key to
+  // a day's tally; against the database it adds a ROW to `analytics_products` — a table with no
+  // foreign key by design (history outlives the products in it), reachable from an unauthenticated
+  // POST, and kept forever. Every product created by this application has a uuid, so the shape
+  // check costs one regex and no query, and the ids that predate uuids exist only in imported
+  // history, which this route never writes. An id that fails it is dropped, not rejected: the
+  // add-to-cart itself already happened, and a 400 here would only make the client retry.
   const pidRaw = (body as { productId?: unknown })?.productId;
-  const productId = typeof pidRaw === 'string' ? pidRaw.slice(0, 64) : '';
+  const productId = typeof pidRaw === 'string' && isUuid(pidRaw) ? pidRaw : '';
 
-  recordAnalyticsEvent(type as 'add_to_cart', {
+  void recordAnalyticsEvent(type as 'add_to_cart', {
     vid: cookies.get('sn_vid')?.value,
     productIds: productId ? [productId] : undefined,
   });

@@ -3,6 +3,7 @@ import type { APIContext } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getUserCart, saveUserCart, type UserCartData } from '../../lib/user-carts.js';
 import { mergeStoreSlugs } from '../../lib/recent-stores.js';
+import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 
 export async function GET({ cookies }: APIContext): Promise<Response> {
   const sellerId = getSellerSession(cookies);
@@ -15,8 +16,10 @@ export async function GET({ cookies }: APIContext): Promise<Response> {
 export async function POST({ cookies, request }: APIContext): Promise<Response> {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return new Response('Unauthorized', { status: 401 });
+  const read = await readJsonBody<UserCartData>(request, BODY_LIMIT.collection);
+  if (!read.ok) return new Response('Bad request', { status: read.status });
   try {
-    const body = await request.json() as UserCartData;
+    const body = read.value;
     if (typeof body.cart !== 'object' || !Array.isArray(body.wishlist)) {
       return new Response('Bad request', { status: 400 });
     }
