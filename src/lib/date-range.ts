@@ -4,7 +4,7 @@
 // a client-only closure inside a Session-A file) — this is the shared home for
 // the same idea, used by the ad SSR panel, the ad API, and the picker client.
 
-import { businessDayISO, businessMonthStartISO, calendarDayISO } from './business-day.js';
+import { businessDayISO, businessMonthStartISO, calendarDayISO, isDayISO } from './business-day.js';
 
 export type AdRangePreset = 'today' | '7d' | '30d' | 'thisMonth' | 'custom' | 'lifetime';
 export const AD_RANGE_PRESETS: readonly AdRangePreset[] = ['today', '7d', '30d', 'thisMonth', 'custom', 'lifetime'];
@@ -74,9 +74,10 @@ export function previousPeriod(fromISO: string, toISO: string): { from: string; 
  *  reversed dates, caps length at 366 days, falls back to the 7-day preset when
  *  either date is missing/malformed. */
 export function coerceRange(fromRaw: unknown, toRaw: unknown, today: Date = new Date()): { from: string; to: string } {
-  const iso = /^\d{4}-\d{2}-\d{2}$/;
-  let from = typeof fromRaw === 'string' && iso.test(fromRaw) ? fromRaw : '';
-  let to = typeof toRaw === 'string' && iso.test(toRaw) ? toRaw : '';
+  // A real day, not merely a ten-character one: `2026-02-30` has the shape and no meaning, and the
+  // fallback below is the right answer for it (business-day.ts#isDayISO says why this matters).
+  let from = typeof fromRaw === 'string' && isDayISO(fromRaw) ? fromRaw : '';
+  let to = typeof toRaw === 'string' && isDayISO(toRaw) ? toRaw : '';
   if (!from || !to) return presetRange('7d', today)!;
   if (from > to) [from, to] = [to, from];
   if (daysInRangeInclusive(from, to) > 366) {

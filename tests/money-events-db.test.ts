@@ -138,4 +138,15 @@ describe('reading', () => {
     const [read] = await getMoneyEvents();
     expect(read!.type).toBe('some_future_type');
   });
+
+  it('drops a day-shaped bound that is not a day, instead of raising on it', async () => {
+    // `?mfrom=2026-02-30` reaches here from the admin money-journal toolbar. Postgres RAISES
+    // `date/time field value out of range` on the `::date` cast rather than matching nothing, so
+    // an unguarded bound took the WHOLE admin dashboard down with a 500 (business-day.ts#isDayISO).
+    const all = await getMoneyEvents();
+    for (const impossible of ['9999-99-99', '2026-02-30', '2026-13-01']) {
+      await expect(getMoneyEvents(undefined, impossible, undefined), impossible).resolves.toHaveLength(all.length);
+      await expect(getMoneyEvents(undefined, undefined, impossible), impossible).resolves.toHaveLength(all.length);
+    }
+  });
 });

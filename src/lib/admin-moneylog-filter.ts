@@ -1,4 +1,4 @@
-import { businessDayISO, dayInRange } from './business-day.js';
+import { businessDayISO, dayInRange, isDayISO } from './business-day.js';
 import { ADMIN_PAGE_SIZE } from './pagination.js';
 import { formatAgorot } from './money.js';
 import { isMoneyEventType, MONEY_EVENT_LABELS, type MoneyEvent, type MoneyEventType } from './money-events.js';
@@ -34,7 +34,6 @@ export interface MoneyLogQuery {
   eventId: string;
 }
 
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const OPEN_FROM = '0000-01-01';
 const OPEN_TO = '9999-12-31';
 
@@ -53,8 +52,11 @@ const MAX_SEARCH_LENGTH = 200;
  *  (admin-nav.ts), enforced by tests/admin-tab-params.test.ts. */
 export function parseMoneyLogQuery(sp: URLSearchParams): MoneyLogQuery {
   const type = sp.get('mtype') ?? '';
-  let from = DAY_RE.test(sp.get('mfrom') ?? '') ? sp.get('mfrom')! : '';
-  let to = DAY_RE.test(sp.get('mto') ?? '') ? sp.get('mto')! : '';
+  // A REAL day, not a day-shaped string. These two bounds are handed to `getMoneyEvents`, which
+  // casts them to `date` in SQL — and `?mfrom=2026-02-30` has the shape, no meaning, and would take
+  // the whole admin dashboard down with a 500 rather than filter anything (business-day.ts#isDayISO).
+  let from = isDayISO(sp.get('mfrom') ?? '') ? sp.get('mfrom')! : '';
+  let to = isDayISO(sp.get('mto') ?? '') ? sp.get('mto')! : '';
   // An inverted range is a picker slip, not a request for an empty result — the two
   // native date inputs let either be set first, and answering "0 events" to a range
   // the admin can see contains rows reads as a broken filter.

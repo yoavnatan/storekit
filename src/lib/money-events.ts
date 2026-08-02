@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { query, rows } from './db.js';
-import { BUSINESS_TIMEZONE } from './business-day.js';
+import { BUSINESS_TIMEZONE, isDayISO } from './business-day.js';
 
 /**
  * Append-only journal of every event that moves, or claims to move, money.
@@ -210,6 +210,11 @@ export async function recordMoneyEvent(event: Omit<MoneyEvent, 'id' | 'at'>): Pr
  *  database. The trigram indexes (0001/0004) are what a future pushdown of the column half would
  *  use. */
 export async function getMoneyEvents(type?: MoneyEventType, fromDay?: string, toDay?: string): Promise<MoneyEvent[]> {
+  // A bound that is not a real day is dropped rather than cast. Postgres RAISES on `2026-02-30`
+  // instead of matching nothing, so without this an admin arriving on a hand-edited URL gets a 500
+  // for the whole dashboard (business-day.ts#isDayISO). Callers reject it upstream too.
+  const from = fromDay && isDayISO(fromDay) ? fromDay : null;
+  const to = toDay && isDayISO(toDay) ? toDay : null;
   const found = await rows<EventRow>(
     `SELECT id, at, type, order_id, checkout_ref, store_slug, amount_agorot,
             from_value, to_value, actor, detail
@@ -218,7 +223,7 @@ export async function getMoneyEvents(type?: MoneyEventType, fromDay?: string, to
         AND ($2::date IS NULL OR (at AT TIME ZONE $4::text)::date >= $2::date)
         AND ($3::date IS NULL OR (at AT TIME ZONE $4::text)::date <= $3::date)
       ORDER BY at DESC, id`,
-    [type ?? null, fromDay || null, toDay || null, BUSINESS_TIMEZONE],
+    [type ?? null, from, to, BUSINESS_TIMEZONE],
   );
   return found.map(toEvent);
 }

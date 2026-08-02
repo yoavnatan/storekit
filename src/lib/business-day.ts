@@ -107,3 +107,28 @@ export function calendarMonthKey(d: Date): string {
 export function dayInRange(dayISO: string, fromISO: string, toISO: string): boolean {
   return dayISO >= fromISO && dayISO <= toISO;
 }
+
+/**
+ * Is this a real calendar day written as 'YYYY-MM-DD'?
+ *
+ * **The shape is not the rule, and the difference became a 500 the moment reports moved to
+ * Postgres (DB_MIGRATION_PLAN.md §8).** `/^\d{4}-\d{2}-\d{2}$/` — hand-rolled in eight places in
+ * this repo — accepts `9999-99-99`, `2026-02-30` and `0000-00-00`. While a range was walked in JS
+ * those produced an `Invalid Date`, the cursor loop ran zero times and the answer was an empty
+ * chart; and the span guard beside them (`spanDays > MAX_DAYS`) waves them through, because every
+ * comparison against `NaN` is false. Against a `date` column the same value is not a value at all:
+ * Postgres raises `date/time field value out of range` and the request 500s.
+ *
+ * This is the same family as `isUuid` in `db.ts` — Postgres REJECTS a malformed literal rather than
+ * failing to match it, so the shape has to be settled before the query, not by it.
+ *
+ * The month/day are checked by round-trip rather than by range, which is what catches the 30th of
+ * February. Years 1–99 are rejected along the way (JS maps them into the 1900s), and no report has
+ * a legitimate reason to reach them.
+ */
+export function isDayISO(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number) as [number, number, number];
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+}
