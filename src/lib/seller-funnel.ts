@@ -58,9 +58,9 @@ export function buildSellerFunnel(
 }
 
 /** I/O wrapper — pulls the current records + lifetime register-page views. */
-export function getSellerFunnel(): SellerFunnel {
+export async function getSellerFunnel(): Promise<SellerFunnel> {
   return buildSellerFunnel(
-    getAllSellers(),
+    await getAllSellers(),
     getAllStores(),
     readProducts(),
     getAllOrders(),

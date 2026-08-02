@@ -30,7 +30,7 @@ if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const email    = String(form.get('email')    || '');
   const password = String(form.get('password') || '');
-  const seller = loginSeller(email, password);
+  const seller = await loginSeller(email, password);
   if (seller) {
     setSellerSession(Astro.cookies, seller.id);
     return Astro.redirect(String(form.get('_next') || safeNext));

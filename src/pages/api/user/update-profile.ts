@@ -26,7 +26,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return new Response(JSON.stringify({ error: 'סיסמה חייבת להכיל לפחות 6 תווים' }), { status: 400 });
   }
 
-  const result = updateSeller(userId, {
+  const result = await updateSeller(userId, {
     name,
     email,
     currentPassword: body.currentPassword,

@@ -64,7 +64,7 @@ const storesWithProducts = stores
 // Stores this buyer has actually bought from before, most-recent purchase first — same
 // buyerId-or-buyerEmail match the buyer dashboard's own order list uses (accounts are
 // unified seller+buyer, and a buyer can check out before ever registering an email match).
-const buyerEmail = sellerId ? getSellerById(sellerId)?.email : undefined;
+const buyerEmail = sellerId ? (await getSellerById(sellerId))?.email : undefined;
 const previousStoreSlugs: string[] = [];
 if (sellerId || buyerEmail) {
   const seenSlugs = new Set<string>();

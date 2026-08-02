@@ -78,7 +78,7 @@ const tabUrl = buildAdminUrl;
 // Each source file is read exactly once per request and threaded through —
 // admin-stats.ts's functions used to each independently re-read sellers/
 // stores/products, multiplying JSON-file reads on every dashboard load.
-const sellers = getAllSellers();
+const sellers = await getAllSellers();
 const stores = getAllStores();
 const allOrders = getAllOrders();
 const productsByStore = getProductsByStoreMap();
@@ -239,7 +239,7 @@ const dataPresetRaw = sp.get('datapreset') as AdRangePreset | null;
 const dataPreset: AdRangePreset = DATA_PRESETS.includes(dataPresetRaw as AdRangePreset) ? dataPresetRaw! : '30d';
 const dataRange = presetRange(dataPreset)!;
 const analyticsOverview = getAnalyticsOverview(dataRange.from, dataRange.to);
-const sellerFunnel = getSellerFunnel();
+const sellerFunnel = await getSellerFunnel();
 const productNames = new Map<string, string>();
 for (const list of productsByStore.values()) for (const p of list) productNames.set(p.id, p.name);
 

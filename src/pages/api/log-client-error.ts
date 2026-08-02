@@ -34,7 +34,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     message,
     stack,
     route,
-    ...resolveErrorContext(route ?? '', cookies),
+    ...(await resolveErrorContext(route ?? '', cookies)),
   });
   return new Response(null, { status: 204 });
 };

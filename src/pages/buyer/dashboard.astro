@@ -16,7 +16,7 @@ import { storeSliceTotal } from '../../lib/order-totals.js';
 const userId = getSellerSession(Astro.cookies);
 if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
 
-const seller = getSellerById(userId);
+const seller = await getSellerById(userId);
 if (!seller) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
 
 const lang = getLang(Astro.cookies);

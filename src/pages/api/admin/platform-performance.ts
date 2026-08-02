@@ -52,7 +52,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
 
   const orders = getAllOrders();
-  const sellers = getAllSellers();
+  const sellers = await getAllSellers();
   const stores = buildPlatformStoreInputs(getAllStores(), sellers);
   const result = buildPlatformPerformance(orders, stores, from, to, granularity, topLimit);
   const page = selectStoreRows(result.stores, parseStoreRowsQuery(url.searchParams));

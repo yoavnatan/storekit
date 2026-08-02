@@ -90,7 +90,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (!sellerId || !subject || subject.length > MAX_ADMIN_SUBJECT_LEN) {
     return new Response(JSON.stringify({ error: 'Missing or invalid sellerId/subject' }), { status: 400, headers: json });
   }
-  const seller = getSellerById(sellerId);
+  const seller = await getSellerById(sellerId);
   if (!seller) return new Response(JSON.stringify({ error: 'Seller not found' }), { status: 404, headers: json });
 
   const message = createAdminThread(sellerId, subject, content);

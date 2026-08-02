@@ -16,7 +16,7 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   const userId = getSellerSession(cookies);
   if (!userId) return json({ error: 'Unauthorized' }, 401);
 
-  const seller = getSellerById(userId);
+  const seller = await getSellerById(userId);
   if (!seller) return json({ error: 'User not found' }, 404);
 
   const url = new URL(request.url);

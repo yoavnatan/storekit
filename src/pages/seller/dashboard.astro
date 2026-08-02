@@ -365,7 +365,7 @@ const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
 const perfToISO = businessTodayISO();
 const perfFromISO = businessMonthStartISO(perfToISO);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
-const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier(getSellerById(sellerId)?.tier)) : undefined;
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier((await getSellerById(sellerId))?.tier)) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).

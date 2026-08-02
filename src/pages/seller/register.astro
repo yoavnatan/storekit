@@ -48,7 +48,7 @@ if (Astro.request.method === 'POST') {
   } else if (password.length < 6) {
     error = t.auth.passwordTooShort;
   } else {
-    const seller = registerSeller(email, password, name);
+    const seller = await registerSeller(email, password, name);
     if (!seller) {
       error = t.auth.emailExists;
     } else {

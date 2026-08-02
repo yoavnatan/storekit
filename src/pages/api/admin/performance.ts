@@ -67,6 +67,6 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     return json({ ok: true, product: productSummary, productName: product.name });
   }
 
-  const summary = buildPerformanceSummary(orders, storeSlug, from, to, granularity, commissionPercentForTier(getSellerById(store.sellerId)?.tier), topLimit);
+  const summary = buildPerformanceSummary(orders, storeSlug, from, to, granularity, commissionPercentForTier((await getSellerById(store.sellerId))?.tier), topLimit);
   return json({ ok: true, summary });
 }

@@ -54,7 +54,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // Not awaited: the state is already saved, and the seller must not sit on a spinner while a
   // mail provider answers. sendStoreLifecycleEmail never throws and logs its own failures.
   if (result.state !== 'blocked') {
-    const seller = getSellerById(sellerId);
+    const seller = await getSellerById(sellerId);
     if (seller) {
       void sendStoreLifecycleEmail({
         to: seller.email,

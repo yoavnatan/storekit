@@ -95,7 +95,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
   }
 
-  const seller = getSellerById(userId);
+  const seller = await getSellerById(userId);
   if (!seller) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404 });
 
   // Reply to an existing message (seller→buyer or buyer follow-up)

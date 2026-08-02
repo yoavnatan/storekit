@@ -41,10 +41,10 @@ export interface ErrorLogEntry {
 // logError's internal try/catch even starts) — so this one, unlike logError,
 // has to guarantee it never throws by itself rather than relying on a
 // caller to wrap it.
-export function resolveErrorContext(
+export async function resolveErrorContext(
   pathname: string,
   cookies: AstroCookies
-): Pick<ErrorLogEntry, 'storeSlug' | 'storeName' | 'actorRole' | 'actorId' | 'actorLabel'> {
+): Promise<Pick<ErrorLogEntry, 'storeSlug' | 'storeName' | 'actorRole' | 'actorId' | 'actorLabel'>> {
   const ctx: Pick<ErrorLogEntry, 'storeSlug' | 'storeName' | 'actorRole' | 'actorId' | 'actorLabel'> = {};
   try {
     // Stores live at the root (/<slug>, /<slug>/<product>). Take the first path segment and let
@@ -57,7 +57,7 @@ export function resolveErrorContext(
 
     const accountId = getSellerSession(cookies);
     if (accountId) {
-      const account = getSellerById(accountId);
+      const account = await getSellerById(accountId);
       if (account) {
         const ownStore = getStoreBySellerId(accountId);
         ctx.actorId = accountId;

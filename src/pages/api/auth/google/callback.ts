@@ -91,17 +91,17 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   }
 
   // Find or create account
-  let seller = getSellerByGoogleId(googleUser.id);
+  let seller = await getSellerByGoogleId(googleUser.id);
 
   if (!seller) {
-    const existing = getSellerByEmail(googleUser.email);
+    const existing = await getSellerByEmail(googleUser.email);
     if (existing) {
       // Email matches — link Google account to existing account
-      linkGoogleAccount(existing.id, googleUser.id);
+      await linkGoogleAccount(existing.id, googleUser.id);
       seller = { ...existing, googleId: googleUser.id };
     } else {
       // New user — create account
-      seller = createGoogleSeller(googleUser.email, googleUser.name, googleUser.id);
+      seller = await createGoogleSeller(googleUser.email, googleUser.name, googleUser.id);
     }
   }
 

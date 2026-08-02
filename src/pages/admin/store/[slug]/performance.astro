@@ -36,7 +36,7 @@ const store = getStoreBySlug(slug);
 if (!store) {
   return Astro.redirect(back.href);
 }
-const seller = getSellerById(store.sellerId);
+const seller = await getSellerById(store.sellerId);
 
 const lang = getLang(Astro.cookies);
 const dir = getDir(lang);

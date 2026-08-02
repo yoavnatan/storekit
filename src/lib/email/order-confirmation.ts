@@ -59,7 +59,7 @@ async function deliver(orders: Order[]): Promise<void> {
   for (const order of orders) {
     const storeSlug = order.items[0]?.storeSlug;
     const store = storeSlug ? getStoreBySlugOrPrevious(storeSlug) : null;
-    const seller = store ? getSellerById(store.sellerId) : null;
+    const seller = store ? await getSellerById(store.sellerId) : null;
     if (!seller?.email) continue;
     const result = await sendEmail(buildSellerOrderNotification(order, seller.email));
     if (!result.ok) {

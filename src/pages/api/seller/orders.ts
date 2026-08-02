@@ -306,7 +306,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     // happened because they finished an order. Without this mail the store would close silently
     // and they would find out by visiting it. Not awaited; it never throws.
     if (justClosed) {
-      const seller = getSellerById(store.sellerId);
+      const seller = await getSellerById(store.sellerId);
       if (seller) {
         void sendStoreLifecycleEmail({
           to: seller.email,

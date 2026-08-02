@@ -14,7 +14,7 @@ const c = t.checkout;
 
 const sessionUserId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!sessionUserId;
-const sessionSeller = sessionUserId ? getSellerById(sessionUserId) : null;
+const sessionSeller = sessionUserId ? await getSellerById(sessionUserId) : null;
 const prefillEmail = sessionSeller?.email ?? '';
 
 // Admin-blocked stores (see admin-moderation.ts) are left out — a buyer with

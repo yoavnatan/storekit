@@ -139,7 +139,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       message: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
       statusCode: 500,
-      ...resolveErrorContext(pathname, context.cookies),
+      ...(await resolveErrorContext(pathname, context.cookies)),
     });
     throw err;
   }
