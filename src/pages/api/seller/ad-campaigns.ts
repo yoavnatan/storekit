@@ -53,7 +53,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   // Scope/platform/budget validation — including which products or categories this store is
   // allowed to advertise — is shared with the admin twin (ad-campaign-input.ts).
-  const built = buildCampaignInput(body, store);
+  const built = await buildCampaignInput(body, store);
   if (!built.ok) return json({ error: built.error }, built.status);
 
   const campaign = createCampaign(built.input);

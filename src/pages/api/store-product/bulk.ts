@@ -22,7 +22,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   const storeId = url.searchParams.get('storeId') ?? '';
   if (!storeId || !await authorizeStore(sellerId, storeId)) return json({ error: 'Not authorized' }, 403);
 
-  const csv = productsToCsv(getProductsByStoreId(storeId), getCategoriesByStoreId(storeId), getLang(cookies));
+  const csv = productsToCsv(getProductsByStoreId(storeId), await getCategoriesByStoreId(storeId), getLang(cookies));
   return new Response(csv, {
     status: 200,
     headers: {
@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const storeId = body.storeId ?? '';
   if (!storeId || !await authorizeStore(sellerId, storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
 
-  const { status, body: resBody } = runProductImport({
+  const { status, body: resBody } = await runProductImport({
     storeId, sellerId, csv: String(body.csv ?? ''),
     commit: !!body.commit,
   });

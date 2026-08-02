@@ -35,41 +35,41 @@ const { resolveSaleScope, saleScopeCategoryLabel, MAX_SALE_CATEGORIES } =
   await import('../src/lib/store-sale-scope.js');
 
 describe('resolveSaleScope — several categories in one sale', () => {
-  it('unions each pick with everything beneath it', () => {
-    const scope = resolveSaleScope('s1', ['c-shoes', 'c-bags']);
+  it('unions each pick with everything beneath it', async () => {
+    const scope = (await resolveSaleScope('s1', ['c-shoes', 'c-bags']));
     expect(scope?.pickedCategoryIds).toEqual(['c-shoes', 'c-bags']);
     expect(scope?.categoryIds?.sort()).toEqual(['c-bags', 'c-shoes', 'c-sport']);
   });
 
-  it('collapses the overlap when a parent AND its own child are both picked', () => {
-    const scope = resolveSaleScope('s1', ['c-shoes', 'c-sport']);
+  it('collapses the overlap when a parent AND its own child are both picked', async () => {
+    const scope = (await resolveSaleScope('s1', ['c-shoes', 'c-sport']));
     // Picked stays as the seller chose it; the matched list has each id exactly once, so
     // saleCoversProduct stays a plain membership test.
     expect(scope?.pickedCategoryIds).toEqual(['c-shoes', 'c-sport']);
     expect(scope?.categoryIds).toEqual([...new Set(scope?.categoryIds)]);
   });
 
-  it('keeps `categoryId` on the first pick, so a pre-multi-pick reader still labels something real', () => {
-    expect(resolveSaleScope('s1', ['c-bags', 'c-hats'])?.categoryId).toBe('c-bags');
+  it('keeps `categoryId` on the first pick, so a pre-multi-pick reader still labels something real', async () => {
+    expect((await resolveSaleScope('s1', ['c-bags', 'c-hats']))?.categoryId).toBe('c-bags');
   });
 
-  it('drops a category belonging to another seller instead of scoping a sale to it', () => {
-    const scope = resolveSaleScope('s1', ['c-bags', 'c-other-store', 'nope']);
+  it('drops a category belonging to another seller instead of scoping a sale to it', async () => {
+    const scope = (await resolveSaleScope('s1', ['c-bags', 'c-other-store', 'nope']));
     expect(scope?.pickedCategoryIds).toEqual(['c-bags']);
   });
 
-  it('is undefined — a whole-store sale — when no pick survives validation', () => {
-    expect(resolveSaleScope('s1', ['c-other-store', '', '  '])).toBeUndefined();
-    expect(resolveSaleScope('s1', [])).toBeUndefined();
+  it('is undefined — a whole-store sale — when no pick survives validation', async () => {
+    expect((await resolveSaleScope('s1', ['c-other-store', '', '  ']))).toBeUndefined();
+    expect((await resolveSaleScope('s1', []))).toBeUndefined();
   });
 
-  it('ignores a repeated id rather than listing the same category twice', () => {
-    expect(resolveSaleScope('s1', ['c-bags', 'c-bags'])?.pickedCategoryIds).toEqual(['c-bags']);
+  it('ignores a repeated id rather than listing the same category twice', async () => {
+    expect((await resolveSaleScope('s1', ['c-bags', 'c-bags']))?.pickedCategoryIds).toEqual(['c-bags']);
   });
 
-  it('caps how many categories one sale can name — enforced here, not in the UI, so a hand-built POST hits it too', () => {
+  it('caps how many categories one sale can name — enforced here, not in the UI, so a hand-built POST hits it too', async () => {
     const many = Array.from({ length: MAX_SALE_CATEGORIES + 4 }, (_, n) => `c-x${n}`);
-    expect(resolveSaleScope('s1', many)?.pickedCategoryIds).toHaveLength(MAX_SALE_CATEGORIES);
+    expect((await resolveSaleScope('s1', many))?.pickedCategoryIds).toHaveLength(MAX_SALE_CATEGORIES);
   });
 });
 
@@ -92,18 +92,18 @@ describe('salePickedCategoryIds — reading a sale saved before multi-pick', () 
 describe('the banner wording', () => {
   const AND_MORE = 'ועוד {n}';
 
-  it('names one pick by its full path — which disambiguates two same-named categories', () => {
-    const sale = { active: true, title: 'x', ...resolveSaleScope('s1', ['c-sport']) } as StoreSale;
+  it('names one pick by its full path — which disambiguates two same-named categories', async () => {
+    const sale = { active: true, title: 'x', ...(await resolveSaleScope('s1', ['c-sport'])) } as StoreSale;
     expect(saleScopeCategoryLabel(TREE, sale, AND_MORE)).toBe('נעליים › ספורט');
   });
 
-  it('names two picks plainly — paths stacked side by side read as noise', () => {
-    const sale = { active: true, title: 'x', ...resolveSaleScope('s1', ['c-sport', 'c-bags']) } as StoreSale;
+  it('names two picks plainly — paths stacked side by side read as noise', async () => {
+    const sale = { active: true, title: 'x', ...(await resolveSaleScope('s1', ['c-sport', 'c-bags'])) } as StoreSale;
     expect(saleScopeCategoryLabel(TREE, sale, AND_MORE)).toBe('ספורט, תיקים');
   });
 
-  it('collapses the tail past two into a count that still admits the sale is wider', () => {
-    const sale = { active: true, title: 'x', ...resolveSaleScope('s1', ['c-shoes', 'c-bags', 'c-hats', 'c-glasses']) } as StoreSale;
+  it('collapses the tail past two into a count that still admits the sale is wider', async () => {
+    const sale = { active: true, title: 'x', ...(await resolveSaleScope('s1', ['c-shoes', 'c-bags', 'c-hats', 'c-glasses'])) } as StoreSale;
     expect(saleScopeCategoryLabel(TREE, sale, AND_MORE)).toBe('נעליים, תיקים ועוד 2');
   });
 
@@ -118,8 +118,8 @@ describe('the banner wording', () => {
 });
 
 describe('what the shopper is actually charged', () => {
-  it('covers a product filed under ANY picked branch, and nothing outside them', () => {
-    const sale = { active: true, title: 'x', ...resolveSaleScope('s1', ['c-shoes', 'c-bags']) } as StoreSale;
+  it('covers a product filed under ANY picked branch, and nothing outside them', async () => {
+    const sale = { active: true, title: 'x', ...(await resolveSaleScope('s1', ['c-shoes', 'c-bags'])) } as StoreSale;
     expect(saleCoversProduct(sale, { categoryId: 'c-sport' })).toBe(true);  // beneath a pick
     expect(saleCoversProduct(sale, { categoryId: 'c-bags' })).toBe(true);
     expect(saleCoversProduct(sale, { categoryId: 'c-hats' })).toBe(false);

@@ -41,15 +41,15 @@ export const MAX_SALE_CATEGORIES = 8;
  *  is the UNION of every pick plus everything beneath it. Duplicates — which a seller creates
  *  simply by picking a parent and one of its children — collapse, so the stored list is stable
  *  and `saleCoversProduct` stays a plain membership test. */
-export function resolveSaleScope(storeId: string, categoryIds: string[]): SaleScope | undefined {
-  const tree = getCategoriesByStoreId(storeId);
+export async function resolveSaleScope(storeId: string, categoryIds: string[]): Promise<SaleScope | undefined> {
+  const tree = await getCategoriesByStoreId(storeId);
   const picked: string[] = [];
   const flattened = new Set<string>();
 
   for (const raw of categoryIds) {
     const id = raw.trim();
     if (!id || picked.includes(id)) continue;
-    const category = getCategoryById(id);
+    const category = await getCategoryById(id);
     if (!category || category.storeId !== storeId) continue;
     picked.push(id);
     for (const descendant of resolveCategoryFilterIds(tree, id)) flattened.add(descendant);
@@ -72,7 +72,7 @@ export async function refreshStoreSaleScope(storeId: string): Promise<void> {
   const picks = salePickedCategoryIds(sale);
   if (!store || !sale || !picks.length) return;
 
-  const scope = resolveSaleScope(storeId, picks);
+  const scope = await resolveSaleScope(storeId, picks);
   if (scope?.categoryIds?.length) {
     if (sameIds(scope.categoryIds, sale.categoryIds ?? []) && sameIds(scope.pickedCategoryIds ?? [], picks)) return;
     await updateStore(storeId, { sale: { ...sale, categoryId: scope.categoryId, pickedCategoryIds: scope.pickedCategoryIds, categoryIds: scope.categoryIds } });

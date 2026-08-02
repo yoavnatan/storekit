@@ -24,7 +24,7 @@ export const GET: APIRoute = async ({ url }) => {
   const sort = url.searchParams.get('sort') ?? 'default';
   const q = url.searchParams.get('q') ?? '';
   const offset = Math.max(0, parseInt(url.searchParams.get('offset') ?? '0', 10) || 0);
-  const categoryIds = category ? resolveCategoryFilterIds(getCategoriesByStoreId(store.id), category) : undefined;
+  const categoryIds = category ? resolveCategoryFilterIds(await getCategoriesByStoreId(store.id), category) : undefined;
 
   // Blocked individual products (see admin-moderation.ts) never appear in the
   // store's own "load more" pagination either.

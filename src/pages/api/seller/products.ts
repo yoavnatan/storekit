@@ -36,7 +36,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   const query = parseSellerProductQuery(sp);
 
   const products = getProductsByStoreId(store.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const categories = getCategoriesByStoreId(store.id);
+  const categories = await getCategoriesByStoreId(store.id);
   const categoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(categories, p.categoryId) : '']));
   const wishlistCounts = getAllWishlistCounts();
   const purchasedCounts = getPurchasedCountsByStoreSlug(store.slug);

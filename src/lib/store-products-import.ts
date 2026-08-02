@@ -30,13 +30,18 @@ export interface RunImportOptions {
   commit: boolean;
 }
 
-export function runProductImport({ storeId, sellerId, csv, commit }: RunImportOptions): ImportResult {
+export async function runProductImport({ storeId, sellerId, csv, commit }: RunImportOptions): Promise<ImportResult> {
   const rows = parseCsv(csv);
   if (!rows.length) return { ok: false, status: 400, body: { ok: false, error: 'empty-file' } };
   if (rows.length - 1 > MAX_IMPORT_ROWS) return { ok: false, status: 400, body: { ok: false, error: 'too-many-rows' } };
 
   const { map, missing } = mapHeader(rows[0]!);
   if (missing.length) return { ok: false, status: 400, body: { ok: false, error: 'missing-columns', missing } };
+
+  // Fetched before the catalog is read, for the reason spelled out in bulkUpsertProducts: while
+  // products are a JSON file, an `await` in the middle of a read-modify-write is where a concurrent
+  // import's writes get lost. Everything from here to the upsert is synchronous.
+  const categories = await getCategoriesByStoreId(storeId);
 
   const existingProducts = getProductsByStoreId(storeId);
   const existingIds = new Set(existingProducts.map((p) => p.id));
@@ -67,7 +72,6 @@ export function runProductImport({ storeId, sellerId, csv, commit }: RunImportOp
   // (usually large) majority of rows that change nothing. A re-uploaded catalog or a sku+stock feed
   // is mostly no-ops; listing hundreds of them to "confirm" is unusable.
   const byId = new Map(existingProducts.map((p) => [p.id, p]));
-  const categories = getCategoriesByStoreId(storeId);
   const pathOf = (categoryId?: string): string[] => (categoryId ? getAncestorChain(categories, categoryId).map((c) => c.name) : []);
   for (const r of results) {
     if (r.action !== 'update' || !r.id || !r.input) continue;
@@ -121,7 +125,7 @@ export function runProductImport({ storeId, sellerId, csv, commit }: RunImportOp
   // and the cursor below both skip error AND unchanged rows in lock-step, so positional pairing with
   // bulkUpsertProducts' output stays exact.
   const validRows = results.filter((r) => r.action !== 'error' && !r.unchanged && r.input);
-  const upserted = bulkUpsertProducts(storeId, validRows.map((r) => ({ id: r.id, ...r.input! })));
+  const upserted = await bulkUpsertProducts(storeId, validRows.map((r) => ({ id: r.id, ...r.input! })));
 
   // An update row that explicitly set a stock value (blank cells preserve the existing stock) —
   // treat that the same as the single-product edit form: the seller reviewed/re-entered stock, so

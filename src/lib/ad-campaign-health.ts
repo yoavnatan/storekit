@@ -125,7 +125,7 @@ async function reachableProducts(storeId: string): Promise<StoreProduct[]> {
  */
 export async function getCampaignsForStore(storeId: string): Promise<CampaignWithHealth[]> {
   const products = await reachableProducts(storeId);
-  const categories = getCategoriesByStoreId(storeId);
+  const categories = await getCategoriesByStoreId(storeId);
   const live: CampaignWithHealth[] = [];
 
   for (const campaign of getCampaignsByStoreId(storeId)) {
@@ -182,7 +182,7 @@ export const CAMPAIGN_HISTORY_LIMIT = 50;
  *  resumes or re-budgets. */
 export async function getCampaignHistory(storeId: string): Promise<CampaignWithHealth[]> {
   const products = await reachableProducts(storeId);
-  const categories = getCategoriesByStoreId(storeId);
+  const categories = await getCategoriesByStoreId(storeId);
   return getArchivedByStoreId(storeId).slice(0, CAMPAIGN_HISTORY_LIMIT).map((campaign) => ({
     ...campaign,
     health: campaignHealth(campaign, products, categories),

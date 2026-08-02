@@ -18,7 +18,7 @@ async function ownsStore(sellerId: string, storeId: string): Promise<boolean> {
 }
 
 async function ownsCategory(sellerId: string, categoryId: string): Promise<boolean> {
-  const category = getCategoryById(categoryId);
+  const category = await getCategoryById(categoryId);
   return !!category && await ownsStore(sellerId, category.storeId);
 }
 
@@ -40,13 +40,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stuffingHit = findKeywordStuffing(name);
     if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
-    const result = createCategory(storeId, { name, parentId: parentIdRaw || null });
+    const result = await createCategory(storeId, { name, parentId: parentIdRaw || null });
     if ('error' in result) return json({ ok: false, error: result.error }, 400);
     // The tree just changed, so a category-scoped sale's flattened scope may be stale (a new
     // subcategory belongs inside it; a deleted one no longer exists). Re-resolve before the
     // storefront reads it — see store-sale-scope.ts for why the list is stored, not computed.
     await refreshStoreSaleScope(storeId);
-    return json({ ok: true, tree: buildCategoryTree(getCategoriesByStoreId(storeId)) });
+    return json({ ok: true, tree: buildCategoryTree(await getCategoriesByStoreId(storeId)) });
   }
 
   if (action === 'rename-category') {
@@ -58,34 +58,34 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stuffingHit = findKeywordStuffing(name);
     if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
-    const result = renameCategory(categoryId, name);
+    const result = await renameCategory(categoryId, name);
     if ('error' in result) return json({ ok: false, error: result.error }, 400);
-    return json({ ok: true, tree: buildCategoryTree(getCategoriesByStoreId(result.storeId)) });
+    return json({ ok: true, tree: buildCategoryTree(await getCategoriesByStoreId(result.storeId)) });
   }
 
   if (action === 'delete-category') {
     const categoryId = String(form.get('categoryId') || '');
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category || !await ownsStore(sellerId, category.storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
 
-    const result = deleteCategory(categoryId);
+    const result = await deleteCategory(categoryId);
     if ('error' in result) return json({ ok: false, error: result.error }, 400);
     // The tree just changed, so a category-scoped sale's flattened scope may be stale (a new
     // subcategory belongs inside it; a deleted one no longer exists). Re-resolve before the
     // storefront reads it — see store-sale-scope.ts for why the list is stored, not computed.
     await refreshStoreSaleScope(category.storeId);
-    return json({ ok: true, tree: buildCategoryTree(getCategoriesByStoreId(category.storeId)) });
+    return json({ ok: true, tree: buildCategoryTree(await getCategoriesByStoreId(category.storeId)) });
   }
 
   if (action === 'move-category') {
     const categoryId = String(form.get('categoryId') || '');
-    const category = getCategoryById(categoryId);
+    const category = await getCategoryById(categoryId);
     if (!category || !await ownsStore(sellerId, category.storeId)) return json({ ok: false, error: 'Not authorized' }, 403);
     const direction = form.get('direction') === 'down' ? 'down' : 'up';
 
-    const result = moveCategory(categoryId, direction);
+    const result = await moveCategory(categoryId, direction);
     if ('error' in result) return json({ ok: false, error: result.error }, 400);
-    return json({ ok: true, tree: buildCategoryTree(getCategoriesByStoreId(category.storeId)) });
+    return json({ ok: true, tree: buildCategoryTree(await getCategoriesByStoreId(category.storeId)) });
   }
 
   return json({ ok: false, error: 'Unknown action.' }, 400);

@@ -45,8 +45,8 @@ const STORE = { id: 's1', slug: 'my-store' };
 const base = { platform: 'both', monthlyBudget: 200 };
 
 describe('buildCampaignInput — product scope', () => {
-  it('keeps several products, named in the seller\'s pick order', () => {
-    const built = buildCampaignInput({ ...base, scope: 'products', productIds: ['p3', 'p1'] }, STORE);
+  it('keeps several products, named in the seller\'s pick order', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'products', productIds: ['p3', 'p1'] }, STORE));
     expect(built.ok).toBe(true);
     if (!built.ok) return;
     expect(built.input.scope).toBe('products');
@@ -54,8 +54,8 @@ describe('buildCampaignInput — product scope', () => {
     expect(built.input.productNames).toEqual(['כובע', 'נעל ריצה']);
   });
 
-  it('collapses ONE product back to the flat single-product shape a pre-existing reader knows', () => {
-    const built = buildCampaignInput({ ...base, scope: 'products', productIds: ['p2'] }, STORE);
+  it('collapses ONE product back to the flat single-product shape a pre-existing reader knows', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'products', productIds: ['p2'] }, STORE));
     expect(built.ok).toBe(true);
     if (!built.ok) return;
     expect(built.input.scope).toBe('product');
@@ -64,13 +64,13 @@ describe('buildCampaignInput — product scope', () => {
     expect(built.input.productIds).toBeUndefined();
   });
 
-  it('still accepts the admin form\'s single `productId` string', () => {
-    const built = buildCampaignInput({ ...base, scope: 'product', productId: 'p1' }, STORE);
+  it('still accepts the admin form\'s single `productId` string', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'product', productId: 'p1' }, STORE));
     expect(built.ok && built.input.productId).toBe('p1');
   });
 
-  it('drops a product belonging to another seller instead of advertising it', () => {
-    const built = buildCampaignInput({ ...base, scope: 'products', productIds: ['p1', 'p-other', 'nope'] }, STORE);
+  it('drops a product belonging to another seller instead of advertising it', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'products', productIds: ['p1', 'p-other', 'nope'] }, STORE));
     expect(built.ok).toBe(true);
     if (!built.ok) return;
     // One survivor → the single-product shape, and the foreign id is simply not there.
@@ -80,35 +80,35 @@ describe('buildCampaignInput — product scope', () => {
 
   // What the picker shows is what the server accepts. A stale page or a hand-built POST would
   // otherwise buy clicks to a page that 404s, or to one that says "sold out".
-  it('refuses a product that is off the storefront, or out of stock', () => {
-    expect(buildCampaignInput({ ...base, scope: 'products', productIds: ['p-hidden'] }, STORE))
+  it('refuses a product that is off the storefront, or out of stock', async () => {
+    expect((await buildCampaignInput({ ...base, scope: 'products', productIds: ['p-hidden'] }, STORE)))
       .toMatchObject({ ok: false, status: 409, error: 'PRODUCT_NOT_ADVERTISABLE' });
-    expect(buildCampaignInput({ ...base, scope: 'products', productIds: ['p-empty'] }, STORE))
+    expect((await buildCampaignInput({ ...base, scope: 'products', productIds: ['p-empty'] }, STORE)))
       .toMatchObject({ ok: false, status: 409, error: 'PRODUCT_NOT_ADVERTISABLE' });
   });
 
-  it('keeps the advertisable ones when only some of the pick is unusable', () => {
-    const built = buildCampaignInput({ ...base, scope: 'products', productIds: ['p1', 'p-empty', 'p2'] }, STORE);
+  it('keeps the advertisable ones when only some of the pick is unusable', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'products', productIds: ['p1', 'p-empty', 'p2'] }, STORE));
     expect(built.ok && built.input.productIds).toEqual(['p1', 'p2']);
   });
 
-  it('rejects a pick made ENTIRELY of ids this store does not own', () => {
-    const built = buildCampaignInput({ ...base, scope: 'products', productIds: ['p-other'] }, STORE);
+  it('rejects a pick made ENTIRELY of ids this store does not own', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'products', productIds: ['p-other'] }, STORE));
     expect(built).toMatchObject({ ok: false, status: 409 });
   });
 
-  it('rejects an empty pick rather than silently widening to the whole store', () => {
-    const built = buildCampaignInput({ ...base, scope: 'products', productIds: [] }, STORE);
+  it('rejects an empty pick rather than silently widening to the whole store', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'products', productIds: [] }, STORE));
     expect(built).toMatchObject({ ok: false, status: 400 });
   });
 
-  it('caps how many products one campaign may name', () => {
+  it('caps how many products one campaign may name', async () => {
     const ids = Array.from({ length: MAX_CAMPAIGN_PRODUCTS + 1 }, (_, n) => `p-x${n}`);
-    expect(buildCampaignInput({ ...base, scope: 'products', productIds: ids }, STORE).ok).toBe(false);
+    expect((await buildCampaignInput({ ...base, scope: 'products', productIds: ids }, STORE)).ok).toBe(false);
   });
 
-  it('de-duplicates a repeated id so the cap counts real picks', () => {
-    const built = buildCampaignInput({ ...base, scope: 'products', productIds: ['p1', 'p1', 'p2'] }, STORE);
+  it('de-duplicates a repeated id so the cap counts real picks', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'products', productIds: ['p1', 'p1', 'p2'] }, STORE));
     expect(built.ok && built.input.productIds).toEqual(['p1', 'p2']);
   });
 
@@ -116,17 +116,17 @@ describe('buildCampaignInput — product scope', () => {
   // that rejecting stays cheap: the id pass used to be quadratic (`out.includes` over a
   // request-controlled list) and ran in FULL before the cap was consulted, so 40k ids blocked
   // the single SSR thread for ~5s. Timed, because "it still rejects" would pass either way.
-  it('rejects an oversized pick without doing the work, so a huge POST cannot stall SSR', () => {
+  it('rejects an oversized pick without doing the work, so a huge POST cannot stall SSR', async () => {
     const ids = Array.from({ length: 40_000 }, (_, n) => `flood-${n}`);
     const started = performance.now();
-    expect(buildCampaignInput({ ...base, scope: 'products', productIds: ids }, STORE).ok).toBe(false);
+    expect((await buildCampaignInput({ ...base, scope: 'products', productIds: ids }, STORE)).ok).toBe(false);
     expect(performance.now() - started).toBeLessThan(250);
   });
 });
 
 describe('buildCampaignInput — category scope', () => {
-  it('names the picked categories', () => {
-    const built = buildCampaignInput({ ...base, scope: 'categories', categoryIds: ['c-hats', 'c-shoes'] }, STORE);
+  it('names the picked categories', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'categories', categoryIds: ['c-hats', 'c-shoes'] }, STORE));
     expect(built.ok).toBe(true);
     if (!built.ok) return;
     expect(built.input.scope).toBe('categories');
@@ -134,33 +134,33 @@ describe('buildCampaignInput — category scope', () => {
     expect(built.input.categoryNames).toEqual(['כובעים', 'נעליים']);
   });
 
-  it('drops another seller\'s category, and rejects a pick made only of those', () => {
-    expect(buildCampaignInput({ ...base, scope: 'categories', categoryIds: ['c-shoes', 'c-other'] }, STORE).ok).toBe(true);
-    expect(buildCampaignInput({ ...base, scope: 'categories', categoryIds: ['c-other'] }, STORE)).toMatchObject({ ok: false, status: 404 });
+  it('drops another seller\'s category, and rejects a pick made only of those', async () => {
+    expect((await buildCampaignInput({ ...base, scope: 'categories', categoryIds: ['c-shoes', 'c-other'] }, STORE)).ok).toBe(true);
+    expect((await buildCampaignInput({ ...base, scope: 'categories', categoryIds: ['c-other'] }, STORE))).toMatchObject({ ok: false, status: 404 });
   });
 
-  it('caps how many categories one campaign may name', () => {
+  it('caps how many categories one campaign may name', async () => {
     const ids = Array.from({ length: MAX_CAMPAIGN_CATEGORIES + 1 }, (_, n) => `c-x${n}`);
-    expect(buildCampaignInput({ ...base, scope: 'categories', categoryIds: ids }, STORE).ok).toBe(false);
+    expect((await buildCampaignInput({ ...base, scope: 'categories', categoryIds: ids }, STORE)).ok).toBe(false);
   });
 });
 
 describe('buildCampaignInput — the rest of the body', () => {
-  it('ignores an audience posted with a store-wide campaign (each product self-targets)', () => {
-    const built = buildCampaignInput({ ...base, scope: 'store', audience: { gender: 'men', age: 'adult' } }, STORE);
+  it('ignores an audience posted with a store-wide campaign (each product self-targets)', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'store', audience: { gender: 'men', age: 'adult' } }, STORE));
     expect(built.ok && built.input.audience).toBeUndefined();
   });
 
-  it('keeps the audience on a narrowed scope — the seller picked that slice himself', () => {
-    const built = buildCampaignInput({ ...base, scope: 'categories', categoryIds: ['c-shoes'], audience: { gender: 'men', age: 'adult' } }, STORE);
+  it('keeps the audience on a narrowed scope — the seller picked that slice himself', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'categories', categoryIds: ['c-shoes'], audience: { gender: 'men', age: 'adult' } }, STORE));
     expect(built.ok && built.input.audience).toEqual({ gender: 'men', age: 'adult' });
   });
 
-  it('rejects an unknown scope, a bad platform and a below-minimum budget', () => {
-    expect(buildCampaignInput({ ...base, scope: 'everything' }, STORE).ok).toBe(false);
-    expect(buildCampaignInput({ ...base, platform: 'tiktok', scope: 'store' }, STORE).ok).toBe(false);
-    expect(buildCampaignInput({ ...base, monthlyBudget: 49, scope: 'store' }, STORE).ok).toBe(false);
-    expect(buildCampaignInput({ ...base, monthlyBudget: Number.NaN, scope: 'store' }, STORE).ok).toBe(false);
+  it('rejects an unknown scope, a bad platform and a below-minimum budget', async () => {
+    expect((await buildCampaignInput({ ...base, scope: 'everything' }, STORE)).ok).toBe(false);
+    expect((await buildCampaignInput({ ...base, platform: 'tiktok', scope: 'store' }, STORE)).ok).toBe(false);
+    expect((await buildCampaignInput({ ...base, monthlyBudget: 49, scope: 'store' }, STORE)).ok).toBe(false);
+    expect((await buildCampaignInput({ ...base, monthlyBudget: Number.NaN, scope: 'store' }, STORE)).ok).toBe(false);
   });
 });
 
@@ -190,25 +190,25 @@ describe('isValidCampaignBudget — one rule for POST, PATCH and both forms', ()
   // parseFloat('') is NaN, and JSON.stringify turns NaN into `null` — so a submit with nothing
   // typed reaches the route as a MISSING budget, not as a zero. Both are rejected; the client
   // guard exists only so the seller gets the range in the message instead of a generic error.
-  it('rejects an empty budget field at both hops — parseFloat then JSON', () => {
+  it('rejects an empty budget field at both hops — parseFloat then JSON', async () => {
     const parsed = parseFloat('');
     expect(Number.isNaN(parsed)).toBe(true);
     expect(isValidCampaignBudget(parsed)).toBe(false);
     const overTheWire = JSON.parse(JSON.stringify({ monthlyBudget: parsed })) as { monthlyBudget: unknown };
     expect(overTheWire.monthlyBudget).toBeNull();
     expect(isValidCampaignBudget(overTheWire.monthlyBudget)).toBe(false);
-    expect(buildCampaignInput({ ...base, scope: 'store', monthlyBudget: overTheWire.monthlyBudget }, STORE).ok).toBe(false);
+    expect((await buildCampaignInput({ ...base, scope: 'store', monthlyBudget: overTheWire.monthlyBudget }, STORE)).ok).toBe(false);
   });
 });
 
 describe('AD_BUDGET_PRESETS', () => {
   // The ladder is rendered as ready-made options, so a preset the server would refuse is an
   // option that fails the moment it's clicked — the one way these two constants can disagree.
-  it('offers only amounts the server accepts, in ascending order', () => {
+  it('offers only amounts the server accepts, in ascending order', async () => {
     expect(AD_BUDGET_PRESETS.length).toBeGreaterThan(1);
     for (const amount of AD_BUDGET_PRESETS) {
       expect(isValidCampaignBudget(amount)).toBe(true);
-      expect(buildCampaignInput({ ...base, scope: 'store', monthlyBudget: amount }, STORE).ok).toBe(true);
+      expect((await buildCampaignInput({ ...base, scope: 'store', monthlyBudget: amount }, STORE)).ok).toBe(true);
     }
     expect([...AD_BUDGET_PRESETS]).toEqual([...AD_BUDGET_PRESETS].sort((a, b) => a - b));
   });
@@ -259,8 +259,8 @@ describe('campaign budget bounds', () => {
     expect(isValidCampaignBudget('200')).toBe(false);
   });
 
-  it('refuses to build a campaign above the ceiling', () => {
-    const built = buildCampaignInput({ ...base, scope: 'store', monthlyBudget: MAX_CAMPAIGN_BUDGET + 1 }, STORE);
+  it('refuses to build a campaign above the ceiling', async () => {
+    const built = (await buildCampaignInput({ ...base, scope: 'store', monthlyBudget: MAX_CAMPAIGN_BUDGET + 1 }, STORE));
     expect(built.ok).toBe(false);
   });
 

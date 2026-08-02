@@ -38,15 +38,24 @@ export interface BulkUpsertResult {
 }
 
 /** One read + one write for the whole batch (vs. createProduct/updateProduct's read-modify-write per call), and an id→index map instead of a per-row findIndex scan — both matter once rows and the store's own catalog run into the hundreds/thousands. SKU uniqueness is validated by the caller (csv-bulk.ts's validateRows) before rows reach here, same as name/price. */
-export function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): BulkUpsertResult[] {
+export async function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): Promise<BulkUpsertResult[]> {
+  // Resolved once for the whole batch (one query, not one per row) — a row with no categoryPath
+  // (blank CSV cells) resolves to null, meaning "leave unchanged".
+  //
+  // **It happens BEFORE the catalog is read, and that ordering is load-bearing while products still
+  // live in a JSON file.** `readProducts` → mutate → `writeProducts` writes the WHOLE file, for every
+  // store; an `await` between the read and the write hands the process to another request, whose own
+  // write then lands on the copy this one had already read. Two imports at once (two dashboard tabs,
+  // or a feed sync beside a manual upload) would each report success and one of them would vanish
+  // entirely. Everything below this line stays synchronous, which is what makes the sequence atomic
+  // within the process — the same guarantee `mutex.ts` gives the stock path, and it retires with it
+  // once store-products moves to Postgres (DB_MIGRATION_PLAN.md §8).
+  const resolvedCategoryIds = await resolveOrCreateCategoryPaths(storeId, rows.map((r) => r.categoryPath ?? []));
+
   const products = readProducts();
   const usedSlugs = new Set(products.filter((p) => p.storeId === storeId).map((p) => p.slug));
   const idIndex = new Map(products.map((p, idx) => [p.id, idx]));
   const results: BulkUpsertResult[] = [];
-
-  // Resolved once for the whole batch (its own single read+write) rather than per row — a row
-  // with no categoryPath (blank CSV cells) resolves to null here, meaning "leave unchanged".
-  const resolvedCategoryIds = resolveOrCreateCategoryPaths(storeId, rows.map((r) => r.categoryPath ?? []));
 
   rows.forEach((row, i) => {
     const categoryId = resolvedCategoryIds[i] ?? null;

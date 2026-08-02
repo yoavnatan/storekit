@@ -248,7 +248,7 @@ const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1
 const products = store
   ? getProductsByStoreId(store.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   : [];
-const storeCategoryList = store ? getCategoriesByStoreId(store.id) : [];
+const storeCategoryList = store ? await getCategoriesByStoreId(store.id) : [];
 const categoryTree = buildCategoryTree(storeCategoryList);
 const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
 const wishlistCounts = store ? getAllWishlistCounts() : ({} as Record<string, number>);

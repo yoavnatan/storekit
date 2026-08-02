@@ -1,11 +1,45 @@
-import fs from 'node:fs';
-import path from 'node:path';
+/**
+ * A store's own product category tree — the third module moved off `data/*.json`
+ * (DB_MIGRATION_PLAN.md §8 stage 2).
+ *
+ * The split in this file is the thing to see first: **the readers and writers are queries and are
+ * therefore `async`; every tree computation below them is pure and stays synchronous.** A caller
+ * fetches the store's categories once and then walks, counts, paths and builds a tree from that one
+ * array — `[storeSlug]/index.astro` does exactly that, and turning `getAncestorChain` into a query
+ * would have made one page a dozen round-trips for data it already held.
+ *
+ * What the database does that a file could not:
+ *
+ *   · **A duplicate sibling name is refused by an index, not by a read before the write (§7.4)** —
+ *     `migrations/0002_category_sibling_name.sql`. Two dashboard tabs adding the same category in
+ *     the same moment both used to pass the check.
+ *   · **`position` is assigned inside the INSERT**, from `MAX(position) + 1` over the siblings, so
+ *     two categories created at once cannot land on the same slot.
+ *   · **Deleting is one conditional statement.** "Has children" is part of the `DELETE`'s `WHERE`,
+ *     which is what stops a child created a millisecond earlier from being cascaded away by a
+ *     check that had already passed.
+ *   · **A product pointing at a deleted category is handled by the schema** — `store_products
+ *     .category_id` is `ON DELETE SET NULL`, the same answer the pure code below gives for an id it
+ *     cannot resolve.
+ */
 import crypto from 'node:crypto';
-
-const CATEGORIES_PATH = path.join(process.cwd(), 'data/store-categories.json');
+import { firstRow, isUuid, query, rows, withTransaction, type Queryable } from './db.js';
 
 /** Keeps the dashboard tree editor and the store page's drill-down filter both simple to build and to use. */
 export const MAX_CATEGORY_DEPTH = 3;
+
+/**
+ * Longest category name accepted, matching the `maxlength="40"` both name inputs already carry
+ * (seller/dashboard.astro's root-category field, category-tree.ts's per-level one).
+ *
+ * **The UI cap was the only one, and a disabled input is not a rule** — this module is reached by a
+ * hand-built POST and by a CSV cell, neither of which passes through those fields. It became
+ * load-bearing with `store_categories_sibling_name_idx`: a btree index tuple has a hard size limit
+ * (~2700 bytes), so a multi-kilobyte name no longer stores a silly value — it raises, and the
+ * seller gets a 500 on a form that used to work. A name that cannot fit in a chip was never
+ * useful anyway.
+ */
+export const MAX_CATEGORY_NAME_LENGTH = 40;
 
 export interface StoreCategory {
   id: string;
@@ -20,21 +54,43 @@ export interface CategoryNode extends StoreCategory {
   children: CategoryNode[];
 }
 
-function readCategories(): StoreCategory[] {
-  try { return JSON.parse(fs.readFileSync(CATEGORIES_PATH, 'utf8')) as StoreCategory[]; }
-  catch { return []; }
+/** `order` is a reserved word in SQL, so the column is `position`; the field keeps its name. */
+const COLUMNS = 'id, store_id, name, parent_id, position, created_at';
+
+/** §7.13: a table has no natural order. `position` is what the seller arranges; `created_at, id`
+ *  breaks a tie so a tree stops reshuffling itself between two loads of the same dashboard. */
+const ORDER = 'ORDER BY position, created_at, id';
+
+interface CategoryRow {
+  id: string;
+  store_id: string;
+  name: string;
+  parent_id: string | null;
+  position: number;
+  created_at: Date | string | null;
 }
 
-function writeCategories(categories: StoreCategory[]): void {
-  fs.writeFileSync(CATEGORIES_PATH, JSON.stringify(categories, null, 2));
+function toCategory(row: CategoryRow): StoreCategory {
+  return {
+    id: row.id,
+    storeId: row.store_id,
+    name: row.name,
+    parentId: row.parent_id,
+    order: row.position,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at ?? ''),
+  };
 }
 
-export function getCategoriesByStoreId(storeId: string): StoreCategory[] {
-  return readCategories().filter((c) => c.storeId === storeId);
+export async function getCategoriesByStoreId(storeId: string): Promise<StoreCategory[]> {
+  if (!isUuid(storeId)) return [];
+  return (await rows<CategoryRow>(`SELECT ${COLUMNS} FROM store_categories WHERE store_id = $1 ${ORDER}`, [storeId]))
+    .map(toCategory);
 }
 
-export function getCategoryById(id: string): StoreCategory | null {
-  return readCategories().find((c) => c.id === id) ?? null;
+export async function getCategoryById(id: string): Promise<StoreCategory | null> {
+  if (!isUuid(id)) return null;
+  const row = await firstRow<CategoryRow>(`SELECT ${COLUMNS} FROM store_categories WHERE id = $1`, [id]);
+  return row ? toCategory(row) : null;
 }
 
 /** 1 for a root node, 2 for its children, etc. */
@@ -136,139 +192,222 @@ export interface CreateCategoryInput {
   parentId?: string | null;
 }
 
-export function createCategory(storeId: string, { name, parentId = null }: CreateCategoryInput): StoreCategory | { error: string } {
-  const trimmed = name.trim();
-  if (!trimmed) return { error: 'שם קטגוריה נדרש.' };
+const NAME_REQUIRED = 'שם קטגוריה נדרש.';
+const NAME_TOO_LONG = `שם קטגוריה ארוך מדי (עד ${MAX_CATEGORY_NAME_LENGTH} תווים).`;
+const NOT_FOUND = 'הקטגוריה לא נמצאה.';
+const DUPLICATE_SIBLING = 'כבר קיימת קטגוריה בשם הזה באותה רמה.';
 
-  const categories = readCategories();
-  const storeCategories = categories.filter((c) => c.storeId === storeId);
+/**
+ * Add one category.
+ *
+ * **The uniqueness check IS the insert.** `ON CONFLICT DO NOTHING` against
+ * `store_categories_sibling_name_idx` returns zero rows when a sibling already holds the name, and
+ * zero rows is the answer no matter who else was mid-write — the read-then-write it replaces let two
+ * tabs both find the name free.
+ *
+ * `position` comes from the same statement for the same reason: `MAX(position) + 1` evaluated
+ * inside the INSERT cannot be read by a second insert before this one lands.
+ */
+export async function createCategory(storeId: string, { name, parentId = null }: CreateCategoryInput): Promise<StoreCategory | { error: string }> {
+  const trimmed = name.trim();
+  if (!trimmed) return { error: NAME_REQUIRED };
+  if (trimmed.length > MAX_CATEGORY_NAME_LENGTH) return { error: NAME_TOO_LONG };
+  if (!isUuid(storeId)) return { error: 'החנות לא נמצאה.' };
 
   if (parentId) {
-    const parent = storeCategories.find((c) => c.id === parentId);
-    if (!parent) return { error: 'קטגוריית האב לא נמצאה.' };
-  }
-  if (getDepth(storeCategories, parentId) + 1 > MAX_CATEGORY_DEPTH) {
-    return { error: `לא ניתן לקנן יותר מ-${MAX_CATEGORY_DEPTH} רמות.` };
-  }
-  const siblings = storeCategories.filter((c) => c.parentId === parentId);
-  if (siblings.some((c) => c.name === trimmed)) {
-    return { error: 'כבר קיימת קטגוריה בשם הזה באותה רמה.' };
+    if (!isUuid(parentId)) return { error: 'קטגוריית האב לא נמצאה.' };
+    // The parent's depth, walked in the database rather than by fetching the whole tree: the
+    // recursion climbs from the parent to the root and counts the hops, so a parent that belongs to
+    // another store simply produces no rows and reads as "not found" — which is the same answer the
+    // file version gave, and the one that refuses to leak that the id exists.
+    const parent = await firstRow<{ depth: number }>(
+      `WITH RECURSIVE chain AS (
+         SELECT id, parent_id, 1 AS depth FROM store_categories WHERE id = $1 AND store_id = $2
+         UNION ALL
+         SELECT c.id, c.parent_id, chain.depth + 1 FROM store_categories c JOIN chain ON c.id = chain.parent_id
+       )
+       SELECT MAX(depth)::int AS depth FROM chain`,
+      [parentId, storeId],
+    );
+    if (!parent?.depth) return { error: 'קטגוריית האב לא נמצאה.' };
+    if (parent.depth + 1 > MAX_CATEGORY_DEPTH) return { error: `לא ניתן לקנן יותר מ-${MAX_CATEGORY_DEPTH} רמות.` };
   }
 
-  const category: StoreCategory = {
-    id: crypto.randomUUID(),
-    storeId,
-    name: trimmed,
-    parentId,
-    order: siblings.length ? Math.max(...siblings.map((c) => c.order)) + 1 : 0,
-    createdAt: new Date().toISOString(),
-  };
-  categories.push(category);
-  writeCategories(categories);
-  return category;
+  const row = await firstRow<CategoryRow>(
+    `INSERT INTO store_categories (id, store_id, parent_id, name, position, created_at)
+     SELECT $1, $2, $3::uuid, $4,
+            COALESCE((SELECT MAX(position) + 1 FROM store_categories
+                       WHERE store_id = $2 AND parent_id IS NOT DISTINCT FROM $3::uuid), 0),
+            now()
+     ON CONFLICT DO NOTHING
+     RETURNING ${COLUMNS}`,
+    [crypto.randomUUID(), storeId, parentId, trimmed],
+  );
+  return row ? toCategory(row) : { error: DUPLICATE_SIBLING };
 }
 
-export function renameCategory(id: string, name: string): StoreCategory | { error: string } {
+/**
+ * Rename in place. The `NOT EXISTS` is the sibling check and it reads the same row set the index
+ * guards, so the two can never disagree; `s.id <> t.id` is what lets a seller re-save the name it
+ * already has. Zero rows means one of two things, and they need different sentences, so the row is
+ * looked up once afterwards to tell them apart — on the failure path only.
+ */
+export async function renameCategory(id: string, name: string): Promise<StoreCategory | { error: string }> {
   const trimmed = name.trim();
-  if (!trimmed) return { error: 'שם קטגוריה נדרש.' };
+  if (!trimmed) return { error: NAME_REQUIRED };
+  if (trimmed.length > MAX_CATEGORY_NAME_LENGTH) return { error: NAME_TOO_LONG };
+  if (!isUuid(id)) return { error: NOT_FOUND };
 
-  const categories = readCategories();
-  const idx = categories.findIndex((c) => c.id === id);
-  if (idx === -1) return { error: 'הקטגוריה לא נמצאה.' };
-
-  const target = categories[idx]!;
-  const siblings = categories.filter((c) => c.storeId === target.storeId && c.parentId === target.parentId && c.id !== id);
-  if (siblings.some((c) => c.name === trimmed)) {
-    return { error: 'כבר קיימת קטגוריה בשם הזה באותה רמה.' };
-  }
-
-  categories[idx] = { ...target, name: trimmed };
-  writeCategories(categories);
-  return categories[idx];
+  const row = await firstRow<CategoryRow>(
+    `UPDATE store_categories t SET name = $2
+      WHERE t.id = $1
+        AND NOT EXISTS (SELECT 1 FROM store_categories s
+                         WHERE s.store_id = t.store_id
+                           AND s.parent_id IS NOT DISTINCT FROM t.parent_id
+                           AND s.name = $2 AND s.id <> t.id)
+      RETURNING ${COLUMNS}`,
+    [id, trimmed],
+  );
+  if (row) return toCategory(row);
+  return (await getCategoryById(id)) ? { error: DUPLICATE_SIBLING } : { error: NOT_FOUND };
 }
 
-// Deleting a category with subcategories would either silently cascade-delete
-// a whole branch or silently reparent it — both surprising for a seller who
-// isn't expected to think in tree semantics. Blocking is the option with no
-// silent side effect: the seller deletes the leaves first, on purpose.
-export function deleteCategory(id: string): { ok: true } | { error: string } {
-  const categories = readCategories();
-  const target = categories.find((c) => c.id === id);
-  if (!target) return { error: 'הקטגוריה לא נמצאה.' };
-  const hasChildren = categories.some((c) => c.parentId === id);
-  if (hasChildren) return { error: 'יש למחוק קודם את תתי-הקטגוריות.' };
-
-  writeCategories(categories.filter((c) => c.id !== id));
-  return { ok: true };
+/**
+ * Deleting a category with subcategories would either silently cascade-delete a whole branch or
+ * silently reparent it — both surprising for a seller who isn't expected to think in tree semantics.
+ * Blocking is the option with no silent side effect: the seller deletes the leaves first, on purpose.
+ *
+ * **The block has to be part of the statement, not a check before it.** `store_categories.parent_id`
+ * is `ON DELETE CASCADE`, so a subcategory added between a passing check and the delete would be
+ * erased along with its parent and nothing would report it.
+ */
+export async function deleteCategory(id: string): Promise<{ ok: true } | { error: string }> {
+  if (!isUuid(id)) return { error: NOT_FOUND };
+  const { rowCount } = await query(
+    `DELETE FROM store_categories
+      WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM store_categories c WHERE c.parent_id = $1)`,
+    [id],
+  );
+  if (rowCount > 0) return { ok: true };
+  return (await getCategoryById(id)) ? { error: 'יש למחוק קודם את תתי-הקטגוריות.' } : { error: NOT_FOUND };
 }
 
-/** Swaps `order` with the previous/next sibling — the only reordering control; no drag-and-drop. */
-export function moveCategory(id: string, direction: 'up' | 'down'): { ok: true } | { error: string } {
-  const categories = readCategories();
-  const target = categories.find((c) => c.id === id);
-  if (!target) return { error: 'הקטגוריה לא נמצאה.' };
+/**
+ * Move one step among its siblings — the only reordering control; no drag-and-drop.
+ *
+ * **Renumbers the whole sibling list rather than swapping two `position` values**, which the file
+ * version did. A swap is a no-op whenever the two happen to hold the SAME number, and equal
+ * positions are not exotic: every category imported from the JSON era carries the order it had, and
+ * `resolveOrCreateCategoryPaths` can seed a level from an empty table. Rewriting the run from its
+ * ordered form gives 0..n-1 every time, so the button always moves something.
+ *
+ * The read and the write share one transaction, so two arrows clicked at once cannot both renumber
+ * from the same starting order and lose one of the moves.
+ */
+export async function moveCategory(id: string, direction: 'up' | 'down'): Promise<{ ok: true } | { error: string }> {
+  if (!isUuid(id)) return { error: NOT_FOUND };
+  return withTransaction(async (tx: Queryable) => {
+    const target = (await tx.query<CategoryRow>(
+      `SELECT ${COLUMNS} FROM store_categories WHERE id = $1 FOR UPDATE`, [id],
+    )).rows[0];
+    if (!target) return { error: NOT_FOUND };
 
-  const siblings = categories
-    .filter((c) => c.storeId === target.storeId && c.parentId === target.parentId)
-    .sort((a, b) => a.order - b.order);
-  const idx = siblings.findIndex((c) => c.id === id);
-  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-  if (swapIdx < 0 || swapIdx >= siblings.length) return { ok: true }; // already at the edge — no-op, not an error
+    const siblings = (await tx.query<CategoryRow>(
+      `SELECT ${COLUMNS} FROM store_categories
+        WHERE store_id = $1 AND parent_id IS NOT DISTINCT FROM $2::uuid ${ORDER} FOR UPDATE`,
+      [target.store_id, target.parent_id],
+    )).rows;
 
-  const other = siblings[swapIdx]!;
-  const targetOrder = target.order;
-  const otherOrder = other.order;
-  const updated = categories.map((c) => {
-    if (c.id === target.id) return { ...c, order: otherOrder };
-    if (c.id === other.id) return { ...c, order: targetOrder };
-    return c;
+    const idx = siblings.findIndex((c) => c.id === id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= siblings.length) return { ok: true }; // already at the edge — no-op, not an error
+
+    const reordered = siblings.map((c) => c.id);
+    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx]!, reordered[idx]!];
+    await tx.query(
+      `UPDATE store_categories c SET position = v.pos - 1
+         FROM unnest($1::uuid[]) WITH ORDINALITY AS v(id, pos)
+        WHERE c.id = v.id`,
+      [reordered],
+    );
+    return { ok: true };
   });
-  writeCategories(updated);
-  return { ok: true };
 }
 
-/** Bulk-inserts categories with pre-assigned ids/order — used only by the one-time migration script. */
-export function seedCategories(categories: StoreCategory[]): void {
-  const existing = readCategories();
-  writeCategories([...existing, ...categories]);
-}
+/**
+ * Resolve each root-first path of segment NAMES to a category id, creating whatever is missing.
+ *
+ * Used by the CSV bulk import, where a seller's spreadsheet may define new structure just by listing
+ * paths — no need to pre-build the tree by hand. Segments beyond MAX_CATEGORY_DEPTH are ignored (the
+ * caller, csv-bulk.ts, already caps at 3 columns).
+ *
+ * **One `SELECT` for the store's whole tree, then an insert only for what is genuinely new** — a
+ * catalog of a thousand rows shares a handful of categories, so resolving per row would be a
+ * thousand round-trips for a dozen answers. A file with no category column at all does not touch the
+ * database: the early return matters because that is the common shape (a sku+stock feed), and it
+ * keeps a bulk upload of an uncategorised catalog at zero extra queries.
+ *
+ * The whole batch runs in one transaction, so a file that fails halfway leaves no half-built tree.
+ * Each `INSERT` still carries `ON CONFLICT DO NOTHING` plus a re-read: a concurrent upload of the
+ * same spreadsheet must join the category this one created, not fail on it.
+ */
+export async function resolveOrCreateCategoryPaths(storeId: string, paths: string[][]): Promise<Array<string | null>> {
+  // A too-long segment is TRUNCATED here rather than rejected: this is the bulk path, and failing a
+  // thousand-row upload over one long spreadsheet cell would be a worse answer than a clipped name
+  // the seller can rename. The per-category editor rejects instead, because there it is one field
+  // and the seller is standing in front of it.
+  const wanted = paths.map((segments) => segments
+    .map((s) => s.trim().slice(0, MAX_CATEGORY_NAME_LENGTH))
+    .filter(Boolean)
+    .slice(0, MAX_CATEGORY_DEPTH));
+  if (!wanted.some((segments) => segments.length) || !isUuid(storeId)) return wanted.map(() => null);
 
-/** One read + one write for the whole batch (CSV bulk import can carry hundreds/thousands of rows —
- *  walking each row's path through the per-row create/rename API would mean that many separate
- *  file read+writes). Each path (root-first segment names) is matched against existing siblings by
- *  name at each level; a missing segment is auto-created — so a seller's spreadsheet can define new
- *  category structure just by listing paths, no need to pre-build the tree by hand first. Segments
- *  beyond MAX_CATEGORY_DEPTH are ignored (the caller — csv-bulk.ts — already caps at 3 columns). */
-export function resolveOrCreateCategoryPaths(storeId: string, paths: string[][]): Array<string | null> {
-  const categories = readCategories();
-  const results: Array<string | null> = [];
+  return withTransaction(async (tx: Queryable) => {
+    const existing = (await tx.query<CategoryRow>(
+      `SELECT ${COLUMNS} FROM store_categories WHERE store_id = $1 ${ORDER}`, [storeId],
+    )).rows;
+    // Keyed by parent + name, which is exactly what the unique index keys on, so a hit here and a
+    // conflict there are always the same question.
+    const byKey = new Map<string, string>(existing.map((c) => [`${c.parent_id ?? ''} ${c.name}`, c.id] as const));
+    const results: Array<string | null> = [];
 
-  for (const segments of paths) {
-    const trimmed = segments.map((s) => s.trim()).filter(Boolean).slice(0, MAX_CATEGORY_DEPTH);
-    if (!trimmed.length) { results.push(null); continue; }
-
-    let parentId: string | null = null;
-    let finalId: string | null = null;
-    for (const name of trimmed) {
-      let node = categories.find((c) => c.storeId === storeId && c.parentId === parentId && c.name === name);
-      if (!node) {
-        const siblings = categories.filter((c) => c.storeId === storeId && c.parentId === parentId);
-        node = {
-          id: crypto.randomUUID(),
-          storeId,
-          name,
-          parentId,
-          order: siblings.length ? Math.max(...siblings.map((c) => c.order)) + 1 : 0,
-          createdAt: new Date().toISOString(),
-        };
-        categories.push(node);
-      }
-      parentId = node.id;
-      finalId = node.id;
+    /** The id of this store's `name` under `parent`, creating it if nobody holds it yet. */
+    async function ensure(parent: string | null, name: string): Promise<string | undefined> {
+      const inserted = await tx.query<{ id: string }>(
+        `INSERT INTO store_categories (id, store_id, parent_id, name, position, created_at)
+         SELECT $1, $2, $3::uuid, $4,
+                COALESCE((SELECT MAX(position) + 1 FROM store_categories
+                           WHERE store_id = $2 AND parent_id IS NOT DISTINCT FROM $3::uuid), 0),
+                now()
+         ON CONFLICT DO NOTHING
+         RETURNING id`,
+        [crypto.randomUUID(), storeId, parent, name],
+      );
+      if (inserted.rows[0]) return inserted.rows[0].id;
+      // Nothing inserted means a concurrent upload of the same spreadsheet already created it —
+      // join theirs rather than failing on a name this batch was about to write anyway.
+      const found = await tx.query<{ id: string }>(
+        `SELECT id FROM store_categories
+          WHERE store_id = $1 AND parent_id IS NOT DISTINCT FROM $2::uuid AND name = $3`,
+        [storeId, parent, name],
+      );
+      return found.rows[0]?.id;
     }
-    results.push(finalId);
-  }
 
-  writeCategories(categories);
-  return results;
+    for (const segments of wanted) {
+      let parentId: string | null = null;
+      let finalId: string | null = null;
+      for (const name of segments) {
+        const key: string = `${parentId ?? ''} ${name}`;
+        const id: string | undefined = byKey.get(key) ?? await ensure(parentId, name);
+        if (!id) break; // unreachable: the insert either landed or something else already holds it
+        byKey.set(key, id);
+        parentId = id;
+        finalId = id;
+      }
+      results.push(finalId);
+    }
+
+    return results;
+  });
 }

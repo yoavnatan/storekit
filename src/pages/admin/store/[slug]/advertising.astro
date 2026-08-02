@@ -68,7 +68,7 @@ const adBaseline = storeBaselineStatus({
 const adEligibleProducts = getProductsByStoreId(store.id).filter((p) => isProductVisible(p) && p.stock > 0);
 // Gender inferred from each product's category path / name / tags — pre-fills the
 // campaign audience so it isn't re-entered (mirrors seller/dashboard.astro).
-const adStoreCategoryList = getCategoriesByStoreId(store.id);
+const adStoreCategoryList = await getCategoriesByStoreId(store.id);
 const adCategoryTree = buildCategoryTree(adStoreCategoryList);
 const adInferTexts = (p: typeof adEligibleProducts[number]) => [p.categoryId ? categoryPath(adStoreCategoryList, p.categoryId) : '', p.name, ...(p.tags ?? [])];
 const adProductInferredGender = new Map(adEligibleProducts.map((p) => [p.id, inferAudienceGender(adInferTexts(p)) ?? ''] as const));

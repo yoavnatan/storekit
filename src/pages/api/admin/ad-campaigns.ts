@@ -57,7 +57,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   // Same validation the seller route runs (ad-campaign-input.ts) — one definition of which
   // products/categories a campaign may name, so the two routes can't drift apart.
-  const built = buildCampaignInput(body, store);
+  const built = await buildCampaignInput(body, store);
   if (!built.ok) return json({ error: built.error }, built.status);
 
   const campaign = createCampaign(built.input);

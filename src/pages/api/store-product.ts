@@ -65,7 +65,7 @@ export const GET: APIRoute = async ({ url, cookies, request }) => {
     stock:       product.stock,
     images:      product.images ?? [],
     categoryId:  product.categoryId ?? '',
-    category:    product.categoryId ? categoryPath(getCategoriesByStoreId(store.id), product.categoryId) : '',
+    category:    product.categoryId ? categoryPath(await getCategoriesByStoreId(store.id), product.categoryId) : '',
     tags:        product.tags ?? [],
     specs:       product.specs ?? [],
     variants:    product.variants ?? [],

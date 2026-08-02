@@ -46,9 +46,9 @@ function json(data: unknown, status = 200) {
 
 // Never trust a client-supplied categoryId at face value — confirm it's a real
 // node belonging to this exact store before it's allowed onto the product.
-function resolveCategoryId(raw: string, storeId: string): string | undefined {
+async function resolveCategoryId(raw: string, storeId: string): Promise<string | undefined> {
   if (!raw) return undefined;
-  const category = getCategoryById(raw);
+  const category = await getCategoryById(raw);
   return category && category.storeId === storeId ? category.id : undefined;
 }
 
@@ -70,7 +70,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const price = parseFloat(String(form.get('price') || '0'));
     const stock = parseInt(String(form.get('stock') || '0'), 10);
     const images = parseImages(form);
-    const categoryId = resolveCategoryId(parseCategoryId(form), storeId);
+    const categoryId = await resolveCategoryId(parseCategoryId(form), storeId);
     const tags = parseTags(form);
     const sku = parseSku(form);
     const specs = parseSpecs(form);
@@ -86,7 +86,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stuffingHit = findKeywordStuffing(name, description, ...tags);
     if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
-    const catPathStr = categoryId ? categoryPath(getCategoriesByStoreId(storeId), categoryId) : '';
+    const catPathStr = categoryId ? categoryPath(await getCategoriesByStoreId(storeId), categoryId) : '';
     const finalTags = withAutoTags(tags, catPathStr, allVariantValues(variants));
 
     const product = createProduct(storeId, {
@@ -128,7 +128,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       price: submittedPrice,
       stock: isNaN(submittedStock) ? 0 : submittedStock,
       images: parseImages(form),
-      categoryId: resolveCategoryId(parseCategoryId(form), product.storeId),
+      categoryId: await resolveCategoryId(parseCategoryId(form), product.storeId),
       tags: parseTags(form),
       sku: parseSku(form) || undefined,
       specs: parseSpecs(form),
@@ -189,7 +189,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // that just changed, and variant options just added — so a seller who
     // removed an auto tag whose source is unchanged keeps it removed.
     const catChanged = (categoryId ?? '') !== (product.categoryId ?? '');
-    const catPathStr = catChanged && categoryId ? categoryPath(getCategoriesByStoreId(product.storeId), categoryId) : '';
+    const catPathStr = catChanged && categoryId ? categoryPath(await getCategoriesByStoreId(product.storeId), categoryId) : '';
     const freshVariantValues = newVariantValues(allVariantValues(product.variants ?? []), allVariantValues(variants));
     const finalTags = withAutoTags(tags, catPathStr, freshVariantValues);
 
@@ -217,7 +217,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // full edit form — treat that as acknowledging any low-stock/out-of-stock
     // alert for it, same as an order's status change clearing its own notification.
     deleteNotificationsByRelatedIds([productId], sellerId);
-    const categoryPathStr = updated.categoryId ? categoryPath(getCategoriesByStoreId(product.storeId), updated.categoryId) : '';
+    const categoryPathStr = updated.categoryId ? categoryPath(await getCategoriesByStoreId(product.storeId), updated.categoryId) : '';
     // The edit row stays in the DOM after a save, so it gets the revision it now
     // holds — otherwise a second save from the same open row would report a conflict
     // against the seller's own first one.

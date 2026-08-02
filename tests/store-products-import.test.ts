@@ -44,23 +44,23 @@ type PreviewRow = {
   action: string; unchanged?: boolean; variantCount?: number; errors: string[];
   changedCombos?: Array<{ line: number; label: string }>; comboLineByKey?: Record<string, number>;
 };
-const preview = (csv: string) =>
-  (runProductImport({ storeId: 's1', sellerId: 'seller', csv, commit: false }).body as { results: PreviewRow[] }).results;
+const preview = async (csv: string) =>
+  ((await runProductImport({ storeId: 's1', sellerId: 'seller', csv, commit: false })).body as { results: PreviewRow[] }).results;
 
 beforeEach(() => { categoriesDb = []; db = [seedVariantProduct()]; });
 
 describe('runProductImport — a variant product is ONE row to update, never N', () => {
-  it('re-importing the unchanged export is a single no-op (not four updates)', () => {
-    const results = preview(productsToCsv(db, [], 'he'));
+  it('re-importing the unchanged export is a single no-op (not four updates)', async () => {
+    const results = (await preview(productsToCsv(db, [], 'he')));
     expect(results.length).toBe(1);
     expect(results[0]!.action).toBe('update');
     expect(results[0]!.unchanged).toBe(true);
     expect(results[0]!.variantCount).toBe(4);
   });
 
-  it('editing one combo shows exactly one changed update, pointing at that one row + variant', () => {
+  it('editing one combo shows exactly one changed update, pointing at that one row + variant', async () => {
     const csv = productsToCsv(db, [], 'he').replace(',5,', ',9,'); // bump the first combo's stock
-    const results = preview(csv);
+    const results = (await preview(csv));
     expect(results.length).toBe(1);
     expect(results[0]!.action).toBe('update');
     expect(results[0]!.unchanged).toBe(false);
@@ -70,7 +70,7 @@ describe('runProductImport — a variant product is ONE row to update, never N',
     expect(results[0]!.comboLineByKey).toBeUndefined();
   });
 
-  it('groups combo rows that share the id even when the group column is blank', () => {
+  it('groups combo rows that share the id even when the group column is blank', async () => {
     // Four id-matched rows, each a real combo (option columns filled) but NO group value — the shape
     // that used to surface as four separate "updates" to the same product.
     const csv = [
@@ -80,19 +80,19 @@ describe('runProductImport — a variant product is ONE row to update, never N',
       row({ id: 'p1', sku: 'SK-2', name: 'Chair', price: '100', stock: '5', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'S' }),
       row({ id: 'p1', sku: 'SK-3', name: 'Chair', price: '100', stock: '5', option1Name: 'צבע', option1Value: 'כחול', option2Name: 'מידה', option2Value: 'L' }),
     ].join('\n');
-    const results = preview(csv);
+    const results = (await preview(csv));
     expect(results.length).toBe(1);
     expect(results[0]!.action).toBe('update');
     expect(results[0]!.variantCount).toBe(4);
   });
 
-  it('id-matched rows with no group AND no option columns collapse to one clear error, not N phantom updates', () => {
+  it('id-matched rows with no group AND no option columns collapse to one clear error, not N phantom updates', async () => {
     const csv = [
       COLS.join(','),
       row({ id: 'p1', name: 'Chair', price: '100', stock: '9' }),
       row({ id: 'p1', name: 'Chair', price: '100', stock: '7' }),
     ].join('\n');
-    const results = preview(csv);
+    const results = (await preview(csv));
     expect(results.length).toBe(1);
     expect(results[0]!.action).toBe('error');
     expect(results[0]!.errors).toContain('variant-missing-option');
@@ -104,43 +104,43 @@ describe('runProductImport — a variant product is ONE row to update, never N',
 // Writing one anyway reported "updated" while every combo kept selling its old quantity — the
 // oversell path a sku+stock feed walks into.
 describe('runProductImport — a single stock number can never move a per-combo product', () => {
-  it('rejects a flat row that changes stock on a variant product', () => {
+  it('rejects a flat row that changes stock on a variant product', async () => {
     const csv = [COLS.join(','), row({ id: 'p1', name: 'Chair', price: '100', stock: '3' })].join('\n');
-    const results = preview(csv);
+    const results = (await preview(csv));
     expect(results.length).toBe(1);
     expect(results[0]!.action).toBe('error');
     expect(results[0]!.errors).toContain('variant-stock-needs-combos');
   });
 
-  it('commits nothing for that row — the combo buckets and the total both stand', () => {
+  it('commits nothing for that row — the combo buckets and the total both stand', async () => {
     const csv = [COLS.join(','), row({ id: 'p1', name: 'Chair', price: '100', stock: '3' })].join('\n');
-    runProductImport({ storeId: 's1', sellerId: 'seller', csv, commit: true });
+    (await runProductImport({ storeId: 's1', sellerId: 'seller', csv, commit: true }));
     expect(db[0]!.stock).toBe(20);
     expect(Object.values(db[0]!.variantStock!)).toEqual([5, 5, 5, 5]);
   });
 
-  it('leaves a stock cell that matches the existing total as a plain no-op, not an error', () => {
+  it('leaves a stock cell that matches the existing total as a plain no-op, not an error', async () => {
     // The 4+-dimension export is a flat row carrying the total — a faithful round-trip must stay quiet.
     const csv = [COLS.join(','), row({ id: 'p1', name: 'Chair', price: '100', stock: '20' })].join('\n');
-    const results = preview(csv);
+    const results = (await preview(csv));
     expect(results[0]!.action).toBe('update');
     expect(results[0]!.unchanged).toBe(true);
   });
 
-  it('points a 4-dimension product at the dashboard — the option columns cannot express it', () => {
+  it('points a 4-dimension product at the dashboard — the option columns cannot express it', async () => {
     // Four dimensions is why the export went flat in the first place; "fill in the option columns"
     // would send this seller after a fourth column pair that does not exist in the header.
     const p = db[0]!;
     p.variants = [...p.variants!, { name: 'חומר', options: ['עץ'] }, { name: 'נפח', options: ['1L'] }];
     const csv = [COLS.join(','), row({ id: 'p1', name: 'Chair', price: '100', stock: '3' })].join('\n');
-    const results = preview(csv);
+    const results = (await preview(csv));
     expect(results[0]!.action).toBe('error');
     expect(results[0]!.errors).toContain('variant-stock-dashboard-only');
   });
 
-  it('still applies a flat row that leaves the stock cell blank', () => {
+  it('still applies a flat row that leaves the stock cell blank', async () => {
     const csv = [COLS.join(','), row({ id: 'p1', name: 'Renamed', price: '100' })].join('\n');
-    const results = preview(csv);
+    const results = (await preview(csv));
     expect(results[0]!.action).toBe('update');
     expect(results[0]!.errors).toEqual([]);
   });

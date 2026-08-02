@@ -79,7 +79,7 @@ type ScopeResult = { ok: true; scope: ScopeFields } | { ok: false; error: string
  *  owns. Ids the store doesn't own are dropped rather than echoed back; losing ALL of them is
  *  the error, since a campaign that silently widened to the whole store would spend the seller's
  *  budget on something he never asked for. */
-function resolveScope(body: CampaignBody, store: StoreRef): ScopeResult {
+async function resolveScope(body: CampaignBody, store: StoreRef): Promise<ScopeResult> {
   const scope = body.scope;
 
   if (scope === 'product' || scope === 'products') {
@@ -110,7 +110,7 @@ function resolveScope(body: CampaignBody, store: StoreRef): ScopeResult {
     const wanted = idList(MAX_CAMPAIGN_CATEGORIES, body.categoryIds);
     if (!wanted.length) return { ok: false, error: 'Missing categoryIds', status: 400 };
     if (wanted.length > MAX_CAMPAIGN_CATEGORIES) return { ok: false, error: `Up to ${MAX_CAMPAIGN_CATEGORIES} categories per campaign`, status: 400 };
-    const owned = getCategoriesByStoreId(store.id);
+    const owned = await getCategoriesByStoreId(store.id);
     const picked = wanted.map((id) => owned.find((c) => c.id === id)).filter((c) => !!c);
     if (!picked.length) return { ok: false, error: 'Category not found', status: 404 };
     return { ok: true, scope: { scope: 'categories', categoryIds: picked.map((c) => c.id), categoryNames: picked.map((c) => c.name) } };
@@ -120,7 +120,7 @@ function resolveScope(body: CampaignBody, store: StoreRef): ScopeResult {
   return { ok: false, error: 'Invalid scope', status: 400 };
 }
 
-export function buildCampaignInput(body: CampaignBody, store: StoreRef): CampaignInputResult {
+export async function buildCampaignInput(body: CampaignBody, store: StoreRef): Promise<CampaignInputResult> {
   const { platform, monthlyBudget } = body;
   if (platform !== 'google' && platform !== 'meta' && platform !== 'both') return { ok: false, error: 'Invalid platform', status: 400 };
   if (!isValidCampaignBudget(monthlyBudget)) {
@@ -133,7 +133,7 @@ export function buildCampaignInput(body: CampaignBody, store: StoreRef): Campaig
     };
   }
 
-  const scoped = resolveScope(body, store);
+  const scoped = await resolveScope(body, store);
   if (!scoped.ok) return scoped;
 
   const durationDays = parseDuration(body.durationDays);

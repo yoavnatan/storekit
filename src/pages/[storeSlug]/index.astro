@@ -92,7 +92,7 @@ const demoIndex = isDemo ? Math.max(0, (await getDemoStores()).findIndex((s) => 
 // to exist in the JS card renderer further down (SSR/AJAX parity).
 const DEMO_PRODUCT_BADGE_CLASS = 'inline-flex items-center gap-1 mb-1 text-[0.66rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]';
 const DEMO_PRODUCT_BADGE_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>';
-const storeCategories = getCategoriesByStoreId(shopStore.id);
+const storeCategories = await getCategoriesByStoreId(shopStore.id);
 const categoryTree = buildCategoryTree(storeCategories);
 // A store's own categories are free text, so they get no icons (see
 // lib/category-icons.ts) — this count is what makes a chip row read as a live

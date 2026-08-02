@@ -121,7 +121,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       : scopeMode === 'category'
         // One comma-joined field rather than repeated inputs: the picker owns a single hidden
         // input, and `resolveSaleScope` drops anything blank or not this store's anyway.
-        ? resolveSaleScope(target.id, String(form.get('saleCategoryId') ?? '').split(','))
+        ? await resolveSaleScope(target.id, String(form.get('saleCategoryId') ?? '').split(','))
         : undefined;
 
     const sale = normalizeStoreSale({

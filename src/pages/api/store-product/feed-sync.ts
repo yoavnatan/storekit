@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const entries = guessMapping(rows[0]!, saved);
   const canonicalCsv = buildCanonicalCsv(rows, entries);
 
-  const { status, body: resBody } = runProductImport({
+  const { status, body: resBody } = await runProductImport({
     storeId: store.id, sellerId, csv: canonicalCsv,
     commit: !!body.commit,
   });
