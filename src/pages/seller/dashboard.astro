@@ -2317,8 +2317,11 @@ const orderStatusColors: Record<string, string> = {
           <p class="muted text-[0.8rem] leading-[1.5]">{d.storeUrlEditHint}</p>
 
           <div id="store-url-editor" hidden class="flex flex-col gap-2 mt-3 max-w-[30rem]">
-            <input id="store-url-input" class="input" dir="ltr" autocomplete="off" spellcheck="false" value={store.slug} />
+            {/* dir="auto" so a Hebrew slug types right-to-left; the preview stays ltr because the
+                address reads host-then-path, with bidi laying the Hebrew run out inside it. */}
+            <input id="store-url-input" class="input" dir="auto" autocomplete="off" spellcheck="false" value={store.slug} />
             <p class="muted text-[0.78rem]" dir="ltr" style="text-align:start"><span id="store-url-preview" class="font-mono [color:var(--color-text)]">{`${new URL(platformConfig.url).hostname}/${store.slug}`}</span></p>
+            <p class="muted text-[0.78rem] leading-[1.5]">{d.storeUrlHebrewNote}</p>
             <div class="flex gap-2">
               <button type="button" id="store-url-save" class="btn btn--sm">{d.save}</button>
               <button type="button" id="store-url-cancel" class="btn btn--ghost btn--sm">{d.cancel}</button>
