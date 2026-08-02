@@ -7,14 +7,14 @@ import type { BrandCampaign } from '../src/lib/brand-campaigns.js';
 function campaign(over: Partial<AdCampaign> = {}): AdCampaign {
   return {
     id: 'c1', storeId: 's1', storeSlug: 's1', scope: 'store', platform: 'google',
-    monthlyBudget: 300, status: 'active', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    monthlyBudgetAgorot: 30000, status: 'active', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     ...over,
   };
 }
 function brand(over: Partial<BrandCampaign> = {}): BrandCampaign {
   return {
     id: 'b1', objective: 'buyers', headline: 'x', body: 'y', destinationUrl: '/', platform: 'google',
-    monthlyBudget: 600, status: 'active', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    monthlyBudgetAgorot: 60000, status: 'active', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     ...over,
   };
 }
@@ -81,19 +81,19 @@ describe('ad-metrics (range-aware mock)', () => {
     // cap is still only a ceiling — Google and Meta charge for what the auction delivered, which
     // is why "משלמים רק על הוצאה בפועל" is on the form, so the figure lands NEAR the cap and
     // under it. Pacing without delivery would quietly turn the ceiling into a commitment.
-    const fixed = campaign({ createdAt: '2026-07-01T00:00:00.000Z', durationDays: 7, monthlyBudget: 300 });
+    const fixed = campaign({ createdAt: '2026-07-01T00:00:00.000Z', durationDays: 7, monthlyBudgetAgorot: 30000 });
     const fixedSpend = campaignLifetimeStats(fixed, new Date(2026, 6, 20)).spend;
     expect(fixedSpend).toBeLessThan(300);
     expect(fixedSpend).toBeGreaterThan(300 * 0.8);
 
     // The ongoing reading of the same number: per month, so a week is 7/30 of that month's spend.
-    const ongoing = campaign({ createdAt: '2026-07-01T00:00:00.000Z', monthlyBudget: 300 });
+    const ongoing = campaign({ createdAt: '2026-07-01T00:00:00.000Z', monthlyBudgetAgorot: 30000 });
     const ongoingMonth = campaignStatsInRange(ongoing, '2026-07-01', '2026-07-30').spend;
     expect(ongoingMonth).toBeLessThan(300);
     expect(campaignStatsInRange(ongoing, '2026-07-01', '2026-07-07').spend).toBeCloseTo(ongoingMonth * (7 / 30), 1);
 
     // Brand campaigns are the platform's own ad cost and read the same way.
-    const brandSpend = brandStatsInRange(brand({ durationDays: 14, monthlyBudget: 1400 }), '2026-01-01', '2026-01-14').spend;
+    const brandSpend = brandStatsInRange(brand({ durationDays: 14, monthlyBudgetAgorot: 140000 }), '2026-01-01', '2026-01-14').spend;
     expect(brandSpend).toBeLessThan(1400);
     expect(brandSpend).toBeGreaterThan(1400 * 0.8);
   });
@@ -112,7 +112,7 @@ describe('ad-metrics (range-aware mock)', () => {
 describe('spend follows the campaign\'s own period, not always a month', () => {
   const base = {
     id: 'c-budget', storeId: 's1', storeSlug: 's', scope: 'store' as const, platform: 'both' as const,
-    monthlyBudget: 500, status: 'active' as const,
+    monthlyBudgetAgorot: 50000, status: 'active' as const,
     createdAt: '2026-06-01T09:00:00.000Z', updatedAt: '2026-06-01T09:00:00.000Z',
   };
 
@@ -161,13 +161,13 @@ describe('spend follows the campaign\'s own period, not always a month', () => {
 describe('ROAS is the sales, not a mood', () => {
   const c = {
     id: 'c-roas', storeId: 's1', storeSlug: 's', scope: 'store' as const, platform: 'both' as const,
-    monthlyBudget: 300, status: 'active' as const,
+    monthlyBudgetAgorot: 30000, status: 'active' as const,
     createdAt: '2026-06-01T09:00:00.000Z', updatedAt: '2026-06-01T09:00:00.000Z',
   };
 
   it('is zero exactly when there were no sales', () => {
     // A single day of a tiny budget buys too little traffic to convert.
-    const tiny = campaignStatsInRange({ ...c, id: 'c-tiny', monthlyBudget: 50 }, '2026-06-01', '2026-06-01');
+    const tiny = campaignStatsInRange({ ...c, id: 'c-tiny', monthlyBudgetAgorot: 5000 }, '2026-06-01', '2026-06-01');
     expect(tiny.conversions).toBe(0);
     expect(tiny.roas).toBe(0);
   });
@@ -200,7 +200,7 @@ describe('ROAS is the sales, not a mood', () => {
 describe('the fee comes out of the budget', () => {
   const c = {
     id: 'c-fee', storeId: 's1', storeSlug: 's', scope: 'store' as const, platform: 'both' as const,
-    monthlyBudget: 1000, status: 'active' as const, durationDays: 30 as const,
+    monthlyBudgetAgorot: 100000, status: 'active' as const, durationDays: 30 as const,
     createdAt: '2026-06-01T09:00:00.000Z', updatedAt: '2026-06-01T09:00:00.000Z',
   };
   const stats = campaignLifetimeStats(c, new Date('2026-07-15T00:00:00Z'));
@@ -223,7 +223,7 @@ describe('the fee comes out of the budget', () => {
   });
 
   it('leaves the platform its own ads fee-free — it does not bill itself', () => {
-    const b = brandStatsInRange(brand({ durationDays: 14, monthlyBudget: 1400 }), '2026-01-01', '2026-01-14');
+    const b = brandStatsInRange(brand({ durationDays: 14, monthlyBudgetAgorot: 140000 }), '2026-01-01', '2026-01-14');
     expect(b.adSpend).toBe(b.spend);
   });
 });

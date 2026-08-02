@@ -1,7 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import crypto from 'node:crypto';
 import type { Order } from '../src/lib/orders.js';
-import type { AdCampaign } from '../src/lib/ad-campaigns.js';
 
 /** The transitions a seller can drive, and the one promise they rest on: nothing is deleted, and
  *  a store that still owes a buyer something cannot finish closing.
@@ -21,30 +20,6 @@ import type { AdCampaign } from '../src/lib/ad-campaigns.js';
  *  `openOrderCount` is a COUNT query now, so the orders it counts have to exist as rows —
  *  `writeOrders` below is what puts them there, and it is the only reason this file talks SQL.
  */
-const files: Record<string, unknown[]> = { campaigns: [] };
-const keyFor = (p: string): keyof typeof files | null =>
-  p.includes('ad-campaigns') ? 'campaigns' : null;
-
-vi.mock('node:fs', async (importOriginal) => {
-  const real = await importOriginal<typeof import('node:fs')>();
-  return {
-    default: {
-      ...real,
-      readFileSync: (...args: Parameters<typeof real.readFileSync>) => {
-        const key = typeof args[0] === 'string' ? keyFor(args[0]) : null;
-        return key ? JSON.stringify(files[key]) : real.readFileSync(...args);
-      },
-      writeFileSync: (...args: Parameters<typeof real.writeFileSync>) => {
-        const key = typeof args[0] === 'string' ? keyFor(args[0]) : null;
-        if (key) { files[key] = JSON.parse(String(args[1])); return; }
-        real.writeFileSync(...args);
-      },
-      existsSync: () => true,
-      mkdirSync: () => undefined,
-    },
-  };
-});
-
 const { pauseStore, resumeStore, requestStoreClosure, settleStoreClosure, openOrderCount, countOpenOrdersByStore } =
   await import('../src/lib/store-lifecycle.js');
 const { storeLifecycle } = await import('../src/lib/store-status.js');
@@ -69,9 +44,24 @@ const order = (name: string, extra: Partial<Order> = {}): Order =>
      shippingAgorot: 0, totalAgorot: 10, paymentRef: orderId(name), paymentStatus: 'paid', shippingStatus: 'pending',
      createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z', ...extra }) as Order;
 
-const campaign = (id: string, extra: Partial<AdCampaign> = {}): AdCampaign =>
-  ({ id, storeId: STORE_ID, storeSlug: SLUG, scope: 'store', platform: 'both', monthlyBudget: 300,
-     status: 'active', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z', ...extra }) as AdCampaign;
+/** A boost campaign of this store's, as a row. Closing the store has to ARCHIVE these rather than
+ *  delete them: the spend they accrued is part of figures already reported (ad-campaigns.ts). */
+async function seedCampaign(status: 'active' | 'paused' = 'active'): Promise<string> {
+  const id = crypto.randomUUID();
+  await query(
+    `INSERT INTO ad_campaigns (id, store_id, store_slug, scope, platform, monthly_budget_agorot, status)
+     VALUES ($1, $2, $3, 'store', 'both', 30000, $4)`,
+    [id, STORE_ID, SLUG, status],
+  );
+  return id;
+}
+
+/** Every campaign row of this store, however it ended up. */
+async function campaignRows(): Promise<{ status: string; archived_at: Date | string | null }[]> {
+  const { rows } = await query<{ status: string; archived_at: Date | string | null }>(
+    'SELECT status, archived_at FROM ad_campaigns WHERE store_id = $1', [STORE_ID]);
+  return rows;
+}
 
 /** The store as it stands right now — re-read, never a cached object. */
 const current = async () => (await getStoreById(STORE_ID))!;
@@ -110,7 +100,7 @@ async function writeOrders(orders: Order[]): Promise<void> {
 }
 
 beforeEach(async () => {
-  files.campaigns = [];
+  await query('DELETE FROM ad_campaigns WHERE store_id = $1', [STORE_ID]);
   await writeOrders([]);
   await query('DELETE FROM stores WHERE id = $1', [STORE_ID]);
   await query(
@@ -203,11 +193,14 @@ describe('closing with nothing owed', () => {
   });
 
   it('archives running boost campaigns instead of deleting them, so past spend survives', async () => {
-    files.campaigns = [campaign('c1'), campaign('c2', { status: 'paused' })];
+    await seedCampaign('active');
+    await seedCampaign('paused');
     await requestStoreClosure(STORE_ID);
-    const rows = files.campaigns as AdCampaign[];
+    // One statement archives them all now, rather than one write per campaign — but what this
+    // pins is the outcome: both rows still exist, both stopped, and neither was erased.
+    const rows = await campaignRows();
     expect(rows).toHaveLength(2);
-    expect(rows.every((c) => c.archivedAt)).toBe(true);
+    expect(rows.every((c) => c.archived_at)).toBe(true);
     expect(rows.every((c) => c.status === 'paused')).toBe(true);
   });
 });
@@ -257,7 +250,7 @@ describe('closing while orders are still open', () => {
   });
 
   it('does nothing for a store with no closure pending', async () => {
-    files.orders = [];
+    await writeOrders([]);
     expect(await settleStoreClosure(SLUG)).toBeNull();
     await pauseStore(STORE_ID);
     expect(await settleStoreClosure(SLUG)).toBeNull();

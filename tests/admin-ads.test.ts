@@ -26,7 +26,7 @@ function makeCampaign(over: Partial<AdCampaign> = {}): AdCampaign {
     storeSlug: 'store-x',
     scope: 'store',
     platform: 'google',
-    monthlyBudget: 300,
+    monthlyBudgetAgorot: 30000,
     status: 'active',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -42,7 +42,7 @@ function makeBrand(over: Partial<BrandCampaign> = {}): BrandCampaign {
     body: 'Join us',
     destinationUrl: '/',
     platform: 'google',
-    monthlyBudget: 600,
+    monthlyBudgetAgorot: 60000,
     status: 'active',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -58,7 +58,7 @@ describe('buildPlatformAdOverview', () => {
       allStores: [],
       campaigns: [], brandCampaigns: [],
       ads: { googleTagId: 'GTM-123', metaPixelId: '' },
-      settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.connection.googleTag).toBe(true);
     expect(o.connection.metaPixel).toBe(false);
@@ -69,7 +69,7 @@ describe('buildPlatformAdOverview', () => {
   it('treats missing ads config as fully unconnected', () => {
     const o = buildPlatformAdOverview({
       feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.connection.googleTag).toBe(false);
     expect(o.connection.metaPixel).toBe(false);
@@ -79,11 +79,11 @@ describe('buildPlatformAdOverview', () => {
     const stores = [makeStore({ id: 's1' }), makeStore({ id: 's2' })];
     const uncapped = buildPlatformAdOverview({
       feedStores: stores, feedProductCount: 4, allStores: stores, campaigns: [], brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     const capped = buildPlatformAdOverview({
       feedStores: stores, feedProductCount: 4, allStores: stores, campaigns: [], brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 1 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 100 },
     });
     // With a 1₪ cap the spend can't exceed it, and used% is clamped to 100.
     expect(uncapped.baseline.budgetUsedPct).toBe(0); // no budget set → 0
@@ -95,7 +95,7 @@ describe('buildPlatformAdOverview', () => {
     const stores = [makeStore({ id: 's1' })];
     const o = buildPlatformAdOverview({
       feedStores: stores, feedProductCount: 1, allStores: stores, campaigns: [], brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'paused', lifetimeBudget: 500 },
+      ads: undefined, settings: { baselineStatus: 'paused', lifetimeBudgetAgorot: 50000 },
     });
     expect(o.baseline.status).toBe('paused');
     expect(o.baseline.estimatedSpend).toBe(0);
@@ -104,12 +104,12 @@ describe('buildPlatformAdOverview', () => {
 
   it('aggregates only active boost campaigns, keeps a total count', () => {
     const campaigns = [
-      makeCampaign({ id: 'a', status: 'active', monthlyBudget: 300 }),
-      makeCampaign({ id: 'b', status: 'paused', monthlyBudget: 900 }),
+      makeCampaign({ id: 'a', status: 'active', monthlyBudgetAgorot: 30000 }),
+      makeCampaign({ id: 'b', status: 'paused', monthlyBudgetAgorot: 90000 }),
     ];
     const o = buildPlatformAdOverview({
       feedStores: [], feedProductCount: 0, allStores: [], campaigns, brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.boost.activeCampaigns).toBe(1);
     expect(o.boost.totalCampaigns).toBe(2);
@@ -121,7 +121,7 @@ describe('buildPlatformAdOverview', () => {
     // No stores, no campaigns → every derived ratio must be 0, never NaN/Infinity.
     const empty = buildPlatformAdOverview({
       feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(empty.ppc).toMatchObject({ spend: 0, impressions: 0, clicks: 0, ctr: 0, cpc: 0, cpm: 0 });
     for (const v of Object.values(empty.ppc)) expect(Number.isFinite(v)).toBe(true);
@@ -130,7 +130,7 @@ describe('buildPlatformAdOverview', () => {
     const stores = [makeStore({ id: 's1' }), makeStore({ id: 's2' })];
     const o = buildPlatformAdOverview({
       feedStores: stores, feedProductCount: 4, allStores: stores, campaigns: [], brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.ppc.impressions).toBeGreaterThan(0);
     expect(o.ppc.clicks).toBeGreaterThan(0);
@@ -140,16 +140,16 @@ describe('buildPlatformAdOverview', () => {
 
   it('commits only active brand budget, and folds brand spend into the PPC blend', () => {
     const brandCampaigns = [
-      makeBrand({ id: 'ba', status: 'active', monthlyBudget: 600 }),
-      makeBrand({ id: 'bb', status: 'paused', monthlyBudget: 1200 }),
+      makeBrand({ id: 'ba', status: 'active', monthlyBudgetAgorot: 60000 }),
+      makeBrand({ id: 'bb', status: 'paused', monthlyBudgetAgorot: 120000 }),
     ];
     const noBrand = buildPlatformAdOverview({
       feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     const withBrand = buildPlatformAdOverview({
       feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns,
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(withBrand.brand.activeCampaigns).toBe(1);
     expect(withBrand.brand.totalCampaigns).toBe(2);
@@ -170,18 +170,18 @@ describe('buildPlatformAdOverview', () => {
     const window = { from: '2026-01-01', to: '2026-01-31' };
     // Ran 1–10 Jan, then paused. runPeriod freezes at pausedAt, so ten days of spend stand.
     const pausedBoost = makeCampaign({
-      id: 'ran-then-paused', status: 'paused', monthlyBudget: 900,
+      id: 'ran-then-paused', status: 'paused', monthlyBudgetAgorot: 90000,
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-10T00:00:00.000Z',
       pausedAt: '2026-01-10T00:00:00.000Z',
     });
     const pausedBrand = makeBrand({
-      id: 'brand-ran-then-paused', status: 'paused', monthlyBudget: 1200,
+      id: 'brand-ran-then-paused', status: 'paused', monthlyBudgetAgorot: 120000,
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-10T00:00:00.000Z',
       pausedAt: '2026-01-10T00:00:00.000Z',
     });
     const base = {
       feedStores: [], feedProductCount: 0, allStores: [],
-      ads: undefined, settings: { baselineStatus: 'paused' as const, lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'paused' as const, lifetimeBudgetAgorot: 0 },
       range: window,
     };
     const o = buildPlatformAdOverview({ ...base, campaigns: [pausedBoost], brandCampaigns: [pausedBrand] });
@@ -222,7 +222,7 @@ describe('buildPlatformAdOverview', () => {
     const stores = Array.from({ length: 15 }, (_, i) => makeStore({ id: `s${i}`, slug: `s${i}`, name: `Store ${i}` }));
     const o = buildPlatformAdOverview({
       feedStores: stores, feedProductCount: 15, allStores: stores, campaigns: [], brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.exposure.topStores.length).toBeLessThanOrEqual(10); // never all 15
     expect(o.exposure.totalStores).toBe(15);
@@ -238,7 +238,7 @@ describe('buildPlatformAdOverview', () => {
       feedStores: stores, feedProductCount: 1, allStores: stores,
       campaigns: [makeCampaign({ id: 'c', status: 'active' })],
       brandCampaigns: [makeBrand({ id: 'b', status: 'active' })],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     const { baseline, brand, boost } = o.exposure.bySource;
     expect(o.exposure.totalImpressions).toBe(baseline.impressions + brand.impressions + boost.impressions);
@@ -253,7 +253,7 @@ describe('buildPlatformAdOverview', () => {
     ];
     const o = buildPlatformAdOverview({
       feedStores: allStores, feedProductCount: 3, allStores, campaigns: [], brandCampaigns: [],
-      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudget: 0 },
+      ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.promotedStores.map((s) => s.slug)).toEqual(['top', 'boosted']);
     expect(o.promotedStores[0]!.weight).toBe(2);

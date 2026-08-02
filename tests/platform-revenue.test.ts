@@ -11,14 +11,14 @@ function seller(tier: string | undefined, createdAt: string) {
   return { tier, createdAt };
 }
 
-function campaign(id: string, monthlyBudget: number, createdAt: string, over: Partial<AdCampaign> = {}): AdCampaign {
+function campaign(id: string, budgetIls: number, createdAt: string, over: Partial<AdCampaign> = {}): AdCampaign {
   return {
     id,
     storeId: 'st1',
     storeSlug: 'store',
     scope: 'store',
     platform: 'google',
-    monthlyBudget,
+    monthlyBudgetAgorot: toAgorot(budgetIls),
     status: 'active',
     createdAt,
     updatedAt: createdAt,
