@@ -27,7 +27,7 @@
  * nullable now and NULL is what "no override" means, here and in the importer.
  */
 import crypto from 'node:crypto';
-import { comboKey } from './variant-combo.js';
+import { comboKey, isFullyPerCombo } from './variant-combo.js';
 import { toSlug } from './url-base.js';
 import { fromAgorot, toAgorot } from './money.js';
 import { MAX_DISCOUNT_PERCENT, MIN_DISCOUNT_PERCENT, type ProductDiscount } from './discounts.js';
@@ -565,20 +565,24 @@ export async function getProductBySlug(storeId: string, slug: string): Promise<S
  *  variant-combo.ts#LOW_STOCK_THRESHOLD, passed in by callers so this data-layer
  *  module stays free of the variant helper dependency. */
 /**
- * ⚠️ OPEN BUG, found 2026-08-02, deliberately not fixed here — it needs a decision, not a patch.
+ * ✅ The bug this comment used to describe was FIXED with the `orders` migration (2026-08-02) —
+ * kept here because the reasoning is what makes the query below trustworthy.
  *
- * This counts on `p.stock`, and `adjustStock`'s combo branch never touches `p.stock`: it moves the
- * bucket row. So a product whose combos ALL carry their own bucket drains bucket by bucket while
- * `p.stock` stays frozen at whatever the last save wrote, and the low-stock badge never lights for
- * a product sold combo-by-combo. A partially-counted product is fine — its uncounted combos sell
- * from `p.stock` through the `shared` branch, which does decrement it.
+ * The count reads `p.stock`, and `adjustStock`'s combo branch moves the BUCKET row, not `p.stock`.
+ * So a product whose combos all carried their own bucket drained bucket by bucket while `p.stock`
+ * stayed frozen at whatever the last save wrote, and this badge never lit for a product sold
+ * combo-by-combo. (A partially-counted product was always fine: its uncounted combos sell from
+ * `p.stock` through the `shared` branch, which does decrement it.)
  *
- * The reason this is not a one-line fix: `p.stock` currently means TWO things (the shared pool when
- * any combo is uncounted, the sum of the buckets when none is), so "also decrement it" is right in
- * one case and steals from the pooled combos in the other. The clean answer is to make `p.stock`
- * always and only the pool — then sellable = `p.stock + SUM(buckets)` and this query is correct by
- * construction — but that changes what `stock` means to `isProductInStock`, the storefront, the
- * Merchant feed's `availability` and every shopper-facing read, which is a migration-owner call.
+ * What made it a decision rather than a one-line fix: `p.stock` means TWO things — the shared pool
+ * when any combo is uncounted, the total when none is — so "also decrement it" is right in one case
+ * and steals from the pooled combos in the other. Two answers were on the table. Redefining
+ * `p.stock` as pool-only, with sellable = `p.stock + SUM(buckets)`, is the tidier model and was
+ * rejected as the bigger one: it changes what `stock` means to `isProductInStock`, the storefront,
+ * JSON-LD and the Merchant feed's `availability`, and needs a data migration to stop every counted
+ * product reading double. What shipped instead keeps both meanings and keeps the second one TRUE —
+ * a sale out of a bucket re-derives `p.stock` from the buckets, exactly as a save already did
+ * (`syncPooledStock`). No reader moved and no row needed migrating.
  */
 export async function countStockAlerts(storeId: string, threshold: number): Promise<number> {
   if (!isUuid(storeId)) return 0;
@@ -735,7 +739,18 @@ async function adjustStock(id: string, delta: number, selectedVariants: Record<s
   if (!isUuid(id)) return { ok: false, before: 0, after: 0 };
   const key = selectedVariants ? comboKey(selectedVariants) : null;
 
-  const row = await firstRow<{ ok: boolean; before: number; after: number }>(
+  return withTransaction(async (tx) => {
+    const result = await adjustOneBucket(tx, id, delta, key);
+    if (result.ok && result.branch === 'combo') await syncPooledStock(tx, id);
+    return { ok: result.ok, before: result.before, after: result.after };
+  });
+}
+
+/** The conditional UPDATE and its verdict — the part that must not change. */
+async function adjustOneBucket(
+  tx: Queryable, id: string, delta: number, key: string | null,
+): Promise<StockAdjustResult & { branch: 'combo' | 'shared' | null }> {
+  const [row] = (await tx.query<{ ok: boolean; before: number; after: number; branch: 'combo' | 'shared' | null }>(
     `WITH target AS (
        SELECT p.id, v.combo_key, COALESCE(v.stock, p.stock) AS stock
          FROM store_products p
@@ -757,23 +772,91 @@ async function adjustStock(id: string, delta: number, selectedVariants: Record<s
           AND p.stock + $3 >= 0
        RETURNING p.stock - $3 AS before, p.stock AS after
      )
-     SELECT ok, before, after FROM (
-       SELECT true  AS ok, before, after FROM combo
+     SELECT ok, before, after, branch FROM (
+       SELECT true  AS ok, before, after, 'combo'::text  AS branch FROM combo
        UNION ALL
-       SELECT true, before, after FROM shared
+       SELECT true, before, after, 'shared'::text FROM shared
        UNION ALL
-       SELECT false, stock, stock FROM target
+       SELECT false, stock, stock, NULL::text FROM target
      ) outcome
       ORDER BY ok DESC
       LIMIT 1`,
     [id, key, delta],
-  );
+  )).rows;
   // No row at all means no such product. Otherwise `target`'s row is the fallback and it is read
   // from the SAME snapshot the two UPDATEs were judged against — so the number handed back on a
   // refusal is the count that refused it, not a second read a concurrent checkout could have moved
   // in between. That number is what the buyer's page uses to clamp the quantity.
-  if (!row) return { ok: false, before: 0, after: 0 };
-  return { ok: row.ok, before: row.before, after: row.after };
+  if (!row) return { ok: false, before: 0, after: 0, branch: null };
+  return { ok: row.ok, before: row.before, after: row.after, branch: row.branch };
+}
+
+/**
+ * Keep `p.stock` equal to the sum of the buckets, for a product whose combos are ALL counted.
+ *
+ * **This is the fix for the OPEN BUG above `countStockAlerts`, and it is deliberately the small
+ * version of it.** `p.stock` means two things — the shared pool when any combo is uncounted, the
+ * total when none is — and the file era kept the second meaning true only at SAVE time: the
+ * product editor writes `sumComboOverrides(variantStock)` into the stock field, and then sales
+ * drained the buckets while `p.stock` stayed frozen at whatever the last save wrote. So a product
+ * sold combo-by-combo never lit its low-stock badge, and — the half the OPEN BUG note did not
+ * reach — `product-feed.ts` reads the same frozen `p.stock` for `availability`, which means the
+ * Merchant/Meta feed went on advertising a sold-out product as `in_stock`. That is an ads-account
+ * problem, not a dashboard one.
+ *
+ * A SALE is now the same kind of event as a save, so the number the editor wrote stays true
+ * between saves. Nothing else changes: `p.stock` still means what it meant, no reader moves, and
+ * no stored row needs migrating — which is what separates this from redefining `p.stock` as
+ * pool-only (that changes `isProductInStock`, the storefront, the feed and JSON-LD, and needs a
+ * data migration to stop every counted product's stock reading double).
+ *
+ * **Recomputed from the buckets, not adjusted by the delta.** `SUM` over the authoritative rows is
+ * idempotent and self-healing: a row that drifted in the file era is corrected by the first sale
+ * after it, and two concurrent sales cannot both apply a delta and land on the wrong total. It runs
+ * inside the caller's transaction, after the conditional UPDATE that already decided the sale, so
+ * it can never turn a successful sale into a failed one.
+ *
+ * `isFullyPerCombo` is asked in JS rather than rebuilt in SQL on purpose. It is the same helper the
+ * product editor and `/api/product` already use to decide the very thing this mirrors, and a second
+ * copy of that rule written in SQL is how the two would come to disagree. The shape it reads (WHICH
+ * combos carry a bucket) only changes when the seller edits the product, never when one sells — so
+ * reading it a statement before the update is not the race it looks like. If a seller did edit the
+ * dimensions mid-checkout, the worst case is `p.stock` being briefly stale, which their next save
+ * corrects; the bucket, which is the actual inventory, is never wrong.
+ */
+async function syncPooledStock(tx: Queryable, id: string): Promise<void> {
+  // Take the product row before summing its buckets.
+  //
+  // Without it this is exact in the common case and off by one under a true collision: the
+  // `SET stock = (SELECT SUM(...))` subquery is evaluated against the statement's snapshot, and
+  // `READ COMMITTED` re-checks only the WHERE after taking the row lock — so two sales committing
+  // in the same instant could both compute the same pre-sale sum and the later write would lose
+  // the earlier one's unit. The consequence is small (`p.stock` briefly one high; the BUCKET, which
+  // is the real inventory and the thing an oversell would come from, is never wrong, and the next
+  // sale re-derives the total correctly) — but "briefly wrong stock" is what this function was
+  // written to stop, and the fix is one row lock on a row the statement below updates anyway.
+  await tx.query('SELECT id FROM store_products WHERE id = $1 FOR UPDATE', [id]);
+
+  const [shape] = (await tx.query<{ variants: ProductVariant[] | null; variant_stock: Record<string, number> | null }>(
+    `SELECT p.variants,
+            COALESCE(jsonb_object_agg(v.combo_key, v.stock)
+                     FILTER (WHERE v.combo_key IS NOT NULL AND v.stock IS NOT NULL), '{}'::jsonb) AS variant_stock
+       FROM store_products p
+       LEFT JOIN product_variant_stock v ON v.product_id = p.id
+      WHERE p.id = $1
+      GROUP BY p.id, p.variants`,
+    [id],
+  )).rows;
+  if (!shape?.variants?.length) return;
+  if (!isFullyPerCombo(shape.variants, shape.variant_stock ?? {})) return;
+
+  await tx.query(
+    `UPDATE store_products p
+        SET stock = COALESCE((SELECT SUM(v.stock)::int FROM product_variant_stock v
+                               WHERE v.product_id = p.id AND v.stock IS NOT NULL), 0)
+      WHERE p.id = $1`,
+    [id],
+  );
 }
 
 /** Atomically decrements stock (the matching variant-combo bucket, or the shared pool) by `qty`. `ok:false` — without writing — if that would go negative, so callers can reject the purchase instead of overselling. */
