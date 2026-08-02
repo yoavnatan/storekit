@@ -1,0 +1,24 @@
+-- 0002_category_sibling_name — two categories in one store may not share a name at the same level.
+--
+-- The rule is not new: `store-categories.ts` has always refused a duplicate sibling name, and the
+-- seller-facing message ("כבר קיימת קטגוריה בשם הזה באותה רמה") exists because a tree with two
+-- identical branches is unreadable — the chip row, the product table's path cell and the sale-scope
+-- banner all print a NAME, so two of them are two chips a seller cannot tell apart.
+--
+-- What changes here is WHO enforces it (DB_MIGRATION_PLAN.md §7.4). The file version read the
+-- siblings, found the name free and then wrote — so two dashboard tabs adding "חולצות" in the same
+-- moment both passed the check and both wrote. This index makes the write itself the verdict, which
+-- is the only form of the rule that cannot be raced.
+--
+-- `COALESCE(parent_id, …)` is what makes it cover ROOT categories too: in SQL two NULLs are not
+-- equal, so a plain `UNIQUE (store_id, parent_id, name)` would police every level of the tree except
+-- the top one — the level a seller actually sees first. The placeholder is the all-zero uuid, which
+-- can never be a real `store_categories.id` (ids come from `crypto.randomUUID()`, a v4 uuid, whose
+-- version nibble is never 0).
+--
+-- Case-sensitive on purpose, unlike slugs and emails (§7.11). A slug is an address and an email is
+-- an identity, so `Acme` and `acme` must be one thing; a category name is a label the seller writes
+-- for shoppers to read, and forbidding "שמלות" beside "שמלות ערב"-style capitalisation variants
+-- would be this file inventing a product rule nobody asked for.
+CREATE UNIQUE INDEX store_categories_sibling_name_idx
+  ON store_categories (store_id, COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), name);

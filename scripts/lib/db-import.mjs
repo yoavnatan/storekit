@@ -88,6 +88,28 @@ async function insertMany(db, table, columns, rows, conflict = 'DO NOTHING') {
 }
 
 /**
+ * Category rows ordered so no row precedes its own parent — the order a self-referencing foreign
+ * key needs when the links are written with the rows rather than patched in afterwards.
+ *
+ * A row whose `parentId` names nothing in the set counts as a root: the parent was dropped for a
+ * missing store, and the child is kept at the top level rather than lost with it. Anything still
+ * unplaced when no further row becomes ready is part of a cycle the file should not contain; it is
+ * appended anyway, so the import fails loudly on the key instead of hanging in this loop.
+ */
+function parentsFirst(categories, ids) {
+  const placed = new Set();
+  const ordered = [];
+  let remaining = categories;
+  while (remaining.length) {
+    const ready = remaining.filter((c) => !c.parentId || !ids.has(c.parentId) || placed.has(c.parentId));
+    if (!ready.length) return [...ordered, ...remaining];
+    for (const c of ready) { ordered.push(c); placed.add(c.id); }
+    remaining = remaining.filter((c) => !placed.has(c.id));
+  }
+  return ordered;
+}
+
+/**
  * @typedef {{ what: string, reason: string, count: number }} SkippedRows
  * @typedef {{ counts: Record<string, number>, skipped: SkippedRows[] }} ImportReport
  */
@@ -180,21 +202,24 @@ export async function importAll(db, { dataDir = path.join(process.cwd(), 'data')
   const storeIdBySlug = new Map(storeRows.map((r) => [String(r[2]), r[0]]));
 
   // ---- categories ---------------------------------------------------------
-  // Inserted parent-less first, then linked, so no ordering assumption about the file is needed:
-  // a child that appears before its parent would otherwise fail the self-referencing key.
   const categories = readJson(dataDir, 'store-categories.json', []).filter((c) => {
     if (storeIds.has(c.storeId)) return true;
     drop('category', `store missing: ${c.name}`); return false;
   });
-  note('store_categories', await insertMany(db, 'store_categories',
-    ['id', 'store_id', 'name', 'position', 'created_at'],
-    categories.map((c) => [c.id, c.storeId, c.name ?? '', Number(c.order) || 0, c.createdAt ?? null])));
   const categoryIds = new Set(categories.map((c) => c.id));
-  for (const c of categories) {
-    if (c.parentId && categoryIds.has(c.parentId)) {
-      await db.query('UPDATE store_categories SET parent_id = $2 WHERE id = $1', [c.id, c.parentId]);
-    }
-  }
+  // Parents before children, because `parent_id` is a self-referencing key and the file makes no
+  // ordering promise. The obvious alternative — insert every row parent-less, then UPDATE the links
+  // — is what this replaced: since 0002 a store may not hold two same-named siblings, and flattening
+  // the tree makes EVERY category a root for the length of the import, so a store with "חולצות"
+  // under both "גברים" and "נשים" would collide on a name pair that is perfectly legal. That store
+  // does not exist in today's data, which is exactly why the failure would have arrived later, on
+  // someone's real catalog, as a dropped row rather than an error.
+  note('store_categories', await insertMany(db, 'store_categories',
+    ['id', 'store_id', 'parent_id', 'name', 'position', 'created_at'],
+    parentsFirst(categories, categoryIds).map((c) => [
+      c.id, c.storeId, c.parentId && categoryIds.has(c.parentId) ? c.parentId : null,
+      c.name ?? '', Number(c.order) || 0, c.createdAt ?? null,
+    ])));
 
   // ---- products -----------------------------------------------------------
   const products = readJson(dataDir, 'store-products.json', []);
