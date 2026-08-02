@@ -210,6 +210,34 @@ export function getPool(): pg.Pool {
   return pool;
 }
 
+/**
+ * Does this string have the shape of a `uuid` column value?
+ *
+ * **Postgres REJECTS a malformed uuid literal rather than failing to match it** — `WHERE id =
+ * 'seller-1'` raises `invalid input syntax for type uuid`, it does not return zero rows. Every id
+ * in this application arrives from somewhere that can be stale or wrong (a session cookie written
+ * before the ids were UUIDs, a saved dashboard URL, a client-side cache), so without this check the
+ * honest answer "no such record" becomes a 500 on the page that asked. Checking the shape first
+ * restores the old answer at the cost of one regex.
+ *
+ * Casting `id::text` in the query would also work and would throw away the primary-key index.
+ *
+ * Lives here, next to the driver, because it is a fact about the column type rather than about any
+ * one module: `seller-auth.ts` and `stores.ts` each grew their own copy, and `orders`,
+ * `store-products` and `messages` all need it as they move (DB_MIGRATION_PLAN.md §8).
+ */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string): boolean {
+  return UUID_SHAPE.test(value);
+}
+
+/**
+ * A uuid that matches no row — for a query that must still run when the caller's id is malformed
+ * (an `id <> $2` exclusion, where dropping the clause would change the answer).
+ */
+export const NO_SUCH_UUID = '00000000-0000-4000-8000-000000000000';
+
 /** Run one statement. Parameters are `$1, $2, …` — never string-interpolate a value into SQL. */
 export async function query<Row>(
   text: string,

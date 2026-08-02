@@ -3,7 +3,7 @@ import type { AstroCookies } from 'astro';
 import type { SellerTierId } from './pricing.js';
 import { secretsEqual } from './secret-compare.js';
 import { requiredSecret } from './runtime-env.js';
-import { firstRow, query, rows } from './db.js';
+import { firstRow, isUuid, query, rows } from './db.js';
 
 const COOKIE_NAME = 'seller_session';
 const ONE_DAY = 60 * 60 * 24;
@@ -129,15 +129,6 @@ function toSeller(row: SellerRow): Seller {
 }
 
 /**
- * `id` is a `uuid` column, and Postgres REJECTS a malformed literal rather than not matching it —
- * `WHERE id = 'seller-1'` raises `invalid input syntax for type uuid`. Reading a session cookie is
- * the hottest path in the app, and a stale cookie from before the ids were UUIDs would have turned
- * "you are signed out" into a 500 on every page. Shape-checking first keeps the old answer: no such
- * seller. (Casting `id::text` instead would work and would also throw away the primary-key index.)
- */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
  * Create the account, or return null if the address is taken.
  *
  * **The check is the INSERT, not a lookup before it (§7.4).** The old form read the file, looked for
@@ -158,7 +149,7 @@ export async function registerSeller(email: string, password: string, name: stri
 }
 
 export async function getSellerById(id: string): Promise<Seller | null> {
-  if (!UUID.test(id)) return null;
+  if (!isUuid(id)) return null;
   const row = await firstRow<SellerRow>(`SELECT ${COLUMNS} FROM sellers WHERE id = $1`, [id]);
   return row ? toSeller(row) : null;
 }
@@ -215,7 +206,7 @@ export async function createGoogleSeller(email: string, name: string, googleId: 
 }
 
 export async function linkGoogleAccount(sellerId: string, googleId: string): Promise<void> {
-  if (!UUID.test(sellerId)) return;
+  if (!isUuid(sellerId)) return;
   await query('UPDATE sellers SET google_id = $2 WHERE id = $1', [sellerId, googleId]);
 }
 
