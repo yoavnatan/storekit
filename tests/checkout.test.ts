@@ -106,10 +106,14 @@ vi.mock('../src/lib/money-events.js', () => ({
   recordMoneyEvent: async (event: Record<string, unknown>) => event,
 }));
 
-// Same reasoning as error-log above: the real recordAnalyticsEvent does an
-// fs.writeFileSync into the dev data/analytics-events.json on every purchase, so
-// stub it out — the funnel-capture side effect isn't what these tests exercise.
-vi.mock('../src/lib/analytics.js', () => ({ recordAnalyticsEvent: () => {} }));
+// Same reasoning as error-log above: the funnel-capture side effect isn't what these tests
+// exercise, and this file mocks its way to a fully in-memory endpoint. **The stub is `async`
+// because the real function is** — a synchronous mock of an async function tests a contract that
+// does not exist, and the last module to move found 13 tests failing on `undefined.catch` in code
+// that works in production (DB_MIGRATION_PLAN.md §8, `messages`). What the real one does with a
+// purchase that names one product twice is pinned in `analytics-db.test.ts`, at the layer that
+// owns the statement.
+vi.mock('../src/lib/analytics.js', () => ({ recordAnalyticsEvent: async () => {} }));
 
 const { POST } = await import('../src/pages/api/checkout.js');
 
