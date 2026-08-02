@@ -16,17 +16,17 @@ export interface SitemapEntry {
   priority?: string;
 }
 
-/** Escapes the five XML-significant characters. `loc` values are already URL-safe
- *  slugs today, but a store/product name never reaches <loc>; this guards the
- *  contract regardless of what a future caller passes in. */
-export function xmlEscape(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
+/** Re-exported so existing callers keep working, but the RULE now lives in `xml-text.ts`.
+ *
+ *  This used to be a private copy that escaped the five significant characters and stopped there,
+ *  while `product-feed.ts`'s same-named function ALSO stripped the characters XML forbids outright.
+ *  Two escapers, one silently weaker, and the weaker one guarding the document Google parses: an
+ *  illegal character does not spoil one `<url>`, it makes the whole sitemap unparseable. Unreachable
+ *  today because `loc` carries only slugs (`toSlug` already drops those characters) — but this
+ *  function's own comment promised to hold "regardless of what a future caller passes in", and it
+ *  did not. Now it does. */
+export { xmlEscape } from './xml-text.js';
+import { xmlEscape } from './xml-text.js';
 
 /** Normalises a stored ISO timestamp to a sitemap-valid `<lastmod>` date part
  *  (YYYY-MM-DD). Returns undefined for anything that doesn't look like a date,

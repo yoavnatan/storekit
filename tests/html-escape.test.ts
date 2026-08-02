@@ -61,9 +61,12 @@ describe('escapeHtml', () => {
  */
 describe('nobody re-introduces a local HTML escaper', () => {
   const ALLOWED = [
-    'lib/html-escape.ts',   // the one implementation
-    'lib/product-feed.ts',  // XML feed: uses &apos;, which is XML-only and deliberate
-    'lib/sitemap.ts',       // XML sitemap, same reason
+    'lib/html-escape.ts',   // the one HTML implementation
+    // The one XML implementation. It replaced the private copies in product-feed.ts and sitemap.ts
+    // (2026-08-02) — which is why this list SHRANK: the two exemptions existed because each file
+    // hand-rolled `&apos;` for itself, and they turned out not to be the same escaper at all (only
+    // the feed's stripped XML-illegal control characters). One definition, one exemption.
+    'lib/xml-text.ts',
   ];
 
   it('every escaper is the shared one', () => {

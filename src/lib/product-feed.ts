@@ -6,6 +6,7 @@ import { isColorVariant } from './color-variants.js';
 import { resolvePrice, type StoreSale } from './discounts.js';
 import { toAbsoluteImageUrl } from './image-url.js';
 import { urlSegment } from './url-base.js';
+import { xmlEscape, xmlCdata } from './xml-text.js';
 
 // Maps a StoreProduct to the standard Google Merchant Center / Meta Catalog
 // product-feed attributes. The whole point (see CURRENT_TASK.md item 14): the
@@ -224,23 +225,14 @@ export interface FeedChannelMeta { title: string; link: string; description: str
  * or Excel carries U+000B, and both JSON and a form POST pass it through untouched.
  * Stripped rather than replaced — they carry no meaning a shopper would miss.
  */
-const XML_ILLEGAL =
-  // eslint-disable-next-line no-control-regex -- matching the control characters IS the point here
-  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-
-/** The one gate every text value passes through on its way into the document — both
- *  escapers below call it, so a new field cannot bypass it by picking the other one. */
-function xmlText(s: string): string {
-  return s.replace(XML_ILLEGAL, '');
-}
-
-function xmlEscape(s: string): string {
-  return xmlText(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-}
-// CDATA for free text; a literal "]]>" inside would close the section early, so split it.
-function cdata(s: string): string {
-  return `<![CDATA[${xmlText(s).replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
-}
+/** The gate every text value passes through on its way into the document — both helpers below call
+ *  it, so a new field cannot bypass it by picking the other one.
+ *
+ *  Moved to `lib/xml-text.ts` on 2026-08-02 and imported here: `sitemap.ts` had grown its own
+ *  `xmlEscape` that did the five-character escaping WITHOUT this strip, so the same rule had two
+ *  answers depending on which document you were writing. Re-exported under the local names so
+ *  nothing below this line had to change. */
+const cdata = xmlCdata;
 
 function itemXml(it: FeedItem, currency: string): string {
   const g = (tag: string, val: string) => `  <g:${tag}>${xmlEscape(val)}</g:${tag}>`;
