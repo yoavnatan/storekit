@@ -209,8 +209,23 @@ const shipLabel: Record<string, string> = {
         position: sticky;
         top: 3.3rem; /* fallback estimate; JS below sets the exact fractional px so there's no seam */
         z-index: 40;
-        background: var(--color-bg);
-        padding: 0.85rem 0.85rem 0.7rem;
+        /* No padding, and no background either (2026-08-02, full-bleed pass) —
+           read the long note above and then this, because this retires most of
+           it. Every argument up there is an argument about a FLOATING CARD: it
+           needed a gap so it would not glue to the site header, and that gap had
+           to be painted --color-bg so the page could not be seen scrolling
+           through it and past the card's sides. The bar is not a card any more.
+           It spans the full width and is opaque, so there is no gap for anything
+           to show through and no sides to slide past — the two grey stripes those
+           rules produced were the last trace of a shape that no longer exists
+           (user, 2026-08-02: "אפשר להעיף את הפסים האפורים... אם היא כבר תופסת
+           את כל הרוחב"). The background went with the padding rather than being
+           kept "just in case": at zero inset this box is exactly the bar's box,
+           so it could only ever paint underneath an opaque bar.
+
+           The dock itself stays. It is the sticky element, and the JS below
+           writes the exact fractional `top` onto it by id. */
+        padding: 0;
       }
       .my-topbar {
         display: flex;
@@ -218,8 +233,23 @@ const shipLabel: Record<string, string> = {
         gap: 0.5rem;
         padding: 0.4rem;
         background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
+        /* Block borders only, no radius: a rounded card touching both screen
+           edges reads as clipped, and side borders at the edge are a hairline
+           nobody can tell from a rendering seam. The bar keeps its own 0.4rem
+           of padding rather than adopting the 0.8rem page gutter — that padding
+           is the hamburger's tap target, and the button is 2rem around a 15px
+           icon, so the ICON already lands ~15px in, within a couple of pixels
+           of the panel text below. Aligning the boxes would have pushed the
+           icon visibly further in than the text it sits above.
+
+           Bottom border only. With the dock's padding gone the bar sits flush
+           under the site header, which is the same --color-surface and already
+           draws its own 1px rule underneath itself (components/header.css: "the
+           1px border is the whole separation"). A top border here would stack a
+           second hairline against that one. */
+        border: 0;
+        border-bottom: 1px solid var(--color-border);
+        border-radius: 0;
       }
       .my-topbar-title {
         /* Intentionally not flex:1 — only the button and this text itself
@@ -288,7 +318,9 @@ const shipLabel: Record<string, string> = {
         margin-bottom: 1rem; margin-inline-start: auto;
       }
 
-      .my-content-wrap { padding: 0 0.85rem; }
+      /* .my-content-wrap had `padding: 0 0.85rem` here — deleted, not zeroed.
+         Its base rule sets only min-width, so a `padding: 0` would have
+         overridden nothing; the gutter now lives on .my-panel below. */
     }
 
     /* ── Panels ── */
@@ -299,6 +331,31 @@ const shipLabel: Record<string, string> = {
       border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
       padding: 1.25rem 1.5rem;
+    }
+
+    /* The panel is where the mobile width actually went: 1.5rem of its own
+       padding plus 0.85rem of .my-content-wrap's meant ~38px of chrome per side
+       before a word of content, a fifth of a 375px screen. Full-bleed drops that
+       to the single 0.8rem gutter — the same value the seller dashboard uses, so
+       the two shells read as one system.
+
+       This is a SECOND media block, deliberately, not a line inside the one
+       above: `.my-panel.is-active` is (0,2,0), and the rule it has to beat is
+       the identical selector directly above it. Same specificity means source
+       order decides, and the mobile block sits ~100 lines EARLIER in this file —
+       from inside it these declarations would simply lose, silently. */
+    @media (max-width: 768px) {
+      .my-panel.is-active {
+        border-inline: 0;
+        /* No top border either: with the dock's block padding gone the sticky
+           bar sits directly on the panel, and its own bottom rule already
+           separates them. Keeping this one would draw a 2px double hairline —
+           the same stacking the bar avoids against the site header above it.
+           The bottom border stays; below it is page background, not a bar. */
+        border-block-start: 0;
+        border-radius: 0;
+        padding-inline: 0.8rem;
+      }
     }
 
     .panel-head {

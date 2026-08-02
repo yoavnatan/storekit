@@ -770,6 +770,28 @@ textarea.input { resize: none; }
      the site header (banner) and the store details block (CURRENT_TASK 2). */
   .dash-section { padding-inline: 0.75rem; padding-top: 0.6rem; }
 
+  /* Full-bleed (seller dashboard only, via the --bleed modifier — the admin
+     pages share .dash-section but not this shell). A phone screen was paying
+     for the gutter TWICE: 0.75rem of section padding outside the card plus
+     0.65rem of panel padding inside it, so ~22px per side was chrome before
+     any content started. Drop the outer one entirely and let the card run
+     edge to edge; the panel's own padding, widened to 0.8rem, becomes the
+     single gutter that keeps content off the screen edge. Net ~19px more
+     content width, and one gutter to reason about instead of two.
+
+     The card has to stop looking like a card once it touches both edges:
+     rounded corners and side borders at the screen edge read as clipped, and
+     the hover shadow would contradict the elevation rule (a surface that
+     spans the viewport is in-flow, so border only — see the .card--flat
+     note in components/cards.css). Block borders stay: they're the only
+     thing left separating the sheet from the page background. */
+  .dash-section--bleed { padding-inline: 0; }
+  .dash-section--bleed > .card {
+    border-radius: 0;
+    border-inline-width: 0;
+  }
+  .dash-section--bleed > .card:hover { box-shadow: none; }
+
   /* Selected-count: full "X נבחרו" badge is too wide for mobile — show a
      compact "(N)" right next to the select-all checkbox instead. */
   .bulk-count-badge { display: none; }
@@ -778,9 +800,43 @@ textarea.input { resize: none; }
   .dash-head { padding-inline: 0.65rem; padding-top: 0.85rem; }
   /* #dash-main-card prefix bumps specificity: .dash-tabs/.dash-panel have
      unscoped base rules later in this file (same specificity) that would
-     otherwise win over this media query purely on source order. */
+     otherwise win over this media query purely on source order. The ID is NOT
+     a seller-dashboard scope — admin/index and the two admin store pages carry
+     it too, so these three values are the shared mobile default. Anything that
+     should reach only the seller shell goes under .dash-section--bleed below. */
   #dash-main-card .dash-tabs { --dash-tab-pad: 0.65rem; }
   #dash-main-card .dash-panel { padding-inline: 0.65rem; }
+
+  /* The bleed shell's single gutter, wider than the shared default above
+     because it is now the ONLY thing between content and the screen edge.
+     `#dash-main-card` is repeated here rather than dropped for brevity: the
+     shared rules above need that ID to beat the base .dash-panel/.dash-tabs
+     rules on source order, and an ID outranks any number of classes — a
+     `.dash-section--bleed .dash-panel` scope reads correctly and silently
+     loses, which is how the seller shell first came back measuring the admin's
+     0.65rem after this block was split in two. */
+  .dash-section--bleed #dash-main-card .dash-head,
+  .dash-section--bleed #dash-main-card .dash-panel { padding-inline: 0.8rem; }
+
+  /* The tab strip keeps NO padding of its own — a scroller that starts its
+     first tab a gutter's width in wastes the width twice over, once at rest
+     and again on every scroll. The tabs' own inline padding stands in for the
+     gutter instead, set to match .dash-head/.dash-panel so the first tab's
+     label lines up with the title above it and the panel content below it.
+     `--dash-tab-pad` (not a padding utility in the markup) because the edge
+     fades size and offset themselves off it — a strip whose real padding
+     disagreed with the var put the fades 0.65rem off the strip's true edge.
+     The homepage strip (index.astro) already sets both together; the seller
+     one set only the utility, which is how its fades came to be misplaced.
+
+     `0px`, NOT `0`: the var is substituted into `calc(1.8rem + var(...))` and
+     two `calc(-1 * var(...))` offsets, and calc() cannot add a unitless number
+     to a length — every one of them goes invalid at once, which collapses both
+     fades to zero width AND drops their sticky offsets, so they land wherever
+     the scroll left them. The `, 0px` fallbacks in those calcs do not save it:
+     a fallback only fires for an UNDEFINED var, not a badly-typed one. */
+  .dash-section--bleed #dash-main-card .dash-tabs { --dash-tab-pad: 0px; }
+  .dash-section--bleed #dash-main-card .dash-tab { padding-inline: 0.8rem; }
 
   /* Mobile idle: CSV + external-sync go icon-only even when nothing's selected — their
      labels are the main idle-state space hog. Add-product keeps its label (primary action). */
