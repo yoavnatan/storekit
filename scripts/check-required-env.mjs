@@ -8,12 +8,18 @@
 // from process.env at runtime — while it was inlined at build time there was nothing to check.)
 //
 // Deliberately not a list of every variable: an absent RESEND_API_KEY or GOOGLE_CLIENT_ID is a
-// supported configuration (console emails, no Google button). Only the two whose absence means
-// "anyone can forge a session" or "/admin is guarded by a password from the public source" belong
-// here.
+// supported configuration (console emails, no Google button). Only the ones whose absence means
+// "anyone can forge a session", "/admin is guarded by a password from the public source", or
+// "there is nowhere to read the accounts from" belong here.
 const REQUIRED = [
   { name: 'AUTH_SECRET', devDefault: 'dev-insecure-secret', what: 'signs seller session cookies' },
   { name: 'ADMIN_SECRET', devDefault: 'admin', what: 'is the /admin password' },
+  // Added 2026-08-02 with the first module moved off `data/*.json` (DB_MIGRATION_PLAN.md §8
+  // stage 2). It was optional while nothing queried; now `seller-auth.ts` does, so a server
+  // started without it comes up looking healthy and throws on the first page that reads an
+  // account — which reaches the visitor as a redirect to the login form that never works. That
+  // is the exact failure this gate exists to turn into a refusal to boot.
+  { name: 'DATABASE_URL', what: 'is the Postgres connection — seller accounts are read from it' },
 ];
 
 const problems = [];

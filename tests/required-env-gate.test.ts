@@ -28,18 +28,31 @@ function runGate(env: Record<string, string>): { code: number; err: string } {
   }
 }
 
-const REAL = { AUTH_SECRET: 'a'.repeat(64), ADMIN_SECRET: 'b'.repeat(64) };
+const REAL = {
+  AUTH_SECRET: 'a'.repeat(64),
+  ADMIN_SECRET: 'b'.repeat(64),
+  DATABASE_URL: 'postgres://u:p@db.example/storekit',
+};
 
 describe('the production start gate', () => {
-  it('passes with both secrets set to real values', () => {
+  it('passes with every required value set', () => {
     expect(runGate(REAL).code).toBe(0);
   });
 
   it('refuses to start when a secret is missing, and names it', () => {
-    const { code, err } = runGate({ ADMIN_SECRET: REAL.ADMIN_SECRET });
+    const { code, err } = runGate({ ADMIN_SECRET: REAL.ADMIN_SECRET, DATABASE_URL: REAL.DATABASE_URL });
     expect(code).toBe(1);
     expect(err).toContain('AUTH_SECRET');
     expect(err).not.toContain('ADMIN_SECRET is');
+  });
+
+  it('refuses to start with no database, now that accounts are read from one', () => {
+    // Since DB_MIGRATION_PLAN.md §8 stage 2 began, a server with no DATABASE_URL boots looking
+    // healthy and then throws on the first page that reads a seller — the visitor sees a login
+    // form that never works, and the operator sees nothing.
+    const { code, err } = runGate({ AUTH_SECRET: REAL.AUTH_SECRET, ADMIN_SECRET: REAL.ADMIN_SECRET });
+    expect(code).toBe(1);
+    expect(err).toContain('DATABASE_URL');
   });
 
   it('refuses the public dev defaults, not just an empty value', () => {
@@ -52,7 +65,7 @@ describe('the production start gate', () => {
   });
 
   it('treats a blank value as missing', () => {
-    expect(runGate({ AUTH_SECRET: '', ADMIN_SECRET: '' }).code).toBe(1);
+    expect(runGate({ AUTH_SECRET: '', ADMIN_SECRET: '', DATABASE_URL: '' }).code).toBe(1);
   });
 
   it('is wired as prestart, and start serves the BUILD rather than the dev server', () => {
