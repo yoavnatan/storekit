@@ -71,6 +71,11 @@ export async function verifyImport(db, { dataDir = path.join(process.cwd(), 'dat
     await scalar(db, 'SELECT COUNT(*) FROM messages'));
   check('notifications', readJson(dataDir, 'notifications.json', []).length,
     await scalar(db, 'SELECT COUNT(*) FROM notifications'));
+  // Added with the messaging move (2026-08-02). This table had no anchor at all, and it is the one
+  // that carries the platform's own record of a block and the seller's appeal to it — the rows
+  // whose loss would be least visible and worst to lose.
+  check('admin_messages', readJson(dataDir, 'admin-messages.json', []).length - dropped('admin message'),
+    await scalar(db, 'SELECT COUNT(*) FROM admin_messages'));
   check('error_log', readJson(dataDir, 'error-log.json', []).length,
     await scalar(db, 'SELECT COUNT(*) FROM error_log'));
   check('ad_campaigns', readJson(dataDir, 'ad-campaigns.json', []).length - dropped('ad campaign'),
