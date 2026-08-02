@@ -1,0 +1,39 @@
+# Local Postgres for development — DB_MIGRATION_PLAN.md §8, stage 0.
+#
+# Production is Neon (§2.1). This exists so schema, migrations and the import script can be
+# developed and re-run destructively without touching anything shared, and so a fresh clone gets
+# an identical database with one command.
+#
+#   docker compose up -d db      # start
+#   npm run db:migrate           # create the schema
+#   npm run db:import            # load data/*.json into it
+#   docker compose down -v       # throw it away, volume included
+#
+# The image is pgvector's, not plain postgres: the semantic search in
+# CONTEXTUAL_SEARCH_STRATEGY.md needs that extension, and discovering at that point that local
+# dev cannot run it is a wasted day. It is a superset of the official image.
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: storekit-db
+    environment:
+      POSTGRES_USER: storekit
+      POSTGRES_PASSWORD: storekit
+      POSTGRES_DB: storekit
+      # Dates are stored as absolute instants; the daily analytics buckets are keyed by an
+      # Asia/Jerusalem calendar day (§7.8). Pinning the server to UTC keeps local development
+      # matching production, where the server is always UTC — a local machine on Israel time
+      # silently "fixing" a day-boundary bug is how that bug reaches production.
+      TZ: UTC
+    ports:
+      - '5432:5432'
+    volumes:
+      - storekit-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U storekit -d storekit']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  storekit-db-data:
