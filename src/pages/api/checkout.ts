@@ -477,7 +477,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       await releaseCheckout(idempotencyKey);
     }
     const storeSlugs = Object.keys(storeSubtotals);
-    logError({
+    void logError({
       source: 'server',
       route: '/api/checkout',
       message: err instanceof Error ? err.message : String(err),

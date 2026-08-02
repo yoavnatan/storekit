@@ -1,6 +1,6 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
-import { logError, resolveErrorContext } from '../../lib/error-log.js';
+import { logError } from '../../lib/error-log.js';
 import { readJsonBody } from '../../lib/request-body.js';
 
 const MAX_MESSAGE_LEN = 500;
@@ -29,12 +29,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const routeRaw = (body as { route?: unknown })?.route;
   const route = typeof routeRaw === 'string' ? routeRaw.slice(0, 200) : undefined;
 
-  logError({
-    source: 'client',
-    message,
-    stack,
-    route,
-    ...(await resolveErrorContext(route ?? '', cookies)),
-  });
+  // Fire-and-forget, identity lookup included (error-log.ts): this endpoint is unauthenticated, so
+  // the caller must not be able to choose how long the server spends on their report.
+  void logError({ source: 'client', message, stack, route }, { pathname: route ?? '', cookies });
   return new Response(null, { status: 204 });
 };

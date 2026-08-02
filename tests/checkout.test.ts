@@ -71,7 +71,10 @@ vi.mock('../src/lib/user-carts.js', () => ({
 // fs.writeFileSync into the actual dev data/error-log.json on every test run
 // — polluting the admin dashboard's error log with a fake "disk write failed"
 // entry that looked like a real production incident.
-vi.mock('../src/lib/error-log.js', () => ({ logError: (entry: Record<string, unknown>) => logError(entry) }));
+// `async` for the same reason as the notifications mock above (DB_MIGRATION_PLAN.md §8, analytics):
+// logError is a query now, and a synchronous mock of an async function tests a contract that does
+// not exist.
+vi.mock('../src/lib/error-log.js', () => ({ logError: async (entry: Record<string, unknown>) => logError(entry) }));
 
 // The idempotency ledger and the money log both fs.writeFileSync into the real dev `data/`
 // directory (same reasoning as error-log below), and the ledger is additionally STATEFUL across

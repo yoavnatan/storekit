@@ -12,7 +12,7 @@ import { getAllOrders } from '../../lib/orders.js';
 import { filterAndSortOrders, getOrderStoreNames, parseOrderQuery } from '../../lib/admin-orders-filter.js';
 import { getAllAdminThreads } from '../../lib/admin-messages.js';
 import { filterAndSortAdminThreads, parseAdminThreadQuery } from '../../lib/admin-threads-query.js';
-import { getRecentErrors, filterAndSortErrors, getErrorStoreNames } from '../../lib/error-log.js';
+import { getRecentErrors, filterAndSortErrors, getErrorStoreNames, MAX_ENTRIES as MAX_ERROR_ENTRIES } from '../../lib/error-log.js';
 import { buildPlatformAdOverview } from '../../lib/admin-ads.js';
 import { getPlatformAdSettings } from '../../lib/platform-ads.js';
 import { getAllCampaigns } from '../../lib/ad-campaigns.js';
@@ -189,7 +189,9 @@ const messageThreadsFiltered = filterAndSortAdminThreads(messageThreadsAll, thre
 const messagePageResult = paginate(messageThreadsFiltered, parsePage(sp, 'mpage'));
 
 // ── Alerts tab ──
-const errorsAll = getRecentErrors(500); // MAX_ENTRIES cap in error-log.ts is already 500, so this is "all"
+// The write side enforces this same ceiling, so this really is the whole log — which is what lets
+// the store-filter options and the alerts badge below be exact rather than "over the newest N".
+const errorsAll = await getRecentErrors(MAX_ERROR_ENTRIES);
 const alSortDir = sp.get('alsort') === 'asc' ? 'asc' : 'desc';
 const alSource = (sp.get('alsource') ?? '').split(',').filter(Boolean);
 const alStore = decodeList(sp.get('alstore') ?? '');

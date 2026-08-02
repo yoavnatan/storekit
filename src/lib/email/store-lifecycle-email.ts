@@ -187,7 +187,7 @@ export async function sendStoreLifecycleEmail(input: LifecycleEmailInput): Promi
     if (!email) return;
     const res = await sendEmail(email);
     if (!res.ok) {
-      logError({
+      void logError({
         source: 'server',
         route: '/api/seller/store-lifecycle',
         message: `Store-lifecycle email (${input.state}) failed: ${res.error ?? 'unknown'}`,
@@ -198,7 +198,7 @@ export async function sendStoreLifecycleEmail(input: LifecycleEmailInput): Promi
       });
     }
   } catch (err) {
-    logError({
+    void logError({
       source: 'server',
       route: '/api/seller/store-lifecycle',
       message: `Store-lifecycle email threw: ${String(err)}`,

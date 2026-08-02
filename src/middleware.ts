@@ -2,7 +2,7 @@ import { defineMiddleware } from 'astro:middleware';
 import type { AstroCookies } from 'astro';
 import { randomUUID } from 'node:crypto';
 import { gzipResponse } from './lib/http-compress.js';
-import { logError, resolveErrorContext } from './lib/error-log.js';
+import { logError } from './lib/error-log.js';
 import { recordPageView } from './lib/store-pageviews.js';
 import { recordProductView } from './lib/product-pageviews.js';
 import { recordAnalyticsEvent } from './lib/analytics.js';
@@ -136,14 +136,17 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return gzipResponse(context.request, response);
   } catch (err) {
     const pathname = new URL(context.request.url).pathname;
-    logError({
+    // Not awaited, and the identity lookup moved INSIDE it: this runs on every 500, so when the
+    // database is what broke, every request would otherwise sit here holding a pooled connection
+    // until it times out — an outage amplifying itself into a frozen site. error-log.ts explains
+    // the rule and caps how much of the pool it may hold.
+    void logError({
       source: 'server',
       route: pathname,
       message: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
       statusCode: 500,
-      ...(await resolveErrorContext(pathname, context.cookies)),
-    });
+    }, { pathname, cookies: context.cookies });
     throw err;
   }
 });

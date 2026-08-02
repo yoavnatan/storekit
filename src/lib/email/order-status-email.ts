@@ -59,7 +59,7 @@ export async function sendOrderStatusEmail(order: Order, status: string): Promis
     if (!email) return;
     const res = await sendEmail(email);
     if (!res.ok) {
-      logError({
+      void logError({
         source: 'server',
         route: '/api/seller/orders',
         message: `Order-status email (${status}) failed: ${res.error ?? 'unknown'}`,
@@ -70,7 +70,7 @@ export async function sendOrderStatusEmail(order: Order, status: string): Promis
       });
     }
   } catch (err) {
-    logError({
+    void logError({
       source: 'server',
       route: '/api/seller/orders',
       message: `Order-status email pipeline (${status}) failed: ${err instanceof Error ? err.message : String(err)}`,

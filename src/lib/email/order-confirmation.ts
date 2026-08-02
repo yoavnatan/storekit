@@ -26,7 +26,7 @@ export async function sendOrderConfirmationEmails(orders: Order[]): Promise<void
     // Belt-and-suspenders: sendEmail never throws, but recipient resolution
     // (store/seller lookup, template build) still touches I/O — a failure here
     // must not become an unhandled rejection off the fire-and-forget call.
-    logError({
+    void logError({
       source: 'server',
       route: '/api/checkout',
       message: `Order-confirmation email pipeline failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -44,7 +44,7 @@ async function deliver(orders: Order[]): Promise<void> {
   const buyerMsg = buildBuyerOrderConfirmation(orders);
   const buyerResult = await sendEmail(buyerMsg);
   if (!buyerResult.ok) {
-    logError({
+    void logError({
       source: 'server',
       route: '/api/checkout',
       message: `Buyer order-confirmation email failed: ${buyerResult.error ?? 'unknown'}`,
@@ -63,7 +63,7 @@ async function deliver(orders: Order[]): Promise<void> {
     if (!seller?.email) continue;
     const result = await sendEmail(buildSellerOrderNotification(order, seller.email));
     if (!result.ok) {
-      logError({
+      void logError({
         source: 'server',
         route: '/api/checkout',
         message: `Seller order-notification email failed: ${result.error ?? 'unknown'}`,
