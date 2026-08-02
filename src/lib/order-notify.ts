@@ -56,14 +56,17 @@ export function buildOrderStatusNotification(
  * webhook). No-op when buildOrderStatusNotification decides there's nothing to
  * send, so callers can invoke it unconditionally.
  */
-export function notifyOrderStatusChanged(
+export async function notifyOrderStatusChanged(
   order: Order,
   prevStatus: string,
   opts: { storeName?: string; storeSlug?: string } = {},
-): void {
+): Promise<void> {
   // In-app notification — registered buyers only (guests have no account).
+  // Swallowed on failure, and deliberately: the status this announces is already persisted, so a
+  // database hiccup here must not turn a completed status update into a 500 for the seller who
+  // made it. The buyer still gets the email below, which is the channel that reaches everyone.
   const input = buildOrderStatusNotification(order, prevStatus, opts);
-  if (input) createNotification(input);
+  if (input) await createNotification(input).catch(() => { /* the status change itself stands */ });
 
   // Email — reaches EVERY buyer including guests (the majority, no account). Only
   // on a real status change; fire-and-forget + internally resilient so a mail

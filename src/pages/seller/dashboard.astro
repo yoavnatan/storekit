@@ -38,7 +38,7 @@ import { getLang, getT, getDir } from '../../i18n/index.js';
 import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
 import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
 import { thumbUrl } from '../../lib/cloudinary.js';
-import { getMessagesBySeller, getMessageReplies } from '../../lib/messages.js';
+import { getThreadRootsBySeller, getRepliesForMessages } from '../../lib/messages.js';
 import { getAdminThreadsForSeller } from '../../lib/admin-messages.js';
 import SellerMessageRow from '../../components/dashboard/SellerMessageRow.astro';
 import { getOrdersByStoreSlug, getPurchasedCountsByStoreSlug, orderStoreNotes } from '../../lib/orders.js';
@@ -317,19 +317,18 @@ const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel)
 // cost while tab switches for the light tabs stay instant. (CURRENT_TASK item 1)
 const perfIsInitial = initialPanel === 'performance';
 const advIsInitial = initialPanel === 'advertising';
-const storeMessages = store
-  ? getMessagesBySeller(sellerId)
-      .filter((m) => !m.replyToId && m.toStoreId === store.id)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  : [];
-const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
-  Object.fromEntries(storeMessages.map((m) => [m.id, getMessageReplies(m.id)]));
+// Roots narrowed to this store in SQL, then every root's replies in ONE more statement — this
+// used to read the seller's whole mailbox and then query per thread (DB_MIGRATION_PLAN.md §8).
+const storeMessages = store ? await getThreadRootsBySeller(sellerId, store.id) : [];
 // Admin<->seller "system" threads live in the SAME table as the buyer ones,
 // normalized to the same row shape (seller-messages-query.ts) — one thread
 // per subject, sorted/searched/paginated together with everything else, and
 // nothing at all rendered for a seller who never got one. They used to be a
 // single permanently pinned row outside this pipeline (CURRENT_TASK "סשן ד׳").
-const adminThreads = sellerId ? getAdminThreadsForSeller(sellerId) : [];
+const [messageReplies, adminThreads] = await Promise.all([
+  getRepliesForMessages(storeMessages.map((m) => m.id)),
+  sellerId ? getAdminThreadsForSeller(sellerId) : Promise.resolve([]),
+]);
 // Messages tab pagination — same server-paginated approach as Products/Orders
 // above (src/lib/seller-messages-query.ts).
 const sellerMessageQuery = parseSellerMessageQuery(Astro.url.searchParams);

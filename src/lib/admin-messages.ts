@@ -1,8 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import crypto from 'node:crypto';
-
-const ADMIN_MESSAGES_PATH = path.join(process.cwd(), 'data/admin-messages.json');
+import { isUuid, query, rows, type Queryable } from './db.js';
 
 // Admin<->seller messages are subject-based threads, exactly like the
 // buyer<->seller ones in messages.ts (CURRENT_TASK "סשן ד׳"): the admin opens
@@ -12,6 +9,18 @@ const ADMIN_MESSAGES_PATH = path.join(process.cwd(), 'data/admin-messages.json')
 // seller who never got a system message, and unrelated notices (a block
 // notice, a question, a policy change) all piled into the same bubble list.
 // Thread identity = the root message's id (`replyToId ?? id`).
+//
+// **Moved to Postgres with `messages` and `notifications` (DB_MIGRATION_PLAN.md §8).** It had to
+// travel with them: the seller's Messages tab merges these threads with buyer threads into ONE
+// sorted, filtered, paginated list (`seller-messages-query.ts`), and every write here is paired
+// with a notification. Half of that page in a table and half in a JSON file cannot be ordered
+// against each other.
+//
+// **Thread identity in SQL is `id = $1 OR reply_to_id = $1`, not `COALESCE(reply_to_id, id) = $1`.**
+// The two select the same rows; the first uses the primary key and `admin_messages_thread_idx`,
+// while an expression over two columns can use neither. It also keeps the module's one deliberate
+// tolerance intact — a reply whose root was deleted is still reachable by the dead root's id, and
+// `groupAdminThreads` still renders it as a thread of its own rather than dropping it.
 export interface AdminMessage {
   id: string;
   sellerId: string;
@@ -30,10 +39,15 @@ export const DEFAULT_ADMIN_SUBJECT = 'הודעת מערכת';
 
 // Size caps, enforced by BOTH message APIs. The compose form's own
 // maxlength is a convenience for the admin, not a control — a seller's
-// reply reaches the same JSON store over a plain fetch, so the limit has to
+// reply reaches the same store over a plain fetch, so the limit has to
 // live server-side to mean anything.
-export const MAX_ADMIN_SUBJECT_LEN = 120;
-export const MAX_ADMIN_CONTENT_LEN = 5000;
+//
+// Re-exported from messages.ts rather than declared again: "how big a message on this platform may
+// be" is one rule, and two modules each holding their own copy of it is the shape that drifts.
+export {
+  MAX_MESSAGE_SUBJECT_LEN as MAX_ADMIN_SUBJECT_LEN,
+  MAX_MESSAGE_CONTENT_LEN as MAX_ADMIN_CONTENT_LEN,
+} from './messages.js';
 
 export interface AdminThread {
   id: string;              // = root message id
@@ -46,21 +60,51 @@ export interface AdminThread {
   unreadForSeller: number;
 }
 
-function readAdminMessages(): AdminMessage[] {
-  try { return JSON.parse(fs.readFileSync(ADMIN_MESSAGES_PATH, 'utf8')) as AdminMessage[]; }
-  catch { return []; }
+const SELECT_ADMIN_MESSAGE = `SELECT id, seller_id, from_role, subject, content, reply_to_id,
+                                     read_by_admin, read_by_seller, created_at
+                                FROM admin_messages`;
+
+interface AdminMessageRow {
+  id: string;
+  seller_id: string;
+  from_role: string;
+  subject: string | null;
+  content: string;
+  reply_to_id: string | null;
+  read_by_admin: boolean;
+  read_by_seller: boolean;
+  created_at: Date | string;
 }
 
-function writeAdminMessages(messages: AdminMessage[]): void {
-  fs.writeFileSync(ADMIN_MESSAGES_PATH, JSON.stringify(messages, null, 2));
+function toAdminMessage(row: AdminMessageRow): AdminMessage {
+  const message: AdminMessage = {
+    id: row.id,
+    sellerId: row.seller_id,
+    fromRole: row.from_role as 'admin' | 'seller',
+    content: row.content,
+    readByAdmin: row.read_by_admin,
+    readBySeller: row.read_by_seller,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+  };
+  if (row.subject !== null) message.subject = row.subject;
+  if (row.reply_to_id) message.replyToId = row.reply_to_id;
+  return message;
 }
 
 function threadIdOf(m: AdminMessage): string {
   return m.replyToId ?? m.id;
 }
 
-// Pure/exported separately from the file read so it can be unit-tested
-// without touching the filesystem. Threads come out most-recently-active
+function runner(tx?: Queryable) {
+  return tx ?? { query };
+}
+
+// `created_at, id` — rows written in one transaction share a timestamp to the microsecond, and
+// grouping below relies on the oldest row of a group actually being first (§7.13).
+const OLDEST_FIRST = 'ORDER BY created_at, id';
+
+// Pure/exported separately from the read so it can be unit-tested
+// without a database. Threads come out most-recently-active
 // first — the order both inboxes (admin + seller) render in.
 export function groupAdminThreads(messages: AdminMessage[]): AdminThread[] {
   const byThread = new Map<string, AdminMessage[]>();
@@ -90,102 +134,122 @@ export function groupAdminThreads(messages: AdminMessage[]): AdminThread[] {
     .sort((a, b) => (a.lastMessage.createdAt < b.lastMessage.createdAt ? 1 : a.lastMessage.createdAt > b.lastMessage.createdAt ? -1 : 0));
 }
 
-export function getAllAdminThreads(): AdminThread[] {
-  return groupAdminThreads(readAdminMessages());
+/**
+ * Every system thread on the platform — the admin's inbox.
+ *
+ * Unbounded on purpose for now, exactly as the file version was: this is the only screen that shows
+ * them and it has no pagination yet. It joins `getAllOrders`/`getAllStores`/`getAllSellers`/
+ * `getAllProducts` in the "returns everything" list of DB_MIGRATION_PLAN.md §3, which is scheduled
+ * as one piece of work for all of them.
+ */
+export async function getAllAdminThreads(): Promise<AdminThread[]> {
+  const found = await rows<AdminMessageRow>(`${SELECT_ADMIN_MESSAGE} ${OLDEST_FIRST}`);
+  return groupAdminThreads(found.map(toAdminMessage));
 }
 
-export function getAdminThreadsForSeller(sellerId: string): AdminThread[] {
-  return groupAdminThreads(readAdminMessages().filter((m) => m.sellerId === sellerId));
+export async function getAdminThreadsForSeller(sellerId: string): Promise<AdminThread[]> {
+  if (!isUuid(sellerId)) return [];
+  const found = await rows<AdminMessageRow>(`${SELECT_ADMIN_MESSAGE} WHERE seller_id = $1 ${OLDEST_FIRST}`, [sellerId]);
+  return groupAdminThreads(found.map(toAdminMessage));
 }
 
-export function getAdminThreadById(threadId: string): AdminThread | null {
-  const messages = readAdminMessages().filter((m) => threadIdOf(m) === threadId);
-  if (messages.length === 0) return null;
-  return groupAdminThreads(messages)[0] ?? null;
+export async function getAdminThreadById(threadId: string): Promise<AdminThread | null> {
+  if (!isUuid(threadId)) return null;
+  const found = await rows<AdminMessageRow>(
+    `${SELECT_ADMIN_MESSAGE} WHERE id = $1 OR reply_to_id = $1 ${OLDEST_FIRST}`,
+    [threadId],
+  );
+  if (found.length === 0) return null;
+  return groupAdminThreads(found.map(toAdminMessage))[0] ?? null;
 }
 
 // Only the admin opens a thread — a seller never starts one (there is no
 // "contact the platform" entry point by design; zero-touch self-service).
 // The seller's reply inside an existing thread IS the appeal/response channel.
-export function createAdminThread(sellerId: string, subject: string, content: string): AdminMessage {
-  const messages = readAdminMessages();
-  const msg: AdminMessage = {
-    id: crypto.randomUUID(),
-    sellerId,
-    fromRole: 'admin',
-    content,
-    subject: subject.trim() || DEFAULT_ADMIN_SUBJECT,
-    readByAdmin: true,   // the sender has obviously "seen" their own message
-    readBySeller: false,
-    createdAt: new Date().toISOString(),
-  };
-  messages.push(msg);
-  writeAdminMessages(messages);
-  return msg;
+export async function createAdminThread(
+  sellerId: string,
+  subject: string,
+  content: string,
+  tx?: Queryable,
+): Promise<AdminMessage> {
+  const id = crypto.randomUUID();
+  const { rows: written } = await runner(tx).query<AdminMessageRow>(
+    `INSERT INTO admin_messages (id, seller_id, from_role, subject, content, read_by_admin, read_by_seller)
+     VALUES ($1, $2, 'admin', $3, $4, true, false)
+     RETURNING id, seller_id, from_role, subject, content, reply_to_id, read_by_admin, read_by_seller, created_at`,
+    // read_by_admin is true above: the sender has obviously "seen" their own message.
+    [id, sellerId, subject.trim() || DEFAULT_ADMIN_SUBJECT, content],
+  );
+  return toAdminMessage(written[0]!);
 }
 
-export function replyToAdminThread(threadId: string, fromRole: 'admin' | 'seller', content: string): AdminMessage | null {
-  const messages = readAdminMessages();
-  const root = messages.find((m) => m.id === threadId);
-  if (!root) return null;
-  const msg: AdminMessage = {
-    id: crypto.randomUUID(),
-    sellerId: root.sellerId,
-    fromRole,
-    content,
-    replyToId: threadId,
-    readByAdmin: fromRole === 'admin',
-    readBySeller: fromRole === 'seller',
-    createdAt: new Date().toISOString(),
-  };
-  messages.push(msg);
-  writeAdminMessages(messages);
-  return msg;
+/**
+ * Add a reply to an existing thread, or `null` when there is no such thread.
+ *
+ * The root is not read first and then written against — the `INSERT … SELECT` below reads it and
+ * writes in one statement, so "the thread was deleted between the check and the write" cannot
+ * happen and `sellerId` is taken from the root rather than trusted from the caller.
+ */
+export async function replyToAdminThread(
+  threadId: string,
+  fromRole: 'admin' | 'seller',
+  content: string,
+  tx?: Queryable,
+): Promise<AdminMessage | null> {
+  if (!isUuid(threadId)) return null;
+  const { rows: written } = await runner(tx).query<AdminMessageRow>(
+    `INSERT INTO admin_messages (id, seller_id, from_role, content, reply_to_id, read_by_admin, read_by_seller)
+     SELECT $1, root.seller_id, $3::text, $4, $2, $3::text = 'admin', $3::text = 'seller'
+       FROM admin_messages root
+      WHERE root.id = $2
+     RETURNING id, seller_id, from_role, subject, content, reply_to_id, read_by_admin, read_by_seller, created_at`,
+    [crypto.randomUUID(), threadId, fromRole, content],
+  );
+  return written[0] ? toAdminMessage(written[0]) : null;
 }
 
 // Admin-only: removes the root and every reply under it, for BOTH sides.
 // A system thread is the platform's own record (a block notice and the
 // seller's appeal to it), so the seller can't delete one — only the admin,
 // who owns that record, can. Returns false when the thread is already gone.
-export function deleteAdminThread(threadId: string): boolean {
-  const messages = readAdminMessages();
-  const remaining = messages.filter((m) => threadIdOf(m) !== threadId);
-  if (remaining.length === messages.length) return false;
-  writeAdminMessages(remaining);
-  return true;
+export async function deleteAdminThread(threadId: string, tx?: Queryable): Promise<boolean> {
+  if (!isUuid(threadId)) return false;
+  const { rowCount } = await runner(tx).query(
+    'DELETE FROM admin_messages WHERE id = $1 OR reply_to_id = $1',
+    [threadId],
+  );
+  return rowCount > 0;
 }
 
-function markThreadRead(threadId: string, reader: 'admin' | 'seller', guard?: (m: AdminMessage) => boolean): void {
-  const messages = readAdminMessages();
-  let changed = false;
-  messages.forEach((m) => {
-    if (threadIdOf(m) !== threadId) return;
-    if (guard && !guard(m)) return;
-    if (reader === 'admin' && !m.readByAdmin) { m.readByAdmin = true; changed = true; }
-    if (reader === 'seller' && !m.readBySeller) { m.readBySeller = true; changed = true; }
-  });
-  if (changed) writeAdminMessages(messages);
-}
-
-export function markAdminThreadReadByAdmin(threadId: string): void {
-  markThreadRead(threadId, 'admin');
+export async function markAdminThreadReadByAdmin(threadId: string): Promise<void> {
+  if (!isUuid(threadId)) return;
+  await query(
+    'UPDATE admin_messages SET read_by_admin = true WHERE (id = $1 OR reply_to_id = $1) AND NOT read_by_admin',
+    [threadId],
+  );
 }
 
 // sellerId is a guard, not a lookup — a seller may only mark their OWN
 // thread read, so a forged threadId from another seller's inbox is a no-op.
-export function markAdminThreadReadBySeller(threadId: string, sellerId: string): void {
-  markThreadRead(threadId, 'seller', (m) => m.sellerId === sellerId);
-}
-
-export function getUnreadCountForSellerFromAdmin(sellerId: string): number {
-  return readAdminMessages().filter((m) => m.sellerId === sellerId && m.fromRole === 'admin' && !m.readBySeller).length;
+export async function markAdminThreadReadBySeller(threadId: string, sellerId: string): Promise<void> {
+  if (!isUuid(threadId) || !isUuid(sellerId)) return;
+  await query(
+    `UPDATE admin_messages SET read_by_seller = true
+      WHERE (id = $1 OR reply_to_id = $1) AND seller_id = $2 AND NOT read_by_seller`,
+    [threadId, sellerId],
+  );
 }
 
 // Thread ids with at least one unread admin message — what the seller
 // dashboard's live poll flags per row (it can no longer use a single count,
 // now that system messages are many rows instead of one pinned one).
-export function getUnreadAdminThreadIdsForSeller(sellerId: string): string[] {
-  return readAdminMessages()
-    .filter((m) => m.sellerId === sellerId && m.fromRole === 'admin' && !m.readBySeller)
-    .map(threadIdOf);
+export async function getUnreadAdminThreadIdsForSeller(sellerId: string): Promise<string[]> {
+  if (!isUuid(sellerId)) return [];
+  const found = await rows<{ thread_id: string }>(
+    `SELECT DISTINCT COALESCE(reply_to_id, id) AS thread_id
+       FROM admin_messages
+      WHERE seller_id = $1 AND from_role = 'admin' AND NOT read_by_seller`,
+    [sellerId],
+  );
+  return found.map((r) => r.thread_id);
 }

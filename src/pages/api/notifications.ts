@@ -17,8 +17,10 @@ export const GET: APIRoute = async ({ request, cookies }) => {
 
   const url = new URL(request.url);
   const since = url.searchParams.get('since') ?? undefined;
-  const notifications = getNotificationsForUser(userId, since);
-  const unreadCount = getUnreadCountForUser(userId);
+  const [notifications, unreadCount] = await Promise.all([
+    getNotificationsForUser(userId, since),
+    getUnreadCountForUser(userId),
+  ]);
 
   return new Response(JSON.stringify({ notifications, unreadCount }), {
     headers: { 'Content-Type': 'application/json' },
@@ -32,27 +34,27 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const body = await request.json() as { action: string; id?: string; relatedId?: string };
 
   if (body.action === 'mark-all-read') {
-    markAllReadForUser(userId);
+    await markAllReadForUser(userId);
     return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
   }
 
   if (body.action === 'mark-read' && body.id) {
-    const ok = markNotificationRead(body.id, userId);
+    const ok = await markNotificationRead(body.id, userId);
     return new Response(JSON.stringify({ ok }), { headers: { 'Content-Type': 'application/json' } });
   }
 
   if (body.action === 'delete-by-related' && body.relatedId) {
-    deleteNotificationsByRelatedIds([body.relatedId], userId);
+    await deleteNotificationsByRelatedIds([body.relatedId], userId);
     return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
   }
 
   if (body.action === 'delete' && body.id) {
-    const ok = deleteNotification(body.id, userId);
+    const ok = await deleteNotification(body.id, userId);
     return new Response(JSON.stringify({ ok }), { headers: { 'Content-Type': 'application/json' } });
   }
 
   if (body.action === 'delete-all') {
-    deleteAllNotificationsForUser(userId);
+    await deleteAllNotificationsForUser(userId);
     return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
   }
 

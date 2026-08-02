@@ -308,7 +308,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     // Source-agnostic status pipeline: whoever moved the status (seller today,
     // carrier webhook later), the buyer gets told. No-op if no buyer account —
     // see order-notify.ts.
-    notifyOrderStatusChanged(updated, prevStatus, { storeName: store.name, storeSlug: store.slug });
+    await notifyOrderStatusChanged(updated, prevStatus, { storeName: store.name, storeSlug: store.slug });
     // A seller who asked to close the store while orders were still open gets that closure
     // completed HERE, the moment the last one stops being an open obligation — rather than
     // having to come back and press the button a second time (store-lifecycle.ts). No-op unless

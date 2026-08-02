@@ -57,7 +57,12 @@ vi.mock('../src/lib/store-products.js', () => ({
   LOW_STOCK_THRESHOLD: 3,
 }));
 vi.mock('../src/lib/orders.js', () => ({ createOrder: (input: Record<string, unknown>) => createOrder(input) }));
-vi.mock('../src/lib/notifications.js', () => ({ createNotification: (input: Record<string, unknown>) => createNotification(input) }));
+// `async` on purpose, not incidentally: checkout attaches a `.catch()` to this call so a failed
+// notification cannot fail a purchase that is already committed, and a mock returning `undefined`
+// would make that line throw here while working in production — the mock testing the mock again.
+vi.mock('../src/lib/notifications.js', () => ({
+  createNotification: async (input: Record<string, unknown>) => createNotification(input),
+}));
 vi.mock('../src/lib/seller-auth.js', () => ({ getSellerSession: () => getSellerSession() }));
 vi.mock('../src/lib/user-carts.js', () => ({
   getUserCart: (id: string) => getUserCart(id),

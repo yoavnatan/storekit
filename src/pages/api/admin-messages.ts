@@ -20,12 +20,12 @@ export const GET: APIRoute = async ({ request, cookies }) => {
 
   const sp = new URL(request.url).searchParams;
   if (sp.get('unread') === '1') {
-    const unreadThreadIds = getUnreadAdminThreadIdsForSeller(sellerId);
+    const unreadThreadIds = await getUnreadAdminThreadIdsForSeller(sellerId);
     return new Response(JSON.stringify({ unreadThreadIds, unreadCount: unreadThreadIds.length }), { headers: json });
   }
 
   const threadId = sp.get('threadId') ?? '';
-  const thread = getAdminThreadById(threadId);
+  const thread = await getAdminThreadById(threadId);
   if (!thread || thread.sellerId !== sellerId) {
     return new Response(JSON.stringify({ error: 'Thread not found' }), { status: 404, headers: json });
   }
@@ -40,13 +40,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   try { body = await request.json(); } catch { return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400, headers: json }); }
 
   const threadId = String(body.threadId ?? '');
-  const thread = getAdminThreadById(threadId);
+  const thread = await getAdminThreadById(threadId);
   if (!thread || thread.sellerId !== sellerId) {
     return new Response(JSON.stringify({ error: 'Thread not found' }), { status: 404, headers: json });
   }
 
   if (body.action === 'mark-read') {
-    markAdminThreadReadBySeller(threadId, sellerId);
+    await markAdminThreadReadBySeller(threadId, sellerId);
     return new Response(JSON.stringify({ ok: true }), { headers: json });
   }
 
@@ -55,6 +55,6 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return new Response(JSON.stringify({ error: 'Invalid content' }), { status: 400, headers: json });
   }
 
-  const message = replyToAdminThread(threadId, 'seller', content);
+  const message = await replyToAdminThread(threadId, 'seller', content);
   return new Response(JSON.stringify({ ok: true, message }), { headers: json });
 };

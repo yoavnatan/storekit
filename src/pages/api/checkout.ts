@@ -395,7 +395,11 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
       const store = await getStoreBySlug(storeSlug);
       if (store) {
-        createNotification({
+        // Swallowed on failure, deliberately: the charge and the order row are already committed by
+        // the time this runs, so a database hiccup here must not turn a completed purchase into a
+        // 500 for the buyer. The seller's dashboard shows the order either way; only the badge is
+        // at stake.
+        await createNotification({
           userId: store.sellerId,
           role: 'seller',
           type: 'new_order',
@@ -404,7 +408,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           relatedId: storeOrder.id,
           storeSlug: store.slug,
           storeName: store.name,
-        });
+        }).catch(() => { /* the sale itself stands */ });
       }
     }
 
@@ -415,7 +419,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
     for (const alert of stockAlerts) {
       const label = describeStockAlertProduct(alert.productName, alert.selectedVariants);
-      createNotification({
+      await createNotification({
         userId: alert.sellerId,
         role: 'seller',
         type: alert.type,
@@ -426,7 +430,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         relatedId: alert.productId,
         storeSlug: alert.storeSlug,
         storeName: alert.storeName,
-      });
+      }).catch(() => { /* same reason: the purchase is already committed */ });
     }
 
     // Remove only the purchased items from the server-side cart (buyer may have left

@@ -177,7 +177,7 @@ const adCompare = {
 };
 
 // ── Messages tab ──
-const messageThreadsAll = getAllAdminThreads();
+const messageThreadsAll = await getAllAdminThreads();
 const unreadMessagesForAdmin = messageThreadsAll.reduce((sum, t) => sum + t.unreadForAdmin, 0);
 const threadQuery = parseAdminThreadQuery(sp);
 const messageThreadsFiltered = filterAndSortAdminThreads(messageThreadsAll, threadQuery);

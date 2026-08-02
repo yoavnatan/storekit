@@ -5,7 +5,7 @@ import StoreAvatar from '../../components/StoreAvatar.astro';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, getAllStores } from '../../lib/stores.js';
 import { getOrdersByBuyer } from '../../lib/orders.js';
-import { getMessagesByBuyer, getMessageReplies } from '../../lib/messages.js';
+import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { cdnThumb } from '../../lib/cdn.js';
@@ -38,14 +38,14 @@ const ordersEmptyMessage = buyerOrderQuery.q
   ? t.buyerDashboard.ordersSearchEmpty
   : (buyerOrderQuery.history ? t.buyerDashboard.ordersEmptyHistory : t.buyerDashboard.ordersEmptyActive);
 
-const messages = getMessagesByBuyer(userId)
-  .filter((m) => !m.replyToId)
-  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+// Roots narrowed and ordered in SQL, then every root's replies in ONE more statement — this used
+// to query once per thread (DB_MIGRATION_PLAN.md §8, the N+1 note).
+const messages = await getThreadRootsByBuyer(userId);
 
-const unreadMessages = getUnreadSellerReplyCount(userId);
-
-const messageReplies: Record<string, ReturnType<typeof getMessageReplies>> =
-  Object.fromEntries(messages.map((m) => [m.id, getMessageReplies(m.id)]));
+const [unreadMessages, messageReplies] = await Promise.all([
+  getUnreadSellerReplyCount(userId),
+  getRepliesForMessages(messages.map((m) => m.id)),
+]);
 // Same formula as each row's own hasUnreadReply below — sorting/filtering by
 // read-status is only meaningful when there's actually a mix of both.
 const unreadThreadsCount = messages.filter((m) =>

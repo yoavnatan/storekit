@@ -5,6 +5,7 @@ import { getStoreBySlug, getStoreById, updateStore } from '../../../lib/stores.j
 import { getProductById, updateProduct } from '../../../lib/store-products.js';
 import { createAdminThread } from '../../../lib/admin-messages.js';
 import { createNotification } from '../../../lib/notifications.js';
+import { withTransaction } from '../../../lib/db.js';
 
 const json = { 'Content-Type': 'application/json' };
 
@@ -17,20 +18,24 @@ const json = { 'Content-Type': 'application/json' };
 // the appeal channel, no separate UI needed. Its own thread, not one shared
 // system conversation, so an appeal about this block stays attached to this
 // block (CURRENT_TASK "סשן ד׳").
-function notifySellerOfModeration(sellerId: string, entityLabel: string, kind: 'store' | 'product', blocked: boolean): void {
+async function notifySellerOfModeration(sellerId: string, entityLabel: string, kind: 'store' | 'product', blocked: boolean): Promise<void> {
   const noun = kind === 'store' ? 'חנות' : 'מוצר';
   const subject = blocked ? `ה${noun} "${entityLabel}" נחסם/ה` : `החסימה על ה${noun} "${entityLabel}" בוטלה`;
   const content = blocked
     ? `ה${noun} "${entityLabel}" נחסם/ה על ידי הצוות ואינו/ה זמין/ה יותר באתר. אם ברצונך לערער על ההחלטה או לקבל הסבר, פשוט השב/י להודעה זו.`
     : `ה${noun} "${entityLabel}" שוחרר/ה מחסימה וחזר/ה להיות זמין/ה באתר.`;
-  const message = createAdminThread(sellerId, subject, content);
-  createNotification({
-    userId: sellerId,
-    role: 'seller',
-    type: 'admin_message',
-    title: subject,
-    body: content.slice(0, 120),
-    relatedId: message.id,
+  // The notice and the badge that announces it are one write: a block the seller is never told
+  // about is exactly the silent kill switch this function exists to prevent.
+  await withTransaction(async (tx) => {
+    const message = await createAdminThread(sellerId, subject, content, tx);
+    await createNotification({
+      userId: sellerId,
+      role: 'seller',
+      type: 'admin_message',
+      title: subject,
+      body: content.slice(0, 120),
+      relatedId: message.id,
+    }, tx);
   });
 }
 
@@ -53,7 +58,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!store) return new Response(JSON.stringify({ error: 'Store not found' }), { status: 404, headers: json });
     const blocked = action === 'block-store';
     await updateStore(store.id, { blocked });
-    notifySellerOfModeration(store.sellerId, store.name, 'store', blocked);
+    await notifySellerOfModeration(store.sellerId, store.name, 'store', blocked);
     return new Response(JSON.stringify({ ok: true, blocked }), { headers: json });
   }
 
@@ -64,7 +69,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!store) return new Response(JSON.stringify({ error: 'Store not found' }), { status: 404, headers: json });
     const blocked = action === 'block-product';
     await updateProduct(product.id, { blocked });
-    notifySellerOfModeration(store.sellerId, product.name, 'product', blocked);
+    await notifySellerOfModeration(store.sellerId, product.name, 'product', blocked);
     return new Response(JSON.stringify({ ok: true, blocked }), { headers: json });
   }
 

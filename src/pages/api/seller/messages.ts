@@ -2,7 +2,7 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../../lib/stores.js';
-import { getMessagesBySeller, getMessageReplies } from '../../../lib/messages.js';
+import { getThreadRootsBySeller, getRepliesForMessages } from '../../../lib/messages.js';
 import { getAdminThreadsForSeller } from '../../../lib/admin-messages.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
@@ -26,11 +26,16 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
   if (!store) return json({ ok: false, error: 'Not authorized' }, 403);
 
-  const storeMessages = getMessagesBySeller(sellerId).filter((m) => !m.replyToId && m.toStoreId === store.id);
-  const repliesByMsgId = Object.fromEntries(storeMessages.map((m) => [m.id, getMessageReplies(m.id)]));
+  // Roots narrowed in SQL, then every root's replies in ONE more statement. This used to read the
+  // seller's whole mailbox and then query per thread — the N+1 the migration plan calls out.
+  const storeMessages = await getThreadRootsBySeller(sellerId, store.id);
+  const [repliesByMsgId, adminThreads] = await Promise.all([
+    getRepliesForMessages(storeMessages.map((m) => m.id)),
+    getAdminThreadsForSeller(sellerId),
+  ]);
   const rows = [
     ...buildSellerMessageRows(storeMessages, repliesByMsgId, sellerId),
-    ...buildSystemMessageRows(getAdminThreadsForSeller(sellerId)),
+    ...buildSystemMessageRows(adminThreads),
   ];
 
   const query = parseSellerMessageQuery(url.searchParams);

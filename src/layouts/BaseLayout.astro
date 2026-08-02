@@ -62,7 +62,7 @@ function metaPixelScript(id: string): string {
 // seller-supplied product names (dataLayer ecommerce items) to every visitor.
 const dlJson = dataLayer ? jsonForScript(dataLayer) : null;
 const sessionUserId = getSellerSession(Astro.cookies) ?? '';
-const initialUnreadCount = sessionUserId ? getUnreadCountForUser(sessionUserId) : 0;
+const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUserId) : 0;
 ---
 
 <!doctype html>

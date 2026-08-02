@@ -242,7 +242,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // The seller just reviewed/re-entered this product's stock as part of the
     // full edit form — treat that as acknowledging any low-stock/out-of-stock
     // alert for it, same as an order's status change clearing its own notification.
-    deleteNotificationsByRelatedIds([productId], sellerId);
+    await deleteNotificationsByRelatedIds([productId], sellerId);
     const categoryPathStr = updated.categoryId ? categoryPath(await getCategoriesByStoreId(product.storeId), updated.categoryId) : '';
     // The edit row stays in the DOM after a save, so it gets the revision it now
     // holds — otherwise a second save from the same open row would report a conflict
@@ -307,7 +307,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
     // Only clear when the stock cell itself was the one edited — a name/price/sku
     // inline edit shouldn't silently dismiss an unrelated low-stock alert.
-    if ('stock' in patch) deleteNotificationsByRelatedIds([productId], sellerId);
+    if ('stock' in patch) await deleteNotificationsByRelatedIds([productId], sellerId);
     // The partial-save actions return the new revision so the open edit row — which the
     // client patches field-by-field to match — stays in step and doesn't report the
     // seller's own inline edit as a conflict.
@@ -367,7 +367,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     const updated = await updateProduct(productId, { variantStock: map, stock: total });
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
-    deleteNotificationsByRelatedIds([productId], sellerId);
+    await deleteNotificationsByRelatedIds([productId], sellerId);
     return json({ ok: true, rev: productEditRev(updated), comboKey: key, comboStock: clamped, stock: total, stockAlerts: await countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
@@ -401,7 +401,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Taking a product off the shelf resolves any outstanding stock alert for it —
     // the seller has consciously decided it's not for sale, so nagging about its
     // stock would be exactly the noise this feature removes.
-    if (hidden) deleteNotificationsByRelatedIds([productId], sellerId);
+    if (hidden) await deleteNotificationsByRelatedIds([productId], sellerId);
     return json({ ok: true, hidden: updated.hidden === true, stockAlerts: await countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
