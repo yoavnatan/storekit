@@ -29,7 +29,6 @@
  *  import from anywhere (client bundles included).
  */
 
-import { percentOf } from './money.js';
 
 export type SellerTierId = 'starter' | 'growth' | 'pro' | 'enterprise';
 
@@ -96,10 +95,17 @@ export function monthlyFeeForTier(id: string | undefined | null): number {
  *  revenue. ⚠️ PLACEHOLDER, like the tier numbers (CURRENT_TASK.md item 23). */
 export const AD_PLATFORM_MARGIN_PERCENT = 15;
 
-/** Platform income on `spend` ILS of real ad spend — the margin only, not the spend. */
-export function adMarginForSpend(spend: number): number {
-  return percentOf(spend, AD_PLATFORM_MARGIN_PERCENT);
-}
+/* `adMarginForSpend(spend)` used to live here — `percentOf(spend, AD_PLATFORM_MARGIN_PERCENT)` —
+ * and it is deleted rather than kept for a future caller, because it now encodes the WRONG model.
+ * When the fee was a markup added ON TOP of the budget it was right. Since 2026-07-30 the fee
+ * comes OUT of the budget (ad-metrics.ts#adSpendOfCharge), so the platform's income on a 115₪
+ * charge is 15₪ — `charge × 15/115` — and this would have answered 17.25₪, over-booking by 15%.
+ * It had no callers, which is the only reason nobody had been misled by it yet.
+ *
+ * The margin has ONE definition and it is a subtraction, not a percentage: what the seller was
+ * charged minus what reached Google/Meta (`ad-scope-label.ts#campaignFeeOf` for one campaign,
+ * `platform-revenue.ts` for a date range). That is also why the fee the seller reads on a campaign
+ * card and the fee the platform books cannot disagree — they are the same subtraction. */
 
 /** The management-fee percentage a SELLER is told about, which must be the same number the
  *  platform actually books above. It was two: the books took AD_PLATFORM_MARGIN_PERCENT while the
