@@ -22,7 +22,7 @@ import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.
 import { store as platform } from '../../config/store.config.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
-import { getLastViewedAt, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
+import { getAllLastViewedAt, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
 import { buildPlatformPerformance, buildPlatformStoreInputs, parseStoreRowsQuery, selectStoreRows } from '../../lib/platform-performance.js';
 import { getStoreViewStats } from '../../lib/store-pageviews.js';
 import { buildPlatformRevenue } from '../../lib/platform-revenue.js';
@@ -103,8 +103,9 @@ const reconciliation = reconcileOrders(allOrders, stores.map((s) => s.slug));
 // silently re-fetched this same route and wiped the marks mid-session.
 // It now advances only when the admin actually leaves the tab
 // (POST /api/admin/tab-view from tab-nav.ts).
-const TRACKED_TABS: TrackedAdminTab[] = ['sellers', 'stores', 'orders', 'alerts'];
-const newSince = Object.fromEntries(TRACKED_TABS.map((t) => [t, getLastViewedAt(t)])) as Record<TrackedAdminTab, string>;
+// One read for all four tabs — the per-tab loop this replaced was four round trips for a single
+// jsonb row (DB_MIGRATION_PLAN.md §8).
+const newSince = await getAllLastViewedAt();
 const newOnly: Record<TrackedAdminTab, boolean> = {
   sellers: sp.get('snew') === '1',
   stores: sp.get('stnew') === '1',

@@ -136,6 +136,13 @@ export async function verifyImport(db, { dataDir = path.join(process.cwd(), 'dat
     await scalar(db, `SELECT COALESCE((value ->> 'lifetimeBudgetAgorot')::bigint, 0)
                         FROM app_settings WHERE key = 'platform_ads'`),
     'ILS→agorot conversion');
+  // The other settings key, which had no anchor at all. Both live in `app_settings`, and the write
+  // path merges rather than replaces — so the failure this catches is one key landing on top of
+  // the other, which leaves a valid-looking row and a silently reset badge or budget.
+  check('admin tab-view boundaries',
+    Object.keys(readJson(dataDir, 'admin-tab-views.json', {})).length,
+    await scalar(db, `SELECT COALESCE((SELECT COUNT(*) FROM jsonb_object_keys(value)), 0)
+                        FROM app_settings WHERE key = 'admin_tab_views'`));
 
   // --- §7.12 / §9.8 the silent NULL-flag bug -------------------------------
   // isProductVisible === !blocked && !hidden. If a flag imported as NULL the SQL predicate stops
