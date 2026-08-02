@@ -91,7 +91,7 @@ async function resolveScope(body: CampaignBody, store: StoreRef): Promise<ScopeR
     // campaign pointing at a 404 or at a "sold out" page, and pay for every click to it.
     // Starting a campaign on something nobody can buy is a different decision from continuing
     // one through a stock-out — which is why ad-campaign-health.ts only PAUSES for that.
-    const owned = getProductsByStoreId(store.id).filter((p) => isProductVisible(p) && p.stock > 0);
+    const owned = (await getProductsByStoreId(store.id)).filter((p) => isProductVisible(p) && p.stock > 0);
     // Mapped over `wanted`, not filtered over the catalog: the seller's pick order is what the
     // card names, and the catalog's own order would read as a different campaign.
     const picked = wanted.map((id) => owned.find((p) => p.id === id)).filter((p) => !!p);

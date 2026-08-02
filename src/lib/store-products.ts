@@ -1,13 +1,38 @@
-import fs from 'node:fs';
-import path from 'node:path';
+/**
+ * The catalog — the fourth module moved off `data/*.json` (DB_MIGRATION_PLAN.md §8 stage 2).
+ *
+ * Every reader and writer here is a query now, so all of them are `async` and every caller
+ * `await`s (§3). The types and the answers are unchanged; what moved is where they come from,
+ * plus the things a JSON file could not do:
+ *
+ *   · **`lib/mutex.ts` is dead here (§7.5).** Stock is decremented by one conditional `UPDATE`
+ *     whose affected-row count IS the verdict — 1 means sold, 0 means there was not enough — and
+ *     that holds across any number of server processes. The mutex only ever serialised one Node
+ *     process, so two instances meant two mutexes and an oversell nothing would report.
+ *   · **A product's slug is unique per store because an index says so, not because a scan said so
+ *     first (§7.1/§7.4).** `UNIQUE (store_id, slug)`, with the same bump-and-retry loop
+ *     `createStore` uses; a global `UNIQUE(slug)` would have been wrong — 47 slugs repeat across
+ *     stores in the real data and none repeats inside one.
+ *   · **Prices are integer agorot (§7.7).** `price_agorot bigint` in the column, ILS numbers at
+ *     this module's edge (`money.ts#toAgorot`/`fromAgorot`), so nothing else in the app changes
+ *     shape yet — the unit flips application-wide with `orders`, once, not once per module.
+ *   · **Images, per-combo stock and per-colour photos are rows, not JSON blobs** — which is what
+ *     lets `product_images` carry a `cloudinary_public_id` beside the URL (§7.10) and what makes
+ *     the atomic decrement above possible at all.
+ *
+ * **The one shape that needed a schema change (migration 0003).** `variantStock` is a PARTIAL map:
+ * a combo with no entry sells from the shared `stock` pool. `variantSku` is a second partial map
+ * over the same keys, and 0001 gave both one row per combo — so a combo carrying only a code had
+ * to be stored with `stock = 0`, which reads as "sold out" rather than "no override". `stock` is
+ * nullable now and NULL is what "no override" means, here and in the importer.
+ */
 import crypto from 'node:crypto';
 import { comboKey } from './variant-combo.js';
 import { toSlug } from './url-base.js';
-import type { ProductDiscount } from './discounts.js';
+import { fromAgorot, toAgorot } from './money.js';
+import { MAX_DISCOUNT_PERCENT, MIN_DISCOUNT_PERCENT, type ProductDiscount } from './discounts.js';
+import { firstRow, isUuid, query, rows, withTransaction, type Queryable } from './db.js';
 export { LOW_STOCK_THRESHOLD } from './variant-combo.js';
-import { Mutex } from './mutex.js';
-
-const PRODUCTS_PATH = path.join(process.cwd(), 'data/store-products.json');
 
 export interface ProductSpec {
   label: string;
@@ -70,14 +95,149 @@ export interface StoreProduct {
   createdAt: string;
 }
 
-/** Exported for store-products-bulk.ts (CSV batch upsert) — same file, same read/write contract, no separate I/O path. */
-export function readProducts(): StoreProduct[] {
-  try { return JSON.parse(fs.readFileSync(PRODUCTS_PATH, 'utf8')) as StoreProduct[]; }
-  catch { return []; }
+/**
+ * One product row, plus its three child tables folded in by the same statement.
+ *
+ * Selected explicitly rather than `SELECT *`, so a column a later migration adds cannot silently
+ * change what this module returns. The `date` columns come back through `to_char` on purpose: a
+ * `date` parsed into a JS `Date` lands at local midnight and formatting it back can move the day
+ * across a timezone boundary (§7.8) — a sale that starts tomorrow is stored as text and read as
+ * the same text.
+ */
+const COLUMNS = `p.id, p.store_id, p.slug, p.name, p.description, p.price_agorot, p.stock, p.sku,
+    p.category_id, p.hidden, p.blocked, p.tags, p.specs, p.variants, p.seller_note,
+    p.discount_type, p.discount_percent, p.discount_amount_agorot, p.discount_show_badge,
+    to_char(p.discount_starts_at, 'YYYY-MM-DD') AS discount_starts_at,
+    to_char(p.discount_ends_at, 'YYYY-MM-DD') AS discount_ends_at,
+    p.created_at,
+    (SELECT array_agg(i.url ORDER BY i.position)
+       FROM product_images i WHERE i.product_id = p.id) AS images,
+    (SELECT jsonb_object_agg(v.combo_key, v.stock)
+       FROM product_variant_stock v WHERE v.product_id = p.id AND v.stock IS NOT NULL) AS variant_stock,
+    (SELECT jsonb_object_agg(v.combo_key, v.sku)
+       FROM product_variant_stock v WHERE v.product_id = p.id AND v.sku IS NOT NULL) AS variant_sku,
+    (SELECT jsonb_object_agg(m.option_value, m.url)
+       FROM product_variant_images m WHERE m.product_id = p.id) AS variant_images`;
+
+/**
+ * §7.13: a table has no natural order, and `rankDefault` (product-listing.ts) ends on a
+ * `createdAt` comparison whose ties fall back to the order the rows arrived in — which used to be
+ * the file's, stable by accident. Newest-first with `id` breaking a same-instant tie is both
+ * stable and exactly the order `store_products_visible_idx (store_id, created_at DESC, id)` is
+ * built to hand back, so the storefront grid gets its page without a sort step.
+ */
+const ORDER = 'ORDER BY p.created_at DESC, p.id';
+
+/** `isProductVisible` as a predicate the index can answer — see `store_products_visible_idx`. */
+const VISIBLE = 'NOT p.hidden AND NOT p.blocked';
+
+interface ProductRow {
+  id: string;
+  store_id: string;
+  slug: string;
+  name: string;
+  description: string;
+  price_agorot: number;
+  stock: number;
+  sku: string | null;
+  category_id: string | null;
+  hidden: boolean;
+  blocked: boolean;
+  tags: string[] | null;
+  specs: ProductSpec[] | null;
+  variants: ProductVariant[] | null;
+  seller_note: string | null;
+  discount_type: 'percent' | 'amount' | null;
+  discount_percent: number | null;
+  discount_amount_agorot: number | null;
+  discount_show_badge: boolean;
+  discount_starts_at: string | null;
+  discount_ends_at: string | null;
+  created_at: Date | string | null;
+  images: string[] | null;
+  variant_stock: Record<string, number> | null;
+  variant_sku: Record<string, string> | null;
+  variant_images: Record<string, string> | null;
 }
 
-export function writeProducts(products: StoreProduct[]): void {
-  fs.writeFileSync(PRODUCTS_PATH, JSON.stringify(products, null, 2));
+function nonEmpty<T extends object>(value: T | null): T | undefined {
+  return value && Object.keys(value).length ? value : undefined;
+}
+
+/** The stored discount, rebuilt in exactly the shape `discount-input.ts#normalizeProductDiscount`
+ *  writes — same keys, same omissions. `record-rev.ts` hashes this object field by field, so a
+ *  shape that differed from the form's would make every save look like an edit of the discount. */
+function toDiscount(row: ProductRow): ProductDiscount | undefined {
+  if (!row.discount_type) return undefined;
+  const value = row.discount_type === 'percent'
+    ? (row.discount_percent ?? 0)
+    : fromAgorot(row.discount_amount_agorot ?? 0);
+  if (!value) return undefined;
+  const discount: ProductDiscount = { type: row.discount_type, value };
+  if (row.discount_show_badge === false) discount.showBadge = false;
+  if (row.discount_starts_at) discount.startsAt = row.discount_starts_at;
+  if (row.discount_ends_at) discount.endsAt = row.discount_ends_at;
+  return discount;
+}
+
+/**
+ * Row → `StoreProduct`, in the exact shape the rest of the app reads today.
+ *
+ * **Absent, not `null` and not empty.** Optional fields are written only when they carry
+ * something, because that is what `createProduct` has always stored (`...(tags?.length ? {tags} :
+ * {})`) and what ~60 call sites are written against (`p.images?.[0]`, `p.tags ?? []`). It is also
+ * what `record-rev.ts#normalize` already folds together, so an empty array and a missing key
+ * cannot read as an edit either way.
+ */
+function toProduct(row: ProductRow): StoreProduct {
+  const product: StoreProduct = {
+    id: row.id,
+    storeId: row.store_id,
+    slug: row.slug,
+    name: row.name,
+    description: row.description,
+    price: fromAgorot(row.price_agorot),
+    stock: row.stock,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at ?? ''),
+  };
+  if (row.images?.length) product.images = row.images;
+  if (row.category_id) product.categoryId = row.category_id;
+  if (row.tags?.length) product.tags = row.tags;
+  if (row.sku) product.sku = row.sku;
+  if (row.specs?.length) product.specs = row.specs;
+  if (row.variants?.length) product.variants = row.variants;
+  const variantStock = nonEmpty(row.variant_stock);
+  if (variantStock) product.variantStock = variantStock;
+  const variantSku = nonEmpty(row.variant_sku);
+  if (variantSku) product.variantSku = variantSku;
+  const variantImages = nonEmpty(row.variant_images);
+  if (variantImages) product.variantImages = variantImages;
+  if (row.blocked) product.blocked = true;
+  if (row.hidden) product.hidden = true;
+  const discount = toDiscount(row);
+  if (discount) product.discount = discount;
+  if (row.seller_note) product.sellerNote = row.seller_note;
+  return product;
+}
+
+/** Statements run on the pool, or on the transaction a writer is already inside. */
+function on(tx?: Queryable) {
+  return {
+    rows: <Row>(text: string, params: readonly unknown[]) =>
+      (tx ? tx.query<Row>(text, params).then((r) => r.rows) : rows<Row>(text, params)),
+    first: async <Row>(text: string, params: readonly unknown[]) =>
+      (tx ? (await tx.query<Row>(text, params)).rows[0] : await firstRow<Row>(text, params)),
+  };
+}
+
+async function selectProducts(where: string, params: readonly unknown[] = [], tx?: Queryable): Promise<StoreProduct[]> {
+  return (await on(tx).rows<ProductRow>(`SELECT ${COLUMNS} FROM store_products p WHERE ${where} ${ORDER}`, params))
+    .map(toProduct);
+}
+
+async function selectProduct(where: string, params: readonly unknown[] = [], tx?: Queryable): Promise<StoreProduct | null> {
+  const row = await on(tx).first<ProductRow>(`SELECT ${COLUMNS} FROM store_products p WHERE ${where} LIMIT 1`, params);
+  return row ? toProduct(row) : null;
 }
 
 /**
@@ -124,47 +284,206 @@ interface CreateProductInput {
   variantImages?: Record<string, string>;
 }
 
+/** Both money and stock are constrained non-negative in the schema, and a form that submits a
+ *  negative used to store one rather than raise. Clamping here keeps that answer: a bad number is
+ *  a bad number, not a 500 on a page that worked yesterday. */
+const units = (n: unknown): number => Math.max(0, Math.round(Number(n) || 0));
+const agorot = (n: unknown): number => Math.max(0, toAgorot(Number(n) || 0));
+
 /** True if another product in this store already uses this exact sku (case-sensitive, as typed). */
-export function isSkuTaken(storeId: string, sku: string, excludeId?: string): boolean {
-  return readProducts().some((p) => p.storeId === storeId && p.sku === sku && p.id !== excludeId);
+export async function isSkuTaken(storeId: string, sku: string, excludeId?: string): Promise<boolean> {
+  if (!isUuid(storeId) || !sku) return false;
+  const row = await firstRow<{ id: string }>(
+    `SELECT id FROM store_products
+      WHERE store_id = $1 AND sku = $2 AND ($3::uuid IS NULL OR id <> $3::uuid) LIMIT 1`,
+    [storeId, sku, excludeId && isUuid(excludeId) ? excludeId : null],
+  );
+  return Boolean(row);
 }
 
-export function createProduct(storeId: string, { name, description = '', price, stock = 0, images, categoryId, tags, sku, specs, discount, sellerNote, variants, variantStock, variantSku, variantImages }: CreateProductInput): StoreProduct {
-  const products = readProducts();
-  const storeProducts = products.filter((p) => p.storeId === storeId);
+/** How many `name-2`, `name-3`… a colliding slug is worth trying before falling back to randomness. */
+const SLUG_BUMP_ATTEMPTS = 50;
+
+/**
+ * Write the three child tables for a product, replacing whatever they held.
+ *
+ * `variantStock` and `variantSku` share `product_variant_stock` (same key, one row), so they are
+ * always written TOGETHER from the resolved pair — writing one alone would delete the other's
+ * rows. A combo present only in the sku map gets `stock = NULL`: no override, sells from the
+ * shared pool (migration 0003).
+ */
+async function writeChildren(
+  tx: Queryable,
+  productId: string,
+  children: {
+    images?: string[];
+    variantStock?: Record<string, number>;
+    variantSku?: Record<string, string>;
+    variantImages?: Record<string, string>;
+  },
+): Promise<void> {
+  if (children.images) {
+    await tx.query('DELETE FROM product_images WHERE product_id = $1', [productId]);
+    const urls = children.images.filter(Boolean);
+    if (urls.length) {
+      await tx.query(
+        `INSERT INTO product_images (product_id, position, url)
+         SELECT $1, pos - 1, url FROM unnest($2::text[]) WITH ORDINALITY AS v(url, pos)`,
+        [productId, urls],
+      );
+    }
+  }
+
+  if (children.variantStock || children.variantSku) {
+    const stock = children.variantStock ?? {};
+    const sku = children.variantSku ?? {};
+    const keys = [...new Set([...Object.keys(stock), ...Object.keys(sku)])];
+    await tx.query('DELETE FROM product_variant_stock WHERE product_id = $1', [productId]);
+    if (keys.length) {
+      await tx.query(
+        `INSERT INTO product_variant_stock (product_id, combo_key, stock, sku)
+         SELECT $1, k, s, c FROM unnest($2::text[], $3::int[], $4::text[]) AS v(k, s, c)`,
+        [
+          productId,
+          keys,
+          keys.map((k) => (k in stock ? units(stock[k]) : null)),
+          keys.map((k) => sku[k] ?? null),
+        ],
+      );
+    }
+  }
+
+  if (children.variantImages) {
+    await tx.query('DELETE FROM product_variant_images WHERE product_id = $1', [productId]);
+    const entries = Object.entries(children.variantImages).filter(([, url]) => Boolean(url));
+    if (entries.length) {
+      await tx.query(
+        `INSERT INTO product_variant_images (product_id, option_value, url)
+         SELECT $1, o, u FROM unnest($2::text[], $3::text[]) AS v(o, u)`,
+        [productId, entries.map(([option]) => option), entries.map(([, url]) => url)],
+      );
+    }
+  }
+}
+
+/**
+ * The six discount columns, in the order every INSERT/UPDATE below lists them.
+ *
+ * **An unusable value stores NO discount rather than raising.** The columns carry the bands as
+ * CHECK constraints (`discount_percent BETWEEN 1 AND 95`, `discount_amount_agorot > 0`), so a
+ * percent of 0 or 200 — which the file version stored as an inert record — would now be a 500 on
+ * a form that worked yesterday. Every save path already runs
+ * `discount-input.ts#normalizeProductDiscount`, which drops exactly these; this repeats its answer
+ * for anything that reaches the module another way, and keeps "a discount exists" meaning "it
+ * means something".
+ */
+function discountValues(discount: ProductDiscount | undefined): unknown[] {
+  const none = [null, null, null, true, null, null];
+  if (!discount) return none;
+  const percent = discount.type === 'percent' ? Math.round(Number(discount.value) || 0) : null;
+  const amount = discount.type === 'amount' ? agorot(discount.value) : null;
+  if (percent !== null && (percent < MIN_DISCOUNT_PERCENT || percent > MAX_DISCOUNT_PERCENT)) return none;
+  if (amount !== null && amount <= 0) return none;
+  return [
+    discount.type,
+    percent,
+    amount,
+    discount.showBadge !== false,
+    discount.startsAt ?? null,
+    discount.endsAt ?? null,
+  ];
+}
+
+/**
+ * Add one product.
+ *
+ * **The slug is settled by the unique index, not by a scan that ran before it.** Two products
+ * added in the same moment used to both find `חולצה` free and both take it; here the second
+ * `INSERT` simply returns no row and the loop tries `חולצה-2`. Same shape as `createStore`, for
+ * the same reason, including the random suffix that ends the loop no matter how contended.
+ */
+export async function createProduct(storeId: string, input: CreateProductInput): Promise<StoreProduct> {
+  return withTransaction((tx) => createProductIn(tx, storeId, input));
+}
+
+/**
+ * `createProduct`'s body, on a caller-supplied transaction — for `store-products-bulk.ts`, whose
+ * whole CSV batch has to land or not land as one unit. A thousand rows through `createProduct`
+ * would be a thousand transactions, and a file that failed on row 600 would leave 599 products
+ * behind with no way to tell which import they came from.
+ */
+export async function createProductIn(tx: Queryable, storeId: string, input: CreateProductInput): Promise<StoreProduct> {
+  const {
+    name, description = '', price, stock = 0, images, categoryId, tags, sku, specs,
+    discount, sellerNote, variants, variantStock, variantSku, variantImages,
+  } = input;
   const base = slugify(name) || 'product';
-  let slug = base;
-  let n = 2;
-  while (storeProducts.find((p) => p.slug === slug)) { slug = `${base}-${n++}`; }
 
-  const product: StoreProduct = {
-    id: crypto.randomUUID(),
-    storeId,
-    slug,
-    name,
-    description,
-    price,
-    stock,
-    ...(images?.length ? { images } : {}),
-    ...(categoryId ? { categoryId } : {}),
-    ...(tags?.length ? { tags } : {}),
-    ...(sku ? { sku } : {}),
-    ...(specs?.length ? { specs } : {}),
-    ...(discount ? { discount } : {}),
-    ...(sellerNote ? { sellerNote } : {}),
-    ...(variants?.length ? { variants } : {}),
-    ...(variantStock && Object.keys(variantStock).length ? { variantStock } : {}),
-    ...(variantSku && Object.keys(variantSku).length ? { variantSku } : {}),
-    ...(variantImages && Object.keys(variantImages).length ? { variantImages } : {}),
-    createdAt: new Date().toISOString(),
-  };
-  products.push(product);
-  writeProducts(products);
-  return product;
+  for (let attempt = 0; attempt <= SLUG_BUMP_ATTEMPTS + 1; attempt += 1) {
+    const slug = attempt === 0 ? base
+      : attempt <= SLUG_BUMP_ATTEMPTS ? `${base}-${attempt + 1}`
+      : `${base}-${crypto.randomBytes(4).toString('hex')}`;
+    const id = crypto.randomUUID();
+    const { rows: created } = await tx.query<{ id: string }>(
+      `INSERT INTO store_products (
+         id, store_id, slug, name, description, price_agorot, stock, sku, category_id,
+         tags, specs, variants, seller_note,
+         discount_type, discount_percent, discount_amount_agorot, discount_show_badge,
+         discount_starts_at, discount_ends_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::uuid,
+               $10::text[], $11::jsonb, $12::jsonb, $13,
+               $14, $15, $16, $17, $18::date, $19::date, now())
+       ON CONFLICT (store_id, slug) DO NOTHING
+       RETURNING id`,
+      [
+        id, storeId, slug, name, description, agorot(price), units(stock), sku || null,
+        categoryId && isUuid(categoryId) ? categoryId : null,
+        tags?.length ? tags : [],
+        JSON.stringify(specs ?? []),
+        JSON.stringify(variants ?? []),
+        sellerNote || null,
+        ...discountValues(discount),
+      ],
+    );
+    if (!created[0]) continue;
+
+    await writeChildren(tx, id, {
+      images: images ?? [],
+      variantStock: variantStock ?? {},
+      variantSku: variantSku ?? {},
+      variantImages: variantImages ?? {},
+    });
+    const product = await selectProduct('p.id = $1', [id], tx);
+    if (product) return product;
+  }
+  // Unreachable in practice — the last attempt carries 32 bits of randomness. Throwing beats
+  // returning a product the caller would then have to null-check for the first time.
+  throw new Error(`Could not find a free slug for "${name}"`);
 }
 
-export function getProductsByStoreId(storeId: string): StoreProduct[] {
-  return readProducts().filter((p) => p.storeId === storeId);
+export async function getProductsByStoreId(storeId: string): Promise<StoreProduct[]> {
+  if (!isUuid(storeId)) return [];
+  return selectProducts('p.store_id = $1', [storeId]);
+}
+
+/** The same read on a caller-supplied transaction — the CSV batch resolves every row against the
+ *  catalog it is about to rewrite, and reading it outside the transaction would mean judging one
+ *  snapshot and writing over another. */
+export async function getProductsByStoreIdIn(tx: Queryable, storeId: string): Promise<StoreProduct[]> {
+  if (!isUuid(storeId)) return [];
+  return selectProducts('p.store_id = $1', [storeId], tx);
+}
+
+/**
+ * Every product in the catalog, across every store.
+ *
+ * Three callers need exactly this — site search, the seller funnel and the admin sellers tab —
+ * and each of them used to read the whole JSON file. It carries the same open debt as
+ * `getAllStores()`/`getAllSellers()` beside it (§3): it does not scale and it is not paginated,
+ * and all three will be replaced by a query that filters in the database rather than in Node.
+ */
+export async function getAllProducts(): Promise<StoreProduct[]> {
+  return selectProducts('true');
 }
 
 /** false for an admin-blocked OR seller-hidden product. Every public discovery/purchase
@@ -174,7 +493,11 @@ export function getProductsByStoreId(storeId: string): StoreProduct[] {
  *  still leaked a blocked product before this consolidation). `hidden` is the seller's own
  *  reversible take-down (see the field doc); it rides the same gate so a hidden product is
  *  off every surface — grid, search, product page, checkout, feed, sitemap — exactly like a
- *  blocked one, with no new call sites to keep in sync. */
+ *  blocked one, with no new call sites to keep in sync.
+ *
+ *  Stays a pure predicate over an already-fetched record even though the same rule is now also
+ *  SQL (`VISIBLE` above): callers filter lists they hold in memory with it, and the two are
+ *  pinned to each other by `tests/product-visibility-guard.test.ts`. */
 export function isProductVisible(product: StoreProduct): boolean {
   return !product.blocked && !product.hidden;
 }
@@ -182,8 +505,32 @@ export function isProductVisible(product: StoreProduct): boolean {
 /** getProductsByStoreId(), pre-filtered to non-blocked — the version every public listing
  *  (store grid, related products, search, "load more") should call instead of
  *  getProductsByStoreId() + an inline filter. */
-export function getVisibleProductsByStoreId(storeId: string): StoreProduct[] {
-  return getProductsByStoreId(storeId).filter(isProductVisible);
+export async function getVisibleProductsByStoreId(storeId: string): Promise<StoreProduct[]> {
+  if (!isUuid(storeId)) return [];
+  return selectProducts(`p.store_id = $1 AND ${VISIBLE}`, [storeId]);
+}
+
+/**
+ * The same thing for MANY stores, in one query, grouped by store id.
+ *
+ * The homepage, `/stores` and the sitemap each hold a list of stores and need every one's shelf.
+ * Per-store that is N queries fired at once — with a pool of ten and a five-second checkout
+ * timeout, a mall of a few hundred stores turns its own front page into a connection stampede,
+ * which is precisely the "works in dev, falls over in production" shape §7.16 exists to prevent.
+ * (As file reads it was N parses of the WHOLE catalog, so this is not a regression being fixed —
+ * it is the thing the move made fixable.)
+ *
+ * Every requested id gets an entry, empty if the store has nothing on its shelves, so a caller
+ * never has to distinguish "no products" from "store not asked about".
+ */
+export async function getVisibleProductsByStoreIds(storeIds: readonly string[]): Promise<Map<string, StoreProduct[]>> {
+  const ids = [...new Set(storeIds.filter(isUuid))];
+  const byStore = new Map<string, StoreProduct[]>(ids.map((id) => [id, []]));
+  // One ORDER BY over the whole result, so each store's slice keeps the order a single-store
+  // read would have given it. No ids means no statement — an empty `ANY(…)` is a query for nothing.
+  const products = ids.length ? await selectProducts(`p.store_id = ANY($1::uuid[]) AND ${VISIBLE}`, [ids]) : [];
+  for (const product of products) byStore.get(product.storeId)?.push(product);
+  return byStore;
 }
 
 /** A product with every seller-private field removed — what a public endpoint is allowed to
@@ -197,8 +544,18 @@ export function toPublicProduct(p: StoreProduct): Omit<StoreProduct, 'sellerNote
   return pub;
 }
 
-export function getProductById(id: string): StoreProduct | null {
-  return readProducts().find((p) => p.id === id) ?? null;
+export async function getProductById(id: string): Promise<StoreProduct | null> {
+  if (!isUuid(id)) return null;
+  return selectProduct('p.id = $1', [id]);
+}
+
+/** Case-sensitive on the slug's text, exactly as `getStoreBySlug` is: the column is `citext` so
+ *  that one store cannot hold `Shirt` and `shirt` as two products, but serving the page at every
+ *  capitalisation would put the same product on a dozen URLs pointing at one canonical. */
+export async function getProductBySlug(storeId: string, slug: string): Promise<StoreProduct | null> {
+  if (!isUuid(storeId) || !slug) return null;
+  const wanted = slug.normalize('NFKC');
+  return selectProduct('p.store_id = $1 AND p.slug = $2 AND p.slug::text = $3', [storeId, wanted, wanted]);
 }
 
 /** Count of a store's products that are actually on sale (not seller-hidden, not
@@ -207,29 +564,121 @@ export function getProductById(id: string): StoreProduct | null {
  *  mutating API returns to keep it live can never drift. `threshold` is
  *  variant-combo.ts#LOW_STOCK_THRESHOLD, passed in by callers so this data-layer
  *  module stays free of the variant helper dependency. */
-export function countStockAlerts(storeId: string, threshold: number): number {
-  return readProducts().filter((p) => p.storeId === storeId && !p.hidden && !p.blocked && p.stock <= threshold).length;
+export async function countStockAlerts(storeId: string, threshold: number): Promise<number> {
+  if (!isUuid(storeId)) return 0;
+  const row = await firstRow<{ count: number }>(
+    `SELECT COUNT(*)::bigint AS count FROM store_products p
+      WHERE p.store_id = $1 AND ${VISIBLE} AND p.stock <= $2`,
+    [storeId, threshold],
+  );
+  return Number(row?.count ?? 0);
 }
 
-export function updateProduct(id: string, updates: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>>): StoreProduct | null {
-  const products = readProducts();
-  const idx = products.findIndex((p) => p.id === id);
-  if (idx === -1) return null;
-  products[idx] = { ...products[idx]!, ...updates };
-  writeProducts(products);
-  return products[idx]!;
+/**
+ * The columns an update may touch, keyed by the field name a caller passes.
+ *
+ * **Built from `Object.keys(updates)`, never from the values** — the same rule `updateStore`
+ * needed. Every save path here writes `sku: sku || undefined` / `discount` / `variantStock: … :
+ * undefined`, meaning "clear it"; a loop that skipped undefined values would turn every clear into
+ * a silent no-op, so a removed SKU or a cancelled sale would come back on the next page load.
+ */
+const UPDATABLE: Record<string, { sql: string; value: (v: unknown) => unknown }> = {
+  name: { sql: 'name = $', value: (v) => String(v ?? '') },
+  slug: { sql: 'slug = $', value: (v) => String(v ?? '') },
+  description: { sql: 'description = $', value: (v) => String(v ?? '') },
+  price: { sql: 'price_agorot = $', value: (v) => agorot(v) },
+  stock: { sql: 'stock = $', value: (v) => units(v) },
+  sku: { sql: 'sku = $', value: (v) => (v ? String(v) : null) },
+  categoryId: { sql: 'category_id = $::uuid', value: (v) => (typeof v === 'string' && isUuid(v) ? v : null) },
+  tags: { sql: 'tags = $::text[]', value: (v) => (Array.isArray(v) ? v : []) },
+  specs: { sql: 'specs = $::jsonb', value: (v) => JSON.stringify(Array.isArray(v) ? v : []) },
+  variants: { sql: 'variants = $::jsonb', value: (v) => JSON.stringify(Array.isArray(v) ? v : []) },
+  sellerNote: { sql: 'seller_note = $', value: (v) => (v ? String(v) : null) },
+  hidden: { sql: 'hidden = $', value: (v) => v === true },
+  blocked: { sql: 'blocked = $', value: (v) => v === true },
+};
+
+type ProductUpdate = Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>>;
+
+/**
+ * Apply an edit.
+ *
+ * The whole thing is one transaction that starts by locking the product row (`FOR UPDATE`),
+ * because the child tables are rewritten by DELETE + INSERT and `variantStock`/`variantSku` share
+ * one of them: an edit that supplies only the stock map has to read the codes it is not touching,
+ * and two dashboard tabs saving at once would otherwise interleave a read with the other's write.
+ * The lock is also what serialises an inline stock edit against a checkout decrementing the same
+ * row — the one case where the two writers genuinely collide.
+ */
+export async function updateProduct(id: string, updates: ProductUpdate): Promise<StoreProduct | null> {
+  if (!isUuid(id)) return null;
+  return withTransaction((tx) => updateProductIn(tx, id, updates));
 }
 
-export function getProductBySlug(storeId: string, slug: string): StoreProduct | null {
-  return readProducts().find((p) => p.storeId === storeId && p.slug === slug) ?? null;
+/** `updateProduct`'s body on a caller-supplied transaction — same reason as `createProductIn`. */
+export async function updateProductIn(tx: Queryable, id: string, updates: ProductUpdate): Promise<StoreProduct | null> {
+  if (!isUuid(id)) return null;
+  const { rows: locked } = await tx.query<{ id: string }>(
+    'SELECT id FROM store_products WHERE id = $1 FOR UPDATE', [id],
+  );
+  if (!locked[0]) return null;
+
+  const sets: string[] = [];
+  const params: unknown[] = [id];
+  for (const key of Object.keys(updates)) {
+    // `Object.hasOwn`, not a truthy lookup: `UPDATABLE['toString']` resolves to the inherited
+    // Function.prototype method, which is truthy and has no `.sql` — a crash the moment a call
+    // site passes a parsed request body instead of a literal.
+    if (!Object.hasOwn(UPDATABLE, key)) continue;
+    const spec = UPDATABLE[key]!;
+    params.push(spec.value((updates as Record<string, unknown>)[key]));
+    sets.push(spec.sql.replace('$', `$${params.length}`));
+  }
+
+  if ('discount' in updates) {
+    const start = params.length + 1;
+    params.push(...discountValues(updates.discount));
+    sets.push(
+      `discount_type = $${start}`,
+      `discount_percent = $${start + 1}`,
+      `discount_amount_agorot = $${start + 2}`,
+      `discount_show_badge = $${start + 3}`,
+      `discount_starts_at = $${start + 4}::date`,
+      `discount_ends_at = $${start + 5}::date`,
+    );
+  }
+
+  if (sets.length) {
+    await tx.query(`UPDATE store_products SET ${sets.join(', ')} WHERE id = $1`, params);
+  }
+
+  // The two maps live in one table, so supplying either means writing both — the one that was
+  // not supplied is read back from the row under the lock and written again unchanged.
+  const touchesStock = 'variantStock' in updates;
+  const touchesSku = 'variantSku' in updates;
+  let variantStock = updates.variantStock ?? {};
+  let variantSku = updates.variantSku ?? {};
+  if (touchesStock !== touchesSku) {
+    const current = await selectProduct('p.id = $1', [id], tx);
+    if (!touchesStock) variantStock = current?.variantStock ?? {};
+    if (!touchesSku) variantSku = current?.variantSku ?? {};
+  }
+
+  await writeChildren(tx, id, {
+    ...('images' in updates ? { images: updates.images ?? [] } : {}),
+    ...(touchesStock || touchesSku ? { variantStock, variantSku } : {}),
+    ...('variantImages' in updates ? { variantImages: updates.variantImages ?? {} } : {}),
+  });
+
+  return selectProduct('p.id = $1', [id], tx);
 }
 
-export function deleteProduct(id: string): boolean {
-  const products = readProducts();
-  const filtered = products.filter((p) => p.id !== id);
-  if (filtered.length === products.length) return false;
-  writeProducts(filtered);
-  return true;
+/** Removes the product and, by `ON DELETE CASCADE`, its images, per-combo stock and per-colour
+ *  photos. Orders keep their own snapshot of what was bought (§4) and are untouched. */
+export async function deleteProduct(id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const { rowCount } = await query('DELETE FROM store_products WHERE id = $1', [id]);
+  return rowCount > 0;
 }
 
 /** Resolves which stock bucket a variant selection reads/writes: a per-combo `variantStock` entry if one exists, otherwise the shared `stock` pool (see `variantStock` doc comment above). */
@@ -247,37 +696,76 @@ export function getEffectiveStock(product: StoreProduct, selectedVariants?: Reco
 
 export interface StockAdjustResult {
   ok: boolean;
-  /** The bucket's value immediately before this call, and after it (only meaningful when `ok`). Read from inside the same mutex-protected read-modify-write as the actual adjustment — a caller that read "before" via a separate, unlocked call could see a stale number if another request's decrement/restock interleaved between the two calls. */
+  /** The bucket's value immediately before this call, and after it (only meaningful when `ok`). Read from the same statement that does the adjustment — a caller that read "before" through a separate query could see a stale number if another request's decrement/restock landed between the two. */
   before: number;
   after: number;
 }
 
-function adjustStock(id: string, delta: number, selectedVariants: Record<string, string> | undefined): StockAdjustResult {
-  const products = readProducts();
-  const idx = products.findIndex((p) => p.id === id);
-  if (idx === -1) return { ok: false, before: 0, after: 0 };
-  const product = products[idx]!;
-  const field = resolveStockField(product, selectedVariants);
-  const before = field === 'stock' ? product.stock : product.variantStock![field]!;
-  const after = before + delta;
-  if (after < 0) return { ok: false, before, after: before };
+/**
+ * Move one product's stock by `delta`, atomically, in whichever bucket the selection governs.
+ *
+ * **This single statement is what retires `lib/mutex.ts` (§7.5).** The mutex serialised a
+ * read-modify-write inside ONE Node process; two processes meant two mutexes, two reads of the
+ * same count and one unit sold twice, with nothing to report it. Here the precondition is part of
+ * the write — `WHERE stock >= $qty` — so the number of rows affected IS the verdict, at any number
+ * of instances, and there is no window between deciding and writing.
+ *
+ * The `target` CTE is what picks the bucket: a combo with its own override row (`stock IS NOT
+ * NULL`) is decremented there, and anything else — a plain product, or a combo that never had an
+ * override — comes out of the product's shared pool. Both branches are evaluated against the same
+ * snapshot, exactly one of them can match, and `UNION ALL` returns whichever did.
+ */
+async function adjustStock(id: string, delta: number, selectedVariants: Record<string, string> | undefined): Promise<StockAdjustResult> {
+  if (!isUuid(id)) return { ok: false, before: 0, after: 0 };
+  const key = selectedVariants ? comboKey(selectedVariants) : null;
 
-  products[idx] = field === 'stock'
-    ? { ...product, stock: after }
-    : { ...product, variantStock: { ...product.variantStock, [field]: after } };
-
-  writeProducts(products);
-  return { ok: true, before, after };
+  const row = await firstRow<{ ok: boolean; before: number; after: number }>(
+    `WITH target AS (
+       SELECT p.id, v.combo_key, COALESCE(v.stock, p.stock) AS stock
+         FROM store_products p
+         LEFT JOIN product_variant_stock v
+           ON v.product_id = p.id AND v.combo_key = $2 AND v.stock IS NOT NULL
+        WHERE p.id = $1
+     ),
+     combo AS (
+       UPDATE product_variant_stock v SET stock = v.stock + $3
+        WHERE v.product_id = $1
+          AND v.combo_key = (SELECT combo_key FROM target)
+          AND v.stock + $3 >= 0
+       RETURNING v.stock - $3 AS before, v.stock AS after
+     ),
+     shared AS (
+       UPDATE store_products p SET stock = p.stock + $3
+        WHERE p.id = $1
+          AND EXISTS (SELECT 1 FROM target WHERE combo_key IS NULL)
+          AND p.stock + $3 >= 0
+       RETURNING p.stock - $3 AS before, p.stock AS after
+     )
+     SELECT ok, before, after FROM (
+       SELECT true  AS ok, before, after FROM combo
+       UNION ALL
+       SELECT true, before, after FROM shared
+       UNION ALL
+       SELECT false, stock, stock FROM target
+     ) outcome
+      ORDER BY ok DESC
+      LIMIT 1`,
+    [id, key, delta],
+  );
+  // No row at all means no such product. Otherwise `target`'s row is the fallback and it is read
+  // from the SAME snapshot the two UPDATEs were judged against — so the number handed back on a
+  // refusal is the count that refused it, not a second read a concurrent checkout could have moved
+  // in between. That number is what the buyer's page uses to clamp the quantity.
+  if (!row) return { ok: false, before: 0, after: 0 };
+  return { ok: row.ok, before: row.before, after: row.after };
 }
 
-const stockMutex = new Mutex();
-
-/** Atomically decrements stock (the matching variant-combo bucket, or the shared pool) by `qty`. `ok:false` — without writing — if that would go negative, so callers can reject the purchase instead of overselling. Serialized via a mutex so two concurrent checkouts on the same product can't both read-then-write the same stale count. */
+/** Atomically decrements stock (the matching variant-combo bucket, or the shared pool) by `qty`. `ok:false` — without writing — if that would go negative, so callers can reject the purchase instead of overselling. */
 export function decrementStock(id: string, qty: number, selectedVariants?: Record<string, string>): Promise<StockAdjustResult> {
-  return stockMutex.run(() => adjustStock(id, -qty, selectedVariants));
+  return adjustStock(id, -qty, selectedVariants);
 }
 
 /** Reverses a decrementStock — used to roll back stock already deducted for other items in the same checkout when a later item turns out to be out of stock. */
 export function restockProduct(id: string, qty: number, selectedVariants?: Record<string, string>): Promise<StockAdjustResult> {
-  return stockMutex.run(() => adjustStock(id, qty, selectedVariants));
+  return adjustStock(id, qty, selectedVariants);
 }

@@ -11,7 +11,7 @@ import { store as platform } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
 import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
-import { getVisibleProductsByStoreId } from '../lib/store-products.js';
+import { getVisibleProductsByStoreIds } from '../lib/store-products.js';
 import { getAllOrders } from '../lib/orders.js';
 import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
 import { getUserCart } from '../lib/user-carts.js';
@@ -57,8 +57,9 @@ const stores = filterShopperStores(previewedStores);
 
 // Applied before the feed is built, so every downstream surface (shelves,
 // spotlight, discovery) sees the same small catalog rather than a mixed picture.
+const productsByStore = await getVisibleProductsByStoreIds(stores.map((s) => s.id));
 const storesWithProducts = stores
-  .map((s) => ({ store: s, products: getVisibleProductsByStoreId(s.id) }))
+  .map((s) => ({ store: s, products: productsByStore.get(s.id) ?? [] }))
   .filter(({ products }) => products.length > 0);
 
 // Stores this buyer has actually bought from before, most-recent purchase first — same

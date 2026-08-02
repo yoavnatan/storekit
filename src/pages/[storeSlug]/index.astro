@@ -73,7 +73,7 @@ const isFavorited = userId ? getFavoriteStoresForUser(userId).includes(shopStore
 // Blocked individual products (store itself still fine) never show in the
 // store's own grid/search/category filters — getVisibleProductsByStoreId is
 // the shared helper every listing surface should call (see store-products.ts).
-const allProducts = getVisibleProductsByStoreId(shopStore.id);
+const allProducts = await getVisibleProductsByStoreId(shopStore.id);
 // A store with nothing to buy stays reachable by direct link (the seller previews and shares it)
 // but must not enter Google's index as an empty page — same gate the sitemap and site search use.
 // See lib/store-readiness.ts.

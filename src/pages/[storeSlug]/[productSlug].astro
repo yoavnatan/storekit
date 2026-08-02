@@ -57,7 +57,7 @@ if (showsPausedNotice(shopStore)) {
 // apply the same rule; see lib/demo-stores.ts.
 const isDemo = isDemoStore(shopStore);
 
-const product = getProductBySlug(shopStore.id, productSlug);
+const product = await getProductBySlug(shopStore.id, productSlug);
 if (!product) return Astro.redirect(`/${storeSlug}`);
 if (!isProductVisible(product)) return Astro.redirect('/404');
 
@@ -111,7 +111,7 @@ const storeCanonical = storeCanonicalUrl(shopStore);
 // Pre-filtered to non-blocked (see store-products.ts#getVisibleProductsByStoreId) — this list
 // also feeds the header search-suggestions JSON below, which used to leak a blocked product
 // as a suggestion that led straight into a 404 (found in review, 2026-07-14).
-const allStoreProducts = getVisibleProductsByStoreId(shopStore.id);
+const allStoreProducts = await getVisibleProductsByStoreId(shopStore.id);
 const relatedProducts = allStoreProducts
   .filter((p) => p.slug !== product.slug)
   .slice(0, 4);

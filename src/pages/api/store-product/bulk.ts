@@ -22,7 +22,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   const storeId = url.searchParams.get('storeId') ?? '';
   if (!storeId || !await authorizeStore(sellerId, storeId)) return json({ error: 'Not authorized' }, 403);
 
-  const csv = productsToCsv(getProductsByStoreId(storeId), await getCategoriesByStoreId(storeId), getLang(cookies));
+  const csv = productsToCsv(await getProductsByStoreId(storeId), await getCategoriesByStoreId(storeId), getLang(cookies));
   return new Response(csv, {
     status: 200,
     headers: {

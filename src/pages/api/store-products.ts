@@ -31,7 +31,7 @@ export const GET: APIRoute = async ({ url }) => {
   // Same popularity signal the page's SSR render uses, so paged results rank identically.
   const purchasedUnits = getPurchasedCountsByStoreSlug(store.slug);
   // `sale` rides along so a "price: low to high" page orders by what the shopper would pay.
-  const filtered = filterAndSortProducts(getVisibleProductsByStoreId(store.id), { categoryIds, sort, q, purchasedUnits, sale: store.sale });
+  const filtered = filterAndSortProducts(await getVisibleProductsByStoreId(store.id), { categoryIds, sort, q, purchasedUnits, sale: store.sale });
   const products = filtered.slice(offset, offset + PRODUCTS_PAGE_SIZE);
 
   return json({

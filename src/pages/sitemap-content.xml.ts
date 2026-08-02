@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getIndexableStores } from '../lib/stores.js';
-import { getVisibleProductsByStoreId } from '../lib/store-products.js';
+import { getVisibleProductsByStoreIds } from '../lib/store-products.js';
 import { store as platform } from '../config/store.config.js';
 import { buildUrlSetXml, toSitemapDate, type SitemapEntry } from '../lib/sitemap.js';
 import { isStoreReady } from '../lib/store-readiness.js';
@@ -30,14 +30,18 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   const baseUrl = stripTrailingSlashes(platform.url);
   const entries: SitemapEntry[] = [];
 
-  for (const s of await getIndexableStores()) {
+  const indexableStores = await getIndexableStores();
+  // One query for every store's shelf, not one per store — the sitemap walks the WHOLE mall.
+  const productsByStore = await getVisibleProductsByStoreIds(indexableStores.map((s) => s.id));
+
+  for (const s of indexableStores) {
     // A store on a verified custom domain lives on THAT domain now — its platform URLs 301 there, so
     // listing them in the platform sitemap would just advertise redirects. Its own domain is crawled
     // via the platform's discovery links + the 301s. Skip it here.
     if (s.customDomain?.status === 'active') continue;
     // A store with nothing to buy is an empty shell — advertising it to Google earns the
     // platform domain a thin/soft-404 page for no gain (see lib/store-readiness.ts).
-    const visibleProducts = getVisibleProductsByStoreId(s.id);
+    const visibleProducts = productsByStore.get(s.id) ?? [];
     if (!isStoreReady({ visibleProductCount: visibleProducts.length })) continue;
     // Percent-encoded per segment: product slugs carry Hebrew, and the sitemap protocol requires
     // <loc> to be an escaped URL — an unencoded one is a validation error, not a rendering nicety.

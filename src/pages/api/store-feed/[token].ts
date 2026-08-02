@@ -23,7 +23,7 @@ export const GET: APIRoute = async ({ params, url }) => {
   // acting against the store, not the seller acting on their own.
   if (!store || store.blocked) return new Response('Not found', { status: 404, headers: noindex });
 
-  const products = getProductsByStoreId(store.id);
+  const products = await getProductsByStoreId(store.id);
   const categories = await getCategoriesByStoreId(store.id);
 
   if (url.searchParams.get('format') === 'json') {

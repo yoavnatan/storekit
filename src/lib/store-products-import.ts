@@ -38,12 +38,11 @@ export async function runProductImport({ storeId, sellerId, csv, commit }: RunIm
   const { map, missing } = mapHeader(rows[0]!);
   if (missing.length) return { ok: false, status: 400, body: { ok: false, error: 'missing-columns', missing } };
 
-  // Fetched before the catalog is read, for the reason spelled out in bulkUpsertProducts: while
-  // products are a JSON file, an `await` in the middle of a read-modify-write is where a concurrent
-  // import's writes get lost. Everything from here to the upsert is synchronous.
+  // Read once, for the preview and the diff below. This pass is advisory — it is what the seller
+  // is shown before committing — and the authoritative read happens again inside bulkUpsertProducts'
+  // transaction, which is what a row is actually applied against.
   const categories = await getCategoriesByStoreId(storeId);
-
-  const existingProducts = getProductsByStoreId(storeId);
+  const existingProducts = await getProductsByStoreId(storeId);
   const existingIds = new Set(existingProducts.map((p) => p.id));
   // Owner map spans product-level AND per-combo skus so a re-imported variant product's own combo
   // codes read as self-owned (no false duplicate), and any sku already live anywhere collides.

@@ -58,12 +58,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   }
 
   if (action === 'block-product' || action === 'unblock-product') {
-    const product = body?.productId ? getProductById(body.productId) : null;
+    const product = body?.productId ? await getProductById(body.productId) : null;
     if (!product) return new Response(JSON.stringify({ error: 'Product not found' }), { status: 404, headers: json });
     const store = await getStoreById(product.storeId);
     if (!store) return new Response(JSON.stringify({ error: 'Store not found' }), { status: 404, headers: json });
     const blocked = action === 'block-product';
-    updateProduct(product.id, { blocked });
+    await updateProduct(product.id, { blocked });
     notifySellerOfModeration(store.sellerId, product.name, 'product', blocked);
     return new Response(JSON.stringify({ ok: true, blocked }), { headers: json });
   }

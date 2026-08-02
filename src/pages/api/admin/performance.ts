@@ -61,7 +61,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // all — keeps a mismatched id from reading an unrelated product's numbers).
   const productId = url.searchParams.get('productId');
   if (productId) {
-    const product = getProductById(productId);
+    const product = await getProductById(productId);
     if (!product || product.storeId !== store.id) return json({ error: 'Product not found' }, 404);
     const productSummary = buildProductPerformance(orders, storeSlug, productId, from, to, granularity);
     return json({ ok: true, product: productSummary, productName: product.name });

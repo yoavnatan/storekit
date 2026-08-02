@@ -1,5 +1,8 @@
-import crypto from 'node:crypto';
-import { readProducts, writeProducts, slugify, type StoreProduct, type ProductVariant } from './store-products.js';
+import {
+  createProductIn, getProductsByStoreIdIn, updateProductIn,
+  type StoreProduct, type ProductVariant,
+} from './store-products.js';
+import { withTransaction } from './db.js';
 import { resolveOrCreateCategoryPaths, getAncestorChain, type StoreCategory } from './store-categories.js';
 import { CSV_FIELDS, OPTION_SLOTS, BOM, sanitizeCsvCell, toCsvCell } from './csv-bulk.js';
 import { roundMoney } from './money.js';
@@ -37,89 +40,87 @@ export interface BulkUpsertResult {
   product?: StoreProduct;
 }
 
-/** One read + one write for the whole batch (vs. createProduct/updateProduct's read-modify-write per call), and an id→index map instead of a per-row findIndex scan — both matter once rows and the store's own catalog run into the hundreds/thousands. SKU uniqueness is validated by the caller (csv-bulk.ts's validateRows) before rows reach here, same as name/price. */
+/**
+ * Apply a whole CSV batch to one store's catalog.
+ *
+ * **The batch is one transaction.** That is not a performance choice — it is what the file version
+ * got for free by rewriting the file once, and what a per-row `createProduct`/`updateProduct` would
+ * throw away: a thousand separate transactions mean a file that fails on row 600 leaves 599
+ * products behind with nothing to identify them by, and a concurrent import interleaves with this
+ * one row by row. The catalog is read INSIDE the transaction for the same reason — resolving a row
+ * against one snapshot and writing over another is the lost update this module used to be one
+ * `await` away from (DB_MIGRATION_PLAN.md §8, store-categories notes).
+ *
+ * Categories are resolved first, once for the batch (one query, not one per row): they are shared
+ * structure, they commit on their own, and a row with no categoryPath (blank CSV cells) resolves
+ * to null, meaning "leave unchanged". SKU uniqueness is validated by the caller (csv-bulk.ts's
+ * validateRows) before rows reach here, same as name/price.
+ */
 export async function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[]): Promise<BulkUpsertResult[]> {
-  // Resolved once for the whole batch (one query, not one per row) — a row with no categoryPath
-  // (blank CSV cells) resolves to null, meaning "leave unchanged".
-  //
-  // **It happens BEFORE the catalog is read, and that ordering is load-bearing while products still
-  // live in a JSON file.** `readProducts` → mutate → `writeProducts` writes the WHOLE file, for every
-  // store; an `await` between the read and the write hands the process to another request, whose own
-  // write then lands on the copy this one had already read. Two imports at once (two dashboard tabs,
-  // or a feed sync beside a manual upload) would each report success and one of them would vanish
-  // entirely. Everything below this line stays synchronous, which is what makes the sequence atomic
-  // within the process — the same guarantee `mutex.ts` gives the stock path, and it retires with it
-  // once store-products moves to Postgres (DB_MIGRATION_PLAN.md §8).
   const resolvedCategoryIds = await resolveOrCreateCategoryPaths(storeId, rows.map((r) => r.categoryPath ?? []));
 
-  const products = readProducts();
-  const usedSlugs = new Set(products.filter((p) => p.storeId === storeId).map((p) => p.slug));
-  const idIndex = new Map(products.map((p, idx) => [p.id, idx]));
-  const results: BulkUpsertResult[] = [];
+  return withTransaction(async (tx) => {
+    const byId = new Map((await getProductsByStoreIdIn(tx, storeId)).map((p) => [p.id, p]));
+    const results: BulkUpsertResult[] = [];
 
-  rows.forEach((row, i) => {
-    const categoryId = resolvedCategoryIds[i] ?? null;
-    // A variant row (assembled from a group) carries the product's whole variant matrix; only then
-    // do we touch variants/variantStock/variantSku, so a plain update never clobbers them.
-    const isVariant = !!row.variants?.length;
-    // undefined → leave the product's discount as it is; 0 → clear it; otherwise the ₪ gap.
-    const rowDiscount: StoreProduct['discount'] | undefined | null =
-      row.salePrice === undefined ? undefined
-        : row.salePrice <= 0 || row.salePrice >= row.price ? null
-        : { type: 'amount', value: roundMoney(row.price - row.salePrice) };
-    if (row.id) {
-      const idx = idIndex.get(row.id);
-      const existing = idx !== undefined ? products[idx] : undefined;
-      if (idx === undefined || !existing || existing.storeId !== storeId) {
-        results.push({ id: row.id, action: 'not-found' });
-        return;
+    for (const [i, row] of rows.entries()) {
+      const categoryId = resolvedCategoryIds[i] ?? null;
+      // A variant row (assembled from a group) carries the product's whole variant matrix; only then
+      // do we touch variants/variantStock/variantSku, so a plain update never clobbers them.
+      const isVariant = !!row.variants?.length;
+      // undefined → leave the product's discount as it is; 0 → clear it; otherwise the ₪ gap.
+      const rowDiscount: StoreProduct['discount'] | undefined | null =
+        row.salePrice === undefined ? undefined
+          : row.salePrice <= 0 || row.salePrice >= row.price ? null
+          : { type: 'amount', value: roundMoney(row.price - row.salePrice) };
+
+      if (row.id) {
+        const existing = byId.get(row.id);
+        if (!existing) {
+          results.push({ id: row.id, action: 'not-found' });
+          continue;
+        }
+        // Blank CSV cell (row.field undefined) means "leave unchanged", so the key is omitted
+        // entirely rather than passed as undefined — updateProduct reads `key in updates` as
+        // "clear this", which is what makes an explicit blank cell removable at all.
+        const updates: Parameters<typeof updateProductIn>[2] = { name: row.name, price: row.price };
+        if (row.stock !== undefined) updates.stock = row.stock;
+        if (categoryId) updates.categoryId = categoryId;
+        if (row.tags !== undefined) updates.tags = row.tags;
+        if (row.description !== undefined) updates.description = row.description;
+        if (row.sku !== undefined) updates.sku = row.sku;
+        if (rowDiscount !== undefined) updates.discount = rowDiscount ?? undefined;
+        if (isVariant) {
+          updates.variants = row.variants;
+          updates.variantStock = row.variantStock ?? {};
+          updates.variantSku = row.variantSku;
+        }
+        const updated = await updateProductIn(tx, row.id, updates);
+        if (!updated) {
+          results.push({ id: row.id, action: 'not-found' });
+          continue;
+        }
+        results.push({ id: row.id, action: 'update', product: updated });
+      } else {
+        const product = await createProductIn(tx, storeId, {
+          name: row.name,
+          description: row.description ?? '',
+          price: row.price,
+          stock: row.stock ?? 0,
+          ...(categoryId ? { categoryId } : {}),
+          ...(row.tags?.length ? { tags: row.tags } : {}),
+          ...(row.sku ? { sku: row.sku } : {}),
+          ...(rowDiscount ? { discount: rowDiscount } : {}),
+          ...(isVariant ? { variants: row.variants } : {}),
+          ...(isVariant && row.variantStock && Object.keys(row.variantStock).length ? { variantStock: row.variantStock } : {}),
+          ...(isVariant && row.variantSku && Object.keys(row.variantSku).length ? { variantSku: row.variantSku } : {}),
+        });
+        results.push({ id: product.id, action: 'create', product });
       }
-      // Blank CSV cell (row.field undefined) means "leave unchanged" — only an explicit value overwrites.
-      const updated: StoreProduct = {
-        ...existing,
-        name: row.name,
-        price: row.price,
-        stock: row.stock ?? existing.stock,
-        categoryId: categoryId ?? existing.categoryId,
-        tags: row.tags ?? existing.tags,
-        description: row.description ?? existing.description,
-        sku: row.sku ?? existing.sku,
-        discount: rowDiscount === undefined ? existing.discount : (rowDiscount ?? undefined),
-        ...(isVariant ? { variants: row.variants, variantStock: row.variantStock ?? {}, variantSku: row.variantSku } : {}),
-      };
-      products[idx] = updated;
-      results.push({ id: row.id, action: 'update', product: updated });
-    } else {
-      const base = slugify(row.name) || 'product';
-      let slug = base;
-      let n = 2;
-      while (usedSlugs.has(slug)) { slug = `${base}-${n++}`; }
-      usedSlugs.add(slug);
-
-      const product: StoreProduct = {
-        id: crypto.randomUUID(),
-        storeId,
-        slug,
-        name: row.name,
-        description: row.description ?? '',
-        price: row.price,
-        stock: row.stock ?? 0,
-        ...(categoryId ? { categoryId } : {}),
-        ...(row.tags?.length ? { tags: row.tags } : {}),
-        ...(row.sku ? { sku: row.sku } : {}),
-        ...(rowDiscount ? { discount: rowDiscount } : {}),
-        ...(isVariant ? { variants: row.variants } : {}),
-        ...(isVariant && row.variantStock && Object.keys(row.variantStock).length ? { variantStock: row.variantStock } : {}),
-        ...(isVariant && row.variantSku && Object.keys(row.variantSku).length ? { variantSku: row.variantSku } : {}),
-        createdAt: new Date().toISOString(),
-      };
-      products.push(product);
-      results.push({ id: product.id, action: 'create', product });
     }
-  });
 
-  writeProducts(products);
-  return results;
+    return results;
+  });
 }
 
 const arrEq = (a: string[] = [], b: string[] = []): boolean => a.length === b.length && a.every((v, i) => v === b[i]);
@@ -279,7 +280,13 @@ export function productsToCsv(products: StoreProduct[], categories: StoreCategor
         p.id,
         sanitizeCsvCell(p.variantSku?.[key] ?? ''),
         ...shared,
-        String(p.variantStock?.[key] ?? p.stock),
+        // BLANK for a combo with no bucket of its own, never the shared pool's number. Writing the
+        // pool into each combo's own cell made the file assert a per-combo count that does not
+        // exist, and re-importing it read every one of those cells back as a bucket: a product
+        // with 10 units across 4 pooled combos exported four 10s and came back as 40. Blank is
+        // what the importer reads as "no override" (variant-csv.ts), so an untouched export now
+        // round-trips to the same product.
+        p.variantStock?.[key] !== undefined ? String(p.variantStock[key]) : '',
         ...tail,
         sanitizeCsvCell(group),
         ...optionCells,

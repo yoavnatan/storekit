@@ -23,10 +23,14 @@ vi.mock('../src/lib/stores.js', () => ({
   getIndexableStores: () => ALL_STORES.filter((s) => !isDemoStore(s)),
 }));
 vi.mock('../src/lib/store-products.js', () => ({
-  getVisibleProductsByStoreId: (id: string) =>
+  // One query for the whole list, not one per store — the sitemap walks every indexable store
+  // (store-products.ts#getVisibleProductsByStoreIds). Every requested id gets an entry.
+  getVisibleProductsByStoreIds: (ids: string[]) => new Map(ids.map((id) => [
+    id,
     id === 's1' ? [{ slug: 'blue-widget', createdAt: '2026-03-04T09:00:00.000Z' }]
     : id === 's2' ? [{ slug: 'demo-shirt', createdAt: '2026-03-05T09:00:00.000Z' }]
     : [],
+  ])),
 }));
 
 import { GET } from '../src/pages/sitemap-content.xml';

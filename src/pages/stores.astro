@@ -8,7 +8,7 @@ import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores, byPromoWeight } from '../lib/stores.js';
 import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
-import { getVisibleProductsByStoreId } from '../lib/store-products.js';
+import { getVisibleProductsByStoreIds } from '../lib/store-products.js';
 import { isLaunchMode, showShelfInvite, launchInviteCount, LAUNCH_GRID_SLOTS } from '../lib/launch-mode.js';
 import { getLang, getT } from '../i18n/index.js';
 
@@ -50,8 +50,10 @@ const previewedStores = previewParam === 'blank'
         const keptReal = new Set(realStores(visibleStores).slice(0, previewLimit).map((s) => s.id));
         return visibleStores.filter((s) => isDemoStore(s) || keptReal.has(s.id));
       })();
-const storesWithProducts = filterShopperStores(previewedStores)
-  .map((s) => ({ store: s, products: getVisibleProductsByStoreId(s.id) }))
+const shopperStores = filterShopperStores(previewedStores);
+const productsByStore = await getVisibleProductsByStoreIds(shopperStores.map((s) => s.id));
+const storesWithProducts = shopperStores
+  .map((s) => ({ store: s, products: productsByStore.get(s.id) ?? [] }))
   .filter(({ products }) => products.length > 0);
 
 // Every category across the whole catalog, not just the current filtered

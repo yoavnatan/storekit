@@ -5,7 +5,7 @@ import { registerSeller, setSellerSession, getSellerSession } from '../../lib/se
 import { getLang, getT } from '../../i18n/index.js';
 import { store } from '../../config/store.config';
 import { getDemoStores } from '../../lib/stores.js';
-import { getVisibleProductsByStoreId } from '../../lib/store-products.js';
+import { getVisibleProductsByStoreIds } from '../../lib/store-products.js';
 import { safeRedirectPath } from '../../lib/safe-redirect.js';
 import { isValidEmail } from '../../lib/email-address.js';
 import { isGoogleAuthEnabled } from '../../lib/google-oauth.js';
@@ -23,7 +23,9 @@ const safeNext = safeRedirectPath(Astro.url.searchParams.get('next'), '/', ['/se
 // point never expires, unlike the showcase stores' presence in shopper discovery.
 // First showcase store that actually has something on its shelves; nothing renders
 // if the showcase seeder was never run, so this can't become a dead link.
-const showcase = (await getDemoStores()).find((s) => getVisibleProductsByStoreId(s.id).length > 0) ?? null;
+const demoStores = await getDemoStores();
+const demoProducts = await getVisibleProductsByStoreIds(demoStores.map((s) => s.id));
+const showcase = demoStores.find((s) => (demoProducts.get(s.id) ?? []).length > 0) ?? null;
 
 const oauthError = Astro.url.searchParams.get('error');
 const oauthErrorMsg =

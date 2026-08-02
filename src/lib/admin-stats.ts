@@ -3,7 +3,7 @@ import type { Seller } from './seller-auth.js';
 import type { Store } from './stores.js';
 import type { Order } from './orders.js';
 import { countsAsRevenue } from './orders.js';
-import { readProducts, type StoreProduct } from './store-products.js';
+import { getAllProducts, type StoreProduct } from './store-products.js';
 import { businessMonthKey } from './business-day.js';
 import { isDemoStore } from './demo-stores.js';
 import { roundMoney } from './money.js';
@@ -120,14 +120,15 @@ export function getPlatformOverview(sellers: Seller[], stores: Store[], orders: 
   };
 }
 
-// A single read of store-products.json, grouped by store — callers pass the
-// resulting map into getSellerCards/getStoresNeedingAttention instead of each
-// re-reading the file per store. Carries the full product list (not just a
-// count) so the sellers tab can also surface a per-product "block" toggle
-// (see AdminSellersPanel.astro) without a second read.
-export function getProductsByStoreMap(): Map<string, StoreProduct[]> {
+// One read of the whole catalog, grouped by store — callers pass the resulting
+// map into getSellerCards/getStoresNeedingAttention instead of each querying per
+// store. Carries the full product list (not just a count) so the sellers tab can
+// also surface a per-product "block" toggle (see AdminSellersPanel.astro) without
+// a second read. Inherits getAllProducts' open debt: it fetches every product in
+// the platform (§3), and pages when its neighbours do.
+export async function getProductsByStoreMap(): Promise<Map<string, StoreProduct[]>> {
   const map = new Map<string, StoreProduct[]>();
-  for (const product of readProducts()) {
+  for (const product of await getAllProducts()) {
     const list = map.get(product.storeId) ?? [];
     list.push(product);
     map.set(product.storeId, list);

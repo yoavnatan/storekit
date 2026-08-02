@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
 import { createProduct, updateProduct, deleteProduct, getProductById, getProductsByStoreId, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
-import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, resolveVariantStockMap } from '../../lib/variant-combo.js';
+import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, comboStockRows, isFullyPerCombo, sumComboOverrides } from '../../lib/variant-combo.js';
 import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
 import { normalizeProductDiscount } from '../../lib/discount-input.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
@@ -35,6 +35,32 @@ function allVariantValues(variants: { options: string[] }[]): string[] {
 function newVariantValues(prev: string[], next: string[]): string[] {
   const seen = new Set(prev.map((v) => v.trim().toLowerCase()));
   return next.filter((v) => !seen.has(v.trim().toLowerCase()));
+}
+
+/**
+ * The product's overall `stock`, given what the form submitted and the per-combo buckets.
+ *
+ * Two meanings, and which one applies is decided by the data, not by the caller:
+ *
+ *  · **Every combo has its own bucket** → the shared pool sells nothing, so the total IS the sum of
+ *    the buckets and the submitted field is ignored. The dashboard already shows it that way
+ *    (`syncTotalStockField` locks the input and live-sums the rows); add and full-edit were the
+ *    paths that still trusted the field, which is how a product could store a total contradicting
+ *    its own breakdown — reachable by a hand-made POST, and by any client rendering the form
+ *    without that script.
+ *  · **Some combo has no bucket** → those combos sell from the shared pool, and the submitted
+ *    number IS that pool. It is a real quantity the seller owns and nothing else records it.
+ *
+ * `variantStock` is deliberately partial (variant-combo.ts#comboStockRows) — that is what lets a
+ * seller count the combos they actually know and leave the rest pooled.
+ */
+function resolveTotalStock(
+  submitted: number,
+  variants: { name: string; options: string[] }[],
+  variantStock: Record<string, number>,
+): number {
+  if (variants.length && isFullyPerCombo(variants, variantStock)) return sumComboOverrides(variantStock);
+  return Number.isNaN(submitted) ? 0 : Math.max(0, submitted);
 }
 
 function json(data: unknown, status = 200) {
@@ -80,7 +106,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
-    if (sku && isSkuTaken(storeId, sku)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
+    if (sku && await isSkuTaken(storeId, sku)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
     const spamHit = findSpamKeyword(name, description, ...tags);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
     const stuffingHit = findKeywordStuffing(name, description, ...tags);
@@ -89,8 +115,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const catPathStr = categoryId ? categoryPath(await getCategoriesByStoreId(storeId), categoryId) : '';
     const finalTags = withAutoTags(tags, catPathStr, allVariantValues(variants));
 
-    const product = createProduct(storeId, {
-      name, description, price, stock: isNaN(stock) ? 0 : stock,
+    const product = await createProduct(storeId, {
+      name, description, price, stock: resolveTotalStock(stock, variants, variantStock),
       images: images.length ? images : undefined,
       categoryId,
       tags: finalTags.length ? finalTags : undefined,
@@ -107,12 +133,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Every image here is new, so render them at the widths buyers will ask for
     // now rather than making the first one to open the gallery wait for it.
     warmImageDerivations(images);
-    return json({ ok: true, product: { ...product, rev: productEditRev(product) }, stockAlerts: countStockAlerts(storeId, LOW_STOCK_THRESHOLD) });
+    return json({ ok: true, product: { ...product, rev: productEditRev(product) }, stockAlerts: await countStockAlerts(storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'edit-product') {
     const productId = String(form.get('productId') || '');
-    const product = getProductById(productId);
+    const product = await getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
     const ownedStores = await getStoresBySellerId(sellerId);
     if (!ownedStores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
@@ -171,7 +197,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
-    if (sku && isSkuTaken(product.storeId, sku, productId)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
+    if (sku && await isSkuTaken(product.storeId, sku, productId)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
     const spamHit = findSpamKeyword(name, description, ...tags);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
     const stuffingHit = findKeywordStuffing(name, description, ...tags);
@@ -194,7 +220,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const finalTags = withAutoTags(tags, catPathStr, freshVariantValues);
 
     const updates: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {
-      name, description, price, stock: isNaN(stock) ? 0 : stock,
+      name, description, price, stock: resolveTotalStock(stock, variants, variantStock),
       images,
       categoryId,
       tags: finalTags.length ? finalTags : [],
@@ -208,7 +234,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       variantImages: Object.keys(variantImages).length ? variantImages : undefined,
     };
 
-    const updated = updateProduct(productId, updates);
+    const updated = await updateProduct(productId, updates);
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
     // Only the images this edit ADDED — a re-save that didn't touch the gallery
     // must not re-request renders the CDN already holds.
@@ -221,12 +247,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // The edit row stays in the DOM after a save, so it gets the revision it now
     // holds — otherwise a second save from the same open row would report a conflict
     // against the seller's own first one.
-    return json({ ok: true, rev: productEditRev(updated), images: updated.images ?? [], categoryId: updated.categoryId ?? '', categoryPath: categoryPathStr, discount: updated.discount ?? null, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+    return json({ ok: true, rev: productEditRev(updated), images: updated.images ?? [], categoryId: updated.categoryId ?? '', categoryPath: categoryPathStr, discount: updated.discount ?? null, stockAlerts: await countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'patch-product-fields') {
     const productId = String(form.get('productId') || '');
-    const product = getProductById(productId);
+    const product = await getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
     const stores = await getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
@@ -273,11 +299,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     }
     if (form.has('sku')) {
       const sku = parseSku(form);
-      if (sku && isSkuTaken(product.storeId, sku, productId)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
+      if (sku && await isSkuTaken(product.storeId, sku, productId)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
       patch.sku = sku || undefined;
     }
 
-    const updated = updateProduct(productId, patch);
+    const updated = await updateProduct(productId, patch);
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
     // Only clear when the stock cell itself was the one edited — a name/price/sku
     // inline edit shouldn't silently dismiss an unrelated low-stock alert.
@@ -285,17 +311,17 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // The partial-save actions return the new revision so the open edit row — which the
     // client patches field-by-field to match — stays in step and doesn't report the
     // seller's own inline edit as a conflict.
-    return json({ ok: true, rev: productEditRev(updated), product: { name: updated.name, price: updated.price, stock: updated.stock, sku: updated.sku ?? '' }, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+    return json({ ok: true, rev: productEditRev(updated), product: { name: updated.name, price: updated.price, stock: updated.stock, sku: updated.sku ?? '' }, stockAlerts: await countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   // Inline edit of a single variant combo's stock from the products-table
   // breakdown dropdown — the per-combo mirror of `patch-product-fields`' whole
-  // `stock` edit. Persists the FULL per-combo map (via resolveVariantStockMap)
-  // so a product still on the shared pool is converted to explicit per-combo
-  // stock exactly as displayed, and the total `stock` becomes their sum.
+  // `stock` edit. Writes a bucket for THAT combo only: the combos the seller did
+  // not touch keep selling from the shared pool, which is what `variantStock`
+  // being a partial map has always meant (variant-combo.ts#comboStockRows).
   if (action === 'patch-variant-stock') {
     const productId = String(form.get('productId') || '');
-    const product = getProductById(productId);
+    const product = await getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
     const stores = await getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
@@ -307,14 +333,20 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const value = parseInt(String(form.get('stock')), 10);
     const clamped = isNaN(value) ? 0 : Math.max(0, value);
 
-    const map = resolveVariantStockMap(product.variants, product.variantStock, product.stock);
+    // Only the edited combo gets a bucket. This used to materialise the FULL map first — every
+    // sibling combo written out at an even split of the shared pool — so editing one row silently
+    // asserted a count for every other row the seller never touched, and any combo that had been
+    // selling from the pool was pinned to a number nobody entered.
+    const map = { ...(product.variantStock ?? {}) };
     // Same compare-and-set as the whole-product stock above, on the one combo being written: a sale
     // of THIS combo between render and save would otherwise be undone by the absolute number the
-    // seller typed. The rest of the map is read fresh here, so only the edited combo needs guarding.
+    // seller typed. `effective` is what the row displayed — its own bucket, or the shared pool it
+    // reads from — so the comparison is against the number the seller was actually looking at.
     const prevRaw = form.get('prevStock');
     if (prevRaw != null) {
       const prev = parseInt(String(prevRaw), 10);
-      const current = map[key] ?? 0;
+      const current = comboStockRows(product.variants, product.variantStock, product.stock)
+        .find((r) => r.key === key)?.effective ?? 0;
       if (!isNaN(prev) && prev !== current) {
         return json({
           ok: false,
@@ -327,30 +359,34 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       }
     }
     map[key] = clamped;
-    const total = Object.values(map).reduce((s, n) => s + n, 0);
 
-    const updated = updateProduct(productId, { variantStock: map, stock: total });
+    // The overall number keeps meaning what it means everywhere else: the sum of the buckets once
+    // every combo has one, and otherwise the shared pool the uncounted combos still sell from —
+    // left exactly as it was, because this edit said nothing about it.
+    const total = isFullyPerCombo(product.variants, map) ? sumComboOverrides(map) : product.stock;
+
+    const updated = await updateProduct(productId, { variantStock: map, stock: total });
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
     deleteNotificationsByRelatedIds([productId], sellerId);
-    return json({ ok: true, rev: productEditRev(updated), comboKey: key, comboStock: clamped, stock: total, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+    return json({ ok: true, rev: productEditRev(updated), comboKey: key, comboStock: clamped, stock: total, stockAlerts: await countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   if (action === 'patch-product-images') {
     const productId = String(form.get('productId') || '');
     const images = parseImages(form);
     if (!productId) return json({ ok: false, error: 'Missing productId.' }, 400);
-    const product = getProductById(productId);
+    const product = await getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
     const stores = await getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
-    const updated = updateProduct(productId, { images });
+    const updated = await updateProduct(productId, { images });
     warmImageDerivations(images.filter((u) => !(product.images ?? []).includes(u)));
     return json({ ok: true, rev: updated ? productEditRev(updated) : undefined, images: updated?.images ?? [] });
   }
 
   if (action === 'set-product-visibility') {
     const productId = String(form.get('productId') || '');
-    const product = getProductById(productId);
+    const product = await getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
     const stores = await getStoresBySellerId(sellerId);
     const visStore = stores.find((s) => s.id === product.storeId);
@@ -358,7 +394,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // A seller can only flip their own take-down flag; an admin `blocked` product
     // stays hidden regardless (isProductVisible gates on both).
     const hidden = String(form.get('hidden') || '') === '1';
-    const updated = updateProduct(productId, { hidden });
+    const updated = await updateProduct(productId, { hidden });
     if (!updated) return json({ ok: false, error: 'Product not found.' }, 404);
     // Indexability just changed (show → wants indexing / hide → drop) — notify.
     pingProductChange(visStore, updated.slug);
@@ -366,7 +402,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // the seller has consciously decided it's not for sale, so nagging about its
     // stock would be exactly the noise this feature removes.
     if (hidden) deleteNotificationsByRelatedIds([productId], sellerId);
-    return json({ ok: true, hidden: updated.hidden === true, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+    return json({ ok: true, hidden: updated.hidden === true, stockAlerts: await countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   // Apply (or clear) the same discount across many products at once — the "run a sale on
@@ -384,7 +420,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     // Scope the ids to this store's own products — an id from another seller's store is
     // dropped here rather than reaching updateProduct.
-    const owned = new Map(getProductsByStoreId(storeId).map((p) => [p.id, p]));
+    const owned = new Map((await getProductsByStoreId(storeId)).map((p) => [p.id, p]));
     const targets = ids.map((id) => owned.get(id)).filter((p): p is StoreProduct => !!p);
     if (!targets.length) return json({ ok: false, error: 'No products selected.' }, 400);
 
@@ -397,7 +433,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         startsAt: form.get('discount_starts'),
         endsAt: form.get('discount_ends'),
       }, p.price);
-      updateProduct(p.id, { discount });
+      await updateProduct(p.id, { discount });
       applied.push({ id: p.id, discount: discount ?? null });
     }
     return json({ ok: true, count: applied.length, applied });
@@ -405,12 +441,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
-    const product = getProductById(productId);
+    const product = await getProductById(productId);
     if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
     const stores = await getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
-    deleteProduct(productId);
-    return json({ ok: true, stockAlerts: countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
+    await deleteProduct(productId);
+    return json({ ok: true, stockAlerts: await countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 
   return json({ ok: false, error: 'Unknown action.' }, 400);

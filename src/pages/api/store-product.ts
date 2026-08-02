@@ -25,7 +25,7 @@ export const GET: APIRoute = async ({ url, cookies, request }) => {
   const store = await getStoreBySlugOrPrevious(storeSlug);
   if (!store || !isStoreVisible(store)) return json({ error: 'Store not found' }, 404);
 
-  const product = getProductBySlug(store.id, productSlug);
+  const product = await getProductBySlug(store.id, productSlug);
   if (!product || !isProductVisible(product)) return json({ error: 'Product not found' }, 404);
 
   // This endpoint is the shared quick-view/product modal's data source, so a GET

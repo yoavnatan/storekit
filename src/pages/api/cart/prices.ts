@@ -85,7 +85,7 @@ export const POST: APIRoute = async ({ request }) => {
     // canStoreSell, not merely "reachable": a line from a store that stopped selling is
     // reported `gone`, exactly like a deleted product, so the drawer stops quoting a price
     // checkout would refuse a moment later.
-    const product = store && canStoreSell(store) ? getProductBySlug(store.id, slug) : null;
+    const product = store && canStoreSell(store) ? await getProductBySlug(store.id, slug) : null;
     if (!product || !isProductVisible(product)) {
       items.push({ storeSlug, slug, price: 0, gone: true });
       continue;

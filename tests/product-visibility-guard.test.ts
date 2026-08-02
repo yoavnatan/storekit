@@ -67,4 +67,40 @@ describe('product visibility is defined once', () => {
     // product out of the storefront.
     expect(isProductVisible(p({ stock: 0 }))).toBe(true);
   });
+
+  /**
+   * Since 2026-08-02 the rule has a SECOND spelling that the grep above cannot see: the SQL
+   * predicate `store-products.ts` hands to Postgres (`NOT p.hidden AND NOT p.blocked`, used by
+   * `getVisibleProductsByStoreId` and `countStockAlerts`, and mirrored by
+   * `store_products_visible_idx`'s partial index). A grep guard cannot pin SQL to TypeScript, so
+   * this pins them by BEHAVIOUR: whatever `isProductVisible` says about a product in memory, the
+   * query must say about the same product in the database. Add a condition to one and forget the
+   * other — a draft state, an unapproved image — and this fails rather than the storefront and the
+   * seller's own badge count quietly disagreeing.
+   */
+  it('the SQL predicate answers exactly what isProductVisible answers', async () => {
+    const { query } = await import('../src/lib/db.js');
+    const { createProduct, getProductsByStoreId, getVisibleProductsByStoreId, updateProduct } =
+      await import('../src/lib/store-products.js');
+    const crypto = await import('node:crypto');
+
+    const sellerId = crypto.randomUUID();
+    const storeId = crypto.randomUUID();
+    await query(`INSERT INTO sellers (id, name, email, password_hash) VALUES ($1, 'T', $2, '')`,
+      [sellerId, `${storeId}@example.test`]);
+    await query(`INSERT INTO stores (id, seller_id, slug, name) VALUES ($1, $2, $3, 'T')`,
+      [storeId, sellerId, `vis-guard-${crypto.randomBytes(3).toString('hex')}`]);
+
+    // Every combination, including the one the JSON era wrote as an ABSENT key — which in SQL is
+    // the §7.12 trap: `WHERE hidden = false` does not match a NULL row.
+    for (const flags of [{}, { hidden: true }, { blocked: true }, { hidden: true, blocked: true }]) {
+      const created = await createProduct(storeId, { name: `p-${Object.keys(flags).join('-') || 'plain'}`, price: 1, stock: 0 });
+      if (Object.keys(flags).length) await updateProduct(created.id, flags);
+    }
+
+    const expected = (await getProductsByStoreId(storeId)).filter(isProductVisible).map((p) => p.id).sort();
+    const actual = (await getVisibleProductsByStoreId(storeId)).map((p) => p.id).sort();
+    expect(actual).toEqual(expected);
+    expect(actual).toHaveLength(1);
+  });
 });

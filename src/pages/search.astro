@@ -33,7 +33,7 @@ const storeCards = (await Promise.all(storeHits
   .map(async (hit) => {
     const store = await getStoreBySlug(hit.slug);
     if (!store) return null;
-    const previewImages = getVisibleProductsByStoreId(store.id).map((p) => p.images?.[0]).filter((u): u is string => !!u);
+    const previewImages = (await getVisibleProductsByStoreId(store.id)).map((p) => p.images?.[0]).filter((u): u is string => !!u);
     return { store, previewImages };
   })))
   .filter((c): c is { store: Store; previewImages: string[] } => !!c);

@@ -48,7 +48,7 @@ const d = t.dashboard;
 // stay visually in lockstep (see src/pages/seller/dashboard.astro). Range
 // changes re-fetch from /api/admin/performance (admin-guarded) client-side.
 const storeOrders: Order[] = getOrdersByStoreSlug(store.slug);
-const storeProductsList = getProductsByStoreId(store.id);
+const storeProductsList = await getProductsByStoreId(store.id);
 const today = new Date();
 const toLocalISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 const fromISO = toLocalISO(new Date(today.getFullYear(), today.getMonth(), 1));

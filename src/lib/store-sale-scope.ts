@@ -23,10 +23,10 @@ export type SaleScope = SaleScopeInput;
 /** Keeps only ids that are really this store's products — a hand-crafted POST can otherwise
  *  name another seller's product and pull it into this store's sale. Order + duplicates are
  *  normalized away so the stored list is stable across saves. */
-export function resolveSaleProductScope(storeId: string, ids: string[]): SaleScope | undefined {
+export async function resolveSaleProductScope(storeId: string, ids: string[]): Promise<SaleScope | undefined> {
   const wanted = new Set(ids.map((id) => id.trim()).filter(Boolean));
   if (!wanted.size) return undefined;
-  const owned = getProductsByStoreId(storeId).filter((p) => wanted.has(p.id)).map((p) => p.id);
+  const owned = (await getProductsByStoreId(storeId)).filter((p) => wanted.has(p.id)).map((p) => p.id);
   return owned.length ? { productIds: owned } : undefined;
 }
 

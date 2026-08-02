@@ -38,7 +38,7 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   for (const store of await getIndexableStores()) {
     const categories = await getCategoriesByStoreId(store.id);
     const purchased = getPurchasedCountsByStoreSlug(store.slug);
-    for (const product of getVisibleProductsByStoreId(store.id)) {
+    for (const product of await getVisibleProductsByStoreId(store.id)) {
       const cPath = product.categoryId ? categoryPath(categories, product.categoryId) : undefined;
       items.push(...buildFeedItems(product, {
         storeName: store.name,

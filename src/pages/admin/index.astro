@@ -81,7 +81,7 @@ const tabUrl = buildAdminUrl;
 const sellers = await getAllSellers();
 const stores = await getAllStores();
 const allOrders = getAllOrders();
-const productsByStore = getProductsByStoreMap();
+const productsByStore = await getProductsByStoreMap();
 
 const overview = getPlatformOverview(sellers, stores, allOrders);
 const revenueByStore = getStoreRevenueMap(allOrders);

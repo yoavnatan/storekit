@@ -109,7 +109,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
           // A product page also counts one product-level view. Resolve slug→id so history keys on
           // the immutable product id (a rename changes the slug).
           const productSlug = pathMatch[2];
-          const prod = productSlug ? getProductBySlug(st.id, productSlug) : null;
+          const prod = productSlug ? await getProductBySlug(st.id, productSlug) : null;
           if (prod) { recordProductView(prod.id); viewedProductId = prod.id; }
         }
       } catch { /* analytics tap must never break the request */ }

@@ -35,7 +35,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   const pageSize = Math.max(1, Math.min(100, parseInt(sp.get('psize') ?? '20', 10) || 20));
   const query = parseSellerProductQuery(sp);
 
-  const products = getProductsByStoreId(store.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const products = (await getProductsByStoreId(store.id)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const categories = await getCategoriesByStoreId(store.id);
   const categoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(categories, p.categoryId) : '']));
   const wishlistCounts = getAllWishlistCounts();
@@ -61,6 +61,6 @@ export const GET: APIRoute = async ({ url, cookies }) => {
     total,
     // Store-wide count (not page-scoped) so the Products-tab stock badge stays
     // accurate after any list re-fetch — add/delete/bulk all flow through here.
-    stockAlerts: countStockAlerts(store.id, LOW_STOCK_THRESHOLD),
+    stockAlerts: await countStockAlerts(store.id, LOW_STOCK_THRESHOLD),
   });
 };

@@ -1,6 +1,6 @@
 import { getShopperStores } from './stores.js';
 import { isStoreReady } from './store-readiness.js';
-import { readProducts, isProductVisible } from './store-products.js';
+import { getAllProducts, isProductVisible } from './store-products.js';
 import { matchesQueryWords } from './product-listing.js';
 import { cdnSrc } from '../config/store.config.js';
 import { resolvePrice } from './discounts.js';
@@ -64,7 +64,7 @@ export async function searchSite(rawQuery: string, options: SiteSearchOptions = 
   const stores = await getShopperStores();
   const storeById = new Map(stores.map((s) => [s.id, s]));
 
-  const allProducts = readProducts();
+  const allProducts = await getAllProducts();
   // Store hits are also gated on readiness (lib/store-readiness.ts): a store with nothing to buy
   // is a dead end, and a search result is a promise that the link goes somewhere. Filtered BEFORE
   // the limit slice so an unready store can't consume one of the few store slots.

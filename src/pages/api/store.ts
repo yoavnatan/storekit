@@ -117,7 +117,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // falls back to "whole store" rather than being stored as an unmatched filter.
     const scopeMode = String(form.get('saleScope') ?? '');
     const scope = scopeMode === 'products'
-      ? resolveSaleProductScope(target.id, String(form.get('saleProductIds') ?? '').split(','))
+      ? await resolveSaleProductScope(target.id, String(form.get('saleProductIds') ?? '').split(','))
       : scopeMode === 'category'
         // One comma-joined field rather than repeated inputs: the picker owns a single hidden
         // input, and `resolveSaleScope` drops anything blank or not this store's anyway.
@@ -162,7 +162,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!sale.productIds?.length) return json({ ok: false, error: 'sale-not-product-scoped' }, 400);
 
     const requested = String(form.get('productIds') ?? '').split(',');
-    const scope = resolveSaleProductScope(target.id, [...sale.productIds, ...requested]);
+    const scope = await resolveSaleProductScope(target.id, [...sale.productIds, ...requested]);
     if (!scope?.productIds?.length) return json({ ok: false, error: 'No products selected.' }, 400);
 
     await updateStore(target.id, { sale: { ...sale, productIds: scope.productIds } });

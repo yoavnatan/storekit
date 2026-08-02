@@ -212,7 +212,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     if (!canStoreSell(store)) return abort({ error: `Store not found: ${storeSlug}` }, 400);
 
     // Server-side price lookup — never trust client-sent prices
-    const product = getProductBySlug(store.id, productSlug);
+    const product = await getProductBySlug(store.id, productSlug);
     if (!product) return abort({ error: `Product not found: ${productSlug}` }, 400);
     if (!isProductVisible(product)) return abort({ error: `Product not found: ${productSlug}` }, 400);
 
@@ -230,9 +230,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       // left — not a prose sentence. This is the one rejection the buyer's page can
       // CORRECT rather than merely report (clamp the quantity, drop a sold-out line,
       // name the product), and it can only do that if it is told which line and what
-      // number. The count comes from `before`, read inside the same mutex-protected
-      // pass that refused the write, so it is the live figure and not a second read
-      // that a concurrent checkout could already have moved.
+      // number. The count comes from `before`, resolved by the same statement that
+      // refused the write, so it is the live figure and not a second read that a
+      // concurrent checkout could already have moved.
       return abort({
         error: 'out-of-stock',
         outOfStock: {
@@ -248,8 +248,8 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
     // Fire once, right as stock crosses a threshold going down — not on every
     // subsequent order while it stays low/empty (that'd spam the seller on every
-    // sale of an already-flagged product). before/after come from inside
-    // decrementStock's own mutex-protected write, not a separate read, so a
+    // sale of an already-flagged product). before/after are RETURNING values of
+    // decrementStock's own conditional UPDATE, not a separate read, so a
     // concurrent checkout on the same product can't skew which side of a
     // threshold this looks like it's on. Mutually exclusive per item: a single
     // order that takes stock straight from above the threshold to zero only

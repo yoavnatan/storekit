@@ -1,6 +1,6 @@
 import { getAllSellers } from './seller-auth.js';
 import { getAllStores } from './stores.js';
-import { readProducts } from './store-products.js';
+import { getAllProducts } from './store-products.js';
 import { getAllOrders } from './orders.js';
 import { getLifetimeEventSessions } from './analytics.js';
 
@@ -62,7 +62,7 @@ export async function getSellerFunnel(): Promise<SellerFunnel> {
   return buildSellerFunnel(
     await getAllSellers(),
     await getAllStores(),
-    readProducts(),
+    await getAllProducts(),
     getAllOrders(),
     getLifetimeEventSessions('seller_register_view'),
   );

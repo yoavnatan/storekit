@@ -1,27 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * The pure half of `store-products.ts` — the parts that decide something about a product record
+ * already in hand, with no storage behind them.
+ *
+ * Everything that reads or writes moved to `store-products-db.test.ts` when the module moved to
+ * Postgres (DB_MIGRATION_PLAN.md §8 stage 2). Split rather than merged: these need no database,
+ * they run in microseconds, and keeping them here is what makes it visible that the suite covers
+ * the visibility rule and the stock-bucket rule as RULES — not only as side effects of a query
+ * that happened to return the right row.
+ */
+import { describe, expect, it } from 'vitest';
 import type { StoreProduct } from '../src/lib/store-products.js';
+import { getEffectiveStock, isProductVisible, slugify, toPublicProduct } from '../src/lib/store-products.js';
 
-let db: StoreProduct[] = [];
-
-vi.mock('node:fs', () => ({
-  default: {
-    readFileSync: () => JSON.stringify(db),
-    writeFileSync: (_path: string, data: string) => { db = JSON.parse(data); },
-  },
-}));
-
-const { decrementStock, restockProduct, getEffectiveStock, isProductVisible, countStockAlerts, slugify } = await import('../src/lib/store-products.js');
-
-beforeEach(() => {
-  db = [
-    { id: 'p1', storeId: 's1', slug: 'widget', name: 'Widget', description: '', price: 10, stock: 5, createdAt: '2026-01-01T00:00:00.000Z' },
-    {
-      id: 'p2', storeId: 's1', slug: 'shirt', name: 'Shirt', description: '', price: 20, stock: 3, createdAt: '2026-01-01T00:00:00.000Z',
-      variants: [{ name: 'Size', options: ['S', 'M'] }],
-      variantStock: { 'Size=S': 2 },
-    },
-  ];
-});
+function product(over: Partial<StoreProduct> = {}): StoreProduct {
+  return { id: 'x', storeId: 's1', slug: 'x', name: 'X', description: '', price: 1, stock: 1, createdAt: '', ...over };
+}
 
 // This is a Hebrew marketplace and its sellers are not required to know English. Under the old
 // `[^a-z0-9-]` strip a Hebrew name slugified to '', so EVERY Hebrew-named product in a store fell
@@ -56,110 +49,46 @@ describe('slugify', () => {
   });
 });
 
-describe('decrementStock', () => {
-  it('decrements a plain (non-variant) product stock and returns ok with before/after', async () => {
-    const result = await decrementStock('p1', 2);
-    expect(result).toEqual({ ok: true, before: 5, after: 3 });
-    expect(db.find((p) => p.id === 'p1')!.stock).toBe(3);
+describe('isProductVisible', () => {
+  it('is visible for a plain product', () => {
+    expect(isProductVisible(product())).toBe(true);
   });
 
-  it('returns ok:false and leaves stock untouched when qty exceeds available stock', async () => {
-    const result = await decrementStock('p1', 6);
-    expect(result.ok).toBe(false);
-    expect(db.find((p) => p.id === 'p1')!.stock).toBe(5);
+  it('is hidden for an admin-blocked product', () => {
+    expect(isProductVisible(product({ blocked: true }))).toBe(false);
   });
 
-  it('decrements exactly to zero when qty equals available stock', async () => {
-    const result = await decrementStock('p1', 5);
-    expect(result).toEqual({ ok: true, before: 5, after: 0 });
-    expect(db.find((p) => p.id === 'p1')!.stock).toBe(0);
-  });
-
-  it('decrements the matching variant-combo bucket when one exists, not the shared stock pool', async () => {
-    const result = await decrementStock('p2', 1, { Size: 'S' });
-    expect(result).toEqual({ ok: true, before: 2, after: 1 });
-    const product = db.find((p) => p.id === 'p2')!;
-    expect(product.variantStock).toEqual({ 'Size=S': 1 });
-    expect(product.stock).toBe(3); // shared pool untouched
-  });
-
-  it('falls back to the shared stock pool for a combo with no variantStock override', async () => {
-    const result = await decrementStock('p2', 1, { Size: 'M' });
-    expect(result).toEqual({ ok: true, before: 3, after: 2 });
-    const product = db.find((p) => p.id === 'p2')!;
-    expect(product.stock).toBe(2);
-    expect(product.variantStock).toEqual({ 'Size=S': 2 }); // untouched
-  });
-
-  it('returns ok:false for an unknown product id', async () => {
-    const result = await decrementStock('does-not-exist', 1);
-    expect(result.ok).toBe(false);
-  });
-
-  it('serializes concurrent decrements so they never oversell a product with stock for only one', async () => {
-    const [a, b] = await Promise.all([decrementStock('p1', 5), decrementStock('p1', 5)]);
-    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
-    expect(db.find((p) => p.id === 'p1')!.stock).toBe(0);
-  });
-});
-
-describe('restockProduct', () => {
-  it('reverses a decrement back onto the same bucket it came from', async () => {
-    await decrementStock('p2', 1, { Size: 'S' });
-    const result = await restockProduct('p2', 1, { Size: 'S' });
-    expect(result).toEqual({ ok: true, before: 1, after: 2 });
-    expect(db.find((p) => p.id === 'p2')!.variantStock).toEqual({ 'Size=S': 2 });
+  it('is hidden for a seller-hidden product (the take-down switch)', () => {
+    expect(isProductVisible(product({ hidden: true }))).toBe(false);
   });
 });
 
 describe('getEffectiveStock', () => {
+  const variant = product({
+    stock: 3,
+    variants: [{ name: 'Size', options: ['S', 'M'] }],
+    variantStock: { 'Size=S': 2 },
+  });
+
   it('reads the flat stock field for a non-variant product', () => {
-    expect(getEffectiveStock(db.find((p) => p.id === 'p1')!)).toBe(5);
+    expect(getEffectiveStock(product({ stock: 5 }))).toBe(5);
   });
 
   it('reads the variantStock override for a selected combo that has one', () => {
-    const product = db.find((p) => p.id === 'p2')!;
-    expect(getEffectiveStock(product, { Size: 'S' })).toBe(2);
+    expect(getEffectiveStock(variant, { Size: 'S' })).toBe(2);
   });
 
+  // The partial-map rule the schema had to change to preserve (migration 0003): a combo with no
+  // entry is not sold out, it sells from the shared pool.
   it('falls back to the shared stock pool for a combo with no override', () => {
-    const product = db.find((p) => p.id === 'p2')!;
-    expect(getEffectiveStock(product, { Size: 'M' })).toBe(3);
+    expect(getEffectiveStock(variant, { Size: 'M' })).toBe(3);
   });
 });
 
-describe('isProductVisible', () => {
-  it('is visible for a plain product', () => {
-    expect(isProductVisible({ id: 'x', storeId: 's1', slug: 'x', name: 'X', description: '', price: 1, stock: 1, createdAt: '' })).toBe(true);
-  });
-
-  it('is hidden for an admin-blocked product', () => {
-    expect(isProductVisible({ id: 'x', storeId: 's1', slug: 'x', name: 'X', description: '', price: 1, stock: 1, createdAt: '', blocked: true })).toBe(false);
-  });
-
-  it('is hidden for a seller-hidden product (the new take-down switch)', () => {
-    expect(isProductVisible({ id: 'x', storeId: 's1', slug: 'x', name: 'X', description: '', price: 1, stock: 1, createdAt: '', hidden: true })).toBe(false);
-  });
-});
-
-describe('countStockAlerts', () => {
-  beforeEach(() => {
-    db = [
-      { id: 'a', storeId: 's1', slug: 'a', name: 'A', description: '', price: 1, stock: 0, createdAt: '' },   // out of stock → alert
-      { id: 'b', storeId: 's1', slug: 'b', name: 'B', description: '', price: 1, stock: 2, createdAt: '' },   // low (<=3) → alert
-      { id: 'c', storeId: 's1', slug: 'c', name: 'C', description: '', price: 1, stock: 50, createdAt: '' },  // healthy → no alert
-      { id: 'd', storeId: 's1', slug: 'd', name: 'D', description: '', price: 1, stock: 0, createdAt: '', hidden: true },  // out but hidden → excluded
-      { id: 'e', storeId: 's1', slug: 'e', name: 'E', description: '', price: 1, stock: 0, createdAt: '', blocked: true }, // out but blocked → excluded
-      { id: 'f', storeId: 's2', slug: 'f', name: 'F', description: '', price: 1, stock: 0, createdAt: '' },   // other store → excluded
-    ];
-  });
-
-  it('counts only on-sale products of the store that are out of / low on stock', () => {
-    expect(countStockAlerts('s1', 3)).toBe(2); // a + b
-  });
-
-  it('drops to zero once the low/out products are hidden', () => {
-    db.forEach((p) => { if (p.storeId === 's1' && p.stock <= 3) p.hidden = true; });
-    expect(countStockAlerts('s1', 3)).toBe(0);
+describe('toPublicProduct', () => {
+  it('drops the seller-only note and keeps everything a shopper may see', () => {
+    const pub = toPublicProduct(product({ sellerNote: 'private', tags: ['t'] }));
+    expect('sellerNote' in pub).toBe(false);
+    expect(pub.tags).toEqual(['t']);
   });
 });

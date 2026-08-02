@@ -55,7 +55,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // summary so the tab can render both from one fetch.
   const productId = url.searchParams.get('productId');
   if (productId) {
-    const product = getProductById(productId);
+    const product = await getProductById(productId);
     if (!product || product.storeId !== store.id) return json({ error: 'Product not found' }, 404);
     const productSummary = buildProductPerformance(orders, storeSlug, productId, from, to, granularity);
     return json({ ok: true, product: productSummary, productName: product.name });

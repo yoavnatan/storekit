@@ -58,14 +58,14 @@ const adCampaigns = (await getCampaignsForStore(store.id)).map((c) => ({ ...c, s
 const adBaseline = storeBaselineStatus({
   storeId: store.id,
   discoverable: isStoreDiscoverable(store),
-  visibleProductCount: getProductsByStoreId(store.id).filter(isProductVisible).length,
+  visibleProductCount: (await getProductsByStoreId(store.id)).filter(isProductVisible).length,
 });
 // Same eligibility rule as the seller's own tab: a boost only makes sense for a product a
 // shopper can actually reach and buy, so anything off the storefront (seller-hidden or
 // admin-blocked) is out too — not just what's out of stock.
 // Same predicate, same order, as the server that validates the pick
 // (ad-campaign-input.ts#resolveScope) — the picker must not offer what the POST then refuses.
-const adEligibleProducts = getProductsByStoreId(store.id).filter((p) => isProductVisible(p) && p.stock > 0);
+const adEligibleProducts = (await getProductsByStoreId(store.id)).filter((p) => isProductVisible(p) && p.stock > 0);
 // Gender inferred from each product's category path / name / tags — pre-fills the
 // campaign audience so it isn't re-entered (mirrors seller/dashboard.astro).
 const adStoreCategoryList = await getCategoriesByStoreId(store.id);

@@ -33,7 +33,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   if (!store) return json({ error: 'Store not found' }, 404);
 
   const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
-  let products = getProductsByStoreId(store.id);
+  let products = await getProductsByStoreId(store.id);
   if (q) {
     products = products.filter((p) =>
       p.name.toLowerCase().includes(q) || (p.sku ?? '').toLowerCase().includes(q));
