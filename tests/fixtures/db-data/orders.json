@@ -1,0 +1,97 @@
+[
+  {
+    "id": "55555555-5555-4555-8555-000000000001",
+    "checkoutRef": "chk-1",
+    "buyerName": "קונה",
+    "buyerEmail": "buyer@example.test",
+    "buyerPhone": "050",
+    "buyerAddress": {
+      "city": "תל אביב",
+      "street": "רחוב 2",
+      "zip": "1234567"
+    },
+    "shippingAmount": 20,
+    "totalAmount": 271.505,
+    "paymentRef": "pay-1",
+    "paymentStatus": "paid",
+    "shippingStatus": "pending",
+    "items": [
+      {
+        "productId": "44444444-4444-4444-8444-000000000001",
+        "productName": "אגרטל",
+        "productSlug": "agartal",
+        "storeSlug": "keramika",
+        "storeName": "קרמיקה",
+        "price": 1.005,
+        "qty": 2,
+        "selectedVariants": {
+          "צבע": "אדום"
+        }
+      },
+      {
+        "productId": "legacy-not-a-uuid",
+        "productName": "אגרטל אחר",
+        "productSlug": "agartal",
+        "storeSlug": "tachshitim",
+        "storeName": "תכשיטים",
+        "price": 250.5,
+        "qty": 1
+      }
+    ],
+    "storeSubtotals": {
+      "keramika": {
+        "storeName": "קרמיקה",
+        "subtotal": 2.01,
+        "shipping": 20,
+        "deliveryMethod": "delivery",
+        "discount": {
+          "type": "percent",
+          "value": 10,
+          "applied": 0.2
+        }
+      },
+      "tachshitim": {
+        "storeName": "תכשיטים",
+        "subtotal": 250.5,
+        "shipping": 0,
+        "deliveryMethod": "pickup"
+      }
+    },
+    "sellerNotes": {
+      "keramika": "לארוז במתנה",
+      "tachshitim": [
+        "שתי הערות",
+        "בשורה"
+      ]
+    },
+    "createdAt": "2026-02-01T10:00:00.000Z"
+  },
+  {
+    "id": "55555555-5555-4555-8555-000000000002",
+    "buyerName": "קונה 2",
+    "buyerEmail": "buyer2@example.test",
+    "shippingAmount": 0,
+    "totalAmount": 99.9,
+    "paymentStatus": "pending",
+    "shippingStatus": "pending",
+    "items": [
+      {
+        "productId": "44444444-4444-4444-8444-000000000003",
+        "productName": "מנורה",
+        "productSlug": "menora",
+        "storeSlug": "keramika",
+        "storeName": "קרמיקה",
+        "price": 99.9,
+        "qty": 1
+      }
+    ],
+    "storeSubtotals": {
+      "keramika": {
+        "storeName": "קרמיקה",
+        "subtotal": 99.9,
+        "shipping": 0
+      }
+    },
+    "createdAt": "2026-02-02T10:00:00.000Z"
+  }
+]

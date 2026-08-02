@@ -1,0 +1,14 @@
+[
+  {
+    "id": "bbbbbbbb-bbbb-4bbb-8bbb-000000000001",
+    "objective": "buyers",
+    "headline": "כותרת",
+    "body": "גוף",
+    "destinationUrl": "https://example.test",
+    "platform": "google",
+    "monthlyBudget": 500,
+    "durationDays": 14,
+    "status": "active",
+    "createdAt": "2026-02-06T10:00:00.000Z"
+  }
+]

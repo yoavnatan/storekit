@@ -25,37 +25,71 @@ import { roundMoney } from '../src/lib/money.js';
 
 const ROOT = process.cwd();
 const MIGRATIONS = path.join(ROOT, 'migrations');
+const FIXTURE = path.join(ROOT, 'tests/fixtures/db-data');
+// Overridable so the CI condition (an empty `data/`) can be reproduced on a dev machine by
+// pointing this at an empty directory, rather than by moving the live files out from under a
+// running dev server.
+const LIVE_DATA = process.env.STOREKIT_LIVE_DATA_DIR || path.join(ROOT, 'data');
 
 let db: PGlite;
 let dataDir: string;
-let report: { counts: Record<string, number>; skipped: { what: string; reason: string; count: number }[] };
+let report: ImportReport;
+
+type ImportReport = { counts: Record<string, number>; skipped: { what: string; reason: string; count: number }[] };
 
 /**
- * Both the import and the checks read the JSON files, and every check compares one against the
- * other — so the files must not move underneath them. `data/` is live: a running dev server
- * records a page view on every request, and other test files write to it too. Working from a
- * one-time snapshot is what makes the comparison meaningful rather than a race.
+ * `data/*.json` is gitignored — it is runtime state, and it holds real buyer names and addresses,
+ * so it can never be committed. CI therefore has an EMPTY `data/`, and a suite written against it
+ * alone imported nothing there and failed five ways.
+ *
+ * The fix is not to skip the suite when the files are missing: an import nobody verifies on the
+ * one machine that runs every push is an import nobody verifies. `tests/fixtures/db-data/` is a
+ * committed dataset that carries the same traps the real data taught us — §7.1's cross-store slug
+ * collision, §7.12's absent flags, §7.3's two bucket shapes in one file, §7.7's binary tail,
+ * §7.11's case-only duplicate email, a wishlist entry naming a product that is not in the
+ * catalogue, and one orphan of every kind so the drop paths are exercised. It found three wrong
+ * anchors in verify-import.mjs within a minute of first running.
+ *
+ * The real data still gets imported below when it is present, because a fixture only ever contains
+ * the traps someone thought of.
  */
-function snapshotData(): string {
+function migrationSql(): string[] {
+  return fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort().map((name) =>
+    fs.readFileSync(path.join(MIGRATIONS, name), 'utf8')
+      // pgvector is not bundled with PGlite. It is created in the migration deliberately (a
+      // provider that cannot run that line is the wrong provider — DB_MIGRATION_PLAN.md §2.1), and
+      // nothing in the schema depends on it yet, so the ONLY line this test skips is that one.
+      .replace(/^CREATE EXTENSION IF NOT EXISTS vector;$/m, ''));
+}
+
+async function freshDb(): Promise<PGlite> {
+  const created = await PGlite.create({ extensions: { citext, pg_trgm } });
+  for (const sql of migrationSql()) await created.exec(sql);
+  return created;
+}
+
+/**
+ * The import and the checks both read the JSON, and every check compares one against the other —
+ * so the files must not move underneath them. `data/` is live: a running dev server records a page
+ * view on every request, and other test files write to it too. A one-time snapshot is what makes
+ * the comparison meaningful rather than a race.
+ */
+function snapshot(src: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'storekit-db-'));
-  const src = path.join(ROOT, 'data');
   for (const name of fs.readdirSync(src).filter((f) => f.endsWith('.json'))) {
     fs.copyFileSync(path.join(src, name), path.join(dir, name));
   }
   return dir;
 }
 
+/** Whether a real `data/` is present — true on a dev machine, false in CI. */
+function hasLiveData(): boolean {
+  try { return fs.readdirSync(LIVE_DATA).some((f) => f.endsWith('.json')); } catch { return false; }
+}
+
 beforeAll(async () => {
-  dataDir = snapshotData();
-  db = await PGlite.create({ extensions: { citext, pg_trgm } });
-  for (const name of fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort()) {
-    const sql = fs.readFileSync(path.join(MIGRATIONS, name), 'utf8')
-      // pgvector is not bundled with PGlite. It is created in the migration deliberately (a
-      // provider that cannot run that line is the wrong provider — DB_MIGRATION_PLAN.md §2.1), and
-      // nothing in the schema depends on it yet, so the ONLY line this test skips is that one.
-      .replace(/^CREATE EXTENSION IF NOT EXISTS vector;$/m, '');
-    await db.exec(sql);
-  }
+  dataDir = snapshot(FIXTURE);
+  db = await freshDb();
   report = await importAll(db, { dataDir });
 }, 120_000);
 
@@ -160,7 +194,18 @@ describe('schema', () => {
   });
 });
 
-describe('import of the repo data', () => {
+/** Every amount in a dataset, for the agorot conversion check. */
+function everyAmount(dir: string): number[] {
+  const orders = JSON.parse(fs.readFileSync(path.join(dir, 'orders.json'), 'utf8'));
+  const products = JSON.parse(fs.readFileSync(path.join(dir, 'store-products.json'), 'utf8'));
+  return [
+    ...orders.flatMap((o: { totalAmount: number; shippingAmount: number; items?: { price: number }[] }) =>
+      [o.totalAmount, o.shippingAmount, ...(o.items ?? []).map((i) => i.price)]),
+    ...products.map((p: { price: number }) => p.price),
+  ].filter((n: number) => Number.isFinite(n));
+}
+
+describe('import of the fixture data', () => {
   it('passes every §9 verification check', async () => {
     const checks = await verifyImport(db, { dataDir, skipped: report.skipped });
     const failed = checks.filter((c) => !c.ok);
@@ -170,21 +215,33 @@ describe('import of the repo data', () => {
     expect(checks.length).toBeGreaterThan(20);
   });
 
+  it('drops exactly the orphans the fixture plants, and no more', async () => {
+    // The fixture carries one unusable row of each kind on purpose. Asserting the exact set is
+    // what stops a future change from quietly dropping something real: a drop count that grows is
+    // supposed to fail here rather than be absorbed into an anchor.
+    const byWhat = Object.fromEntries(report.skipped.map((s) => [s.what, s.count]));
+    expect(byWhat).toEqual({
+      seller: 1,                  // §7.11 — same address as another, differing only in case
+      store: 1,                   // owner account is not in sellers.json
+      category: 1,                // store is not in stores.json
+      product: 1,                 // store is not in stores.json
+      'admin message': 1,         // seller account is not in sellers.json
+      'ad campaign': 1,           // store is not in stores.json
+      'store page-views': 1,      // bucket for a store that never landed
+      'product page-views': 1,    // bucket for a product that has been deleted
+      'wishlist item': 1,         // names a product that is not in the catalogue
+      'favourite store': 1,       // names a store that is not in stores.json
+    });
+  });
+
   it('converts to agorot by the same rule money.ts rounds by (§7.7)', () => {
     // The §9 money checks compare the database against `toAgorot` — which proves nothing was lost
     // in transit, but not that the conversion itself matches what the application has been
-    // showing all along. This is that second half, over every real amount in the data: a binary
-    // tail like 1.00499999999999989 rounds one way with the EPSILON nudge and the other way
-    // without it, and one agora of drift per row is not something anyone would notice by reading.
-    const orders = JSON.parse(fs.readFileSync(path.join(dataDir, 'orders.json'), 'utf8'));
-    const products = JSON.parse(fs.readFileSync(path.join(dataDir, 'store-products.json'), 'utf8'));
-    const amounts: number[] = [
-      ...orders.flatMap((o: { totalAmount: number; shippingAmount: number; items?: { price: number }[] }) =>
-        [o.totalAmount, o.shippingAmount, ...(o.items ?? []).map((i) => i.price)]),
-      ...products.map((p: { price: number }) => p.price),
-    ].filter((n) => Number.isFinite(n));
-
-    expect(amounts.length).toBeGreaterThan(500);
+    // showing all along. This is that second half: a binary tail like 1.00499999999999989 rounds
+    // one way with the EPSILON nudge and the other way without it, and one agora of drift per row
+    // is not something anyone would notice by reading.
+    const amounts = everyAmount(dataDir);
+    expect(amounts).toContain(1.005);   // the fixture must keep carrying a binary tail
     for (const amount of amounts) expect(toAgorot(amount)).toBe(Math.round(roundMoney(amount) * 100));
   });
 
@@ -220,5 +277,45 @@ describe('import of the repo data', () => {
       expect(s.reason).toBeTruthy();
       expect(s.count).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * The same import over the REAL `data/*.json`, which exists on a dev machine and not in CI.
+ *
+ * A fixture only ever contains the traps someone thought of, and every §7 rule in the plan came
+ * from a surprise in these files rather than from reasoning — so this half stays. It is skipped
+ * rather than failed where the files are absent, which is honest only because the fixture above
+ * runs everywhere: if this were the only coverage, CI would be verifying nothing while reporting
+ * a pass.
+ */
+describe.skipIf(!hasLiveData())('import of the real data/*.json (dev machines only)', () => {
+  let liveDb: PGlite;
+  let liveDir: string;
+  let liveReport: ImportReport;
+
+  beforeAll(async () => {
+    liveDir = snapshot(LIVE_DATA);
+    liveDb = await freshDb();
+    liveReport = await importAll(liveDb, { dataDir: liveDir });
+  }, 120_000);
+
+  afterAll(async () => {
+    await liveDb?.close();
+    if (liveDir) fs.rmSync(liveDir, { recursive: true, force: true });
+  });
+
+  it('passes every §9 verification check on the real files', async () => {
+    const checks = await verifyImport(liveDb, { dataDir: liveDir, skipped: liveReport.skipped });
+    const failed = checks.filter((c) => !c.ok);
+    expect(
+      failed.map((c) => `${c.name}: expected ${c.expected}, got ${c.actual}`),
+    ).toEqual([]);
+  });
+
+  it('converts every real amount by the same rule money.ts rounds by (§7.7)', () => {
+    const amounts = everyAmount(liveDir);
+    expect(amounts.length).toBeGreaterThan(500);
+    for (const amount of amounts) expect(toAgorot(amount)).toBe(Math.round(roundMoney(amount) * 100));
   });
 });

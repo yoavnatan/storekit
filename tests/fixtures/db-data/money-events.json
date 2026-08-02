@@ -1,0 +1,22 @@
+[
+  {
+    "id": "66666666-6666-4666-8666-000000000001",
+    "at": "2026-02-01T10:00:01.000Z",
+    "type": "charge",
+    "orderId": "ord-legacy-1",
+    "checkoutRef": "chk-1",
+    "storeSlug": "keramika",
+    "amount": 271.505,
+    "actor": "system"
+  },
+  {
+    "id": "66666666-6666-4666-8666-000000000002",
+    "at": "2026-02-01T10:00:02.000Z",
+    "type": "status",
+    "orderId": "55555555-5555-4555-8555-000000000001",
+    "from": "pending",
+    "to": "paid",
+    "actor": "admin",
+    "detail": "manual"
+  }
+]

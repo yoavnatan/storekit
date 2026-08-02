@@ -66,6 +66,7 @@ export async function verifyImport(db, { dataDir = path.join(process.cwd(), 'dat
     await scalar(db, 'SELECT COUNT(*) FROM order_stores'));
   check('money_events', readJson(dataDir, 'money-events.json', []).length,
     await scalar(db, 'SELECT COUNT(*) FROM money_events'));
+
   check('messages', readJson(dataDir, 'messages.json', []).length,
     await scalar(db, 'SELECT COUNT(*) FROM messages'));
   check('notifications', readJson(dataDir, 'notifications.json', []).length,
@@ -75,6 +76,22 @@ export async function verifyImport(db, { dataDir = path.join(process.cwd(), 'dat
   check('ad_campaigns', readJson(dataDir, 'ad-campaigns.json', []).length - dropped('ad campaign'),
     await scalar(db, 'SELECT COUNT(*) FROM ad_campaigns'));
 
+  // Two kinds of check live below, and mixing them up is what produced three wrong anchors at once:
+  //
+  //  · The ROW COUNTS above ask "did the rows arrive", so they may subtract `dropped(...)` — the
+  //    import's declared account of rows it could not write, printed in full and asserted by
+  //    tests/db-import.test.ts.
+  //  · Everything after this point asks "did the FIELDS arrive", which is a different question. It
+  //    is computed over the JSON rows that actually landed, because subtracting a whole-table drop
+  //    count from a FILTERED subset is arithmetic about two different sets: one dropped store with
+  //    no opening hours made `stores.filter(s => s.hours).length - dropped('store')` expect zero
+  //    stores with hours, and one dropped product's price made the price total short by exactly
+  //    that price.
+  const landedStoreIds = new Set((await db.query('SELECT id FROM stores', [])).rows.map((r) => r.id));
+  const landedProductIds = new Set((await db.query('SELECT id FROM store_products', [])).rows.map((r) => r.id));
+  const landedStoreSlugs = new Set((await db.query('SELECT slug FROM stores', [])).rows.map((r) => String(r.slug)));
+  const liveStores = stores.filter((s) => landedStoreIds.has(s.id));
+  const liveProducts = products.filter((p) => landedProductIds.has(p.id));
   // --- §9.4 money ----------------------------------------------------------
   // The single check that proves the ILS→agorot conversion lost nothing. Summed the same way the
   // application sums money (per-row rounding, then addition) so the comparison is like for like.
@@ -86,51 +103,53 @@ export async function verifyImport(db, { dataDir = path.join(process.cwd(), 'dat
     orders.reduce((n, o) => n + (o.items ?? []).reduce((m, i) => m + toAgorot(i.price) * (Number(i.qty) || 1), 0), 0),
     await scalar(db, 'SELECT COALESCE(SUM(price_agorot * qty),0) FROM order_items'));
   check('product price total (agorot)',
-    products.reduce((n, p) => n + toAgorot(p.price), 0),
+    liveProducts.reduce((n, p) => n + toAgorot(p.price), 0),
     await scalar(db, 'SELECT COALESCE(SUM(price_agorot),0) FROM store_products'));
 
   // --- §7.12 / §9.8 the silent NULL-flag bug -------------------------------
   // isProductVisible === !blocked && !hidden. If a flag imported as NULL the SQL predicate stops
   // matching that row and the product vanishes from the storefront with no error anywhere.
   check('visible products (isProductVisible)',
-    products.filter((p) => !p.blocked && !p.hidden).length - dropped('product'),
+    liveProducts.filter((p) => !p.blocked && !p.hidden).length,
     await scalar(db, 'SELECT COUNT(*) FROM store_products WHERE NOT hidden AND NOT blocked'),
     '§7.12 — NULL vs false');
   check('visible stores (not blocked)',
-    stores.filter((s) => !s.blocked).length - dropped('store'),
+    liveStores.filter((s) => !s.blocked).length,
     await scalar(db, 'SELECT COUNT(*) FROM stores WHERE NOT blocked'));
 
   // --- §7.14 / §9.6 nested fields ------------------------------------------
   // Row counts and money totals both pass while variants, variant stock and opening hours import
   // empty: the product row exists and simply has no stock for any combination.
   check('products with variants',
-    products.filter((p) => (p.variants ?? []).length).length,
+    liveProducts.filter((p) => (p.variants ?? []).length).length,
     await scalar(db, "SELECT COUNT(*) FROM store_products WHERE jsonb_array_length(variants) > 0"),
     '§7.14');
   check('variant stock entries',
-    products.reduce((n, p) => n + new Set([
+    liveProducts.reduce((n, p) => n + new Set([
       ...Object.keys(p.variantStock ?? {}), ...Object.keys(p.variantSku ?? {}),
     ]).size, 0),
     await scalar(db, 'SELECT COUNT(*) FROM product_variant_stock'), '§7.14');
   check('variant stock units',
-    products.reduce((n, p) => n + Object.values(p.variantStock ?? {}).reduce((m, v) => m + (Number(v) || 0), 0), 0),
+    liveProducts.reduce((n, p) => n + Object.values(p.variantStock ?? {}).reduce((m, v) => m + (Number(v) || 0), 0), 0),
     await scalar(db, 'SELECT COALESCE(SUM(stock),0) FROM product_variant_stock'), '§7.14');
   check('product images',
-    products.reduce((n, p) => n + (p.images ?? []).filter(Boolean).length, 0),
+    liveProducts.reduce((n, p) => n + (p.images ?? []).filter(Boolean).length, 0),
     await scalar(db, 'SELECT COUNT(*) FROM product_images'), '§7.14');
   check('stores with opening hours',
-    stores.filter((s) => s.hours).length - dropped('store'),
+    liveStores.filter((s) => s.hours).length,
     await scalar(db, 'SELECT COUNT(*) FROM stores WHERE hours IS NOT NULL'), '§7.14');
   check('products with specs',
-    products.filter((p) => (p.specs ?? []).length).length,
+    liveProducts.filter((p) => (p.specs ?? []).length).length,
     await scalar(db, "SELECT COUNT(*) FROM store_products WHERE jsonb_array_length(specs) > 0"), '§7.14');
 
   // --- §7.15 / §9.7 the buckets, which have no money and no rows to anchor on
   const storeViews = readJson(dataDir, 'store-pageviews.json', {});
-  const storeViewTotal = Object.values(storeViews)
-    .reduce((n, days) => n + Object.values(days).reduce((m, v) => m + bucketTotal(v), 0), 0);
-  check('store page-view total', storeViewTotal,
-    await scalar(db, 'SELECT COALESCE(SUM(total),0) FROM store_page_views'), '§7.15');
+  const storeViewTotal = Object.entries(storeViews)
+    .filter(([slug]) => landedStoreSlugs.has(slug))
+    .reduce((n, [, days]) => n + Object.values(days).reduce((m, v) => m + bucketTotal(v), 0), 0);
+  check('store page-view total (live stores)', storeViewTotal,
+    await scalar(db, 'SELECT COALESCE(SUM(total),0) FROM store_page_views'),
+    `§7.15 — ${dropped('store page-views')} bucket(s) belong to a store that never landed`);
 
   const productViews = readJson(dataDir, 'product-pageviews.json', {});
   // Buckets belonging to deleted products cannot be written (the foreign key is the point), so the
