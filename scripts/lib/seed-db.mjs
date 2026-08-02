@@ -135,7 +135,7 @@ export async function productSlugs(db, where = 'true', params = []) {
  *           orders?: any[] }} catalog
  */
 export async function writeCatalog(db, catalog) {
-  const { purge: scope, sellers = [], stores = [], categories = [], products = [], orders = [] } = catalog;
+  const { purge: scope, sellers = [], stores = [], categories = [], products = [], orders = [], pageViews = [] } = catalog;
   await db.query('BEGIN');
   try {
     // Orders before the stores that own them: `purge` deletes the stores, and once they are gone
@@ -234,6 +234,17 @@ export async function writeCatalog(db, catalog) {
       'order_id', 'store_slug', 'store_name', 'subtotal_agorot', 'shipping_agorot', 'delivery_method',
     ], orderStores);
 
+    // Traffic history. Keyed by store ID (DB_MIGRATION_PLAN.md §5), so the purge above — which
+    // deletes the stores, and cascades to both of these — has already cleared the previous run's.
+    const viewDays = [];
+    const viewVisitors = [];
+    for (const pv of pageViews) {
+      viewDays.push([pv.storeId, pv.day, Math.max(0, Number(pv.total) || 0)]);
+      for (const visitorId of new Set(pv.visitors ?? [])) viewVisitors.push([pv.storeId, pv.day, visitorId]);
+    }
+    await insertMany(db, 'store_page_views', ['store_id', 'day', 'total'], viewDays);
+    await insertMany(db, 'store_page_view_visitors', ['store_id', 'day', 'visitor_id'], viewVisitors);
+
     await db.query('COMMIT');
   } catch (err) {
     await db.query('ROLLBACK').catch(() => {});
@@ -242,6 +253,7 @@ export async function writeCatalog(db, catalog) {
   return {
     sellers: sellers.length, stores: stores.length,
     categories: categories.length, products: products.length, orders: orders.length,
+    pageViews: pageViews.length,
   };
 }
 

@@ -14,10 +14,10 @@
  * Demo sellers all share the password `demo1234` — log in as any of them.
  *
  * **Half database, half files, and that split is the migration's own.** Sellers, stores,
- * categories, products and — since the `orders` module moved — orders are Postgres rows
- * (DB_MIGRATION_PLAN.md stage 2, DATABASE_URL required); page-view buckets and the favourite /
- * wishlist counters are still `data/*.json` because their modules have not moved yet, and they are
- * seeded there so the demo analytics keep rendering. Each half moves when its module does.
+ * categories, products, orders and — since the page-view modules moved — store traffic are Postgres
+ * rows (DB_MIGRATION_PLAN.md stage 2, DATABASE_URL required); the favourite / wishlist counters are
+ * still `data/*.json` because their modules have not moved yet, and they are seeded there so the
+ * demo dashboard keeps rendering. Each half moves when its module does.
  * Until this was translated the seeder wrote four files nobody reads any more —
  * it ran, printed "✅ Demo seed complete", and created nothing.
  */
@@ -182,8 +182,10 @@ async function run(db) {
   // the demo stores' orders and leaves every other order untouched, which is the same guarantee
   // the filter used to provide and one the database can actually enforce.
   const orders = [];
-  const pageviews = {}, favCounts = {}, wishCounts = {};
-  for (const [k, v] of Object.entries(read('store-pageviews.json', {}))) if (realSlugs.has(k)) pageviews[k] = v;
+  // Traffic is rows now, keyed by store id — deleting the demo stores cascades to it, so unlike the
+  // counters below there is nothing to carry across and rewrite.
+  const pageViews = [];
+  const favCounts = {}, wishCounts = {};
   for (const [k, v] of Object.entries(read('store-favorite-counts.json', {}))) if (realSlugs.has(k)) favCounts[k] = v;
   for (const [k, v] of Object.entries(read('wishlist-counts.json', {}))) if (realWishKeys.has(k)) wishCounts[k] = v;
 
@@ -191,7 +193,7 @@ async function run(db) {
     // Orders first, while the demo stores still exist to identify them by slug.
     const removedOrders = await purgeOrdersOfStores(db, DEMO_STORES, [DEMO_EMAIL_SUFFIX]);
     const removed = await purge(db, { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] });
-    write('store-pageviews.json', pageviews); write('store-favorite-counts.json', favCounts); write('wishlist-counts.json', wishCounts);
+    write('store-favorite-counts.json', favCounts); write('wishlist-counts.json', wishCounts);
     console.log(`\n🧹 Demo data removed — ${removed.stores} store(s), ${removed.sellers} account(s), ${removedOrders} order(s). Real (non-@demo.local) data preserved.\n`);
     return;
   }
@@ -270,19 +272,20 @@ async function run(db) {
       });
       storeN++;
 
-      // Daily bucket = { total loads, distinct visitor ids }. A per-store pool
-      // of ids is re-sampled each day so the same visitor recurs across days —
-      // making unique-over-the-month meaningfully lower than the summed daily
-      // visits, which is exactly the split the performance tab now shows.
-      const pv = {};
+      // One row per day: total loads plus the distinct visitor ids behind them. A per-store pool of
+      // ids is re-sampled each day so the same visitor recurs across days — which is what makes
+      // unique-over-the-month meaningfully lower than the summed daily visits, the split the
+      // performance tab exists to show.
       const visitorPool = Array.from({ length: int(250, 1200) }, () => uuid().replace(/-/g, '').slice(0, 20));
       for (let d = 0; d < 30; d++) {
         if (rnd() >= 0.8) continue;
         const total = int(2, 220);
         const unique = Math.max(1, Math.min(total, Math.round(total * (0.5 + rnd() * 0.35))));
-        pv[iso(NOW - d * DAY).slice(0, 10)] = { total, visitors: shuffle(visitorPool).slice(0, unique) };
+        pageViews.push({
+          storeId, day: iso(NOW - d * DAY).slice(0, 10), total,
+          visitors: shuffle(visitorPool).slice(0, unique),
+        });
       }
-      pageviews[storeSlug] = pv;
       favCounts[storeSlug] = int(0, 180);
       for (const p of storeProducts) if (rnd() < 0.5) wishCounts[p.slug] = int(1, 40);
 
@@ -314,10 +317,9 @@ async function run(db) {
   // with no demo data at all.
   await writeCatalog(db, {
     purge: { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] },
-    sellers, stores, categories, products, orders,
+    sellers, stores, categories, products, orders, pageViews,
   });
 
-  write('store-pageviews.json', pageviews);
   write('store-favorite-counts.json', favCounts);
   write('wishlist-counts.json', wishCounts);
 
