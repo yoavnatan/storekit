@@ -3,6 +3,11 @@ import type { Order } from '../src/lib/orders.js';
 import { countsAsRevenue } from '../src/lib/orders.js';
 import { buildPerformanceSummary, buildProductPerformance, pickGranularity } from '../src/lib/seller-performance.js';
 import { buildPlatformPerformance } from '../src/lib/platform-performance.js';
+// Traffic is an input to the reporting builders now; every property asserted below is about money
+// and order counts, so these pass none. See platform-performance.test.ts for why that is a gain.
+import { EMPTY_VIEW_STATS, type StoreViewStats } from '../src/lib/store-pageviews.js';
+import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
+const NO_VIEWS = new Map<string, StoreViewStats>();
 import { getPlatformOverview, getStoreRevenueMap, orderNetTotal } from '../src/lib/admin-stats.js';
 import { reconcileOrders } from '../src/lib/reconcile.js';
 import { toAgorot } from '../src/lib/money.js';
@@ -139,7 +144,7 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
       const orders = makeBatch(seed, 25);
       for (const slug of STORES) {
         for (const granularity of ['day', 'month'] as const) {
-          const s = buildPerformanceSummary(orders, slug, FROM, TO, granularity);
+          const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, FROM, TO, granularity);
           expect((s.points.reduce((a, p) => a + p.revenueAgorot, 0)), `seed ${seed} / ${slug} / ${granularity}`)
             .toBe(s.totalRevenueAgorot);
           expect(s.points.reduce((a, p) => a + p.orders, 0), `seed ${seed} / ${slug} / ${granularity} orders`)
@@ -155,8 +160,8 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
     for (const seed of SEEDS) {
       const orders = makeBatch(seed, 25);
       for (const slug of STORES) {
-        const byDay = buildPerformanceSummary(orders, slug, FROM, TO, 'day');
-        const byMonth = buildPerformanceSummary(orders, slug, FROM, TO, 'month');
+        const byDay = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, FROM, TO, 'day');
+        const byMonth = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, FROM, TO, 'month');
         expect(byMonth.totalRevenueAgorot, `seed ${seed} / ${slug}`).toBe(byDay.totalRevenueAgorot);
         expect(byMonth.totalOrders, `seed ${seed} / ${slug} orders`).toBe(byDay.totalOrders);
       }
@@ -168,8 +173,8 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
       const orders = makeBatch(seed, 25);
       const live = orders.filter(countsAsRevenue);
       for (const slug of STORES) {
-        expect(buildPerformanceSummary(orders, slug, FROM, TO, 'day').totalRevenueAgorot, `seed ${seed} / ${slug}`)
-          .toBe(buildPerformanceSummary(live, slug, FROM, TO, 'day').totalRevenueAgorot);
+        expect(buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, FROM, TO, 'day').totalRevenueAgorot, `seed ${seed} / ${slug}`)
+          .toBe(buildPerformanceSummary(live, EMPTY_VIEW_STATS, slug, FROM, TO, 'day').totalRevenueAgorot);
       }
       expect(getPlatformOverview([], [], orders).gmvAgorot, `seed ${seed} overview`)
         .toBe(getPlatformOverview([], [], live).gmvAgorot);
@@ -180,7 +185,7 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
     for (const seed of SEEDS) {
       const orders = makeBatch(seed, 25);
       for (const rate of [0, 10, 10.25, 12, 100]) {
-        const s = buildPerformanceSummary(orders, STORES[0]!, FROM, TO, 'day', rate);
+        const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORES[0]!, FROM, TO, 'day', rate);
         expect((s.platformCommissionAgorot + s.netProfitAgorot), `seed ${seed} at ${rate}%`).toBe(s.totalRevenueAgorot);
         expect(s.platformCommissionAgorot, `seed ${seed} commission at ${rate}% within bounds`).toBeLessThanOrEqual(s.totalRevenueAgorot);
         expect(s.platformCommissionAgorot).toBeGreaterThanOrEqual(0);
@@ -191,9 +196,9 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
   it('the platform total always equals the sum of the seller tabs', () => {
     for (const seed of SEEDS) {
       const orders = makeBatch(seed, 25);
-      const perf = buildPlatformPerformance(orders, STORES.map((slug) => ({ slug, name: slug })), FROM, TO, 'day');
+      const perf = buildPlatformPerformance(orders, STORES.map((slug) => ({ id: slug, slug, name: slug })), NO_VIEWS, FROM, TO, 'day');
       const sellerSum = STORES.reduce(
-        (a, slug) => a + buildPerformanceSummary(orders, slug, FROM, TO, 'day').totalRevenueAgorot, 0,
+        (a, slug) => a + buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, FROM, TO, 'day').totalRevenueAgorot, 0,
       );
       expect(perf.summary.totalRevenueAgorot, `seed ${seed}`).toBe(sellerSum);
       expect((perf.stores.reduce((a, r) => a + r.revenueAgorot, 0)), `seed ${seed} rows`).toBe(perf.summary.totalRevenueAgorot);
@@ -233,7 +238,7 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
     for (const seed of SEEDS) {
       const orders = makeBatch(seed, 25);
       for (const slug of STORES) {
-        const s = buildPerformanceSummary(orders, slug, FROM, TO, pickGranularity(FROM, TO), 12);
+        const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, FROM, TO, pickGranularity(FROM, TO), 12);
         const numbers: Array<[number, string]> = [
           [s.totalRevenueAgorot, 'totalRevenueAgorot'], [s.avgOrderValueAgorot, 'avgOrderValueAgorot'],
           [s.conversionRate, 'conversionRate'], [s.platformCommissionAgorot, 'commission'],
@@ -255,10 +260,10 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
     for (const seed of SEEDS) {
       const orders = makeBatch(seed, 25);
       for (const slug of STORES) {
-        const store = buildPerformanceSummary(orders, slug, FROM, TO, 'day', 0, 0);
+        const store = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, FROM, TO, 'day', 0, 0);
         const grossTotal = (store.topProducts.reduce((a, p) => a + p.revenueAgorot, 0));
         for (const tp of store.topProducts) {
-          const p = buildProductPerformance(orders, slug, tp.productId, FROM, TO, 'day');
+          const p = buildProductPerformance(orders, EMPTY_PRODUCT_VIEW_STATS, slug, tp.productId, FROM, TO, 'day');
           expect(p.totalRevenueAgorot, `seed ${seed} / ${slug} / ${tp.productId}`).toBeLessThanOrEqual(grossTotal);
           expect((p.points.reduce((a, x) => a + x.revenueAgorot, 0)), `seed ${seed} / ${slug} / ${tp.productId} bars`)
             .toBe(p.totalRevenueAgorot);
@@ -275,7 +280,7 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
         if (!countsAsRevenue(o)) continue;
         const day = businessDayISO(new Date(o.createdAt));
         for (const slug of Object.keys(o.storeSubtotals)) {
-          const onItsDay = buildPerformanceSummary([o], slug, day, day, 'day');
+          const onItsDay = buildPerformanceSummary([o], EMPTY_VIEW_STATS, slug, day, day, 'day');
           expect(onItsDay.totalOrders, `seed ${seed} / ${o.id} on ${day}`).toBe(1);
           expect((onItsDay.totalRevenueAgorot)).toBe((orderNetTotal(o) - Object.entries(o.storeSubtotals)
             .filter(([s]) => s !== slug)

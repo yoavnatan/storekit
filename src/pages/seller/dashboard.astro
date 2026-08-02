@@ -55,6 +55,7 @@ import { LOW_STOCK_THRESHOLD, comboStockRows, isFullyPerCombo, sumComboOverrides
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath } from '../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js';
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
+import { getViewStatsForStore, EMPTY_VIEW_STATS } from '../../lib/store-pageviews.js';
 import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.js';
 import { storeBaselineStatus } from '../../lib/ad-baseline.js';
 import { getCampaignsForStore } from '../../lib/ad-campaign-health.js';
@@ -367,7 +368,10 @@ const storeOrders: Order[] = store ? await getOrdersByStoreSlug(store.slug) : []
 const perfToISO = businessTodayISO();
 const perfFromISO = businessMonthStartISO(perfToISO);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
-const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier((await getSellerById(sellerId))?.tier)) : undefined;
+const perfViews = (store && perfIsInitial)
+  ? await getViewStatsForStore(store.id, perfFromISO, perfToISO, perfGranularity)
+  : EMPTY_VIEW_STATS;
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier((await getSellerById(sellerId))?.tier)) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).

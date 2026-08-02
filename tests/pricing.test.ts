@@ -71,10 +71,12 @@ describe('blendedCommissionRate', () => {
 });
 
 describe('buildPlatformStoreInputs', () => {
+  // `id` is carried through because page-view statistics are gathered under it, not under the
+  // slug — a store that renames its URL must not lose its traffic history.
   const stores = [
-    { slug: 'a', name: 'A', sellerId: 's1' },
-    { slug: 'b', name: 'B', sellerId: 's2', blocked: true },
-    { slug: 'c', name: 'C', sellerId: 'ghost' },
+    { id: 'id-a', slug: 'a', name: 'A', sellerId: 's1' },
+    { id: 'id-b', slug: 'b', name: 'B', sellerId: 's2', blocked: true },
+    { id: 'id-c', slug: 'c', name: 'C', sellerId: 'ghost' },
   ];
   const sellers = [{ id: 's1', tier: 'enterprise' }, { id: 's2' }];
 

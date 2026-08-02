@@ -1,11 +1,16 @@
 import type { Order } from './orders.js';
 import { countsAsRevenue } from './orders.js';
 import { orderNetForStore } from './admin-stats.js';
-import { getDailyPageViews } from './store-pageviews.js';
-import { getProductDailyViews } from './product-pageviews.js';
+import type { StoreViewStats, ViewGranularity } from './store-pageviews.js';
+import type { ProductViewStats } from './product-pageviews.js';
 import { businessDayISO, businessMonthKey, calendarDayISO, calendarMonthKey, dayInRange, BUSINESS_TIMEZONE } from './business-day.js';
 
-export type PerformanceGranularity = 'day' | 'month';
+/**
+ * One definition, aliased rather than repeated: the bucket size a report is drawn at is the same
+ * fact the page-view query groups by, and two copies of a two-member union are two things that can
+ * disagree about what a caller asked for.
+ */
+export type PerformanceGranularity = ViewGranularity;
 
 export interface PerformancePoint {
   key: string;   // 'YYYY-MM-DD' (day) or 'YYYY-MM' (month) — stable sort/chart key
@@ -144,9 +149,21 @@ export function buildZeroPoints(fromISO: string, toISO: string, granularity: Per
   }));
 }
 
-/** Builds the seller-facing "store performance" tab's full data set for one store + date range — revenue/orders (from paid orders' storeSubtotals) and visitor counts (from store-pageviews.ts) bucketed together onto the same day/month axis, plus a top-products-by-revenue breakdown. Pure given its inputs (orders array is the only "money" data; page views are read internally since they're already a cheap aggregate, not per-request data worth threading through every caller). */
+/**
+ * Builds the seller-facing "store performance" tab's full data set for one store + date range —
+ * revenue/orders (from paid orders' storeSubtotals) and visitor counts (from `store-pageviews.ts`)
+ * bucketed together onto the same day/month axis, plus a top-products-by-revenue breakdown.
+ *
+ * **Pure, and page views are now an INPUT.** They used to be read inside this function, one file
+ * read per call — which is how the admin performance tab, which calls this once per store, came to
+ * do 45 of them per render. Passing them in is what let that become a single query for every store
+ * at once (`getStoreViewStats`), and it keeps this function — where all the reporting arithmetic
+ * lives — testable without a database. `views` must have been built at the SAME `granularity`,
+ * which is why both arrive together.
+ */
 export function buildPerformanceSummary(
   orders: Order[],
+  views: StoreViewStats,
   storeSlug: string,
   fromISO: string,
   toISO: string,
@@ -182,22 +199,20 @@ export function buildPerformanceSummary(
   }
   
 
-  const dailyViews = getDailyPageViews(storeSlug, fromISO, toISO);
+  // Both numbers arrive already bucketed at this granularity, and the unique counts arrive
+  // already DISTINCT — per bucket and, separately, across the whole range. That separation is the
+  // point: a visitor who returns on two days of the same month is one unique visitor for that
+  // month and one for the range, so the range figure can never be a sum of the buckets. It used to
+  // be computed here by unioning the raw visitor-id arrays, which is precisely the unbounded
+  // structure the migration removed (DB_MIGRATION_PLAN.md §5).
   const viewsByKey = new Map<string, number>();
-  // Unique visitors are unioned per bucket (and across the whole range), never
-  // summed — a visitor returning on two days in the same month is still one
-  // unique visitor for that month, and the range total de-dupes across buckets.
-  const visitorsByKey = new Map<string, Set<string>>();
-  const allVisitors = new Set<string>();
-  for (const v of dailyViews) {
-    const key = granularity === 'day' ? v.date : v.date.slice(0, 7);
-    viewsByKey.set(key, (viewsByKey.get(key) ?? 0) + v.views);
-    let set = visitorsByKey.get(key);
-    if (!set) { set = new Set<string>(); visitorsByKey.set(key, set); }
-    for (const id of v.visitors) { set.add(id); allVisitors.add(id); }
+  const uniquesByKey = new Map<string, number>();
+  for (const b of views.buckets) {
+    viewsByKey.set(b.key, (viewsByKey.get(b.key) ?? 0) + b.views);
+    uniquesByKey.set(b.key, (uniquesByKey.get(b.key) ?? 0) + b.uniqueVisitors);
   }
-  const totalViews = dailyViews.reduce((s, v) => s + v.views, 0);
-  const totalUniqueVisitors = allVisitors.size;
+  const totalViews = views.totalViews;
+  const totalUniqueVisitors = views.totalUniqueVisitors;
 
   const points: PerformancePoint[] = keys.map((key) => ({
     key,
@@ -205,7 +220,7 @@ export function buildPerformanceSummary(
     revenueAgorot: revenueByKey.get(key) ?? 0,
     orders: ordersByKey.get(key) ?? 0,
     views: viewsByKey.get(key) ?? 0,
-    uniqueVisitors: visitorsByKey.get(key)?.size ?? 0,
+    uniqueVisitors: uniquesByKey.get(key) ?? 0,
   }));
 
   const totalOrders = inRange.length;
@@ -249,13 +264,13 @@ export function buildPerformanceSummary(
 }
 
 /** Single-product drill-down for the seller's performance tab: units sold, gross
-  *  revenue and product-page views for ONE product across a date range, bucketed
- *  on the same day/month axis as the store summary. Sales come from the orders
- *  array (the "money" data, passed in); views are read internally from
- *  product-pageviews.ts (a cheap pre-aggregate, same pattern as the store
- *  summary's page views). Pure given its inputs + that store. */
+ *  revenue and product-page views for ONE product across a date range, bucketed
+ *  on the same day/month axis as the store summary. Both data inputs are passed
+ *  in — sales from the orders array, views from `product-pageviews.ts` — so this
+ *  stays pure, for the same reason `buildPerformanceSummary` does. */
 export function buildProductPerformance(
   orders: Order[],
+  views: ProductViewStats,
   storeSlug: string,
   productId: string,
   fromISO: string,
@@ -290,13 +305,9 @@ export function buildProductPerformance(
     if (inThisOrder) ordersWithProduct += 1;
   }
 
-  const dailyViews = getProductDailyViews(productId, fromISO, toISO);
   const viewsByKey = new Map<string, number>();
-  for (const v of dailyViews) {
-    const key = granularity === 'day' ? v.date : v.date.slice(0, 7);
-    viewsByKey.set(key, (viewsByKey.get(key) ?? 0) + v.views);
-  }
-  const totalViews = dailyViews.reduce((s, v) => s + v.views, 0);
+  for (const b of views.buckets) viewsByKey.set(b.key, (viewsByKey.get(b.key) ?? 0) + b.views);
+  const totalViews = views.totalViews;
 
   const points: ProductPerformancePoint[] = keys.map((key) => ({
     key,

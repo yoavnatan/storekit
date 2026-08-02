@@ -40,7 +40,7 @@ export const GET: APIRoute = async ({ url, cookies, request }) => {
   // still inflate the view count they judge that product by.
   const isOwner = getSellerSession(cookies) === store.sellerId;
   if (!isBotRequest(request) && !isOwner) {
-    recordProductView(product.id);
+    void recordProductView(product.id);
     // Same open also counts as a funnel view_item (keyed to the session cookie set
     // in middleware) so a modal/quick-view open advances the buyer funnel, not just
     // full page loads. No sn_vid yet (pre-first-page API hit) → recorded without a

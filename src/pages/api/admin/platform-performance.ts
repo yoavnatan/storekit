@@ -5,6 +5,8 @@ import { getAllStores } from '../../../lib/stores.js';
 import { getAllOrders } from '../../../lib/orders.js';
 import { pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
 import { buildPlatformPerformance, buildPlatformStoreInputs, parseStoreRowsQuery, selectStoreRows } from '../../../lib/platform-performance.js';
+import { getStoreViewStats } from '../../../lib/store-pageviews.js';
+import { isDayISO } from '../../../lib/business-day.js';
 import { buildPlatformRevenue } from '../../../lib/platform-revenue.js';
 import { getAllCampaigns } from '../../../lib/ad-campaigns.js';
 import { getAllSellers } from '../../../lib/seller-auth.js';
@@ -22,7 +24,6 @@ function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const denied = requireAdmin(cookies);
@@ -31,7 +32,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const url = new URL(request.url);
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
-  if (!from || !to || !ISO_DATE_RE.test(from) || !ISO_DATE_RE.test(to) || from > to) {
+  if (!from || !to || !isDayISO(from) || !isDayISO(to) || from > to) {
     return json({ error: 'Missing or invalid from/to' }, 400);
   }
 
@@ -54,7 +55,10 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const orders = await getAllOrders();
   const sellers = await getAllSellers();
   const stores = buildPlatformStoreInputs(await getAllStores(), sellers);
-  const result = buildPlatformPerformance(orders, stores, from, to, granularity, topLimit);
+  // Every store's traffic in ONE query. This used to be a file read per store inside the loop
+  // below (45 of them per render) — see platform-performance.ts's cost note.
+  const views = await getStoreViewStats(stores.map((s) => s.id), from, to, granularity);
+  const result = buildPlatformPerformance(orders, stores, views, from, to, granularity, topLimit);
   const page = selectStoreRows(result.stores, parseStoreRowsQuery(url.searchParams));
   const revenue = buildPlatformRevenue(
     result.summary.platformCommissionAgorot,

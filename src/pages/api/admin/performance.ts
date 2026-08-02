@@ -5,6 +5,9 @@ import { getStoreBySlug } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug } from '../../../lib/orders.js';
 import { getProductById } from '../../../lib/store-products.js';
 import { buildPerformanceSummary, buildProductPerformance, pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
+import { getViewStatsForStore } from '../../../lib/store-pageviews.js';
+import { getProductViewStats } from '../../../lib/product-pageviews.js';
+import { isDayISO } from '../../../lib/business-day.js';
 import { commissionPercentForTier } from '../../../lib/pricing.js';
 import { getSellerById } from '../../../lib/seller-auth.js';
 
@@ -18,7 +21,6 @@ function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // Admin cookie is the only gate — never a seller session. requireAdmin
@@ -30,7 +32,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   const storeSlug = url.searchParams.get('storeSlug');
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
-  if (!storeSlug || !from || !to || !ISO_DATE_RE.test(from) || !ISO_DATE_RE.test(to) || from > to) {
+  if (!storeSlug || !from || !to || !isDayISO(from) || !isDayISO(to) || from > to) {
     return json({ error: 'Missing or invalid storeSlug/from/to' }, 400);
   }
 
@@ -54,8 +56,6 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // per-period composition, not just the top-5 leaderboard).
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
 
-  const orders = await getOrdersByStoreSlug(storeSlug);
-
   // ?productId=… → single-product drill-down, same as the seller twin. Product
   // must belong to the requested store (defence-in-depth even though admin sees
   // all — keeps a mismatched id from reading an unrelated product's numbers).
@@ -63,10 +63,19 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   if (productId) {
     const product = await getProductById(productId);
     if (!product || product.storeId !== store.id) return json({ error: 'Product not found' }, 404);
-    const productSummary = buildProductPerformance(orders, storeSlug, productId, from, to, granularity);
+    const [orders, productViews] = await Promise.all([
+      getOrdersByStoreSlug(storeSlug),
+      getProductViewStats(productId, from, to, granularity),
+    ]);
+    const productSummary = buildProductPerformance(orders, productViews, storeSlug, productId, from, to, granularity);
     return json({ ok: true, product: productSummary, productName: product.name });
   }
 
-  const summary = buildPerformanceSummary(orders, storeSlug, from, to, granularity, commissionPercentForTier((await getSellerById(store.sellerId))?.tier), topLimit);
+  const [orders, views, seller] = await Promise.all([
+    getOrdersByStoreSlug(storeSlug),
+    getViewStatsForStore(store.id, from, to, granularity),
+    getSellerById(store.sellerId),
+  ]);
+  const summary = buildPerformanceSummary(orders, views, storeSlug, from, to, granularity, commissionPercentForTier(seller?.tier), topLimit);
   return json({ ok: true, summary });
 }

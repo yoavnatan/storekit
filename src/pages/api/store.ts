@@ -3,7 +3,6 @@ import crypto from 'node:crypto';
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, updateStore, addStoreBgColor, isCustomDomainTaken, renameStoreSlug, isSlugTaken, isReservedSlug, normalizeSlug } from '../../lib/stores.js';
-import { renameStoreSlugInPageviews } from '../../lib/store-pageviews.js';
 import { renameStoreSlugInUserData } from '../../lib/user-carts.js';
 import { renameStoreSlugInOrders } from '../../lib/orders.js';
 import { getCustomDomainProvider, normalizeHostname } from '../../lib/custom-domain.js';
@@ -272,8 +271,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const oldSlug = target.slug;
     const updated = await renameStoreSlug(target.id, newSlug);
     if (!updated) return json({ ok: false, error: 'Store not found.' }, 404);
-    // Migrate the durable slug-keyed data (analytics + saved favorites/recent) and notify the index.
-    await renameStoreSlugInPageviews(oldSlug, newSlug);
+    // Migrate the durable slug-keyed data (saved favorites/recent) and notify the index. Page-view
+    // history is NOT in that list any more: it is keyed by store id, so a rename cannot split it
+    // and there is nothing to move (DB_MIGRATION_PLAN.md §5).
     renameStoreSlugInUserData(oldSlug, newSlug);
     // Awaited, not fired and forgotten: it is two UPDATEs in a transaction now, and returning 200
     // before it lands means the seller's dashboard can reload on the new slug while its orders are

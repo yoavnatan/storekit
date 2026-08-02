@@ -11,6 +11,7 @@ import { getProductsByStoreId } from '../../../../lib/store-products.js';
 import { getOrdersByStoreSlug } from '../../../../lib/orders.js';
 import type { Order } from '../../../../lib/orders.js';
 import { buildPerformanceSummary, pickGranularity } from '../../../../lib/seller-performance.js';
+import { getViewStatsForStore } from '../../../../lib/store-pageviews.js';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../../../lib/chart-svg.js';
 import { formatPrice } from '../../../../config/store.config.js';
 import { getLang, getDir, getT } from '../../../../i18n/index.js';
@@ -54,7 +55,8 @@ const toLocalISO = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1
 const fromISO = toLocalISO(new Date(today.getFullYear(), today.getMonth(), 1));
 const toISO = toLocalISO(today);
 const granularity = pickGranularity(fromISO, toISO);
-const summary = buildPerformanceSummary(storeOrders, store.slug, fromISO, toISO, granularity, commissionPercentForTier(seller?.tier));
+const views = await getViewStatsForStore(store.id, fromISO, toISO, granularity);
+const summary = buildPerformanceSummary(storeOrders, views, store.slug, fromISO, toISO, granularity, commissionPercentForTier(seller?.tier));
 
 // This blob is injected via set:html into a <script type="application/json">.
 // Unlike the seller's own dashboard (where the product names are the viewer's

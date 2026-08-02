@@ -105,12 +105,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
         // stores still count: there they really are a shopper.
         ownerViewingOwnStore = !!st && getSellerSession(context.cookies) === st.sellerId;
         if (st && !ownerViewingOwnStore) {
-          recordPageView(st.slug, vid || resolveVisitorId(context.cookies));
+          // Keyed by store id, not slug: a store that renames its URL keeps its history without
+          // anything having to migrate it. Fire-and-forget — these are INSERTs that read nothing
+          // and swallow their own failures, so the page is never waiting on the analytics tap.
+          void recordPageView(st.id, vid || resolveVisitorId(context.cookies));
           // A product page also counts one product-level view. Resolve slug→id so history keys on
           // the immutable product id (a rename changes the slug).
           const productSlug = pathMatch[2];
           const prod = productSlug ? await getProductBySlug(st.id, productSlug) : null;
-          if (prod) { recordProductView(prod.id); viewedProductId = prod.id; }
+          if (prod) { void recordProductView(prod.id); viewedProductId = prod.id; }
         }
       } catch { /* analytics tap must never break the request */ }
     }

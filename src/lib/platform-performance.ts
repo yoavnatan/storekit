@@ -8,6 +8,7 @@ import {
   type PerformanceSummary,
   type TopProduct,
 } from './seller-performance.js';
+import { EMPTY_VIEW_STATS, type StoreViewStats } from './store-pageviews.js';
 import { blendedCommissionRate, commissionPercentForTier } from './pricing.js';
 
 // Platform-wide ("app-wide") twin of seller-performance.ts's per-store summary,
@@ -17,13 +18,15 @@ import { blendedCommissionRate, commissionPercentForTier } from './pricing.js';
 // can never drift from what each store's own performance view reports. The only
 // platform-specific logic here is the merge + the per-store breakdown rows.
 //
-// Cost note (JSON-file era): buildPerformanceSummary reads store-pageviews.json
-// internally per call, so this is O(stores) file reads today — the same
-// deliberate "cheap now, one indexed query after the DB migration" tradeoff the
-// header's SSR indicators already make (see AI_INSTRUCTIONS.md → Scalability).
-// The function signature stays identical when that read becomes a DB query.
+// Cost note, resolved: this loop used to perform one store-pageviews FILE READ per
+// store — 45 per admin render, the reason that module grew a read cache at all.
+// Page views are now an input (`viewsByStoreId`), fetched by the caller in ONE query
+// for every store at once (store-pageviews.ts → getStoreViewStats). The loop below
+// stays O(stores) in arithmetic and is now O(1) in round trips.
 
 export interface PlatformStoreInput {
+  /** The store's id — the key page-view statistics are gathered under (slugs change, ids do not). */
+  id: string;
   slug: string;
   name: string;
   blocked?: boolean;
@@ -42,11 +45,12 @@ export interface PlatformStoreInput {
  *  the store→seller→tier hop is written, so both admin call sites (the dashboard render and the
  *  AJAX endpoint) can never disagree. Pure: the caller supplies both already-read lists. */
 export function buildPlatformStoreInputs(
-  stores: Array<{ slug: string; name: string; sellerId: string } & StoreLifecycleFlags>,
+  stores: Array<{ id: string; slug: string; name: string; sellerId: string } & StoreLifecycleFlags>,
   sellers: Array<{ id: string; tier?: string }>,
 ): PlatformStoreInput[] {
   const tierBySellerId = new Map(sellers.map((s) => [s.id, s.tier]));
   return stores.map((s) => ({
+    id: s.id,
     slug: s.slug,
     name: s.name,
     blocked: s.blocked,
@@ -192,20 +196,22 @@ export function selectStoreRows(rows: PlatformStoreRow[], query: StoreRowsQuery)
 
 /**
  * Aggregates every store's performance into one platform-wide PerformanceSummary
- * plus a per-store breakdown, over [fromISO, toISO]. Pure given its inputs
- * (orders array is the money data; page views are read inside buildPerformanceSummary
- * per store, matching the seller path). `topLimit` caps the aggregated topProducts
+ * plus a per-store breakdown, over [fromISO, toISO]. Pure given its inputs — the
+ * orders array is the money data and `viewsByStoreId` the traffic data, both
+ * fetched once by the caller. `topLimit` caps the aggregated topProducts
  * (default 5; <=0 = all, for the revenue-breakdown modal). The breakdown rows are
  * returned in full — paging/search is the caller's job (selectStoreRows).
  *
  * Note: unique visitors are SUMMED across stores (a browser visiting two stores
- * is counted once per store), so the platform figure is an upper bound — the
- * per-store visitor-id sets aren't unioned across stores here. Acceptable for an
- * owner-facing overview; exact cross-store de-dup would need the raw id sets.
+ * is counted once per store), so the platform figure is an upper bound. Exact
+ * cross-store de-dup is one `COUNT(DISTINCT visitor_id)` without the store filter,
+ * and is deliberately not attempted here: this function merges per-store results
+ * and has none of the underlying ids, by design.
  */
 export function buildPlatformPerformance(
   orders: Order[],
   stores: PlatformStoreInput[],
+  viewsByStoreId: ReadonlyMap<string, StoreViewStats>,
   fromISO: string,
   toISO: string,
   granularity: PerformanceGranularity,
@@ -234,7 +240,11 @@ export function buildPlatformPerformance(
     // topLimit 0 here → the store contributes ALL its sold products to the
     // platform product aggregation, so the platform top-N is a true top-N and
     // not a top-N-of-each-store's-top-5.
-    const s = buildPerformanceSummary(orders, store.slug, fromISO, toISO, granularity, store.commissionPercent ?? 0, 0);
+    const s = buildPerformanceSummary(
+      orders,
+      viewsByStoreId.get(store.id) ?? EMPTY_VIEW_STATS,
+      store.slug, fromISO, toISO, granularity, store.commissionPercent ?? 0, 0,
+    );
     totalRevenueAgorot += s.totalRevenueAgorot;
     totalCommission += s.platformCommissionAgorot;
     totalOrders += s.totalOrders;

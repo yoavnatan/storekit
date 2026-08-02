@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { countsAsRevenue, purchasedCountsFrom } from '../src/lib/orders.js';
 import { buildPerformanceSummary } from '../src/lib/seller-performance.js';
+// Traffic is an input now; every assertion here is about revenue, so it asserts against none.
+import { EMPTY_VIEW_STATS } from '../src/lib/store-pageviews.js';
 import { getPlatformOverview, getStoreRevenueMap } from '../src/lib/admin-stats.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -49,8 +51,8 @@ describe('a cancelled order leaves every revenue surface', () => {
   const cancelled = baseOrder('o2', 250, { shippingStatus: 'cancelled' });
 
   it('is excluded from the seller Performance tab', () => {
-    const withBoth = buildPerformanceSummary([live, cancelled], STORE, '2026-07-01', '2026-07-31', 'day');
-    const liveOnly = buildPerformanceSummary([live], STORE, '2026-07-01', '2026-07-31', 'day');
+    const withBoth = buildPerformanceSummary([live, cancelled], EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day');
+    const liveOnly = buildPerformanceSummary([live], EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day');
     expect(withBoth.totalRevenueAgorot).toBe(liveOnly.totalRevenueAgorot);
     expect(withBoth.totalRevenueAgorot).toBe(100); // not 350
     expect(withBoth.totalOrders).toBe(liveOnly.totalOrders);
@@ -105,7 +107,7 @@ describe('a legacy order row without storeSubtotals cannot take a reporting surf
   });
 
   it('the seller Performance tab skips it', () => {
-    const summary = buildPerformanceSummary([live, legacy], STORE, '2026-07-01', '2026-07-31', 'day');
+    const summary = buildPerformanceSummary([live, legacy], EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day');
     expect(summary.totalRevenueAgorot).toBe(100);
   });
 });

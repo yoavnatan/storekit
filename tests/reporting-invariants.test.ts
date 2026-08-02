@@ -5,6 +5,10 @@ import type { Order } from '../src/lib/orders.js';
 import { countsAsRevenue, getAllOrders } from '../src/lib/orders.js';
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
 import { buildPlatformPerformance } from '../src/lib/platform-performance.js';
+// Traffic is an input now; these invariants are about money, so they assert against no traffic.
+import { EMPTY_VIEW_STATS, type StoreViewStats } from '../src/lib/store-pageviews.js';
+import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
+const NO_VIEWS = new Map<string, StoreViewStats>();
 import { getPlatformOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
 import { businessDayISO, businessMonthKey, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
 import { storeSliceTotalAgorot } from '../src/lib/order-totals.js';
@@ -231,7 +235,7 @@ describe('the seller performance summary reconciles with itself', () => {
   ];
 
   it('the daily bars add up to the headline revenue', () => {
-    const s = buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'day');
+    const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day');
     expectSameMoney(s.points.reduce((a, p) => a + p.revenueAgorot, 0), s.totalRevenueAgorot, 'sum of day buckets vs totalRevenueAgorot');
     expect(s.points.reduce((a, p) => a + p.orders, 0)).toBe(s.totalOrders);
   });
@@ -239,8 +243,8 @@ describe('the seller performance summary reconciles with itself', () => {
   it('the monthly bars add up to the same headline as the daily ones', () => {
     // Same window, different bucket size. If these disagree, one granularity is
     // dropping or double-counting orders at a boundary.
-    const byDay = buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'day');
-    const byMonth = buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'month');
+    const byDay = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day');
+    const byMonth = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'month');
     expectSameMoney(byMonth.totalRevenueAgorot, byDay.totalRevenueAgorot, 'month total vs day total');
     expect(byMonth.totalOrders).toBe(byDay.totalOrders);
     expectSameMoney(byMonth.points.reduce((a, p) => a + p.revenueAgorot, 0), byMonth.totalRevenueAgorot, 'sum of month buckets');
@@ -248,7 +252,7 @@ describe('the seller performance summary reconciles with itself', () => {
 
   it('commission plus net profit equals revenue, and neither escapes its bounds', () => {
     for (const rate of [0, 10, 10.25, 12, 100]) {
-      const s = buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'day', rate);
+      const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', rate);
       expectSameMoney(s.platformCommissionAgorot + s.netProfitAgorot, s.totalRevenueAgorot, `commission + net at ${rate}%`);
       expect(s.platformCommissionAgorot, `commission at ${rate}% is not negative`).toBeGreaterThanOrEqual(0);
       expect(s.platformCommissionAgorot, `commission at ${rate}% never exceeds revenue`).toBeLessThanOrEqual(s.totalRevenueAgorot);
@@ -261,7 +265,7 @@ describe('the seller performance summary reconciles with itself', () => {
     // order-level discount). The gap between them must be the discounts and nothing
     // else — otherwise the "leading products" list is quietly built from a different
     // set of orders than the headline above it.
-    const s = buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'day', 0, 0);
+    const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', 0, 0);
     const gross = s.topProducts.reduce((a, p) => a + p.revenueAgorot, 0);
     const discounts = orders
       .filter(countsAsRevenue)
@@ -270,7 +274,7 @@ describe('the seller performance summary reconciles with itself', () => {
   });
 
   it('a single product drill-down reconciles with its own bars', () => {
-    const p = buildProductPerformance(orders, STORE, 'p1', '2026-07-01', '2026-07-31', 'day');
+    const p = buildProductPerformance(orders, EMPTY_PRODUCT_VIEW_STATS, STORE, 'p1', '2026-07-01', '2026-07-31', 'day');
     expectSameMoney(p.points.reduce((a, x) => a + x.revenueAgorot, 0), p.totalRevenueAgorot, 'product day buckets vs its total');
     expect(p.points.reduce((a, x) => a + x.units, 0)).toBe(p.totalUnits);
     expect(p.totalUnits).toBe(4); // 3 from o1 + 1 from o3
@@ -303,7 +307,7 @@ describe('the admin surfaces reconcile with each other', () => {
   });
 
   it('the platform performance total equals the sum of its own store breakdown', () => {
-    const perf = buildPlatformPerformance(orders, [{ slug: STORE, name: 'S' }, { slug: OTHER, name: 'O' }], '2026-07-01', '2026-07-31', 'day');
+    const perf = buildPlatformPerformance(orders, [{ id: STORE, slug: STORE, name: 'S' }, { id: OTHER, slug: OTHER, name: 'O' }], NO_VIEWS, '2026-07-01', '2026-07-31', 'day');
     expectSameMoney(
       perf.stores.reduce((a, r) => a + r.revenueAgorot, 0),
       perf.summary.totalRevenueAgorot,
@@ -316,9 +320,9 @@ describe('the admin surfaces reconcile with each other', () => {
     // The number the owner sees must be the number the sellers see, added up. A
     // platform aggregate computed by its own second implementation is the classic
     // place for the two to drift.
-    const perf = buildPlatformPerformance(orders, [{ slug: STORE, name: 'S' }, { slug: OTHER, name: 'O' }], '2026-07-01', '2026-07-31', 'day');
+    const perf = buildPlatformPerformance(orders, [{ id: STORE, slug: STORE, name: 'S' }, { id: OTHER, slug: OTHER, name: 'O' }], NO_VIEWS, '2026-07-01', '2026-07-31', 'day');
     const sellerSum = [STORE, OTHER].reduce(
-      (a, slug) => a + buildPerformanceSummary(orders, slug, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot, 0,
+      (a, slug) => a + buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot, 0,
     );
     expectSameMoney(perf.summary.totalRevenueAgorot, sellerSum, 'platform total vs sum of seller tabs');
   });
@@ -329,8 +333,8 @@ describe('the admin surfaces reconcile with each other', () => {
     const live = orders.filter(countsAsRevenue);
     expectSameMoney(getPlatformOverview([], [], orders).gmvAgorot, getPlatformOverview([], [], live).gmvAgorot, 'overview GMV ignores dead orders');
     expectSameMoney(
-      buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot,
-      buildPerformanceSummary(live, STORE, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot,
+      buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot,
+      buildPerformanceSummary(live, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot,
       'seller revenue ignores dead orders',
     );
     expectSameMoney(
@@ -377,7 +381,7 @@ describe('reports bucket by the business calendar, not the runtime\'s', () => {
 
   it('and therefore appears in "this month", not the one before', () => {
     const order = makeOrder('midnight', { items: [{ productId: 'p1', priceAgorot: 12000, qty: 1 }], createdAt: justAfterMidnight });
-    const july = buildPerformanceSummary([order], STORE, '2026-07-01', '2026-07-31', 'day');
+    const july = buildPerformanceSummary([order], EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day');
     expectSameMoney(july.totalRevenueAgorot, 12_000, 'a 01:30 sale on the 1st counts in that month');
     expect(july.totalOrders).toBe(1);
 
@@ -389,8 +393,8 @@ describe('reports bucket by the business calendar, not the runtime\'s', () => {
   it('a sale just before local midnight stays on the day that is ending', () => {
     // 2026-07-31T20:30Z is 23:30 on the 31st in Israel — still July.
     const order = makeOrder('lastminute', { items: [{ productId: 'p1', priceAgorot: 6000, qty: 1 }], createdAt: '2026-07-31T20:30:00.000Z' });
-    expectSameMoney(buildPerformanceSummary([order], STORE, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot, 6_000, 'late-night sale stays in July');
-    expectSameMoney(buildPerformanceSummary([order], STORE, '2026-08-01', '2026-08-31', 'day').totalRevenueAgorot, 0, 'and does not leak into August');
+    expectSameMoney(buildPerformanceSummary([order], EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot, 6_000, 'late-night sale stays in July');
+    expectSameMoney(buildPerformanceSummary([order], EMPTY_VIEW_STATS, STORE, '2026-08-01', '2026-08-31', 'day').totalRevenueAgorot, 0, 'and does not leak into August');
   });
 
   it('holds across a DST boundary', () => {

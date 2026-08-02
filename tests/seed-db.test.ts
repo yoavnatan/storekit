@@ -15,6 +15,7 @@ import { getDatabase, query } from '../src/lib/db.js';
 import { getStoreBySlug, getVisibleStores } from '../src/lib/stores.js';
 import { getVisibleProductsByStoreId } from '../src/lib/store-products.js';
 import { getCategoriesByStoreId } from '../src/lib/store-categories.js';
+import { getViewStatsForStore } from '../src/lib/store-pageviews.js';
 import { comboKey } from '../src/lib/variant-combo.js';
 
 /** What the seeders hand `writeCatalog`: a single client, so its BEGIN/COMMIT bracket the run. */
@@ -49,6 +50,12 @@ function catalog(over: { slug?: string; email?: string; demo?: boolean } = {}) {
       variantStock: { [comboKey({ מידה: 'S' })]: 5, [comboKey({ מידה: 'M' })]: 7 },
       createdAt: '2026-01-03T00:00:00.000Z',
     }],
+    // Two days of traffic sharing one visitor — enough to prove the seeded numbers reach the
+    // performance tab AND that a returning visitor is not counted twice over the range.
+    pageViews: [
+      { storeId, day: '2026-01-10', total: 12, visitors: ['seed-a', 'seed-b'] },
+      { storeId, day: '2026-01-11', total: 8, visitors: ['seed-a', 'seed-c'] },
+    ],
     ids: { sellerId, storeId, categoryId, slug },
   };
 }
@@ -78,6 +85,22 @@ describe('writeCatalog', () => {
 
     const categories = await getCategoriesByStoreId(store!.id);
     expect(categories.map((c) => c.name)).toEqual(['נשים']);
+  });
+
+  // Same defence as the assertion above, for the half that moved with the page-view modules: the
+  // seeder used to write data/store-pageviews.json, which nothing reads any more, so a seeded demo
+  // store would have shown a performance tab with no traffic at all and reported success.
+  it('produces traffic the performance tab can actually see', async () => {
+    const set = catalog();
+    await writeCatalog(db, set);
+
+    const views = await getViewStatsForStore(set.ids.storeId, '2026-01-01', '2026-01-31', 'day');
+    expect(views.totalViews).toBe(20);
+    expect(views.totalUniqueVisitors).toBe(3);  // seed-a came back — 2 + 2 would be wrong
+    expect(views.buckets).toEqual([
+      { key: '2026-01-10', views: 12, uniqueVisitors: 2 },
+      { key: '2026-01-11', views: 8, uniqueVisitors: 2 },
+    ]);
   });
 
   it('marks a showcase store demo, which is what keeps it out of shopper discovery', async () => {

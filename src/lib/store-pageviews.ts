@@ -1,151 +1,190 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { Mutex } from './mutex.js';
-import { businessDayISO, calendarDayISO } from './business-day.js';
+import { query, rows } from './db.js';
 
-const PAGEVIEWS_PATH = path.join(process.cwd(), 'data/store-pageviews.json');
-
-// Daily bucket per store. `total` counts every raw page load (store page + its
-// product pages); `visitors` holds the DISTINCT visitor ids seen that day, so
-// "unique visitors" can be computed exactly across any range (union of the
-// daily sets) — separating "one person entering many times" from "many
-// different people". A repeat load by the same visitor only bumps `total`, so
-// storage stays O(days × unique-visitors-per-day), not O(all loads). A DB swap
-// replaces the bucket map with a `PageView(storeSlug, date, visitorId)` table:
-// `COUNT(*)` gives total loads, `COUNT(DISTINCT visitorId)` the unique
-// visitors, replacing this mutex-guarded read-modify-write with an upsert.
-//
-// Legacy/demo rows may be a bare `number` (total only, no visitor ids) — read
-// coerces those to { total, visitors: [] }, so old data still charts (its
-// unique count is simply 0 until real cookie-backed traffic accrues).
-interface DayBucket { total: number; visitors: string[] }
-type StoredBucket = DayBucket | number;
-type PageviewStore = Record<string, Record<string, StoredBucket>>;
-
-export interface DailyPageView { date: string; views: number; visitors: string[] }
-
-function readAll(): PageviewStore {
-  try { return JSON.parse(fs.readFileSync(PAGEVIEWS_PATH, 'utf8')) as PageviewStore; }
-  catch { return {}; }
-}
-
-// ── Read-through cache, READ paths only ───────────────────────────────────
-// getDailyPageViews is called once PER STORE (platform-performance.ts loops
-// buildPerformanceSummary over every store), so one admin dashboard render
-// parsed this whole 2 MB file 45 times: measured 600ms out of a 664ms render,
-// on EVERY panel swap — search keystroke, sort, filter chip. The cache key is
-// the file's own mtime+size, so a write from any process invalidates it; a
-// stale read is impossible rather than unlikely.
-//
-// Writers below deliberately keep calling the uncached readAll(): a
-// read-modify-write must always start from what is actually on disk, never
-// from a copy this process is holding.
-//
-// JSON-era only. The DB swap replaces the whole read with an indexed query on
-// (storeSlug, date), and this cache goes with it.
-let cache: { key: string; data: PageviewStore } | null = null;
-
-function readCached(): PageviewStore {
-  let key: string;
-  try {
-    // bigint stat for mtimeNs — millisecond mtime plus an unchanged size (a
-    // counter going 1→2 keeps the byte count) leaves a real sub-ms window where
-    // two different files look identical.
-    const st = fs.statSync(PAGEVIEWS_PATH, { bigint: true });
-    key = `${st.mtimeNs}:${st.size}`;
-  } catch { return {}; }
-  if (cache && cache.key === key) return cache.data;
-  const data = readAll();
-  cache = { key, data };
-  return data;
-}
-
-function writeAll(data: PageviewStore): void {
-  cache = null; // the writer's own object is mid-mutation — never seed the cache from it
-  fs.writeFileSync(PAGEVIEWS_PATH, JSON.stringify(data, null, 2));
-}
-
-/** Coerce a stored bucket (which may be a legacy bare number) into the full shape. */
-function normalizeBucket(v: StoredBucket | undefined): DayBucket {
-  if (v == null) return { total: 0, visitors: [] };
-  if (typeof v === 'number') return { total: v, visitors: [] };
-  return { total: v.total ?? 0, visitors: Array.isArray(v.visitors) ? v.visitors : [] };
-}
-
-/** The BUSINESS day (business-day.ts), not the UTC one. These buckets share an x-axis
- *  with revenue in the seller's performance tab, and the conversion rate divides one
- *  by the other — so a visit and the purchase it produced, both at 01:00 local, have
- *  to land in the same bucket. Under UTC they didn't: the visit went to the previous
- *  day and the order stayed on today. */
-function todayKey(): string {
-  return businessDayISO(new Date());
-}
-
-const pageviewMutex = new Mutex();
-
-/** Move a store's page-view history from oldSlug to newSlug (merging per-day buckets if newSlug
- *  already has some) so a URL rename doesn't split or lose the seller's visitor analytics. Returns a
- *  promise the caller can await before responding. See stores.ts → renameStoreSlug. */
-export function renameStoreSlugInPageviews(oldSlug: string, newSlug: string): Promise<void> {
-  if (!oldSlug || oldSlug === newSlug) return Promise.resolve();
-  return pageviewMutex.run(() => {
-    const all = readAll();
-    const from = all[oldSlug];
-    if (!from) return;
-    const into = all[newSlug] ?? {};
-    for (const [date, raw] of Object.entries(from)) {
-      const a = normalizeBucket(into[date]);
-      const b = normalizeBucket(raw);
-      into[date] = { total: a.total + b.total, visitors: Array.from(new Set([...a.visitors, ...b.visitors])) };
-    }
-    all[newSlug] = into;
-    delete all[oldSlug];
-    writeAll(all);
-  }).catch(() => undefined);
-}
-
-/** Fire-and-forget from middleware — bumps today's total load count for a store and, when a stable visitor id is supplied, records it once (repeat loads by the same visitor never inflate the unique count). Never throws (caller must not let analytics failures break page rendering). */
-export function recordPageView(storeSlug: string, visitorId?: string): void {
-  pageviewMutex.run(() => {
-    const all = readAll();
-    const forStore = all[storeSlug] ?? {};
-    const key = todayKey();
-    const bucket = normalizeBucket(forStore[key]);
-    bucket.total += 1;
-    if (visitorId && !bucket.visitors.includes(visitorId)) bucket.visitors.push(visitorId);
-    forStore[key] = bucket;
-    all[storeSlug] = forStore;
-    writeAll(all);
-  }).catch(() => undefined);
-}
-
-function dateRange(fromISO: string, toISO: string): string[] {
-  const dates: string[] = [];
-  const cur = new Date(fromISO + 'T00:00:00Z');
-  const end = new Date(toISO + 'T00:00:00Z');
-  while (cur <= end) {
-    // A synthetic calendar cursor, not a moment in time (see business-day.ts —
-    // mixing the two families up is the bug that file exists to prevent).
-    dates.push(calendarDayISO(cur));
-    cur.setUTCDate(cur.getUTCDate() + 1);
-  }
-  return dates;
-}
-
-/** Zero-filled daily series across [fromISO, toISO] (both 'YYYY-MM-DD', inclusive) — ready to bucket/union directly, no gaps for days with no traffic. `views` = total loads that day; `visitors` = the distinct visitor ids seen (empty for legacy/demo rows).
+/**
+ * Store page-view counters — how many loads a storefront got, and how many different people.
  *
- *  READ-ONLY: `visitors` is borrowed from the cache, not copied for you. Sorting or
- *  pushing to it edits what every later reader in this process sees, and the next
- *  report would quietly disagree with the file. Copy it first if you need to change it
- *  (a defensive copy here would clone ~60k ids on every admin render). */
-export function getDailyPageViews(storeSlug: string, fromISO: string, toISO: string): DailyPageView[] {
-  const forStore = readCached()[storeSlug] ?? {};
-  return dateRange(fromISO, toISO).map((date) => {
-    const b = normalizeBucket(forStore[date]);
-    return { date, views: b.total, visitors: b.visitors };
-  });
+ * **Moved to Postgres (DB_MIGRATION_PLAN.md §5, §8).** This is the module the plan singles out as
+ * the one that must NOT be translated one-to-one. The JSON version kept, per store per day, an
+ * object `{ total, visitors: [...] }` where `visitors` was the array of every distinct visitor id
+ * seen that day — read in full and written back in full on EVERY page load. One busy day already
+ * held 173 ids in the measured data; at 10,000 visitors a day that is a 10,000-element array
+ * rewritten per request. Copying that array into a table would have kept the defect and added a
+ * network hop.
+ *
+ * What it is instead:
+ *
+ * · **A write is two INSERTs that read nothing.** `store_page_views` carries the load counter and
+ *   `store_page_view_visitors` carries one row per (store, day, visitor) — so recording a view is
+ *   `ON CONFLICT DO UPDATE total = total + 1` plus `ON CONFLICT DO NOTHING`, in ONE statement
+ *   (a data-modifying CTE), one round trip, no prior SELECT. Nothing is ever read in order to write,
+ *   which is the property that makes this safe on the hottest path in the application.
+ *
+ * · **"Unique visitors" is `COUNT(DISTINCT visitor_id)`, computed in the database, and the array
+ *   never leaves it.** This is why the read API below is shaped by BUCKET rather than by day: daily
+ *   unique counts cannot be summed into a monthly one (a visitor returning on two days is one
+ *   person, not two), so the caller's bucket size has to reach the `GROUP BY`. Returning per-day
+ *   rows and letting the caller union them would just move the unbounded array into the result set.
+ *
+ * · **Keyed by store id, not slug.** The consequence is that a store renaming its URL no longer
+ *   needs its analytics migrated at all — `renameStoreSlugInPageviews` existed only because the
+ *   JSON was keyed by slug, and it is gone.
+ *
+ * **`day` is a DATE the APPLICATION decides (§7.8).** The server runs in UTC and the business
+ * calendar is Asia/Jerusalem, so a day boundary derived in the database would sit three hours off
+ * every report. `businessDayISO` supplies it on write and callers pass 'YYYY-MM-DD' bounds on read;
+ * no query here does timezone arithmetic, deliberately.
+ */
+
+import { businessDayISO, isDayISO } from './business-day.js';
+
+/** Bucket size for a reported series. Day buckets key on 'YYYY-MM-DD', month buckets on 'YYYY-MM'. */
+export type ViewGranularity = 'day' | 'month';
+
+export interface ViewBucket {
+  /** 'YYYY-MM-DD' or 'YYYY-MM' — the same key `seller-performance.ts` lays its x-axis out with. */
+  key: string;
+  /** Total loads in this bucket, repeat visits included. */
+  views: number;
+  /** Distinct visitor ids in this bucket — counted by the database, never unioned here. */
+  uniqueVisitors: number;
 }
 
-export function getPageViewsInRange(storeSlug: string, fromISO: string, toISO: string): number {
-  return getDailyPageViews(storeSlug, fromISO, toISO).reduce((sum, d) => sum + d.views, 0);
+export interface StoreViewStats {
+  buckets: ViewBucket[];
+  totalViews: number;
+  /**
+   * Distinct visitors across the WHOLE range. Deliberately not derivable from `buckets`: summing
+   * per-bucket uniques double-counts everyone who came back, which is exactly the number this
+   * metric exists to distinguish.
+   */
+  totalUniqueVisitors: number;
+}
+
+export const EMPTY_VIEW_STATS: StoreViewStats = { buckets: [], totalViews: 0, totalUniqueVisitors: 0 };
+
+/** The `to_char` pattern that turns a `date` into the caller's bucket key. */
+function bucketFormat(granularity: ViewGranularity): string {
+  return granularity === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD';
+}
+
+/**
+ * Record one load of a storefront, and the visitor behind it when one is known.
+ *
+ * Fire-and-forget from `middleware.ts`, so it NEVER throws and never rejects: an analytics tap that
+ * can fail a page render is worse than one that occasionally loses a count. Callers use `void`.
+ *
+ * The two writes are one statement. A data-modifying `WITH` clause always executes, whether or not
+ * the outer query reads it, which is what lets the counter bump and the visitor row travel together
+ * without a transaction's extra BEGIN/COMMIT round trips on the hottest path in the app.
+ */
+export async function recordPageView(storeId: string, visitorId?: string): Promise<void> {
+  try {
+    await query(
+      `WITH bump AS (
+         INSERT INTO store_page_views (store_id, day, total)
+         VALUES ($1::uuid, $2::date, 1)
+         ON CONFLICT (store_id, day) DO UPDATE SET total = store_page_views.total + 1
+       )
+       INSERT INTO store_page_view_visitors (store_id, day, visitor_id)
+       SELECT $1::uuid, $2::date, $3 WHERE $3 <> ''
+       ON CONFLICT DO NOTHING`,
+      [storeId, businessDayISO(new Date()), visitorId ?? ''],
+    );
+  } catch { /* analytics must never break a request */ }
+}
+
+interface BucketRow { store_id: string; bucket: string; views: number | string; uniques: number | string }
+interface TotalRow { store_id: string; uniques: number | string }
+
+/** `COUNT` and `SUM` come back as `bigint` — a string from `pg`, a number from PGlite (§8). */
+const count = (v: number | string | null): number => Number(v ?? 0);
+
+/**
+ * View statistics for several stores at once, over [fromISO, toISO] inclusive, bucketed by
+ * `granularity`.
+ *
+ * **Several stores in one call is the whole signature.** The admin performance tab aggregates every
+ * store on the platform (`platform-performance.ts`), which in the JSON era was one file read per
+ * store — 45 of them per render, and the reason a read cache had to be bolted onto this module at
+ * all. One query per store would have been 45 pool checkouts instead. Here the store list is one
+ * `= ANY($1)`, and a single store is simply an array of one.
+ *
+ * Two statements rather than one: bucket rows join loads to uniques, and the range total needs its
+ * OWN `COUNT(DISTINCT …)` for the reason spelled out on `totalUniqueVisitors`. They are independent,
+ * so they go out together.
+ */
+export async function getStoreViewStats(
+  storeIds: readonly string[],
+  fromISO: string,
+  toISO: string,
+  granularity: ViewGranularity,
+): Promise<Map<string, StoreViewStats>> {
+  const result = new Map<string, StoreViewStats>();
+  // A day that does not exist is not a narrower range, it is a value Postgres refuses to cast —
+  // `2026-02-30` and `9999-99-99` both have the right shape and raise rather than match. Same rule
+  // as `isUuid` before an id lookup: settle the shape here so a stale bookmark stays "no data"
+  // instead of becoming a 500 on the page that asked. Routes reject these with a 400 first.
+  if (storeIds.length === 0 || !isDayISO(fromISO) || !isDayISO(toISO)) return result;
+  const window = [storeIds, fromISO, toISO];
+  const bucketed = [...window, bucketFormat(granularity)];
+
+  const [bucketRows, totalRows] = await Promise.all([
+    // FULL JOIN, not INNER: a day can hold loads with no visitor ids at all (rows imported from the
+    // era before ids were captured store a bare total), and the reverse is possible after a
+    // counter is corrected. Either side alone is still a real bucket.
+    rows<BucketRow>(
+      `WITH loads AS (
+         SELECT store_id, to_char(day, $4::text) AS bucket, SUM(total) AS views
+           FROM store_page_views
+          WHERE store_id = ANY($1::uuid[]) AND day >= $2::date AND day <= $3::date
+          GROUP BY store_id, to_char(day, $4::text)
+       ), people AS (
+         SELECT store_id, to_char(day, $4::text) AS bucket, COUNT(DISTINCT visitor_id) AS uniques
+           FROM store_page_view_visitors
+          WHERE store_id = ANY($1::uuid[]) AND day >= $2::date AND day <= $3::date
+          GROUP BY store_id, to_char(day, $4::text)
+       )
+       SELECT COALESCE(l.store_id, p.store_id) AS store_id,
+              COALESCE(l.bucket, p.bucket)     AS bucket,
+              COALESCE(l.views, 0)             AS views,
+              COALESCE(p.uniques, 0)           AS uniques
+         FROM loads l
+         FULL JOIN people p ON p.store_id = l.store_id AND p.bucket = l.bucket
+        ORDER BY 2`,
+      bucketed,
+    ),
+    rows<TotalRow>(
+      `SELECT store_id, COUNT(DISTINCT visitor_id) AS uniques
+         FROM store_page_view_visitors
+        WHERE store_id = ANY($1::uuid[]) AND day >= $2::date AND day <= $3::date
+        GROUP BY store_id`,
+      window,
+    ),
+  ]);
+
+  const statsFor = (storeId: string): StoreViewStats => {
+    let stats = result.get(storeId);
+    if (!stats) { stats = { buckets: [], totalViews: 0, totalUniqueVisitors: 0 }; result.set(storeId, stats); }
+    return stats;
+  };
+
+  for (const row of bucketRows) {
+    const stats = statsFor(row.store_id);
+    const views = count(row.views);
+    stats.buckets.push({ key: row.bucket, views, uniqueVisitors: count(row.uniques) });
+    stats.totalViews += views;
+  }
+  for (const row of totalRows) statsFor(row.store_id).totalUniqueVisitors = count(row.uniques);
+
+  return result;
+}
+
+/** The single-store case, which is what every seller-facing surface needs. */
+export async function getViewStatsForStore(
+  storeId: string,
+  fromISO: string,
+  toISO: string,
+  granularity: ViewGranularity,
+): Promise<StoreViewStats> {
+  return (await getStoreViewStats([storeId], fromISO, toISO, granularity)).get(storeId) ?? EMPTY_VIEW_STATS;
 }
