@@ -13,23 +13,16 @@
  * A re-run purges the previous demo set first; real seller data is never touched.
  * Demo sellers all share the password `demo1234` — log in as any of them.
  *
- * **Half database, half files, and that split is the migration's own.** Sellers, stores,
- * categories, products, orders and — since the page-view modules moved — store traffic are Postgres
- * rows (DB_MIGRATION_PLAN.md stage 2, DATABASE_URL required); the favourite / wishlist counters are
- * still `data/*.json` because their modules have not moved yet, and they are seeded there so the
- * demo dashboard keeps rendering. Each half moves when its module does.
- * Until this was translated the seeder wrote four files nobody reads any more —
- * it ran, printed "✅ Demo seed complete", and created nothing.
+ * **Entirely database now** (DB_MIGRATION_PLAN.md stage 2, `DATABASE_URL` required). It was half
+ * files for as long as its modules were: each half moved when its module did, and the saved-store
+ * and wishlist counters were the last two. They are rows keyed by store/product id rather than two
+ * numbers in `data/*.json` — which is the difference between seeding what the dashboard COUNTS and
+ * seeding what it used to be told. Before any of this was translated the seeder wrote four files
+ * nobody reads any more: it ran, printed "✅ Demo seed complete", and created nothing.
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import crypto from 'node:crypto';
 import { openSeedClient, purge, purgeOrdersOfStores, writeCatalog } from './lib/seed-db.mjs';
 
-const ROOT = process.cwd();
-const DATA = (f) => path.join(ROOT, 'data', f);
-const read = (f, def) => { try { return JSON.parse(fs.readFileSync(DATA(f), 'utf8')); } catch { return def; } };
-const write = (f, v) => fs.writeFileSync(DATA(f), JSON.stringify(v, null, 2));
 const uuid = () => crypto.randomUUID();
 const iso = (d) => new Date(d).toISOString();
 
@@ -171,11 +164,6 @@ async function run(db) {
     `SELECT slug::text AS slug FROM stores WHERE deleted_at IS NULL AND NOT (${DEMO_STORES})`, [DEMO_EMAIL_SUFFIX],
   );
   const realSlugs = new Set(realStoreRows.map((r) => r.slug));
-  const { rows: realProductRows } = await db.query(
-    `SELECT p.slug::text AS slug FROM store_products p JOIN stores s ON s.id = p.store_id
-      WHERE s.deleted_at IS NULL AND NOT (${demoStores('s.')})`, [DEMO_EMAIL_SUFFIX],
-  );
-  const realWishKeys = new Set(realProductRows.map((r) => r.slug));
 
   // Orders are rows now (DB_MIGRATION_PLAN.md §8 — `orders`), so the seeder no longer carries the
   // real ones through a read/filter/rewrite of `data/orders.json`. `writeCatalog` deletes exactly
@@ -185,15 +173,16 @@ async function run(db) {
   // Traffic is rows now, keyed by store id — deleting the demo stores cascades to it, so unlike the
   // counters below there is nothing to carry across and rewrite.
   const pageViews = [];
-  const favCounts = {}, wishCounts = {};
-  for (const [k, v] of Object.entries(read('store-favorite-counts.json', {}))) if (realSlugs.has(k)) favCounts[k] = v;
-  for (const [k, v] of Object.entries(read('wishlist-counts.json', {}))) if (realWishKeys.has(k)) wishCounts[k] = v;
+  // Saved stores and wishlist entries are rows now, keyed by store/product id (§5), so like the
+  // traffic above they cascade with the demo stores and there is nothing to carry across. The two
+  // counter FILES this replaces were the last thing this seeder still read and rewrote.
+  const favorites = [];
+  const wishlists = [];
 
   if (process.argv.includes('--clean')) {
     // Orders first, while the demo stores still exist to identify them by slug.
     const removedOrders = await purgeOrdersOfStores(db, DEMO_STORES, [DEMO_EMAIL_SUFFIX]);
     const removed = await purge(db, { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] });
-    write('store-favorite-counts.json', favCounts); write('wishlist-counts.json', wishCounts);
     console.log(`\n🧹 Demo data removed — ${removed.stores} store(s), ${removed.sellers} account(s), ${removedOrders} order(s). Real (non-@demo.local) data preserved.\n`);
     return;
   }
@@ -286,8 +275,15 @@ async function run(db) {
           visitors: shuffle(visitorPool).slice(0, unique),
         });
       }
-      favCounts[storeSlug] = int(0, 180);
-      for (const p of storeProducts) if (rnd() < 0.5) wishCounts[p.slug] = int(1, 40);
+      // A saved store is a set of PEOPLE, and a wishlist entry is one person and one product — so
+      // the demo seeds the rows the dashboard counts rather than the number it used to be told.
+      // Buyer ids are synthetic and share no pool with real accounts (none of these three tables
+      // carries a foreign key to `sellers`; a saved store belongs to whoever the session says).
+      for (let f = int(0, 180); f > 0; f--) favorites.push({ userId: `demo-buyer-${uuid()}`, storeId });
+      for (const p of storeProducts) {
+        if (rnd() >= 0.5) continue;
+        for (let w = int(1, 40); w > 0; w--) wishlists.push({ userId: `demo-buyer-${uuid()}`, productId: p.id });
+      }
 
       const nOrders = int(2, 8);
       for (let o = 0; o < nOrders; o++) {
@@ -317,11 +313,8 @@ async function run(db) {
   // with no demo data at all.
   await writeCatalog(db, {
     purge: { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] },
-    sellers, stores, categories, products, orders, pageViews,
+    sellers, stores, categories, products, orders, pageViews, favorites, wishlists,
   });
-
-  write('store-favorite-counts.json', favCounts);
-  write('wishlist-counts.json', wishCounts);
 
   console.log(`\n✅ Demo seed complete — real product photos from DummyJSON.`);
   console.log(`   stores: +${storeN}   products: +${prodTotal}   orders: +${orderTotal}`);

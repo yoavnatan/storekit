@@ -96,21 +96,6 @@ export async function purgeOrdersOfStores(db, storeWhere, params = []) {
   return res.rowCount ?? 0;
 }
 
-/** Every live (non-deleted) store slug — what the JSON-backed leftovers (page-view and
- *  wishlist buckets) have to be filtered against now that stores themselves live in the database. */
-export async function liveStoreSlugs(db, where = 'true', params = []) {
-  const { rows } = await db.query(`SELECT slug::text AS slug FROM stores WHERE deleted_at IS NULL AND ${where}`, params);
-  return new Set(rows.map((r) => r.slug));
-}
-
-/** Every product slug of the given stores — the key `data/wishlist-counts.json` is written under. */
-export async function productSlugs(db, where = 'true', params = []) {
-  const { rows } = await db.query(
-    `SELECT p.slug::text AS slug FROM store_products p JOIN stores s ON s.id = p.store_id WHERE ${where}`, params,
-  );
-  return new Set(rows.map((r) => r.slug));
-}
-
 /**
  * Replace a seeded catalog: drop the previous set, then write accounts, stores, each store's
  * category tree and its products.
@@ -135,7 +120,10 @@ export async function productSlugs(db, where = 'true', params = []) {
  *           orders?: any[] }} catalog
  */
 export async function writeCatalog(db, catalog) {
-  const { purge: scope, sellers = [], stores = [], categories = [], products = [], orders = [], pageViews = [] } = catalog;
+  const {
+    purge: scope, sellers = [], stores = [], categories = [], products = [], orders = [],
+    pageViews = [], favorites = [], wishlists = [],
+  } = catalog;
   await db.query('BEGIN');
   try {
     // Orders before the stores that own them: `purge` deletes the stores, and once they are gone
@@ -245,6 +233,16 @@ export async function writeCatalog(db, catalog) {
     await insertMany(db, 'store_page_views', ['store_id', 'day', 'total'], viewDays);
     await insertMany(db, 'store_page_view_visitors', ['store_id', 'day', 'visitor_id'], viewVisitors);
 
+    // Saved stores and wishlists — rows, not the two counter files they replace (§5). Both key by
+    // id and both cascade from the purge above, so like the traffic history there is nothing to
+    // carry across a re-seed. Seeding them as ROWS rather than as a number is what makes the demo
+    // dashboard's figures the same COUNT(*) a real one shows: a seeded counter and a seeded set of
+    // people can disagree, and only one of them is what the seller actually reads.
+    await insertMany(db, 'favorite_stores', ['user_id', 'store_id'],
+      favorites.map((f) => [f.userId, f.storeId]));
+    await insertMany(db, 'wishlist_items', ['user_id', 'product_id'],
+      wishlists.map((w) => [w.userId, w.productId]));
+
     await db.query('COMMIT');
   } catch (err) {
     await db.query('ROLLBACK').catch(() => {});
@@ -253,7 +251,7 @@ export async function writeCatalog(db, catalog) {
   return {
     sellers: sellers.length, stores: stores.length,
     categories: categories.length, products: products.length, orders: orders.length,
-    pageViews: pageViews.length,
+    pageViews: pageViews.length, favorites: favorites.length, wishlists: wishlists.length,
   };
 }
 

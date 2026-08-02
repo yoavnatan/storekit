@@ -16,6 +16,7 @@ import { getStoreBySlug, getVisibleStores } from '../src/lib/stores.js';
 import { getVisibleProductsByStoreId } from '../src/lib/store-products.js';
 import { getCategoriesByStoreId } from '../src/lib/store-categories.js';
 import { getViewStatsForStore } from '../src/lib/store-pageviews.js';
+import { countFavoriteStores, getWishlistCountsForStore } from '../src/lib/user-carts.js';
 import { comboKey } from '../src/lib/variant-combo.js';
 
 /** What the seeders hand `writeCatalog`: a single client, so its BEGIN/COMMIT bracket the run. */
@@ -30,6 +31,7 @@ function catalog(over: { slug?: string; email?: string; demo?: boolean } = {}) {
   const sellerId = crypto.randomUUID();
   const storeId = crypto.randomUUID();
   const categoryId = crypto.randomUUID();
+  const productId = crypto.randomUUID();
   const slug = over.slug ?? `seeded-${crypto.randomBytes(3).toString('hex')}`;
   return {
     sellers: [{ id: sellerId, name: 'נועה כהן', email: over.email ?? `${slug}${DEMO_SUFFIX}`, passwordHash: 'salt:hash', createdAt: '2026-01-01T00:00:00.000Z' }],
@@ -43,7 +45,7 @@ function catalog(over: { slug?: string; email?: string; demo?: boolean } = {}) {
     }],
     categories: [{ id: categoryId, storeId, name: 'נשים', parentId: null, order: 0, createdAt: '2026-01-02T00:00:00.000Z' }],
     products: [{
-      id: crypto.randomUUID(), storeId, slug: 'shirt-1', name: 'חולצה', description: 'd',
+      id: productId, storeId, slug: 'shirt-1', name: 'חולצה', description: 'd',
       price: 79.9, stock: 12, images: ['https://cdn.test/1.webp', 'https://cdn.test/2.webp'],
       categoryId, tags: ['חדש'],
       variants: [{ name: 'מידה', options: ['S', 'M'] }],
@@ -56,7 +58,16 @@ function catalog(over: { slug?: string; email?: string; demo?: boolean } = {}) {
       { storeId, day: '2026-01-10', total: 12, visitors: ['seed-a', 'seed-b'] },
       { storeId, day: '2026-01-11', total: 8, visitors: ['seed-a', 'seed-c'] },
     ],
-    ids: { sellerId, storeId, categoryId, slug },
+    // Saved stores and wishlist entries are ROWS now, not the two counter files the demo seeder
+    // wrote until buyer state moved (§5): three people saved the store, two of them also
+    // wishlisted the shirt.
+    favorites: [
+      { userId: 'seed-buyer-1', storeId }, { userId: 'seed-buyer-2', storeId }, { userId: 'seed-buyer-3', storeId },
+    ],
+    wishlists: [
+      { userId: 'seed-buyer-1', productId }, { userId: 'seed-buyer-2', productId },
+    ],
+    ids: { sellerId, storeId, categoryId, productId, slug },
   };
 }
 
@@ -101,6 +112,19 @@ describe('writeCatalog', () => {
       { key: '2026-01-10', views: 12, uniqueVisitors: 2 },
       { key: '2026-01-11', views: 8, uniqueVisitors: 2 },
     ]);
+  });
+
+  // The last half-file the demo seeder still wrote. It seeded a favourite COUNT and a wishlist
+  // COUNT into two JSON files — one of which had no live reader at all and the other of which was
+  // keyed by bare product slug (§7.1) — so a freshly seeded demo store showed zeros on the two
+  // figures the dashboard reads, and the script printed success. Same defence as the traffic
+  // assertion above: read it back through the application's own readers, not through the tables.
+  it('produces saved-store and wishlist figures the dashboard can actually see', async () => {
+    const set = catalog();
+    await writeCatalog(db, set);
+
+    expect(await countFavoriteStores(set.ids.storeId)).toBe(3);
+    expect(await getWishlistCountsForStore(set.ids.storeId)).toEqual({ 'shirt-1': 2 });
   });
 
   it('marks a showcase store demo, which is what keeps it out of shopper discovery', async () => {
