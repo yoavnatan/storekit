@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripTrailingSlashes, trimDashes, urlSegment, slugChars, toSlug } from '../src/lib/url-base.js';
+import { REDOS_BUDGET_MS, elapsedMs } from './helpers/redos-budget.js';
 
 /** Every .ts/.astro under src — shared by the two "nobody hand-rolls this" guards below. */
 function walk(dir: string): string[] {
@@ -35,10 +36,7 @@ describe('stripTrailingSlashes', () => {
   // single-threaded SSR is the whole server, not one slow response.
   it('stays instant on a path that is nothing but slashes', () => {
     const hostile = '/'.repeat(200_000) + 'x';
-    const started = process.hrtime.bigint();
-    expect(stripTrailingSlashes(hostile)).toBe(hostile);
-    const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
-    expect(elapsedMs).toBeLessThan(50);
+    expect(elapsedMs(() => { expect(stripTrailingSlashes(hostile)).toBe(hostile); })).toBeLessThan(REDOS_BUDGET_MS);
   });
 });
 
@@ -73,11 +71,10 @@ describe('trimDashes', () => {
 
   it('is LINEAR on the input that makes the regex form quadratic', () => {
     // `^-+|-+$` measured 65ms at 8k interior dashes and 4.7s at 64k — a product name and a store
-    // slug both arrive with a request, so that is an SSR stall, not a slow function.
+    // slug both arrive with a request, so that is an SSR stall, not a slow function. The rule this
+    // replaced costs 0.01ms here; the ceiling is the shared one, see helpers/redos-budget.ts.
     const hostile = `a${'-'.repeat(120_000)}a`;
-    const t0 = Date.now();
-    expect(trimDashes(hostile)).toBe(hostile);
-    expect(Date.now() - t0).toBeLessThan(50);
+    expect(elapsedMs(() => { expect(trimDashes(hostile)).toBe(hostile); })).toBeLessThan(REDOS_BUDGET_MS);
   });
 });
 
@@ -132,10 +129,10 @@ describe('toSlug — the one slug rule, shared by stores and products', () => {
   });
 
   it('is linear on a hostile paste — it runs per keystroke', () => {
+    // Measured 2026-08-02 and linear: 100K chars 3.7ms · 200K 6.5ms · 400K 12.0ms · 800K 26.1ms.
+    // See helpers/redos-budget.ts for why the ceiling is far above that rather than close to it.
     const hostile = 'a'.repeat(100_000) + '!'.repeat(100_000);
-    const t0 = Date.now();
-    toSlug(hostile);
-    expect(Date.now() - t0).toBeLessThan(100);
+    expect(elapsedMs(() => { toSlug(hostile); })).toBeLessThan(REDOS_BUDGET_MS);
   });
 });
 

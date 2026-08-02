@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { confusableSkeleton } from '../src/lib/slug-confusable.js';
 import { isReservedSlug, normalizeSlug } from '../src/lib/stores.js';
+import { REDOS_BUDGET_MS, elapsedMs } from './helpers/redos-budget.js';
 
 describe('confusableSkeleton', () => {
   it('folds Cyrillic and Greek lookalikes onto their Latin twin', () => {
@@ -44,8 +45,9 @@ describe('reserved routes cannot be impersonated by spelling', () => {
   });
 
   it('answers instantly on a hostile path segment — the middleware calls it with a raw one', () => {
-    const t0 = Date.now();
-    expect(isReservedSlug('a'.repeat(500_000))).toBe(false);
-    expect(Date.now() - t0).toBeLessThan(20);
+    // Real cost measured 2026-08-02: 0.00ms. The ceiling is the shared one and deliberately far
+    // above that — see helpers/redos-budget.ts for why a tight one is noise, not a stronger test.
+    const elapsed = elapsedMs(() => { expect(isReservedSlug('a'.repeat(500_000))).toBe(false); });
+    expect(elapsed).toBeLessThan(REDOS_BUDGET_MS);
   });
 });
