@@ -34,7 +34,7 @@ import {
   CLOSURE_BLOCKING_PAYMENT_STATUSES,
   CLOSURE_BLOCKING_SHIPPING_STATUSES,
 } from './order-status-rules.js';
-import { getCampaignsByStoreId, archiveCampaign } from './ad-campaigns.js';
+import { archiveCampaignsForStore } from './ad-campaigns.js';
 
 /** Orders this store still owes something on — the ones that hold a closure open. Paid-and-
  *  undelivered and awaiting-payment both count; cancelled, delivered and failed do not. The rule
@@ -108,9 +108,9 @@ export async function resumeStore(storeId: string): Promise<LifecycleChange> {
  *  campaign on the way out: archiveCampaign stops it, freezes its metrics at this instant and
  *  keeps the row (money it already spent is a fact — ad-campaigns.ts#archivedAt). */
 async function finalizeClosure(store: Store): Promise<Store | null> {
-  for (const campaign of getCampaignsByStoreId(store.id)) {
-    if (!campaign.archivedAt) archiveCampaign(campaign.id, store.id);
-  }
+  // One statement, not one per campaign: closure always archives ALL of them, so the loop this
+  // replaces was a write per campaign every single time rather than in a rare case.
+  await archiveCampaignsForStore(store.id);
   return updateStore(store.id, {
     closedAt: new Date().toISOString(),
     closePendingAt: undefined,

@@ -27,7 +27,7 @@
 import { getProductsByStoreId, isProductVisible, type StoreProduct } from './store-products.js';
 import { getStoreById, canStoreSell } from './stores.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds, type StoreCategory } from './store-categories.js';
-import { getCampaignsByStoreId, getArchivedByStoreId, updateCampaign, archiveCampaign, type AdCampaign } from './ad-campaigns.js';
+import { getCampaignsByStoreId, getArchivedByStoreId, updateCampaigns, archiveCampaigns, type AdCampaign, type CampaignUpdate } from './ad-campaigns.js';
 import { isCampaignEnded } from './ad-metrics.js';
 
 export interface CampaignHealth {
@@ -93,6 +93,38 @@ function campaignBlockReason(health: CampaignHealth): CampaignPauseReason | null
 
 export type CampaignWithHealth = AdCampaign & { health: CampaignHealth };
 
+/** What the read-time sweep may do to a campaign. Four fixed shapes, so a store's whole sweep is
+ *  at most four statements however many campaigns it runs — see `getCampaignsForStore`. */
+type SweepAction = 'pause-unavailable' | 'pause-out-of-stock' | 'restamp-unavailable' | 'resume';
+
+const SWEEP_UPDATES: Record<SweepAction, CampaignUpdate> = {
+  // Pausing is what freezes the accrued metrics at this moment rather than erasing them
+  // (ad-metrics.ts#runPeriod) — `updateCampaigns` stamps `pausedAt` on the transition itself.
+  'pause-unavailable': { status: 'paused', pausedReason: 'unavailable' },
+  'pause-out-of-stock': { status: 'paused', pausedReason: 'out-of-stock' },
+  // A temporary stop that turned permanent: it was sold out, and then the product left the
+  // storefront too. Re-stamped rather than left alone, because 'out-of-stock' is a PROMISE — the
+  // card says "it comes back by itself" and `resume` below would honour that. Never the other
+  // way: a stop a human caused does not become a self-healing one because the symptom is milder.
+  'restamp-unavailable': { pausedReason: 'unavailable' },
+  // The self-undoing half: ONLY a stock pause resumes on its own, and only back into the state
+  // the seller left it in. A campaign he paused himself, or one the platform stopped because the
+  // products left the storefront, stays paused until a human says otherwise — restarting spend
+  // without one is not a call this may make.
+  resume: { status: 'active' },
+};
+
+function sweepAction(campaign: AdCampaign, blocked: CampaignPauseReason | null): SweepAction | null {
+  if (campaign.status === 'active' && blocked) {
+    return blocked === 'unavailable' ? 'pause-unavailable' : 'pause-out-of-stock';
+  }
+  if (campaign.status === 'paused' && campaign.pausedReason === 'out-of-stock') {
+    if (blocked === 'unavailable') return 'restamp-unavailable';
+    if (!blocked) return 'resume';
+  }
+  return null;
+}
+
 /** The store's products as a SHOPPER can BUY them. A store that cannot sell — admin-blocked
  *  (404s on every page), closed, or paused by its own seller (store-status.ts) — has nothing a
  *  click can convert on, however healthy each product row looks on its own, which means every
@@ -122,53 +154,49 @@ async function reachableProducts(storeId: string): Promise<StoreProduct[]> {
  *  load. A starved campaign there stays listed as active until that store's own page is opened —
  *  a reporting lag measured in one page view, not a spend that keeps running, because nothing
  *  charges off that roll-up.
+ *
+ *  **Decide first, then write once per KIND (DB_MIGRATION_PLAN.md §8).** While campaigns were a
+ *  file this loop rewrote the whole file per changed campaign, which was invisible; as queries it
+ *  is the write-inside-a-loop shape — a bulk delete that empties ten campaigns would fire ten
+ *  UPDATEs. The decisions below are pure, so they are all taken against the rows already in hand
+ *  and applied as at most four statements no matter how many campaigns the store has.
  */
 export async function getCampaignsForStore(storeId: string): Promise<CampaignWithHealth[]> {
-  const products = await reachableProducts(storeId);
-  const categories = await getCategoriesByStoreId(storeId);
+  const [products, categories, campaigns] = await Promise.all([
+    reachableProducts(storeId),
+    getCategoriesByStoreId(storeId),
+    getCampaignsByStoreId(storeId),
+  ]);
+
+  const ended: string[] = [];
+  const todo = new Map<SweepAction, string[]>();
   const live: CampaignWithHealth[] = [];
 
-  for (const campaign of getCampaignsByStoreId(storeId)) {
+  for (const campaign of campaigns) {
     const health = campaignHealth(campaign, products, categories);
 
     // Ran its course: a fixed-duration campaign that reached its last day is finished, not
     // stopped. It moves to the store's history on its own — its numbers are already frozen by
     // the run period, and leaving it in the live list would mean "your campaigns" slowly filling
     // with things that ended months ago.
-    if (isCampaignEnded(campaign)) { archiveCampaign(campaign.id, storeId); continue; }
+    if (isCampaignEnded(campaign)) { ended.push(campaign.id); continue; }
 
-    const blocked = campaignBlockReason(health);
-
-    if (campaign.status === 'active' && blocked) {
-      // updateCampaign stamps pausedAt, which is what freezes the accrued metrics at this moment
-      // rather than erasing them (ad-metrics.ts#runPeriod).
-      const paused = updateCampaign(campaign.id, storeId, { status: 'paused', pausedReason: blocked });
-      if (paused) { live.push({ ...paused, health }); continue; }
-    }
-
-    // A temporary stop that turned permanent: it was sold out, and then the product left the
-    // storefront too. Re-stamped rather than left alone, because 'out-of-stock' is a PROMISE —
-    // the card says "it comes back by itself" and the branch below would honour that. It never
-    // re-stamps the other way: a stop a human caused does not become a self-healing one just
-    // because the current symptom is milder.
-    if (campaign.status === 'paused' && campaign.pausedReason === 'out-of-stock' && blocked === 'unavailable') {
-      const restamped = updateCampaign(campaign.id, storeId, { pausedReason: 'unavailable' });
-      if (restamped) { live.push({ ...restamped, health }); continue; }
-    }
-
-    // The self-undoing half: ONLY a stock pause resumes on its own, and only back into the state
-    // the seller left it in. A campaign he paused himself, or one the platform stopped because
-    // the products left the storefront, stays paused until a human says otherwise — restarting
-    // spend without one is not a call this may make.
-    if (campaign.status === 'paused' && campaign.pausedReason === 'out-of-stock' && !blocked) {
-      const resumed = updateCampaign(campaign.id, storeId, { status: 'active' });
-      if (resumed) { live.push({ ...resumed, health }); continue; }
-    }
-
+    const action = sweepAction(campaign, campaignBlockReason(health));
+    if (action) todo.set(action, [...(todo.get(action) ?? []), campaign.id]);
     live.push({ ...campaign, health });
   }
 
-  return live;
+  // Disjoint id sets, so these do not contend for the same rows. Archiving is the only one whose
+  // campaigns leave the live list entirely — they were skipped above and never reached it.
+  const updated = await Promise.all([
+    ...(ended.length ? [archiveCampaigns(storeId, ended).then(() => [])] : []),
+    ...[...todo].map(([action, ids]) => updateCampaigns(storeId, ids, SWEEP_UPDATES[action])),
+  ]);
+
+  // The rows the database actually wrote replace the ones read a moment earlier, so the returned
+  // status/pausedAt are the stored ones and not a local guess at what the UPDATE would do.
+  const written = new Map(updated.flat().map((c) => [c.id, c]));
+  return live.map((c) => { const w = written.get(c.id); return w ? { ...w, health: c.health } : c; });
 }
 
 /** How many past campaigns the history block shows. A DISPLAY cap, not a data one: the rows all
@@ -181,9 +209,12 @@ export const CAMPAIGN_HISTORY_LIMIT = 50;
  *  live ones carry so one renderer draws both. Read-only by construction — nothing here sweeps,
  *  resumes or re-budgets. */
 export async function getCampaignHistory(storeId: string): Promise<CampaignWithHealth[]> {
-  const products = await reachableProducts(storeId);
-  const categories = await getCategoriesByStoreId(storeId);
-  return getArchivedByStoreId(storeId).slice(0, CAMPAIGN_HISTORY_LIMIT).map((campaign) => ({
+  const [products, categories, archived] = await Promise.all([
+    reachableProducts(storeId),
+    getCategoriesByStoreId(storeId),
+    getArchivedByStoreId(storeId),
+  ]);
+  return archived.slice(0, CAMPAIGN_HISTORY_LIMIT).map((campaign) => ({
     ...campaign,
     health: campaignHealth(campaign, products, categories),
   }));
@@ -205,7 +236,7 @@ export async function resumeBlockReason(storeId: string, campaignId: string): Pr
   // Not in the live list: either it is history (finished or cancelled — over either way), or the
   // id is not this store's, which the update's own ownership check reports better than we can.
   if (!current) {
-    const inHistory = getArchivedByStoreId(storeId).some((c) => c.id === campaignId);
+    const inHistory = (await getArchivedByStoreId(storeId)).some((c) => c.id === campaignId);
     return inHistory ? 'ended' : null;
   }
   // Its budget was for a period that is over, and restarting would silently buy another one.
