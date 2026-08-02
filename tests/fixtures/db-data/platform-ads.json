@@ -1,6 +1,4 @@
 {
-  "google": {
-    "enabled": true,
-    "budget": 1000
-  }
+  "baselineStatus": "paused",
+  "lifetimeBudget": 2500
 }

@@ -111,6 +111,32 @@ export async function verifyImport(db, { dataDir = path.join(process.cwd(), 'dat
     liveProducts.reduce((n, p) => n + toAgorot(p.price), 0),
     await scalar(db, 'SELECT COALESCE(SUM(price_agorot),0) FROM store_products'));
 
+  // Added with the advertising move (2026-08-02). Three budgets crossed ILS→agorot in that diff and
+  // none of them had an anchor: campaign budgets are the money the platform bills a seller onward
+  // (platform-revenue.ts), and the baseline lifetime budget is the platform's own cap. A budget
+  // imported unconverted reads as a hundredth of itself — a number that still renders, still sums,
+  // and is simply wrong on the screen that reports committed ad spend.
+  // Over the campaigns that LANDED, not every campaign in the file — one whose store is missing is
+  // dropped, and summing the file's would be the filtered-subset-minus-whole-table-drop mistake the
+  // note above records.
+  const landedCampaigns = readJson(dataDir, 'ad-campaigns.json', [])
+    .filter((c) => landedStoreIds.has(c.storeId));
+  check('boost campaign budget total (agorot)',
+    landedCampaigns.reduce((n, c) => n + toAgorot(c.monthlyBudget), 0),
+    await scalar(db, 'SELECT COALESCE(SUM(monthly_budget_agorot),0) FROM ad_campaigns'),
+    'ILS→agorot conversion');
+  const brandCampaigns = readJson(dataDir, 'brand-campaigns.json', []);
+  check('brand campaign budget total (agorot)',
+    brandCampaigns.reduce((n, c) => n + toAgorot(c.monthlyBudget), 0),
+    await scalar(db, 'SELECT COALESCE(SUM(monthly_budget_agorot),0) FROM brand_campaigns'),
+    'ILS→agorot conversion');
+  // A jsonb value has no column type to sum, so this reads the one key out of the settings row.
+  check('baseline lifetime budget (agorot)',
+    toAgorot(readJson(dataDir, 'platform-ads.json', {}).lifetimeBudget),
+    await scalar(db, `SELECT COALESCE((value ->> 'lifetimeBudgetAgorot')::bigint, 0)
+                        FROM app_settings WHERE key = 'platform_ads'`),
+    'ILS→agorot conversion');
+
   // --- §7.12 / §9.8 the silent NULL-flag bug -------------------------------
   // isProductVisible === !blocked && !hidden. If a flag imported as NULL the SQL predicate stops
   // matching that row and the product vanishes from the storefront with no error anywhere.

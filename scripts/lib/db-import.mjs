@@ -430,8 +430,15 @@ export async function importAll(db, { dataDir = path.join(process.cwd(), 'data')
     e.actorLabel ?? null, e.resolutionHint ?? null, Boolean(e.resolved), e.createdAt ?? null,
   ])));
 
+  // The baseline lifetime budget is MONEY, and it was ILS in the file (§7.7). It converts here
+  // exactly like every campaign budget above — a jsonb value takes no column type, so an unconverted
+  // number would sit in the settings row looking correct and reading a hundred times too small.
+  const platformAds = readJson(dataDir, 'platform-ads.json', {});
   const settings = [
-    ['platform_ads', readJson(dataDir, 'platform-ads.json', {})],
+    ['platform_ads', {
+      baselineStatus: platformAds.baselineStatus === 'paused' ? 'paused' : 'active',
+      lifetimeBudgetAgorot: toAgorot(platformAds.lifetimeBudget),
+    }],
     ['admin_tab_views', readJson(dataDir, 'admin-tab-views.json', {})],
   ].map(([key, value]) => [key, JSON.stringify(value)]);
   note('app_settings', await insertMany(db, 'app_settings', ['key', 'value'], settings,
