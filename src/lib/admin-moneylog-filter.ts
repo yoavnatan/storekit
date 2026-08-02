@@ -1,5 +1,6 @@
 import { businessDayISO, dayInRange } from './business-day.js';
 import { ADMIN_PAGE_SIZE } from './pagination.js';
+import { formatAgorot } from './money.js';
 import { isMoneyEventType, MONEY_EVENT_LABELS, type MoneyEvent, type MoneyEventType } from './money-events.js';
 
 /**
@@ -69,7 +70,13 @@ export function parseMoneyLogQuery(sp: URLSearchParams): MoneyLogQuery {
 
 /** Everything about one row a search may legitimately match — including the Hebrew
  *  label the admin is reading on screen, and the amount as typed (`349`). Order ids are
- *  displayed truncated to 8 chars, and `includes` on the full id covers that for free. */
+ *  displayed truncated to 8 chars, and `includes` on the full id covers that for free.
+ *
+ *  **The amount is matched as the admin SEES it, not as it is stored.** Amounts became integer
+ *  agorot with the `orders` migration, and putting the raw `34900` in here would have quietly
+ *  broken the one search the owner actually types into this box: they read `349 ₪` on the row in
+ *  front of them and search for `349`. The agorot figure goes in beside it, so a search pasted
+ *  out of a log or a database row still finds the row too. */
 function searchHaystack(e: MoneyEvent): string {
   return [
     e.orderId,
@@ -81,7 +88,8 @@ function searchHaystack(e: MoneyEvent): string {
     e.to,
     MONEY_EVENT_LABELS[e.type],
     e.type,
-    e.amount !== undefined ? String(e.amount) : '',
+    e.amountAgorot !== undefined ? formatAgorot(e.amountAgorot) : '',
+    e.amountAgorot !== undefined ? String(e.amountAgorot) : '',
   ].filter(Boolean).join(' ').toLowerCase();
 }
 

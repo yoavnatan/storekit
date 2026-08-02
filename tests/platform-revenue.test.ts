@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildPlatformRevenue } from '../src/lib/platform-revenue.js';
+import { toAgorot } from '../src/lib/money.js';
 import { AD_PLATFORM_MARGIN_PERCENT, monthlyFeeForTier } from '../src/lib/pricing.js';
 import type { AdCampaign } from '../src/lib/ad-campaigns.js';
 
@@ -28,10 +29,10 @@ function campaign(id: string, monthlyBudget: number, createdAt: string, over: Pa
 describe('buildPlatformRevenue — the three income streams', () => {
   it('adds commission + subscriptions + ad margin, and nothing else', () => {
     const r = buildPlatformRevenue(1000, 11, [seller('starter', '2026-01-01T00:00:00.000Z')], [], FROM, TO);
-    expect(r.commission).toBe(1000);
-    expect(r.subscriptions).toBe(monthlyFeeForTier('starter')); // full 30-day month
-    expect(r.adMargin).toBe(0);
-    expect(r.total).toBe(1000 + monthlyFeeForTier('starter'));
+    expect(r.commissionAgorot).toBe(1000);
+    expect(r.subscriptionsAgorot).toBe(toAgorot(monthlyFeeForTier('starter'))); // full 30-day month
+    expect(r.adMarginAgorot).toBe(0);
+    expect(r.totalAgorot).toBe(1000 + toAgorot(monthlyFeeForTier('starter')));
     expect(r.subscribers).toBe(1);
   });
 
@@ -40,42 +41,42 @@ describe('buildPlatformRevenue — the three income streams', () => {
       seller('starter', '2026-01-01T00:00:00.000Z'),
       seller('enterprise', '2026-01-01T00:00:00.000Z'),
     ], [], FROM, TO);
-    expect(r.subscriptions).toBe(monthlyFeeForTier('starter') + monthlyFeeForTier('enterprise'));
+    expect(r.subscriptionsAgorot).toBe(toAgorot(monthlyFeeForTier('starter')) + toAgorot(monthlyFeeForTier('enterprise')));
   });
 
   it('treats a seller with no tier as the default one (no backfill needed)', () => {
     const r = buildPlatformRevenue(0, 0, [seller(undefined, '2026-01-01T00:00:00.000Z')], [], FROM, TO);
-    expect(r.subscriptions).toBe(monthlyFeeForTier(undefined));
+    expect(r.subscriptionsAgorot).toBe(toAgorot(monthlyFeeForTier(undefined)));
   });
 
   it('pro-rates a seller who signed up mid-range, and skips one who signed up after it', () => {
     // Signed up on the 16th → 15 of the 30 days billable.
     const mid = buildPlatformRevenue(0, 0, [seller('starter', '2026-07-16T09:00:00.000Z')], [], FROM, TO);
-    expect(mid.subscriptions).toBeCloseTo(monthlyFeeForTier('starter') / 2, 1);
+    expect(mid.subscriptionsAgorot).toBeCloseTo(toAgorot(monthlyFeeForTier('starter')) / 2, -1);
     expect(mid.subscribers).toBe(1);
 
     const later = buildPlatformRevenue(0, 0, [seller('starter', '2026-08-05T09:00:00.000Z')], [], FROM, TO);
-    expect(later.subscriptions).toBe(0);
+    expect(later.subscriptionsAgorot).toBe(0);
     expect(later.subscribers).toBe(0);
   });
 
   it('counts only the MARGIN on ad spend as income — the spend itself is pass-through', () => {
     const r = buildPlatformRevenue(0, 0, [], [campaign('c1', 3000, '2026-06-01T00:00:00.000Z')], FROM, TO);
-    expect(r.adSpend).toBeGreaterThan(0);
-    expect(r.adMargin).toBeCloseTo(r.adSpend * (AD_PLATFORM_MARGIN_PERCENT / 100), 1);
+    expect(r.adSpendAgorot).toBeGreaterThan(0);
+    expect(r.adMarginAgorot).toBeCloseTo(r.adSpendAgorot * (AD_PLATFORM_MARGIN_PERCENT / 100), -1);
     // The spend never lands in `total` — only the margin does.
-    expect(r.total).toBe(r.adMargin);
+    expect(r.totalAgorot).toBe(r.adMarginAgorot);
     expect(r.adMarginRate).toBe(AD_PLATFORM_MARGIN_PERCENT);
   });
 
   it('bills no ad margin for a campaign that never ran inside the range', () => {
     const r = buildPlatformRevenue(0, 0, [], [campaign('c1', 3000, '2026-09-01T00:00:00.000Z')], FROM, TO);
-    expect(r.adSpend).toBe(0);
-    expect(r.adMargin).toBe(0);
+    expect(r.adSpendAgorot).toBe(0);
+    expect(r.adMarginAgorot).toBe(0);
   });
 
   it('is zero across the board with no sellers, no campaigns and no sales', () => {
     const r = buildPlatformRevenue(0, 0, [], [], FROM, TO);
-    expect(r).toMatchObject({ commission: 0, subscriptions: 0, adSpend: 0, adMargin: 0, total: 0, subscribers: 0 });
+    expect(r).toMatchObject({ commissionAgorot: 0, subscriptionsAgorot: 0, adSpendAgorot: 0, adMarginAgorot: 0, totalAgorot: 0, subscribers: 0 });
   });
 });

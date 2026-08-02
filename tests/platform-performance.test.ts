@@ -22,17 +22,17 @@ function makeOrder(
 ): Order {
   const storeSubtotals: Order['storeSubtotals'] = {};
   for (const [slug, subtotal] of Object.entries(subtotals)) {
-    storeSubtotals[slug] = { storeName: slug, subtotal, shipping: 0 };
+    storeSubtotals[slug] = { storeName: slug, subtotalAgorot: subtotal, shippingAgorot: 0 };
   }
-  const totalAmount = Object.values(subtotals).reduce((s, v) => s + v, 0);
+  const totalAgorot = Object.values(subtotals).reduce((s, v) => s + v, 0);
   return {
     id,
     buyerName: 'x', buyerEmail: 'x@x.co', buyerPhone: '',
     buyerAddress: { city: '', street: '' },
     items,
     storeSubtotals,
-    shippingAmount: 0,
-    totalAmount,
+    shippingAgorot: 0,
+    totalAgorot,
     paymentStatus: status,
     shippingStatus: 'pending',
     createdAt,
@@ -58,12 +58,12 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
       makeOrder('o3', { alpha: 250 }, '2026-07-07T10:00:00.000Z'),
     ];
     const p = buildPlatformPerformance(orders, STORES, FROM, TO, 'day');
-    expect(p.summary.totalRevenue).toBe(1750);
+    expect(p.summary.totalRevenueAgorot).toBe(1750);
     expect(p.summary.totalOrders).toBe(3);
     // commission (platform income) + payout (to sellers) reconcile to GMV
-    expect(p.summary.platformCommission).toBe(175);
-    expect(p.summary.netProfit).toBe(1575);
-    expect(p.summary.platformCommission + p.summary.netProfit).toBe(p.summary.totalRevenue);
+    expect(p.summary.platformCommissionAgorot).toBe(175);
+    expect(p.summary.netProfitAgorot).toBe(1575);
+    expect(p.summary.platformCommissionAgorot + p.summary.netProfitAgorot).toBe(p.summary.totalRevenueAgorot);
   });
 
   it('counts a multi-store order toward each store it touched', () => {
@@ -73,8 +73,8 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
     expect(p.summary.totalOrders).toBe(2);
     const alpha = p.stores.find((s) => s.slug === 'alpha');
     const beta = p.stores.find((s) => s.slug === 'beta');
-    expect(alpha?.revenue).toBe(300);
-    expect(beta?.revenue).toBe(200);
+    expect(alpha?.revenueAgorot).toBe(300);
+    expect(beta?.revenueAgorot).toBe(200);
     expect(p.stores.reduce((s, r) => s + r.orders, 0)).toBe(p.summary.totalOrders);
   });
 
@@ -84,7 +84,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
       makeOrder('o2', { alpha: 999 }, '2026-07-06T10:00:00.000Z', [], 'pending'),
     ];
     const p = buildPlatformPerformance(orders, STORES, FROM, TO, 'day');
-    expect(p.summary.totalRevenue).toBe(1000);
+    expect(p.summary.totalRevenueAgorot).toBe(1000);
     expect(p.summary.totalOrders).toBe(1);
   });
 
@@ -103,8 +103,8 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
   });
 
   it('aggregates platform top products across stores and honours topLimit', () => {
-    const items = (slug: string, productId: string, name: string, price: number, qty: number): Order['items'] =>
-      [{ productId, productName: name, productSlug: productId, storeSlug: slug, storeName: slug, price, qty }];
+    const items = (slug: string, productId: string, name: string, priceAgorot: number, qty: number): Order['items'] =>
+      [{ productId, productName: name, productSlug: productId, storeSlug: slug, storeName: slug, priceAgorot, qty }];
     const orders = [
       makeOrder('o1', { alpha: 200 }, '2026-07-05T10:00:00.000Z', items('alpha', 'p1', 'Widget', 100, 2)),
       makeOrder('o2', { beta: 300 }, '2026-07-06T10:00:00.000Z', items('beta', 'p2', 'Gadget', 300, 1)),
@@ -113,7 +113,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
     const p = buildPlatformPerformance(orders, STORES, FROM, TO, 'day', 5);
     const p1 = p.summary.topProducts.find((t) => t.productId === 'p1');
     expect(p1?.units).toBe(3);       // 2 + 1 across two orders
-    expect(p1?.revenue).toBe(300);   // 100 * 3
+    expect(p1?.revenueAgorot).toBe(300);   // 100 * 3
     // revenue-desc: gadget (300) ties widget (300) — both present, capped by topLimit
     expect(p.summary.topProducts.length).toBe(2);
 
@@ -123,9 +123,9 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
 
   it('zero-fills the point axis for an empty platform', () => {
     const p = buildPlatformPerformance([], STORES, FROM, TO, 'day');
-    expect(p.summary.totalRevenue).toBe(0);
+    expect(p.summary.totalRevenueAgorot).toBe(0);
     expect(p.summary.points.length).toBe(31); // full July, zero-filled
-    expect(p.summary.points.every((pt) => pt.revenue === 0 && pt.orders === 0)).toBe(true);
+    expect(p.summary.points.every((pt) => pt.revenueAgorot === 0 && pt.orders === 0)).toBe(true);
     // Rows still exist for every store (searchable), none of them active.
     expect(p.stores.length).toBe(STORES.length);
     expect(p.totalStores).toBe(0);
@@ -138,14 +138,14 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
     expect(p.stores.length).toBe(40);
     expect(p.totalStores).toBe(40);
     // highest-revenue store leads
-    expect(p.stores[0]!.revenue).toBeGreaterThanOrEqual(p.stores[1]!.revenue);
+    expect(p.stores[0]!.revenueAgorot).toBeGreaterThanOrEqual(p.stores[1]!.revenueAgorot);
   });
 });
 
 // ── Breakdown table: search + sort + pagination (CURRENT_TASK.md → סשן ב׳ #1) ──
 
-function row(slug: string, name: string, revenue: number, orders = 0, views = 0, conversionRate = 0): PlatformStoreRow {
-  return { slug, name, blocked: false, revenue, orders, views, conversionRate, active: revenue > 0 || orders > 0 || views > 0 };
+function row(slug: string, name: string, revenueAgorot: number, orders = 0, views = 0, conversionRate = 0): PlatformStoreRow {
+  return { slug, name, blocked: false, revenueAgorot, orders, views, conversionRate, active: revenueAgorot > 0 || orders > 0 || views > 0 };
 }
 const ROWS: PlatformStoreRow[] = [
   row('gadget-shop', 'חנות הגאדג׳טים', 900, 9, 90, 10),
@@ -259,10 +259,10 @@ describe('mixed-tier commission', () => {
       makeOrder('o2', { beta: 1000 }, '2026-07-06T10:00:00.000Z'),
     ];
     const p = buildPlatformPerformance(orders, mixed, FROM, TO, 'day');
-    expect(p.summary.totalRevenue).toBe(2000);
-    expect(p.summary.platformCommission).toBe(160); // 120 + 40, NOT 2000 * one rate
+    expect(p.summary.totalRevenueAgorot).toBe(2000);
+    expect(p.summary.platformCommissionAgorot).toBe(160); // 120 + 40, NOT 2000 * one rate
     expect(p.summary.commissionRate).toBe(8);       // revenue-weighted blend
-    expect(p.summary.platformCommission + p.summary.netProfit).toBe(p.summary.totalRevenue);
+    expect(p.summary.platformCommissionAgorot + p.summary.netProfitAgorot).toBe(p.summary.totalRevenueAgorot);
   });
 
   it('takes no commission from a store whose rate is absent', () => {
@@ -271,7 +271,7 @@ describe('mixed-tier commission', () => {
       [{ slug: 'alpha', name: 'Alpha' }],
       FROM, TO, 'day',
     );
-    expect(p.summary.platformCommission).toBe(0);
+    expect(p.summary.platformCommissionAgorot).toBe(0);
     expect(p.summary.commissionRate).toBe(0);
   });
 });

@@ -4,14 +4,13 @@ import { orderNetForStore } from './admin-stats.js';
 import { getDailyPageViews } from './store-pageviews.js';
 import { getProductDailyViews } from './product-pageviews.js';
 import { businessDayISO, businessMonthKey, calendarDayISO, calendarMonthKey, dayInRange, BUSINESS_TIMEZONE } from './business-day.js';
-import { roundMoney, percentOf } from './money.js';
 
 export type PerformanceGranularity = 'day' | 'month';
 
 export interface PerformancePoint {
   key: string;   // 'YYYY-MM-DD' (day) or 'YYYY-MM' (month) — stable sort/chart key
   label: string; // pre-formatted for display (Hebrew-aware), so client charts never reformat dates themselves
-  revenue: number;
+  revenueAgorot: number;
   orders: number;
   views: number;          // total loads in this bucket (repeat visits counted)
   uniqueVisitors: number; // distinct visitor ids in this bucket (unioned, not summed, across its days)
@@ -20,16 +19,16 @@ export interface PerformancePoint {
 export interface TopProduct {
   productId: string;
   name: string;
-  revenue: number; // gross (pre order-level discount — discount is only stored per store-subtotal, not per item)
+  revenueAgorot: number; // gross (pre order-level discount — discount is only stored per store-subtotal, not per item)
   units: number;
 }
 
 export interface PerformanceSummary {
   granularity: PerformanceGranularity;
   points: PerformancePoint[];
-  totalRevenue: number;
+  totalRevenueAgorot: number;
   totalOrders: number;
-  avgOrderValue: number;
+  avgOrderValueAgorot: number;
   totalViews: number;          // total loads across the range (repeat visits counted)
   totalUniqueVisitors: number; // distinct visitors across the whole range (a returning visitor counts once)
   conversionRate: number; // orders / unique-visitors * 100 (falls back to total views when no visitor ids exist, e.g. legacy/demo data), 0 when neither
@@ -37,18 +36,18 @@ export interface PerformanceSummary {
   // Profitability (reporting only — the real deduction happens at the
   // split-payment processor). commissionRate is echoed back so the client can
   // label the expense line ("platform commission (10%)") without re-reading
-  // store.config; platformCommission/netProfit are pre-computed server-side so
+  // store.config; platformCommissionAgorot/netProfitAgorot are pre-computed server-side so
   // SSR and the AJAX re-render can never drift on the rounding.
   commissionRate: number;      // percent, e.g. 10
-  platformCommission: number;  // totalRevenue * commissionRate / 100, the seller's expense
-  netProfit: number;           // totalRevenue - platformCommission, what the seller actually receives
+  platformCommissionAgorot: number;  // totalRevenueAgorot * commissionRate / 100, the seller's expense
+  netProfitAgorot: number;           // totalRevenueAgorot - platformCommissionAgorot, what the seller actually receives
 }
 
 export interface ProductPerformancePoint {
   key: string;   // 'YYYY-MM-DD' (day) or 'YYYY-MM' (month)
   label: string; // pre-formatted, Hebrew-aware
   units: number;
-  revenue: number; // gross (pre order-level discount, same basis as TopProduct.revenue)
+  revenueAgorot: number; // gross (pre order-level discount, same basis as TopProduct.revenueAgorot)
   views: number;   // product-page loads in this bucket
 }
 
@@ -57,7 +56,7 @@ export interface ProductPerformanceSummary {
   granularity: PerformanceGranularity;
   points: ProductPerformancePoint[];
   totalUnits: number;
-  totalRevenue: number;
+  totalRevenueAgorot: number;
   totalViews: number;
   ordersWithProduct: number; // distinct paid orders in range that contained this product
   conversionRate: number;    // ordersWithProduct / totalViews * 100, 0 when no views
@@ -138,7 +137,7 @@ export function buildZeroPoints(fromISO: string, toISO: string, granularity: Per
   return rangeKeys(fromISO, toISO, granularity).map((key) => ({
     key,
     label: granularity === 'day' ? dayLabel(key) : monthLabel(key),
-    revenue: 0,
+    revenueAgorot: 0,
     orders: 0,
     views: 0,
     uniqueVisitors: 0,
@@ -173,15 +172,15 @@ export function buildPerformanceSummary(
 
   const revenueByKey = new Map<string, number>();
   const ordersByKey = new Map<string, number>();
-  let totalRevenue = 0;
+  let totalRevenueAgorot = 0;
   for (const o of inRange) {
     const key = bucketKeyOf(new Date(o.createdAt), granularity);
     const net = orderNetForStore(o, storeSlug);
     revenueByKey.set(key, (revenueByKey.get(key) ?? 0) + net);
     ordersByKey.set(key, (ordersByKey.get(key) ?? 0) + 1);
-    totalRevenue += net;
+    totalRevenueAgorot += net;
   }
-  totalRevenue = roundMoney(totalRevenue);
+  
 
   const dailyViews = getDailyPageViews(storeSlug, fromISO, toISO);
   const viewsByKey = new Map<string, number>();
@@ -203,7 +202,7 @@ export function buildPerformanceSummary(
   const points: PerformancePoint[] = keys.map((key) => ({
     key,
     label: granularity === 'day' ? dayLabel(key) : monthLabel(key),
-    revenue: roundMoney(revenueByKey.get(key) ?? 0),
+    revenueAgorot: revenueByKey.get(key) ?? 0,
     orders: ordersByKey.get(key) ?? 0,
     views: viewsByKey.get(key) ?? 0,
     uniqueVisitors: visitorsByKey.get(key)?.size ?? 0,
@@ -215,18 +214,18 @@ export function buildPerformanceSummary(
   for (const o of inRange) {
     for (const item of o.items) {
       if (item.storeSlug !== storeSlug) continue;
-      const entry = productMap.get(item.productId) ?? { productId: item.productId, name: item.productName, revenue: 0, units: 0 };
-      entry.revenue += item.price * item.qty;
+      const entry = productMap.get(item.productId) ?? { productId: item.productId, name: item.productName, revenueAgorot: 0, units: 0 };
+      entry.revenueAgorot += item.priceAgorot * item.qty;
       entry.units += item.qty;
       productMap.set(item.productId, entry);
     }
   }
-  for (const entry of productMap.values()) entry.revenue = roundMoney(entry.revenue);
-  const sortedProducts = [...productMap.values()].sort((a, b) => b.revenue - a.revenue);
+    const sortedProducts = [...productMap.values()].sort((a, b) => b.revenueAgorot - a.revenueAgorot);
   const topProducts = topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts;
 
-  const platformCommission = percentOf(totalRevenue, commissionPercent);
-  const netProfit = roundMoney(totalRevenue - platformCommission);
+  // A percentage of an integer number of agorot, rounded once to the agora.
+  const platformCommissionAgorot = Math.round((totalRevenueAgorot * commissionPercent) / 100);
+  const netProfitAgorot = totalRevenueAgorot - platformCommissionAgorot;
 
   // Conversion = orders per *distinct* visitor (the honest "share of people who
   // bought"). Fall back to total loads when no visitor ids exist yet (legacy /
@@ -236,21 +235,21 @@ export function buildPerformanceSummary(
   return {
     granularity,
     points,
-    totalRevenue,
+    totalRevenueAgorot,
     totalOrders,
-    avgOrderValue: totalOrders > 0 ? roundMoney(totalRevenue / totalOrders) : 0,
+    avgOrderValueAgorot: totalOrders > 0 ? Math.round(totalRevenueAgorot / totalOrders) : 0,
     totalViews,
     totalUniqueVisitors,
     conversionRate: conversionBase > 0 ? (totalOrders / conversionBase) * 100 : 0,
     topProducts,
     commissionRate: commissionPercent,
-    platformCommission,
-    netProfit,
+    platformCommissionAgorot,
+    netProfitAgorot,
   };
 }
 
 /** Single-product drill-down for the seller's performance tab: units sold, gross
- *  revenue and product-page views for ONE product across a date range, bucketed
+  *  revenue and product-page views for ONE product across a date range, bucketed
  *  on the same day/month axis as the store summary. Sales come from the orders
  *  array (the "money" data, passed in); views are read internally from
  *  product-pageviews.ts (a cheap pre-aggregate, same pattern as the store
@@ -268,7 +267,7 @@ export function buildProductPerformance(
   const unitsByKey = new Map<string, number>();
   const revenueByKey = new Map<string, number>();
   let totalUnits = 0;
-  let totalRevenue = 0;
+  let totalRevenueAgorot = 0;
   let ordersWithProduct = 0;
 
   for (const o of orders) {
@@ -283,9 +282,9 @@ export function buildProductPerformance(
       if (item.storeSlug !== storeSlug || item.productId !== productId) continue;
       const key = bucketKeyOf(created, granularity);
       unitsByKey.set(key, (unitsByKey.get(key) ?? 0) + item.qty);
-      revenueByKey.set(key, (revenueByKey.get(key) ?? 0) + item.price * item.qty);
+      revenueByKey.set(key, (revenueByKey.get(key) ?? 0) + item.priceAgorot * item.qty);
       totalUnits += item.qty;
-      totalRevenue += item.price * item.qty;
+      totalRevenueAgorot += item.priceAgorot * item.qty;
       inThisOrder = true;
     }
     if (inThisOrder) ordersWithProduct += 1;
@@ -303,7 +302,7 @@ export function buildProductPerformance(
     key,
     label: granularity === 'day' ? dayLabel(key) : monthLabel(key),
     units: unitsByKey.get(key) ?? 0,
-    revenue: roundMoney(revenueByKey.get(key) ?? 0),
+    revenueAgorot: revenueByKey.get(key) ?? 0,
     views: viewsByKey.get(key) ?? 0,
   }));
 
@@ -312,7 +311,7 @@ export function buildProductPerformance(
     granularity,
     points,
     totalUnits,
-    totalRevenue: roundMoney(totalRevenue),
+    totalRevenueAgorot,
     totalViews,
     ordersWithProduct,
     conversionRate: totalViews > 0 ? (ordersWithProduct / totalViews) * 100 : 0,

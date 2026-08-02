@@ -80,7 +80,7 @@ const tabUrl = buildAdminUrl;
 // stores/products, multiplying JSON-file reads on every dashboard load.
 const sellers = await getAllSellers();
 const stores = await getAllStores();
-const allOrders = getAllOrders();
+const allOrders = await getAllOrders();
 const productsByStore = await getProductsByStoreMap();
 
 const overview = getPlatformOverview(sellers, stores, allOrders);
@@ -222,7 +222,7 @@ const platformPerf = buildPlatformPerformance(
 const perfStorePage = selectStoreRows(platformPerf.stores, parseStoreRowsQuery(sp));
 // Where the platform's income actually comes from — commission is only one of three.
 const perfRevenue = buildPlatformRevenue(
-  platformPerf.summary.platformCommission,
+  platformPerf.summary.platformCommissionAgorot,
   platformPerf.summary.commissionRate,
   sellers,
   adCampaigns,
@@ -251,7 +251,14 @@ for (const list of productsByStore.values()) for (const p of list) productNames.
 // this page's URL: a `?mev=` permalink picks the page holding that row, but an explicit
 // ?mlpage always wins — otherwise the next arrow click snaps back to the linked row.
 const moneyLogQuery = parseMoneyLogQuery(sp);
-const moneyLogEvents = filterMoneyEvents(getMoneyEvents(moneyLogQuery.type), moneyLogQuery);
+// Type AND date window are pushed into the query (money-events.ts) — the journal is the one
+// table nothing is deleted from, so opening this tab must not mean reading every row ever
+// appended. The free-text pass stays in memory: it matches the Hebrew LABEL of an event type,
+// and the labels live in the code, not the database.
+const moneyLogEvents = filterMoneyEvents(
+  await getMoneyEvents(moneyLogQuery.type, moneyLogQuery.from, moneyLogQuery.to),
+  moneyLogQuery,
+);
 const moneyLogTargetPage = eventPage(moneyLogEvents, moneyLogQuery.eventId);
 const moneyLogPageResult = paginate(
   moneyLogEvents,

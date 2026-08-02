@@ -1,7 +1,7 @@
 import type { Order } from './orders.js';
 import { SHIPPING_STATUS_RULES, type ShippingStatus } from './order-status-rules.js';
 import { decodeList } from './admin-nav.js';
-import { storeSliceTotal } from './order-totals.js';
+import { storeSliceTotalAgorot } from './order-totals.js';
 
 // Server-side counterpart of the seller dashboard's Orders tab toolbar
 // (src/pages/seller/dashboard.astro's inline script) — pagination means the
@@ -65,7 +65,7 @@ export function parseSellerOrderQuery(sp: URLSearchParams): SellerOrderQuery {
 function orderAmount(o: Order, storeSlug: string): number {
   // Same total the card shows (order-totals.ts) — sorting by a pre-discount figure put a
   // discounted order above one that actually took more money.
-  return storeSliceTotal(o.storeSubtotals[storeSlug]);
+  return storeSliceTotalAgorot(o.storeSubtotals[storeSlug]);
 }
 
 function orderSearchHaystack(o: Order): string {

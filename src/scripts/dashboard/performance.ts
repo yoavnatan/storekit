@@ -1,4 +1,10 @@
 import { formatPrice } from '../../config/store.config.js';
+
+/** Integer agorot → ILS on screen. Server twin: `money.ts#formatAgorot`. Every money field on a
+ *  performance summary is agorot since the `orders` migration, so a bare `formatPrice` on one
+ *  prints a figure a hundred times too large. */
+function fmtAgorot(agorot: number): string { return formatPrice(agorot / 100); }
+
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg, buildDonutChartSvg, type PieSlice } from '../../lib/chart-svg.js';
 import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/seller-performance.js';
@@ -87,15 +93,15 @@ function renderTopProducts(container: HTMLElement, summary: PerformanceSummary, 
     container.innerHTML = `<p class="muted text-[0.85rem] m-0">${i18n.perfTopProductsEmpty ?? ''}</p>`;
     return;
   }
-  const totalRevenue = Math.max(summary.topProducts.reduce((s, p) => s + p.revenue, 0), 1);
+  const totalRevenueAgorot = Math.max(summary.topProducts.reduce((s, p) => s + p.revenueAgorot, 0), 1);
   container.innerHTML = summary.topProducts.map((p, i) => {
-    const pct = Math.round((p.revenue / totalRevenue) * 100);
+    const pct = Math.round((p.revenueAgorot / totalRevenueAgorot) * 100);
     return `
       <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
         <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style="width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(i * 60, 300)}ms"></div>
         <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
           <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">${escHtml(p.name)}</span>
-          <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">${pct}%</strong> · ${p.units} ${i18n.perfUnitsSold ?? ''} · ${formatPrice(p.revenue)}</span>
+          <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">${pct}%</strong> · ${p.units} ${i18n.perfUnitsSold ?? ''} · ${fmtAgorot(p.revenueAgorot)}</span>
         </div>
       </div>`;
   }).join('');
@@ -182,8 +188,8 @@ function paintCharts(summary: PerformanceSummary, i18n: Record<string, string>, 
   const visitorsChart = document.getElementById('perf-visitors-chart');
   if (revenueChart) {
     revenueChart.innerHTML = buildBarChartSvg(
-      summary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })),
-      { width, color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: i18n.perfNoData, rtl: chartRtl, animate }
+      summary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })),
+      { width, color: 'var(--color-primary)', valueFormatter: fmtAgorot, emptyMessage: i18n.perfNoData, rtl: chartRtl, animate }
     );
     armEntrance(revenueChart);
   }
@@ -265,9 +271,9 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
   const visitorsEl = document.getElementById('perf-kpi-visitors');
   const uniqueEl = document.getElementById('perf-kpi-unique');
   const conversionEl = document.getElementById('perf-kpi-conversion');
-  if (revenueEl) revenueEl.textContent = formatPrice(summary.totalRevenue);
+  if (revenueEl) revenueEl.textContent = fmtAgorot(summary.totalRevenueAgorot);
   if (ordersEl) ordersEl.textContent = String(summary.totalOrders);
-  if (avgEl) avgEl.textContent = formatPrice(summary.avgOrderValue);
+  if (avgEl) avgEl.textContent = fmtAgorot(summary.avgOrderValueAgorot);
   if (visitorsEl) visitorsEl.textContent = String(summary.totalViews);
   if (uniqueEl) uniqueEl.textContent = String(summary.totalUniqueVisitors);
   if (conversionEl) conversionEl.textContent = `${summary.conversionRate.toFixed(1)}%`;
@@ -277,10 +283,10 @@ function renderSummary(summary: PerformanceSummary, i18n: Record<string, string>
   const commissionEl = document.getElementById('perf-commission');
   const commissionRateEl = document.getElementById('perf-commission-rate');
   const netEl = document.getElementById('perf-net');
-  if (grossEl) grossEl.textContent = formatPrice(summary.totalRevenue);
-  if (commissionEl) commissionEl.textContent = `(${formatPrice(summary.platformCommission)})`;
+  if (grossEl) grossEl.textContent = fmtAgorot(summary.totalRevenueAgorot);
+  if (commissionEl) commissionEl.textContent = `(${fmtAgorot(summary.platformCommissionAgorot)})`;
   if (commissionRateEl) commissionRateEl.textContent = String(summary.commissionRate);
-  if (netEl) netEl.textContent = formatPrice(summary.netProfit);
+  if (netEl) netEl.textContent = fmtAgorot(summary.netProfitAgorot);
 
   paintCharts(summary, i18n, true);
 
@@ -386,7 +392,7 @@ function initBreakdownModal(storeSlug: string, endpoint: string, i18n: Record<st
     const name = seg.getAttribute('data-label') ?? '';
     const pct = seg.getAttribute('data-pct') ?? '0';
     const amount = Number(seg.getAttribute('data-amount') ?? '0');
-    showTooltipAtPoint(e.clientX, e.clientY, `${name}: ${pct}% · ${formatPrice(amount)}`);
+    showTooltipAtPoint(e.clientX, e.clientY, `${name}: ${pct}% · ${fmtAgorot(amount)}`);
   };
   body.addEventListener('mouseover', (e) => {
     const seg = (e.target as Element).closest('.donut-seg');
@@ -448,7 +454,7 @@ function initBreakdownModal(storeSlug: string, endpoint: string, i18n: Record<st
       // gross top-5 sum from it to synthesise a remainder would mix two bases
       // and could go negative. This is honestly a "top products share" donut.
       const colors = sliceColors(tops.length);
-      const slices = tops.map((p, i) => ({ label: p.name, value: p.revenue, color: colors[i], units: p.units }));
+      const slices = tops.map((p, i) => ({ label: p.name, value: p.revenueAgorot, color: colors[i], units: p.units }));
       const total = slices.reduce((a, b) => a + b.value, 0);
       paint(renderSlices(slices, total));
     } catch {
@@ -537,8 +543,8 @@ export function initPerformanceTab(): void {
     const viewsEl = document.getElementById('pperf-views-chart');
     if (revEl) {
       revEl.innerHTML = buildBarChartSvg(
-        ps.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })),
-        { width: pProdWidth('pperf-revenue-chart'), color: 'var(--color-primary)', valueFormatter: formatPrice, emptyMessage: i18n.perfNoData, rtl: chartRtl, animate },
+        ps.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })),
+        { width: pProdWidth('pperf-revenue-chart'), color: 'var(--color-primary)', valueFormatter: fmtAgorot, emptyMessage: i18n.perfNoData, rtl: chartRtl, animate },
       );
     }
     if (viewsEl) {
@@ -554,7 +560,7 @@ export function initPerformanceTab(): void {
     const set = (id: string, text: string) => { const el = document.getElementById(id); if (el) el.textContent = text; };
     set('pperf-kpi-views', String(ps.totalViews));
     set('pperf-kpi-units', String(ps.totalUnits));
-    set('pperf-kpi-revenue', formatPrice(ps.totalRevenue));
+    set('pperf-kpi-revenue', fmtAgorot(ps.totalRevenueAgorot));
     set('pperf-kpi-conversion', `${ps.conversionRate.toFixed(1)}%`);
     if (productEmpty) productEmpty.hidden = true;
     if (productResult) productResult.hidden = false;

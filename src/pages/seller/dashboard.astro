@@ -47,7 +47,8 @@ import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../lib/
 import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../lib/seller-orders-query.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../lib/seller-messages-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
-import { storeSliceTotal } from '../../lib/order-totals.js';
+import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+import { formatAgorot } from '../../lib/money.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { LOW_STOCK_THRESHOLD, comboStockRows, isFullyPerCombo, sumComboOverrides, type VariantDimension } from '../../lib/variant-combo.js';
@@ -254,7 +255,7 @@ const storeCategoryList = store ? await getCategoriesByStoreId(store.id) : [];
 const categoryTree = buildCategoryTree(storeCategoryList);
 const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
 const wishlistCounts = store ? getAllWishlistCounts() : ({} as Record<string, number>);
-const purchasedCounts = store ? getPurchasedCountsByStoreSlug(store.slug) : ({} as Record<string, number>);
+const purchasedCounts = store ? await getPurchasedCountsByStoreSlug(store.slug) : ({} as Record<string, number>);
 const storeFavoriteCount = store ? getFavoriteStoreCount(store.slug) : 0;
 const productCount = products.length;
 const inStockCount = products.filter((p) => p.stock > 0).length;
@@ -352,7 +353,7 @@ const messagesPage = paginate(filteredMessageRows, parsePage(Astro.url.searchPar
 // rows live in the DOM at a time.
 const msgDistinctProducts = [...new Set(messageRows.map((r) => r.productName))].sort((a, b) => a.localeCompare(b, 'he'));
 const msgDistinctFrom = [...new Set(messageRows.map((r) => r.fromName))].sort((a, b) => a.localeCompare(b, 'he'));
-const storeOrders: Order[] = store ? getOrdersByStoreSlug(store.slug) : [];
+const storeOrders: Order[] = store ? await getOrdersByStoreSlug(store.slug) : [];
 
 // Performance tab — SSR renders the default "this month" range so it's never
 // a blank flash before JS runs; range-picker changes re-fetch from
@@ -389,7 +390,7 @@ const adBaseline = store
 // costs them. Open orders are read once here so the "close" path can say up front how many
 // remain — the API re-reads them at the moment of the click, which is the count that decides.
 const lifecycleState = store ? storeLifecycle(store) : 'active';
-const lifecycleOpenOrders = store ? openOrderCount(store.slug) : 0;
+const lifecycleOpenOrders = store ? await openOrderCount(store.slug) : 0;
 const lifecycleStateLabel =
   lifecycleState === 'paused'  ? d.lcStatePaused
   : lifecycleState === 'closing' ? d.lcStateClosing
@@ -452,7 +453,7 @@ const perfIsRtl = getDir(lang) === 'rtl';
 // animates instead (performance.ts, paintedOnce).
 const perfChartOpts = { emptyMessage: d.perfNoData, rtl: perfIsRtl, animate: false };
 const perfRevenueChartSvg = perfSummary
-  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenue, key: p.key })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice })
+  ? buildBarChartSvg(perfSummary.points.map((p) => ({ label: p.label, value: p.revenueAgorot, key: p.key })), { ...perfChartOpts, color: 'var(--color-primary)', valueFormatter: formatPrice })
   : '';
 // Orders over time — the same buckets as the revenue bars, in the OTHER unit. Revenue alone
 // cannot tell "five big baskets" from "fifty small ones", and that is the difference between a
@@ -1652,7 +1653,7 @@ const orderStatusColors: Record<string, string> = {
               const shortId    = order.checkoutRef ?? order.id.slice(0, 8).toUpperCase();
               const noteList   = orderStoreNotes(order, store!.slug);
               return (
-                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotal(storeSub)}>
+                <div class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]" data-order-id={order.id} data-store-slug={store!.slug} data-shipping-status={order.shippingStatus} data-sort-date={order.createdAt} data-sort-amount={storeSliceTotalAgorot(storeSub)}>
                   <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
                     {/* No fixed width below 640px: the grid's first column already sizes
                         to this content, and the 5rem the desktop row uses wrapped the
@@ -1695,7 +1696,7 @@ const orderStatusColors: Record<string, string> = {
                           as the id and date above it — owner: a price in a slot of its own
                           "לא קשור לכלום". */}
                       <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
-                        <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatPrice(storeSliceTotal(storeSub))}</span>
+                        <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatAgorot(storeSliceTotalAgorot(storeSub))}</span>
                         <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
                           <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(order.createdAt, order.shippingStatus, lang)} />
                           <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)]" title={noteList.join('\n') || undefined} aria-label={d.orderNoteLabel} hidden={noteList.length === 0}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
@@ -1724,7 +1725,7 @@ const orderStatusColors: Record<string, string> = {
                           data-buyer-street={order.buyerAddress.street}
                           data-buyer-zip={order.buyerAddress.zip ?? ''}
                           data-items={JSON.stringify(storeItems)}
-                          data-shipping={String(storeSub?.shipping ?? 0)}
+                          data-shipping-agorot={String(storeSub?.shippingAgorot ?? 0)}
                           data-discount-type={storeSub?.discount?.type ?? 'percent'}
                           data-discount-value={String(storeSub?.discount?.value ?? 0)}
                           style="font-size:0.75rem"
@@ -1746,18 +1747,18 @@ const orderStatusColors: Record<string, string> = {
                             {item.image && <img src={cdnThumb(item.image, 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
                             <span class="flex-1 text-[color:var(--color-text)]">{item.productName}</span>
                             <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
-                            <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(item.price * item.qty)}</span>
+                            <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatAgorot(item.priceAgorot * item.qty)}</span>
                           </li>
                         ))}
                       </ul>
                       {storeSub && (
                         <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
-                          <span>{d.orderShipping}: {storeSub.shipping === 0 ? d.orderShippingFree : formatPrice(storeSub.shipping)}</span>
+                          <span>{d.orderShipping}: {storeSub.shippingAgorot === 0 ? d.orderShippingFree : formatAgorot(storeSub.shippingAgorot)}</span>
                           {/* The three renderers of this row (here, buildOrderCard, and the
                               post-save patch in orders.ts) must stay identical — the discount
                               line and the total both used to exist in only one of them. */}
-                          {storeSub.discount?.applied ? <span class="text-[color:var(--color-success)]">{d.orderEditDiscount}: −{formatPrice(storeSub.discount.applied)}</span> : null}
-                          <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatPrice(storeSliceTotal(storeSub))}</strong>
+                          {storeSub.discount?.appliedAgorot ? <span class="text-[color:var(--color-success)]">{d.orderEditDiscount}: −{formatAgorot(storeSub.discount.appliedAgorot)}</span> : null}
+                          <strong class="text-[color:var(--color-text)] text-[0.9375rem]">{d.orderTotal}: {formatAgorot(storeSliceTotalAgorot(storeSub))}</strong>
                         </div>
                       )}
                     </div>
@@ -1862,7 +1863,7 @@ const orderStatusColors: Record<string, string> = {
         <dl id="perf-kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5" aria-live="polite" aria-busy={perfSummary ? undefined : 'true'}>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfRevenue}</dt>
-            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue" data-skel={SKEL.revenue}>{perfSummary ? formatPrice(perfSummary.totalRevenue) : <SkelBar class={SKEL.revenue} />}</dd>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-revenue" data-skel={SKEL.revenue}>{perfSummary ? formatAgorot(perfSummary.totalRevenueAgorot) : <SkelBar class={SKEL.revenue} />}</dd>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfOrders}</dt>
@@ -1870,7 +1871,7 @@ const orderStatusColors: Record<string, string> = {
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.perfAvgOrder}</dt>
-            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg" data-skel={SKEL.avg}>{perfSummary ? formatPrice(perfSummary.avgOrderValue) : <SkelBar class={SKEL.avg} />}</dd>
+            <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-avg" data-skel={SKEL.avg}>{perfSummary ? formatAgorot(perfSummary.avgOrderValueAgorot) : <SkelBar class={SKEL.avg} />}</dd>
           </div>
           <div class="border [border-color:var(--color-border)] rounded-[var(--radius)] p-3">
             <div class="flex items-center gap-1 mb-1">
@@ -1915,15 +1916,15 @@ const orderStatusColors: Record<string, string> = {
           <dl class="m-0 flex flex-col gap-2 text-[0.86rem]">
             <div class="flex items-center justify-between gap-3">
               <dt class="[color:var(--color-muted)]">{d.perfGrossRevenue}</dt>
-              <dd class="m-0 font-medium" id="perf-gross" data-skel={SKEL.gross}>{perfSummary ? formatPrice(perfSummary.totalRevenue) : <SkelBar class={SKEL.gross} />}</dd>
+              <dd class="m-0 font-medium" id="perf-gross" data-skel={SKEL.gross}>{perfSummary ? formatAgorot(perfSummary.totalRevenueAgorot) : <SkelBar class={SKEL.gross} />}</dd>
             </div>
             <div class="flex items-center justify-between gap-3">
               <dt class="[color:var(--color-muted)]">{d.perfCommission} <span class="text-[0.78rem]">(<span id="perf-commission-rate" data-skel={SKEL.rate}>{perfSummary ? perfSummary.commissionRate : <SkelBar class={SKEL.rate} />}</span>%)</span></dt>
-              <dd class="m-0 font-medium" id="perf-commission" data-skel={SKEL.commission}>{perfSummary ? `(${formatPrice(perfSummary.platformCommission)})` : <SkelBar class={SKEL.commission} />}</dd>
+              <dd class="m-0 font-medium" id="perf-commission" data-skel={SKEL.commission}>{perfSummary ? `(${formatAgorot(perfSummary.platformCommissionAgorot)})` : <SkelBar class={SKEL.commission} />}</dd>
             </div>
             <div class="flex items-center justify-between gap-3 pt-2 border-t [border-color:var(--color-border)]">
               <dt class="font-semibold">{d.perfNetProfit}</dt>
-              <dd class="m-0 font-bold text-[1.02rem] [color:var(--color-success)]" id="perf-net" data-skel={SKEL.net}>{perfSummary ? formatPrice(perfSummary.netProfit) : <SkelBar class={SKEL.net} />}</dd>
+              <dd class="m-0 font-bold text-[1.02rem] [color:var(--color-success)]" id="perf-net" data-skel={SKEL.net}>{perfSummary ? formatAgorot(perfSummary.netProfitAgorot) : <SkelBar class={SKEL.net} />}</dd>
             </div>
           </dl>
         </div>
@@ -1966,14 +1967,14 @@ const orderStatusColors: Record<string, string> = {
               <p class="muted text-[0.85rem] m-0">{d.perfTopProductsEmpty}</p>
             )}
             {perfSummary?.topProducts.map((tp, tpIdx) => {
-              const totalRevenue = Math.max(perfSummary.topProducts.reduce((s, x) => s + x.revenue, 0), 1);
-              const pct = Math.round((tp.revenue / totalRevenue) * 100);
+              const totalRevenueAgorot = Math.max(perfSummary.topProducts.reduce((s, x) => s + x.revenueAgorot, 0), 1);
+              const pct = Math.round((tp.revenueAgorot / totalRevenueAgorot) * 100);
               return (
                 <div class="relative rounded-[var(--radius)] border [border-color:var(--color-border)] overflow-hidden">
                   <div class="absolute inset-y-0 start-0 [background:color-mix(in_srgb,var(--color-primary)_12%,transparent)] animate-top-bar-grow" style={`width:${pct}%;--tw:${pct}%;animation-delay:${Math.min(tpIdx * 60, 300)}ms`}></div>
                   <div class="relative flex items-center justify-between gap-3 py-2 px-3 text-[0.85rem]">
                     <span class="font-medium overflow-hidden text-ellipsis whitespace-nowrap">{tp.name}</span>
-                    <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{pct}%</strong> · {tp.units} {d.perfUnitsSold} · {formatPrice(tp.revenue)}</span>
+                    <span class="shrink-0 [color:var(--color-muted)]"><strong class="[color:var(--color-text)]">{pct}%</strong> · {tp.units} {d.perfUnitsSold} · {formatPrice(tp.revenueAgorot)}</span>
                   </div>
                 </div>
               );

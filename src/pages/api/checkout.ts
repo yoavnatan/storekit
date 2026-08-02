@@ -19,7 +19,8 @@ import { recordAnalyticsEvent } from '../../lib/analytics.js';
 import { effectivePrice } from '../../lib/discounts.js';
 import { claimCheckout, completeCheckout, releaseCheckout, isValidIdempotencyKey, checkoutOwner } from '../../lib/checkout-idempotency.js';
 import { recordMoneyEvent } from '../../lib/money-events.js';
-import { roundMoney, sumMoney } from '../../lib/money.js';
+import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+import { toAgorot, fromAgorot, formatAgorot } from '../../lib/money.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -265,10 +266,12 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // like the storefront derives the displayed one — never `product.price` (which is the
     // pre-discount figure) and never the client's number. A sale that ended between page load
     // and submit therefore charges full price, and one that started charges the lower one.
-    // Rounded to agorot at the point it becomes the charged price (lib/money.ts): a
-    // percent-discount price is a raw division, and letting that tail through means
-    // the line total, the subtotal and the amount handed to the gateway all carry it.
-    const unitPrice = roundMoney(effectivePrice(product, store.sale));
+    // Converted to integer agorot at the point it becomes the CHARGED price (lib/money.ts): a
+    // percent-discount price is a raw division, so this is the last moment the amount is allowed
+    // to be fractional. Everything downstream of this line — the line total, the subtotal, the
+    // grand total handed to the gateway, the order rows and the journal — is an integer, so the
+    // tail cannot re-enter and there is nothing left to round a second time.
+    const unitPriceAgorot = toAgorot(effectivePrice(product, store.sale));
 
     orderItems.push({
       productId:   product.id,
@@ -276,7 +279,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       productSlug: product.slug,
       storeSlug:   store.slug,
       storeName:   store.name,
-      price:       unitPrice,
+      priceAgorot: unitPriceAgorot,
       qty,
       image:       product.images?.[0],
       ...(selectedVariants ? { selectedVariants } : {}),
@@ -286,9 +289,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // cart under an old slug, the subtotals/shipping/order grouping all stay consistent with the
     // order items (which also record store.slug).
     if (!storeSubtotals[store.slug]) {
-      storeSubtotals[store.slug] = { storeName: store.name, subtotal: 0, shipping: 0 };
+      storeSubtotals[store.slug] = { storeName: store.name, subtotalAgorot: 0, shippingAgorot: 0 };
     }
-    storeSubtotals[store.slug]!.subtotal = roundMoney(storeSubtotals[store.slug]!.subtotal + unitPrice * qty);
+    storeSubtotals[store.slug]!.subtotalAgorot += unitPriceAgorot * qty;
   }
 
   // Delivery method + shipping price per store — server-authoritative. The buyer's chosen
@@ -298,14 +301,14 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const clientMethods = (deliveryMethods && typeof deliveryMethods === 'object' && !Array.isArray(deliveryMethods))
     ? deliveryMethods as Record<string, unknown>
     : {};
-  let totalShipping = 0;
   for (const [storeSlug, data] of Object.entries(storeSubtotals)) {
     const store = await getStoreBySlug(storeSlug);
     const offersSelfPickup = !!store?.shipping?.selfPickup && !!store?.address;
     const method = normalizeDeliveryMethod(clientMethods[storeSlug], offersSelfPickup);
     data.deliveryMethod = method;
-    data.shipping = shippingPrice(method);
-    totalShipping += data.shipping;
+    // `shippingPrice` is a config rate in ILS — the last ILS number to enter the pipeline, and it
+    // converts here rather than being trusted to already be whole agorot.
+    data.shippingAgorot = toAgorot(shippingPrice(method));
   }
 
   const buyerData = {
@@ -339,18 +342,25 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // decline rolls back the stock reserved above so no order exists for an unpaid cart.
     // NOTE: once a real provider charges here, a downstream throw after a SUCCESSFUL
     // charge will need a refund/void — add that alongside the real provider swap.
-    const grandTotal = sumMoney(Object.values(storeSubtotals).flatMap((d) => [d.subtotal, d.shipping]));
+    // Through `storeSliceTotalAgorot`, not inline: it is THE definition of what one store's slice
+    // came to, and every surface that shows an order total already reads it. An inline
+    // `subtotal + shipping` here is the shape that drifted from it three times before
+    // (tests/order-total-single-source.test.ts fails on a new one).
+    const grandTotalAgorot = Object.values(storeSubtotals).reduce((sum, d) => sum + storeSliceTotalAgorot(d), 0);
     // The key travels to the provider too, so the gateway's OWN de-duplication backs
     // up ours: if our ledger write is lost between charging and recording, the retry
     // still reaches a provider that recognises the key and refuses to charge twice.
-    const payment = await paymentProvider.charge({ amount: grandTotal, checkoutRef, buyerEmail: buyerData.buyerEmail, idempotencyKey });
+    // The provider is handed ILS, because that is the unit a payment gateway's API speaks and the
+    // unit the buyer's statement will show. This is a render/hand-off boundary, exactly like the
+    // screen: `fromAgorot` once, at the edge, off an integer that is already exact.
+    const payment = await paymentProvider.charge({ amount: fromAgorot(grandTotalAgorot), checkoutRef, buyerEmail: buyerData.buyerEmail, idempotencyKey });
     // Journalled whether it succeeded or failed — a decline is exactly the kind of
     // event that is invisible afterwards (no order row is left behind to show it
     // happened) and exactly what someone asks about later.
     await recordMoneyEvent({
       type: 'payment_attempted',
       checkoutRef,
-      amount: grandTotal,
+      amountAgorot: grandTotalAgorot,
       actor: 'buyer',
       detail: payment.ok ? `approved ref=${payment.paymentRef ?? '—'}` : `declined: ${payment.error ?? 'unknown'}`,
     });
@@ -359,16 +369,16 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // Create one order per store so each seller owns a separate, isolated order
     for (const [storeSlug, sub] of Object.entries(storeSubtotals)) {
       const storeItems = orderItems.filter((i) => i.storeSlug === storeSlug);
-      const storeTotalAmount = sumMoney([sub.subtotal, sub.shipping]);
-      const storeOrder = createOrder({
+      const storeTotalAgorot = storeSliceTotalAgorot(sub);
+      const storeOrder = await createOrder({
         ...buyerData,
         checkoutRef,
         paymentStatus: 'paid',
         paymentRef: payment.paymentRef,
         items: storeItems,
         storeSubtotals: { [storeSlug]: sub },
-        shippingAmount: sub.shipping,
-        totalAmount:    storeTotalAmount,
+        shippingAgorot: sub.shippingAgorot,
+        totalAgorot:    storeTotalAgorot,
       });
       orderIds.push(storeOrder.id);
       createdOrders.push(storeOrder);
@@ -377,7 +387,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         orderId: storeOrder.id,
         checkoutRef,
         storeSlug,
-        amount: storeTotalAmount,
+        amountAgorot: storeTotalAgorot,
         to: 'paid',
         actor: 'buyer',
         detail: `${storeItems.length} item(s); paymentRef=${payment.paymentRef ?? '—'}`,
@@ -390,7 +400,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           role: 'seller',
           type: 'new_order',
           title: 'הזמנה חדשה!',
-          body: `הזמנה מ-${buyerData.buyerName} על סך ${storeTotalAmount.toFixed(2)} ₪`,
+          body: `הזמנה מ-${buyerData.buyerName} על סך ${formatAgorot(storeTotalAgorot)}`,
           relatedId: storeOrder.id,
           storeSlug: store.slug,
           storeName: store.name,

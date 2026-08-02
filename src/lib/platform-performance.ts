@@ -9,7 +9,6 @@ import {
   type TopProduct,
 } from './seller-performance.js';
 import { blendedCommissionRate, commissionPercentForTier } from './pricing.js';
-import { roundMoney } from './money.js';
 
 // Platform-wide ("app-wide") twin of seller-performance.ts's per-store summary,
 // for the ADMIN performance tab. It does NOT re-implement any of the bucketing/
@@ -65,7 +64,7 @@ export interface PlatformStoreRow {
   blocked: boolean;
   /** What the row's badge says (lib/store-state-badge.ts). Additive next to `blocked`. */
   state?: StoreLifecycle;
-  revenue: number;      // net of seller discount, paid orders only (same basis as seller tab)
+  revenueAgorot: number;      // net of seller discount, paid orders only (same basis as seller tab)
   orders: number;       // orders that included this store, in range
   views: number;        // store page views in range
   conversionRate: number; // orders / unique-visitors * 100 (per-store, from buildPerformanceSummary)
@@ -78,9 +77,9 @@ export interface PlatformStoreRow {
 export interface PlatformPerformance {
   // Aggregated across every store — identical shape to a single store's summary
   // so the exact same charts / KPI markup / client script (performance.ts) can
-  // render it unchanged. `platformCommission`/`netProfit` are re-purposed by the
+  // render it unchanged. `platformCommissionAgorot`/`netProfitAgorot` are re-purposed by the
   // admin panel's LABELS: at platform level the commission is the platform's own
-  // income and netProfit is what gets paid out to sellers (the numbers are the
+  // income and netProfitAgorot is what gets paid out to sellers (the numbers are the
   // same, only the framing differs from the seller's expense view).
   summary: PerformanceSummary;
   /** EVERY store, revenue-desc, each flagged `active` or not. Never rendered as-is —
@@ -100,6 +99,20 @@ export interface PlatformPerformance {
 export const STORE_ROWS_PAGE_SIZE = 10;
 
 export type StoreSortCol = 'name' | 'revenue' | 'orders' | 'views' | 'conversionRate';
+
+/** The row field each sortable column reads. `revenue` is the column a URL names; `revenueAgorot`
+ *  is the field that holds it. */
+const SORT_FIELD: Record<Exclude<StoreSortCol, 'name'>, keyof PlatformStoreRow> = {
+  revenue: 'revenueAgorot',
+  orders: 'orders',
+  views: 'views',
+  conversionRate: 'conversionRate',
+};
+
+function numericField(row: PlatformStoreRow, col: StoreSortCol): number {
+  if (col === 'name') return 0;
+  return Number(row[SORT_FIELD[col]] ?? 0);
+}
 const SORT_COLS: readonly StoreSortCol[] = ['name', 'revenue', 'orders', 'views', 'conversionRate'];
 
 export interface StoreRowsQuery {
@@ -157,7 +170,11 @@ export function selectStoreRows(rows: PlatformStoreRow[], query: StoreRowsQuery)
       // localeCompare with 'he' so Hebrew store names sort alphabetically rather
       // than by code point (which interleaves them arbitrarily against Latin ones).
       ? a.name.localeCompare(b.name, 'he') * dir
-      : (a[query.sort] - b[query.sort]) * dir
+      // The sort COLUMN is a URL value (`?sort=revenue`) and the FIELD it reads carries its unit
+      // (`revenueAgorot`). They were the same word until the unit flip; keeping them the same word
+      // would have meant renaming a public query parameter to say "agorot", which is nobody's
+      // business but this module's.
+      : (numericField(a, query.sort) - numericField(b, query.sort)) * dir
   ));
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / STORE_ROWS_PAGE_SIZE));
@@ -203,7 +220,7 @@ export function buildPlatformPerformance(
 
   const productMap = new Map<string, TopProduct>();
   const rows: PlatformStoreRow[] = [];
-  let totalRevenue = 0;
+  let totalRevenueAgorot = 0;
   // Orders are summed per store: a rare multi-store order counts toward each
   // store it touched, so the platform "orders" figure reconciles exactly with
   // the sum of the breakdown rows (what the owner sees when scanning the table).
@@ -218,8 +235,8 @@ export function buildPlatformPerformance(
     // platform product aggregation, so the platform top-N is a true top-N and
     // not a top-N-of-each-store's-top-5.
     const s = buildPerformanceSummary(orders, store.slug, fromISO, toISO, granularity, store.commissionPercent ?? 0, 0);
-    totalRevenue += s.totalRevenue;
-    totalCommission += s.platformCommission;
+    totalRevenueAgorot += s.totalRevenueAgorot;
+    totalCommission += s.platformCommissionAgorot;
     totalOrders += s.totalOrders;
     totalViews += s.totalViews;
     totalUniqueVisitors += s.totalUniqueVisitors;
@@ -227,15 +244,15 @@ export function buildPlatformPerformance(
     for (const p of s.points) {
       const i = keyIndex.get(p.key);
       if (i === undefined) continue;
-      points[i]!.revenue += p.revenue;
+      points[i]!.revenueAgorot += p.revenueAgorot;
       points[i]!.orders += p.orders;
       points[i]!.views += p.views;
       points[i]!.uniqueVisitors += p.uniqueVisitors;
     }
 
     for (const tp of s.topProducts) {
-      const entry = productMap.get(tp.productId) ?? { productId: tp.productId, name: tp.name, revenue: 0, units: 0 };
-      entry.revenue += tp.revenue;
+      const entry = productMap.get(tp.productId) ?? { productId: tp.productId, name: tp.name, revenueAgorot: 0, units: 0 };
+      entry.revenueAgorot += tp.revenueAgorot;
       entry.units += tp.units;
       productMap.set(tp.productId, entry);
     }
@@ -248,25 +265,24 @@ export function buildPlatformPerformance(
       name: store.name,
       blocked: store.blocked ?? false,
       state: store.state ?? storeLifecycle(store),
-      revenue: s.totalRevenue,
+      revenueAgorot: s.totalRevenueAgorot,
       orders: s.totalOrders,
       views: s.totalViews,
       conversionRate: s.conversionRate,
-      active: s.totalRevenue > 0 || s.totalOrders > 0 || s.totalViews > 0,
+      active: s.totalRevenueAgorot > 0 || s.totalOrders > 0 || s.totalViews > 0,
     });
   }
 
-  // Round every summed amount once, here, before anything sorts or divides by it —
-  // each addend arrived already rounded, but the running totals are float sums.
-  totalRevenue = roundMoney(totalRevenue);
-  for (const p of points) p.revenue = roundMoney(p.revenue);
-  for (const entry of productMap.values()) entry.revenue = roundMoney(entry.revenue);
-
-  const sortedProducts = [...productMap.values()].sort((a, b) => b.revenue - a.revenue);
+  // The rounding pass that used to close this block is gone with the unit: every addend is an
+  // integer number of agorot, so the running totals are exact and there is nothing to trim.
+  const sortedProducts = [...productMap.values()].sort((a, b) => b.revenueAgorot - a.revenueAgorot);
   const topProducts = topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts;
 
-  const platformCommission = roundMoney(totalCommission);
-  const netProfit = roundMoney(totalRevenue - platformCommission);
+  // Each store's commission was rounded to the agora against its OWN tier rate (that is why this
+  // sums per-store figures rather than applying one blended rate to the platform total), so the
+  // sum is already whole.
+  const platformCommissionAgorot = totalCommission;
+  const netProfitAgorot = totalRevenueAgorot - platformCommissionAgorot;
   // Conversion = orders / unique visitors (matches the seller tab's definition),
   // falling back to total views when no visitor ids exist (legacy/demo data).
   const conversionRate = totalUniqueVisitors > 0
@@ -276,20 +292,20 @@ export function buildPlatformPerformance(
   const summary: PerformanceSummary = {
     granularity,
     points,
-    totalRevenue,
+    totalRevenueAgorot,
     totalOrders,
-    avgOrderValue: totalOrders > 0 ? roundMoney(totalRevenue / totalOrders) : 0,
+    avgOrderValueAgorot: totalOrders > 0 ? Math.round(totalRevenueAgorot / totalOrders) : 0,
     totalViews,
     totalUniqueVisitors,
     conversionRate,
     topProducts,
     // Revenue-weighted actual, not any one tier's rate — the only honest headline across a
     // mixed-tier seller base (see pricing.ts#blendedCommissionRate).
-    commissionRate: blendedCommissionRate(totalRevenue, platformCommission),
-    platformCommission,
-    netProfit,
+    commissionRate: blendedCommissionRate(totalRevenueAgorot, platformCommissionAgorot),
+    platformCommissionAgorot,
+    netProfitAgorot,
   };
 
-  const sortedRows = rows.sort((a, b) => b.revenue - a.revenue);
+  const sortedRows = rows.sort((a, b) => b.revenueAgorot - a.revenueAgorot);
   return { summary, stores: sortedRows, totalStores: sortedRows.filter((r) => r.active).length };
 }

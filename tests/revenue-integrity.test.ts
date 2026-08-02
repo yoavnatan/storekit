@@ -33,10 +33,10 @@ const STORE = 'test-store';
 const baseOrder = (id: string, amount: number, over: Record<string, unknown> = {}) => ({
   id,
   buyerName: 'B', buyerEmail: 'b@x.test', buyerPhone: '0500000000', buyerAddress: 'A',
-  items: [{ productId: 'p1', productName: 'P', storeSlug: STORE, storeName: 'S', price: amount, qty: 1, image: '' }],
-  storeSubtotals: { [STORE]: { subtotal: amount, shipping: 0, total: amount } },
-  shippingAmount: 0,
-  totalAmount: amount,
+  items: [{ productId: 'p1', productName: 'P', storeSlug: STORE, storeName: 'S', priceAgorot: amount, qty: 1, image: '' }],
+  storeSubtotals: { [STORE]: { subtotalAgorot: amount, shippingAgorot: 0, total: amount } },
+  shippingAgorot: 0,
+  totalAgorot: amount,
   paymentStatus: 'paid',
   shippingStatus: 'delivered',
   createdAt: '2026-07-15T10:00:00.000Z',
@@ -51,8 +51,8 @@ describe('a cancelled order leaves every revenue surface', () => {
   it('is excluded from the seller Performance tab', () => {
     const withBoth = buildPerformanceSummary([live, cancelled], STORE, '2026-07-01', '2026-07-31', 'day');
     const liveOnly = buildPerformanceSummary([live], STORE, '2026-07-01', '2026-07-31', 'day');
-    expect(withBoth.totalRevenue).toBe(liveOnly.totalRevenue);
-    expect(withBoth.totalRevenue).toBe(100); // not 350
+    expect(withBoth.totalRevenueAgorot).toBe(liveOnly.totalRevenueAgorot);
+    expect(withBoth.totalRevenueAgorot).toBe(100); // not 350
     expect(withBoth.totalOrders).toBe(liveOnly.totalOrders);
   });
 
@@ -60,7 +60,7 @@ describe('a cancelled order leaves every revenue surface', () => {
     // `gmv` is the money figure; `totalOrders` is deliberately every row whatever
     // its state, so only paidOrders/gmv may shed the cancelled one.
     const overview = getPlatformOverview([], [], [live, cancelled]);
-    expect(overview.gmv).toBe(100); // not 350
+    expect(overview.gmvAgorot).toBe(100); // not 350
     expect(overview.paidOrders).toBe(1);
   });
 
@@ -70,7 +70,7 @@ describe('a cancelled order leaves every revenue surface', () => {
     // Per-store revenue is the store's NET (its subtotal less its own discount),
     // not the order's gross total — so the live order contributes its subtotal.
     const map = getStoreRevenueMap([live, cancelled]);
-    expect(map.get(STORE)?.totalRevenue ?? 0).toBe(100); // not 350
+    expect(map.get(STORE)?.totalRevenueAgorot ?? 0).toBe(100); // not 350
   });
 });
 
@@ -80,10 +80,10 @@ describe('units sold obeys the same rule as revenue', () => {
   // feed, so a product inflated by failed or cancelled orders pulls real ad budget.
   it('counts only genuinely sold units, not pending / failed / cancelled ones', () => {
     const mixed = [
-      baseOrder('sold', 10, { items: [{ productId: 'p1', storeSlug: STORE, qty: 2, price: 10, productName: 'P', storeName: 'S', image: '' }] }),
-      baseOrder('cancelled', 10, { shippingStatus: 'cancelled', items: [{ productId: 'p1', storeSlug: STORE, qty: 5, price: 10, productName: 'P', storeName: 'S', image: '' }] }),
-      baseOrder('unpaid', 10, { paymentStatus: 'pending', items: [{ productId: 'p1', storeSlug: STORE, qty: 7, price: 10, productName: 'P', storeName: 'S', image: '' }] }),
-      baseOrder('failed', 10, { paymentStatus: 'failed', items: [{ productId: 'p1', storeSlug: STORE, qty: 9, price: 10, productName: 'P', storeName: 'S', image: '' }] }),
+      baseOrder('sold', 10, { items: [{ productId: 'p1', storeSlug: STORE, qty: 2, priceAgorot: 10, productName: 'P', storeName: 'S', image: '' }] }),
+      baseOrder('cancelled', 10, { shippingStatus: 'cancelled', items: [{ productId: 'p1', storeSlug: STORE, qty: 5, priceAgorot: 10, productName: 'P', storeName: 'S', image: '' }] }),
+      baseOrder('unpaid', 10, { paymentStatus: 'pending', items: [{ productId: 'p1', storeSlug: STORE, qty: 7, priceAgorot: 10, productName: 'P', storeName: 'S', image: '' }] }),
+      baseOrder('failed', 10, { paymentStatus: 'failed', items: [{ productId: 'p1', storeSlug: STORE, qty: 9, priceAgorot: 10, productName: 'P', storeName: 'S', image: '' }] }),
     ];
     // 2 real units — not 23, which is what summing every order gave.
     expect(purchasedCountsFrom(mixed, STORE)['p1']).toBe(2);
@@ -100,13 +100,13 @@ describe('a legacy order row without storeSubtotals cannot take a reporting surf
   const live = baseOrder('o1', 100);
 
   it('the admin overview and per-store map skip it and still report the live order', () => {
-    expect(getPlatformOverview([], [], [live, legacy]).gmv).toBe(100);
-    expect(getStoreRevenueMap([live, legacy]).get(STORE)?.totalRevenue ?? 0).toBe(100);
+    expect(getPlatformOverview([], [], [live, legacy]).gmvAgorot).toBe(100);
+    expect(getStoreRevenueMap([live, legacy]).get(STORE)?.totalRevenueAgorot ?? 0).toBe(100);
   });
 
   it('the seller Performance tab skips it', () => {
     const summary = buildPerformanceSummary([live, legacy], STORE, '2026-07-01', '2026-07-31', 'day');
-    expect(summary.totalRevenue).toBe(100);
+    expect(summary.totalRevenueAgorot).toBe(100);
   });
 });
 

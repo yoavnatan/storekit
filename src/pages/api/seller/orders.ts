@@ -13,7 +13,8 @@ import { paginate, parsePage } from '../../../lib/pagination.js';
 import type { Order } from '../../../lib/orders.js';
 import { orderNetForStore } from '../../../lib/admin-stats.js';
 import { recordMoneyEvent } from '../../../lib/money-events.js';
-import { roundMoney, sumMoney, percentOf } from '../../../lib/money.js';
+import { storeSliceTotalAgorot } from '../../../lib/order-totals.js';
+import { toAgorot } from '../../../lib/money.js';
 import { SHIPPING_STATUS_RULES, canTransition, orderHoldsStock, type ShippingStatus } from '../../../lib/order-status-rules.js';
 import { isValidEmail } from '../../../lib/email-address.js';
 
@@ -47,7 +48,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // Use the store's CURRENT slug for all order work — orders migrate to it on rename, and the client
   // may still send an old (cached) slug (resolved above). Keeps scoping correct across a URL change.
   const storeSlug = store.slug;
-  const orders = getOrdersByStoreSlug(storeSlug);
+  const orders = await getOrdersByStoreSlug(storeSlug);
 
   // No ?page → the original unfiltered/unpaginated shape, used by the
   // 15s new-order poll (it needs to see every order regardless of the
@@ -98,7 +99,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   // else's store just by pairing its id with their own slug. 404, not 403: a caller with no claim
   // on this order learns nothing about whether it exists.
   // One read, reused below — nothing mutates the file before updateOrder() at the end.
-  const existing = getOrderById(orderId);
+  const existing = await getOrderById(orderId);
   if (!existing || !orderBelongsToStore(existing, storeSlug)) return json({ error: 'Order not found' }, 404);
 
   // Derived from the status table rather than re-listed here, so this endpoint can
@@ -164,16 +165,24 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     const newSubtotals = { ...original.storeSubtotals };
     if (newSubtotals[storeSlug]) {
       const storeItems = newItems.filter((i) => i.storeSlug === storeSlug);
-      const subtotal   = sumMoney(storeItems.map((i) => i.price * i.qty));
-      const shipping   = typeof shippingOverride === 'number' && shippingOverride >= 0
-        ? shippingOverride
-        : (newSubtotals[storeSlug]!.shipping);
+      const subtotalAgorot = storeItems.reduce((sum, i) => sum + i.priceAgorot * i.qty, 0);
+      // `shippingOverride` is a number the SELLER typed, so it arrives in ILS like every other
+      // form field and converts here — the same edge every other input crosses.
+      const shippingAgorot = typeof shippingOverride === 'number' && shippingOverride >= 0
+        ? toAgorot(shippingOverride)
+        : (newSubtotals[storeSlug]!.shippingAgorot);
 
       let discountEntry: StoreSubtotal['discount'] | undefined;
       if (discount && typeof discount === 'object' && !Array.isArray(discount)) {
         const d = discount as { type?: unknown; value?: unknown };
         const dtype = d.type === 'percent' || d.type === 'amount' ? d.type : undefined;
-        const dval  = typeof d.value === 'number' && d.value >= 0 ? d.value : 0;
+        // A percent is ROUNDED to whole points, which it was not before. `discount_percent` is an
+        // `integer` column, so 12.5 would have been stored as 12 without a word while `applied`
+        // stayed computed from 12.5 — and the seller's next edit of that order would recompute a
+        // different total off the rounded value, silently. This is the same rule every other
+        // discount input in the app already applies (discount-input.ts#clampDiscountValue).
+        const dvalRaw = typeof d.value === 'number' && d.value >= 0 ? d.value : 0;
+        const dval  = dtype === 'percent' ? Math.round(dvalRaw) : dvalRaw;
         if (dtype && dval > 0) {
           // Discounted against the SUBTOTAL, never subtotal + shipping. Two reasons,
           // and the second one was a live bug:
@@ -186,9 +195,13 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
           //      `subtotal − (subtotal + shipping)` = NEGATIVE revenue for that
           //      store, dragging the seller's chart, the platform GMV and the
           //      commission split below zero. Found by tests/reporting-fuzz.test.ts.
-          const base    = subtotal;
-          const applied = dtype === 'percent' ? Math.min(percentOf(base, dval), base) : Math.min(dval, base);
-          discountEntry = { type: dtype, value: dval, applied: roundMoney(applied) };
+          const base    = subtotalAgorot;
+          // Both branches land on an integer number of agorot: a percentage of an integer is
+          // rounded once, here, and a ₪-off value converts from what the seller typed.
+          const applied = dtype === 'percent'
+            ? Math.min(Math.round((base * dval) / 100), base)
+            : Math.min(toAgorot(dval), base);
+          discountEntry = { type: dtype, value: dval, appliedAgorot: applied };
         }
       } else if (discount === null) {
         // An explicit clear.
@@ -202,24 +215,24 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
         const existing = newSubtotals[storeSlug]!.discount;
         if (existing) {
           // Same base as the branch above — see its comment.
-          const base = subtotal;
+          const base = subtotalAgorot;
           const applied = existing.type === 'percent'
-            ? Math.min(percentOf(base, existing.value), base)
-            : Math.min(existing.value, base);
-          discountEntry = { ...existing, applied: roundMoney(applied) };
+            ? Math.min(Math.round((base * existing.value) / 100), base)
+            : Math.min(toAgorot(existing.value), base);
+          discountEntry = { ...existing, appliedAgorot: applied };
         }
       }
 
-      newSubtotals[storeSlug] = { ...newSubtotals[storeSlug]!, subtotal, shipping, discount: discountEntry };
+      newSubtotals[storeSlug] = { ...newSubtotals[storeSlug]!, subtotalAgorot, shippingAgorot, discount: discountEntry };
     }
 
-    const totalAmount = sumMoney(Object.values(newSubtotals).flatMap(
-      (st) => [st.subtotal, st.shipping, -(st.discount?.applied ?? 0)]
-    ));
+    // The same definition the seller's own card renders (order-totals.ts) — so the total this
+    // save writes and the total the card shows cannot be two different sums.
+    const totalAgorot = Object.values(newSubtotals).reduce((sum, st) => sum + storeSliceTotalAgorot(st), 0);
 
     updates['items'] = newItems;
     updates['storeSubtotals'] = newSubtotals;
-    updates['totalAmount'] = totalAmount;
+    updates['totalAgorot'] = totalAgorot;
   }
 
   if (Object.keys(updates).length === 0) {
@@ -242,7 +255,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     if (!verdict.ok) return json({ error: verdict.reason }, 409);
   }
 
-  const updated = updateOrder(orderId, updates as Parameters<typeof updateOrder>[1]);
+  const updated = await updateOrder(orderId, updates as Parameters<typeof updateOrder>[1]);
   if (!updated) return json({ error: 'Order not found' }, 404);
 
   // Journal every money-relevant mutation before acting on it (lib/money-events.ts).
@@ -256,7 +269,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
       orderId,
       checkoutRef: updated.checkoutRef,
       storeSlug,
-      amount: orderNetForStore(updated, storeSlug),
+      amountAgorot: orderNetForStore(updated, storeSlug),
       from: prevStatus,
       to: updated.shippingStatus,
       actor: sellerId,
@@ -272,7 +285,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
       orderId,
       checkoutRef: updated.checkoutRef,
       storeSlug,
-      amount: newNet,
+      amountAgorot: newNet,
       from: String(prevNet),
       to: String(newNet),
       actor: sellerId,

@@ -10,7 +10,7 @@
 import type { AdminSortDir, AdminStoreSortCol, StoreRow, StoreStateFilter } from '../../lib/admin-stats.js';
 import { STORE_STATE_FILTERS } from '../../lib/admin-stats.js';
 import { storeLifecycle } from '../../lib/store-status.js';
-import { formatPrice } from '../../config/store.config.js';
+import { formatAgorot } from '../../lib/money.js';
 import AdminPager from './AdminPager.astro';
 import StoreAvatar from '../StoreAvatar.astro';
 import AdminStoreStateBadge from './AdminStoreStateBadge.astro';
@@ -137,8 +137,8 @@ const promoLabel = (w: number): string => promoLabels[Math.max(0, Math.min(2, w)
             ) : (
               <span class="admin-store-row__count">{productCount} מוצרים</span>
             )}
-            <span class="admin-store-row__revenue"><span class="admin-store-row__revenue-label">סה"כ הכנסות:</span> {formatPrice(revenue.totalRevenue)}</span>
-            <span class="admin-store-row__revenue"><span class="admin-store-row__revenue-label">הכנסות החודש:</span> {formatPrice(revenue.monthRevenue)}</span>
+            <span class="admin-store-row__revenue"><span class="admin-store-row__revenue-label">סה"כ הכנסות:</span> {formatAgorot(revenue.totalRevenueAgorot)}</span>
+            <span class="admin-store-row__revenue"><span class="admin-store-row__revenue-label">הכנסות החודש:</span> {formatAgorot(revenue.monthRevenueAgorot)}</span>
             {/* All row actions moved into one three-dot kebab menu (CURRENT_TASK
                 admin item) — the row was blown up with 5 inline actions, leaving no
                 room for the important numbers. The menu is the shared floating-portal

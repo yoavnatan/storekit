@@ -17,10 +17,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const SUMMARY = {
   granularity: 'day',
-  points: [{ key: '2026-07-01', label: '1.7', revenue: 1000, orders: 4, views: 90, uniqueVisitors: 60 }],
-  totalRevenue: 1000, totalOrders: 4, avgOrderValue: 250, totalViews: 90,
+  points: [{ key: '2026-07-01', label: '1.7', revenueAgorot: 1000, orders: 4, views: 90, uniqueVisitors: 60 }],
+  totalRevenueAgorot: 1000, totalOrders: 4, avgOrderValueAgorot: 250, totalViews: 90,
   totalUniqueVisitors: 60, conversionRate: 4.4, topProducts: [],
-  commissionRate: 10, platformCommission: 100, netProfit: 900,
+  commissionRate: 10, platformCommissionAgorot: 100, netProfitAgorot: 900,
 };
 
 /** The parts of the panel this path actually touches, as the server renders them. */

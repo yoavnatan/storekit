@@ -16,12 +16,19 @@
  * The rule: any amount that is SUMMED, or that leaves this codebase (stored on an
  * order, returned from an API, rendered, charged), goes through `roundMoney`.
  *
- * ⚠️ This is the interim fix, not the end state. The real answer is to store money
- * as integer agorot and never hold a fractional amount at all — that removes the
- * error instead of trimming it. It is deliberately deferred to the DB migration
- * (DB_MIGRATION_PLAN.md), because changing the stored unit is a column-type change
- * and doing it on JSON first would mean migrating the same data twice.
+ * ⚠️ **This is the interim fix for what is LEFT, and what is left is shrinking.** The real answer
+ * is to hold money as integer agorot and never carry a fractional amount at all — that removes the
+ * error instead of trimming it. As of the `orders` migration the whole money PIPELINE has done
+ * that: order totals, line prices, per-store subtotals, discounts as applied, the journal's
+ * amounts, and every revenue/GMV/commission figure summed from them are integers now, and none of
+ * them passes through `roundMoney` any more, because integers add up exactly.
+ *
+ * What still runs on ILS floats is the two ends the unit was never the point of — the numbers a
+ * seller TYPES (a product price, a discount value, an ad budget) and the numbers a person READS.
+ * Those still round, here, on the way in and out. The remaining `roundMoney` call sites are ad
+ * spend and product pricing; they follow when their own modules move.
  */
+import { formatPrice } from '../config/store.config.js';
 
 /** An ILS amount rounded to agorot. The `+ Number.EPSILON` nudge keeps values that
  *  land a hair BELOW a half-agora (0.145 stored as 0.1449999…) from rounding down. */
@@ -65,4 +72,19 @@ export function toAgorot(ils: number): number {
 export function fromAgorot(agorot: number): number {
   const n = Number(agorot);
   return Number.isFinite(n) ? n / 100 : 0;
+}
+
+/**
+ * An agorot amount, rendered.
+ *
+ * **This is where the money pipeline ends and the screen begins**, and it exists as its own name
+ * so that boundary is greppable. Since `orders` moved (DB_MIGRATION_PLAN.md §8), every amount that
+ * is stored, summed, compared or journalled is an integer number of agorot; every amount that is
+ * shown to a person is ILS. A bare `formatPrice(order.totalAgorot)` would print 27151 ₪ for a
+ * 271.51 ₪ order — right shape, no type error, off by a hundred — so the two units do not share a
+ * formatter. `formatPrice` still takes ILS, for the prices that are still ILS (a product's price
+ * as the seller typed it, a shipping rate from config).
+ */
+export function formatAgorot(agorot: number): string {
+  return formatPrice(fromAgorot(agorot));
 }

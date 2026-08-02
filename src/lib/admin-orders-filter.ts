@@ -47,8 +47,8 @@ export function filterAndSortOrders(orders: Order[], query: AdminOrderQuery): Or
   const col = query.sortCol ?? 'date';
   const dir = query.sortDir ?? 'desc';
   return filtered.sort((a, b) => {
-    const va = col === 'amount' ? a.totalAmount : col === 'shippingStatus' ? (SHIPPING_RANK[a.shippingStatus] ?? 99) : a.createdAt;
-    const vb = col === 'amount' ? b.totalAmount : col === 'shippingStatus' ? (SHIPPING_RANK[b.shippingStatus] ?? 99) : b.createdAt;
+    const va = col === 'amount' ? a.totalAgorot : col === 'shippingStatus' ? (SHIPPING_RANK[a.shippingStatus] ?? 99) : a.createdAt;
+    const vb = col === 'amount' ? b.totalAgorot : col === 'shippingStatus' ? (SHIPPING_RANK[b.shippingStatus] ?? 99) : b.createdAt;
     const cmp = va < vb ? -1 : va > vb ? 1 : 0;
     return dir === 'asc' ? cmp : -cmp;
   });

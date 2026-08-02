@@ -4,7 +4,8 @@
 // every email the platform sends. No I/O.
 
 import type { Order } from '../orders.js';
-import { store, formatPrice, cdnSrc } from '../../config/store.config.js';
+import { store, cdnSrc } from '../../config/store.config.js';
+import { formatAgorot } from '../money.js';
 import { esc, emailColors as C } from './template.js';
 
 /** Canonical site origin (no trailing slash) — links back to the platform/stores. */
@@ -53,7 +54,7 @@ ${thumbCell(it.image)}
 <td style="padding:10px 12px;border-top:1px solid ${C.border};text-align:right;font-size:14px;">
 <strong>${esc(it.productName)}</strong> <span style="color:${C.muted};font-weight:600;">× ${it.qty}</span>${variants}
 </td>
-<td style="padding:10px 0;border-top:1px solid ${C.border};text-align:left;font-size:14px;white-space:nowrap;vertical-align:top;">${esc(formatPrice(it.price * it.qty))}</td>
+<td style="padding:10px 0;border-top:1px solid ${C.border};text-align:left;font-size:14px;white-space:nowrap;vertical-align:top;">${esc(formatAgorot(it.priceAgorot * it.qty))}</td>
 </tr>`;
   }).join('');
 }

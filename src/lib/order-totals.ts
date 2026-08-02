@@ -1,12 +1,13 @@
-import { sumMoney } from './money.js';
-
 /** The three fields the total is made of — structural on purpose, so the client renderers can pass
- *  their own narrower JSON shape (they never carry the discount's type/value, only `applied`)
- *  instead of each keeping a private total. Widen it and a call site starts computing its own. */
+ *  their own narrower JSON shape (they never carry the discount's type/value, only the applied
+ *  amount) instead of each keeping a private total. Widen it and a call site starts computing its
+ *  own. All three are integer agorot (orders.ts), which is also why there is no rounding left in
+ *  here: integers add up exactly, and `sumMoney` existed only to trim the float tail that adding
+ *  ILS amounts produced. */
 interface StoreSliceAmounts {
-  subtotal: number;
-  shipping: number;
-  discount?: { applied: number };
+  subtotalAgorot: number;
+  shippingAgorot: number;
+  discount?: { appliedAgorot: number };
 }
 
 /** What one store's slice of an order actually came to: goods + shipping − the seller's order
@@ -24,7 +25,7 @@ interface StoreSliceAmounts {
  *  No floor at zero: the discount is written against the subtotal alone (orders API), so a negative
  *  result means a corrupt row, and `reconcile.ts` is what reports that rather than a display helper
  *  bending it back into range. */
-export function storeSliceTotal(sub: StoreSliceAmounts | undefined): number {
+export function storeSliceTotalAgorot(sub: StoreSliceAmounts | undefined): number {
   if (!sub) return 0;
-  return sumMoney([sub.subtotal, sub.shipping, -(sub.discount?.applied ?? 0)]);
+  return sub.subtotalAgorot + sub.shippingAgorot - (sub.discount?.appliedAgorot ?? 0);
 }

@@ -119,7 +119,7 @@ describe('one calendar, stated out loud', () => {
     // Narrowed to files that actually handle order money: getMonth() is fine for a
     // date picker, and wrong for deciding which month a sale belongs to.
     forEachFileExcept(['lib/business-day.ts', 'lib/date-range.ts'], (file, src) => {
-      if (!/storeSubtotals|countsAsRevenue|totalAmount/.test(src)) return;
+      if (!/storeSubtotals|countsAsRevenue|totalAgorot/.test(src)) return;
       expect(src, `${file}: use businessMonthKey() from lib/business-day.ts — getMonth() reads the SERVER's timezone, which is UTC in production`)
         .not.toMatch(/\.getMonth\(\)/);
     });

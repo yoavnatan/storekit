@@ -42,9 +42,9 @@ function makeSellerCard(overrides: Partial<SellerCardData> = {}, storeOverrides:
   const seller = makeSeller(overrides.seller);
   return {
     seller,
-    stores: [{ store: makeStore({ sellerId: seller.id, ...storeOverrides }), products: [], revenue: { totalRevenue: 0, monthRevenue: 0 } }],
+    stores: [{ store: makeStore({ sellerId: seller.id, ...storeOverrides }), products: [], revenue: { totalRevenueAgorot: 0, monthRevenueAgorot: 0 } }],
     totalProducts: 0,
-    revenue: { totalRevenue: 0, monthRevenue: 0 },
+    revenue: { totalRevenueAgorot: 0, monthRevenueAgorot: 0 },
     ...overrides,
   };
 }
@@ -61,8 +61,8 @@ describe('filterAndSortSellerCards', () => {
 
   it('sorts by revenue when requested', () => {
     const cards = [
-      makeSellerCard({ seller: makeSeller({ id: 's1' }), revenue: { totalRevenue: 50, monthRevenue: 0 } }),
-      makeSellerCard({ seller: makeSeller({ id: 's2' }), revenue: { totalRevenue: 200, monthRevenue: 0 } }),
+      makeSellerCard({ seller: makeSeller({ id: 's1' }), revenue: { totalRevenueAgorot: 50, monthRevenueAgorot: 0 } }),
+      makeSellerCard({ seller: makeSeller({ id: 's2' }), revenue: { totalRevenueAgorot: 200, monthRevenueAgorot: 0 } }),
     ];
     const result = filterAndSortSellerCards(cards, { q: '', sortCol: 'revenue', sortDir: 'desc', blockedOnly: false });
     expect(result.map((c) => c.seller.id)).toEqual(['s2', 's1']);
@@ -83,7 +83,7 @@ function makeStoreRow(overrides: Partial<StoreRow> = {}): StoreRow {
     store: makeStore(),
     seller: undefined,
     productCount: 0,
-    revenue: { totalRevenue: 0, monthRevenue: 0 },
+    revenue: { totalRevenueAgorot: 0, monthRevenueAgorot: 0 },
     openOrders: 0,
     ...overrides,
   };

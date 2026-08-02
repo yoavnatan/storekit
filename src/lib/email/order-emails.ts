@@ -14,7 +14,8 @@
 // closing CURRENT_TASK checklist item #5. Shared render helpers live in parts.ts.
 
 import type { Order } from '../orders.js';
-import { store, formatPrice } from '../../config/store.config.js';
+import { store } from '../../config/store.config.js';
+import { formatAgorot } from '../money.js';
 import type { EmailMessage } from './adapter.js';
 import { renderEmailShell, esc, emailColors as C } from './template.js';
 import { SITE, storefrontUrl, storeMeta, storeHeader, itemsTable, refLine, ctaButton } from './parts.js';
@@ -25,7 +26,7 @@ function storeSection(order: Order): string {
 ${itemsTable(order.items)}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td style="text-align:right;font-size:13px;color:${C.muted};">משלוח</td>
-<td style="text-align:left;font-size:13px;color:${C.muted};white-space:nowrap;">${order.shippingAmount === 0 ? 'חינם' : esc(formatPrice(order.shippingAmount))}</td></tr>
+<td style="text-align:left;font-size:13px;color:${C.muted};white-space:nowrap;">${order.shippingAgorot === 0 ? 'חינם' : esc(formatAgorot(order.shippingAgorot))}</td></tr>
 </table>`;
 }
 
@@ -36,19 +37,19 @@ function totalsBlock(order: Order): string {
 <td style="padding:4px 0;text-align:left;font-size:${strong ? '16px' : '14px'};${strong ? 'font-weight:700;' : `color:${C.muted};`}white-space:nowrap;">${esc(value)}</td>
 </tr>`;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid ${C.border};margin-top:4px;padding-top:4px;">
-${line('סכום ביניים', formatPrice(order.totalAmount - order.shippingAmount))}
-${line('משלוח', order.shippingAmount === 0 ? 'חינם' : formatPrice(order.shippingAmount))}
-${line('סה"כ', formatPrice(order.totalAmount), true)}
+${line('סכום ביניים', formatAgorot(order.totalAgorot - order.shippingAgorot))}
+${line('משלוח', order.shippingAgorot === 0 ? 'חינם' : formatAgorot(order.shippingAgorot))}
+${line('סה"כ', formatAgorot(order.totalAgorot), true)}
 </table>`;
 }
 
 /** One bold grand-total line across every store in the checkout (buyer email). */
 function grandTotalLine(orders: Order[]): string {
-  const grand = orders.reduce((s, o) => s + o.totalAmount, 0);
+  const grandAgorot = orders.reduce((s, o) => s + o.totalAgorot, 0);
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid ${C.border};margin-top:14px;padding-top:8px;">
 <tr>
 <td style="text-align:right;font-size:16px;font-weight:700;">סה"כ לתשלום</td>
-<td style="text-align:left;font-size:16px;font-weight:700;white-space:nowrap;">${esc(formatPrice(grand))}</td>
+<td style="text-align:left;font-size:16px;font-weight:700;white-space:nowrap;">${esc(formatAgorot(grandAgorot))}</td>
 </tr>
 </table>`;
 }
@@ -89,7 +90,7 @@ export function buildSellerOrderNotification(order: Order, sellerEmail: string):
   const ref = order.checkoutRef ?? order.id;
   const { name: storeName } = storeMeta(order);
   const bodyHtml = `
-<p style="margin:0 0 12px;">התקבלה הזמנה חדשה בחנות <strong>${esc(storeName)}</strong> על סך <strong>${esc(formatPrice(order.totalAmount))}</strong>.</p>
+<p style="margin:0 0 12px;">התקבלה הזמנה חדשה בחנות <strong>${esc(storeName)}</strong> על סך <strong>${esc(formatAgorot(order.totalAgorot))}</strong>.</p>
 ${refLine(ref)}
 ${itemsTable(order.items)}
 ${totalsBlock(order)}
@@ -98,7 +99,7 @@ ${ctaButton(`${SITE}/seller/dashboard`, 'לצפייה בהזמנה בדשבור�
   return {
     to: sellerEmail,
     // Store name leads the subject so a multi-store seller sorts by store at a glance.
-    subject: `הזמנה חדשה · ${storeName} · ${formatPrice(order.totalAmount)} (${ref})`,
+    subject: `הזמנה חדשה · ${storeName} · ${formatAgorot(order.totalAgorot)} (${ref})`,
     html: renderEmailShell({ previewText: `הזמנה חדשה בחנות ${storeName}`, heading: `הזמנה חדשה · ${storeName}`, bodyHtml }),
     text: sellerText(order, ref, storeName),
   };
@@ -106,18 +107,18 @@ ${ctaButton(`${SITE}/seller/dashboard`, 'לצפייה בהזמנה בדשבור�
 
 // Plain-text fallbacks — deliverability + non-HTML clients.
 function itemsText(items: Order['items']): string {
-  return items.map((it) => `- ${it.productName} ×${it.qty} — ${formatPrice(it.price * it.qty)}`).join('\n');
+  return items.map((it) => `- ${it.productName} ×${it.qty} — ${formatAgorot(it.priceAgorot * it.qty)}`).join('\n');
 }
 
 function buyerText(orders: Order[], ref: string): string {
-  const grand = orders.reduce((s, o) => s + o.totalAmount, 0);
+  const grandAgorot = orders.reduce((s, o) => s + o.totalAgorot, 0);
   const blocks = orders.map((o) => {
     const { name, slug } = storeMeta(o);
     return `${name} (${storefrontUrl(slug)}):\n${itemsText(o.items)}`;
   }).join('\n\n');
-  return `שלום ${orders[0]!.buyerName},\nההזמנה שלך התקבלה. אסמכתא: ${ref}\n\n${blocks}\n\nסה"כ לתשלום: ${formatPrice(grand)}\n\n${store.name} · ${SITE}`;
+  return `שלום ${orders[0]!.buyerName},\nההזמנה שלך התקבלה. אסמכתא: ${ref}\n\n${blocks}\n\nסה"כ לתשלום: ${formatAgorot(grandAgorot)}\n\n${store.name} · ${SITE}`;
 }
 
 function sellerText(order: Order, ref: string, storeName: string): string {
-  return `הזמנה חדשה בחנות ${storeName}. אסמכתא: ${ref}\n\n${itemsText(order.items)}\n\nסה"כ: ${formatPrice(order.totalAmount)}\n\n${store.name}`;
+  return `הזמנה חדשה בחנות ${storeName}. אסמכתא: ${ref}\n\n${itemsText(order.items)}\n\nסה"כ: ${formatAgorot(order.totalAgorot)}\n\n${store.name}`;
 }

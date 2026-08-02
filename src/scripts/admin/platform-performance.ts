@@ -1,4 +1,10 @@
 import { formatPrice } from '../../config/store.config.js';
+
+/** Integer agorot → ILS on screen. Server twin: `money.ts#formatAgorot`. Every money field on a
+ *  performance summary is agorot since the `orders` migration, so a bare `formatPrice` on one
+ *  prints a figure a hundred times too large. */
+function fmtAgorot(agorot: number): string { return formatPrice(agorot / 100); }
+
 import { rowStateBadge } from '../../lib/store-state-badge.js';
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import type { PerformanceSummary } from '../../lib/seller-performance.js';
@@ -64,7 +70,7 @@ function rowHtml(s: PlatformStoreRow): string {
   const idle = s.active ? '' : `<span class="block text-[0.72rem] [color:var(--color-muted)]">${i18n.perfStoreNoActivity ?? ''}</span>`;
   return `<tr>
     <td><a href="/admin/store/${encodeURIComponent(s.slug)}/performance?from=performance" class="admin-link font-medium">${escHtml(s.name)}</a>${blocked}${idle}</td>
-    <td>${escHtml(formatPrice(s.revenue))}</td>
+    <td>${escHtml(fmtAgorot(s.revenueAgorot))}</td>
     <td>${s.orders}</td>
     <td>${s.views}</td>
     <td>${s.conversionRate.toFixed(1)}%</td>
@@ -153,20 +159,20 @@ async function fetchTable(): Promise<void> {
 // ── Money cards ──────────────────────────────────────────────────────────────
 
 function updateSplitCard(summary: PerformanceSummary): void {
-  setText('plat-gmv', formatPrice(summary.totalRevenue));
-  setText('plat-commission', formatPrice(summary.platformCommission));
+  setText('plat-gmv', fmtAgorot(summary.totalRevenueAgorot));
+  setText('plat-commission', fmtAgorot(summary.platformCommissionAgorot));
   setText('plat-commission-rate', String(summary.commissionRate));
-  setText('plat-payout', formatPrice(summary.netProfit));
+  setText('plat-payout', fmtAgorot(summary.netProfitAgorot));
 }
 
 function updateIncomeCard(revenue: PlatformRevenue): void {
-  setText('plat-inc-commission', formatPrice(revenue.commission));
+  setText('plat-inc-commission', fmtAgorot(revenue.commissionAgorot));
   setText('plat-inc-commission-note', fill('perfIncomeCommissionNote', { rate: revenue.commissionRate }));
-  setText('plat-inc-subscriptions', formatPrice(revenue.subscriptions));
+  setText('plat-inc-subscriptions', fmtAgorot(revenue.subscriptionsAgorot));
   setText('plat-inc-subs-note', fill('perfIncomeSubscriptionsNote', { count: revenue.subscribers }));
-  setText('plat-inc-ad-margin', formatPrice(revenue.adMargin));
-  setText('plat-inc-ad-note', fill('perfIncomeAdMarginNote', { rate: revenue.adMarginRate, spend: formatPrice(revenue.adSpend) }));
-  setText('plat-inc-total', formatPrice(revenue.total));
+  setText('plat-inc-ad-margin', fmtAgorot(revenue.adMarginAgorot));
+  setText('plat-inc-ad-note', fill('perfIncomeAdMarginNote', { rate: revenue.adMarginRate, spend: fmtAgorot(revenue.adSpendAgorot) }));
+  setText('plat-inc-total', fmtAgorot(revenue.totalAgorot));
 }
 
 export function initAdminPlatformPerformance(): void {

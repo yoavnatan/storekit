@@ -17,7 +17,7 @@ interface OrderFixture {
   // storeSlug + storeSubtotals are what bind the order to a store — the API refuses to touch
   // an order that carries neither, so a fixture without them is not a real order.
   items: { productId: string; qty: number; storeSlug: string; selectedVariants?: Record<string, string> }[];
-  storeSubtotals: Record<string, { subtotal: number; shipping: number }>;
+  storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number }>;
 }
 let ORDER: OrderFixture;
 
@@ -83,7 +83,7 @@ beforeEach(() => {
       { productId: 'p1', qty: 2, storeSlug: STORE.slug, selectedVariants: { size: 'M' } },
       { productId: 'p2', qty: 1, storeSlug: STORE.slug },
     ],
-    storeSubtotals: { [STORE.slug]: { subtotal: 300, shipping: 0 } },
+    storeSubtotals: { [STORE.slug]: { subtotalAgorot: 300, shippingAgorot: 0 } },
   };
 });
 

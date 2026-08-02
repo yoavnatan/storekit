@@ -8,7 +8,8 @@
 // signal for a cross-store admin view (date, amount, shipping/payment
 // status) — phone number etc. stay search-only, same call the seller
 // dashboard's own orders tab already made for itself.
-import { formatPrice, cdnThumb } from '../../config/store.config.js';
+import { cdnThumb } from '../../config/store.config.js';
+import { formatAgorot } from '../../lib/money.js';
 import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
@@ -146,7 +147,7 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
                     grid and these wrappers go display:contents — see the seller dashboard's
                     copy of this card for the full note (admin↔seller parity). */}
                 <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
-                  <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatPrice(o.totalAmount)}</span>
+                  <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatAgorot(o.totalAgorot)}</span>
                   <span class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
                     <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(o.createdAt, o.shippingStatus, 'he')} />
                     <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] whitespace-nowrap shrink-0" style={`background:${shippingColor[o.shippingStatus] ?? '#888'}1a;color:${shippingColor[o.shippingStatus] ?? '#888'}`}>
@@ -186,13 +187,13 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
                         {uniqueStores.length > 1 && <> · <a href={`/${item.storeSlug}`} target="_blank" rel="noopener noreferrer" class="text-xs [color:var(--color-primary)] hover:underline">{item.storeName}</a></>}
                       </span>
                       <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
-                      <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatPrice(item.price * item.qty)}</span>
+                      <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatAgorot(item.priceAgorot * item.qty)}</span>
                     </li>
                   ))}
                 </ul>
                 <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
-                  <span>משלוח: {o.shippingAmount === 0 ? 'חינם' : formatPrice(o.shippingAmount)}</span>
-                  <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: {formatPrice(o.totalAmount)}</strong>
+                  <span>משלוח: {o.shippingAgorot === 0 ? 'חינם' : formatAgorot(o.shippingAgorot)}</span>
+                  <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: {formatAgorot(o.totalAgorot)}</strong>
                 </div>
               </div>
               <div>

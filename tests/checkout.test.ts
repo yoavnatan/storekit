@@ -141,10 +141,10 @@ describe('POST /api/checkout — server-side price re-validation', () => {
       items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1, price: 1 }],
     }));
     expect(res.status).toBe(201);
-    const order = createOrder.mock.calls[0]![0] as { totalAmount: number; storeSubtotals: Record<string, { subtotal: number }> };
+    const order = createOrder.mock.calls[0]![0] as { totalAgorot: number; storeSubtotals: Record<string, { subtotalAgorot: number }> };
     // real price (50) + default platform courier rate (30), never the spoofed price of 1
-    expect(order.storeSubtotals['test-store']!.subtotal).toBe(50);
-    expect(order.totalAmount).toBe(80);
+    expect(order.storeSubtotals['test-store']!.subtotalAgorot).toBe(5_000);
+    expect(order.totalAgorot).toBe(8_000);
   });
 
   // A discount is a price the SERVER decides, exactly like the base price: the buyer is charged
@@ -158,10 +158,10 @@ describe('POST /api/checkout — server-side price re-validation', () => {
         items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 2, price: 50 }],
       }));
       expect(res.status).toBe(201);
-      const order = createOrder.mock.calls[0]![0] as { totalAmount: number; items: { price: number }[]; storeSubtotals: Record<string, { subtotal: number }> };
-      expect(order.items[0]!.price).toBe(40);
-      expect(order.storeSubtotals['test-store']!.subtotal).toBe(80);
-      expect(order.totalAmount).toBe(110); // 80 + 30 courier
+      const order = createOrder.mock.calls[0]![0] as { totalAgorot: number; items: { priceAgorot: number }[]; storeSubtotals: Record<string, { subtotalAgorot: number }> };
+      expect(order.items[0]!.priceAgorot).toBe(4_000);
+      expect(order.storeSubtotals['test-store']!.subtotalAgorot).toBe(8_000);
+      expect(order.totalAgorot).toBe(11_000); // 80 ₪ + 30 ₪ courier
     } finally {
       delete PRODUCTS.widget!.discount;
     }
@@ -174,8 +174,8 @@ describe('POST /api/checkout — server-side price re-validation', () => {
         ...validBuyer,
         items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
       }));
-      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotal: number }> };
-      expect(order.storeSubtotals['test-store']!.subtotal).toBe(50);
+      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotalAgorot: number }> };
+      expect(order.storeSubtotals['test-store']!.subtotalAgorot).toBe(5_000);
     } finally {
       delete PRODUCTS.widget!.discount;
     }
@@ -188,8 +188,8 @@ describe('POST /api/checkout — server-side price re-validation', () => {
         ...validBuyer,
         items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
       }));
-      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotal: number }> };
-      expect(order.storeSubtotals['test-store']!.subtotal).toBe(45);
+      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotalAgorot: number }> };
+      expect(order.storeSubtotals['test-store']!.subtotalAgorot).toBe(4_500);
     } finally {
       delete STORES['test-store']!.sale;
     }
@@ -203,10 +203,10 @@ describe('POST /api/checkout — server-side price re-validation', () => {
         ...validBuyer,
         items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
       }));
-      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotal: number }> };
+      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotalAgorot: number }> };
       // 25 — not 45 (the banner promised 50% off, so the buyer can't be charged more than that)
       // and not 22.5 (the two discounts are never added together).
-      expect(order.storeSubtotals['test-store']!.subtotal).toBe(25);
+      expect(order.storeSubtotals['test-store']!.subtotalAgorot).toBe(2_500);
     } finally {
       delete PRODUCTS.widget!.discount;
       delete STORES['test-store']!.sale;
@@ -221,9 +221,9 @@ describe('POST /api/checkout — server-side price re-validation', () => {
         items: [{ storeSlug: 'old-slug', productSlug: 'widget', qty: 1 }], // buyer's cart predates the rename
       }));
       expect(res.status).toBe(201); // purchase succeeds — not a 400 "store not found"
-      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotal: number }>; items: { storeSlug: string }[] };
+      const order = createOrder.mock.calls[0]![0] as { storeSubtotals: Record<string, { subtotalAgorot: number }>; items: { storeSlug: string }[] };
       // subtotals + order items key off the CURRENT slug, never the stale one
-      expect(order.storeSubtotals['test-store']!.subtotal).toBe(50);
+      expect(order.storeSubtotals['test-store']!.subtotalAgorot).toBe(5_000);
       expect(order.storeSubtotals['old-slug']).toBeUndefined();
       expect(order.items[0]!.storeSlug).toBe('test-store');
     } finally {
@@ -237,9 +237,9 @@ describe('POST /api/checkout — server-side price re-validation', () => {
       items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
       deliveryMethods: { 'test-store': 'pickup' },
     }));
-    const order = createOrder.mock.calls[0]![0] as { totalAmount: number; shippingAmount: number; storeSubtotals: Record<string, { deliveryMethod?: string }> };
-    expect(order.shippingAmount).toBe(0);
-    expect(order.totalAmount).toBe(50);
+    const order = createOrder.mock.calls[0]![0] as { totalAgorot: number; shippingAgorot: number; storeSubtotals: Record<string, { deliveryMethod?: string }> };
+    expect(order.shippingAgorot).toBe(0);
+    expect(order.totalAgorot).toBe(5_000);
     expect(order.storeSubtotals['test-store']!.deliveryMethod).toBe('pickup');
   });
 
@@ -249,8 +249,8 @@ describe('POST /api/checkout — server-side price re-validation', () => {
       items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
       deliveryMethods: { 'test-store': 'free_lol' }, // not a real method
     }));
-    const order = createOrder.mock.calls[0]![0] as { shippingAmount: number; storeSubtotals: Record<string, { deliveryMethod?: string }> };
-    expect(order.shippingAmount).toBe(30);
+    const order = createOrder.mock.calls[0]![0] as { shippingAgorot: number; storeSubtotals: Record<string, { deliveryMethod?: string }> };
+    expect(order.shippingAgorot).toBe(3_000);
     expect(order.storeSubtotals['test-store']!.deliveryMethod).toBe('courier');
   });
 
@@ -262,8 +262,8 @@ describe('POST /api/checkout — server-side price re-validation', () => {
         items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
         deliveryMethods: { 'test-store': 'pickup' }, // unavailable without an address
       }));
-      const order = createOrder.mock.calls[0]![0] as { shippingAmount: number };
-      expect(order.shippingAmount).toBe(30); // falls back to courier
+      const order = createOrder.mock.calls[0]![0] as { shippingAgorot: number };
+      expect(order.shippingAgorot).toBe(3_000); // falls back to courier
     } finally {
       STORES['test-store']!.address = 'Herzl 1, Tel Aviv';
     }

@@ -438,6 +438,94 @@ describe('stock', () => {
   });
 });
 
+/**
+ * The OPEN BUG that sat above `countStockAlerts` until the `orders` migration, and the decision
+ * that closed it (DB_MIGRATION_PLAN.md §8).
+ *
+ * `p.stock` means two things — the shared pool when any combo is uncounted, the total when none
+ * is — and only the SAVE path kept the second one true. Sales drained the buckets while `p.stock`
+ * stayed at whatever the editor last wrote, so a product sold combo-by-combo never lit its
+ * low-stock badge and, worse, went on telling the Merchant/Meta feed it was `in_stock`.
+ *
+ * A sale is the same kind of event as a save now. Four of the assertions below fail without
+ * `syncPooledStock` — verified by reverting it. The other two are the half that was never broken,
+ * and they are here because the tidier alternative (redefining `p.stock` as pool-only) would have
+ * broken exactly them.
+ */
+describe('a sale keeps the product-level stock honest', () => {
+  const S = comboKey({ מידה: 'S' });
+  const M = comboKey({ מידה: 'M' });
+
+  /** Every combo counted — so `p.stock` is a TOTAL and must follow the buckets. */
+  async function fullyCounted(stock: number, buckets: Record<string, number>) {
+    const storeId = await freshStore();
+    return createProduct(storeId, {
+      name: 'V', price: 1, stock,
+      variants: [{ name: 'מידה', options: ['S', 'M'] }],
+      variantStock: buckets,
+    });
+  }
+
+  it('drops p.stock with the bucket when every combo is counted', async () => {
+    const p = await fullyCounted(10, { [S]: 6, [M]: 4 });
+    expect(await decrementStock(p.id, 2, { מידה: 'S' })).toEqual({ ok: true, before: 6, after: 4 });
+    const after = (await getProductById(p.id))!;
+    expect(after.variantStock).toEqual({ [S]: 4, [M]: 4 });
+    expect(after.stock).toBe(8); // was frozen at 10 before this fix
+  });
+
+  it('lights the low-stock badge for a product sold combo-by-combo', async () => {
+    // The bug in the form it was actually reported in. Nothing about the badge changed; the number
+    // it counts on simply stopped being stale.
+    const p = await fullyCounted(10, { [S]: 6, [M]: 4 });
+    const storeId = (await getProductById(p.id))!.storeId;
+    expect(await countStockAlerts(storeId, 3)).toBe(0);
+    await decrementStock(p.id, 5, { מידה: 'S' });
+    await decrementStock(p.id, 3, { מידה: 'M' });
+    expect((await getProductById(p.id))!.stock).toBe(2);
+    expect(await countStockAlerts(storeId, 3)).toBe(1);
+  });
+
+  it('does NOT touch p.stock when some combo still sells from the shared pool', async () => {
+    // The half that was never broken, and the half the tidier alternative would have broken:
+    // here `p.stock` is the POOL that M draws on, and subtracting S's sale from it would steal
+    // stock from a combo nobody bought.
+    const storeId = await freshStore();
+    const p = await createProduct(storeId, {
+      name: 'V', price: 1, stock: 10,
+      variants: [{ name: 'מידה', options: ['S', 'M'] }],
+      variantStock: { [S]: 6 },   // M has no bucket — it sells from the pool
+    });
+    expect(await decrementStock(p.id, 2, { מידה: 'S' })).toEqual({ ok: true, before: 6, after: 4 });
+    expect((await getProductById(p.id))!.stock).toBe(10);
+  });
+
+  it('leaves a product with no variants alone', async () => {
+    const storeId = await freshStore();
+    const p = await createProduct(storeId, { name: 'P', price: 1, stock: 5 });
+    await decrementStock(p.id, 2);
+    expect((await getProductById(p.id))!.stock).toBe(3);
+  });
+
+  it('puts it back on a restock, so a cancelled order restores both numbers', async () => {
+    const p = await fullyCounted(10, { [S]: 6, [M]: 4 });
+    await decrementStock(p.id, 3, { מידה: 'S' });
+    expect((await getProductById(p.id))!.stock).toBe(7);
+    await restockProduct(p.id, 3, { מידה: 'S' });
+    const back = (await getProductById(p.id))!;
+    expect(back.variantStock).toEqual({ [S]: 6, [M]: 4 });
+    expect(back.stock).toBe(10);
+  });
+
+  it('self-heals a row that drifted in the file era', async () => {
+    // Recomputed from the buckets rather than adjusted by the delta, so a product whose `p.stock`
+    // was already wrong is corrected by the first sale after it instead of staying wrong forever.
+    const p = await fullyCounted(999, { [S]: 6, [M]: 4 });
+    await decrementStock(p.id, 1, { מידה: 'M' });
+    expect((await getProductById(p.id))!.stock).toBe(9);
+  });
+});
+
 describe('getVisibleProductsByStoreIds', () => {
   // The homepage, /stores and the sitemap each hold a list of stores. Per-store that is N queries
   // fired at once, against a pool of ten with a five-second checkout timeout (§7.16).

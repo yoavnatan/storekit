@@ -10,7 +10,7 @@ function order(id: string, shippingStatus: string, createdAt: string): Order {
     id,
     shippingStatus,
     createdAt,
-    storeSubtotals: { s: { subtotal: 0, shipping: 0 } },
+    storeSubtotals: { s: { subtotalAgorot: 0, shippingAgorot: 0 } },
     buyerName: '', buyerEmail: '', buyerPhone: '',
   } as unknown as Order;
 }

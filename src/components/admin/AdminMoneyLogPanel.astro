@@ -1,5 +1,5 @@
 ---
-import { formatPrice } from '../../config/store.config.js';
+import { formatAgorot } from '../../lib/money.js';
 import { formatBusinessTime, formatBusinessDateShort, formatBusinessDayLabel } from '../../lib/format-date.js';
 import { MONEY_EVENT_LABELS, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
 import { businessDayISO } from '../../lib/business-day.js';
@@ -149,7 +149,7 @@ const highlightId = targetMissing ? '' : query.eventId;
                       )}
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap font-medium tabular-nums">
-                      {e.amount !== undefined ? formatPrice(e.amount) : '—'}
+                      {e.amountAgorot !== undefined ? formatAgorot(e.amountAgorot) : '—'}
                     </td>
                     <td class="py-2 pe-3 [color:var(--color-muted)]">{e.storeSlug ?? '—'}</td>
                     <td class="py-2 pe-3 [color:var(--color-muted)] break-words">

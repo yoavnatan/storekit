@@ -16,7 +16,7 @@ interface OrderFixture {
   id: string;
   shippingStatus: string;
   items: { productId: string; qty: number; storeSlug: string }[];
-  storeSubtotals: Record<string, { subtotal: number; shipping: number }>;
+  storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number }>;
   buyerName?: string;
 }
 let ORDERS: Record<string, OrderFixture>;
@@ -67,12 +67,12 @@ beforeEach(() => {
     mine: {
       id: 'mine', shippingStatus: 'processing', buyerName: 'Buyer A',
       items: [{ productId: 'p1', qty: 1, storeSlug: MY_STORE.slug }],
-      storeSubtotals: { [MY_STORE.slug]: { subtotal: 100, shipping: 0 } },
+      storeSubtotals: { [MY_STORE.slug]: { subtotalAgorot: 100, shippingAgorot: 0 } },
     },
     theirs: {
       id: 'theirs', shippingStatus: 'processing', buyerName: 'Buyer B',
       items: [{ productId: 'p9', qty: 3, storeSlug: OTHER_STORE.slug }],
-      storeSubtotals: { [OTHER_STORE.slug]: { subtotal: 500, shipping: 0 } },
+      storeSubtotals: { [OTHER_STORE.slug]: { subtotalAgorot: 500, shippingAgorot: 0 } },
     },
   };
 });
@@ -118,7 +118,7 @@ describe('PATCH /api/seller/orders — the order must belong to the caller\'s st
 describe('orderBelongsToStore', () => {
   const order = {
     items: [{ storeSlug: 'a' }],
-    storeSubtotals: { a: { subtotal: 1, shipping: 0 } },
+    storeSubtotals: { a: { subtotalAgorot: 1, shippingAgorot: 0 } },
   } as unknown as Parameters<typeof orderBelongsToStore>[0];
 
   it('matches the store that owns the items', () => {
@@ -127,7 +127,7 @@ describe('orderBelongsToStore', () => {
   });
 
   it('still matches after the seller deleted the last item (subtotal key survives)', () => {
-    const emptied = { items: [], storeSubtotals: { a: { subtotal: 0, shipping: 0 } } } as unknown as Parameters<typeof orderBelongsToStore>[0];
+    const emptied = { items: [], storeSubtotals: { a: { subtotalAgorot: 0, shippingAgorot: 0 } } } as unknown as Parameters<typeof orderBelongsToStore>[0];
     expect(orderBelongsToStore(emptied, 'a')).toBe(true);
   });
 

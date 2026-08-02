@@ -4,14 +4,14 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, getAllStores } from '../../lib/stores.js';
-import { getAllOrders } from '../../lib/orders.js';
+import { getOrdersByBuyer } from '../../lib/orders.js';
 import { getMessagesByBuyer, getMessageReplies } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { cdnThumb } from '../../lib/cdn.js';
 import { filterBuyerOrders, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
-import { storeSliceTotal } from '../../lib/order-totals.js';
+import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 
 const userId = getSellerSession(Astro.cookies);
 if (!userId) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
@@ -24,9 +24,9 @@ const t = getT(lang);
 
 const hasStore = (await getStoresBySellerId(userId)).length > 0;
 
-const orders = getAllOrders()
-  .filter((o) => o.buyerId === userId || o.buyerEmail === seller.email)
-  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+// One WHERE for this buyer, newest-first out of the query — see orders.ts#getOrdersByBuyer.
+// This used to read every order on the platform into memory to render one person's page.
+const orders = await getOrdersByBuyer(userId, seller.email);
 
 const activeOrdersCount = orders.filter((o) => o.shippingStatus !== 'delivered').length;
 const historyOrdersCount = orders.length - activeOrdersCount;
@@ -63,6 +63,11 @@ function fmtDate(iso: string) {
 }
 function fmtPrice(n: number) {
   return `${n.toLocaleString('he-IL')} ₪`;
+}
+/** Integer agorot → ILS on screen. Order amounts are agorot since the `orders` migration
+ *  (lib/orders.ts); handing one to `fmtPrice` prints a figure a hundred times too big. */
+function fmtAgorot(agorot: number) {
+  return fmtPrice(agorot / 100);
 }
 
 const shipLabel: Record<string, string> = {
@@ -766,7 +771,7 @@ const shipLabel: Record<string, string> = {
                     <div class="o-items">{o.items.map((i) => `${i.productName} × ${i.qty}`).join(' · ')}</div>
                     <div class="o-foot">
                       <span class="o-badge o-badge--ship">{shipLabel[o.shippingStatus] ?? o.shippingStatus}</span>
-                      <span class="o-total">{fmtPrice(o.totalAmount)}</span>
+                      <span class="o-total">{fmtAgorot(o.totalAgorot)}</span>
                     </div>
                   </div>
                   <svg class="o-card__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
@@ -790,15 +795,15 @@ const shipLabel: Record<string, string> = {
                               }
                               <span class="o-item__name">{item.productName}</span>
                               <span class="o-item__qty">×{item.qty}</span>
-                              <span class="o-item__price">{fmtPrice(item.price * item.qty)}</span>
+                              <span class="o-item__price">{fmtAgorot(item.priceAgorot * item.qty)}</span>
                             </li>
                           ))}
                         </ul>
                         {sub && (
                           <div class="o-store-sub">
-                            <span>{t.checkout.shipping}: {sub.shipping === 0 ? t.buyerDashboard.freeShipping : fmtPrice(sub.shipping)}</span>
-                            {sub.discount?.applied ? <span>{t.buyerDashboard.orderDiscount}: −{fmtPrice(sub.discount.applied)}</span> : null}
-                            <strong>{fmtPrice(storeSliceTotal(sub))}</strong>
+                            <span>{t.checkout.shipping}: {sub.shippingAgorot === 0 ? t.buyerDashboard.freeShipping : fmtAgorot(sub.shippingAgorot)}</span>
+                            {sub.discount?.appliedAgorot ? <span>{t.buyerDashboard.orderDiscount}: −{fmtAgorot(sub.discount.appliedAgorot)}</span> : null}
+                            <strong>{fmtAgorot(storeSliceTotalAgorot(sub))}</strong>
                           </div>
                         )}
                       </div>
@@ -1084,7 +1089,7 @@ const shipLabel: Record<string, string> = {
   import { filterClearButtonHtml } from '../../lib/toolbar-portal.js';
   import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
   import { showErrorToast } from '../../lib/toast.js';
-  import { storeSliceTotal } from '../../lib/order-totals.js';
+  import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 
   const _i18nEl = document.getElementById('buyer-i18n') as HTMLElement;
   const I = {
@@ -1899,10 +1904,10 @@ const shipLabel: Record<string, string> = {
   // seller-orders-query.ts). No sort here — this tab only needs
   // search + an active/history split, not a sort menu.
   interface BuyerOrderJson {
-    id: string; checkoutRef?: string; createdAt: string; totalAmount: number;
+    id: string; checkoutRef?: string; createdAt: string; totalAgorot: number;
     shippingStatus: string; trackingNumber?: string;
-    items: { storeSlug: string; storeName: string; productName: string; qty: number; price: number; image?: string }[];
-    storeSubtotals: Record<string, { subtotal: number; shipping: number; discount?: { applied: number } }>;
+    items: { storeSlug: string; storeName: string; productName: string; qty: number; priceAgorot: number; image?: string }[];
+    storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { appliedAgorot: number } }>;
   }
 
   const shipLabelClient: Record<string, string> = {
@@ -1930,13 +1935,13 @@ const shipLabel: Record<string, string> = {
             : `<div class="o-item__img-placeholder" aria-hidden="true"></div>`}
           <span class="o-item__name">${escB(item.productName)}</span>
           <span class="o-item__qty">×${item.qty}</span>
-          <span class="o-item__price">${fmtPriceBuyer(item.price * item.qty)}</span>
+          <span class="o-item__price">${fmtAgorotBuyer(item.priceAgorot * item.qty)}</span>
         </li>`).join('');
       const subHtml = sub ? `
         <div class="o-store-sub">
-          <span>${escB(I.shippingLabel)}: ${sub.shipping === 0 ? escB(I.freeShipping) : fmtPriceBuyer(sub.shipping)}</span>
-          ${sub.discount?.applied ? `<span>${escB(I.orderDiscount)}: −${fmtPriceBuyer(sub.discount.applied)}</span>` : ''}
-          <strong>${fmtPriceBuyer(storeSliceTotal(sub))}</strong>
+          <span>${escB(I.shippingLabel)}: ${sub.shippingAgorot === 0 ? escB(I.freeShipping) : fmtAgorotBuyer(sub.shippingAgorot)}</span>
+          ${sub.discount?.appliedAgorot ? `<span>${escB(I.orderDiscount)}: −${fmtAgorotBuyer(sub.discount.appliedAgorot)}</span>` : ''}
+          <strong>${fmtAgorotBuyer(storeSliceTotalAgorot(sub))}</strong>
         </div>` : '';
       return `
         <div class="o-store-group">
@@ -1960,7 +1965,7 @@ const shipLabel: Record<string, string> = {
           <div class="o-items">${itemsLine}</div>
           <div class="o-foot">
             <span class="o-badge o-badge--ship">${escB(shipLabelClient[o.shippingStatus] ?? o.shippingStatus)}</span>
-            <span class="o-total">${fmtPriceBuyer(o.totalAmount)}</span>
+            <span class="o-total">${fmtAgorotBuyer(o.totalAgorot)}</span>
           </div>
         </div>
         <svg class="o-card__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1974,6 +1979,8 @@ const shipLabel: Record<string, string> = {
   }
 
   function fmtPriceBuyer(n: number): string { return `${n.toLocaleString('he-IL')} ₪`; }
+  /** Server twin: money.ts#formatAgorot. /api/buyer/orders returns agorot. */
+  function fmtAgorotBuyer(agorot: number): string { return fmtPriceBuyer(agorot / 100); }
 
   function renderOrderSkeletons(count: number): string {
     return Array.from({ length: count }, () => `

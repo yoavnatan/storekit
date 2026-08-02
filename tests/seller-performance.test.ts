@@ -36,15 +36,15 @@ const { buildPerformanceSummary, buildProductPerformance } = await import('../sr
 
 // Builds a minimal paid order for one store on a given date. Only the fields
 // buildPerformanceSummary actually reads are populated.
-function makeOrder(id: string, storeSlug: string, subtotal: number, createdAt: string, items: Order['items'] = [], discountApplied = 0): Order {
+function makeOrder(id: string, storeSlug: string, subtotalAgorot: number, createdAt: string, items: Order['items'] = [], discountApplied = 0): Order {
   return {
     id,
     buyerName: 'x', buyerEmail: 'x@x.co', buyerPhone: '',
     buyerAddress: { city: '', street: '' },
     items,
-    storeSubtotals: { [storeSlug]: { storeName: 'S', subtotal, shipping: 0, ...(discountApplied ? { discount: { type: 'amount', value: discountApplied, applied: discountApplied } } : {}) } },
-    shippingAmount: 0,
-    totalAmount: subtotal,
+    storeSubtotals: { [storeSlug]: { storeName: 'S', subtotalAgorot, shippingAgorot: 0, ...(discountApplied ? { discount: { type: 'amount', value: discountApplied, appliedAgorot: discountApplied } } : {}) } },
+    shippingAgorot: 0,
+    totalAgorot: subtotalAgorot,
     paymentStatus: 'paid',
     shippingStatus: 'pending',
     createdAt,
@@ -61,35 +61,35 @@ describe('buildPerformanceSummary — profitability (commission / net profit)', 
       makeOrder('o2', STORE, 500, '2026-07-12T10:00:00.000Z'),
     ];
     const s = buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'day', 10);
-    expect(s.totalRevenue).toBe(1500);
+    expect(s.totalRevenueAgorot).toBe(1500);
     expect(s.commissionRate).toBe(10);
-    expect(s.platformCommission).toBe(150); // 10% of 1500
-    expect(s.netProfit).toBe(1350);
+    expect(s.platformCommissionAgorot).toBe(150); // 10% of 1500
+    expect(s.netProfitAgorot).toBe(1350);
     // net + commission must reconcile back to gross exactly (no rounding drift)
-    expect(s.netProfit + s.platformCommission).toBe(s.totalRevenue);
+    expect(s.netProfitAgorot + s.platformCommissionAgorot).toBe(s.totalRevenueAgorot);
   });
 
   it('commission is net of a seller discount (uses the same net basis as revenue)', () => {
     const orders = [makeOrder('o1', STORE, 1000, '2026-07-10T10:00:00.000Z', [], 200)]; // 200 discount → net 800
     const s = buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'day', 10);
-    expect(s.totalRevenue).toBe(800);
-    expect(s.platformCommission).toBe(80);
-    expect(s.netProfit).toBe(720);
+    expect(s.totalRevenueAgorot).toBe(800);
+    expect(s.platformCommissionAgorot).toBe(80);
+    expect(s.netProfitAgorot).toBe(720);
   });
 
   it('defaults to zero commission when no rate is passed (backward compatible)', () => {
     const orders = [makeOrder('o1', STORE, 1000, '2026-07-10T10:00:00.000Z')];
     const s = buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'day');
-    expect(s.platformCommission).toBe(0);
-    expect(s.netProfit).toBe(1000);
+    expect(s.platformCommissionAgorot).toBe(0);
+    expect(s.netProfitAgorot).toBe(1000);
   });
 
   it('handles a fractional-percent commission without rounding drift beyond agora precision', () => {
     const orders = [makeOrder('o1', STORE, 333.33, '2026-07-10T10:00:00.000Z')];
     const s = buildPerformanceSummary(orders, STORE, '2026-07-01', '2026-07-31', 'day', 15);
     // 15% of 333.33 = 49.9995 → rounded to 50.00
-    expect(s.platformCommission).toBe(50);
-    expect(s.netProfit).toBe(s.totalRevenue - s.platformCommission);
+    expect(s.platformCommissionAgorot).toBe(50);
+    expect(s.netProfitAgorot).toBe(s.totalRevenueAgorot - s.platformCommissionAgorot);
   });
 });
 
@@ -133,8 +133,8 @@ describe('buildPerformanceSummary — unique visitors vs total visits', () => {
 });
 
 describe('buildProductPerformance — single-product drill-down', () => {
-  const item = (productId: string, price: number, qty: number) =>
-    ({ productId, productName: 'P', productSlug: productId, storeSlug: STORE, storeName: 'S', price, qty, image: '' });
+  const item = (productId: string, priceAgorot: number, qty: number) =>
+    ({ productId, productName: 'P', productSlug: productId, storeSlug: STORE, storeName: 'S', priceAgorot, qty, image: '' });
 
   it('sums units + gross revenue for the product across paid orders in range, and pulls its views', () => {
     PRODUCT_VIEW_FIXTURE['pA'] = [
@@ -147,7 +147,7 @@ describe('buildProductPerformance — single-product drill-down', () => {
     ];
     const ps = buildProductPerformance(orders, STORE, 'pA', '2026-07-01', '2026-07-31', 'day');
     expect(ps.totalUnits).toBe(3);         // 2 + 1
-    expect(ps.totalRevenue).toBe(75);      // 25*2 + 25*1
+    expect(ps.totalRevenueAgorot).toBe(75);      // 25*2 + 25*1
     expect(ps.totalViews).toBe(50);        // 30 + 20
     expect(ps.ordersWithProduct).toBe(2);
     expect(ps.conversionRate).toBeCloseTo((2 / 50) * 100, 5);
@@ -159,7 +159,7 @@ describe('buildProductPerformance — single-product drill-down', () => {
     const unpaid = { ...makeOrder('o2', STORE, 25, '2026-07-10T10:00:00.000Z', [item('pA', 25, 1)]), paymentStatus: 'pending' as const };
     const ps = buildProductPerformance([paidOther, unpaid], STORE, 'pA', '2026-07-01', '2026-07-31', 'day');
     expect(ps.totalUnits).toBe(0);
-    expect(ps.totalRevenue).toBe(0);
+    expect(ps.totalRevenueAgorot).toBe(0);
     expect(ps.ordersWithProduct).toBe(0);
     expect(ps.totalViews).toBe(10);
     expect(ps.conversionRate).toBe(0); // no orders → 0 despite views

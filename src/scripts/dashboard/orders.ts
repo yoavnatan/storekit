@@ -5,7 +5,7 @@ import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { applyStockAttentionFilter } from './products.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-orders-query.js';
-import { storeSliceTotal } from '../../lib/order-totals.js';
+import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { cdnThumb } from '../../lib/cdn.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
@@ -483,19 +483,24 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // Match formatPrice() (store.config): thousands separators, and decimals only
   // when the amount actually has a fraction — no trailing ".00" (owner feedback).
   function fmtPrice(n: number): string { return n.toLocaleString('en-US') + ' ₪'; }
+  /** Integer agorot → what a person reads. The server-side twin is `money.ts#formatAgorot`; this
+   *  bundle cannot import it (it pulls in the store config), so the ONE thing kept in step by hand
+   *  is the division. Every amount arriving from /api/seller/orders is agorot now, so a bare
+   *  `fmtPrice` on one of them would print a figure a hundred times too large. */
+  function fmtAgorot(agorot: number): string { return fmtPrice(agorot / 100); }
 
   function buildOrderCard(o: {
     id: string; checkoutRef?: string; createdAt: string; buyerName: string; buyerEmail: string; buyerPhone: string;
     buyerAddress: { city: string; street: string; zip?: string };
-    shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; price: number; image?: string }[];
-    storeSubtotals: Record<string, { subtotal: number; shipping: number; discount?: { type: string; value: number; applied: number } }>;
+    shippingStatus: string; items: { storeSlug: string; productName: string; qty: number; priceAgorot: number; image?: string }[];
+    storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { type: string; value: number; appliedAgorot: number } }>;
     notes?: string[];
   }): string {
     const shortId  = o.checkoutRef ?? o.id.slice(0, 8).toUpperCase();
     const color    = colorMap[o.shippingStatus] ?? '#888';
     const label    = labelMap[o.shippingStatus] ?? o.shippingStatus;
-    const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
-    const total    = storeSliceTotal(storeSub);
+    const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotalAgorot: 0, shippingAgorot: 0 };
+    const total    = storeSliceTotalAgorot(storeSub);
     const storeItems = o.items.filter(i => i.storeSlug === storeSlugForOrders);
     const isNew    = o.shippingStatus === 'pending';
     const notes    = (o.notes ?? []).filter(Boolean);
@@ -506,7 +511,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         ${item.image ? `<img src="${esc(cdnThumb(item.image, 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />` : ''}
         <span class="flex-1 text-[color:var(--color-text)]">${esc(item.productName)}</span>
         <span class="text-[color:var(--color-muted)] text-[0.8rem]">×${item.qty}</span>
-        <span class="font-bold text-[color:var(--color-text)] ms-auto">${fmtPrice(item.price * item.qty)}</span>
+        <span class="font-bold text-[color:var(--color-text)] ms-auto">${fmtAgorot(item.priceAgorot * item.qty)}</span>
       </li>`).join('');
 
     const statusDotHtml = (v: string) => `<span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>`;
@@ -533,7 +538,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             <span class="text-[0.72rem] text-[color:var(--color-muted)] truncate">${esc(storeItems.length === 1 ? tt('orderProductsOne') : tt('orderProductsMany', storeItems.length))}</span>
           </div>
           <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
-            <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">${fmtPrice(total)}</span>
+            <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">${fmtAgorot(total)}</span>
             <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
               <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden">${orderAgeChipHtml(o.createdAt, o.shippingStatus, ordersLang)}</span>
               <span class="order-note-chip inline-flex items-center shrink-0 [color:var(--color-muted)]"${notes.length ? ` title="${esc(notes.join('\n'))}"` : ' hidden'} aria-label="${esc(tt('orderNoteLabel'))}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg></span>
@@ -553,7 +558,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
               data-buyer-phone="${esc(o.buyerPhone)}" data-buyer-city="${esc(o.buyerAddress.city)}"
               data-buyer-street="${esc(o.buyerAddress.street)}" data-buyer-zip="${esc(o.buyerAddress.zip ?? '')}"
               data-items="${esc(JSON.stringify(storeItems))}"
-              data-shipping="${esc(String(storeSub.shipping))}"
+              data-shipping-agorot="${esc(String(storeSub.shippingAgorot))}"
               data-discount-type="${esc(storeSub.discount?.type ?? 'percent')}"
               data-discount-value="${esc(String(storeSub.discount?.value ?? 0))}"
               style="font-size:0.75rem">
@@ -570,9 +575,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">${esc(tt('orderItems'))}</h3>
           <ul class="order-card__items list-none p-0 flex flex-col gap-2">${itemsHtml}</ul>
           <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
-            <span>${esc(tt('orderShipping'))}: ${storeSub.shipping === 0 ? esc(tt('orderShippingFree')) : fmtPrice(storeSub.shipping)}</span>
-            ${storeSub.discount?.applied ? `<span class="text-[color:var(--color-success)]">${esc(tt('orderEditDiscount'))}: −${fmtPrice(storeSub.discount.applied)}</span>` : ''}
-            <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtPrice(total)}</strong>
+            <span>${esc(tt('orderShipping'))}: ${storeSub.shippingAgorot === 0 ? esc(tt('orderShippingFree')) : fmtAgorot(storeSub.shippingAgorot)}</span>
+            ${storeSub.discount?.appliedAgorot ? `<span class="text-[color:var(--color-success)]">${esc(tt('orderEditDiscount'))}: −${fmtAgorot(storeSub.discount.appliedAgorot)}</span>` : ''}
+            <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtAgorot(total)}</strong>
           </div>
         </div>
         <div class="bg-[color:var(--color-bg)] rounded-b-[calc(var(--radius)-1.5px)] p-[0.875rem] overflow-visible">
@@ -911,12 +916,12 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
               if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
             }
           }
-          const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotal: 0, shipping: 0 };
+          const storeSub = o.storeSubtotals[storeSlugForOrders] ?? { subtotalAgorot: 0, shippingAgorot: 0 };
           window.dispatchEvent(new CustomEvent('toast:show', { detail: {
             title: tt('orderNewToastTitle'),
             body: tt('orderNewToastBody')
               .replace('{name}', o.buyerName)
-              .replace('{amount}', fmtPrice(storeSliceTotal(storeSub))),
+              .replace('{amount}', fmtAgorot(storeSliceTotalAgorot(storeSub))),
             key: o.id,
             href: '/seller/dashboard?panel=orders',
           } }));
@@ -948,7 +953,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   const editOrderSuccess  = document.getElementById('edit-order-success') as HTMLElement | null;
   const editOrderSaveBtn  = document.getElementById('edit-order-save') as HTMLButtonElement | null;
 
-  type EomItem = { productId: string; productName: string; price: number; qty: number; image?: string; storeSlug?: string };
+  type EomItem = { productId: string; productName: string; priceAgorot: number; qty: number; image?: string; storeSlug?: string };
 
 
   function renderEomItems(items: EomItem[]) {
@@ -956,12 +961,12 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     if (!list) return;
     if (!items.length) { list.innerHTML = `<p style="color:var(--color-muted);font-size:0.82rem;margin:0">${escEom(tt('orderEditNoItems'))}</p>`; return; }
     list.innerHTML = items.map((item) => `
-      <div class="eom-item" data-pid="${escEom(item.productId)}">
+      <div class="eom-item" data-pid="${escEom(item.productId)}" data-price-agorot="${escEom(String(item.priceAgorot))}" data-qty="${escEom(String(item.qty))}">
         ${item.image
           ? `<img class="eom-item__img" src="${escEom(cdnThumb(item.image, 68, 68))}" alt="" width="34" height="34" loading="lazy" decoding="async">`
           : `<div class="eom-item__img-ph" aria-hidden="true"></div>`}
         <span class="eom-item__name" title="${escEom(item.productName)}">${escEom(item.productName)}</span>
-        <span class="eom-item__meta">${item.price.toLocaleString('he-IL')} ₪ × ${item.qty}</span>
+        <span class="eom-item__meta">${fmtAgorot(item.priceAgorot)} × ${item.qty}</span>
         <button type="button" class="eom-item__del" aria-label="${escEom(tt('orderEditDeleteItem'))}" title="${escEom(tt('orderEditDeleteItem'))}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -988,7 +993,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   const eomDiscountInput   = document.getElementById('eom-discount-val') as HTMLInputElement | null;
   const eomDiscountPreview = document.getElementById('eom-discount-preview') as HTMLElement | null;
   const eomShippingAmountEl = document.getElementById('eom-shipping-amount') as HTMLElement | null;
-  let eomCurrentShipping = 0;
+  let eomCurrentShippingAgorot = 0;
 
   function setDiscountType(type: 'percent' | 'amount') {
     eomDiscountType = type;
@@ -1000,25 +1005,41 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   eomAmtBtn?.addEventListener('click', () => setDiscountType('amount'));
   eomDiscountInput?.addEventListener('input', updateDiscountPreview);
 
-  function calcEomBase(): number {
+  /**
+   * The base this discount applies to, in agorot: the surviving lines only.
+   *
+   * **Read off data attributes, not off the rendered text.** It used to re-parse the price out of
+   * each row's label with `/([\d,]+)\s*₪\s*×\s*(\d+)/` — and `[\d,]+` stops at a decimal point,
+   * so a 19.99 ₪ line was read as 19 and every preview on a catalogue with agorot in its prices
+   * was quietly low. The number is right there in the data now, as an integer, and there is
+   * nothing to parse.
+   *
+   * **Shipping is NOT in the base.** The server discounts against the subtotal alone and says why
+   * at length (/api/seller/orders): shipping is the platform's rate, not the seller's margin.
+   * Adding it here made the preview promise a bigger discount than the save applied — the seller
+   * read one number before pressing the button and a different one after.
+   */
+  function calcEomBaseAgorot(): number {
     let subtotal = 0;
     document.querySelectorAll<HTMLElement>('#eom-items-list .eom-item:not(.eom-item--deleted)').forEach((row) => {
-      const meta = row.querySelector('.eom-item__meta')?.textContent ?? '';
-      const m = meta.match(/([\d,]+)\s*₪\s*×\s*(\d+)/);
-      if (m) subtotal += parseFloat(m[1]!.replace(/,/g,'')) * parseInt(m[2]!, 10);
+      const price = parseInt(row.dataset.priceAgorot ?? '0', 10) || 0;
+      const qty   = parseInt(row.dataset.qty ?? '0', 10) || 0;
+      subtotal += price * qty;
     });
-    return subtotal + eomCurrentShipping;
+    return subtotal;
   }
 
   function updateDiscountPreview() {
     if (!eomDiscountPreview) return;
     const val = parseFloat(eomDiscountInput?.value ?? '0') || 0;
     if (!val) { eomDiscountPreview.textContent = ''; return; }
-    const base = calcEomBase();
+    const base = calcEomBaseAgorot();
+    // The same two expressions the endpoint uses, including `Math.round` on the percentage —
+    // a preview that rounds differently from the save is a preview that lies by an agora.
     const applied = eomDiscountType === 'percent'
-      ? Math.min(base * val / 100, base)
-      : Math.min(val, base);
-    eomDiscountPreview.textContent = applied > 0 ? `= −${applied.toFixed(2).replace(/\.00$/, '')} ₪` : '';
+      ? Math.min(Math.round(base * Math.round(val) / 100), base)
+      : Math.min(Math.round(val * 100), base);
+    eomDiscountPreview.textContent = applied > 0 ? `= −${fmtAgorot(applied)}` : '';
   }
 
   /**
@@ -1054,8 +1075,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     (document.getElementById('eob-street') as HTMLInputElement).value  = btn.dataset.buyerStreet ?? '';
     (document.getElementById('eob-city') as HTMLInputElement).value    = btn.dataset.buyerCity   ?? '';
     (document.getElementById('eob-zip') as HTMLInputElement).value     = btn.dataset.buyerZip    ?? '';
-    eomCurrentShipping = parseFloat(btn.dataset.shipping ?? '0') || 0;
-    if (eomShippingAmountEl) eomShippingAmountEl.textContent = eomCurrentShipping > 0 ? `· ${eomCurrentShipping} ₪` : `· ${tt('orderShippingFree')}`;
+    eomCurrentShippingAgorot = parseInt(btn.dataset.shippingAgorot ?? '0', 10) || 0;
+    if (eomShippingAmountEl) eomShippingAmountEl.textContent = eomCurrentShippingAgorot > 0 ? `· ${fmtAgorot(eomCurrentShippingAgorot)}` : `· ${tt('orderShippingFree')}`;
     // Restore existing discount
     const existingDtype = (btn.dataset.discountType ?? 'percent') as 'percent' | 'amount';
     const existingDval  = btn.dataset.discountValue ?? '0';
@@ -1144,7 +1165,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         if (editOrderError) { editOrderError.textContent = err.error ?? tt('orderEditSaveError'); editOrderError.style.display = 'block'; }
         return;
       }
-      const { order: savedOrder } = await res.json() as { order: { buyerName: string; buyerEmail: string; buyerPhone: string; buyerAddress: { city: string; street: string; zip?: string }; items: EomItem[]; storeSubtotals: Record<string, { subtotal: number; shipping: number }>; totalAmount: number } };
+      const { order: savedOrder } = await res.json() as { order: { buyerName: string; buyerEmail: string; buyerPhone: string; buyerAddress: { city: string; street: string; zip?: string }; items: EomItem[]; storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number }>; totalAgorot: number } };
 
       // Update the order card in DOM
       const card = document.querySelector<HTMLElement>(`.order-card[data-order-id="${CSS.escape(orderId)}"]`);
@@ -1167,23 +1188,23 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
               ${item.image ? `<img src="${escEom(cdnThumb(item.image, 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0">` : ''}
               <span class="flex-1 text-[color:var(--color-text)]">${escEom(item.productName)}</span>
               <span class="text-[color:var(--color-muted)] text-[0.8rem]">×${item.qty}</span>
-              <span class="font-bold text-[color:var(--color-text)] ms-auto">${(item.price * item.qty).toFixed(2)} ₪</span>
+              <span class="font-bold text-[color:var(--color-text)] ms-auto">${fmtAgorot(item.priceAgorot * item.qty)}</span>
             </li>`).join('');
         }
         // Update subtotal display
-        const storeSub = savedOrder.storeSubtotals?.[storeSlug] as { subtotal: number; shipping: number; discount?: { type: string; value: number; applied: number } } | undefined;
+        const storeSub = savedOrder.storeSubtotals?.[storeSlug] as { subtotalAgorot: number; shippingAgorot: number; discount?: { type: string; value: number; appliedAgorot: number } } | undefined;
         if (storeSub) {
-          const discApplied = storeSub.discount?.applied ?? 0;
-          const total = storeSliceTotal(storeSub);
+          const discApplied = storeSub.discount?.appliedAgorot ?? 0;
+          const total = storeSliceTotalAgorot(storeSub);
           const subtotalsEl = card.querySelector<HTMLElement>('.order-card__subtotals');
           if (subtotalsEl) {
             subtotalsEl.innerHTML = `
-              <span>${esc(tt('orderShipping'))}: ${storeSub.shipping === 0 ? esc(tt('orderShippingFree')) : fmtPrice(storeSub.shipping)}</span>
-              ${discApplied > 0 ? `<span class="text-[color:var(--color-success)]">${escEom(tt('orderEditDiscount'))}: −${fmtPrice(discApplied)}</span>` : ''}
-              <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtPrice(total)}</strong>`;
+              <span>${esc(tt('orderShipping'))}: ${storeSub.shippingAgorot === 0 ? esc(tt('orderShippingFree')) : fmtAgorot(storeSub.shippingAgorot)}</span>
+              ${discApplied > 0 ? `<span class="text-[color:var(--color-success)]">${escEom(tt('orderEditDiscount'))}: −${fmtAgorot(discApplied)}</span>` : ''}
+              <strong class="text-[color:var(--color-text)] text-[0.9375rem]">${esc(tt('orderTotal'))}: ${fmtAgorot(total)}</strong>`;
           }
           const amountEl = card.querySelector('.order-card__amount');
-          if (amountEl) amountEl.textContent = `${total.toFixed(2)} ₪`;
+          if (amountEl) amountEl.textContent = fmtAgorot(total);
         }
 
         // Update edit button data attributes
@@ -1195,7 +1216,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           editBtn.dataset.buyerStreet   = savedOrder.buyerAddress.street;
           editBtn.dataset.buyerCity     = savedOrder.buyerAddress.city;
           editBtn.dataset.buyerZip      = savedOrder.buyerAddress.zip ?? '';
-          editBtn.dataset.shipping      = String(storeSub?.shipping ?? 0);
+          editBtn.dataset.shippingAgorot = String(storeSub?.shippingAgorot ?? 0);
           editBtn.dataset.discountType  = storeSub?.discount?.type ?? 'percent';
           editBtn.dataset.discountValue = String(storeSub?.discount?.value ?? 0);
           if (savedOrder.items) editBtn.dataset.items = JSON.stringify(savedOrder.items.filter((i: EomItem) => i.storeSlug === storeSlug));

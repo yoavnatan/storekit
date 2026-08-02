@@ -21,7 +21,7 @@ function ev(over: Partial<MoneyEvent> & { id: string; at: string }): MoneyEvent 
 
 // 2026-07-28T23:30Z is 02:30 on the 29th in Asia/Jerusalem — the row whose business
 // day differs from its UTC day, which is the whole reason business-day.ts exists.
-const LATE_NIGHT = ev({ id: 'a', at: '2026-07-28T23:30:00.000Z', orderId: 'ord-11112222', amount: 349.9, storeSlug: 'tools-shop' });
+const LATE_NIGHT = ev({ id: 'a', at: '2026-07-28T23:30:00.000Z', orderId: 'ord-11112222', amountAgorot: 34990, storeSlug: 'tools-shop' });
 const CANCELLED = ev({ id: 'b', at: '2026-07-30T10:00:00.000Z', type: 'shipping_status_changed', from: 'shipped', to: 'cancelled', orderId: 'ord-33334444', storeSlug: 'kids-wear', actor: 'seller-7' });
 const BLOCKED = ev({ id: 'c', at: '2026-07-31T08:00:00.000Z', type: 'duplicate_checkout_blocked', checkoutRef: 'CK-9090', detail: 'replayed key', actor: 'buyer' });
 const ALL = [BLOCKED, CANCELLED, LATE_NIGHT]; // newest-first, as getMoneyEvents returns

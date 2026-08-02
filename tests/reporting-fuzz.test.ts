@@ -5,7 +5,7 @@ import { buildPerformanceSummary, buildProductPerformance, pickGranularity } fro
 import { buildPlatformPerformance } from '../src/lib/platform-performance.js';
 import { getPlatformOverview, getStoreRevenueMap, orderNetTotal } from '../src/lib/admin-stats.js';
 import { reconcileOrders } from '../src/lib/reconcile.js';
-import { roundMoney } from '../src/lib/money.js';
+import { toAgorot } from '../src/lib/money.js';
 import { businessDayISO } from '../src/lib/business-day.js';
 
 /**
@@ -41,7 +41,11 @@ const STORES = ['fz-a', 'fz-b', 'fz-c'];
 const PAYMENT: Order['paymentStatus'][] = ['pending', 'paid', 'failed'];
 const SHIPPING: Order['shippingStatus'][] = ['pending', 'processing', 'ready', 'shipped', 'delivered', 'cancelled'];
 
-/** Prices chosen to be hostile to floating point, not to be realistic. */
+/** Prices chosen to be hostile to floating point, not to be realistic. They are ILS here on
+ *  purpose — the seller types ILS — and cross into agorot through `toAgorot`, which is the one
+ *  conversion in the pipeline that can still lose an agora. Everything downstream of it is
+ *  integer arithmetic, so this fuzzer now proves the BOUNDARY is right rather than that the
+ *  rounding after every addition was. */
 const NASTY_PRICES = [0, 0.01, 0.1, 0.05, 19.99, 33.33, 0.145, 1 / 3, 99.995, 1234.56, 7.7, 250];
 
 function makeFuzzOrder(id: string, rand: () => number): Order {
@@ -54,7 +58,7 @@ function makeFuzzOrder(id: string, rand: () => number): Order {
       productSlug: 'p',
       storeSlug,
       storeName: 'S',
-      price: roundMoney(NASTY_PRICES[Math.floor(rand() * NASTY_PRICES.length)]!),
+      priceAgorot: toAgorot(NASTY_PRICES[Math.floor(rand() * NASTY_PRICES.length)]!),
       qty: 1 + Math.floor(rand() * 4),
       ...(i === 0 && rand() < 0.3 ? { selectedVariants: { size: 'M' } } : {}),
     };
@@ -63,13 +67,13 @@ function makeFuzzOrder(id: string, rand: () => number): Order {
   // Subtotals built the way checkout builds them, so the fixtures are the shape the
   // real code produces rather than an idealised one.
   const subtotalBySlug = new Map<string, number>();
-  for (const i of items) subtotalBySlug.set(i.storeSlug, roundMoney((subtotalBySlug.get(i.storeSlug) ?? 0) + i.price * i.qty));
+  for (const i of items) subtotalBySlug.set(i.storeSlug, (subtotalBySlug.get(i.storeSlug) ?? 0) + i.priceAgorot * i.qty);
 
   const storeSubtotals: Order['storeSubtotals'] = {};
   let shippingTotal = 0;
   for (const [slug, subtotal] of subtotalBySlug) {
-    const shipping = rand() < 0.3 ? 0 : roundMoney([19.9, 25, 35][Math.floor(rand() * 3)]!);
-    shippingTotal = roundMoney(shippingTotal + shipping);
+    const shipping = rand() < 0.3 ? 0 : toAgorot([19.9, 25, 35][Math.floor(rand() * 3)]!);
+    shippingTotal += shipping;
     let discount: Order['storeSubtotals'][string]['discount'];
     if (rand() < 0.35) {
       // Base is the subtotal, matching the orders API. It used to be
@@ -80,16 +84,15 @@ function makeFuzzOrder(id: string, rand: () => number): Order {
       // Includes 100% on purpose — a discount that consumes the entire order is a
       // real seller action and a classic place for a division or a sign to go wrong.
       const type = rand() < 0.5 ? 'percent' as const : 'amount' as const;
-      const value = type === 'percent' ? [5, 10, 33, 100][Math.floor(rand() * 4)]! : roundMoney(base * rand());
-      const applied = type === 'percent' ? Math.min(roundMoney((base * value) / 100), base) : Math.min(roundMoney(value), base);
-      discount = { type, value, applied };
+      const value = type === 'percent' ? [5, 10, 33, 100][Math.floor(rand() * 4)]! : Math.round(base * rand());
+      const applied = type === 'percent' ? Math.min(Math.round((base * value) / 100), base) : Math.min(value, base);
+      discount = { type, value, appliedAgorot: applied };
     }
-    storeSubtotals[slug] = { storeName: 'S', subtotal, shipping, ...(discount ? { discount } : {}) };
+    storeSubtotals[slug] = { storeName: 'S', subtotalAgorot: subtotal, shippingAgorot: shipping, ...(discount ? { discount } : {}) };
   }
 
-  const totalAmount = roundMoney(
-    Object.values(storeSubtotals).reduce((s, st) => s + st.subtotal + st.shipping - (st.discount?.applied ?? 0), 0),
-  );
+  const totalAgorot = Object.values(storeSubtotals)
+    .reduce((s, st) => s + st.subtotalAgorot + st.shippingAgorot - (st.discount?.appliedAgorot ?? 0), 0);
 
   // Timestamps clustered on the edges that break calendar code: local midnight, the
   // hour before it, month boundaries, and Israel's DST transitions.
@@ -106,8 +109,8 @@ function makeFuzzOrder(id: string, rand: () => number): Order {
     buyerAddress: { city: 'C', street: 'S' },
     items,
     storeSubtotals,
-    shippingAmount: shippingTotal,
-    totalAmount,
+    shippingAgorot: shippingTotal,
+    totalAgorot,
     paymentStatus: PAYMENT[Math.floor(rand() * PAYMENT.length)]!,
     shippingStatus: SHIPPING[Math.floor(rand() * SHIPPING.length)]!,
     createdAt,
@@ -137,8 +140,8 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
       for (const slug of STORES) {
         for (const granularity of ['day', 'month'] as const) {
           const s = buildPerformanceSummary(orders, slug, FROM, TO, granularity);
-          expect(roundMoney(s.points.reduce((a, p) => a + p.revenue, 0)), `seed ${seed} / ${slug} / ${granularity}`)
-            .toBe(s.totalRevenue);
+          expect((s.points.reduce((a, p) => a + p.revenueAgorot, 0)), `seed ${seed} / ${slug} / ${granularity}`)
+            .toBe(s.totalRevenueAgorot);
           expect(s.points.reduce((a, p) => a + p.orders, 0), `seed ${seed} / ${slug} / ${granularity} orders`)
             .toBe(s.totalOrders);
         }
@@ -154,7 +157,7 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
       for (const slug of STORES) {
         const byDay = buildPerformanceSummary(orders, slug, FROM, TO, 'day');
         const byMonth = buildPerformanceSummary(orders, slug, FROM, TO, 'month');
-        expect(byMonth.totalRevenue, `seed ${seed} / ${slug}`).toBe(byDay.totalRevenue);
+        expect(byMonth.totalRevenueAgorot, `seed ${seed} / ${slug}`).toBe(byDay.totalRevenueAgorot);
         expect(byMonth.totalOrders, `seed ${seed} / ${slug} orders`).toBe(byDay.totalOrders);
       }
     }
@@ -165,11 +168,11 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
       const orders = makeBatch(seed, 25);
       const live = orders.filter(countsAsRevenue);
       for (const slug of STORES) {
-        expect(buildPerformanceSummary(orders, slug, FROM, TO, 'day').totalRevenue, `seed ${seed} / ${slug}`)
-          .toBe(buildPerformanceSummary(live, slug, FROM, TO, 'day').totalRevenue);
+        expect(buildPerformanceSummary(orders, slug, FROM, TO, 'day').totalRevenueAgorot, `seed ${seed} / ${slug}`)
+          .toBe(buildPerformanceSummary(live, slug, FROM, TO, 'day').totalRevenueAgorot);
       }
-      expect(getPlatformOverview([], [], orders).gmv, `seed ${seed} overview`)
-        .toBe(getPlatformOverview([], [], live).gmv);
+      expect(getPlatformOverview([], [], orders).gmvAgorot, `seed ${seed} overview`)
+        .toBe(getPlatformOverview([], [], live).gmvAgorot);
     }
   });
 
@@ -178,9 +181,9 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
       const orders = makeBatch(seed, 25);
       for (const rate of [0, 10, 10.25, 12, 100]) {
         const s = buildPerformanceSummary(orders, STORES[0]!, FROM, TO, 'day', rate);
-        expect(roundMoney(s.platformCommission + s.netProfit), `seed ${seed} at ${rate}%`).toBe(s.totalRevenue);
-        expect(s.platformCommission, `seed ${seed} commission at ${rate}% within bounds`).toBeLessThanOrEqual(s.totalRevenue);
-        expect(s.platformCommission).toBeGreaterThanOrEqual(0);
+        expect((s.platformCommissionAgorot + s.netProfitAgorot), `seed ${seed} at ${rate}%`).toBe(s.totalRevenueAgorot);
+        expect(s.platformCommissionAgorot, `seed ${seed} commission at ${rate}% within bounds`).toBeLessThanOrEqual(s.totalRevenueAgorot);
+        expect(s.platformCommissionAgorot).toBeGreaterThanOrEqual(0);
       }
     }
   });
@@ -189,19 +192,19 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
     for (const seed of SEEDS) {
       const orders = makeBatch(seed, 25);
       const perf = buildPlatformPerformance(orders, STORES.map((slug) => ({ slug, name: slug })), FROM, TO, 'day');
-      const sellerSum = roundMoney(
-        STORES.reduce((a, slug) => a + buildPerformanceSummary(orders, slug, FROM, TO, 'day').totalRevenue, 0),
+      const sellerSum = STORES.reduce(
+        (a, slug) => a + buildPerformanceSummary(orders, slug, FROM, TO, 'day').totalRevenueAgorot, 0,
       );
-      expect(perf.summary.totalRevenue, `seed ${seed}`).toBe(sellerSum);
-      expect(roundMoney(perf.stores.reduce((a, r) => a + r.revenue, 0)), `seed ${seed} rows`).toBe(perf.summary.totalRevenue);
+      expect(perf.summary.totalRevenueAgorot, `seed ${seed}`).toBe(sellerSum);
+      expect((perf.stores.reduce((a, r) => a + r.revenueAgorot, 0)), `seed ${seed} rows`).toBe(perf.summary.totalRevenueAgorot);
     }
   });
 
   it('the admin GMV always equals the sum of the per-store rows', () => {
     for (const seed of SEEDS) {
       const orders = makeBatch(seed, 25);
-      const rowSum = roundMoney([...getStoreRevenueMap(orders).values()].reduce((a, r) => a + r.totalRevenue, 0));
-      expect(getPlatformOverview([], [], orders).gmv, `seed ${seed}`).toBe(rowSum);
+      const rowSum = ([...getStoreRevenueMap(orders).values()].reduce((a, r) => a + r.totalRevenueAgorot, 0));
+      expect(getPlatformOverview([], [], orders).gmvAgorot, `seed ${seed}`).toBe(rowSum);
     }
   });
 
@@ -219,7 +222,7 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
     // This proves the checks above are actually load-bearing.
     const orders = makeBatch(1, 5);
     const victim = orders[0]!;
-    victim.totalAmount = roundMoney(victim.totalAmount + 13.5);
+    victim.totalAgorot = (victim.totalAgorot + 13.5);
     const report = reconcileOrders(orders, STORES);
     expect(report.clean).toBe(false);
     expect(report.discrepancies.some((d) => d.check === 'סכום ההזמנה מול מרכיביו')).toBe(true);
@@ -232,11 +235,11 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
       for (const slug of STORES) {
         const s = buildPerformanceSummary(orders, slug, FROM, TO, pickGranularity(FROM, TO), 12);
         const numbers: Array<[number, string]> = [
-          [s.totalRevenue, 'totalRevenue'], [s.avgOrderValue, 'avgOrderValue'],
-          [s.conversionRate, 'conversionRate'], [s.platformCommission, 'commission'],
-          [s.netProfit, 'netProfit'],
-          ...s.points.map((p): [number, string] => [p.revenue, `point ${p.key}`]),
-          ...s.topProducts.map((p): [number, string] => [p.revenue, `product ${p.productId}`]),
+          [s.totalRevenueAgorot, 'totalRevenueAgorot'], [s.avgOrderValueAgorot, 'avgOrderValueAgorot'],
+          [s.conversionRate, 'conversionRate'], [s.platformCommissionAgorot, 'commission'],
+          [s.netProfitAgorot, 'netProfitAgorot'],
+          ...s.points.map((p): [number, string] => [p.revenueAgorot, `point ${p.key}`]),
+          ...s.topProducts.map((p): [number, string] => [p.revenueAgorot, `product ${p.productId}`]),
         ];
         for (const [n, name] of numbers) {
           expect(Number.isFinite(n), `seed ${seed} / ${slug} / ${name} is finite`).toBe(true);
@@ -253,12 +256,12 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
       const orders = makeBatch(seed, 25);
       for (const slug of STORES) {
         const store = buildPerformanceSummary(orders, slug, FROM, TO, 'day', 0, 0);
-        const grossTotal = roundMoney(store.topProducts.reduce((a, p) => a + p.revenue, 0));
+        const grossTotal = (store.topProducts.reduce((a, p) => a + p.revenueAgorot, 0));
         for (const tp of store.topProducts) {
           const p = buildProductPerformance(orders, slug, tp.productId, FROM, TO, 'day');
-          expect(p.totalRevenue, `seed ${seed} / ${slug} / ${tp.productId}`).toBeLessThanOrEqual(grossTotal);
-          expect(roundMoney(p.points.reduce((a, x) => a + x.revenue, 0)), `seed ${seed} / ${slug} / ${tp.productId} bars`)
-            .toBe(p.totalRevenue);
+          expect(p.totalRevenueAgorot, `seed ${seed} / ${slug} / ${tp.productId}`).toBeLessThanOrEqual(grossTotal);
+          expect((p.points.reduce((a, x) => a + x.revenueAgorot, 0)), `seed ${seed} / ${slug} / ${tp.productId} bars`)
+            .toBe(p.totalRevenueAgorot);
         }
       }
     }
@@ -274,9 +277,9 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
         for (const slug of Object.keys(o.storeSubtotals)) {
           const onItsDay = buildPerformanceSummary([o], slug, day, day, 'day');
           expect(onItsDay.totalOrders, `seed ${seed} / ${o.id} on ${day}`).toBe(1);
-          expect(roundMoney(onItsDay.totalRevenue)).toBe(roundMoney(orderNetTotal(o) - Object.entries(o.storeSubtotals)
+          expect((onItsDay.totalRevenueAgorot)).toBe((orderNetTotal(o) - Object.entries(o.storeSubtotals)
             .filter(([s]) => s !== slug)
-            .reduce((a, [s]) => a + roundMoney(o.storeSubtotals[s]!.subtotal - (o.storeSubtotals[s]!.discount?.applied ?? 0)), 0)));
+            .reduce((a, [s]) => a + (o.storeSubtotals[s]!.subtotalAgorot - (o.storeSubtotals[s]!.discount?.appliedAgorot ?? 0)), 0)));
         }
       }
     }

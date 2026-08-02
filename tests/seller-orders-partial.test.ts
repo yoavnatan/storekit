@@ -16,9 +16,9 @@ interface OrderFixture {
   buyerEmail: string;
   buyerPhone: string;
   buyerAddress: { city: string; street: string; zip?: string };
-  items: { productId: string; qty: number; price: number; storeSlug: string; productName: string }[];
-  storeSubtotals: Record<string, { subtotal: number; shipping: number; discount?: { type: string; value: number; applied: number } }>;
-  totalAmount: number;
+  items: { productId: string; qty: number; priceAgorot: number; storeSlug: string; productName: string }[];
+  storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { type: string; value: number; appliedAgorot: number } }>;
+  totalAgorot: number;
 }
 let ORDER: OrderFixture;
 
@@ -62,11 +62,11 @@ beforeEach(() => {
     buyerPhone: '050-1111111',
     buyerAddress: { city: 'חיפה', street: 'הרצל 1', zip: '3100000' },
     items: [
-      { productId: 'p1', qty: 2, price: 100, storeSlug: 'test-store', productName: 'א' },
-      { productId: 'p2', qty: 1, price: 50, storeSlug: 'test-store', productName: 'ב' },
+      { productId: 'p1', qty: 2, priceAgorot: 10_000, storeSlug: 'test-store', productName: 'א' },
+      { productId: 'p2', qty: 1, priceAgorot: 5_000, storeSlug: 'test-store', productName: 'ב' },
     ],
-    storeSubtotals: { 'test-store': { subtotal: 250, shipping: 20, discount: { type: 'percent', value: 10, applied: 27 } } },
-    totalAmount: 243,
+    storeSubtotals: { 'test-store': { subtotalAgorot: 25_000, shippingAgorot: 2_000, discount: { type: 'percent', value: 10, appliedAgorot: 2_500 } } },
+    totalAgorot: 24_500,
   };
 });
 
@@ -91,22 +91,22 @@ describe('PATCH /api/seller/orders — a partial edit touches only what it names
     // reported revenue NEGATIVE. See the orders API and tests/reporting-fuzz.test.ts.
     const res = await PATCH(ctx({ ...base, itemDeletes: ['p1'] }));
     expect(res.status).toBe(200);
-    expect(ORDER.storeSubtotals['test-store']!.discount).toEqual({ type: 'percent', value: 10, applied: 5 });
-    expect(ORDER.totalAmount).toBe(65); // 50 + 20 − 5
+    expect(ORDER.storeSubtotals['test-store']!.discount).toEqual({ type: 'percent', value: 10, appliedAgorot: 500 });
+    expect(ORDER.totalAgorot).toBe(6_500); // 50 ₪ + 20 ₪ − 5 ₪
   });
 
   it('still clears the discount when the seller explicitly clears it', async () => {
     const res = await PATCH(ctx({ ...base, itemDeletes: ['p1'], discount: null }));
     expect(res.status).toBe(200);
     expect(ORDER.storeSubtotals['test-store']!.discount).toBeUndefined();
-    expect(ORDER.totalAmount).toBe(70); // 50 + 20, nothing off
+    expect(ORDER.totalAgorot).toBe(7_000); // 50 ₪ + 20 ₪, nothing off
   });
 
   it('still applies a discount the seller does send', async () => {
     const res = await PATCH(ctx({ ...base, discount: { type: 'amount', value: 30 } }));
     expect(res.status).toBe(200);
-    expect(ORDER.storeSubtotals['test-store']!.discount).toEqual({ type: 'amount', value: 30, applied: 30 });
-    expect(ORDER.totalAmount).toBe(240); // 250 + 20 − 30
+    expect(ORDER.storeSubtotals['test-store']!.discount).toEqual({ type: 'amount', value: 30, appliedAgorot: 3_000 });
+    expect(ORDER.totalAgorot).toBe(24_000); // 250 ₪ + 20 ₪ − 30 ₪
   });
 
   it('a request naming nothing is refused rather than writing an empty update', async () => {

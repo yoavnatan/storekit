@@ -6,14 +6,15 @@ import { countsAsRevenue } from './orders.js';
 import { getAllProducts, type StoreProduct } from './store-products.js';
 import { businessMonthKey } from './business-day.js';
 import { isDemoStore } from './demo-stores.js';
-import { roundMoney } from './money.js';
 
+/** Both integer agorot (orders.ts) — these are SUMS, which is exactly the side of the boundary the
+ *  unit flip was for. A caller that shows one renders it with `money.ts#formatAgorot`. */
 export interface StoreRevenue {
-  totalRevenue: number; // all-time, paid orders only, net of any seller-applied discount
-  monthRevenue: number; // current calendar month, same basis
+  totalRevenueAgorot: number; // all-time, paid orders only, net of any seller-applied discount
+  monthRevenueAgorot: number; // current calendar month, same basis
 }
 
-const EMPTY_REVENUE: StoreRevenue = { totalRevenue: 0, monthRevenue: 0 };
+const EMPTY_REVENUE: StoreRevenue = { totalRevenueAgorot: 0, monthRevenueAgorot: 0 };
 
 // Net of any discount the seller later applied on that store's slice of the
 // order (see orders.ts's StoreSubtotal.discount) — subtotal alone would
@@ -31,7 +32,9 @@ export function orderNetForStore(order: Order, storeSlug: string): number {
   // itself is not silently accepted: reconcile.ts reports any discount that exceeds
   // its subtotal, so the data error surfaces as a discrepancy rather than as a
   // number quietly bent back into range here.
-  return Math.max(0, roundMoney(sub.subtotal - (sub.discount?.applied ?? 0)));
+  // No rounding: both operands are integer agorot, so the difference is exact. `roundMoney` used
+  // to sit here because subtracting two ILS floats produced a tail; there is no tail to trim now.
+  return Math.max(0, sub.subtotalAgorot - (sub.discount?.appliedAgorot ?? 0));
 }
 
 /** GMV for one order on the SAME basis every per-store surface uses: the sum of its
@@ -47,7 +50,7 @@ export function orderNetTotal(order: Order): number {
   // field is exactly as exposed as reading it, and this one runs on the admin
   // Overview, where a TypeError takes the whole panel down rather than one figure.
   for (const storeSlug of Object.keys(order.storeSubtotals ?? {})) total += orderNetForStore(order, storeSlug);
-  return roundMoney(total);
+  return total;
 }
 
 // One pass over all orders, keyed by storeSlug — callers (getSellerCards/
@@ -65,16 +68,14 @@ export function getStoreRevenueMap(orders: Order[]): Map<string, StoreRevenue> {
     const isThisMonth = businessMonthKey(new Date(order.createdAt)) === curMonth;
     for (const storeSlug of Object.keys(order.storeSubtotals ?? {})) {
       const net = orderNetForStore(order, storeSlug);
-      const entry = map.get(storeSlug) ?? { totalRevenue: 0, monthRevenue: 0 };
-      entry.totalRevenue += net;
-      if (isThisMonth) entry.monthRevenue += net;
+      const entry = map.get(storeSlug) ?? { totalRevenueAgorot: 0, monthRevenueAgorot: 0 };
+      entry.totalRevenueAgorot += net;
+      if (isThisMonth) entry.monthRevenueAgorot += net;
       map.set(storeSlug, entry);
     }
   }
-  for (const entry of map.values()) {
-    entry.totalRevenue = roundMoney(entry.totalRevenue);
-    entry.monthRevenue = roundMoney(entry.monthRevenue);
-  }
+  // The rounding pass that used to close this loop is gone with the unit: summing thousands of
+  // integers cannot accumulate an error, which is the whole reason §7.7 asked for integers.
   return map;
 }
 
@@ -98,7 +99,7 @@ export interface PlatformOverview {
    *  sum of the per-store rows exactly (asserted in tests/reporting-invariants.test.ts).
    *  It is NOT the platform's own income — that is commission + subscriptions + ad
    *  margin, built by platform-revenue.ts and shown in the Performance tab. */
-  gmv: number;
+  gmvAgorot: number;
 }
 
 export function getPlatformOverview(sellers: Seller[], stores: Store[], orders: Order[]): PlatformOverview {
@@ -116,7 +117,7 @@ export function getPlatformOverview(sellers: Seller[], stores: Store[], orders: 
     // Summed through orderNetTotal, not `o.totalAmount`: the latter includes
     // shipping and ignores seller discounts, so this headline and the per-store
     // revenue rows one tab away were two different numbers for the same concept.
-    gmv: roundMoney(paid.reduce((sum, o) => sum + orderNetTotal(o), 0)),
+    gmvAgorot: paid.reduce((sum, o) => sum + orderNetTotal(o), 0),
   };
 }
 
@@ -163,8 +164,8 @@ export function getSellerCards(sellers: Seller[], stores: Store[], productsBySto
         stores: sellerStores,
         totalProducts: sellerStores.reduce((sum, s) => sum + s.products.length, 0),
         revenue: {
-          totalRevenue: sellerStores.reduce((sum, s) => sum + s.revenue.totalRevenue, 0),
-          monthRevenue: sellerStores.reduce((sum, s) => sum + s.revenue.monthRevenue, 0),
+          totalRevenueAgorot: sellerStores.reduce((sum, s) => sum + s.revenue.totalRevenueAgorot, 0),
+          monthRevenueAgorot: sellerStores.reduce((sum, s) => sum + s.revenue.monthRevenueAgorot, 0),
         },
       };
     })
@@ -291,8 +292,8 @@ export function filterAndSortSellerCards(cards: SellerCardData[], query: AdminSe
 
   const dir = query.sortDir === 'asc' ? 1 : -1;
   return filtered.sort((a, b) => {
-    const va = query.sortCol === 'revenue' ? a.revenue.totalRevenue : query.sortCol === 'stores' ? a.stores.length : new Date(a.seller.createdAt).getTime();
-    const vb = query.sortCol === 'revenue' ? b.revenue.totalRevenue : query.sortCol === 'stores' ? b.stores.length : new Date(b.seller.createdAt).getTime();
+    const va = query.sortCol === 'revenue' ? a.revenue.totalRevenueAgorot : query.sortCol === 'stores' ? a.stores.length : new Date(a.seller.createdAt).getTime();
+    const vb = query.sortCol === 'revenue' ? b.revenue.totalRevenueAgorot : query.sortCol === 'stores' ? b.stores.length : new Date(b.seller.createdAt).getTime();
     return va < vb ? -dir : va > vb ? dir : 0;
   });
 }
@@ -311,8 +312,8 @@ export function filterAndSortStoreRows(rows: StoreRow[], query: AdminStoreQuery)
       const cmp = a.store.name.localeCompare(b.store.name, 'he');
       return dir === 1 ? cmp : -cmp;
     }
-    const va = query.sortCol === 'revenue' ? a.revenue.totalRevenue : a.productCount;
-    const vb = query.sortCol === 'revenue' ? b.revenue.totalRevenue : b.productCount;
+    const va = query.sortCol === 'revenue' ? a.revenue.totalRevenueAgorot : a.productCount;
+    const vb = query.sortCol === 'revenue' ? b.revenue.totalRevenueAgorot : b.productCount;
     return va < vb ? -dir : va > vb ? dir : 0;
   });
 }

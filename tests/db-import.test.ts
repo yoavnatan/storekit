@@ -208,8 +208,8 @@ function everyAmount(dir: string): number[] {
   const orders = JSON.parse(fs.readFileSync(path.join(dir, 'orders.json'), 'utf8'));
   const products = JSON.parse(fs.readFileSync(path.join(dir, 'store-products.json'), 'utf8'));
   return [
-    ...orders.flatMap((o: { totalAmount: number; shippingAmount: number; items?: { price: number }[] }) =>
-      [o.totalAmount, o.shippingAmount, ...(o.items ?? []).map((i) => i.price)]),
+    ...orders.flatMap((o: { totalAgorot: number; shippingAgorot: number; items?: { price: number }[] }) =>
+      [o.totalAgorot, o.shippingAgorot, ...(o.items ?? []).map((i) => i.price)]),
     ...products.map((p: { price: number }) => p.price),
   ].filter((n: number) => Number.isFinite(n));
 }
