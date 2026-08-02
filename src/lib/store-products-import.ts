@@ -132,7 +132,7 @@ export async function runProductImport({ storeId, sellerId, csv, commit }: RunIm
   const restockedIds = upserted
     .map((u, i) => (u.action === 'update' && validRows[i]!.input!.stock !== undefined ? u.id : null))
     .filter((id): id is string => !!id);
-  if (restockedIds.length) deleteNotificationsByRelatedIds(restockedIds, sellerId);
+  if (restockedIds.length) await deleteNotificationsByRelatedIds(restockedIds, sellerId);
 
   let cursor = 0;
   return {
