@@ -1,23 +1,27 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import crypto from 'node:crypto';
+import { isUuid, query, rows } from './db.js';
 import { safeRedirectPath } from './safe-redirect.js';
-import { roundMoney } from './money.js';
+import { toAgorot } from './money.js';
 import { sanitizeImageUrl as sanitizeImageUrlShared } from './image-url.js';
 
-const CAMPAIGNS_PATH = path.join(process.cwd(), 'data/brand-campaigns.json');
-
-// Platform BRAND campaigns (CURRENT_TASK.md → סשן ב׳). Distinct from the two
-// product-based ad tiers (baseline feed + seller boosts, see ad-campaigns.ts):
-// these advertise the PLATFORM ITSELF — "open a store on Dezabin" / "shop
-// across many stores" — so unlike a product ad they need creative the owner
-// uploads (headline, body, image, destination), because there's no product feed
-// to render. Owner-managed only, from the admin advertising tab.
-//
-// Like every other ad surface here, NOT wired to a real Google/Meta API yet
-// (no keys/business accounts) — `getMockBrandStats()` fabricates stable numbers
-// from the budget. Nothing here moves money, so it skips the money/stock mutex
-// + Vitest rule that applies to real payment code.
+/**
+ * Platform BRAND campaigns (CURRENT_TASK.md → סשן ב׳). Distinct from the two product-based ad
+ * tiers (baseline feed + seller boosts, see ad-campaigns.ts): these advertise the PLATFORM ITSELF
+ * — "open a store on Dezabin" / "shop across many stores" — so unlike a product ad they need
+ * creative the owner uploads (headline, body, image, destination), because there is no product
+ * feed to render. Owner-managed only, from the admin advertising tab.
+ *
+ * **Moved to Postgres in the same diff as `ad-campaigns` (DB_MIGRATION_PLAN.md §8), and that is
+ * deliberate.** The two feed money through separate modules, and memory
+ * `project_brand_boost_twin_drift` records what happens when one is fixed without the other: the
+ * pause-stamp rule below exists in both files because it was fixed twice. Everything true of the
+ * budget there is true here — integer agorot, named `monthlyBudgetAgorot` so the unit cannot
+ * change under a stable name, and read through `bigIntOf` because `pg` hands back a `bigint` as a
+ * string that `+` would concatenate.
+ *
+ * Like every other ad surface here, NOT wired to a real Google/Meta API yet (no keys/business
+ * accounts) — `ad-metrics.ts#brandStatsInRange` fabricates stable numbers from the budget.
+ */
 
 export type BrandObjective = 'buyers' | 'sellers';
 export type BrandPlatform = 'google' | 'meta';
@@ -32,7 +36,8 @@ export interface BrandCampaign {
   imageUrl?: string;      // Cloudinary secure_url
   destinationUrl: string; // where a click lands (relative path or absolute https URL)
   platform: BrandPlatform;
-  monthlyBudget: number;  // ILS
+  /** Integer agorot — see the module note. */
+  monthlyBudgetAgorot: number;
   durationDays?: BrandDuration; // omitted = ongoing
   status: 'active' | 'paused';
   createdAt: string;
@@ -48,6 +53,12 @@ export interface BrandCampaign {
 export const BRAND_DURATION_OPTIONS: readonly BrandDuration[] = [7, 14, 30];
 const HEADLINE_MAX = 120;
 const BODY_MAX = 400;
+
+/** Ceiling on a brand budget, in ILS. `Number.isFinite` alone lets `1e30` through, and the column
+ *  is `bigint`: `toAgorot(1e30)` is out of range for it, so an absurd hand-built POST would be a
+ *  500 rather than a rejected request. The boost twin gets its cap from `ad-budget.ts`; this one
+ *  is the platform's own spend and has no seller-facing form to share a ladder with. */
+export const MAX_BRAND_BUDGET = 1_000_000;
 
 /** Default click destination per objective. Relative paths — they resolve against
  *  the real domain once one is set (see GO_LIVE_CHECKLIST.md). */
@@ -66,6 +77,14 @@ export function parsePlatform(v: unknown): BrandPlatform {
 export function parseBrandDuration(v: unknown): BrandDuration | undefined {
   const n = Number(v);
   return BRAND_DURATION_OPTIONS.includes(n as BrandDuration) ? (n as BrandDuration) : undefined;
+}
+
+/** An owner-typed budget in ILS → integer agorot, or null if it is not a budget. The one place a
+ *  brand budget crosses from what a person typed into what the column stores. */
+export function parseBrandBudgetAgorot(v: unknown): number | null {
+  const ils = Number(v);
+  if (!Number.isFinite(ils) || ils < 0 || ils > MAX_BRAND_BUDGET) return null;
+  return toAgorot(ils);
 }
 
 /** Only an in-site path or an http(s) URL is allowed — blocks javascript:/data: and other
@@ -103,7 +122,7 @@ export interface CreateBrandInput {
   imageUrl?: string;
   destinationUrl: string;
   platform: BrandPlatform;
-  monthlyBudget: number;
+  monthlyBudgetAgorot: number;
   durationDays?: BrandDuration;
 }
 
@@ -115,8 +134,8 @@ export function parseCreateInput(body: unknown): CreateBrandInput | null {
   const objective = parseObjective(b.objective);
   const headline = (typeof b.headline === 'string' ? b.headline.trim() : '').slice(0, HEADLINE_MAX);
   const bodyText = (typeof b.body === 'string' ? b.body.trim() : '').slice(0, BODY_MAX);
-  const budget = Number(b.monthlyBudget);
-  if (!headline || !bodyText || !Number.isFinite(budget) || budget < 0) return null;
+  const monthlyBudgetAgorot = parseBrandBudgetAgorot(b.monthlyBudget);
+  if (!headline || !bodyText || monthlyBudgetAgorot === null) return null;
   return {
     objective,
     headline,
@@ -124,96 +143,126 @@ export function parseCreateInput(body: unknown): CreateBrandInput | null {
     imageUrl: sanitizeImageUrl(b.imageUrl),
     destinationUrl: sanitizeDestination(b.destinationUrl, objective),
     platform: parsePlatform(b.platform),
-    monthlyBudget: Math.round(budget),
+    monthlyBudgetAgorot,
     durationDays: parseBrandDuration(b.durationDays),
   };
 }
 
-function readAll(): BrandCampaign[] {
-  try { return JSON.parse(fs.readFileSync(CAMPAIGNS_PATH, 'utf8')) as BrandCampaign[]; }
-  catch { return []; }
+interface BrandRow {
+  id: string;
+  objective: string;
+  headline: string;
+  body: string;
+  image_url: string | null;
+  destination_url: string;
+  platform: string;
+  monthly_budget_agorot: string | number;
+  duration_days: number | null;
+  status: string;
+  paused_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
 }
 
-function writeAll(campaigns: BrandCampaign[]): void {
-  fs.writeFileSync(CAMPAIGNS_PATH, JSON.stringify(campaigns, null, 2));
+const COLUMNS = `id, objective, headline, body, image_url, destination_url, platform,
+  monthly_budget_agorot, duration_days, status, paused_at, created_at, updated_at`;
+
+function isoOf(v: Date | string | null): string | undefined {
+  if (!v) return undefined;
+  return v instanceof Date ? v.toISOString() : new Date(v).toISOString();
 }
 
-export function getAllBrandCampaigns(): BrandCampaign[] {
-  return readAll().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-}
-
-export function createBrandCampaign(input: CreateBrandInput): BrandCampaign {
-  const all = readAll();
-  const now = new Date().toISOString();
+function toBrandCampaign(row: BrandRow): BrandCampaign {
+  const n = row.monthly_budget_agorot;
   const campaign: BrandCampaign = {
-    id: crypto.randomUUID(),
-    status: 'active',
-    createdAt: now,
-    updatedAt: now,
-    ...input,
+    id: row.id,
+    objective: row.objective as BrandObjective,
+    headline: row.headline,
+    body: row.body,
+    destinationUrl: row.destination_url,
+    platform: row.platform as BrandPlatform,
+    // `bigint` is a string from `pg`, a number from PGlite. `admin-ads.ts` SUMS these.
+    monthlyBudgetAgorot: Number.isFinite(Number(n)) ? Number(n) : 0,
+    status: row.status as BrandCampaign['status'],
+    createdAt: isoOf(row.created_at) ?? '',
+    updatedAt: isoOf(row.updated_at) ?? '',
   };
-  all.push(campaign);
-  writeAll(all);
+  if (row.image_url) campaign.imageUrl = row.image_url;
+  if (row.duration_days) campaign.durationDays = row.duration_days as BrandDuration;
+  const pausedAt = isoOf(row.paused_at);
+  if (pausedAt) campaign.pausedAt = pausedAt;
   return campaign;
 }
 
-export function updateBrandCampaign(id: string, updates: Partial<Pick<BrandCampaign, 'monthlyBudget' | 'status'>>): BrandCampaign | undefined {
-  const all = readAll();
-  const idx = all.findIndex((c) => c.id === id);
-  if (idx === -1) return undefined;
-  const prev = all[idx]!;
-  const next = { ...prev };
-  if (updates.status === 'active' || updates.status === 'paused') next.status = updates.status;
-  if (updates.monthlyBudget !== undefined && Number.isFinite(updates.monthlyBudget) && updates.monthlyBudget >= 0) {
-    next.monthlyBudget = Math.round(updates.monthlyBudget);
-  }
-  const now = new Date().toISOString();
-  // Same stamp/clear the boost twin does (ad-campaigns.ts#updateCampaign), and for the same
-  // reason: on a real status transition only, so a plain budget edit never moves the moment the
-  // metrics froze at.
-  if (updates.status === 'paused' && prev.status !== 'paused') next.pausedAt = now;
-  else if (updates.status === 'active') delete next.pausedAt;
-  next.updatedAt = now;
-  all[idx] = next;
-  writeAll(all);
-  return next;
+/** Newest first — `created_at DESC, id`, never `created_at` alone: two campaigns created in the
+ *  same second would otherwise swap places between loads (§7.13). */
+export async function getAllBrandCampaigns(): Promise<BrandCampaign[]> {
+  const found = await rows<BrandRow>(
+    `SELECT ${COLUMNS} FROM brand_campaigns ORDER BY created_at DESC, id`,
+  );
+  return found.map(toBrandCampaign);
 }
 
-export function deleteBrandCampaign(id: string): boolean {
-  const all = readAll();
-  const next = all.filter((c) => c.id !== id);
-  if (next.length === all.length) return false;
-  writeAll(next);
-  return true;
+export async function createBrandCampaign(input: CreateBrandInput): Promise<BrandCampaign> {
+  const { rows: written } = await query<BrandRow>(
+    `INSERT INTO brand_campaigns (
+       id, objective, headline, body, image_url, destination_url, platform,
+       monthly_budget_agorot, duration_days, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+     RETURNING ${COLUMNS}`,
+    [
+      crypto.randomUUID(), input.objective, input.headline, input.body,
+      input.imageUrl ?? null, input.destinationUrl, input.platform,
+      input.monthlyBudgetAgorot, input.durationDays ?? null,
+    ],
+  );
+  return toBrandCampaign(written[0]!);
 }
 
-export interface MockBrandStats {
-  impressions: number;
-  clicks: number;
-  ctr: number;         // %
-  spend: number;       // ILS
-  conversions: number; // signups / new buyers attributed (awareness → action)
+/**
+ * Change a brand campaign's budget or status.
+ *
+ * The same stamp/clear the boost twin does (ad-campaigns.ts#updateCampaign), in the same shape and
+ * for the same reason: on a real status transition only, so a plain budget edit never moves the
+ * moment the metrics froze at. The `CASE` reads the OLD `status` — that is what an `UPDATE … SET`
+ * sees on the right-hand side — which is what makes the transition test a single statement rather
+ * than a read-then-write two processes could interleave.
+ */
+export async function updateBrandCampaign(
+  id: string,
+  updates: { monthlyBudgetAgorot?: number; status?: 'active' | 'paused' },
+): Promise<BrandCampaign | undefined> {
+  if (!isUuid(id)) return undefined;
+  const budget = updates.monthlyBudgetAgorot;
+  const status = updates.status === 'active' || updates.status === 'paused' ? updates.status : null;
+  const found = await rows<BrandRow>(
+    `UPDATE brand_campaigns SET
+       monthly_budget_agorot = COALESCE($2::bigint, monthly_budget_agorot),
+       status                = COALESCE($3::text, status),
+       paused_at = CASE
+         WHEN $3::text = 'active' THEN NULL
+         WHEN $3::text = 'paused' AND status <> 'paused' THEN now()
+         ELSE paused_at END,
+       updated_at = now()
+     WHERE id = $1
+     RETURNING ${COLUMNS}`,
+    [
+      id,
+      budget !== undefined && Number.isFinite(budget) && budget >= 0 ? Math.round(budget) : null,
+      status,
+    ],
+  );
+  return found[0] ? toBrandCampaign(found[0]) : undefined;
 }
 
-// Deterministic per-campaign "random" seeded by id, so numbers stay stable
-// across reloads — same stand-in approach as ad-campaigns.ts.
-function seededFraction(seed: string): number {
-  return crypto.createHash('sha256').update(seed).digest().readUInt32BE(0) / 0xffffffff;
-}
-
-export function getMockBrandStats(campaign: BrandCampaign): MockBrandStats {
-  if (campaign.status === 'paused') return { impressions: 0, clicks: 0, ctr: 0, spend: 0, conversions: 0 };
-
-  const daysRunning = Math.max(1, Math.min(30, Math.floor((Date.now() - new Date(campaign.createdAt).getTime()) / 86400000) + 1));
-  const spend = roundMoney((campaign.monthlyBudget / 30) * daysRunning);
-
-  const rand = seededFraction(campaign.id);
-  // Brand/awareness ads run cheaper CPMs than shopping but convert less directly.
-  const cpm = campaign.platform === 'google' ? 10 + rand * 8 : 8 + rand * 7;
-  const impressions = Math.round((spend / cpm) * 1000);
-  const ctr = Math.round((0.7 + rand * 1.6) * 1000) / 1000; // %, not money — a rate, so not roundMoney
-  const clicks = Math.round(impressions * (ctr / 100));
-  const conversions = Math.round(clicks * (0.02 + rand * 0.05)); // 2%–7% of clicks act
-
-  return { impressions, clicks, ctr, spend, conversions };
+/**
+ * Delete a brand campaign outright — and unlike the seller boost beside it, that is correct here.
+ * A boost row is a bill the platform sends a seller, so cancelling it archives rather than
+ * deletes; a brand campaign is the platform advertising ITSELF, an expense it owns, with nobody to
+ * report a figure to. `platform-revenue.ts` deliberately excludes these rows for the same reason.
+ */
+export async function deleteBrandCampaign(id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
+  const { rowCount } = await query('DELETE FROM brand_campaigns WHERE id = $1', [id]);
+  return rowCount > 0;
 }

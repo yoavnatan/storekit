@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { AdCampaign } from './ad-campaigns.js';
 import type { BrandCampaign } from './brand-campaigns.js';
 import { daysInRangeInclusive, toISODate } from './date-range.js';
-import { roundMoney } from './money.js';
+import { fromAgorot, roundMoney } from './money.js';
 import { boostFeePercent } from './pricing.js';
 import { store } from '../config/store.config.js';
 
@@ -140,8 +140,14 @@ function overlapDays(c: Runnable, from: string, to: string): number {
  *
  *  Seeded separately from the campaign's CPM/CTR: one shared `rand` would tie "spent less" to
  *  "cheaper clicks", and those are independent in reality. */
-function spendOver(campaign: { id: string; monthlyBudget: number; durationDays?: number }, days: number): number {
-  const pace = campaign.monthlyBudget / (campaign.durationDays ?? 30);
+function spendOver(campaign: { id: string; monthlyBudgetAgorot: number; durationDays?: number }, days: number): number {
+  // **The one place a campaign budget crosses back out of agorot, and it has to be here.** The
+  // stored cap is integer agorot (§7.7); every rate below it — CPM in ₪ per 1000 impressions, the
+  // ₪90–260 basket value — is ILS, so feeding agorot straight in would price impressions off a
+  // number a hundred times too large and report a campaign reaching a hundred times its audience.
+  // Everything this module returns is ILS, which is what `platform-revenue.ts` documents at its
+  // own boundary and converts once on the way in.
+  const pace = fromAgorot(campaign.monthlyBudgetAgorot) / (campaign.durationDays ?? 30);
   const utilisation = 0.82 + frac('util:' + campaign.id) * 0.16;
   return pace * days * utilisation;
 }
@@ -262,4 +268,37 @@ export function brandStatsInRange(campaign: BrandCampaign, from: string, to: str
     conversions: Math.round(clicks * (0.02 + rand * 0.05)), // 2%–7% of clicks act
     roas: 0, // brand/awareness has no direct revenue attribution modelled
   };
+}
+
+export interface MockBrandStats {
+  impressions: number;
+  clicks: number;
+  ctr: number;         // %
+  spend: number;       // ILS
+  conversions: number; // signups / new buyers attributed (awareness → action)
+}
+
+/**
+ * A brand campaign's lifetime headline — what the admin card shows beside it.
+ *
+ * **Moved here from `brand-campaigns.ts` when that module went to Postgres.** It was the only
+ * thing left in a data module that did money arithmetic and kept a second copy of the seeded-
+ * fraction helper, which is how the two brand mocks were free to disagree on the same campaign.
+ * They share `frac` now, so a campaign's numbers come from one seed wherever they are read.
+ */
+export function getMockBrandStats(campaign: BrandCampaign): MockBrandStats {
+  if (campaign.status === 'paused') return { impressions: 0, clicks: 0, ctr: 0, spend: 0, conversions: 0 };
+
+  const daysRunning = Math.max(1, Math.min(30, Math.floor((Date.now() - new Date(campaign.createdAt).getTime()) / 86400000) + 1));
+  const spend = roundMoney((fromAgorot(campaign.monthlyBudgetAgorot) / 30) * daysRunning);
+
+  const rand = frac('brand:' + campaign.id);
+  // Brand/awareness ads run cheaper CPMs than shopping but convert less directly.
+  const cpm = campaign.platform === 'google' ? 10 + rand * 8 : 8 + rand * 7;
+  const impressions = Math.round((spend / cpm) * 1000);
+  const ctr = Math.round((0.7 + rand * 1.6) * 1000) / 1000; // %, not money — a rate, so not roundMoney
+  const clicks = Math.round(impressions * (ctr / 100));
+  const conversions = Math.round(clicks * (0.02 + rand * 0.05)); // 2%–7% of clicks act
+
+  return { impressions, clicks, ctr, spend, conversions };
 }

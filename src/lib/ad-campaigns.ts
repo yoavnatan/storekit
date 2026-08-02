@@ -1,20 +1,31 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import crypto from 'node:crypto';
+import { isUuid, query, rows } from './db.js';
 import type { AdScopeKind } from './ad-scope-label.js';
 
-const CAMPAIGNS_PATH = path.join(process.cwd(), 'data/ad-campaigns.json');
-
-// Two-tier ads model (see AI_INSTRUCTIONS.md "Ads — two-tier model"): every
-// product is already in the platform-funded baseline campaign automatically
-// (no row here for that — it's not seller-owned). A row here is only the
-// seller-funded "boost" tier — a real Google Ads/Meta Marketing API
-// integration is not wired up yet (no API keys/business accounts), so
-// `monthlyBudget` is a target the seller sets and ad-metrics.ts
-// (campaignLifetimeStats / campaignStatsInRange) fabricates plausible, stable
-// performance numbers from it. No real charge happens — nothing here moves
-// money, so this intentionally skips the money-changes-need-a-mutex/Vitest rule
-// that applies to actual payment code.
+/**
+ * Seller-funded "boost" campaigns — the paid tier of the two-tier ads model
+ * (AI_INSTRUCTIONS.md "Ads — two-tier model"). Every product is already in the platform-funded
+ * baseline campaign automatically and has no row here; a row here is a boost the seller bought.
+ *
+ * **Moved to Postgres (DB_MIGRATION_PLAN.md §8, "the rest").** Three things changed with the move
+ * and each one is a rule, not a detail:
+ *
+ * · **The budget is integer agorot and its NAME says so (§7.7).** It was `monthlyBudget`, a
+ *   floating ILS number. Changing the unit under the same name is a hundred-fold error the
+ *   compiler passes in silence, so the field is `monthlyBudgetAgorot` and every one of its readers
+ *   had to be visited. The seller still types shekels — `ad-campaign-input.ts` converts once, on
+ *   the way in, and `ad-metrics.ts` converts once, on the way out.
+ * · **The column is `bigint`, which `pg` returns as a STRING.** `'50000' + '50000'` is
+ *   `'5000050000'`, not a sum, and `admin-ads.ts` adds budgets across a store's campaigns. Every
+ *   read goes through `bigIntOf`.
+ * · **Empty is not missing.** `product_ids`/`category_ids` are `NOT NULL DEFAULT '{}'`, so a
+ *   single-product campaign reads back `[]` where the file held `undefined`. They are mapped back
+ *   to `undefined` so the row shape every existing reader was written against is unchanged.
+ *
+ * A real Google Ads/Meta Marketing API integration is still not wired up (no keys/business
+ * accounts), so `ad-metrics.ts` fabricates stable performance numbers from the budget and no real
+ * charge happens yet.
+ */
 export interface AdCampaign {
   id: string;
   storeId: string;
@@ -39,7 +50,8 @@ export interface AdCampaign {
   // 'both' = one campaign running on Google + Meta together (the budget is
   // split across the two networks). See ad-metrics.ts for its blended CPM.
   platform: 'google' | 'meta' | 'both';
-  monthlyBudget: number; // ILS
+  /** The seller's cap, in integer agorot. Never a fractional shekel — see the module note. */
+  monthlyBudgetAgorot: number;
   // Seller-chosen run length in days; omitted = ongoing until paused/deleted.
   durationDays?: 7 | 14 | 30;
   // Seller-chosen broad audience segment. The platform still manages the fine
@@ -78,10 +90,18 @@ export type AdAgeRange = 'all' | 'infant' | 'kids' | 'adult';
 export const AD_DURATION_OPTIONS: readonly (7 | 14 | 30)[] = [7, 14, 30];
 export const AD_AGE_OPTIONS: readonly AdAgeRange[] = ['all', 'infant', 'kids', 'adult'];
 
-export type CreateCampaignInput = Pick<AdCampaign, 'storeId' | 'storeSlug' | 'scope' | 'platform' | 'monthlyBudget'> &
+export type CreateCampaignInput = Pick<AdCampaign, 'storeId' | 'storeSlug' | 'scope' | 'platform' | 'monthlyBudgetAgorot'> &
   Partial<Pick<AdCampaign,
     'productId' | 'productName' | 'productIds' | 'productNames' |
     'categoryIds' | 'categoryNames' | 'durationDays' | 'audience'>>;
+
+/** What `updateCampaign` may change. Budget and status are the seller's; `pausedReason` is the
+ *  platform's own sweep (ad-campaign-health.ts) and is never set from a request body. */
+export interface CampaignUpdate {
+  monthlyBudgetAgorot?: number;
+  status?: 'active' | 'paused';
+  pausedReason?: 'unavailable' | 'out-of-stock';
+}
 
 /** Coerce untrusted request input to a valid duration, or undefined (= ongoing). */
 export function parseDuration(v: unknown): (7 | 14 | 30) | undefined {
@@ -99,86 +119,264 @@ export function parseAudience(v: unknown): { gender: AdGender; age: AdAgeRange }
   return { gender, age };
 }
 
-function readAll(): AdCampaign[] {
-  try { return JSON.parse(fs.readFileSync(CAMPAIGNS_PATH, 'utf8')) as AdCampaign[]; }
-  catch { return []; }
+interface CampaignRow {
+  id: string;
+  store_id: string;
+  store_slug: string;
+  scope: string;
+  product_id: string | null;
+  product_name: string | null;
+  product_ids: string[];
+  product_names: string[];
+  category_ids: string[];
+  category_names: string[];
+  platform: string;
+  monthly_budget_agorot: string | number;
+  duration_days: number | null;
+  audience_gender: string | null;
+  audience_age: string | null;
+  status: string;
+  paused_at: Date | string | null;
+  paused_reason: string | null;
+  archived_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
 }
 
-function writeAll(campaigns: AdCampaign[]): void {
-  fs.writeFileSync(CAMPAIGNS_PATH, JSON.stringify(campaigns, null, 2));
+const COLUMNS = `id, store_id, store_slug, scope, product_id, product_name, product_ids,
+  product_names, category_ids, category_names, platform, monthly_budget_agorot, duration_days,
+  audience_gender, audience_age, status, paused_at, paused_reason, archived_at, created_at, updated_at`;
+
+/** `bigint` is a STRING from `pg` and a number from PGlite — see the module note on `+=`. */
+function bigIntOf(v: string | number | null | undefined): number {
+  const n = typeof v === 'number' ? v : Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
 }
 
-/** Every campaign across all stores — for the admin's platform-wide advertising overview. */
-export function getAllCampaigns(): AdCampaign[] {
-  return readAll();
+function isoOf(v: Date | string | null): string | undefined {
+  if (!v) return undefined;
+  return v instanceof Date ? v.toISOString() : new Date(v).toISOString();
+}
+
+function toCampaign(row: CampaignRow): AdCampaign {
+  const campaign: AdCampaign = {
+    id: row.id,
+    storeId: row.store_id,
+    storeSlug: row.store_slug,
+    scope: row.scope as AdScopeKind,
+    platform: row.platform as AdCampaign['platform'],
+    monthlyBudgetAgorot: bigIntOf(row.monthly_budget_agorot),
+    status: row.status as AdCampaign['status'],
+    createdAt: isoOf(row.created_at) ?? '',
+    updatedAt: isoOf(row.updated_at) ?? '',
+  };
+  if (row.product_id) campaign.productId = row.product_id;
+  if (row.product_name) campaign.productName = row.product_name;
+  // `[]` is what the column holds for a scope that names nothing — the file held `undefined`, and
+  // every reader was written against that shape.
+  if (row.product_ids.length) campaign.productIds = row.product_ids;
+  if (row.product_names.length) campaign.productNames = row.product_names;
+  if (row.category_ids.length) campaign.categoryIds = row.category_ids;
+  if (row.category_names.length) campaign.categoryNames = row.category_names;
+  if (row.duration_days) campaign.durationDays = row.duration_days as 7 | 14 | 30;
+  if (row.audience_gender || row.audience_age) {
+    campaign.audience = {
+      gender: (row.audience_gender ?? 'all') as AdGender,
+      age: (row.audience_age ?? 'all') as AdAgeRange,
+    };
+  }
+  const pausedAt = isoOf(row.paused_at);
+  if (pausedAt) campaign.pausedAt = pausedAt;
+  if (row.paused_reason) campaign.pausedReason = row.paused_reason as AdCampaign['pausedReason'];
+  const archivedAt = isoOf(row.archived_at);
+  if (archivedAt) campaign.archivedAt = archivedAt;
+  return campaign;
+}
+
+/** Every campaign across all stores — for the admin's platform-wide advertising overview.
+ *  Unbounded like `getAllStores`/`getAllOrders` beside it (§3), and moves when they do. */
+export async function getAllCampaigns(): Promise<AdCampaign[]> {
+  const found = await rows<CampaignRow>(
+    `SELECT ${COLUMNS} FROM ad_campaigns ORDER BY created_at DESC, id`,
+  );
+  return found.map(toCampaign);
 }
 
 /** A store's LIVE campaigns — cancelled ones are history and come from getArchivedByStoreId. */
-export function getCampaignsByStoreId(storeId: string): AdCampaign[] {
-  return byStore(storeId).filter((c) => !c.archivedAt);
+export async function getCampaignsByStoreId(storeId: string): Promise<AdCampaign[]> {
+  return byStore(storeId, 'archived_at IS NULL');
 }
 
 /** The cancelled ones, newest first. Read-only everywhere: nothing may be resumed or re-budgeted
  *  out of here, it exists to answer "what did I run, and what did it cost". */
-export function getArchivedByStoreId(storeId: string): AdCampaign[] {
-  return byStore(storeId).filter((c) => !!c.archivedAt);
+export async function getArchivedByStoreId(storeId: string): Promise<AdCampaign[]> {
+  return byStore(storeId, 'archived_at IS NOT NULL');
 }
 
-function byStore(storeId: string): AdCampaign[] {
-  return readAll()
-    .filter((c) => c.storeId === storeId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+async function byStore(storeId: string, archiveClause: string): Promise<AdCampaign[]> {
+  if (!isUuid(storeId)) return [];
+  // `created_at DESC, id` — never `created_at` alone. Two campaigns launched in the same second
+  // would otherwise come back in a different order on every load (§7.13).
+  const found = await rows<CampaignRow>(
+    `SELECT ${COLUMNS} FROM ad_campaigns
+      WHERE store_id = $1 AND ${archiveClause}
+      ORDER BY created_at DESC, id`,
+    [storeId],
+  );
+  return found.map(toCampaign);
 }
 
-export function createCampaign(input: CreateCampaignInput): AdCampaign {
-  const all = readAll();
-  const now = new Date().toISOString();
-  const campaign: AdCampaign = {
-    id: crypto.randomUUID(),
-    status: 'active',
-    createdAt: now,
-    updatedAt: now,
-    ...input,
-  };
-  all.push(campaign);
-  writeAll(all);
-  return campaign;
+export async function createCampaign(input: CreateCampaignInput): Promise<AdCampaign> {
+  const { rows: written } = await query<CampaignRow>(
+    `INSERT INTO ad_campaigns (
+       id, store_id, store_slug, scope, product_id, product_name, product_ids, product_names,
+       category_ids, category_names, platform, monthly_budget_agorot, duration_days,
+       audience_gender, audience_age, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
+     RETURNING ${COLUMNS}`,
+    [
+      crypto.randomUUID(), input.storeId, input.storeSlug, input.scope,
+      input.productId ?? null, input.productName ?? null,
+      input.productIds ?? [], input.productNames ?? [],
+      input.categoryIds ?? [], input.categoryNames ?? [],
+      input.platform, input.monthlyBudgetAgorot, input.durationDays ?? null,
+      input.audience?.gender ?? null, input.audience?.age ?? null,
+    ],
+  );
+  return toCampaign(written[0]!);
 }
 
-export function updateCampaign(id: string, storeId: string, updates: Partial<Pick<AdCampaign, 'monthlyBudget' | 'status' | 'pausedReason'>>): AdCampaign | undefined {
-  const all = readAll();
-  const idx = all.findIndex((c) => c.id === id && c.storeId === storeId);
-  if (idx === -1) return undefined;
-  const prev = all[idx]!;
-  // History is read-only, and this is the only place that could change it. A campaign in the
-  // history block has stopped for good: re-budgeting it would rewrite a figure already reported,
-  // and resuming it would put a row nobody can see back into circulation.
-  if (prev.archivedAt) return undefined;
-  const now = new Date().toISOString();
-  const next: AdCampaign = { ...prev, ...updates, updatedAt: now };
-  // Stamp/clear the pause moment on a real status transition so metrics freeze
-  // at the pause and resume cleanly — but a plain budget edit must not disturb it.
-  if (updates.status === 'paused' && prev.status !== 'paused') next.pausedAt = now;
-  else if (updates.status === 'active') { delete next.pausedAt; delete next.pausedReason; }
-  all[idx] = next;
-  writeAll(all);
-  return all[idx];
+/**
+ * Change a campaign's budget, status or pause reason — one statement, and the pause bookkeeping
+ * happens inside it.
+ *
+ * **`WHERE archived_at IS NULL` is the history guard, and it belongs in the statement.** The file
+ * version read the row, checked `archivedAt` in JS and then wrote: two campaigns cancelled at once,
+ * or a cancel racing a budget edit, could re-open a row that had already left the live list and
+ * rewrite a figure that was already reported. A predicate the database evaluates cannot be raced.
+ *
+ * The `CASE` arms read the OLD row (that is what an `UPDATE … SET` sees on the right-hand side),
+ * which is what makes "stamp the pause moment only on a real active → paused transition" a single
+ * statement rather than a read-then-write. A plain budget edit must not disturb `paused_at`: it is
+ * what freezes the accrued metrics (ad-metrics.ts#runPeriod), and moving it would stretch a paused
+ * campaign's run period to the day of the correction and report spend for weeks it never ran.
+ */
+export async function updateCampaign(
+  id: string,
+  storeId: string,
+  updates: CampaignUpdate,
+): Promise<AdCampaign | undefined> {
+  return (await applyUpdate(storeId, [id], updates))[0];
 }
 
-/** Cancel a campaign: it stops, and it stays. There is deliberately NO function here that
- *  removes a campaign row — the spend it accrued is part of a month's reported figures, and a
- *  delete would rewrite them after the fact. Stopping it is a status change; forgetting it is
- *  not something a dashboard button may do. */
-export function archiveCampaign(id: string, storeId: string): AdCampaign | undefined {
-  const all = readAll();
-  const idx = all.findIndex((c) => c.id === id && c.storeId === storeId);
-  if (idx === -1) return undefined;
-  const prev = all[idx]!;
-  if (prev.archivedAt) return prev; // idempotent — a double click cancels once
-  const now = new Date().toISOString();
-  // Paused as well as archived: `pausedAt` is what bounds the run period, so the metrics freeze
-  // at the cancellation instead of accruing forever (ad-metrics.ts#runPeriod).
-  all[idx] = { ...prev, status: 'paused', pausedAt: prev.pausedAt ?? now, archivedAt: now, updatedAt: now };
-  writeAll(all);
-  return all[idx];
+/** The batch form. `ad-campaign-health.ts` sweeps a whole store at once, and one statement per
+ *  campaign there is the query-in-a-loop shape a file read used to hide. */
+export async function updateCampaigns(
+  storeId: string,
+  ids: readonly string[],
+  updates: CampaignUpdate,
+): Promise<AdCampaign[]> {
+  return applyUpdate(storeId, ids, updates);
+}
+
+async function applyUpdate(
+  storeId: string,
+  ids: readonly string[],
+  updates: CampaignUpdate,
+): Promise<AdCampaign[]> {
+  const valid = ids.filter(isUuid);
+  if (!valid.length || !isUuid(storeId)) return [];
+  const budget = updates.monthlyBudgetAgorot;
+  const found = await rows<CampaignRow>(
+    `UPDATE ad_campaigns SET
+       monthly_budget_agorot = COALESCE($4::bigint, monthly_budget_agorot),
+       status                = COALESCE($5::text, status),
+       paused_at = CASE
+         WHEN $5::text = 'active' THEN NULL
+         WHEN $5::text = 'paused' AND status <> 'paused' THEN now()
+         ELSE paused_at END,
+       paused_reason = CASE
+         WHEN $5::text = 'active' THEN NULL
+         WHEN $6::boolean THEN $7::text
+         ELSE paused_reason END,
+       updated_at = now()
+     WHERE store_id = $1 AND id = ANY($2::uuid[]) AND archived_at IS NULL AND $3::boolean
+     RETURNING ${COLUMNS}`,
+    [
+      storeId, valid,
+      // Nothing to change is not an empty UPDATE — it is a no-op that must still not touch
+      // `updated_at`, so the whole statement is predicated off instead.
+      budget !== undefined || updates.status !== undefined || updates.pausedReason !== undefined,
+      // Ignored rather than written when it is not a budget — the same rule the brand twin applies
+      // (`updateBrandCampaign`), and the twins have to agree: `project_brand_boost_twin_drift` is
+      // the record of what a fix to one of them alone costs. A negative reaching the statement is
+      // a CHECK violation, i.e. a 500 on the dashboard rather than a rejected field.
+      budget !== undefined && Number.isFinite(budget) && budget >= 0 ? Math.round(budget) : null,
+      updates.status ?? null,
+      updates.pausedReason !== undefined,
+      updates.pausedReason ?? null,
+    ],
+  );
+  return found.map(toCampaign);
+}
+
+/** Archiving also PAUSES and stamps `paused_at`, because that date is what bounds the run period —
+ *  without it the cancelled campaign's metrics would go on accruing forever. `COALESCE` keeps an
+ *  earlier pause moment: it was already frozen there. */
+const ARCHIVE_SQL = `UPDATE ad_campaigns
+     SET status = 'paused', paused_at = COALESCE(paused_at, now()), archived_at = now(), updated_at = now()
+   WHERE store_id = $1 AND archived_at IS NULL`;
+
+/**
+ * Cancel a campaign: it stops, and it stays. There is deliberately NO function here that removes a
+ * campaign row — the spend it accrued is part of a month's reported figures, and a delete would
+ * rewrite them after the fact. Stopping it is a status change; forgetting it is not something a
+ * dashboard button may do.
+ *
+ * Idempotent, and the second click costs a second statement rather than risking a first one: the
+ * `WHERE archived_at IS NULL` means a replay affects no row, and only then is the existing row read
+ * back so the caller still gets it. Doing it the other way — archiving unconditionally — would move
+ * `archived_at` forward on every click and un-freeze the metrics that date bounds.
+ */
+export async function archiveCampaign(id: string, storeId: string): Promise<AdCampaign | undefined> {
+  if (!isUuid(id) || !isUuid(storeId)) return undefined;
+  const { rows: archived } = await query<CampaignRow>(
+    `${ARCHIVE_SQL} AND id = $2 RETURNING ${COLUMNS}`,
+    [storeId, id],
+  );
+  if (archived[0]) return toCampaign(archived[0]);
+  const existing = await rows<CampaignRow>(
+    `SELECT ${COLUMNS} FROM ad_campaigns WHERE id = $1 AND store_id = $2`,
+    [id, storeId],
+  );
+  return existing[0] ? toCampaign(existing[0]) : undefined;
+}
+
+/**
+ * Cancel a NAMED set of a store's campaigns in one statement — what the health sweep does with the
+ * fixed-duration campaigns that reached their last day (ad-campaign-health.ts). It archives an
+ * arbitrary subset, so unlike the whole-store form below it still needs the id list.
+ *
+ * Returns how many were still live, which is the number that actually stopped. The rows are not
+ * read back: the sweep drops them from the live list either way, and a campaign already archived
+ * (a second tab got there first) is the same outcome, not an error.
+ */
+export async function archiveCampaigns(storeId: string, ids: readonly string[]): Promise<number> {
+  const valid = ids.filter(isUuid);
+  if (!valid.length || !isUuid(storeId)) return 0;
+  const { rowCount } = await query(`${ARCHIVE_SQL} AND id = ANY($2::uuid[])`, [storeId, valid]);
+  return rowCount;
+}
+
+/**
+ * Cancel every live campaign a store still has — what closing a store does on its way out
+ * (store-lifecycle.ts). One statement rather than one per campaign: closure always archives ALL of
+ * them, so the loop was N writes every time, not N writes in the rare case.
+ *
+ * Returns how many were still live, which is the number that actually stopped.
+ */
+export async function archiveCampaignsForStore(storeId: string): Promise<number> {
+  if (!isUuid(storeId)) return 0;
+  const { rowCount } = await query(ARCHIVE_SQL, [storeId]);
+  return rowCount;
 }
