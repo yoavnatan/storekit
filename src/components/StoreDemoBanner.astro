@@ -33,7 +33,13 @@ const { slug, index = 0 } = Astro.props;
 const t = getT(getLang(Astro.cookies));
 // Gradient ids are document-global: two banners on one page (never happens today,
 // but a future "example stores" row would) must not share one.
-const gradientId = `demo-banner-${slug.replace(/[^a-z0-9-]/gi, '')}`;
+//
+// Percent-encoded rather than stripped, because a slug can be Hebrew (url-base.ts#toSlug): the old
+// `[^a-z0-9-]` strip reduced EVERY Hebrew slug to the same "demo-banner--", which is precisely the
+// collision the line above exists to prevent — the second banner's rect would fill from the first
+// one's gradient. Encoding maps each slug to its own ASCII token instead of deleting it, and stays
+// deterministic, which SSR output has to be.
+const gradientId = `demo-banner-${encodeURIComponent(slug).replace(/[^a-zA-Z0-9-]/g, '')}`;
 const hue = pickCardHue(index);
 
 // The same line-art the placeholder cards use, ghosted into the background so a

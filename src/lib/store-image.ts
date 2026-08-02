@@ -60,8 +60,10 @@ function preferredSources(store: StoreImageSource, format: StoreImageFormat): st
 }
 
 /** Path of the generated mark for a store — served by /api/store-image.
- *  Slug and format are separate path segments on purpose: a slug is `[a-z0-9-]`,
- *  so any in-filename separator could also occur inside the slug itself. */
+ *  Slug and format are separate path segments on purpose: a slug holds letters, digits and `-`
+ *  (url-base.ts#toSlug), so any in-filename separator could also occur inside the slug itself.
+ *  Those letters may be Hebrew since 2026-08-02, which is what `encodeURIComponent` is for —
+ *  the route's `[slug]` param is decoded back by Astro before it reaches getStoreBySlug. */
 export function storeMarkPath(slug: string, format: StoreImageFormat): string {
   return `/api/store-image/${encodeURIComponent(slug)}/${format}.png`;
 }

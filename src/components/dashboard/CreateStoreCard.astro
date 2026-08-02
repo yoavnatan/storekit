@@ -39,8 +39,11 @@ const host = new URL(platformConfig.url).hostname;
       </label>
       <label class="field">
         <span>{d.storeUrlLabel}</span>
-        <input class="input" name="slug" id="create-store-slug" required placeholder="my-store" dir="ltr" autocomplete="off" spellcheck="false" data-host={host} />
+        {/* dir="auto" so a Hebrew slug types right-to-left; the PREVIEW below stays ltr because
+            the address as a whole reads host-then-path, with bidi laying the Hebrew run out inside it. */}
+        <input class="input" name="slug" id="create-store-slug" required placeholder="my-store" dir="auto" autocomplete="off" spellcheck="false" data-host={host} />
         <p class="muted text-[0.78rem] mt-1" style="text-align:start">{d.storeUrlHint} · <span id="create-store-url-preview" dir="ltr" class="font-mono [color:var(--color-text)]">{`${host}/my-store`}</span></p>
+        <p class="muted text-[0.78rem] mt-1 leading-[1.5]" style="text-align:start">{d.storeUrlHebrewNote}</p>
       </label>
       <div class="field">
         <span>{d.storeCategories}</span>
@@ -60,7 +63,7 @@ const host = new URL(platformConfig.url).hostname;
   // This card renders on its own page (no store yet), so the dashboard's own init
   // never runs here — the picker has to be armed locally.
   import { initAllStoreCategoryPickers } from '../../scripts/store-category-picker.js';
-  import { trimDashes } from '../../lib/url-base.js';
+  import { trimDashes, slugChars } from '../../lib/url-base.js';
   initAllStoreCategoryPickers();
 
   // Live-sanitize the store-URL field to a valid slug + preview the full address as the seller
@@ -69,7 +72,10 @@ const host = new URL(platformConfig.url).hostname;
   const preview = document.getElementById('create-store-url-preview');
   if (slugInput) {
     const host = slugInput.dataset.host ?? '';
-    const clean = (v: string) => v.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+    // slugChars, not a private character class — it is the server's own rule (url-base.ts), so the
+    // field can never delete something normalizeSlug would have kept. Hebrew included: the seller
+    // may type it, and the hint beside the field is where the trade-off is stated.
+    const clean = (v: string) => slugChars(v).replace(/\s+/g, '-').replace(/-+/g, '-');
     const update = () => {
       const pos = slugInput.selectionStart;
       slugInput.value = clean(slugInput.value);
