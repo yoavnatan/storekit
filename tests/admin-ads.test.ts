@@ -268,7 +268,7 @@ describe('home-feed promotion (silent shop-window)', () => {
 
   it('floats promoted stores to the front of the spotlight, above unpromoted', () => {
     const stores = [fs('a'), fs('b'), fs('c'), fs('promoted', 2), fs('d')];
-    const feed = buildHomeFeed(stores, null);
+    const feed = buildHomeFeed(stores);
     // The promoted store must appear before every unpromoted one in the spotlight.
     const idx = feed.spotlight.findIndex((f) => f.store.slug === 'promoted');
     expect(idx).toBe(0);
@@ -276,8 +276,8 @@ describe('home-feed promotion (silent shop-window)', () => {
 
   it('leaves ordering unchanged when nothing is promoted (stable)', () => {
     const stores = [fs('a'), fs('b'), fs('c')];
-    const feedA = buildHomeFeed(stores, null).spotlight.map((f) => f.store.slug);
-    const feedB = buildHomeFeed(stores, null).spotlight.map((f) => f.store.slug);
+    const feedA = buildHomeFeed(stores).spotlight.map((f) => f.store.slug);
+    const feedB = buildHomeFeed(stores).spotlight.map((f) => f.store.slug);
     // Deterministic within the same daily seed — same order both times.
     expect(feedA).toEqual(feedB);
   });

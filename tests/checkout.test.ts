@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { APIContext } from 'astro';
-import type { UserCartData } from '../src/lib/user-carts.js';
 
 type TestDiscount = { type: 'percent' | 'amount'; value: number; startsAt?: string; endsAt?: string };
 const PRODUCTS: Record<string, { id: string; slug: string; name: string; price: number; images?: string[]; stock: number; blocked?: boolean; hidden?: boolean; discount?: TestDiscount }> = {
@@ -30,8 +29,7 @@ const STORES: Record<string, { id: string; slug: string; name: string; sellerId:
 const createOrder = vi.fn((input: Record<string, unknown>) => ({ id: 'order-1', ...input }));
 const createNotification = vi.fn();
 const getSellerSession = vi.fn(() => null as string | null);
-const getUserCart = vi.fn((_id: string): UserCartData => ({ cart: {}, wishlist: [], favoriteStores: [] }));
-const saveUserCart = vi.fn();
+const removeCartLines = vi.fn(async (_id: string, _lines: unknown) => {});
 const logError = vi.fn();
 
 // Only the fs-backed LOOKUPS are stubbed. The lifecycle predicates come from the real
@@ -64,9 +62,10 @@ vi.mock('../src/lib/notifications.js', () => ({
   createNotification: async (input: Record<string, unknown>) => createNotification(input),
 }));
 vi.mock('../src/lib/seller-auth.js', () => ({ getSellerSession: () => getSellerSession() }));
+// `async` for the same reason as the notifications mock above: checkout awaits this now, and a
+// mock that is not a promise tests a contract that does not exist.
 vi.mock('../src/lib/user-carts.js', () => ({
-  getUserCart: (id: string) => getUserCart(id),
-  saveUserCart: (id: string, data: unknown) => saveUserCart(id, data),
+  removeCartLines: (id: string, lines: unknown) => removeCartLines(id, lines),
 }));
 // Without this mock, the "order creation fails" test below performed a real
 // fs.writeFileSync into the actual dev data/error-log.json on every test run
@@ -724,19 +723,8 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     expect(restockProduct).toHaveBeenCalledWith('p1', 2, undefined);
   });
 
-  it('for a signed-in buyer, stamps buyerId and removes only the purchased item from their server-side cart', async () => {
+  it('for a signed-in buyer, stamps buyerId and deletes only the purchased LINES from their cart', async () => {
     getSellerSession.mockReturnValue('buyer-1');
-    getUserCart.mockReturnValue({
-      cart: {
-        'test-store': {
-          storeName: 'Test Store',
-          storeSlug: 'test-store',
-          items: { widget: { cartKey: 'widget', slug: 'widget', name: 'Widget', price: 50, image: 'w.png', qty: 1 } },
-        },
-      },
-      wishlist: [],
-      favoriteStores: ['other-store'],
-    });
 
     await POST(makeContext({
       ...validBuyer,
@@ -745,11 +733,49 @@ describe('POST /api/checkout — server-side price re-validation', () => {
 
     const order = createOrder.mock.calls[0]![0] as { buyerId?: string };
     expect(order.buyerId).toBe('buyer-1');
-    expect(saveUserCart).toHaveBeenCalledWith('buyer-1', {
-      cart: {}, // the store's only item was purchased, so the whole store entry is dropped
-      wishlist: [],
-      favoriteStores: ['other-store'], // untouched by checkout
-    });
+    // The buyer's other state is not an argument any more, which is the whole change: the shape
+    // this replaced had to read the cart, rebuild it, and hand back the wishlist and saved stores
+    // with it — and the field it forgot to hand back (`recentStores`) was emptied by every purchase.
+    expect(removeCartLines).toHaveBeenCalledWith('buyer-1', [{ storeSlug: 'test-store', cartKey: 'widget' }]);
+  });
+
+  it('names the variant line, not the bare product slug, when the purchase carried variants', async () => {
+    getSellerSession.mockReturnValue('buyer-1');
+    await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1, selectedVariants: { color: 'red' } }],
+    }));
+    const [, lines] = removeCartLines.mock.calls.at(-1)!;
+    // makeCartKey's format — a delete keyed by the bare slug would leave the bought line in the
+    // cart and, worse, would match a DIFFERENT line of the same product in another variant.
+    expect((lines as { cartKey: string }[])[0]!.cartKey).toBe('widget__color=red');
+  });
+
+  it('does not touch the cart for a guest', async () => {
+    getSellerSession.mockReturnValue(null);
+    await POST(makeContext({ ...validBuyer, items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }] }));
+    expect(removeCartLines).not.toHaveBeenCalled();
+  });
+
+  it('still returns the order when clearing the cart fails, and LOGS why', async () => {
+    getSellerSession.mockReturnValue('buyer-1');
+    removeCartLines.mockRejectedValueOnce(new Error('connection terminated'));
+
+    const res = await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+
+    // A post-commit step that throws must not tell the buyer their paid order failed — but the
+    // answer is the outer handler's `if (committed) return 201`, NOT a `.catch()` at this call.
+    // A local catch would produce the same status and destroy the only record that it happened;
+    // the error log's hint names this exact step for whoever reads it.
+    expect(res.status).toBe(201);
+    expect(removeCartLines).toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({
+      route: '/api/checkout',
+      resolutionHint: expect.stringContaining('ההזמנה נוצרה והתשלום עבר'),
+    }));
   });
 });
 
