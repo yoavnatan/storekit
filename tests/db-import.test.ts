@@ -82,9 +82,18 @@ function snapshot(src: string): string {
   return dir;
 }
 
-/** Whether a real `data/` is present — true on a dev machine, false in CI. */
+/**
+ * Whether a real `data/` is present — true on a dev machine, false in CI.
+ *
+ * It asks for the two files this section actually reads rather than for any `.json` at all, and
+ * that is not pedantry: other suites in the same run write into `data/` (the money journal is
+ * created by the checkout tests), so "the directory has a json in it" is true or false depending on
+ * which file finished first. A CI run would then import a directory holding one unrelated file and
+ * fail on the amount count, intermittently.
+ */
 function hasLiveData(): boolean {
-  try { return fs.readdirSync(LIVE_DATA).some((f) => f.endsWith('.json')); } catch { return false; }
+  return ['orders.json', 'store-products.json']
+    .every((name) => fs.existsSync(path.join(LIVE_DATA, name)));
 }
 
 beforeAll(async () => {
