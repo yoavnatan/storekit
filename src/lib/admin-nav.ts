@@ -135,6 +135,8 @@ export function wirePanelLinks(panelId: string, reinit: () => void): void {
     const targetPanel = new URL(link.href, location.origin).searchParams.get('panel');
     if (targetPanel && targetPanel !== panelTab) return;
     e.preventDefault();
-    swapPanel(link.href, panelId, reinit);
+    // `void`: a click handler cannot await, and the swap reports its own failure. Marked
+    // explicitly so it reads as a decision — see tests/async-lib-awaited.test.ts.
+    void swapPanel(link.href, panelId, reinit);
   });
 }
