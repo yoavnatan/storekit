@@ -22,7 +22,7 @@
 </div>
 
 <script>
-  import { removeFromWishlist, addToWishlist, getWishlistByStore } from '../lib/wishlist.js';
+  import { removeFromWishlist, getWishlistByStore } from '../lib/wishlist.js';
   import { addItem, getCartQty } from '../lib/cart.js';
   import { fetchUnavailableLines } from '../lib/cart-prices.js';
   import { formatPrice, cdnSrc, cdnThumb } from '../config/store.config.js';
@@ -381,41 +381,10 @@
       delete rmBtn.dataset.confirming;
       delete rmBtn.dataset.timer;
 
-      // Capture full item data before the optimistic removal wipes its row,
-      // so a failed server sync can restore it exactly.
-      const row = rmBtn.closest<HTMLElement>('.wl-item');
-      const cartBtn = row?.querySelector<HTMLButtonElement>('[data-wl-cart]');
-      const itemForRollback = cartBtn ? {
-        slug,
-        name: cartBtn.dataset.wlName ?? '',
-        price: Number(cartBtn.dataset.wlPrice ?? 0),
-        image: cartBtn.dataset.wlImg ?? '',
-        storeSlug: cartBtn.dataset.wlStore ?? '',
-        storeName: cartBtn.dataset.wlSname ?? '',
-        stock: cartBtn.dataset.wlStock ? Number(cartBtn.dataset.wlStock) : undefined,
-      } : null;
-
-      fetch('/api/wishlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'remove', productSlug: slug }),
-      }).then((r) => {
-        if (r.ok) return;
-        throw new Error('remove failed');
-      }).catch(() => {
-        if (!itemForRollback) return;
-        addToWishlist(itemForRollback);
-        document.querySelectorAll<HTMLElement>(`[data-wishlist-slug="${slug}"]`).forEach((b) => {
-          b.setAttribute('data-wishlisted', 'true');
-          b.setAttribute('aria-pressed', 'true');
-          setHeartStyle(b, true);
-        });
-        const i18n = getI18n().wishlist ?? {};
-        window.dispatchEvent(new CustomEvent('toast:show', {
-          detail: { title: i18n.removeFailed ?? 'Could not remove from wishlist', body: i18n.removeFailedBody ?? '' },
-        }));
-      });
-
+      // Removal is local and then synced: `removeFromWishlist` fires `wishlist:change`, which
+      // cart-sync debounces into the one authenticated write (/api/user-cart). There is no
+      // per-item endpoint to roll back from any more — the old one took a bare product slug with
+      // no store and no session, which is neither an identity (§7.1) nor a permission.
       removeFromWishlist(slug);
       document.querySelectorAll<HTMLElement>(`[data-wishlist-slug="${slug}"]`).forEach((b) => {
         b.setAttribute('data-wishlisted', 'false');

@@ -747,11 +747,6 @@ const i18n = {
       pmWishBtn.style.color = nowActive ? '#e53e3e' : 'var(--color-muted)';
       if (pmWishLbl) pmWishLbl.textContent = nowActive ? (i18n.removeFromWishlist ?? 'הסר') : (i18n.addToWishlist ?? 'הוסף');
       if (nowActive) spawnHeartBurst(pmWishBtn);
-      fetch('/api/wishlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: nowActive ? 'add' : 'remove', productSlug: slug }),
-      });
     });
   }
 

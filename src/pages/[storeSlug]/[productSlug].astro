@@ -1377,11 +1377,6 @@ const pmI18n = {
       if (wishlistLabel) wishlistLabel.textContent = nowActive ? (wi['removeLabel'] ?? '') : (wi['addLabel'] ?? '');
       setWishlistStyle(nowActive);
       if (nowActive) spawnHeartBurst(wishlistBtn);
-      fetch('/api/wishlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: nowActive ? 'add' : 'remove', productSlug: slug }),
-      });
     });
   }
 
