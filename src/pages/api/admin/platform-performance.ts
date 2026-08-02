@@ -64,7 +64,7 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
     result.summary.platformCommissionAgorot,
     result.summary.commissionRate,
     sellers,
-    getAllCampaigns(),
+    await getAllCampaigns(),
     from,
     to,
   );

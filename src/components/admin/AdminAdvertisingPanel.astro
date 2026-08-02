@@ -7,6 +7,7 @@
 // list, so 1000 boosting sellers can't make this page grow without limit.
 // All numbers are mock estimates until a real Google/Meta account is connected.
 import { formatPrice, cdnSrc } from '../../config/store.config.js';
+import { fromAgorot } from '../../lib/money.js';
 import { jsonForScript } from '../../lib/json-script.js';
 import type { PlatformAdOverview } from '../../lib/admin-ads.js';
 import type { BrandCampaign } from '../../lib/brand-campaigns.js';
@@ -325,7 +326,7 @@ const feedTip = 'קובץ אחד מרוכז שמכיל את כל המוצרים 
             <span><b>{formatPrice(stats.spend)}</b> הוצאה</span>
           </div>
           <div class="admin-brand-card__actions">
-            <label class="admin-brand-card__budget">תקציב ₪ <input type="number" class="input" min="0" step="50" value={c.monthlyBudget} data-brand-budget /></label>
+            <label class="admin-brand-card__budget">תקציב ₪ <input type="number" class="input" min="0" step="50" value={fromAgorot(c.monthlyBudgetAgorot)} data-brand-budget /></label>
             <button type="button" class="admin-link" data-brand-save>עדכן</button>
             <button type="button" class="admin-link" data-brand-toggle>{c.status === 'paused' ? 'הפעל' : 'השהה'}</button>
             <button type="button" class="admin-link admin-link--danger" data-brand-delete data-headline={c.headline}>מחק</button>

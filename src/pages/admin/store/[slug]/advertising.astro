@@ -16,6 +16,7 @@ import { roasTierChipHtml, ctrTierChipHtml } from '../../../../lib/ad-tier.js';
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath } from '../../../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../../../lib/audience-infer.js';
 import { formatPrice } from '../../../../config/store.config.js';
+import { formatAgorot, fromAgorot } from '../../../../lib/money.js';
 import { boostFeePercent } from '../../../../lib/pricing.js';
 import { getLang, getT } from '../../../../i18n/index.js';
 import { jsonForScript } from '../../../../lib/json-script.js';
@@ -213,7 +214,7 @@ const adBudgetLabelFor = (c: { durationDays?: number }): string => (c.durationDa
                   </p>
                 )}
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[0.82rem]">
-                  <div data-budget-cell data-budget={c.monthlyBudget}><span class="[color:var(--color-muted)]">{adBudgetLabelFor(c)}</span><br /><strong>{formatPrice(c.monthlyBudget)}</strong></div>
+                  <div data-budget-cell data-budget={fromAgorot(c.monthlyBudgetAgorot)}><span class="[color:var(--color-muted)]">{adBudgetLabelFor(c)}</span><br /><strong>{formatAgorot(c.monthlyBudgetAgorot)}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adImpressions}</span><br /><strong>{c.stats.impressions.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adClicks}</span><br /><strong>{c.stats.clicks.toLocaleString('he-IL')}</strong></div>
                   <div><span class="[color:var(--color-muted)]">{d.adCtr}</span><br /><strong>{c.stats.ctr}%</strong><Fragment set:html={ctrTierChipHtml(c.stats.ctr, { low: d.adTierLow, mid: d.adTierMid, high: d.adTierHigh })} /></div>

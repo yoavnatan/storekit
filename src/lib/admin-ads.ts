@@ -3,7 +3,7 @@ import type { AdCampaign } from './ad-campaigns.js';
 import type { BrandCampaign } from './brand-campaigns.js';
 import type { PlatformAdSettings } from './platform-ads.js';
 import { baselineImpressionsInRange, campaignStatsInRange, brandStatsInRange } from './ad-metrics.js';
-import { roundMoney } from './money.js';
+import { fromAgorot, roundMoney } from './money.js';
 import { presetRange } from './date-range.js';
 
 // Platform-level advertising overview for the admin Advertising tab
@@ -134,7 +134,9 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
   // measured over the selected range.
   const baselineImpressions = feedStores.reduce((sum, s) => sum + baselineImpressionsInRange(s.id, from, to), 0);
   const rawBaselineSpend = Math.round((baselineImpressions / 1000) * BASELINE_CPM);
-  const budget = settings.lifetimeBudget;
+  // The stored knob is integer agorot (platform-ads.ts); every other figure in this overview is
+  // ILS, because it is built from ad-metrics.ts. One conversion, at the edge.
+  const budget = fromAgorot(settings.lifetimeBudgetAgorot);
   const paused = settings.baselineStatus === 'paused';
   const estimatedSpend = paused ? 0 : budget > 0 ? Math.min(rawBaselineSpend, budget) : rawBaselineSpend;
   const baseline: BaselineOverview = {
@@ -172,11 +174,15 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
     boostClicks += stats.clicks;
     boostImpByStore.set(c.storeId, (boostImpByStore.get(c.storeId) ?? 0) + stats.impressions);
   }
-  for (const c of active) boostBudget += c.monthlyBudget;
+  // **Summed in agorot, converted once.** These are the two `+=` in the application that touch a
+  // `bigint` column, and `+` on the string `pg` returns for one CONCATENATES rather than adds —
+  // '50000' + '50000' is '5000050000', with no type error and no failing render. Integers also
+  // mean the total is exact however many campaigns a store runs.
+  for (const c of active) boostBudget += c.monthlyBudgetAgorot;
   const boost: BoostOverview = {
     activeCampaigns: active.length,
     totalCampaigns: campaigns.length,
-    monthlyBudget: boostBudget,
+    monthlyBudget: fromAgorot(boostBudget),
     estimatedSpend: Math.round(boostSpend),
     impressions: boostImpressions,
   };
@@ -202,11 +208,11 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
     brandClicks += stats.clicks;
     brandConversions += stats.conversions;
   }
-  for (const c of brandActive) brandBudget += c.monthlyBudget;
+  for (const c of brandActive) brandBudget += c.monthlyBudgetAgorot; // agorot — see the boost sum
   const brand: BrandOverview = {
     activeCampaigns: brandActive.length,
     totalCampaigns: brandCampaigns.length,
-    monthlyBudget: brandBudget,
+    monthlyBudget: fromAgorot(brandBudget),
     estimatedSpend: Math.round(brandSpend),
     impressions: brandImpressions,
     clicks: brandClicks,

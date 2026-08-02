@@ -2,6 +2,7 @@ import { initInfoTooltips, showTooltipAtPoint, hideTooltip } from '../tooltip.js
 import { cloudinaryUpload } from '../dashboard/cloudinary.js';
 import { escapeHtml } from '../../lib/html-escape.js';
 import { formatPrice, cdnSrc } from '../../config/store.config.js';
+import { fromAgorot } from '../../lib/money.js';
 import { createFloatingPortal, type FloatingPortal } from '../../lib/toolbar-portal.js';
 import { buildAdminUrl, swapPanel } from '../../lib/admin-nav.js';
 import { buildBarChartSvg, type BarChartPoint } from '../../lib/chart-svg.js';
@@ -192,7 +193,7 @@ function syncSelectLabel(labelId: string, hiddenId: string, options: SelectOptio
 interface BrandStats { impressions: number; clicks: number; ctr: number; spend: number; conversions: number }
 interface BrandCampaignDTO {
   id: string; objective: string; headline: string; body: string; imageUrl?: string;
-  destinationUrl: string; platform: string; monthlyBudget: number; status: 'active' | 'paused';
+  destinationUrl: string; platform: string; monthlyBudgetAgorot: number; status: 'active' | 'paused';
 }
 
 // Mirrors the SSR markup in AdminAdvertisingPanel.astro exactly, so the delegated
@@ -221,7 +222,7 @@ function brandCardHtml(c: BrandCampaignDTO, s: BrandStats): string {
           <span><b>${escapeHtml(formatPrice(s.spend))}</b> הוצאה</span>
         </div>
         <div class="admin-brand-card__actions">
-          <label class="admin-brand-card__budget">תקציב ₪ <input type="number" class="input" min="0" step="50" value="${c.monthlyBudget}" data-brand-budget /></label>
+          <label class="admin-brand-card__budget">תקציב ₪ <input type="number" class="input" min="0" step="50" value="${fromAgorot(c.monthlyBudgetAgorot)}" data-brand-budget /></label>
           <button type="button" class="admin-link" data-brand-save>עדכן</button>
           <button type="button" class="admin-link" data-brand-toggle>${paused ? 'הפעל' : 'השהה'}</button>
           <button type="button" class="admin-link admin-link--danger" data-brand-delete data-headline="${escapeHtml(c.headline)}">מחק</button>

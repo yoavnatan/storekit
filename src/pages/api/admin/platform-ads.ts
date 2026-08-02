@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth.js';
-import { updatePlatformAdSettings, type PlatformAdSettings } from '../../../lib/platform-ads.js';
+import { updatePlatformAdSettings, parseLifetimeBudgetAgorot, type PlatformAdSettings } from '../../../lib/platform-ads.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 
 const json = { 'Content-Type': 'application/json' };
@@ -21,12 +21,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (body?.baselineStatus === 'active' || body?.baselineStatus === 'paused') {
     updates.baselineStatus = body.baselineStatus;
   }
+  // Shekels in, agorot stored. The ceiling is the point of the shared parser: this route used to
+  // accept any finite number, so `1e30` was a valid lifetime budget and there is no column CHECK
+  // behind a jsonb value to catch it (platform-ads.ts).
   if (body?.lifetimeBudget !== undefined) {
-    const budget = Number(body.lifetimeBudget);
-    if (Number.isFinite(budget) && budget >= 0) updates.lifetimeBudget = Math.round(budget);
-    else return new Response(JSON.stringify({ error: 'Invalid budget' }), { status: 400, headers: json });
+    const budget = parseLifetimeBudgetAgorot(body.lifetimeBudget);
+    if (budget === null) return new Response(JSON.stringify({ error: 'Invalid budget' }), { status: 400, headers: json });
+    updates.lifetimeBudgetAgorot = budget;
   }
 
-  const settings = updatePlatformAdSettings(updates);
+  const settings = await updatePlatformAdSettings(updates);
   return new Response(JSON.stringify({ ok: true, settings }), { headers: json });
 };

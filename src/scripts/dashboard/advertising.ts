@@ -1,4 +1,5 @@
 import { formatPrice } from '../../config/store.config.js';
+import { formatAgorot, fromAgorot } from '../../lib/money.js';
 import { escapeHtml as escHtml } from '../../lib/html-escape.js';
 import { showStatus } from './status.js';
 import { initInfoTooltips } from '../tooltip.js';
@@ -16,7 +17,7 @@ interface RunPeriod { start: string; end: string; days: number }
 interface Campaign {
   id: string; scope: AdScopeKind;
   productName?: string; productNames?: string[]; categoryNames?: string[];
-  platform: 'google' | 'meta' | 'both'; monthlyBudget: number; status: 'active' | 'paused';
+  platform: 'google' | 'meta' | 'both'; monthlyBudgetAgorot: number; status: 'active' | 'paused';
   durationDays?: 7 | 14 | 30;
   audience?: { gender: 'all' | 'women' | 'men'; age: 'all' | 'infant' | 'kids' | 'adult' };
   stats: CampaignStats;
@@ -117,7 +118,7 @@ function campaignCardHtml(c: Campaign, i18n: Record<string, string>): string {
       </p>
       ${healthNote ? `<p class="text-[0.74rem] m-0 mb-2 py-1.5 px-2 rounded-[var(--radius-sm)] [color:var(--color-text)] [background:color-mix(in_srgb,var(--color-danger)_9%,transparent)]">${escHtml(healthNote)}</p>` : ''}
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[0.82rem]">
-        <div data-budget-cell data-budget="${c.monthlyBudget}"><span class="[color:var(--color-muted)]">${budgetLabel(c, i18n)}</span><br /><strong>${formatPrice(c.monthlyBudget)}</strong></div>
+        <div data-budget-cell data-budget="${fromAgorot(c.monthlyBudgetAgorot)}"><span class="[color:var(--color-muted)]">${budgetLabel(c, i18n)}</span><br /><strong>${formatAgorot(c.monthlyBudgetAgorot)}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adImpressions ?? ''}</span><br /><strong>${c.stats.impressions.toLocaleString('he-IL')}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adClicks ?? ''}</span><br /><strong>${c.stats.clicks.toLocaleString('he-IL')}</strong></div>
         <div><span class="[color:var(--color-muted)]">${i18n.adCtr ?? ''}</span><br /><strong>${c.stats.ctr}%</strong>${ctrTierChipHtml(c.stats.ctr, { low: i18n.adTierLow ?? '', mid: i18n.adTierMid ?? '', high: i18n.adTierHigh ?? '' })}</div>

@@ -155,8 +155,11 @@ const attentionPageResult = paginate(attentionAll, parsePage(sp, 'apage'));
 // tab adds no extra JSON reads.
 const feedStores = stores.filter((s) => isStoreDiscoverable(s) && (productsByStore.get(s.id) ?? []).some((p) => !p.blocked));
 const feedProductCount = feedStores.reduce((sum, s) => sum + (productsByStore.get(s.id) ?? []).filter((p) => !p.blocked).length, 0);
-const brandCampaigns = getAllBrandCampaigns();
-const adCampaigns = getAllCampaigns();
+const [brandCampaigns, adCampaigns, platformAdSettings] = await Promise.all([
+  getAllBrandCampaigns(),
+  getAllCampaigns(),
+  getPlatformAdSettings(),
+]);
 
 // Date range for all ad metrics (default: last 7 days — the Google/Meta
 // convention). `adpreset` drives it; `custom` reads adfrom/adto. Everything is
@@ -167,7 +170,7 @@ const adPreset: AdRangePreset = AD_RANGE_PRESETS.includes(adPresetRaw as AdRange
 const adRange = adPreset === 'custom' ? coerceRange(sp.get('adfrom'), sp.get('adto')) : presetRange(adPreset)!;
 const adPrevRange = previousPeriod(adRange.from, adRange.to);
 
-const adInputBase = { feedStores, feedProductCount, allStores: stores, campaigns: adCampaigns, brandCampaigns, ads: platform.ads, settings: getPlatformAdSettings() };
+const adInputBase = { feedStores, feedProductCount, allStores: stores, campaigns: adCampaigns, brandCampaigns, ads: platform.ads, settings: platformAdSettings };
 const adOverview = buildPlatformAdOverview({ ...adInputBase, range: adRange });
 const adPrevOverview = buildPlatformAdOverview({ ...adInputBase, range: adPrevRange });
 const pctChange = (cur: number, prev: number): number | null => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);

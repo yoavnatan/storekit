@@ -3,12 +3,12 @@ import type { APIContext } from 'astro';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
-import { createCampaign, updateCampaign, archiveCampaign } from '../../../lib/ad-campaigns.js';
+import { createCampaign, updateCampaign, archiveCampaign, type CampaignUpdate } from '../../../lib/ad-campaigns.js';
 import { getCampaignsForStore, getCampaignHistory, resumeBlockReason } from '../../../lib/ad-campaign-health.js';
 import { buildCampaignInput, isValidCampaignBudget } from '../../../lib/ad-campaign-input.js';
 import { withCampaignStats } from '../../../lib/ad-metrics.js';
 import { resolveAdRange } from '../../../lib/date-range.js';
-import { roundMoney } from '../../../lib/money.js';
+import { toAgorot } from '../../../lib/money.js';
 
 function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -57,7 +57,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const built = await buildCampaignInput(body, store);
   if (!built.ok) return json({ error: built.error }, built.status);
 
-  const campaign = createCampaign(built.input);
+  const campaign = await createCampaign(built.input);
   return json({ ok: true, campaign: withCampaignStats(campaign) });
 }
 
@@ -76,11 +76,13 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   const store = findStoreBySlugOrPrevious(stores, storeSlug);
   if (!store) return json({ error: 'Store not found' }, 404);
 
-  const updates: Partial<{ monthlyBudget: number; status: 'active' | 'paused' }> = {};
+  const updates: CampaignUpdate = {};
   // The same check the POST path runs (lib/ad-budget.ts). A hardcoded `>= 50` here meant the two
   // paths could disagree — raise the floor and a seller could still PATCH an existing campaign
   // below it — and it had no ceiling at all, so `1e12` was a valid budget on this route.
-  if (isValidCampaignBudget(monthlyBudget)) updates.monthlyBudget = roundMoney(monthlyBudget);
+  // The body carries SHEKELS, the column stores agorot: the request field and the stored field are
+  // deliberately different names because they are different units (ad-campaigns.ts).
+  if (isValidCampaignBudget(monthlyBudget)) updates.monthlyBudgetAgorot = toAgorot(monthlyBudget);
   if (status === 'active' || status === 'paused') updates.status = status;
   // Refused while the campaign has nothing to advertise, or nothing anyone can buy — the reason
   // travels as a code so the wording stays in the seller's language (ad-campaign-health.ts).
@@ -95,7 +97,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   }
   if (Object.keys(updates).length === 0) return json({ error: 'No valid fields to update' }, 400);
 
-  const updated = updateCampaign(id, store.id, updates);
+  const updated = await updateCampaign(id, store.id, updates);
   if (!updated) return json({ error: 'Campaign not found' }, 404);
   return json({ ok: true, campaign: withCampaignStats(updated) });
 }
@@ -118,7 +120,7 @@ export async function DELETE({ request, cookies }: APIContext): Promise<Response
   // Cancelled, not erased: the campaign stops and moves to the store's history, because the
   // spend it already accrued is part of figures that were reported for a month that is over
   // (ad-campaigns.ts#archiveCampaign).
-  const archived = archiveCampaign(id, store.id);
+  const archived = await archiveCampaign(id, store.id);
   if (!archived) return json({ error: 'Campaign not found' }, 404);
   return json({ ok: true });
 }

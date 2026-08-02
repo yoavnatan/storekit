@@ -12,7 +12,7 @@
 import { getProductsByStoreId, isProductVisible } from './store-products.js';
 import { getCategoriesByStoreId } from './store-categories.js';
 import { parseAudience, parseDuration, type CreateCampaignInput } from './ad-campaigns.js';
-import { roundMoney } from './money.js';
+import { toAgorot } from './money.js';
 import { MIN_CAMPAIGN_BUDGET, MAX_CAMPAIGN_BUDGET, isValidCampaignBudget } from './ad-budget.js';
 
 /** A boost naming hundreds of products is a store-wide campaign wearing a costume, and the card
@@ -148,7 +148,11 @@ export async function buildCampaignInput(body: CampaignBody, store: StoreRef): P
       storeId: store.id,
       storeSlug: store.slug,
       platform,
-      monthlyBudget: roundMoney(monthlyBudget),
+      // The seller types shekels and the column stores integer agorot — this is the ONE place a
+      // boost budget crosses the boundary on the way in (ad-campaigns.ts module note). Safe to
+      // convert only because `isValidCampaignBudget` above already bounded it: `toAgorot` of an
+      // unbounded number overflows the `bigint` column into a 500 instead of a 400.
+      monthlyBudgetAgorot: toAgorot(monthlyBudget),
       ...scoped.scope,
       ...(durationDays ? { durationDays } : {}),
       ...(audience ? { audience } : {}),
