@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isProductInStock, evenSplit, resolveVariantStockMap, comboKey } from '../src/lib/variant-combo.js';
+import { isProductInStock, comboStockRows, isFullyPerCombo, sumComboOverrides, comboKey } from '../src/lib/variant-combo.js';
 
 describe('isProductInStock', () => {
   it('for a non-variant product, reflects the flat stock field directly', () => {
@@ -28,40 +28,73 @@ describe('isProductInStock', () => {
   });
 });
 
-describe('evenSplit', () => {
-  it('splits evenly with the remainder going to the first rows', () => {
-    expect(evenSplit(3, 10)).toEqual([4, 3, 3]);
-    expect(evenSplit(2, 10)).toEqual([5, 5]);
-    expect(evenSplit(4, 2)).toEqual([1, 1, 0, 0]);
+/**
+ * `evenSplit` / `resolveVariantStockMap` were REMOVED, and their tests with them.
+ *
+ * They existed to turn a shared pool into a full per-combo map — a product with 10 units and a
+ * colour dimension became `{red: 5, blue: 5}`, a breakdown the seller never gave. A seller holding
+ * 8 red and 2 blue then had the 6th red sale refused on stock that existed, and three blue sold
+ * that did not. `variantStock` is partial by design; the replacements below read that partial map
+ * instead of completing it.
+ */
+describe('comboStockRows — a partial map is an answer, not a gap', () => {
+  const variants = [{ name: 'Size', options: ['S', 'M'] }];
+  const S = comboKey({ Size: 'S' });
+  const M = comboKey({ Size: 'M' });
+
+  it('marks every combo as pooled when nothing has been counted, and invents no per-combo number', () => {
+    const rows = comboStockRows(variants, undefined, 10);
+    expect(rows.map((r) => r.shared)).toEqual([true, true]);
+    expect(rows.map((r) => r.override)).toEqual([undefined, undefined]);
+    // Both read the SAME pool — 10 units in total, not 10 each and not 5 each.
+    expect(rows.map((r) => r.effective)).toEqual([10, 10]);
   });
-  it('handles zero rows and zero total', () => {
-    expect(evenSplit(0, 10)).toEqual([]);
-    expect(evenSplit(3, 0)).toEqual([0, 0, 0]);
+
+  it('leaves an uncounted combo on the pool while its sibling has a bucket', () => {
+    const rows = comboStockRows(variants, { [M]: 4 }, 7);
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+    expect(byKey[M]!.override).toBe(4);
+    expect(byKey[M]!.shared).toBe(false);
+    // Previously this became an explicit 0 — the combo silently went out of stock.
+    expect(byKey[S]!.override).toBeUndefined();
+    expect(byKey[S]!.shared).toBe(true);
+    expect(byKey[S]!.effective).toBe(7);
+  });
+
+  it('ignores a stale key for a combo that no longer exists', () => {
+    const rows = comboStockRows(variants, { [S]: 7, 'Color=Red': 3 }, 0);
+    expect(rows.map((r) => r.key).sort()).toEqual([M, S].sort());
+  });
+
+  it('reports an explicit zero as a real bucket, not as "uncounted"', () => {
+    const rows = comboStockRows(variants, { [S]: 0 }, 9);
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+    // 0 means sold out, and must not fall through to the pool's 9.
+    expect(byKey[S]!.shared).toBe(false);
+    expect(byKey[S]!.effective).toBe(0);
   });
 });
 
-describe('resolveVariantStockMap — inline per-combo stock persistence', () => {
+describe('isFullyPerCombo / sumComboOverrides — when the pool stops mattering', () => {
   const variants = [{ name: 'Size', options: ['S', 'M'] }];
+  const S = comboKey({ Size: 'S' });
+  const M = comboKey({ Size: 'M' });
 
-  it('converts a shared pool (no overrides) into an explicit even-split map', () => {
-    // Shared pool of 10 → the same numbers the breakdown dropdown displays.
-    expect(resolveVariantStockMap(variants, undefined, 10)).toEqual({ 'Size=S': 5, 'Size=M': 5 });
+  it('is false while any combo still draws on the pool', () => {
+    expect(isFullyPerCombo(variants, undefined)).toBe(false);
+    expect(isFullyPerCombo(variants, { [M]: 4 })).toBe(false);
   });
 
-  it('keeps existing overrides and zero-fills combos with no entry once any override exists', () => {
-    expect(resolveVariantStockMap(variants, { 'Size=M': 4 }, 99)).toEqual({ 'Size=S': 0, 'Size=M': 4 });
+  it('is true only once every combo carries its own bucket', () => {
+    expect(isFullyPerCombo(variants, { [S]: 1, [M]: 4 })).toBe(true);
   });
 
-  it('drops stale keys for combos that no longer exist and covers every current combo', () => {
-    const map = resolveVariantStockMap(variants, { 'Size=S': 7, 'Color=Red': 3 }, 0);
-    expect(Object.keys(map).sort()).toEqual(['Size=M', 'Size=S']);
-    expect(map['Size=S']).toBe(7);
+  it('is false for a product with no variants at all — there is nothing to be per-combo about', () => {
+    expect(isFullyPerCombo([], { [S]: 1 })).toBe(false);
   });
 
-  it('sums to the intended total after editing one combo (the server total)', () => {
-    // Edit "M" to 8 starting from a shared pool of 10 → {S:5, M:8}, total 13.
-    const map = resolveVariantStockMap(variants, undefined, 10);
-    map[comboKey({ Size: 'M' })] = 8;
-    expect(Object.values(map).reduce((s, n) => s + n, 0)).toBe(13);
+  it('sums the buckets and never folds the shared pool in', () => {
+    expect(sumComboOverrides({ [S]: 1, [M]: 4 })).toBe(5);
+    expect(sumComboOverrides(undefined)).toBe(0);
   });
 });

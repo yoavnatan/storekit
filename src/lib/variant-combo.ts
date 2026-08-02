@@ -43,26 +43,55 @@ export function isProductInStock(stock: number, variants: VariantDimension[] | u
   return generateCombos(variants).some((combo) => (variantStock?.[comboKey(combo)] ?? stock) > 0);
 }
 
-/** Splits `total` units across `count` combos as evenly as possible, handing the remainder to the first rows — the default per-combo stock shown when a variant product has no explicit `variantStock` map yet (shared pool). */
-export function evenSplit(count: number, total: number): number[] {
-  if (count <= 0) return [];
-  const base = Math.floor(total / count);
-  const remainder = total - base * count;
-  return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
+/**
+ * One combo's stock situation — the shape every surface that shows or edits per-combo stock reads.
+ *
+ * **`variantStock` is PARTIAL, and that is a fact about the product, not a gap to fill in.** A
+ * combo with no entry sells from the shared `stock` pool (store-products.ts#resolveStockField),
+ * and migration 0003 made the column nullable so the database can say the same thing. The
+ * dashboard used to hide that: adding a colour dimension to a product with 10 units immediately
+ * wrote `{red: 5, blue: 5}` — an even split of a number the seller never broke down. A seller
+ * holding 8 red and 2 blue then refused the 6th red sale on stock that existed, and oversold three
+ * blue that did not. The split is gone; a combo the seller has not counted stays on the pool, and
+ * `shared` is how a caller tells the two apart instead of guessing from a number.
+ */
+export interface ComboStock {
+  key: string;
+  selection: VariantSelection;
+  /** This combo's own bucket, or undefined when it has none and sells from the shared pool. */
+  override?: number;
+  /** What this combo can actually sell right now — its override, else the shared pool. */
+  effective: number;
+  /** true = no bucket of its own; `effective` is the shared pool, which its siblings also draw on. */
+  shared: boolean;
 }
 
-/** The complete per-combo stock map a variant product effectively has, matching exactly what the dashboard's stock breakdown shows: an explicit `variantStock` entry when present, else 0 once any override exists, else the even split of the shared `stock` pool. Used to persist a full map the moment a single combo is edited inline, so the shared-pool → per-combo conversion is consistent with the displayed numbers. */
-export function resolveVariantStockMap(variants: VariantDimension[], variantStock: Record<string, number> | undefined, totalStock: number): Record<string, number> {
+/** Every combo of `variants`, each resolved against the partial `variantStock` map and the shared pool. */
+export function comboStockRows(
+  variants: VariantDimension[],
+  variantStock: Record<string, number> | undefined,
+  sharedStock: number,
+): ComboStock[] {
   const existing = variantStock ?? {};
-  const hasAnyStock = Object.keys(existing).length > 0;
-  const combos = generateCombos(variants);
-  const splitDefaults = hasAnyStock ? [] : evenSplit(combos.length, totalStock);
-  const out: Record<string, number> = {};
-  combos.forEach((combo, i) => {
-    const key = comboKey(combo);
-    out[key] = key in existing ? existing[key] : (hasAnyStock ? 0 : (splitDefaults[i] ?? 0));
+  return generateCombos(variants).map((selection) => {
+    const key = comboKey(selection);
+    const has = key in existing;
+    const override = has ? existing[key] : undefined;
+    return { key, selection, override, effective: has ? override! : sharedStock, shared: !has };
   });
-  return out;
+}
+
+/** True once every combo carries its own bucket — the point at which the shared pool no longer
+ *  sells anything, so the product's overall `stock` is exactly the sum of the buckets. */
+export function isFullyPerCombo(variants: VariantDimension[], variantStock: Record<string, number> | undefined): boolean {
+  const rows = comboStockRows(variants, variantStock, 0);
+  return rows.length > 0 && rows.every((r) => !r.shared);
+}
+
+/** Sum of the explicit buckets only — the shared pool is deliberately not added in, because it is
+ *  one pool shared by every combo that has no bucket, not a per-combo quantity to total up. */
+export function sumComboOverrides(variantStock: Record<string, number> | undefined): number {
+  return Object.values(variantStock ?? {}).reduce((sum, n) => sum + Math.max(0, Number(n) || 0), 0);
 }
 
 export function generateCombos(dimensions: VariantDimension[]): VariantSelection[] {

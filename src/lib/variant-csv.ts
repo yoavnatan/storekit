@@ -139,7 +139,10 @@ function finalizeGroup(rows: BulkRowResult[]): MergedRowResult {
     const key = comboKey(selection);
     if (seen.has(key)) push('variant-duplicate-combo');
     seen.add(key);
-    variantStock[key] = inp.stock ?? 0;
+    // A blank stock cell means "this combo has no count of its own" — it keeps selling from the
+    // product's shared pool. Reading it as 0 wrote an explicit sold-out bucket and took the combo
+    // off the shelf, which is the opposite of what an untouched cell says.
+    if (inp.stock !== undefined) variantStock[key] = inp.stock;
     if (inp.sku) variantSku[key] = inp.sku;
     comboLineByKey[key] = r.line;
     comboLabelByKey[key] = opts.map((o) => o.value).join(' / ');
@@ -150,13 +153,19 @@ function finalizeGroup(rows: BulkRowResult[]): MergedRowResult {
   // Dimensions keep the first row's slot order; each keeps its first-seen option order.
   const variants: ProductVariant[] = dimNames.map((name) => ({ name, options: options[name]! }));
 
-  // Shared product fields come from the group's first row; per-combo stock is authoritative, so
-  // the product-level `stock` is just the total (keeps grids/isProductInStock sane as a fallback).
+  // Shared product fields come from the group's first row.
+  //
+  // `stock` — the product-level number — is the SHARED POOL, and only the combos with no bucket of
+  // their own sell from it. So it is the sum of the buckets exactly when every combo has one; if
+  // any combo is still pooled, this file says nothing about the pool's size and `undefined` is the
+  // honest answer (the importer's own convention for "leave this field as it is"). Summing the
+  // buckets in that case would have quietly overwritten the pool with a number that excludes it.
+  const pooled = seen.size > Object.keys(variantStock).length;
   const input: MergedProductInput = {
     name: first.name,
     price: first.price,
     salePrice: first.salePrice,
-    stock: Object.values(variantStock).reduce((a, b) => a + b, 0),
+    stock: pooled ? undefined : Object.values(variantStock).reduce((a, b) => a + b, 0),
     categoryPath: first.categoryPath,
     tags: first.tags,
     description: first.description,
