@@ -5,6 +5,7 @@ import PerfProductSection from '../../components/dashboard/PerfProductSection.as
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
 import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
 import TabHint from '../../components/dashboard/TabHint.astro';
+import InfoTip from '../../components/dashboard/InfoTip.astro';
 import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
 import BoostFormFields from '../../components/dashboard/BoostFormFields.astro';
 import CampaignHistory from '../../components/dashboard/CampaignHistory.astro';
@@ -49,7 +50,7 @@ import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotal } from '../../lib/order-totals.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
-import { comboKey, generateCombos, LOW_STOCK_THRESHOLD, type VariantDimension } from '../../lib/variant-combo.js';
+import { LOW_STOCK_THRESHOLD, comboStockRows, isFullyPerCombo, sumComboOverrides, type VariantDimension } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, buildCategoryTree, categoryPath } from '../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js';
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
@@ -68,14 +69,6 @@ import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxono
 import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
 
-// Splits `total` across `count` rows as evenly as possible (remainder to the
-// first rows) so seeding legacy combos never silently changes the sum.
-function evenSplit(count: number, total: number): number[] {
-  if (count <= 0) return [];
-  const base = Math.floor(total / count);
-  const remainder = total - base * count;
-  return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
-}
 
 // Color dimensions must go through resolveVariantColor() before display — a
 // custom color assigned via the picker is stored as "name #hex", and without
@@ -93,18 +86,27 @@ function comboLabelParts(dims: VariantDimension[], combo: Record<string, string>
   });
 }
 
+/**
+ * The per-combo rows the server-rendered edit form starts from.
+ *
+ * This used to hold a PRIVATE copy of the even-split rule — its own `evenSplit`, unreachable from
+ * the library — which is why removing the split from lib/variant-combo.ts left this render still
+ * inventing numbers and every test still green. It reads `comboStockRows` now, so the SSR pass,
+ * the client editor (scripts/dashboard/products.ts) and the API all answer from one definition:
+ * a combo with no bucket of its own sells from the shared pool and gets a BLANK field, never a
+ * fabricated share of it.
+ */
 function variantCombosData(variants: VariantDimension[], variantStock: Record<string, number> | undefined, totalStock: number) {
-  const stockMap = variantStock ?? {};
-  const hasAnyStock = Object.keys(stockMap).length > 0;
-  const rawCombos = variants.length ? generateCombos(variants) : [];
-  const splitDefaults = hasAnyStock ? [] : evenSplit(rawCombos.length, totalStock);
-  const combos = rawCombos.map((combo, idx) => {
-    const key = comboKey(combo);
-    const parts = comboLabelParts(variants, combo);
-    const value = key in stockMap ? stockMap[key] : (hasAnyStock ? 0 : (splitDefaults[idx] ?? 0));
-    return { key, parts, value };
-  });
-  return { hasAnyStock, combos };
+  const combos = comboStockRows(variants, variantStock, totalStock).map((row) => ({
+    key: row.key,
+    parts: comboLabelParts(variants, row.selection),
+    /** undefined = no bucket; the input renders empty with the pool as its placeholder. */
+    value: row.override,
+    /** What this combo can actually sell — its bucket, or the pool. For read-only displays. */
+    effective: row.effective,
+    shared: row.shared,
+  }));
+  return { hasAnyStock: combos.some((c) => !c.shared), combos };
 }
 
 const categoryUsage: Record<string, number> = {};
@@ -188,7 +190,7 @@ if (Astro.request.method === 'POST') {
     } else if (isNaN(price) || price < 0) {
       error = d.priceInvalid;
     } else {
-      createProduct(storeId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
+      await createProduct(storeId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
       return Astro.redirect(`/seller/dashboard?store=${storeId}&added=1`);
     }
   } else if (action === 'edit-product') {
@@ -203,14 +205,14 @@ if (Astro.request.method === 'POST') {
     } else if (isNaN(price) || price < 0) {
       error = d.priceInvalid;
     } else {
-      updateProduct(productId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
+      await updateProduct(productId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
       const sid = Astro.url.searchParams.get('store') ?? '';
       return Astro.redirect(sid ? `/seller/dashboard?store=${sid}` : '/seller/dashboard');
     }
   } else if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
     const sid = String(form.get('storeId') || '');
-    deleteProduct(productId);
+    await deleteProduct(productId);
     return Astro.redirect(sid ? `/seller/dashboard?store=${sid}` : '/seller/dashboard');
   }
 }
@@ -246,7 +248,7 @@ if (store && store.id !== lastStoreId) {
 const settingsSuccess = !hasNoStore && Astro.url.searchParams.get('saved') === '1';
 const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1';
 const products = store
-  ? getProductsByStoreId(store.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  ? (await getProductsByStoreId(store.id)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   : [];
 const storeCategoryList = store ? await getCategoriesByStoreId(store.id) : [];
 const categoryTree = buildCategoryTree(storeCategoryList);
@@ -265,7 +267,7 @@ const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
 // so the badge count and the red rows always agree. countStockAlerts() is the
 // shared definition each mutating /api/product action also returns, so the badge
 // stays live after an inline stock edit / hide without a full reload.
-const stockAlertCount = store ? countStockAlerts(store.id, LOW_STOCK_THRESHOLD) : 0;
+const stockAlertCount = store ? await countStockAlerts(store.id, LOW_STOCK_THRESHOLD) : 0;
 // "First steps" checklist (Overview tab) — derived live from the store's own data, never
 // stored (see lib/seller-onboarding.ts). Renders nothing once every step is satisfied.
 const onboardingSteps = store
@@ -864,7 +866,11 @@ const orderStatusColors: Record<string, string> = {
           </div>
 
           <div id="add-product-form" class="bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] p-5 mb-6" hidden>
-            <h3 class="m-0 mb-3 text-base">{d.newProduct}</h3>
+            <h3 class="m-0 mb-1 text-base">{d.newProduct}</h3>
+            {/* Only `name` carries `required`, and the server agrees (api/product.ts rejects a
+                blank name and nothing else) — but a form of eleven fields reads as eleven
+                obligations. Stating the real rule is what lets a first product take a minute. */}
+            <p class="m-0 text-[0.82rem] leading-[1.5] [color:var(--color-muted)]">{d.addFormRequiredNote}</p>
             <form method="POST" class="mt-4" data-unsaved-guard>
               <input type="hidden" name="_action" value="add-product" />
               <input type="hidden" name="storeId" value={store.id} />
@@ -888,6 +894,13 @@ const orderStatusColors: Record<string, string> = {
                 <label class="field">
                   <span>{d.colStock}</span>
                   <input class="input" name="stock" type="number" min="0" step="1" placeholder="0" />
+                  {/* Revealed by initLockedStockHint() only when the seller tries to type into a
+                      field that has locked itself — which happens only once EVERY combo carries
+                      its own number, the point at which this field really is just their sum.
+                      While any combo is still pooled the field stays editable, because it is that
+                      pool. Server-rendered text, JS only flips `hidden`, so one line needs no
+                      dashboard-i18n plumbing. */}
+                  <p data-stock-from-variants class="m-0 mt-1 text-[0.76rem] [color:var(--color-muted)]" hidden>{d.stockFromVariants}</p>
                 </label>
               </div>
 
@@ -915,14 +928,40 @@ const orderStatusColors: Record<string, string> = {
                   </div>
                   <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">{d.categoryEditHint}</p>
                 </div>
-                <label class="field max-w-[280px]">
-                  <span>{d.skuLabel}</span>
-                  <input class="input" name="sku" placeholder={d.skuPlaceholder} />
+              </div>
+
+              {/* Everything past this point is optional, and a first-time seller does not know
+                  what a SKU or a variant is — eleven fields at once is what made adding one
+                  product feel like filling in a form for the tax authority. `<details>` and not a
+                  JS toggle: the fields stay in the DOM either way (tags/variants/specs all
+                  initialise by querySelector at boot, and the browser reveals a collapsed field
+                  that fails validation), so this needs no script and cannot desync. */}
+              <details class="mt-4 border-t [border-color:var(--color-border)] pt-3">
+                {/* The native disclosure triangle is kept deliberately — it is the affordance, and
+                    the browser already flips it for RTL. A custom chevron here would be a second
+                    mechanism for something the element does correctly on its own. */}
+                <summary class="cursor-pointer text-[0.87rem] font-medium [color:var(--color-text)]">
+                  {d.addFormMore}
+                </summary>
+
+              {/* A <div> with an explicit `for`, not a wrapping <label>: an InfoTip inside a label
+                  is unreachable on touch — the tap is forwarded to the input, so the field takes
+                  focus and the tooltip (hover/focus on the button) never fires. The other three
+                  tips below already sit in plain <div class="field"> blocks, which is why only
+                  this one needed unwrapping. */}
+              <div class="field max-w-[280px] mt-3">
+                <label class="inline-flex items-center gap-[0.35rem]" for="add-product-sku">
+                  {d.skuLabel}
                 </label>
+                <InfoTip text={d.skuHint} class="ms-[0.35rem]" />
+                <input class="input" id="add-product-sku" name="sku" placeholder={d.skuPlaceholder} />
               </div>
 
               <div class="field max-w-none" data-tags-field>
-                <span>{d.tagsLabel}</span>
+                <span class="inline-flex items-center gap-[0.35rem]">
+                  {d.tagsLabel}
+                  <InfoTip text={d.tagsHint} />
+                </span>
                 <div class="variant-chips" data-tag-chips style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
                   <span data-tag-adder>
                     <button type="button" class="variant-chip-add-trigger btn btn--ghost btn--sm" data-tag-add-trigger style="border-radius:999px">{d.variantValueAddBtn}</button>
@@ -933,7 +972,10 @@ const orderStatusColors: Record<string, string> = {
               </div>
 
               <div class="field variants-editor" data-variants-editor>
-                <span class="field-label">{d.variantsLabel}</span>
+                <span class="field-label inline-flex items-center gap-[0.35rem]">
+                  {d.variantsLabel}
+                  <InfoTip text={d.variantsHint} />
+                </span>
                 <div class="variant-dims" data-variant-dims></div>
                 <button type="button" class="variants-add-btn btn btn--ghost btn--sm" style="margin-top:0.25rem">{d.variantAddBtn}</button>
                 <div class="variant-combos" data-variant-combos style="margin-top:0.75rem" hidden>
@@ -950,7 +992,10 @@ const orderStatusColors: Record<string, string> = {
               </div>
 
               <div class="field">
-                <span class="field-label">{d.specsLabel}</span>
+                <span class="field-label inline-flex items-center gap-[0.35rem]">
+                  {d.specsLabel}
+                  <InfoTip text={d.specsHint} />
+                </span>
                 <div class="specs-rows"
                      data-label-placeholder={d.specsLabelPlaceholder}
                      data-value-placeholder={d.specsValuePlaceholder}></div>
@@ -964,7 +1009,11 @@ const orderStatusColors: Record<string, string> = {
                 </span>
                 <textarea class="input resize-none" name="sellerNote" rows="2" maxlength="2000" placeholder={d.sellerNotePlaceholder}></textarea>
               </label>
+              </details>
 
+              {/* Photos stay OUT of the collapsed block: they are optional to the form and decisive
+                  to the listing, and a product added without one is the thing the checklist's
+                  "upload a store image" step cannot fix later. */}
               <div class="field">
                 <span class="field-label">{d.productImages}</span>
                 <div set:html={galleryWidgetHtml([], g)}></div>
@@ -979,7 +1028,16 @@ const orderStatusColors: Record<string, string> = {
 
           {/* "Nothing matches" is a row inside the table (see #products-empty-row below), not a
               paragraph under a hidden table — the header's filter funnels have to stay reachable. */}
-          <p id="empty-products" class="py-6 text-[0.95rem] [color:var(--color-muted)]" hidden={products.length > 0}>{d.noProducts}</p>
+          {/* The CTA repeats #toggle-add-form rather than replacing it: this block is hidden the
+              moment the catalog is non-empty OR a filter is active (products.ts#applyPagination),
+              so it cannot be the only way in. It exists because "add the first one above" pointed
+              at a toolbar of six buttons — a direction, where the seller needed a target. */}
+          <div id="empty-products" class="py-6" hidden={products.length > 0}>
+            <p class="m-0 text-[0.95rem] [color:var(--color-muted)]">{d.noProducts}</p>
+            <button type="button" class="btn btn--accent mt-3" data-goto-open="toggle-add-form" data-goto-panel="products">
+              {d.noProductsCta}
+            </button>
+          </div>
 
           {/* CSV bulk import/export panel */}
           <div id="csv-panel" class="csv-panel border [border-color:var(--color-border)] rounded-[var(--radius)] p-[0.8rem] mb-3 bg-[color:var(--color-bg)] animate-bulk-bar-in" hidden data-store-id={store.id}>
@@ -1147,7 +1205,12 @@ const orderStatusColors: Record<string, string> = {
             </div>
             <div class="inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-muted)] shrink-0 ms-auto">
               <span class="toolbar-btn-label">{d.itemsPerPageLabel ?? 'בעמוד:'}</span>
-              <select id="products-page-size" class="font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] ps-[.6rem] pe-[1.6rem] outline-none cursor-pointer">
+              {/* `aria-label` on the native element because the visible label above is
+                  display:none ≤640px (dashboard.css, .dash-toolbar .toolbar-btn-label) to keep the
+                  toolbar on one line — leaving the control unnamed. This element is hidden and
+                  mirrored by a JS dropdown (select-dropdown.ts), which copies the label onto the
+                  trigger it generates; that copy is what a screen reader actually reaches. */}
+              <select id="products-page-size" aria-label={d.itemsPerPageLabel ?? 'בעמוד:'} class="font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] ps-[.6rem] pe-[1.6rem] outline-none cursor-pointer">
                 {PRODUCTS_PAGE_SIZE_OPTIONS.map((n) => <option value={n} selected={n === productsPageSize}>{n}</option>)}
               </select>
             </div>
@@ -1218,7 +1281,18 @@ const orderStatusColors: Record<string, string> = {
                 const { hasAnyStock: pHasVariantStock, combos: pVariantCombos } = variantCombosData(p.variants ?? [], p.variantStock, p.stock);
                 const pVariantColumns = (p.variants ?? []).map((v) => v.name);
                 const pHasVariants = (p.variants ?? []).length > 0;
-                const pStockFieldValue = pHasVariants ? pVariantCombos.reduce((s, c) => s + c.value, 0) : p.stock;
+                // Locked ONLY once every combo carries its own bucket — that is the point at which
+                // the shared pool sells nothing and the total really is their sum. While any combo
+                // is still pooled, this field IS that pool: a live quantity the seller owns and
+                // nothing else records, so locking it would leave them no way to state it.
+                const pStockLocked = pHasVariants && isFullyPerCombo(p.variants ?? [], p.variantStock);
+                const pStockFieldValue = pStockLocked ? sumComboOverrides(p.variantStock) : p.stock;
+                // Same rule as scripts/dashboard/products.ts#updateComboTotal, which takes this
+                // cell over as soon as anything is typed: the counted buckets, plus the shared pool
+                // ONCE if any combo is still drawing on it. Once per table, not once per pooled row
+                // — the pool is a single quantity they all share.
+                const pComboTotal = sumComboOverrides(p.variantStock)
+                  + (pVariantCombos.some((c) => c.shared) ? p.stock : 0);
                 return (
                 <>
                   <tr data-product-display={p.id} data-store-id={store.id} data-discount={p.discount ? JSON.stringify(p.discount) : ''} data-hidden={p.hidden ? '1' : ''} class={p.hidden ? 'is-product-hidden' : undefined} data-images={JSON.stringify(p.images ?? [])} data-sort-name={p.name.toLowerCase()} data-sort-price={String(p.price)} data-sort-stock={String(p.stock)} data-sort-wishlist={String(wishlistCounts[p.slug] ?? 0)} data-sort-created-at={p.createdAt} data-category={productCategoryPaths.get(p.id) ?? ''} data-category-id={p.categoryId ?? ''} data-product-slug={p.slug} data-store-slug={store.slug} data-store-name={store.name} data-has-variants={(p.variants ?? []).length ? '1' : ''}>
@@ -1272,10 +1346,14 @@ const orderStatusColors: Record<string, string> = {
                                       </>
                                     ))}
                                   </span>
+                                  {/* `effective`, not the bucket: a combo with none of its own can
+                                      still sell — from the pool — and showing 0 there marked a
+                                      live product as sold out. `shared` is what says which it is. */}
                                   <span class="cursor-text" data-combo-stock-hit role="button" tabindex="0" aria-label={d.variantStockEditLabel} style="display:inline-flex;align-items:center;gap:0.3rem">
-                                    <span data-combo-stock-value class="py-[0.15rem] min-w-[1.9rem] text-end" style={c.value <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{c.value}</span>
+                                    {c.shared && <span title={d.comboSharedTitle} style="font-size:0.72rem;color:var(--color-muted);flex-shrink:0">{d.comboSharedShort}</span>}
+                                    <span data-combo-stock-value class="py-[0.15rem] min-w-[1.9rem] text-end" style={c.effective <= LOW_STOCK_THRESHOLD ? 'color:var(--color-danger)' : undefined}>{c.effective}</span>
                                     <span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">
-                                      {c.value <= 0 && (
+                                      {c.effective <= 0 && (
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={d.outOfStock} style="color:var(--color-danger);flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                                       )}
                                     </span>
@@ -1344,7 +1422,11 @@ const orderStatusColors: Record<string, string> = {
                           </label>
                           <label class="field">
                             <span>{d.colStock}</span>
-                            <input class="input" name="stock" type="number" min="0" step="1" value={pStockFieldValue} readonly={pHasVariants} style={pHasVariants ? 'background:var(--color-bg)' : undefined} />
+                            <input class="input" name="stock" type="number" min="0" step="1" value={pStockFieldValue} readonly={pStockLocked} style={pStockLocked ? 'background:var(--color-bg)' : undefined} />
+                            {/* Same element and same rule as the add form's — revealed by
+                                initLockedStockHint() only when the seller actually tries to type
+                                in a locked field, which is the only moment the question exists. */}
+                            <p data-stock-from-variants class="m-0 mt-1 text-[0.76rem] [color:var(--color-muted)]" hidden>{d.stockFromVariants}</p>
                           </label>
                         </div>
                         <Fragment set:html={discountFieldHtml(p.discount, discountLabels)} />
@@ -1454,14 +1536,22 @@ const orderStatusColors: Record<string, string> = {
                                             : part.text}
                                         </td>
                                       ))}
-                                      <td style="padding:0.4rem 0.6rem;text-align:end;vertical-align:middle;position:sticky;inset-inline-end:0;background:var(--color-surface);z-index:1"><input type="number" min="0" step="1" class="input" data-combo-stock value={c.value} style="width:80px;text-align:center;padding:0.3rem 0.4rem" /></td>
+                                      <td style="padding:0.4rem 0.6rem;text-align:end;vertical-align:middle;position:sticky;inset-inline-end:0;background:var(--color-surface);z-index:1">
+                                        <span style="display:inline-flex;align-items:center;gap:0.4rem;justify-content:flex-end">
+                                          {c.shared && <span data-combo-shared style="font-size:0.72rem;color:var(--color-muted);white-space:nowrap">{d.comboFromPool.replace('{n}', String(p.stock))}</span>}
+                                          {/* Blank, not a number: `value` is undefined for a combo
+                                              with no bucket, and readComboStock() skips a blank
+                                              input so the key stays out of variantStock. */}
+                                          <input type="number" min="0" step="1" class="input" data-combo-stock value={c.value ?? ''} placeholder={String(p.stock)} style="width:80px;text-align:center;padding:0.3rem 0.4rem" />
+                                        </span>
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
                                 <tfoot data-variant-combo-tfoot>
                                   <tr data-variant-combo-total-row>
                                     <td colspan={pVariantColumns.length} data-variant-combo-total-label style="padding:0.4rem 0.6rem;font-size:0.82rem;font-weight:600;color:var(--color-text);white-space:nowrap;border-top:1px solid var(--color-border);position:sticky;bottom:0;background:var(--color-surface)">{`${d.variantComboTotal} (${d.variantFilterAll})`}</td>
-                                    <td data-variant-combo-total-value style="padding:0.4rem 0.6rem;text-align:end;font-weight:600;color:var(--color-text);border-top:1px solid var(--color-border);position:sticky;inset-inline-end:0;bottom:0;background:var(--color-surface);z-index:1">{pVariantCombos.reduce((s, c) => s + c.value, 0)}</td>
+                                    <td data-variant-combo-total-value style="padding:0.4rem 0.6rem;text-align:end;font-weight:600;color:var(--color-text);border-top:1px solid var(--color-border);position:sticky;inset-inline-end:0;bottom:0;background:var(--color-surface);z-index:1">{pComboTotal}</td>
                                   </tr>
                                 </tfoot>
                               </table>
@@ -2804,6 +2894,7 @@ const orderStatusColors: Record<string, string> = {
      the blocking bundle and undoes this. Order INSIDE a loader still matters
      (see the products one). */
   import { initSettingsForm, initFormToggles, initStoreSwitcher, initAutoHideStatus, initDashTabs, initStoreHours, initGotoPanelLinks, initStorePreviewLink } from '../../scripts/dashboard/ui.js';
+  import { initInfoTooltips } from '../../scripts/tooltip.js';
   import { initUnsavedGuard } from '../../scripts/dashboard/unsaved-guard.js';
   import { initDashTabSync } from '../../scripts/dashboard/tab-sync.js';
   import { initDiscountFields } from '../../scripts/dashboard/discount-field.js';
@@ -2838,6 +2929,12 @@ const orderStatusColors: Record<string, string> = {
   initStorePreviewLink();
   initStoreHours();
   initFormToggles();
+  // The Products tab now carries its own "(i)" explanations (SKU / tags / variants / specs), and
+  // those are the terms a first-time seller does not know. Until now initInfoTooltips() only ran
+  // from the advertising and performance tabs' own lazy init, so a tooltip outside those two tabs
+  // was inert markup — the stock-alert badge's own data-tooltip included. It is idempotent
+  // (dataset.tooltipBound), so those later calls still work unchanged.
+  initInfoTooltips();
   initStoreSwitcher();
   initAutoHideStatus();
 
@@ -2919,6 +3016,7 @@ const orderStatusColors: Record<string, string> = {
       // replaced) and gets cancelled in the same event that armed it.
       p.initRemoveConfirm();
       p.initVariantEditors();
+      p.initLockedStockHint();
       p.initTagsEditor();
       p.initStockBreakdowns();
       document.querySelectorAll<Element>('.gallery-widget').forEach((g) => gallery.initGalleryWidget(g));
@@ -2938,7 +3036,15 @@ const orderStatusColors: Record<string, string> = {
       // sort/filter chips beside it). Keeps the select as value source, so
       // initPagination's `change` listener is untouched (CURRENT_TASK 2).
       const pageSizeSelect = document.getElementById('products-page-size') as HTMLSelectElement | null;
-      if (pageSizeSelect) select.initSelectDropdown(pageSizeSelect, { triggerClassName: select.COMPACT_TRIGGER_CLASS });
+      // menuAutoWidth + menuHeading, both for the same ≤640px problem: the trigger is a pill
+      // holding one short number, the menu was pinned to that width (so "100" clipped to an
+      // ellipsis), and the text label beside it is hidden at that width (so the open list was four
+      // unexplained numbers). The heading names them and the auto width lets them all fit.
+      if (pageSizeSelect) select.initSelectDropdown(pageSizeSelect, {
+        triggerClassName: select.COMPACT_TRIGGER_CLASS,
+        menuAutoWidth: true,
+        menuHeading: dashI18n().itemsPerPageLabel,
+      });
       p.initStickyOffsets();
       p.initViewProduct();
     },

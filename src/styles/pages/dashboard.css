@@ -185,7 +185,14 @@ textarea.input { resize: none; }
   .products-table .wishlist-col  { width: 6%; }
   .products-table .purchased-col { width: 8%; }
   .products-table .date-col      { width: 13%; }
-  .products-table .actions-col   { width: 4%; }
+  /* Fixed width, not a %, for the third time in this block and the same reason as .check-col and
+     .thumb-col above: the kebab button is a fixed 1.75rem, and its hover state paints a FULL
+     circle of that size. Under `table-layout: fixed` a 4% column drops to ~15rem*0.04 at the
+     narrow end of this range — narrower than the button — so the circle spilled out of the cell
+     over the neighbouring column and the table's own edge, visible only on hover, which is when
+     the background appears. Sized to the button plus this block's 0.4rem cell padding on both
+     sides (1.75 + 0.8 = 2.55). The 4% it gives back is absorbed by the percentage columns. */
+  .products-table .actions-col   { width: 2.6rem; }
   .products-table .name-col .product-name {
     white-space: nowrap;
     overflow: hidden;

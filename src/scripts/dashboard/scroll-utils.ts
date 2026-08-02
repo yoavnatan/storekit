@@ -108,6 +108,27 @@ export function scrollBelowPinnedChrome(el: HTMLElement, margin = 12, edge: 'top
   animateScrollTo(Math.max(0, Math.ceil(y)));
 }
 
+/**
+ * Bring `el` back below the pinned chrome, but ONLY if it is not already fully on screen.
+ *
+ * For a row that REPLACES something taller than itself — the products table's edit form closing
+ * back to its one-line display row. The form is tall, the seller scrolls down inside it to reach
+ * the save button, and when it collapses the row they just saved is left far above the viewport:
+ * the page appears to jump to an unrelated part of the list, with no confirmation of the thing that
+ * was saved. Measured AFTER the tall row is hidden, so the rect is the post-collapse one.
+ *
+ * The visibility test is "fully inside the band", not "partly", because a row is short and a sliver
+ * of it under the header is exactly the state being complained about. When it IS fully visible this
+ * does nothing at all — a save that changes nothing on screen must not move the page
+ * (AI_INSTRUCTIONS → no-op interactions must be invisible).
+ */
+export function scrollRowBackIntoView(el: HTMLElement, margin = 12): void {
+  const rect = el.getBoundingClientRect();
+  const top = pinnedTopChrome(el);
+  if (rect.top >= top && rect.bottom <= window.innerHeight) return;
+  animateScrollTo(Math.max(0, Math.ceil(rect.top + window.scrollY - top - margin)));
+}
+
 /** Scroll a products-tab panel (CSV import, external-inventory sync) so its top sits just below the
  *  sticky stack, but ONLY when it is actually hidden. */
 export function scrollProductsPanelIntoView(el: HTMLElement): void {

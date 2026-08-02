@@ -3,9 +3,9 @@ import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery,
 import { showStatus } from './status.js';
 import { formatPrice } from '../../config/store.config.js';
 import { thumbUrl } from './cloudinary.js';
-import { scrollBelowPinnedChrome } from './scroll-utils.js';
+import { scrollBelowPinnedChrome, scrollRowBackIntoView } from './scroll-utils.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
-import { comboKey, generateCombos, canonicalDimName, LOW_STOCK_THRESHOLD, resolveVariantStockMap, type VariantDimension } from '../../lib/variant-combo.js';
+import { canonicalDimName, LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import type { CategoryNode } from '../../lib/store-categories.js';
@@ -179,14 +179,19 @@ const COMBO_STOCK_CANCEL_BTN = 'inline-flex items-center justify-center w-4 h-4 
 
 function stockBreakdownHtml(variants: VariantDimension[] | undefined, variantStock: Record<string, number> | undefined, totalStock: number, i18n: Record<string, string>): string {
   if (!variants?.length) return '';
-  const stockMap = resolveVariantStockMap(variants, variantStock, totalStock);
   const editLabel = i18n.variantStockEditLabel ?? 'Edit stock';
-  const rows = generateCombos(variants).map((combo) => {
-    const key = comboKey(combo);
+  // `effective`, not a materialised map: a combo with no bucket of its own shows what it can
+  // really sell — the shared pool — and says so. It used to show an even split of that pool,
+  // which read as a per-combo count and was never one (variant-combo.ts#comboStockRows).
+  const rows = comboStockRows(variants, variantStock, totalStock).map(({ key, selection, effective, shared }) => {
+    const combo = selection;
     const label = comboLabelHtml(variants, combo);
-    const value = stockMap[key] ?? 0;
+    const value = effective;
     const lowStyle = value <= LOW_STOCK_THRESHOLD ? ' style="color:var(--color-danger)"' : '';
-    return `<div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded-[var(--radius-sm)] [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key="${esc(key)}"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span class="cursor-text" data-combo-stock-hit role="button" tabindex="0" aria-label="${esc(editLabel)}" style="display:inline-flex;align-items:center;gap:0.3rem"><span data-combo-stock-value class="${COMBO_STOCK_VALUE_CLS}"${lowStyle}>${value}</span><span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">${warnIconHtml(value, i18n)}</span></span></div>`;
+    const sharedMark = shared
+      ? `<span data-combo-shared-mark title="${esc(i18n.comboSharedTitle ?? 'Sells from the shared pool')}" style="font-size:0.72rem;color:var(--color-muted);flex-shrink:0">${esc(i18n.comboSharedShort ?? 'pool')}</span>`
+      : '';
+    return `<div class="flex items-center justify-between gap-3 px-2 py-[0.4rem] rounded-[var(--radius-sm)] [color:var(--color-text)] text-[0.82rem] whitespace-nowrap" data-combo-stock-row data-combo-key="${esc(key)}"><span style="display:inline-flex;align-items:center;gap:0.35rem">${label}</span><span class="cursor-text" data-combo-stock-hit role="button" tabindex="0" aria-label="${esc(editLabel)}" style="display:inline-flex;align-items:center;gap:0.3rem">${sharedMark}<span data-combo-stock-value class="${COMBO_STOCK_VALUE_CLS}"${lowStyle}>${value}</span><span data-combo-stock-warn style="display:inline-flex;align-items:center;justify-content:center;width:0.9rem;flex-shrink:0">${warnIconHtml(value, i18n)}</span></span></div>`;
   }).join('');
   return `<span class="relative inline-flex" data-stock-breakdown>
     <button type="button" class="${STOCK_BREAKDOWN_BTN}" data-stock-breakdown-btn aria-expanded="false" aria-haspopup="true" aria-label="${esc(i18n.stockBreakdownLabel ?? 'Show stock breakdown by variant')}">
@@ -675,16 +680,6 @@ function revalidateAllDimNames(editor: HTMLElement, i18n: Record<string, string>
   });
 }
 
-// Splits `total` across `count` rows as evenly as possible (remainder goes to
-// the first rows) so seeding legacy combos never silently changes the sum —
-// open the editor and save without touching anything, and stock is unchanged.
-function evenSplit(count: number, total: number): number[] {
-  if (count <= 0) return [];
-  const base = Math.floor(total / count);
-  const remainder = total - base * count;
-  return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
-}
-
 const SORT_ICON_SVG = '<svg class="combo-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>';
 
 // One column per dimension (sortable, header = the dimension's own name) plus
@@ -737,7 +732,7 @@ function comboTotalRowHtml(dims: VariantDimension[], i18n: Record<string, string
   </tr>`;
 }
 
-function comboRowHtml(dims: VariantDimension[], combo: Record<string, string>, key: string, value: number): string {
+function comboRowHtml(dims: VariantDimension[], combo: Record<string, string>, key: string, value: number | undefined, sharedStock: number, i18n: Record<string, string>): string {
   const cells = dims.map(d => {
     const raw = combo[d.name] ?? '';
     if (!isColorVariant(d.name)) {
@@ -747,17 +742,23 @@ function comboRowHtml(dims: VariantDimension[], combo: Record<string, string>, k
     const swatch = hex ? `<span aria-hidden="true" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${hex};border:1px solid rgba(0,0,0,0.15);flex-shrink:0"></span>` : '';
     return `<td style="padding:0.4rem 0.6rem;font-size:0.85rem;color:var(--color-text);white-space:nowrap;vertical-align:middle"><span style="display:inline-flex;align-items:center;gap:0.3rem">${swatch}${esc(display)}</span></td>`;
   }).join('');
-  return `<tr class="variant-combo-row" data-variant-combo-row data-combo-key="${esc(key)}">${cells}<td style="padding:0.4rem 0.6rem;text-align:end;vertical-align:middle;${STOCK_COL_STICKY};z-index:1"><input type="number" min="0" step="1" class="input" data-combo-stock value="${value}" style="width:80px;text-align:center;padding:0.3rem 0.4rem"></td></tr>`;
+  // An EMPTY input is the meaningful state, not a missing one: it says "this combo has no count of
+  // its own", and readComboStock() leaves it out of the map so it keeps selling from the shared
+  // pool. The placeholder shows what that pool currently holds, so the row is still answerable at
+  // a glance ("how many can I sell?") without asserting a per-combo number nobody entered.
+  const shownValue = value === undefined ? '' : String(value);
+  const sharedNote = value === undefined
+    ? `<span data-combo-shared style="font-size:0.72rem;color:var(--color-muted);white-space:nowrap">${esc((i18n.comboFromPool ?? 'from pool').replace('{n}', String(sharedStock)))}</span>`
+    : '';
+  return `<tr class="variant-combo-row" data-variant-combo-row data-combo-key="${esc(key)}">${cells}<td style="padding:0.4rem 0.6rem;text-align:end;vertical-align:middle;${STOCK_COL_STICKY};z-index:1"><span style="display:inline-flex;align-items:center;gap:0.4rem;justify-content:flex-end">${sharedNote}<input type="number" min="0" step="1" class="input" data-combo-stock value="${esc(shownValue)}" placeholder="${esc(String(sharedStock))}" style="width:80px;text-align:center;padding:0.3rem 0.4rem"></span></td></tr>`;
 }
 
-function comboRowsHtml(dims: VariantDimension[], stockMap: Record<string, number>, fallbackTotal: number, hasAnyStock: boolean): string {
-  const combos = generateCombos(dims);
-  const splitDefaults = hasAnyStock ? [] : evenSplit(combos.length, fallbackTotal);
-  return combos.map((combo, i) => {
-    const key = comboKey(combo);
-    const value = key in stockMap ? stockMap[key] : (hasAnyStock ? 0 : (splitDefaults[i] ?? 0));
-    return comboRowHtml(dims, combo, key, value);
-  }).join('');
+function comboRowsHtml(dims: VariantDimension[], stockMap: Record<string, number>, sharedStock: number, i18n: Record<string, string>): string {
+  // No invented defaults. A combo the seller has not counted arrives blank and stays on the pool
+  // — see variant-combo.ts#comboStockRows for why the even split was removed.
+  return comboStockRows(dims, stockMap, sharedStock)
+    .map((row) => comboRowHtml(dims, row.selection, row.key, row.override, sharedStock, i18n))
+    .join('');
 }
 
 function sortComboTable(editor: HTMLElement, col: string): void {
@@ -796,7 +797,7 @@ function variantsEditorHtml(variants: VariantDimension[], variantStock: Record<s
   const hasAnyStock = Object.keys(variantStock).length > 0;
   const dimsHtml = variants.map(v => dimHtml(v, i18n, variantImages)).join('');
   const headerHtml = variants.length ? comboHeaderHtml(variants, i18n) : '';
-  const rowsHtml = variants.length ? comboRowsHtml(variants, variantStock, currentStock, hasAnyStock) : '';
+  const rowsHtml = variants.length ? comboRowsHtml(variants, variantStock, currentStock, i18n) : '';
   const totalHtml = variants.length ? comboTotalRowHtml(variants, i18n) : '';
   return `<div class="field variants-editor" data-variants-editor>
     <span class="field-label">${esc(i18n.variantsLabel ?? 'Variants & inventory')}</span>
@@ -879,15 +880,32 @@ function updateChipImageBtnState(chip: HTMLElement, i18n: Record<string, string>
   btn.title = label;
 }
 
+/**
+ * The per-combo map the form will save — explicit buckets ONLY.
+ *
+ * A blank input is skipped rather than read as 0. That is the whole point of the change: an empty
+ * row means "no count of its own", the key stays out of `variantStock`, and the combo keeps
+ * selling from the shared pool. Coercing blank to 0 would take the combo off the shelf, which is
+ * the opposite of what a seller who left it alone meant.
+ */
 function readComboStock(editor: HTMLElement): Record<string, number> {
   const out: Record<string, number> = {};
   editor.querySelectorAll<HTMLElement>('[data-variant-combo-row]').forEach((row) => {
     const key = (row as HTMLElement).dataset.comboKey ?? '';
     const input = row.querySelector<HTMLInputElement>('[data-combo-stock]');
     if (!key || !input) return;
+    if (input.value.trim() === '') return;
     out[key] = Math.max(0, Math.floor(Number(input.value)) || 0);
   });
   return out;
+}
+
+/** true once every combo row carries a number — the point at which the shared pool sells nothing
+ *  and the product's overall stock really is the sum of the rows. */
+function allCombosHaveStock(editor: HTMLElement): boolean {
+  const rows = [...editor.querySelectorAll<HTMLElement>('[data-variant-combo-row]')];
+  return rows.length > 0
+    && rows.every((row) => (row.querySelector<HTMLInputElement>('[data-combo-stock]')?.value ?? '').trim() !== '');
 }
 
 // The overall "stock" field becomes a read-only, live-computed sum of the combo
@@ -900,26 +918,85 @@ function sumComboStock(editor: HTMLElement): number {
 }
 
 function syncTotalStockField(editor: HTMLElement): void {
-  const stockInput = editor.closest('form')?.querySelector<HTMLInputElement>('input[name="stock"]');
+  const form = editor.closest('form');
+  const stockInput = form?.querySelector<HTMLInputElement>('input[name="stock"]');
   if (!stockInput) return;
+  // Optional: only the add-product form carries the note. The inline edit row has no room for it
+  // and reads its own combo breakdown right beside the field, so a missing element is not a fault.
+  const note = form?.querySelector<HTMLElement>('[data-stock-from-variants]');
   const hasDims = editor.querySelectorAll('[data-variant-dim]').length > 0;
-  if (!hasDims) {
+  // Taking the field over is only honest once EVERY combo has its own number. While any row is
+  // still blank the field is the live shared pool those rows sell from — a real, editable
+  // quantity, not a stale duplicate — so locking it there would strand the seller with no way to
+  // say how many uncounted units they hold.
+  if (!hasDims || !allCombosHaveStock(editor)) {
     stockInput.readOnly = false;
     stockInput.style.background = '';
+    if (note) note.hidden = true;
     return;
   }
   stockInput.value = String(sumComboStock(editor));
   stockInput.readOnly = true;
   stockInput.style.background = 'var(--color-bg)';
+  // The note stays hidden until the seller actually tries to type here (initLockedStockHint) —
+  // a permanent caption under a field that is behaving correctly is chrome, and the question
+  // "why can't I type?" only exists at the moment it is asked.
+  if (note) note.hidden = true;
 }
 
+/**
+ * Answer the attempted edit of a locked total-stock field, and only then.
+ *
+ * Delegated at document level and bound once, because these inputs are created and replaced
+ * constantly — the add form's editor is rebuilt on every save, and each edit row builds its own.
+ * `focus` rather than `click` so the keyboard route is covered too; `readOnly` is re-read at event
+ * time rather than captured, so a field that has since been unlocked says nothing.
+ */
+export function initLockedStockHint(): void {
+  const noteFor = (input: HTMLElement) =>
+    input.closest('form')?.querySelector<HTMLElement>('[data-stock-from-variants]') ?? null;
+
+  document.addEventListener('focusin', (e) => {
+    const input = (e.target as Element)?.closest<HTMLInputElement>('input[name="stock"]');
+    // Hide any note belonging to a field the focus just LEFT, so it never outlives its question.
+    document.querySelectorAll<HTMLElement>('[data-stock-from-variants]').forEach((n) => {
+      if (!input || noteFor(input) !== n) n.hidden = true;
+    });
+    if (!input || !input.readOnly) return;
+    const note = noteFor(input);
+    if (note) note.hidden = false;
+  });
+}
+
+/**
+ * The total this table can actually sell.
+ *
+ * **A blank row is not a zero.** It has no bucket of its own, so it sells from the shared pool —
+ * and that pool is ONE quantity every blank row draws on, not one per row. So the total is the
+ * filled buckets added up, plus the pool counted a single time if any visible row is still blank.
+ * Adding the pool per row would multiply stock that does not exist; treating a blank as 0 (what
+ * this did when the rows stopped being pre-filled) reported a stocked product as empty.
+ */
 function updateComboTotal(editor: HTMLElement): void {
   const rowsBody = editor.querySelector<HTMLElement>('[data-variant-combo-rows]');
   const totalCell = editor.querySelector<HTMLElement>('[data-variant-combo-total-value]');
   if (!rowsBody || !totalCell) return;
-  const sum = [...rowsBody.querySelectorAll<HTMLTableRowElement>('[data-variant-combo-row]')]
-    .filter(row => !row.hidden)
-    .reduce((s, row) => s + (Number(row.querySelector<HTMLInputElement>('[data-combo-stock]')?.value) || 0), 0);
+
+  const visible = [...rowsBody.querySelectorAll<HTMLTableRowElement>('[data-variant-combo-row]')]
+    .filter(row => !row.hidden);
+  let sum = 0;
+  let anyPooled = false;
+  for (const row of visible) {
+    const raw = row.querySelector<HTMLInputElement>('[data-combo-stock]')?.value.trim() ?? '';
+    if (raw === '') { anyPooled = true; continue; }
+    sum += Math.max(0, Number(raw) || 0);
+  }
+  if (anyPooled) {
+    // While any row is pooled the overall field is that pool, not a derived sum
+    // (syncTotalStockField only locks it once every row is filled), so it is safe to read here.
+    const pool = editor.closest('form')?.querySelector<HTMLInputElement>('input[name="stock"]');
+    sum += Math.max(0, Number(pool?.value) || 0);
+  }
   totalCell.textContent = String(sum);
 }
 
@@ -1079,7 +1156,7 @@ function refreshVariantCombos(editor: HTMLElement, i18n: Record<string, string>)
   delete combosWrap.dataset.sortCol;
   delete combosWrap.dataset.sortDir;
   thead.innerHTML = comboHeaderHtml(dims, i18n);
-  rowsBody.innerHTML = comboRowsHtml(dims, existingStock, fallbackTotal, hasAnyStock);
+  rowsBody.innerHTML = comboRowsHtml(dims, existingStock, fallbackTotal, i18n);
   tfoot.innerHTML = comboTotalRowHtml(dims, i18n);
   combosWrap.removeAttribute('hidden');
   if (hint) hint.hidden = hasAnyStock;
@@ -1155,6 +1232,37 @@ export function resetVariantsEditor(form: HTMLFormElement): void {
   const wrapper = document.createElement('div');
   wrapper.innerHTML = variantsEditorHtml([], {}, 0, getDashI18n());
   editor.replaceWith(wrapper.firstElementChild as HTMLElement);
+}
+
+/**
+ * Re-render a form's variants editor from the payload that was actually saved.
+ *
+ * **The editor can hold more than it sends.** `readVariantDims` drops a dimension whose name
+ * repeats an earlier one (the combo grid keys its columns by name, so two "צבע" rubrics cannot
+ * both exist), and the edit row's markup deliberately survives a save rather than being re-fetched.
+ * Together those meant a duplicate the seller typed stayed on screen after saving, looking stored,
+ * and only vanished on the next full page load — the row said one thing and the record another.
+ * Rendering the sent payload back makes the form agree with what it just sent, and it runs before
+ * the Cancel baseline is retaken so reverting lands on the same truth.
+ */
+export function applyVariantsPayload(
+  form: HTMLFormElement,
+  payload: { variants: VariantDimension[]; variantStock: Record<string, number>; variantImages: Record<string, string> },
+  currentStock: number,
+): void {
+  const editor = form.querySelector<HTMLElement>('[data-variants-editor]');
+  if (!editor) return;
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = variantsEditorHtml(payload.variants, payload.variantStock, currentStock, getDashI18n(), payload.variantImages);
+  const next = wrapper.firstElementChild as HTMLElement;
+  editor.replaceWith(next);
+  // Both, and in this order. `comboTotalRowHtml` renders a literal 0 as its starting cell — it is
+  // filled in by updateComboTotal, which every other path that builds this table already calls
+  // (refreshVariantCombos). Rebuilding without it left "total 0" sitting under a table of real
+  // numbers right after a save. syncTotalStockField runs first because updateComboTotal reads the
+  // overall field when any row is still pooled.
+  syncTotalStockField(next);
+  updateComboTotal(next);
 }
 
 export function initVariantEditors(): void {
@@ -1263,6 +1371,20 @@ export function initVariantEditors(): void {
       e.preventDefault();
       const dimEl = target.closest<HTMLElement>('[data-variant-dim]');
       if (dimEl) expandValueAdder(dimEl, getDashI18n());
+      return;
+    }
+
+    // Enter in a per-combo stock cell was implicit form submission — the browser's default for a
+    // lone Enter in a text input — so filling the table one row at a time saved the product and
+    // closed the card on the first row. These cells are a grid to be typed through, exactly like
+    // the dimension name and value inputs above, both of which already claim Enter. Advance to the
+    // next row instead; the last one just commits and stays put.
+    if (target.matches('[data-combo-stock]') && e.key === 'Enter') {
+      e.preventDefault();
+      const editorEl = target.closest<HTMLElement>('[data-variants-editor]');
+      const rows = [...(editorEl?.querySelectorAll<HTMLInputElement>('[data-variant-combo-row]:not([hidden]) [data-combo-stock]') ?? [])];
+      const next = rows[rows.indexOf(target as HTMLInputElement) + 1];
+      if (next) { next.focus(); next.select(); } else { (target as HTMLInputElement).blur(); }
       return;
     }
 
@@ -1531,7 +1653,8 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
     }
 
     const fd = new FormData(form);
-    fd.set('variants_json', JSON.stringify(collectVariantsPayload(form)));
+    const sentVariants = collectVariantsPayload(form);
+    fd.set('variants_json', JSON.stringify(sentVariants));
     // The revisions this row was built from — they are what lets the server merge this
     // save into whatever the record holds now instead of overwriting it. `force` is kept
     // ALONGSIDE them (never instead of): it only settles the fields two tabs edited to
@@ -1569,6 +1692,10 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
     // revision it now holds — otherwise a second edit of the same row would report a
     // conflict against the seller's own previous save.
     if (data.rev) form.dataset.baseRev = data.rev;
+    // Show back exactly what was sent — a dimension dropped for a duplicate name must leave the
+    // form too, not linger until the next page load. Runs before the 1.5s timeout that retakes
+    // the Cancel baseline, so Cancel reverts to this state and not to the rejected one.
+    applyVariantsPayload(form, sentVariants, parseInt(String(fd.get('stock')), 10) || 0);
     updateStockBadge(data.stockAlerts);
 
     const savedImages = data.images ?? [];
@@ -1667,6 +1794,9 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
     setTimeout(() => {
       if (editRow) editRow.hidden = true;
       if (displayRow) displayRow.hidden = false;
+      // Both hides above have landed, so the row's rect is its collapsed one — the tall form is
+      // already out of the flow and everything below it has moved up.
+      if (displayRow) scrollRowBackIntoView(displayRow);
       submitBtns.forEach(btn => { btn.disabled = false; btn.style.minWidth = ''; btn.textContent = origText; });
       // The just-saved form state is now the row's new baseline — a later
       // Cancel should revert here, not to the pre-edit snapshot from before
@@ -1729,7 +1859,10 @@ function bindEditFormInternals(display: HTMLTableRowElement, edit: HTMLTableRowE
   const gallery = edit.querySelector<Element>('.gallery-widget');
   if (gallery) initGalleryWidget(gallery);
   const variantsEditor = edit.querySelector<HTMLElement>('[data-variants-editor]');
-  if (variantsEditor) syncTotalStockField(variantsEditor);
+  // Both, for the same reason as applyVariantsPayload: this row's markup can come from the server
+  // render OR from a restored Cancel snapshot, and the total in either is only as fresh as the
+  // moment it was captured. Recomputing costs nothing and removes the question.
+  if (variantsEditor) { syncTotalStockField(variantsEditor); updateComboTotal(variantsEditor); }
   const categoryPicker = edit.querySelector<HTMLElement>('.category-picker');
   if (categoryPicker) initCategoryPicker(categoryPicker);
 }
@@ -1742,6 +1875,10 @@ function restoreEditRow(display: HTMLTableRowElement, edit: HTMLTableRowElement,
   }
   edit.hidden = true;
   display.hidden = false;
+  // Cancel collapses the same tall form and strands the same row above the viewport — the seller
+  // who backs out of an edit needs to land on the product they backed out of just as much as the
+  // one who saved it.
+  scrollRowBackIntoView(display);
   refreshBulkEditLabel();
 }
 

@@ -24,6 +24,15 @@ const progress = onboardingProgress(steps);
 // lib/store-readiness.ts, not here) — so it gets a stated consequence, not a nudge.
 const blocking = missingRequiredSteps(steps);
 
+// A step whose target tab hides its control behind a toggle names that control, so the row opens
+// it as well as switching tabs (data-goto-open, handled by initGotoPanelLinks() in ui.ts). The id
+// lives here and not in lib/seller-onboarding.ts because it is a fact about this dashboard's
+// markup, and that module is deliberately pure. Steps with nothing to open simply omit it —
+// Astro drops an attribute whose value is undefined.
+const STEP_OPENS: Partial<Record<OnboardingStepId, string>> = {
+  product: 'toggle-add-form',
+};
+
 const COPY: Record<OnboardingStepId, { label: string; hint: string }> = {
   product:    { label: d.onbStepProduct,    hint: d.onbStepProductHint },
   image:      { label: d.onbStepImage,      hint: d.onbStepImageHint },
@@ -78,6 +87,7 @@ const COPY: Record<OnboardingStepId, { label: string; hint: string }> = {
             <button
               type="button"
               data-goto-panel={step.panel}
+              data-goto-open={STEP_OPENS[step.id]}
               class="group w-full flex items-start gap-2 text-start py-[0.4rem] px-[0.3rem] bg-transparent border-0 rounded-[var(--radius-sm)] cursor-pointer transition-colors duration-150 hover:bg-[color:var(--color-bg)]"
             >
               <svg class="shrink-0 mt-[0.15rem] [color:var(--color-border)] transition-colors duration-150 group-hover:[color:var(--color-accent)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">

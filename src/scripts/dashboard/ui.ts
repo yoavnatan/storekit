@@ -326,6 +326,15 @@ export function initGotoPanelLinks(): void {
   document.querySelectorAll<HTMLElement>('[data-goto-panel]').forEach((el) => {
     el.addEventListener('click', () => {
       document.querySelector<HTMLButtonElement>(`[role="tab"][data-panel="${el.dataset.gotoPanel}"]`)?.click();
+      // A source that names a control (data-goto-open) also opens it. The onboarding checklist's
+      // "add your first product" step used to land the seller on the Products tab with the add
+      // form still collapsed behind a toolbar of six buttons — the one step the checklist calls
+      // required was the one it stopped short of. Clicking the toggle is deliberate rather than
+      // un-hiding the form directly: initFormToggles() owns that pair's state (it also hides the
+      // toggle and the CSV panel), and a second mechanism setting the same attributes is how the
+      // two drift. Re-clicking an already-open form is a no-op.
+      const openId = el.dataset.gotoOpen;
+      if (openId) document.getElementById(openId)?.click();
     });
   });
 }

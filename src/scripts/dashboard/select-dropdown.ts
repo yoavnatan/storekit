@@ -28,7 +28,7 @@ const DEFAULT_TRIGGER_CLASS =
 export const COMPACT_TRIGGER_CLASS =
   'group inline-flex items-center gap-[.35rem] py-[.35rem] px-[.7rem] border [border-color:var(--color-border)] rounded-full [background:var(--color-surface)] font-[inherit] text-[.82rem] [color:var(--color-text)] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-[1px] focus-visible:outline-[color:var(--color-primary)]';
 
-export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerClassName?: string; triggerLabel?: string; menuAutoWidth?: boolean; optionMeta?: (value: string) => string } = {}): void {
+export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerClassName?: string; triggerLabel?: string; menuAutoWidth?: boolean; menuHeading?: string; optionMeta?: (value: string) => string } = {}): void {
   if (select.dataset.dropdownBound) return;
   select.dataset.dropdownBound = '1';
 
@@ -59,12 +59,29 @@ export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerCla
   // "Change method") instead of mirroring the selected option — the selected value is
   // then shown elsewhere by the caller. Omit it for the default value-mirroring behavior.
   function syncLabel(): void {
-    labelSpan.textContent = opts.triggerLabel ?? (select.selectedOptions[0]?.textContent ?? '');
+    const value = select.selectedOptions[0]?.textContent ?? '';
+    labelSpan.textContent = opts.triggerLabel ?? value;
+    // The native control is hidden and aria-hidden, so ITS aria-label reaches nobody — this
+    // trigger is what assistive tech actually meets, and its whole content is the bare value
+    // ("20"). Carrying the name over, with the value after it, is the difference between
+    // "20, button" and "show per page 20, button". Re-applied on every sync so the announced
+    // value never lags the visible one.
+    const name = select.getAttribute('aria-label');
+    if (name) trigger.setAttribute('aria-label', `${name} ${value}`.trim());
   }
   syncLabel();
 
+  /** A non-interactive heading row for the popup. Carries no `data-value` and no `option` role, so
+   *  neither `wire()` nor keyboard option-nav can land on it. Exists because a compact trigger
+   *  shows only its value: opened on a phone, a page-size popup was four bare numbers with nothing
+   *  saying what they counted, and the visible label beside the trigger is hidden at that width. */
+  function headingHtml(): string {
+    if (!opts.menuHeading) return '';
+    return `<div role="presentation" class="px-3 pt-[.3rem] pb-[.35rem] text-[.72rem] font-semibold uppercase tracking-[.04em] [color:var(--color-muted)] whitespace-nowrap">${escHtml(opts.menuHeading)}</div>`;
+  }
+
   function buildHtml(): string {
-    return Array.from(select.options)
+    return headingHtml() + Array.from(select.options)
       .map((o) => {
         const selected = o.value === select.value;
         // optionMeta adds trailing secondary text shown only in the popup (e.g. a price),
@@ -120,6 +137,10 @@ export function initSelectDropdown(select: HTMLSelectElement, opts: { triggerCla
         opt.querySelectorAll<HTMLElement>('span').forEach((s, i) => { content += Math.ceil(s.scrollWidth) + (i ? 8 : 0); });
         menuW = Math.max(menuW, content + 40);
       });
+      // The heading is measured too, or the menu sizes itself to the options alone and clips the
+      // very label that was added to explain them. It has no inner span, so it is measured directly.
+      const heading = el.querySelector<HTMLElement>('[role="presentation"]');
+      if (heading) menuW = Math.max(menuW, Math.ceil(heading.scrollWidth) + 40);
       menuW = Math.min(menuW, window.innerWidth - 2 * margin);
     }
     el.style.width = `${menuW}px`;
