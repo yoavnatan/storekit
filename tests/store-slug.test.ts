@@ -13,14 +13,26 @@ describe('normalizeSlug', () => {
     expect(normalizeSlug('a__b')).toBe('ab'); // underscores stripped
   });
 
-  it('returns "" for an all-Hebrew name (the reason the form asks for a latin URL)', () => {
-    expect(normalizeSlug('כלים של אליקים')).toBe('');
-    expect(normalizeSlug('חנות')).toBe('');
+  // Changed 2026-08-02: Hebrew is now ACCEPTED. It used to strip to '' — which was defensible while
+  // the field promised "latin only", but the seller picks this value himself, so the form now states
+  // the trade-off (a Hebrew link pastes long in some apps) and lets him choose. Products made the
+  // same move for a stronger reason: nobody types a product slug, so the strip was silent data loss.
+  it('keeps an all-Hebrew name instead of emptying it', () => {
+    expect(normalizeSlug('כלים של אליקים')).toBe('כלים-של-אליקים');
+    expect(normalizeSlug('חנות')).toBe('חנות');
   });
 
-  it('salvages the latin part of a mixed name', () => {
-    expect(normalizeSlug('חנות Cool')).toBe('cool');
-    expect(normalizeSlug('Nike נייקי')).toBe('nike');
+  it('keeps both halves of a mixed name rather than salvaging one', () => {
+    expect(normalizeSlug('חנות Cool')).toBe('חנות-cool');
+    expect(normalizeSlug('Nike נייקי')).toBe('nike-נייקי');
+  });
+
+  // The store slug is an identity: uniqueness is checked on it (isSlugTaken) and orders are bound
+  // to a store by it (orders.ts#orderBelongsToStore). Two Unicode spellings of one word must
+  // therefore land on ONE slug, or a second store could hold a pixel-identical address.
+  it('folds Unicode spellings so two stores cannot hold the same-looking slug', () => {
+    expect(normalizeSlug('אַון')).toBe(normalizeSlug('און'));
+    expect(normalizeSlug('עִבְרִית')).toBe('עברית');
   });
 });
 

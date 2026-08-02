@@ -4,7 +4,8 @@ import crypto from 'node:crypto';
 import { filterShopperStores, isDemoStore } from './demo-stores.js';
 import { isStoreReachable, isStoreDiscoverable } from './store-status.js';
 import type { StoreSale } from './discounts.js';
-import { trimDashes } from './url-base.js';
+import { toSlug } from './url-base.js';
+import { confusableSkeleton } from './slug-confusable.js';
 
 const STORES_PATH = path.join(process.cwd(), 'data/stores.json');
 
@@ -147,19 +148,13 @@ function writeStores(stores: Store[]): void {
   fs.writeFileSync(STORES_PATH, JSON.stringify(stores, null, 2));
 }
 
-/** Turn free text into a URL slug: lowercase, spaces→hyphens, keep only a-z/0-9/hyphen, collapse
- *  repeats, trim edge hyphens. Returns '' when nothing usable remains — e.g. an all-Hebrew name,
- *  which is exactly why the store-creation form asks for a separate latin URL name instead of
- *  deriving the slug from a Hebrew store name (which used to yield junk like "--"). */
+/** Turn free text into a store URL slug — `url-base.ts#toSlug`, which is also what product slugs
+ *  use. Latin stays the suggested form (the field's placeholder, and what the hint recommends),
+ *  but Hebrew is ACCEPTED since 2026-08-02: the seller picks this one himself, so the form states
+ *  the trade-off (a Hebrew link percent-encodes to a long string when some apps paste it) and lets
+ *  him decide, rather than the field silently deleting what he typed. */
 export function normalizeSlug(input: string): string {
-  const collapsed = input.toLowerCase().trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-');
-  // Edge trim via url-base.ts — the hand-rolled `^-+|-+$` here was quadratic (4.7s at 64k dashes)
-  // on a slug the seller POSTs, and stayed safe only because the collapse above happened to run
-  // first. See trimDashes' header.
-  return trimDashes(collapsed);
+  return toSlug(input);
 }
 
 /** Top-level path segments a store slug must NEVER equal — every one is a real platform route
@@ -176,9 +171,22 @@ export const RESERVED_SLUGS = new Set<string>([
   'store-unavailable', 'store-gone',
 ]);
 
-/** A usable store slug: non-empty and not a reserved platform route. */
+const LONGEST_RESERVED_SLUG = Math.max(...[...RESERVED_SLUGS].map((s) => s.length));
+
+/** A usable store slug: non-empty and not a reserved platform route.
+ *
+ *  Matched on the slug's SKELETON (slug-confusable.ts), not the raw string: since slugs may hold
+ *  non-Latin letters, `аdmin` with a Cyrillic а is a different string that reads as `admin` to
+ *  every human and to Google. Folding the confusables covers every lookalike spelling of every
+ *  reserved word at once — the alternative was enumerating variations by hand and staying wrong
+ *  about the ones nobody listed. A Hebrew or Arabic slug folds to itself and can never collide. */
 export function isReservedSlug(slug: string): boolean {
-  return RESERVED_SLUGS.has(slug);
+  // Length first: the middleware and the custom-domain resolver call this with a RAW request path
+  // segment, which no toSlug cap has been near. A segment longer than the longest reserved word
+  // cannot be one, so it never reaches the per-character fold. Skeletons are 1:1 on length, so this
+  // can't skip a real match.
+  if (slug.length > LONGEST_RESERVED_SLUG) return false;
+  return RESERVED_SLUGS.has(confusableSkeleton(slug));
 }
 
 interface CreateStoreInput {
@@ -236,8 +244,14 @@ export function getStoresBySellerId(sellerId: string): Store[] {
   return readStores().filter((s) => s.sellerId === sellerId);
 }
 
+/** Stored slugs are NFKC (normalizeSlug), so the incoming one is folded the same way before it is
+ *  compared: now that a slug can be Hebrew, the SAME word can arrive spelled a second way — a link
+ *  pasted out of a source using presentation forms, or a decomposed paste — and an exact match
+ *  would 404 a store that plainly exists. Case is deliberately NOT folded: `/MyStore` still misses,
+ *  as it always has, rather than quietly minting a second URL for one page. */
 export function getStoreBySlug(slug: string): Store | null {
-  return readStores().find((s) => s.slug === slug) ?? null;
+  const wanted = slug.normalize('NFKC');
+  return readStores().find((s) => s.slug === wanted) ?? null;
 }
 
 export function getStoreById(id: string): Store | null {

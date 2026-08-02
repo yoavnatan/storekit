@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { comboKey } from './variant-combo.js';
-import { trimDashes } from './url-base.js';
+import { toSlug } from './url-base.js';
 import type { ProductDiscount } from './discounts.js';
 export { LOW_STOCK_THRESHOLD } from './variant-combo.js';
 import { Mutex } from './mutex.js';
@@ -97,15 +97,13 @@ export function writeProducts(products: StoreProduct[]): void {
  * characters and the invisible RTL/LTR marks a Hebrew paste brings along — since none of those are
  * a letter or a number. Existing products keep their stored slug (this runs at creation only), so
  * no indexed URL moves.
+ *
+ * The rule itself lives in `url-base.ts#toSlug` — shared with `stores.ts#normalizeSlug` since the
+ * store URL accepts Hebrew too, and two copies of a slug rule is how the store half came to throw
+ * Hebrew away while this half kept it.
  */
 export function slugify(name: string): string {
-  const collapsed = name.toLowerCase().trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^\p{L}\p{N}-]/gu, '')
-    .replace(/-+/g, '-');
-  // Edge trim via url-base.ts, never a hand-rolled `^-+|-+$` — that form is quadratic on a name
-  // that arrives with the request (measured: 4.7s at 64k dashes). See trimDashes' header.
-  return trimDashes(collapsed);
+  return toSlug(name);
 }
 
 interface CreateProductInput {

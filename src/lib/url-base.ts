@@ -40,6 +40,52 @@ export function trimDashes(value: string): string {
 }
 
 /**
+ * What a slug may hold, applied to raw text: letters in ANY script, digits, hyphen — plus
+ * whitespace, which `toSlug` turns into hyphens and the live-typing fields keep so a word break
+ * survives until the seller finishes typing it.
+ *
+ * **NFKC first, and that is the load-bearing part.** A slug is an IDENTITY here — stores are
+ * unique by it, orders key `storeSubtotals` by it, and `orders.ts#orderBelongsToStore` decides
+ * who may touch an order by comparing it. Unicode can spell one Hebrew word more than one way
+ * (a presentation-form letter like U+FB2E vs the plain letter, niqqud composed vs decomposed),
+ * and without folding those to one spelling, two stores could hold slugs that are byte-different
+ * and pixel-identical — a free impersonation, and a lookup that misses its own record when a
+ * link arrives spelled the other way. NFKC settles on one spelling before anything else runs.
+ *
+ * Marks (niqqud, U+05B0–U+05C7) are neither `\p{L}` nor `\p{N}`, so they drop out here — עִבְרִית
+ * and עברית reach the same slug, which is what a reader typing the URL expects.
+ */
+export function slugChars(input: string): string {
+  return input.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '');
+}
+
+/**
+ * Characters, not code units — see toSlug. Generous for a real name (a wordy Hebrew product runs
+ * ~40) and still a bound: a slug is written into every order, cart and analytics row that references
+ * the store, and into every sitemap `<loc>` and feed `<link>`, where Hebrew percent-encodes to six
+ * characters per letter. Nothing capped the seller-POSTed value before; allowing Hebrew is what
+ * made an uncapped one six times heavier.
+ */
+const SLUG_MAX = 120;
+
+/**
+ * Free text → a finished slug: the server's rule, and the ONE definition. `stores.ts#normalizeSlug`
+ * and `store-products.ts#slugify` are both this function — they were two near-copies that had
+ * already drifted (one accepted Hebrew, the other silently threw it away and numbered the product).
+ *
+ * The live-typing fields deliberately call `slugChars` alone instead: this trims edge hyphens, and
+ * doing that per keystroke eats the `-` the moment the seller types it in `my-store`.
+ */
+export function toSlug(input: string): string {
+  const collapsed = slugChars(input).trim().replace(/\s+/g, '-').replace(/-+/g, '-');
+  // Spread, not slice(0, N): a code unit is not a character, and `\p{L}` admits scripts outside the
+  // BMP — a raw slice can cut a surrogate pair in half and leave a lone half in the store's identity.
+  const capped = [...collapsed].slice(0, SLUG_MAX).join('');
+  // Trim AFTER the cap: cutting mid-word can land exactly on a hyphen and leave a trailing one.
+  return trimDashes(capped);
+}
+
+/**
  * One store/product slug, percent-encoded for a URL that will be READ BY A MACHINE.
  *
  * Slugs carry Hebrew (store-products.ts#slugify) because that is the site's language and its
