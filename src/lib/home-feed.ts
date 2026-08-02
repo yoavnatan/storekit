@@ -1,6 +1,5 @@
 import type { Store } from './stores.js';
 import type { StoreProduct } from './store-products.js';
-import { getFavoriteStoresForUser } from './user-carts.js';
 import { businessDayISO } from './business-day.js';
 
 export interface FeedStore {
@@ -97,9 +96,18 @@ function promoFirst(list: FeedStore[]): FeedStore[] {
  *  (deduped by the caller); pass `[]` for a guest or a buyer with no order history. Kept as a
  *  plain input here rather than importing orders.ts directly, same reasoning as
  *  `storesWithProducts` — this module only decides *which stores go where*, not how to look
- *  them up. */
-export function buildHomeFeed(storesWithProducts: FeedStore[], userId: string | null, previousStoreSlugs: string[] = []): HomeFeed {
-  const favoriteSlugs = userId ? new Set(getFavoriteStoresForUser(userId)) : new Set<string>();
+ *  them up.
+ *
+ *  `favoriteStoreSlugs` is now the same kind of input, for the same reason: it used to be looked up
+ *  in here from a user id, which would have made the whole feed builder asynchronous the moment
+ *  buyer state became a query. The caller does the one lookup; every shelf rule below stays pure
+ *  and testable without a database (the pattern the page-view and analytics buckets set). */
+export function buildHomeFeed(
+  storesWithProducts: FeedStore[],
+  favoriteStoreSlugs: readonly string[] = [],
+  previousStoreSlugs: string[] = [],
+): HomeFeed {
+  const favoriteSlugs = new Set(favoriteStoreSlugs);
   const liked = storesWithProducts.filter((fs) => favoriteSlugs.has(fs.store.slug)).slice(0, SHELF_SIZE);
   const likedSlugs = new Set(liked.map((fs) => fs.store.slug));
 

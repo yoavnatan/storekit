@@ -1,8 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getUserCart, saveUserCart } from '../../lib/user-carts.js';
-import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
+import { toggleFavoriteStore, countFavoriteStores } from '../../lib/user-carts.js';
 import { getStoreBySlugOrPrevious } from '../../lib/stores.js';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 
@@ -24,21 +23,13 @@ export async function POST({ cookies, request }: APIContext): Promise<Response> 
     return new Response('Store not found', { status: 404 });
   }
 
-  const userData = getUserCart(userId);
-  const favorites = userData.favoriteStores ?? [];
-  const idx = favorites.indexOf(store.slug);
-  const favorited = idx === -1;
-
-  if (favorited) {
-    favorites.push(store.slug);
-  } else {
-    favorites.splice(idx, 1);
-  }
-
-  saveUserCart(userId, { ...userData, favoriteStores: favorites });
+  // One row in, one row out — no read of the buyer's other state and no rewrite of it. The count
+  // is asked of the store's id, not of the slug the request happened to name (which may be a
+  // previous one); the answer is COUNT(*) on the table, so it cannot drift from what was written.
+  const favorited = await toggleFavoriteStore(userId, store.id);
 
   return new Response(
-    JSON.stringify({ favorited, count: getFavoriteStoreCount(storeSlug) }),
+    JSON.stringify({ favorited, count: await countFavoriteStores(store.id) }),
     { headers: { 'Content-Type': 'application/json' } },
   );
 }

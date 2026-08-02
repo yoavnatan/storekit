@@ -1,14 +1,13 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getUserCart, saveUserCart, type UserCartData } from '../../lib/user-carts.js';
-import { mergeStoreSlugs } from '../../lib/recent-stores.js';
+import { getUserCart, replaceUserCart, type UserCartData } from '../../lib/user-carts.js';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 
 export async function GET({ cookies }: APIContext): Promise<Response> {
   const sellerId = getSellerSession(cookies);
   if (!sellerId) return new Response('Unauthorized', { status: 401 });
-  return new Response(JSON.stringify(getUserCart(sellerId)), {
+  return new Response(JSON.stringify(await getUserCart(sellerId)), {
     headers: { 'Content-Type': 'application/json' },
   });
 }
@@ -27,17 +26,17 @@ export async function POST({ cookies, request }: APIContext): Promise<Response> 
         && (!Array.isArray(body.recentStores) || body.recentStores.some((s) => typeof s !== 'string'))) {
       return new Response('Bad request', { status: 400 });
     }
-    // Preserve favoriteStores — they're managed by /api/favorite-store, never by cart-sync.
-    // recentStores: this device posts its own cookie list; union it (device-first for
-    // recency) with whatever other devices already recorded, deduped + capped by
-    // mergeStoreSlugs. Never trust the client for length/shape — the union bounds it.
-    const existing = getUserCart(sellerId);
-    saveUserCart(sellerId, {
-      ...body,
-      favoriteStores: existing.favoriteStores ?? [],
-      recentStores: Array.isArray(body.recentStores)
-        ? mergeStoreSlugs(body.recentStores, existing.recentStores ?? [])
-        : (existing.recentStores ?? []),
+    // Saved stores are no longer part of this write at all — they are their own table, written
+    // only by /api/favorite-store. The file version had to read them and hand them back on every
+    // cart sync just to avoid erasing them.
+    // recentStores: this device posts its own cookie list, and the module unions it (device-first
+    // for recency) with whatever other devices recorded — inside the same transaction as the write,
+    // so the read cannot be overtaken between the two. An absent list means "this device has
+    // nothing to say", so the stored list is left alone.
+    await replaceUserCart(sellerId, {
+      cart: body.cart,
+      wishlist: body.wishlist,
+      ...(Array.isArray(body.recentStores) ? { recentStores: body.recentStores } : {}),
     });
     return new Response('ok');
   } catch {

@@ -14,7 +14,7 @@ import { countRealStores, filterShopperStores, isDemoStore, realStores } from '.
 import { getVisibleProductsByStoreIds } from '../lib/store-products.js';
 import { getOrdersByBuyer } from '../lib/orders.js';
 import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
-import { getUserCart } from '../lib/user-carts.js';
+import { getFavoriteStoresForUser, getRecentStoresForUser } from '../lib/user-carts.js';
 import { parseRecentStores, mergeStoreSlugs } from '../lib/recent-stores.js';
 import { isLaunchMode, showShelfInvite, planLaunchShelf, launchInviteCount, MIN_SHELF_INVITES } from '../lib/launch-mode.js';
 import { getLang, getT } from '../i18n/index.js';
@@ -82,7 +82,11 @@ if (sellerId || buyerEmail) {
 // Bounded, varied feed instead of "render every store's full carousel" — see
 // src/lib/home-feed.ts for the shelf-selection strategy (was the site's actual
 // scaling limit once there are hundreds of stores, not just a style choice).
-const feed = buildHomeFeed(storesWithProducts, sellerId, previousStoreSlugs);
+const feed = buildHomeFeed(
+  storesWithProducts,
+  sellerId ? await getFavoriteStoresForUser(sellerId) : [],
+  previousStoreSlugs,
+);
 
 // ── Tabs (CURRENT_TASK.md → סשן ג׳, round 2): the old vertical shelf-stack
 // is now switchable tabs, reusing the seller/admin dashboard's own tab
@@ -102,7 +106,7 @@ type TabId = typeof TAB_IDS[number];
 // visible-with-products set, dropping any store since blocked/emptied.
 const recentSlugs = mergeStoreSlugs(
   parseRecentStores(Astro.cookies.get('sn_recent_stores')?.value),
-  sellerId ? (getUserCart(sellerId).recentStores ?? []) : [],
+  sellerId ? await getRecentStoresForUser(sellerId) : [],
 );
 const recentStores: FeedStore[] = recentSlugs
   .map((slug) => storesWithProducts.find((sp) => sp.store.slug === slug))

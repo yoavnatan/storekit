@@ -35,8 +35,7 @@ import { jsonForScript } from '../../lib/json-script.js';
 import { galleryWidgetHtml } from '../../lib/gallery-widget.js';
 import { storeMark, storeMarkGradient } from '../../lib/store-mark.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
-import { getAllWishlistCounts } from '../../lib/wishlist-counts.js';
-import { getFavoriteStoreCount } from '../../lib/store-favorite-counts.js';
+import { getWishlistCountsForStore, countFavoriteStores } from '../../lib/user-carts.js';
 import { thumbUrl } from '../../lib/cloudinary.js';
 import { getThreadRootsBySeller, getRepliesForMessages } from '../../lib/messages.js';
 import { getAdminThreadsForSeller } from '../../lib/admin-messages.js';
@@ -255,9 +254,11 @@ const products = store
 const storeCategoryList = store ? await getCategoriesByStoreId(store.id) : [];
 const categoryTree = buildCategoryTree(storeCategoryList);
 const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
-const wishlistCounts = store ? getAllWishlistCounts() : ({} as Record<string, number>);
+// Scoped to this store, not the whole platform: the map used to be every wishlist count that
+// existed, read in order to label the products of one shop.
+const wishlistCounts = store ? await getWishlistCountsForStore(store.id) : ({} as Record<string, number>);
 const purchasedCounts = store ? await getPurchasedCountsByStoreSlug(store.slug) : ({} as Record<string, number>);
-const storeFavoriteCount = store ? getFavoriteStoreCount(store.slug) : 0;
+const storeFavoriteCount = store ? await countFavoriteStores(store.id) : 0;
 const productCount = products.length;
 const inStockCount = products.filter((p) => p.stock > 0).length;
 const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);

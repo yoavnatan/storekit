@@ -11,7 +11,7 @@ import { normalizeDeliveryMethod, shippingPrice } from '../../lib/shipping.js';
 import { sendOrderConfirmationEmails } from '../../lib/email/order-confirmation.js';
 import { createNotification } from '../../lib/notifications.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getUserCart, saveUserCart } from '../../lib/user-carts.js';
+import { removeCartLines, type CartLineRef } from '../../lib/user-carts.js';
 import { isValidEmail } from '../../lib/email-address.js';
 import { makeCartKey } from '../../lib/cart.js';
 import { logError } from '../../lib/error-log.js';
@@ -431,28 +431,28 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       }).catch(() => { /* same reason: the purchase is already committed */ });
     }
 
-    // Remove only the purchased items from the server-side cart (buyer may have left
-    // other items unselected at checkout) — preserves wishlist + favoriteStores.
+    // Remove only the purchased lines from the server-side cart (the buyer may have left other
+    // items unselected at checkout). It is a DELETE of exactly those rows now, so nothing else the
+    // buyer owns is even named by the statement — the shape this replaces rebuilt the whole cart
+    // object and handed back every other field with it, and the one it forgot to hand back
+    // (`recentStores`) was quietly emptied by every purchase.
     if (userId) {
-      const existing = getUserCart(userId);
-      const cart = { ...existing.cart };
-      for (const raw of items) {
+      const purchased: CartLineRef[] = items.map((raw) => {
         const item = raw as CartItemInput;
-        const storeSlug = typeof item.storeSlug === 'string' ? item.storeSlug.trim() : '';
-        const productSlug = typeof item.productSlug === 'string' ? item.productSlug.trim() : '';
         const selectedVariants =
           item.selectedVariants && typeof item.selectedVariants === 'object' && !Array.isArray(item.selectedVariants)
             ? (item.selectedVariants as Record<string, string>)
             : undefined;
-        const key = makeCartKey(productSlug, selectedVariants);
-        const storeCart = cart[storeSlug];
-        if (!storeCart) continue;
-        const remainingItems = { ...storeCart.items };
-        delete remainingItems[key];
-        if (Object.keys(remainingItems).length === 0) delete cart[storeSlug];
-        else cart[storeSlug] = { ...storeCart, items: remainingItems };
-      }
-      saveUserCart(userId, { cart, wishlist: existing.wishlist, favoriteStores: existing.favoriteStores ?? [] });
+        return {
+          storeSlug: typeof item.storeSlug === 'string' ? item.storeSlug.trim() : '',
+          cartKey: makeCartKey(typeof item.productSlug === 'string' ? item.productSlug.trim() : '', selectedVariants),
+        };
+      });
+      // NOT given a `.catch()` of its own, unlike the notification above, and the difference is
+      // the point: `committed` is already true here, so the outer handler answers 201 anyway AND
+      // records the failure with the resolution hint that names this step. Swallowing it here
+      // would buy the same status code at the cost of the only trace anyone would have.
+      await removeCartLines(userId, purchased);
     }
 
     // First-party funnel: the purchase stage. Recorded server-side after the

@@ -271,10 +271,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const oldSlug = target.slug;
     const updated = await renameStoreSlug(target.id, newSlug);
     if (!updated) return json({ ok: false, error: 'Store not found.' }, 404);
-    // Migrate the durable slug-keyed data (saved favorites/recent) and notify the index. Page-view
-    // history is NOT in that list any more: it is keyed by store id, so a rename cannot split it
-    // and there is nothing to move (DB_MIGRATION_PLAN.md §5).
-    renameStoreSlugInUserData(oldSlug, newSlug);
+    // Migrate the durable slug-keyed buyer state (cart lines + the recently-visited list) and notify
+    // the index. Page-view history is NOT in that list any more, and neither are saved stores or
+    // wishlist entries: all three are keyed by id, so a rename cannot split them and there is
+    // nothing to move (DB_MIGRATION_PLAN.md §5).
+    await renameStoreSlugInUserData(oldSlug, newSlug);
     // Awaited, not fired and forgotten: it is two UPDATEs in a transaction now, and returning 200
     // before it lands means the seller's dashboard can reload on the new slug while its orders are
     // still under the old one — an empty orders tab, and a swallowed error if it fails.

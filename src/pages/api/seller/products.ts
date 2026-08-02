@@ -5,7 +5,7 @@ import { getStoresBySellerId } from '../../../lib/stores.js';
 import { getProductsByStoreId, countStockAlerts } from '../../../lib/store-products.js';
 import { LOW_STOCK_THRESHOLD } from '../../../lib/variant-combo.js';
 import { getCategoriesByStoreId, categoryPath } from '../../../lib/store-categories.js';
-import { getAllWishlistCounts } from '../../../lib/wishlist-counts.js';
+import { getWishlistCountsForStore } from '../../../lib/user-carts.js';
 import { getPurchasedCountsByStoreSlug } from '../../../lib/orders.js';
 import { filterAndSortSellerProducts, parseSellerProductQuery } from '../../../lib/seller-products-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
@@ -38,7 +38,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   const products = (await getProductsByStoreId(store.id)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const categories = await getCategoriesByStoreId(store.id);
   const categoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(categories, p.categoryId) : '']));
-  const wishlistCounts = getAllWishlistCounts();
+  const wishlistCounts = await getWishlistCountsForStore(store.id);
   const purchasedCounts = await getPurchasedCountsByStoreSlug(store.slug);
 
   const filtered = filterAndSortSellerProducts(products, categoryPaths, wishlistCounts, purchasedCounts, query);

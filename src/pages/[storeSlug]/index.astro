@@ -22,7 +22,7 @@ import { OG_IMAGE_FORMAT, resolveStoreImage, storeImageUrl } from '../../lib/sto
 import { store as platform, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
-import { getFavoriteStoresForUser } from '../../lib/user-carts.js';
+import { isStoreFavorited } from '../../lib/user-carts.js';
 import { jsonForScript } from '../../lib/json-script.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
@@ -68,7 +68,8 @@ if (cdRedirect) return Astro.redirect(cdRedirect, 301);
 
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
-const isFavorited = userId ? getFavoriteStoresForUser(userId).includes(shopStore.slug) : false;
+// One row, asked by store id — not the buyer's whole saved-store list filtered in memory.
+const isFavorited = userId ? await isStoreFavorited(userId, shopStore.id) : false;
 
 // Blocked individual products (store itself still fine) never show in the
 // store's own grid/search/category filters — getVisibleProductsByStoreId is
@@ -907,11 +908,6 @@ const pmI18n = {
       setHeartStyle(btn, nowActive);
 
       if (nowActive) spawnHeartBurst(btn);
-      fetch('/api/wishlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: nowActive ? 'add' : 'remove', productSlug: slug }),
-      });
     });
   }
 
