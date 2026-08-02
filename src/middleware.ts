@@ -126,10 +126,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // the narrower stages map product pages → view_item, the checkout page →
     // begin_checkout, and the seller register page → the seller-funnel top.
     if (isPageCandidate && !ownerViewingOwnStore && (response.headers.get('content-type') ?? '').includes('text/html')) {
-      recordAnalyticsEvent('page_view', { vid });
-      if (viewedProductId) recordAnalyticsEvent('view_item', { vid, productIds: [viewedProductId] });
-      else if (pathname === '/checkout') recordAnalyticsEvent('begin_checkout', { vid });
-      else if (pathname === '/seller/register') recordAnalyticsEvent('seller_register_view', { vid });
+      void recordAnalyticsEvent('page_view', { vid });
+      if (viewedProductId) void recordAnalyticsEvent('view_item', { vid, productIds: [viewedProductId] });
+      else if (pathname === '/checkout') void recordAnalyticsEvent('begin_checkout', { vid });
+      else if (pathname === '/seller/register') void recordAnalyticsEvent('seller_register_view', { vid });
     }
     // Last thing before it leaves the process, so every SSR route is covered by one rule and the
     // analytics tap above still sees the real, uncompressed response headers.

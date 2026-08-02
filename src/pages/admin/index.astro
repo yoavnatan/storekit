@@ -244,7 +244,7 @@ const DATA_PRESETS: AdRangePreset[] = ['today', '7d', '30d', 'thisMonth'];
 const dataPresetRaw = sp.get('datapreset') as AdRangePreset | null;
 const dataPreset: AdRangePreset = DATA_PRESETS.includes(dataPresetRaw as AdRangePreset) ? dataPresetRaw! : '30d';
 const dataRange = presetRange(dataPreset)!;
-const analyticsOverview = getAnalyticsOverview(dataRange.from, dataRange.to);
+const analyticsOverview = await getAnalyticsOverview(dataRange.from, dataRange.to);
 const sellerFunnel = await getSellerFunnel();
 const productNames = new Map<string, string>();
 for (const list of productsByStore.values()) for (const p of list) productNames.set(p.id, p.name);

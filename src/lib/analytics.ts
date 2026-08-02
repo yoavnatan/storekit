@@ -1,9 +1,41 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { Mutex } from './mutex.js';
-import { businessDayISO, calendarDayISO } from './business-day.js';
+import { query, rows } from './db.js';
 
-const ANALYTICS_PATH = path.join(process.cwd(), 'data/analytics-events.json');
+/**
+ * First-party funnel analytics — the buyer's path from landing on the site to paying.
+ *
+ * **Moved to Postgres (DB_MIGRATION_PLAN.md §5, §8).** The JSON version held, per day per event, an
+ * object `{ count, visitors: [...], products: {...} }` — where `visitors` was the array of every
+ * session id that fired the event that day. One measured day already carried 359 ids for
+ * `page_view` alone, and the whole file was read and rewritten on every page load, because the
+ * middleware records a `page_view` for each one.
+ *
+ * Three properties replace it, and none of them is a copy of the old shape:
+ *
+ * · **A write is one statement that reads nothing.** `analytics_daily` carries the volume counter,
+ *   `analytics_visitors` one row per (day, event, session), `analytics_products` the per-product
+ *   tally — all three move in a single data-modifying CTE, one round trip, no prior SELECT.
+ *
+ * · **A funnel stage is `COUNT(DISTINCT visitor_id)` OVER THE RANGE, computed in the database.**
+ *   This is why the read API hands the pure layer one already-aggregated total per event rather than
+ *   per-day rows: daily unique counts cannot be summed into a range (a session that returns
+ *   tomorrow is one session, not two), so a caller that unioned day rows would just be moving the
+ *   unbounded visitor array out of the file and into a result set.
+ *
+ * · **The product breakdowns rank inside the database.** `topProductsByEvent` and
+ *   `topAbandonedProducts` are `GROUP BY` + `ORDER BY` + `LIMIT`; shipping every product's tally to
+ *   JavaScript to pick eight of them is the same unbounded read in a different costume.
+ *
+ * What stays pure and synchronous is what is actually arithmetic: the funnel's stage list and every
+ * rate derived from it (`buildFunnel` / `buildAnalyticsRates`). They take `EventTotals` as INPUT —
+ * the same move that kept `buildPerformanceSummary` testable without a database when page-views
+ * moved — so the numbers that appear on the admin's screen are still unit-tested without one.
+ *
+ * **`day` is a DATE the APPLICATION decides (§7.8).** The server runs in UTC and the business
+ * calendar is Asia/Jerusalem; `businessDayISO` supplies the day on write and callers pass
+ * 'YYYY-MM-DD' bounds on read. No query here derives a day of its own.
+ */
+
+import { businessDayISO, isDayISO } from './business-day.js';
 
 // The buyer funnel, ordered top → bottom. Each is a FIRST-PARTY event we capture
 // ourselves — deliberately independent of the GTM/Meta dataLayer, which only
@@ -13,120 +45,88 @@ const ANALYTICS_PATH = path.join(process.cwd(), 'data/analytics-events.json');
 export const FUNNEL_EVENTS = ['page_view', 'view_item', 'add_to_cart', 'begin_checkout', 'purchase'] as const;
 // Events captured the same way but OUTSIDE the buyer funnel — currently the top
 // of the SELLER onboarding funnel (a visit to the seller registration page). Kept
-// in the same store/record path; buildFunnel() iterates only FUNNEL_EVENTS.
+// in the same tables; buildFunnel() iterates only FUNNEL_EVENTS.
 export const AUX_EVENTS = ['seller_register_view'] as const;
 export type FunnelEvent = typeof FUNNEL_EVENTS[number];
 export type AnalyticsEvent = FunnelEvent | typeof AUX_EVENTS[number];
 
-// Per-day, per-event bucket. `count` = raw occurrences (volume — page loads, add
-// clicks…). `visitors` = the DISTINCT session ids (the httpOnly `sn_vid` cookie)
-// that fired the event that day, so a funnel STAGE is measured in SESSIONS
-// (union of the daily id sets across a range), separating "one session, many
-// adds" from "many different sessions". `products` = per-product occurrence
-// counts, kept only for product-scoped events (view_item / add_to_cart /
-// purchase) — powers the top-products and cart-abandonment-by-product
-// breakdowns. Storage is O(days × events × unique-sessions-per-day): dev-only
-// JSON, swap-ready for a DB `AnalyticsEvent(date,type,vid,productId)` table
-// where COUNT / COUNT(DISTINCT vid) replace this mutex-guarded read-modify-write.
-interface EventBucket { count: number; visitors: string[]; products?: Record<string, number> }
-type DayBuckets = Partial<Record<AnalyticsEvent, EventBucket>>;
-export type AnalyticsData = Record<string, DayBuckets>; // date 'YYYY-MM-DD' → per-event buckets
+/** `COUNT` and `SUM` come back as `bigint` — a string from `pg`, a number from PGlite (§8). */
+const count = (v: number | string | null): number => Number(v ?? 0);
 
-function readAll(): AnalyticsData {
-  try { return JSON.parse(fs.readFileSync(ANALYTICS_PATH, 'utf8')) as AnalyticsData; }
-  catch { return {}; }
-}
+// A product id is whatever the recorded event carried, capped to the column's working width. The
+// column is `text` with no foreign key ON PURPOSE (see its note in 0001_init.sql): a tally of a
+// product that has since been deleted is still history. The IDENTITY rule — new events may only
+// name a real uuid — belongs at the untrusted boundary (`/api/analytics/event`), not here, where
+// legacy ids from the imported past must keep resolving.
+const MAX_PRODUCT_ID_LEN = 64;
 
-function writeAll(data: AnalyticsData): void {
-  fs.writeFileSync(ANALYTICS_PATH, JSON.stringify(data, null, 2));
-}
-
-function normalizeBucket(v: EventBucket | undefined): EventBucket {
-  if (v == null) return { count: 0, visitors: [] };
-  return {
-    count: v.count ?? 0,
-    visitors: Array.isArray(v.visitors) ? v.visitors : [],
-    products: v.products && typeof v.products === 'object' ? v.products : undefined,
-  };
-}
-
-/** The BUSINESS day (business-day.ts). The funnel counts add_to_cart against purchase,
- *  and purchases are bucketed on the business calendar — under UTC a late-night
- *  session could file its cart event on one day and its purchase on the next, which
- *  shows up as a conversion rate over 100% on one day and a hole on the other. */
-function todayKey(): string {
-  return businessDayISO(new Date());
-}
-
-const analyticsMutex = new Mutex();
-
-export interface RecordOpts { vid?: string; productIds?: string[]; date?: string }
+export interface RecordOpts { vid?: string; productIds?: string[] }
 
 /**
- * Fire-and-forget event record. Bumps today's raw count for `type`, records the
- * session id once (repeat fires by the same session never inflate the stage's
- * session count), and tallies each product id. NEVER throws — analytics must not
- * break page rendering or checkout (the caller wraps nothing).
+ * Fire-and-forget event record: bumps the day's volume for `type`, files the session id once
+ * (repeat fires by the same session never inflate a funnel stage), and tallies each product id.
+ *
+ * NEVER throws and never rejects — this runs on every page load from `middleware.ts` and at the end
+ * of checkout, and an analytics tap that can fail a render is worse than one that loses a count.
+ * Callers use `void`.
+ *
+ * **The product tally is grouped before it is inserted, and that is not a micro-optimisation.**
+ * One call can legitimately name the same product twice — a checkout with two lines of the same
+ * product in different variants does exactly that — and Postgres REJECTS an `ON CONFLICT DO UPDATE`
+ * that would touch the same row twice within one command. Aggregating in the `SELECT` both avoids
+ * that error and preserves the old behaviour, where the loop simply incremented twice.
  */
-export function recordAnalyticsEvent(type: AnalyticsEvent, opts: RecordOpts = {}): void {
-  analyticsMutex.run(() => {
-    const all = readAll();
-    const key = opts.date ?? todayKey();
-    const day = all[key] ?? {};
-    const bucket = normalizeBucket(day[type]);
-    bucket.count += 1;
-    if (opts.vid && !bucket.visitors.includes(opts.vid)) bucket.visitors.push(opts.vid);
-    if (opts.productIds?.length) {
-      const products = bucket.products ?? {};
-      for (const pid of opts.productIds) products[pid] = (products[pid] ?? 0) + 1;
-      bucket.products = products;
-    }
-    day[type] = bucket;
-    all[key] = day;
-    writeAll(all);
-  }).catch(() => undefined);
+export async function recordAnalyticsEvent(type: AnalyticsEvent, opts: RecordOpts = {}): Promise<void> {
+  try {
+    const productIds = (opts.productIds ?? [])
+      .filter((id): id is string => typeof id === 'string' && id !== '')
+      .map((id) => id.slice(0, MAX_PRODUCT_ID_LEN));
+    await query(
+      // A data-modifying WITH clause always executes, whether or not the outer query reads from it,
+      // which is what carries all three writes on one round trip without a transaction's extra
+      // BEGIN/COMMIT on the hottest path in the application.
+      `WITH bump AS (
+         INSERT INTO analytics_daily (day, event, count)
+         VALUES ($1::date, $2, 1)
+         ON CONFLICT (day, event) DO UPDATE SET count = analytics_daily.count + 1
+       ), seen AS (
+         INSERT INTO analytics_visitors (day, event, visitor_id)
+         SELECT $1::date, $2, $3 WHERE $3 <> ''
+         ON CONFLICT DO NOTHING
+       )
+       INSERT INTO analytics_products (day, event, product_id, count)
+       SELECT $1::date, $2, pid, COUNT(*)
+         FROM unnest($4::text[]) AS pid
+        GROUP BY pid
+       ON CONFLICT (day, event, product_id)
+       DO UPDATE SET count = analytics_products.count + EXCLUDED.count`,
+      [businessDayISO(new Date()), type, opts.vid ?? '', productIds],
+    );
+  } catch { /* analytics must never break a request */ }
 }
 
-// ── Pure aggregation (take a raw AnalyticsData, no I/O — directly unit-testable) ──
+// ── Pure aggregation (takes already-aggregated totals, no I/O — directly unit-testable) ──
 
-function datesInRange(fromISO: string, toISO: string): string[] {
-  const dates: string[] = [];
-  const cur = new Date(fromISO + 'T00:00:00Z');
-  const end = new Date(toISO + 'T00:00:00Z');
-  while (cur <= end) {
-    // A synthetic calendar cursor, not a moment in time (see business-day.ts —
-    // mixing the two families up is the bug that file exists to prevent).
-    dates.push(calendarDayISO(cur));
-    cur.setUTCDate(cur.getUTCDate() + 1);
-  }
-  return dates;
-}
+/** One event's two measurements over a range: distinct sessions, and raw volume. */
+export interface StageTotals { sessions: number; count: number }
 
-interface EventAggregate { sessions: number; count: number; products: Record<string, number> }
+/**
+ * Per-event totals for ONE window, as the database returned them.
+ *
+ * Deliberately not per-day: `sessions` is a distinct count over the whole range and is not
+ * recoverable from daily figures. An event with no traffic in the window is simply absent.
+ */
+export type EventTotals = Partial<Record<AnalyticsEvent, StageTotals>>;
 
-/** Union distinct sessions + sum counts + merge product tallies for one event across [from,to]. */
-function aggregateEvent(data: AnalyticsData, type: AnalyticsEvent, dates: string[]): EventAggregate {
-  const sessionIds = new Set<string>();
-  const products: Record<string, number> = {};
-  let count = 0;
-  for (const date of dates) {
-    const b = data[date]?.[type];
-    if (!b) continue;
-    count += b.count ?? 0;
-    for (const id of b.visitors ?? []) sessionIds.add(id);
-    for (const [pid, n] of Object.entries(b.products ?? {})) products[pid] = (products[pid] ?? 0) + n;
-  }
-  return { sessions: sessionIds.size, count, products };
-}
+const NO_TOTALS: StageTotals = { sessions: 0, count: 0 };
 
 export interface FunnelStage { event: FunnelEvent; sessions: number; count: number }
 
-/** The buyer funnel over a range: one stage per FUNNEL_EVENTS entry, measured in sessions. */
-export function buildFunnel(data: AnalyticsData, fromISO: string, toISO: string): FunnelStage[] {
-  const dates = datesInRange(fromISO, toISO);
+/** The buyer funnel: one stage per FUNNEL_EVENTS entry, in order, measured in sessions. */
+export function buildFunnel(totals: EventTotals): FunnelStage[] {
   return FUNNEL_EVENTS.map((event) => {
-    const a = aggregateEvent(data, event, dates);
-    return { event, sessions: a.sessions, count: a.count };
+    const t = totals[event] ?? NO_TOTALS;
+    return { event, sessions: t.sessions, count: t.count };
   });
 }
 
@@ -144,13 +144,13 @@ export interface AnalyticsRates {
 
 const rate = (part: number, whole: number): number => (whole > 0 ? Math.max(0, Math.min(1, part / whole)) * 100 : 0);
 
-export function buildAnalyticsRates(data: AnalyticsData, fromISO: string, toISO: string): AnalyticsRates {
-  const dates = datesInRange(fromISO, toISO);
-  const sessions = aggregateEvent(data, 'page_view', dates).sessions;
-  const productViews = aggregateEvent(data, 'view_item', dates).sessions;
-  const addToCarts = aggregateEvent(data, 'add_to_cart', dates).sessions;
-  const checkouts = aggregateEvent(data, 'begin_checkout', dates).sessions;
-  const purchases = aggregateEvent(data, 'purchase', dates).sessions;
+export function buildAnalyticsRates(totals: EventTotals): AnalyticsRates {
+  const sessionsOf = (event: AnalyticsEvent): number => (totals[event] ?? NO_TOTALS).sessions;
+  const sessions = sessionsOf('page_view');
+  const productViews = sessionsOf('view_item');
+  const addToCarts = sessionsOf('add_to_cart');
+  const checkouts = sessionsOf('begin_checkout');
+  const purchases = sessionsOf('purchase');
   return {
     sessions, productViews, addToCarts, checkouts, purchases,
     bounceRate: rate(sessions - productViews, sessions),
@@ -160,32 +160,124 @@ export function buildAnalyticsRates(data: AnalyticsData, fromISO: string, toISO:
   };
 }
 
+// ── Queries ──
+
+interface TotalsRow { event: string; sessions: number | string; count: number | string }
+
+/**
+ * Distinct sessions and raw volume per event over [fromISO, toISO] inclusive.
+ *
+ * A day that does not exist is not a narrower range, it is a value Postgres refuses to cast —
+ * `2026-02-30` and `9999-99-99` both have the right shape and raise rather than match. Settling the
+ * shape here keeps a stale bookmark at "no data" instead of turning it into a 500 (§8, `isDayISO`).
+ */
+export async function getEventTotals(fromISO: string, toISO: string): Promise<EventTotals> {
+  const totals: EventTotals = {};
+  if (!isDayISO(fromISO) || !isDayISO(toISO)) return totals;
+  // FULL JOIN, not INNER: a day can hold volume with no session ids at all (rows recorded before
+  // the visitor cookie existed store a bare count), and after a correction the reverse is possible.
+  // Either side alone is still a real measurement of that event.
+  const result = await rows<TotalsRow>(
+    `WITH volume AS (
+       SELECT event, SUM(count) AS count
+         FROM analytics_daily
+        WHERE day >= $1::date AND day <= $2::date
+        GROUP BY event
+     ), people AS (
+       SELECT event, COUNT(DISTINCT visitor_id) AS sessions
+         FROM analytics_visitors
+        WHERE day >= $1::date AND day <= $2::date
+        GROUP BY event
+     )
+     SELECT COALESCE(v.event, p.event) AS event,
+            COALESCE(p.sessions, 0)    AS sessions,
+            COALESCE(v.count, 0)       AS count
+       FROM volume v
+       FULL JOIN people p ON p.event = v.event`,
+    [fromISO, toISO],
+  );
+  for (const row of result) {
+    totals[row.event as AnalyticsEvent] = { sessions: count(row.sessions), count: count(row.count) };
+  }
+  return totals;
+}
+
 export interface ProductStat { productId: string; count: number }
 
-/** Top product ids by occurrence of `type` (e.g. most added-to-cart) across a range. */
-export function topProductsByEvent(data: AnalyticsData, type: AnalyticsEvent, fromISO: string, toISO: string, limit = 8): ProductStat[] {
-  const { products } = aggregateEvent(data, type, datesInRange(fromISO, toISO));
-  return Object.entries(products)
-    .map(([productId, count]) => ({ productId, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, limit);
+interface ProductRow { product_id: string; count: number | string }
+
+/**
+ * Top product ids by occurrences of `type` (e.g. most added-to-cart) across a range.
+ *
+ * The ordering tie-breaks on the id so that products with equal tallies come back in a stable order
+ * — otherwise the eight that survive `LIMIT` change between two renders of the same window.
+ */
+export async function getTopProductsByEvent(
+  type: AnalyticsEvent,
+  fromISO: string,
+  toISO: string,
+  limit = 8,
+): Promise<ProductStat[]> {
+  if (!isDayISO(fromISO) || !isDayISO(toISO)) return [];
+  const result = await rows<ProductRow>(
+    `SELECT product_id, SUM(count) AS count
+       FROM analytics_products
+      WHERE event = $1 AND day >= $2::date AND day <= $3::date
+      GROUP BY product_id
+      ORDER BY SUM(count) DESC, product_id
+      LIMIT $4`,
+    [type, fromISO, toISO, limit],
+  );
+  return result.map((row) => ({ productId: row.product_id, count: count(row.count) }));
 }
 
 export interface AbandonedProduct { productId: string; added: number; purchased: number; abandoned: number }
 
-/** Products added to carts but not bought — the demand-vs-conversion gap, per product. */
-export function topAbandonedProducts(data: AnalyticsData, fromISO: string, toISO: string, limit = 8): AbandonedProduct[] {
-  const dates = datesInRange(fromISO, toISO);
-  const added = aggregateEvent(data, 'add_to_cart', dates).products;
-  const bought = aggregateEvent(data, 'purchase', dates).products;
-  return Object.entries(added)
-    .map(([productId, addCount]) => {
-      const purchased = bought[productId] ?? 0;
-      return { productId, added: addCount, purchased, abandoned: Math.max(0, addCount - purchased) };
-    })
-    .filter((p) => p.abandoned > 0)
-    .sort((a, b) => b.abandoned - a.abandoned)
-    .slice(0, limit);
+interface AbandonedRow { product_id: string; added: number | string; purchased: number | string; abandoned: number | string }
+
+/**
+ * Products added to carts but not bought — the demand-vs-conversion gap, per product.
+ *
+ * The subtraction happens BEFORE the `LIMIT`, which is the whole reason this is one query and not
+ * two calls to the function above: a product that is added constantly and always bought has no gap
+ * at all, and ranking by adds first would spend slots in the top eight on products with nothing to
+ * report.
+ */
+export async function getTopAbandonedProducts(
+  fromISO: string,
+  toISO: string,
+  limit = 8,
+): Promise<AbandonedProduct[]> {
+  if (!isDayISO(fromISO) || !isDayISO(toISO)) return [];
+  const result = await rows<AbandonedRow>(
+    `WITH added AS (
+       SELECT product_id, SUM(count) AS n
+         FROM analytics_products
+        WHERE event = 'add_to_cart' AND day >= $1::date AND day <= $2::date
+        GROUP BY product_id
+     ), bought AS (
+       SELECT product_id, SUM(count) AS n
+         FROM analytics_products
+        WHERE event = 'purchase' AND day >= $1::date AND day <= $2::date
+        GROUP BY product_id
+     )
+     SELECT a.product_id,
+            a.n                          AS added,
+            COALESCE(b.n, 0)             AS purchased,
+            a.n - COALESCE(b.n, 0)       AS abandoned
+       FROM added a
+       LEFT JOIN bought b ON b.product_id = a.product_id
+      WHERE a.n > COALESCE(b.n, 0)
+      ORDER BY abandoned DESC, a.product_id
+      LIMIT $3`,
+    [fromISO, toISO, limit],
+  );
+  return result.map((row) => ({
+    productId: row.product_id,
+    added: count(row.added),
+    purchased: count(row.purchased),
+    abandoned: count(row.abandoned),
+  }));
 }
 
 export interface AnalyticsOverview {
@@ -195,24 +287,36 @@ export interface AnalyticsOverview {
   topAbandoned: AbandonedProduct[];
 }
 
-/** Everything the admin data tab needs, from one pass over the raw data (pure — testable). */
-export function buildAnalyticsOverview(data: AnalyticsData, fromISO: string, toISO: string): AnalyticsOverview {
+/**
+ * Everything the admin data tab needs for one window.
+ *
+ * Three independent queries, so they go out together: the funnel totals and the two product
+ * rankings share nothing, and against a database in another region the difference between three
+ * round trips and one is the tab's render time.
+ */
+export async function getAnalyticsOverview(fromISO: string, toISO: string): Promise<AnalyticsOverview> {
+  const [totals, topAdded, topAbandoned] = await Promise.all([
+    getEventTotals(fromISO, toISO),
+    getTopProductsByEvent('add_to_cart', fromISO, toISO),
+    getTopAbandonedProducts(fromISO, toISO),
+  ]);
   return {
-    funnel: buildFunnel(data, fromISO, toISO),
-    rates: buildAnalyticsRates(data, fromISO, toISO),
-    topAdded: topProductsByEvent(data, 'add_to_cart', fromISO, toISO),
-    topAbandoned: topAbandonedProducts(data, fromISO, toISO),
+    funnel: buildFunnel(totals),
+    rates: buildAnalyticsRates(totals),
+    topAdded,
+    topAbandoned,
   };
 }
 
-/** I/O wrapper — reads the store once and computes the full overview for the range. */
-export function getAnalyticsOverview(fromISO: string, toISO: string): AnalyticsOverview {
-  return buildAnalyticsOverview(readAll(), fromISO, toISO);
-}
-
-/** Distinct sessions that fired `type` across ALL recorded days — for lifetime
- *  figures like the seller-onboarding funnel's "visited register page" top. */
-export function getLifetimeEventSessions(type: AnalyticsEvent): number {
-  const data = readAll();
-  return aggregateEvent(data, type, Object.keys(data)).sessions;
+/**
+ * Distinct sessions that fired `type` across ALL recorded days — for lifetime figures like the
+ * seller-onboarding funnel's "visited the register page" top, which is cumulative by design
+ * (seller-funnel.ts says why) and therefore takes no range at all.
+ */
+export async function getLifetimeEventSessions(type: AnalyticsEvent): Promise<number> {
+  const result = await rows<{ sessions: number | string }>(
+    `SELECT COUNT(DISTINCT visitor_id) AS sessions FROM analytics_visitors WHERE event = $1`,
+    [type],
+  );
+  return count(result[0]?.sessions ?? 0);
 }

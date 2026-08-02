@@ -45,7 +45,7 @@ export const GET: APIRoute = async ({ url, cookies, request }) => {
     // in middleware) so a modal/quick-view open advances the buyer funnel, not just
     // full page loads. No sn_vid yet (pre-first-page API hit) → recorded without a
     // session id, still counting toward raw view volume.
-    recordAnalyticsEvent('view_item', { vid: cookies.get('sn_vid')?.value, productIds: [product.id] });
+    void recordAnalyticsEvent('view_item', { vid: cookies.get('sn_vid')?.value, productIds: [product.id] });
   }
 
   // `price` stays the field every existing client reads, and it now carries the price the

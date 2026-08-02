@@ -1,91 +1,89 @@
+/**
+ * The PURE half of the funnel — everything that is arithmetic rather than a query.
+ *
+ * These used to take the whole `analytics-events.json` shape and a date range, and do the
+ * aggregation themselves. They now take `EventTotals`, which the database has already reduced to
+ * one row per event (DB_MIGRATION_PLAN.md §5): a funnel stage is a distinct session count over the
+ * range, and no arrangement of per-day numbers can produce it. What survived the move is the part
+ * worth keeping out of a database — the stage list, and the four rates derived from it, including
+ * the clamps that stop a report from claiming a negative or >100% figure.
+ *
+ * The I/O half lives in `analytics-db.test.ts`, against a real Postgres.
+ */
 import { describe, it, expect } from 'vitest';
 import {
   buildFunnel,
   buildAnalyticsRates,
-  topProductsByEvent,
-  topAbandonedProducts,
-  type AnalyticsData,
+  type EventTotals,
 } from '../src/lib/analytics.js';
 
-// Two days of traffic. Session 'a' repeats across both days — it must count ONCE
-// per funnel stage (union of the daily id sets), never twice.
-const data: AnalyticsData = {
-  '2026-07-01': {
-    page_view: { count: 10, visitors: ['a', 'b', 'c'] },
-    view_item: { count: 5, visitors: ['a', 'b'], products: { p1: 3, p2: 2 } },
-    add_to_cart: { count: 3, visitors: ['a'], products: { p1: 2, p2: 1 } },
-    begin_checkout: { count: 1, visitors: ['a'] },
-    purchase: { count: 1, visitors: ['a'], products: { p1: 1 } },
-  },
-  '2026-07-02': {
-    page_view: { count: 4, visitors: ['a', 'd'] },
-    view_item: { count: 2, visitors: ['d'], products: { p2: 2 } },
-    add_to_cart: { count: 1, visitors: ['d'], products: { p3: 1 } },
-  },
+// One window's totals, as `getEventTotals` returns them. `sessions` ≠ `count` throughout: four
+// sessions produced fourteen page loads, and the rates must read the former.
+const totals: EventTotals = {
+  page_view: { sessions: 4, count: 14 },
+  view_item: { sessions: 3, count: 7 },
+  add_to_cart: { sessions: 2, count: 4 },
+  begin_checkout: { sessions: 1, count: 1 },
+  purchase: { sessions: 1, count: 1 },
 };
 
 describe('buildFunnel', () => {
-  it('measures each stage in DISTINCT sessions, unioned across the range', () => {
-    const f = buildFunnel(data, '2026-07-01', '2026-07-02');
-    const by = Object.fromEntries(f.map((s) => [s.event, s.sessions]));
-    expect(by.page_view).toBe(4);      // a,b,c,d
-    expect(by.view_item).toBe(3);      // a,b,d
-    expect(by.add_to_cart).toBe(2);    // a,d
-    expect(by.begin_checkout).toBe(1); // a
-    expect(by.purchase).toBe(1);       // a
-  });
-
-  it('narrows to a single day when the range excludes the second', () => {
-    const f = buildFunnel(data, '2026-07-01', '2026-07-01');
-    expect(f.find((s) => s.event === 'page_view')!.sessions).toBe(3); // a,b,c only
+  it('reports each stage in sessions, keeping raw volume alongside it', () => {
+    const by = Object.fromEntries(buildFunnel(totals).map((s) => [s.event, s]));
+    expect(by.page_view).toEqual({ event: 'page_view', sessions: 4, count: 14 });
+    expect(by.add_to_cart).toEqual({ event: 'add_to_cart', sessions: 2, count: 4 });
   });
 
   it('returns all five stages in funnel order', () => {
-    const f = buildFunnel(data, '2026-07-01', '2026-07-02');
-    expect(f.map((s) => s.event)).toEqual(['page_view', 'view_item', 'add_to_cart', 'begin_checkout', 'purchase']);
+    expect(buildFunnel(totals).map((s) => s.event))
+      .toEqual(['page_view', 'view_item', 'add_to_cart', 'begin_checkout', 'purchase']);
+  });
+
+  it('renders a stage with no traffic as a zero, not a hole', () => {
+    // An absent key is what the query returns for an event nobody fired in the window; the panel
+    // lays out five bars either way and must not be handed `undefined`.
+    const stages = buildFunnel({ page_view: { sessions: 2, count: 9 } });
+    expect(stages).toHaveLength(5);
+    expect(stages.find((s) => s.event === 'purchase')).toEqual({ event: 'purchase', sessions: 0, count: 0 });
+  });
+
+  it('ignores events outside the buyer funnel', () => {
+    // seller_register_view shares the tables (it is the seller funnel's top) and must never
+    // appear as a buyer stage.
+    const stages = buildFunnel({ ...totals, seller_register_view: { sessions: 99, count: 99 } });
+    expect(stages).toHaveLength(5);
+    expect(stages.some((s) => (s.event as string) === 'seller_register_view')).toBe(false);
   });
 });
 
 describe('buildAnalyticsRates', () => {
   it('computes bounce / cart-abandonment / checkout-abandonment / conversion from sessions', () => {
-    const r = buildAnalyticsRates(data, '2026-07-01', '2026-07-02');
+    const r = buildAnalyticsRates(totals);
     expect(r.bounceRate).toBeCloseTo(25);              // (4 sessions - 3 viewed) / 4
     expect(r.cartAbandonmentRate).toBeCloseTo(50);     // (2 added - 1 bought) / 2
     expect(r.checkoutAbandonmentRate).toBeCloseTo(0);  // 1 reached checkout, 1 bought
     expect(r.conversionRate).toBeCloseTo(25);          // 1 purchase / 4 sessions
   });
 
+  it('derives every rate from sessions, never from raw volume', () => {
+    // Same sessions, ten times the page loads: the rates must not move. Volume and reach are
+    // different questions, and reading the wrong one inflates conversion silently.
+    const loud: EventTotals = Object.fromEntries(
+      Object.entries(totals).map(([e, t]) => [e, { sessions: t.sessions, count: t.count * 10 }]),
+    );
+    expect(buildAnalyticsRates(loud)).toEqual(buildAnalyticsRates(totals));
+  });
+
   it('zero-guards an empty range instead of dividing by zero', () => {
-    const r = buildAnalyticsRates({}, '2026-07-01', '2026-07-02');
-    expect(r).toMatchObject({ bounceRate: 0, cartAbandonmentRate: 0, checkoutAbandonmentRate: 0, conversionRate: 0 });
+    expect(buildAnalyticsRates({})).toMatchObject({
+      sessions: 0, bounceRate: 0, cartAbandonmentRate: 0, checkoutAbandonmentRate: 0, conversionRate: 0,
+    });
   });
 
   it('never reports a negative rate when a stage exceeds its predecessor', () => {
-    // A purchase with no tracked add (e.g. add fired before the cookie existed):
+    // A purchase with no tracked add (e.g. the add fired before the cookie existed):
     // cart abandonment must clamp to 0, not go negative.
-    const odd: AnalyticsData = { '2026-07-01': { add_to_cart: { count: 1, visitors: ['x'] }, purchase: { count: 2, visitors: ['x', 'y'] } } };
-    expect(buildAnalyticsRates(odd, '2026-07-01', '2026-07-01').cartAbandonmentRate).toBe(0);
-  });
-});
-
-describe('topProductsByEvent', () => {
-  it('ranks products by how many times they fired the event', () => {
-    const top = topProductsByEvent(data, 'add_to_cart', '2026-07-01', '2026-07-02');
-    expect(top[0]).toEqual({ productId: 'p1', count: 2 });
-    expect(top.map((p) => p.productId).sort()).toEqual(['p1', 'p2', 'p3']);
-  });
-
-  it('honours the limit', () => {
-    expect(topProductsByEvent(data, 'add_to_cart', '2026-07-01', '2026-07-02', 1)).toHaveLength(1);
-  });
-});
-
-describe('topAbandonedProducts', () => {
-  it('reports added-minus-purchased, drops fully-converted products, sorts by gap', () => {
-    const ab = topAbandonedProducts(data, '2026-07-01', '2026-07-02');
-    const p1 = ab.find((p) => p.productId === 'p1')!;
-    expect(p1).toEqual({ productId: 'p1', added: 2, purchased: 1, abandoned: 1 });
-    // p2 added once, never bought → abandoned 1; p3 added once → abandoned 1.
-    expect(ab.every((p) => p.abandoned > 0)).toBe(true);
+    const odd: EventTotals = { add_to_cart: { sessions: 1, count: 1 }, purchase: { sessions: 2, count: 2 } };
+    expect(buildAnalyticsRates(odd).cartAbandonmentRate).toBe(0);
   });
 });
