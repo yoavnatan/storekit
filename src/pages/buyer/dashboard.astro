@@ -22,11 +22,23 @@ if (!seller) return Astro.redirect(`/seller/login?next=/buyer/dashboard`);
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
 
-const hasStore = (await getStoresBySellerId(userId)).length > 0;
-
-// One WHERE for this buyer, newest-first out of the query — see orders.ts#getOrdersByBuyer.
-// This used to read every order on the platform into memory to render one person's page.
-const orders = await getOrdersByBuyer(userId, seller.email);
+// **Two levels, not six round trips (2026-08-03).** Everything this page reads depends either on
+// the account id — already in hand — or on the thread roots. Awaited one after another they were
+// six network hops in series behind a login, which is the same shape the homepage, the store page
+// and the product feed all carried (DB_MIGRATION_PLAN.md §8): free as file reads, a round trip each
+// as queries. Grouping them by what they actually depend on takes the page to two.
+//
+// Level 1 — needs nothing but the signed-in account.
+//   `getOrdersByBuyer` is one WHERE for this buyer, newest-first out of the query (orders.ts); it
+//   used to read every order on the platform to render one person's page. The thread roots are
+//   narrowed and ordered in SQL for the same reason.
+const [storesOfSeller, orders, messages, unreadMessages] = await Promise.all([
+  getStoresBySellerId(userId),
+  getOrdersByBuyer(userId, seller.email),
+  getThreadRootsByBuyer(userId),
+  getUnreadSellerReplyCount(userId),
+]);
+const hasStore = storesOfSeller.length > 0;
 
 const activeOrdersCount = orders.filter((o) => o.shippingStatus !== 'delivered').length;
 const historyOrdersCount = orders.length - activeOrdersCount;
@@ -38,13 +50,13 @@ const ordersEmptyMessage = buyerOrderQuery.q
   ? t.buyerDashboard.ordersSearchEmpty
   : (buyerOrderQuery.history ? t.buyerDashboard.ordersEmptyHistory : t.buyerDashboard.ordersEmptyActive);
 
-// Roots narrowed and ordered in SQL, then every root's replies in ONE more statement — this used
-// to query once per thread (DB_MIGRATION_PLAN.md §8, the N+1 note).
-const messages = await getThreadRootsByBuyer(userId);
-
-const [unreadMessages, messageReplies] = await Promise.all([
-  getUnreadSellerReplyCount(userId),
+// Level 2 — the two reads that genuinely need the thread roots first. Every root's replies come
+// back in ONE statement (this used to query once per thread), and the stores are only the ones
+// this buyer's own threads point at — that read EVERY store on the platform to resolve a handful
+// of avatars (§3).
+const [messageReplies, threadStores] = await Promise.all([
   getRepliesForMessages(messages.map((m) => m.id)),
+  getStoresByIds(messages.map((m) => m.toStoreId).filter(Boolean)),
 ]);
 // Same formula as each row's own hasUnreadReply below — sorting/filtering by
 // read-status is only meaningful when there's actually a mix of both.
@@ -53,10 +65,6 @@ const unreadThreadsCount = messages.filter((m) =>
 ).length;
 const showMsgStatusControls = unreadThreadsCount > 0 && unreadThreadsCount < messages.length;
 
-// Only the stores this buyer's own threads point at. This read EVERY store on the platform to
-// resolve a handful of avatars (DB_MIGRATION_PLAN.md §3) — the same shape as the order read one
-// line above, which became `getOrdersByBuyer`.
-const threadStores = await getStoresByIds(messages.map((m) => m.toStoreId).filter(Boolean));
 const storeProfileById = new Map(threadStores.map((s) => [s.id, s.profileImage]));
 const storeSlugById = new Map(threadStores.map((s) => [s.id, s.slug]));
 

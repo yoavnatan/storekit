@@ -78,10 +78,13 @@ const isLoggedIn = !!userId;
 // memory. Blocked individual products (store itself still fine) never show in the store's own
 // grid/search/category filters — getVisibleProductsByStoreId is the shared helper every listing
 // surface should call (see store-products.ts).
-const [isFavorited, allProducts, storeCategories] = await Promise.all([
+const [isFavorited, allProducts, storeCategories, purchasedUnits] = await Promise.all([
   userId ? isStoreFavorited(userId, shopStore.id) : Promise.resolve(false),
   getVisibleProductsByStoreId(shopStore.id),
   getCategoriesByStoreId(shopStore.id),
+  // Popularity signal for the 'default' ranking — lifetime units sold per product in this store.
+  // Keyed by slug, so like the other three it needs only the store already in hand.
+  getPurchasedCountsByStoreSlug(shopStore.slug),
 ]);
 // A store with nothing to buy stays reachable by direct link (the seller previews and shares it)
 // but must not enter Google's index as an empty page — same gate the sitemap and site search use.
@@ -125,8 +128,6 @@ const chipLevelCategories = storeCategories
   .sort((a, b) => a.order - b.order);
 
 const categoryIds = selectedCategory ? resolveCategoryFilterIds(storeCategories, selectedCategory.id) : undefined;
-// Popularity signal for the 'default' ranking — lifetime units sold per product in this store.
-const purchasedUnits = await getPurchasedCountsByStoreSlug(shopStore.slug);
 const filteredProducts = filterAndSortProducts(allProducts, { categoryIds, sort: initSort, q: initQ, purchasedUnits, sale: shopStore.sale });
 const products = filteredProducts.slice(0, PRODUCTS_PAGE_SIZE);
 const hasMoreProducts = filteredProducts.length > products.length;

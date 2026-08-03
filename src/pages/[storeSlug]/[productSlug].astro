@@ -111,12 +111,17 @@ const storeCanonical = storeCanonicalUrl(shopStore);
 // Pre-filtered to non-blocked (see store-products.ts#getVisibleProductsByStoreId) — this list
 // also feeds the header search-suggestions JSON below, which used to leak a blocked product
 // as a suggestion that led straight into a 404 (found in review, 2026-07-14).
-const allStoreProducts = await getVisibleProductsByStoreId(shopStore.id);
+// Together, not one after the other: neither needs the other's answer, only the store, and in
+// series they were two round trips on the platform's most-indexed page type. The store page and
+// the homepage had the same shape (DB_MIGRATION_PLAN.md §8).
+const [allStoreProducts, storeCategoriesForProduct] = await Promise.all([
+  getVisibleProductsByStoreId(shopStore.id),
+  getCategoriesByStoreId(shopStore.id),
+]);
 const relatedProducts = allStoreProducts
   .filter((p) => p.slug !== product.slug)
   .slice(0, 4);
 
-const storeCategoriesForProduct = await getCategoriesByStoreId(shopStore.id);
 const productCategoryName = product.categoryId ? storeCategoriesForProduct.find((c) => c.id === product.categoryId)?.name ?? '' : '';
 const productCategoryPathStr = product.categoryId ? categoryPath(storeCategoriesForProduct, product.categoryId) : '';
 // Every sale names its scope on the banner, the store-wide one included — same rule as the
