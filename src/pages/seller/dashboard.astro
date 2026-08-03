@@ -51,7 +51,7 @@ import { formatAgorot, fromAgorot } from '../../lib/money.js';
 import { getSellerStoreAlerts } from '../../lib/seller-alerts.js';
 import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js';
 import { LOW_STOCK_THRESHOLD, comboStockRows, isFullyPerCombo, sumComboOverrides, type VariantDimension } from '../../lib/variant-combo.js';
-import { getCategoriesByStoreId, buildCategoryTree, categoryPath } from '../../lib/store-categories.js';
+import { getCategoriesByStoreId, buildCategoryTree, categoryPath, type StoreCategory } from '../../lib/store-categories.js';
 import { inferAudienceGender, inferAgeGroup } from '../../lib/audience-infer.js';
 import { buildPerformanceSummary, pickGranularity } from '../../lib/seller-performance.js';
 import { getViewStatsForStore, EMPTY_VIEW_STATS } from '../../lib/store-pageviews.js';
@@ -248,29 +248,38 @@ if (store && store.id !== lastStoreId) {
 }
 const settingsSuccess = !hasNoStore && Astro.url.searchParams.get('saved') === '1';
 const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1';
-const products = store
-  ? (await getProductsByStoreId(store.id)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  : [];
-const storeCategoryList = store ? await getCategoriesByStoreId(store.id) : [];
+// **Six reads that only ever needed `store`, issued together (2026-08-03).** They were awaited one
+// after another, so opening the dashboard was six network round trips in series before any of the
+// dependent work could start — the same shape found on the homepage, the store page, the product
+// feed and the buyer's own area the same day (DB_MIGRATION_PLAN.md §8). Free while each was a file
+// read; a hop each as queries. Nothing here reads another's answer, so the grouping is safe by
+// inspection and the derived values below are unchanged.
+//
+// `wishlistCounts` is scoped to this store, not the whole platform: it used to be every wishlist
+// count that existed, read in order to label the products of one shop. `countStockAlerts` is the
+// shared definition each mutating /api/product action also returns, so the Products-tab badge stays
+// live after an inline stock edit without a full reload — a deliberately hidden product is excluded
+// so it never nags, which is the point of the hidden switch.
+const [
+  productsUnsorted, storeCategoryList, wishlistCounts, purchasedCounts, storeFavoriteCount, stockAlertCount,
+] = store
+  ? await Promise.all([
+      getProductsByStoreId(store.id),
+      getCategoriesByStoreId(store.id),
+      getWishlistCountsForStore(store.id),
+      getPurchasedCountsByStoreSlug(store.slug),
+      countFavoriteStores(store.id),
+      countStockAlerts(store.id, LOW_STOCK_THRESHOLD),
+    ])
+  // The no-store fallback, typed the same as the resolved tuple so the readers below see arrays
+  // rather than `readonly []` — a seller who has not opened a shop yet reaches this page too.
+  : [[] as StoreProduct[], [] as StoreCategory[], {} as Record<string, number>, {} as Record<string, number>, 0, 0];
+const products = [...productsUnsorted].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 const categoryTree = buildCategoryTree(storeCategoryList);
 const productCategoryPaths = new Map(products.map((p) => [p.id, p.categoryId ? categoryPath(storeCategoryList, p.categoryId) : '']));
-// Scoped to this store, not the whole platform: the map used to be every wishlist count that
-// existed, read in order to label the products of one shop.
-const wishlistCounts = store ? await getWishlistCountsForStore(store.id) : ({} as Record<string, number>);
-const purchasedCounts = store ? await getPurchasedCountsByStoreSlug(store.slug) : ({} as Record<string, number>);
-const storeFavoriteCount = store ? await countFavoriteStores(store.id) : 0;
 const productCount = products.length;
 const inStockCount = products.filter((p) => p.stock > 0).length;
 const totalStockValue = products.reduce((sum, p) => sum + p.price * p.stock, 0);
-// Products-tab stock-alert badge count — products that are actually on sale
-// (not seller-hidden, not admin-blocked) yet are out of / low on stock. A
-// deliberately taken-down product (hidden) is intentionally excluded so it
-// never nags, which is the whole point of the hidden switch (CURRENT_TASK.md,
-// סשן א׳). Mirrors the per-row danger indicator's own `stock <= threshold` rule
-// so the badge count and the red rows always agree. countStockAlerts() is the
-// shared definition each mutating /api/product action also returns, so the badge
-// stays live after an inline stock edit / hide without a full reload.
-const stockAlertCount = store ? await countStockAlerts(store.id, LOW_STOCK_THRESHOLD) : 0;
 // "First steps" checklist (Overview tab) — derived live from the store's own data, never
 // stored (see lib/seller-onboarding.ts). Renders nothing once every step is satisfied.
 const onboardingSteps = store
