@@ -1,4 +1,5 @@
-import { query, rows } from './db.js';
+import { rows } from './db.js';
+import { recordPageViewTap } from './page-view-tap.js';
 
 /**
  * First-party funnel analytics — the buyer's path from landing on the site to paying.
@@ -35,7 +36,7 @@ import { query, rows } from './db.js';
  * 'YYYY-MM-DD' bounds on read. No query here derives a day of its own.
  */
 
-import { businessDayISO, isDayISO } from './business-day.js';
+import { isDayISO } from './business-day.js';
 
 // The buyer funnel, ordered top → bottom. Each is a FIRST-PARTY event we capture
 // ourselves — deliberately independent of the GTM/Meta dataLayer, which only
@@ -53,13 +54,6 @@ export type AnalyticsEvent = FunnelEvent | typeof AUX_EVENTS[number];
 /** `COUNT` and `SUM` come back as `bigint` — a string from `pg`, a number from PGlite (§8). */
 const count = (v: number | string | null): number => Number(v ?? 0);
 
-// A product id is whatever the recorded event carried, capped to the column's working width. The
-// column is `text` with no foreign key ON PURPOSE (see its note in 0001_init.sql): a tally of a
-// product that has since been deleted is still history. The IDENTITY rule — new events may only
-// name a real uuid — belongs at the untrusted boundary (`/api/analytics/event`), not here, where
-// legacy ids from the imported past must keep resolving.
-const MAX_PRODUCT_ID_LEN = 64;
-
 export interface RecordOpts { vid?: string; productIds?: string[] }
 
 /**
@@ -70,39 +64,19 @@ export interface RecordOpts { vid?: string; productIds?: string[] }
  * of checkout, and an analytics tap that can fail a render is worse than one that loses a count.
  * Callers use `void`.
  *
- * **The product tally is grouped before it is inserted, and that is not a micro-optimisation.**
- * One call can legitimately name the same product twice — a checkout with two lines of the same
- * product in different variants does exactly that — and Postgres REJECTS an `ON CONFLICT DO UPDATE`
- * that would touch the same row twice within one command. Aggregating in the `SELECT` both avoids
- * that error and preserves the old behaviour, where the loop simply incremented twice.
+ * **The three tables move in one statement, and since 2026-08-03 so does everything else a page view
+ * writes.** The statement itself lives in `page-view-tap.ts`, because a page load also counts a
+ * store view and a product view and those were three more round trips on the hottest path in the
+ * application. This is the single-event entrance to it — unchanged for every caller, and the only
+ * copy of the SQL is over there.
  */
 export async function recordAnalyticsEvent(type: AnalyticsEvent, opts: RecordOpts = {}): Promise<void> {
-  try {
-    const productIds = (opts.productIds ?? [])
-      .filter((id): id is string => typeof id === 'string' && id !== '')
-      .map((id) => id.slice(0, MAX_PRODUCT_ID_LEN));
-    await query(
-      // A data-modifying WITH clause always executes, whether or not the outer query reads from it,
-      // which is what carries all three writes on one round trip without a transaction's extra
-      // BEGIN/COMMIT on the hottest path in the application.
-      `WITH bump AS (
-         INSERT INTO analytics_daily (day, event, count)
-         VALUES ($1::date, $2, 1)
-         ON CONFLICT (day, event) DO UPDATE SET count = analytics_daily.count + 1
-       ), seen AS (
-         INSERT INTO analytics_visitors (day, event, visitor_id)
-         SELECT $1::date, $2, $3 WHERE $3 <> ''
-         ON CONFLICT DO NOTHING
-       )
-       INSERT INTO analytics_products (day, event, product_id, count)
-       SELECT $1::date, $2, pid, COUNT(*)
-         FROM unnest($4::text[]) AS pid
-        GROUP BY pid
-       ON CONFLICT (day, event, product_id)
-       DO UPDATE SET count = analytics_products.count + EXCLUDED.count`,
-      [businessDayISO(new Date()), type, opts.vid ?? '', productIds],
-    );
-  } catch { /* analytics must never break a request */ }
+  await recordPageViewTap({
+    events: [type],
+    visitorId: opts.vid,
+    productEvent: type,
+    productIds: opts.productIds,
+  });
 }
 
 // ── Pure aggregation (takes already-aggregated totals, no I/O — directly unit-testable) ──

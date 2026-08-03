@@ -1,6 +1,7 @@
-import { isUuid, query, rows } from './db.js';
-import { businessDayISO, isDayISO } from './business-day.js';
+import { isUuid, rows } from './db.js';
+import { isDayISO } from './business-day.js';
 import type { ViewGranularity } from './store-pageviews.js';
+import { recordPageViewTap } from './page-view-tap.js';
 
 /**
  * Per-product view counters — the product-level twin of `store-pageviews.ts`, moved to Postgres in
@@ -42,15 +43,10 @@ export const EMPTY_PRODUCT_VIEW_STATS: ProductViewStats = { buckets: [], totalVi
  * page load and every modal open, so a read-then-write here would cost two round trips and a race.
  */
 export async function recordProductView(productId: string): Promise<void> {
-  if (!isUuid(productId)) return;
-  try {
-    await query(
-      `INSERT INTO product_page_views (product_id, day, total)
-       VALUES ($1::uuid, $2::date, 1)
-       ON CONFLICT (product_id, day) DO UPDATE SET total = product_page_views.total + 1`,
-      [productId, businessDayISO(new Date())],
-    );
-  } catch { /* analytics must never break a request */ }
+  // See `page-view-tap.ts`: this write shares its request with three others, so the statement is
+  // there and they go out together. A non-uuid id is still dropped rather than written — the tap
+  // drops that one write instead of returning early, so the rest of a page view still lands.
+  await recordPageViewTap({ productId });
 }
 
 interface BucketRow { bucket: string; views: number | string }

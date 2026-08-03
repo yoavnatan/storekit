@@ -3,9 +3,7 @@ import type { AstroCookies } from 'astro';
 import { randomUUID } from 'node:crypto';
 import { gzipResponse } from './lib/http-compress.js';
 import { logError } from './lib/error-log.js';
-import { recordPageView } from './lib/store-pageviews.js';
-import { recordProductView } from './lib/product-pageviews.js';
-import { recordAnalyticsEvent } from './lib/analytics.js';
+import { recordPageViewTap } from './lib/page-view-tap.js';
 import { isBotRequest } from './lib/bot-detect.js';
 import { getSellerSession } from './lib/seller-auth.js';
 import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/stores.js';
@@ -98,6 +96,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // view. Reserved routes and asset paths never reach getStoreBySlug. All wrapped so an analytics
     // lookup miss/failure can never affect the response.
     const pathMatch = isGet && isHuman ? pathname.match(STORE_PATH_RE) : null;
+    let viewedStoreId = '';
     let viewedProductId = '';
     let ownerViewingOwnStore = false;
     if (pathMatch && !isReservedSlug(pathMatch[1]!) && !pathMatch[1]!.includes('.')) {
@@ -113,30 +112,43 @@ export const onRequest = defineMiddleware(async (context, next) => {
         ownerViewingOwnStore = !!st && getSellerSession(context.cookies) === st.sellerId;
         if (st && !ownerViewingOwnStore) {
           // Keyed by store id, not slug: a store that renames its URL keeps its history without
-          // anything having to migrate it. Fire-and-forget — these are INSERTs that read nothing
-          // and swallow their own failures, so the page is never waiting on the analytics tap.
-          void recordPageView(st.id, vid || resolveVisitorId(context.cookies));
+          // anything having to migrate it. Nothing is WRITTEN here — the ids are resolved now
+          // (the request is already paying for these reads) and handed to the single tap below.
+          viewedStoreId = st.id;
           // A product page also counts one product-level view. Resolve slug→id so history keys on
           // the immutable product id (a rename changes the slug).
           const productSlug = pathMatch[2];
           const prod = productSlug ? await getProductBySlug(st.id, productSlug) : null;
-          if (prod) { void recordProductView(prod.id); viewedProductId = prod.id; }
+          if (prod) viewedProductId = prod.id;
         }
       } catch { /* analytics tap must never break the request */ }
     }
 
     const response = await next();
 
-    // First-party funnel capture — only on a real HTML page response so redirects
-    // and asset 200s never inflate the numbers. Each call is fire-and-forget and
-    // never throws (see analytics.ts). page_view = a session touched the site;
-    // the narrower stages map product pages → view_item, the checkout page →
-    // begin_checkout, and the seller register page → the seller-funnel top.
+    // Everything this page view counts, in ONE statement (`page-view-tap.ts`) — the funnel event,
+    // the narrower stage, the store's counter and the product's. It used to be four round trips
+    // from three modules, four of the five a page load spends.
+    //
+    // Only on a real HTML page response, so redirects and asset 200s never inflate the numbers.
+    // **That gate now covers the store and product counters too, and it did not before:** they were
+    // written before `next()` ran, so a visit to a hidden or moved store — a 302 to
+    // /store-unavailable, never a page the visitor saw — still counted as a view of it. Fire-and-
+    // forget and never throws (see the tap). page_view = a session touched the site; the narrower
+    // stages map product pages → view_item, the checkout page → begin_checkout, and the seller
+    // register page → the seller-funnel top.
     if (isPageCandidate && !ownerViewingOwnStore && (response.headers.get('content-type') ?? '').includes('text/html')) {
-      void recordAnalyticsEvent('page_view', { vid });
-      if (viewedProductId) void recordAnalyticsEvent('view_item', { vid, productIds: [viewedProductId] });
-      else if (pathname === '/checkout') void recordAnalyticsEvent('begin_checkout', { vid });
-      else if (pathname === '/seller/register') void recordAnalyticsEvent('seller_register_view', { vid });
+      const stage = viewedProductId ? 'view_item'
+        : pathname === '/checkout' ? 'begin_checkout'
+        : pathname === '/seller/register' ? 'seller_register_view'
+        : null;
+      void recordPageViewTap({
+        events: stage ? ['page_view', stage] : ['page_view'],
+        visitorId: vid,
+        storeId: viewedStoreId,
+        productId: viewedProductId,
+        ...(viewedProductId ? { productEvent: 'view_item' as const, productIds: [viewedProductId] } : {}),
+      });
     }
     // Last thing before it leaves the process, so every SSR route is covered by one rule and the
     // analytics tap above still sees the real, uncompressed response headers.

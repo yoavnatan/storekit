@@ -1,4 +1,4 @@
-import { query, rows } from './db.js';
+import { rows } from './db.js';
 
 /**
  * Store page-view counters — how many loads a storefront got, and how many different people.
@@ -35,7 +35,8 @@ import { query, rows } from './db.js';
  * no query here does timezone arithmetic, deliberately.
  */
 
-import { businessDayISO, isDayISO } from './business-day.js';
+import { isDayISO } from './business-day.js';
+import { recordPageViewTap } from './page-view-tap.js';
 
 /** Bucket size for a reported series. Day buckets key on 'YYYY-MM-DD', month buckets on 'YYYY-MM'. */
 export type ViewGranularity = 'day' | 'month';
@@ -78,19 +79,10 @@ function bucketFormat(granularity: ViewGranularity): string {
  * without a transaction's extra BEGIN/COMMIT round trips on the hottest path in the app.
  */
 export async function recordPageView(storeId: string, visitorId?: string): Promise<void> {
-  try {
-    await query(
-      `WITH bump AS (
-         INSERT INTO store_page_views (store_id, day, total)
-         VALUES ($1::uuid, $2::date, 1)
-         ON CONFLICT (store_id, day) DO UPDATE SET total = store_page_views.total + 1
-       )
-       INSERT INTO store_page_view_visitors (store_id, day, visitor_id)
-       SELECT $1::uuid, $2::date, $3 WHERE $3 <> ''
-       ON CONFLICT DO NOTHING`,
-      [storeId, businessDayISO(new Date()), visitorId ?? ''],
-    );
-  } catch { /* analytics must never break a request */ }
+  // The statement lives in `page-view-tap.ts` — a store page view never happens alone (the funnel
+  // page_view, and on a product page two more writes, all land on the same request), so all of them
+  // are one round trip there rather than four here. This is the store-only entrance to it.
+  await recordPageViewTap({ storeId, visitorId });
 }
 
 interface BucketRow { store_id: string; bucket: string; views: number | string; uniques: number | string }

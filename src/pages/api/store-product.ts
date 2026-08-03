@@ -3,8 +3,7 @@ import type { APIRoute } from 'astro';
 import { getStoreBySlugOrPrevious, isStoreVisible, canStoreSell } from '../../lib/stores.js';
 import { getProductBySlug, isProductVisible } from '../../lib/store-products.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
-import { recordProductView } from '../../lib/product-pageviews.js';
-import { recordAnalyticsEvent } from '../../lib/analytics.js';
+import { recordPageViewTap } from '../../lib/page-view-tap.js';
 import { isBotRequest } from '../../lib/bot-detect.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { resolvePrice } from '../../lib/discounts.js';
@@ -40,12 +39,18 @@ export const GET: APIRoute = async ({ url, cookies, request }) => {
   // still inflate the view count they judge that product by.
   const isOwner = getSellerSession(cookies) === store.sellerId;
   if (!isBotRequest(request) && !isOwner) {
-    void recordProductView(product.id);
-    // Same open also counts as a funnel view_item (keyed to the session cookie set
-    // in middleware) so a modal/quick-view open advances the buyer funnel, not just
-    // full page loads. No sn_vid yet (pre-first-page API hit) → recorded without a
+    // The product counter AND the funnel view_item, in one statement — a quick-view open advances
+    // the buyer funnel exactly as a full page load does, and it is the same single round trip
+    // middleware makes (`page-view-tap.ts`). No `page_view` here: this is an API call inside a page
+    // the funnel has already counted. No sn_vid yet (pre-first-page API hit) → recorded without a
     // session id, still counting toward raw view volume.
-    void recordAnalyticsEvent('view_item', { vid: cookies.get('sn_vid')?.value, productIds: [product.id] });
+    void recordPageViewTap({
+      events: ['view_item'],
+      visitorId: cookies.get('sn_vid')?.value,
+      productId: product.id,
+      productEvent: 'view_item',
+      productIds: [product.id],
+    });
   }
 
   // `price` stays the field every existing client reads, and it now carries the price the
