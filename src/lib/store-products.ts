@@ -716,7 +716,7 @@ export function getEffectiveStock(product: StoreProduct, selectedVariants?: Reco
 
 export interface StockAdjustResult {
   ok: boolean;
-  /** The bucket's value immediately before this call, and after it (only meaningful when `ok`). Read from the same statement that does the adjustment — a caller that read "before" through a separate query could see a stale number if another request's decrement/restock landed between the two. */
+  /** The bucket's value immediately before this call, and after it (only meaningful when `ok`). On success both come from the statement that did the adjustment, so no separate read can slip between deciding and writing. On a REFUSAL both hold the bucket's current count, re-read after the refusal rather than taken from the statement's opening snapshot — see `stockAfterRefusal` for why those two differ under real concurrency. */
   before: number;
   after: number;
 }
@@ -783,12 +783,44 @@ async function adjustOneBucket(
       LIMIT 1`,
     [id, key, delta],
   )).rows;
-  // No row at all means no such product. Otherwise `target`'s row is the fallback and it is read
-  // from the SAME snapshot the two UPDATEs were judged against — so the number handed back on a
-  // refusal is the count that refused it, not a second read a concurrent checkout could have moved
-  // in between. That number is what the buyer's page uses to clamp the quantity.
+  // No row at all means no such product.
   if (!row) return { ok: false, before: 0, after: 0, branch: null };
-  return { ok: row.ok, before: row.before, after: row.after, branch: row.branch };
+  if (row.ok) return { ok: true, before: row.before, after: row.after, branch: row.branch };
+  return { ok: false, ...(await stockAfterRefusal(tx, id, key, row.before)), branch: null };
+}
+
+/**
+ * The count to report when the adjustment was refused — and it needs its own statement, which was
+ * MEASURED and is not what this code assumed (§9.5, 2026-08-03, 50 concurrent buyers of one unit
+ * against the real server).
+ *
+ * `target` in the statement above is read from the snapshot taken when that statement STARTED. The
+ * `UPDATE` beside it is not: blocked on the row lock a competing checkout already holds, it
+ * re-reads the row once that lock is released and correctly refuses against the new value. So the
+ * two disagree under contention, and the refusal carried the pre-contention count — measured, 7 of
+ * 40 refusals reported up to 8 units left at an instant when the true stock was 0. Nothing was
+ * oversold (the `UPDATE` is still the verdict), but that number is what the buyer's page clamps the
+ * quantity selector to, so the shopper was offered stock that no longer existed and refused again
+ * on the retry.
+ *
+ * A fresh statement inside the same transaction gets a fresh snapshot (READ COMMITTED), so this
+ * sees every decrement committed so far. It costs one round-trip and it is paid ONLY on the
+ * refusal path — the out-of-stock case, which is rare and already the slow one. The hot path stays
+ * the single lock-free statement §7.5 is built on.
+ */
+async function stockAfterRefusal(
+  tx: Queryable, id: string, key: string | null, fallback: number,
+): Promise<{ before: number; after: number }> {
+  const [row] = (await tx.query<{ stock: number }>(
+    `SELECT COALESCE(v.stock, p.stock) AS stock
+       FROM store_products p
+       LEFT JOIN product_variant_stock v
+         ON v.product_id = p.id AND v.combo_key = $2 AND v.stock IS NOT NULL
+      WHERE p.id = $1`,
+    [id, key],
+  )).rows;
+  const stock = row?.stock ?? fallback;
+  return { before: stock, after: stock };
 }
 
 /**
