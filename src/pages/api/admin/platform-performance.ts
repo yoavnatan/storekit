@@ -2,14 +2,14 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth.js';
 import { getAllStores } from '../../../lib/stores.js';
-import { getAllOrders } from '../../../lib/orders.js';
+import { getPlatformSales } from '../../../lib/order-reporting.js';
 import { pickGranularity, type PerformanceGranularity } from '../../../lib/seller-performance.js';
 import { buildPlatformPerformance, buildPlatformStoreInputs, parseStoreRowsQuery, selectStoreRows } from '../../../lib/platform-performance.js';
 import { getStoreViewStats } from '../../../lib/store-pageviews.js';
 import { isDayISO } from '../../../lib/business-day.js';
 import { buildPlatformRevenue } from '../../../lib/platform-revenue.js';
-import { getAllCampaigns } from '../../../lib/ad-campaigns.js';
-import { getAllSellers } from '../../../lib/seller-auth.js';
+import { getCampaignsInRange } from '../../../lib/ad-campaigns.js';
+import { getAllSellers, getSubscriptionAccrual } from '../../../lib/seller-auth.js';
 
 // Platform-wide (app-wide) twin of /api/admin/performance: same admin guard and
 // validation, but aggregates EVERY store instead of one by slug. Returns the
@@ -52,19 +52,24 @@ export async function GET({ request, cookies }: APIContext): Promise<Response> {
   // full per-period composition, not just the top-5 leaderboard).
   const topLimit = url.searchParams.get('products') === 'all' ? 0 : 5;
 
-  const orders = await getAllOrders();
   const sellers = await getAllSellers();
   const stores = buildPlatformStoreInputs(await getAllStores(), sellers);
-  // Every store's traffic in ONE query. This used to be a file read per store inside the loop
-  // below (45 of them per render) — see platform-performance.ts's cost note.
-  const views = await getStoreViewStats(stores.map((s) => s.id), from, to, granularity);
-  const result = buildPlatformPerformance(orders, stores, views, from, to, granularity, topLimit);
+  // Traffic AND sales in one query each, for every store at once. Both used to be per-store passes
+  // inside the aggregation loop — views as a file read, sales as a filter over every order on the
+  // platform (DB_MIGRATION_PLAN.md §3/§5).
+  const [views, sales, campaigns, tiers] = await Promise.all([
+    getStoreViewStats(stores.map((s) => s.id), from, to, granularity),
+    getPlatformSales(stores.map((s) => s.slug), from, to, granularity, topLimit),
+    getCampaignsInRange(from, to),
+    getSubscriptionAccrual(from, to),
+  ]);
+  const result = buildPlatformPerformance(sales, stores, views, from, to, granularity);
   const page = selectStoreRows(result.stores, parseStoreRowsQuery(url.searchParams));
   const revenue = buildPlatformRevenue(
     result.summary.platformCommissionAgorot,
     result.summary.commissionRate,
-    sellers,
-    await getAllCampaigns(),
+    tiers,
+    campaigns,
     from,
     to,
   );

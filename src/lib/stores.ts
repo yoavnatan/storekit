@@ -450,16 +450,34 @@ export async function getStoreByExportToken(token: string): Promise<Store | null
 }
 
 /**
- * Every store, including blocked and closed ones — the admin roster and the platform-wide totals.
+ * Every store, including blocked and closed ones — the ADMIN ROSTER.
  *
- * Still unbounded, and still on the list for §3 along with `getAllSellers`/`getAllOrders`: at
- * 100,000 stores a function that returns all of them is a bug, and its handful of callers all
- * aggregate afterwards, which is work the database should be doing. Left as-is deliberately so the
- * three move together rather than one call site at a time.
+ * **What §3 left here on purpose (2026-08-03).** Everything this used to be summed FOR is a query
+ * now: revenue per store, product counts, open orders, sales per period and the platform headline
+ * (`order-reporting.ts`, `store-products.ts#getProductCountsByStore`). What remains is the roster
+ * itself — the admin's Stores tab and Sellers tab are lists OF stores, cross-searched by seller
+ * name and sorted by a Hebrew `localeCompare` the database's collation is not, and the Attention
+ * and Advertising tabs partition the same list. One read serves all of them.
+ *
+ * It is still O(platform), and at 100,000 stores this screen needs SQL paging, a collation
+ * decision and a per-tab query each. That is a bigger change than §3 and it is written down in
+ * DB_MIGRATION_PLAN.md §3 rather than started halfway: the numbers were the part that could not
+ * wait, because they are what the owner reads as money.
  */
 export async function getAllStores(): Promise<Store[]> {
   return (await rows<StoreRow>(`SELECT ${COLUMNS} ${FROM_LIVE} ${ORDER}`)).map(toStore);
 }
+
+/** The stores behind a known set of ids, in one statement — for a caller that holds references
+ *  (a message's `toStoreId`, a favourite) and needs the name/avatar beside each. The buyer
+ *  dashboard read EVERY store on the platform to look up the handful its message threads point at
+ *  (§3). Ids that name no live store simply have no entry. */
+export async function getStoresByIds(storeIds: readonly string[]): Promise<Store[]> {
+  const ids = [...new Set(storeIds.filter(isUuid))];
+  if (!ids.length) return [];
+  return selectStores('s.id = ANY($1::uuid[])', [ids]);
+}
+
 
 /** Resolves an inbound request Host to the store that owns it as an ACTIVE custom domain — the
  *  routing counterpart the middleware calls on every custom-host request. Only a verified

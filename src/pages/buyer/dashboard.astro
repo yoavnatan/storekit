@@ -3,7 +3,7 @@ export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, getAllStores } from '../../lib/stores.js';
+import { getStoresBySellerId, getStoresByIds } from '../../lib/stores.js';
 import { getOrdersByBuyer } from '../../lib/orders.js';
 import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages.js';
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
@@ -53,9 +53,12 @@ const unreadThreadsCount = messages.filter((m) =>
 ).length;
 const showMsgStatusControls = unreadThreadsCount > 0 && unreadThreadsCount < messages.length;
 
-const allStores = await getAllStores();
-const storeProfileById = new Map(allStores.map((s) => [s.id, s.profileImage]));
-const storeSlugById = new Map(allStores.map((s) => [s.id, s.slug]));
+// Only the stores this buyer's own threads point at. This read EVERY store on the platform to
+// resolve a handful of avatars (DB_MIGRATION_PLAN.md §3) — the same shape as the order read one
+// line above, which became `getOrdersByBuyer`.
+const threadStores = await getStoresByIds(messages.map((m) => m.toStoreId).filter(Boolean));
+const storeProfileById = new Map(threadStores.map((s) => [s.id, s.profileImage]));
+const storeSlugById = new Map(threadStores.map((s) => [s.id, s.slug]));
 
 const dateLocale = lang === 'he' ? 'he-IL' : 'en-US';
 function fmtDate(iso: string) {

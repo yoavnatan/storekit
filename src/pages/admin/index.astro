@@ -4,23 +4,31 @@ import '../../styles/pages/admin.css';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import { isAdminRequest } from '../../lib/admin-auth.js';
-import { getPlatformOverview, getSellerCards, getStoresNeedingAttention, getProductsByStoreMap, getStoreRows, getStoreRevenueMap, filterAndSortSellerCards, filterAndSortStoreRows, parseSellerQuery, parseStoreQuery, countStoreStates } from '../../lib/admin-stats.js';
-import { getAllSellers } from '../../lib/seller-auth.js';
+import { getStoreOverview, getSellerCards, attachProducts, getStoresNeedingAttention, getStoreRows, filterAndSortSellerCards, filterAndSortStoreRows, parseSellerQuery, parseStoreQuery, countStoreStates } from '../../lib/admin-stats.js';
+import { getAllSellers, getSubscriptionAccrual } from '../../lib/seller-auth.js';
 import { getAllStores, isStoreDiscoverable } from '../../lib/stores.js';
-import { countOpenOrdersByStore } from '../../lib/store-lifecycle.js';
-import { getAllOrders } from '../../lib/orders.js';
-import { filterAndSortOrders, getOrderStoreNames, parseOrderQuery } from '../../lib/admin-orders-filter.js';
-import { getAllAdminThreads } from '../../lib/admin-messages.js';
-import { filterAndSortAdminThreads, parseAdminThreadQuery } from '../../lib/admin-threads-query.js';
+import { getProductCountsByStore, getProductNames, getProductsByStoreIds } from '../../lib/store-products.js';
+import { getAdminOrdersPage } from '../../lib/orders.js';
+import {
+  countOrdersSince,
+  getAllOrderStoreNames,
+  getOpenOrderCountsByStore,
+  getPlatformOrderTotals,
+  getPlatformSales,
+  getStoreRevenueBySlug,
+} from '../../lib/order-reporting.js';
+import { sortOrderStoreNames, parseOrderQuery } from '../../lib/admin-orders-filter.js';
+import { getAdminThreadsPage } from '../../lib/admin-messages.js';
+import { parseAdminThreadQuery } from '../../lib/admin-threads-query.js';
 import { getRecentErrors, filterAndSortErrors, getErrorStoreNames, MAX_ENTRIES as MAX_ERROR_ENTRIES } from '../../lib/error-log.js';
 import { buildPlatformAdOverview } from '../../lib/admin-ads.js';
 import { getPlatformAdSettings } from '../../lib/platform-ads.js';
-import { getAllCampaigns } from '../../lib/ad-campaigns.js';
-import { getAllBrandCampaigns } from '../../lib/brand-campaigns.js';
+import { getCampaignsInRange, getCampaignTotals } from '../../lib/ad-campaigns.js';
+import { getBrandCampaignsInRange, getBrandCampaignTotals } from '../../lib/brand-campaigns.js';
 import { presetRange, coerceRange, previousPeriod, AD_RANGE_PRESETS, type AdRangePreset } from '../../lib/date-range.js';
-import { businessTodayISO, businessMonthStartISO } from '../../lib/business-day.js';
+import { businessTodayISO, businessMonthStartISO, businessMonthKey } from '../../lib/business-day.js';
 import { store as platform } from '../../config/store.config.js';
-import { paginate, parsePage } from '../../lib/pagination.js';
+import { paginate, parsePage, ADMIN_PAGE_SIZE } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
 import { getAllLastViewedAt, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
 import { buildPlatformPerformance, buildPlatformStoreInputs, parseStoreRowsQuery, selectStoreRows } from '../../lib/platform-performance.js';
@@ -41,7 +49,7 @@ import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
 import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
 import { getMoneyEvents } from '../../lib/money-events.js';
 import { parseMoneyLogQuery, filterMoneyEvents, eventPage } from '../../lib/admin-moneylog-filter.js';
-import { reconcileOrders } from '../../lib/reconcile.js';
+import { reconcilePlatform } from '../../lib/reconcile.js';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
 
@@ -76,22 +84,35 @@ const sp = Astro.url.searchParams;
 // request's `/admin` base.
 const tabUrl = buildAdminUrl;
 
-// Each source file is read exactly once per request and threaded through —
-// admin-stats.ts's functions used to each independently re-read sellers/
-// stores/products, multiplying JSON-file reads on every dashboard load.
+// ── What this page reads, and what it deliberately does NOT (DB_MIGRATION_PLAN.md §3) ──
+// The ROSTER — every seller and every store — is still read whole, because every tab on this page
+// is a list of, or a partition of, that roster: Sellers, Stores, Attention and Advertising all
+// render from it, searched across seller names and sorted with a Hebrew `localeCompare`.
+// Everything DERIVED from it is a query now: revenue per store, product counts per store, open
+// orders per store, the platform headline, the reconciliation, the sales behind the performance
+// charts and this page's own Orders tab. None of those grows with the size of the catalogue or
+// with how many orders the platform has ever taken.
 const sellers = await getAllSellers();
 const stores = await getAllStores();
-const allOrders = await getAllOrders();
-const productsByStore = await getProductsByStoreMap();
+const storeIds = stores.map((s) => s.id);
 
-const overview = getPlatformOverview(sellers, stores, allOrders);
-const revenueByStore = getStoreRevenueMap(allOrders);
+// "This month" is decided once, HERE, and handed to the query — the Overview card and the Stores
+// tab used to each ask their own clock what month it was (business-day.ts).
+const currentMonthKey = businessMonthKey(new Date());
 
-// Cross-check every money headline against a second, independent computation over
-// the real orders (lib/reconcile.ts). Read-only and cheap, so it runs on each render
-// rather than behind a button — a reconciliation nobody clicks is a reconciliation
-// that never catches anything.
-const reconciliation = reconcileOrders(allOrders, stores.map((s) => s.slug));
+const [orderTotals, revenueByStore, productCounts, openOrdersByStore, reconciliation] = await Promise.all([
+  getPlatformOrderTotals(),
+  getStoreRevenueBySlug(currentMonthKey),
+  getProductCountsByStore(storeIds),
+  getOpenOrderCountsByStore(),
+  // Cross-check every money headline against a second, independent computation over the real
+  // orders (lib/reconcile.ts). Read-only, and it returns only rows that DISAGREE, so it runs on
+  // each render rather than behind a button — a reconciliation nobody clicks is a reconciliation
+  // that never catches anything.
+  reconcilePlatform(stores.map((s) => s.slug)),
+]);
+
+const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
 
 // ── "new since you last left this tab" (owner feedback 2026-07-28) ──
 // One boundary per tracked tab, read ONCE here and threaded into that tab's
@@ -119,32 +140,45 @@ function keepNewOnly<T>(items: T[], on: boolean, boundary: string, createdAt: (i
 }
 
 // ── Sellers tab ──
+// The card list is built from product COUNTS; the actual product rows are fetched only for the
+// stores on the page being rendered, since the per-product block toggle inside an expanded card is
+// the one thing here that needs a row rather than a number (§3 — this used to read the whole
+// catalogue on every dashboard load).
 const sellerQuery = parseSellerQuery(sp);
-const sellerCardsAll = getSellerCards(sellers, stores, productsByStore, revenueByStore);
+const sellerCardsAll = getSellerCards(sellers, stores, productCounts, revenueByStore);
 const sellerCardsFiltered = keepNewOnly(filterAndSortSellerCards(sellerCardsAll, sellerQuery), newOnly.sellers, newSince.sellers, (c) => c.seller.createdAt);
 const sellerPageResult = paginate(sellerCardsFiltered, parsePage(sp, 'spage'));
+const sellerPageCards = attachProducts(
+  sellerPageResult.items,
+  await getProductsByStoreIds(sellerPageResult.items.flatMap((c) => c.stores.map((s) => s.store.id))),
+);
 
 // ── Stores tab ──
 const storeQuery = parseStoreQuery(sp);
-// Open-order counts come off the orders already read above, not one file read per store — the
-// only place they are shown is a store waiting to close, but the count has to exist before the
-// rows are filtered so the chips can be built from the same list.
-const storeRowsAll = getStoreRows(stores, sellers, productsByStore, revenueByStore, countOpenOrdersByStore(allOrders));
+// Open-order counts are a GROUP BY, not a pass over every order — the only place they are shown is
+// a store waiting to close, but the count has to exist before the rows are filtered so the chips
+// can be built from the same list.
+const storeRowsAll = getStoreRows(stores, sellers, productCounts, revenueByStore, openOrdersByStore);
 const storeStateCounts = countStoreStates(storeRowsAll);
 const storeRowsFiltered = keepNewOnly(filterAndSortStoreRows(storeRowsAll, storeQuery), newOnly.stores, newSince.stores, (r) => r.store.createdAt);
 const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
-const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore } = parseOrderQuery(sp);
-const ordersFiltered = keepNewOnly(
-  filterAndSortOrders(allOrders, { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore }),
-  newOnly.orders, newSince.orders, (o) => o.createdAt,
+// Filter, sort, "new only" and the page slice are ALL in the query (orders.ts#getAdminOrdersPage).
+// This used to read every order the platform has ever taken, to render fifteen rows.
+const orderQuery = parseOrderQuery(sp);
+const ordersPage = await getAdminOrdersPage(
+  { ...orderQuery, ...(newOnly.orders ? { newSince: newSince.orders } : {}) },
+  parsePage(sp, 'opage'),
+  ADMIN_PAGE_SIZE,
 );
-const orderPageResult = paginate(ordersFiltered, parsePage(sp, 'opage'));
-const orderStoreNames = getOrderStoreNames(allOrders);
+const orderPageResult = { items: ordersPage.orders, page: ordersPage.page, totalPages: ordersPage.totalPages, total: ordersPage.total };
+// Destructured for the panel below, which needs the query params back to rebuild its own URLs.
+const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore } = orderQuery;
+const orderStoreNames = sortOrderStoreNames(await getAllOrderStoreNames());
 
 // ── Attention tab (no filters — pagination only, see CURRENT_TASK.md → סשן ב׳: already a filtered subset) ──
-const attentionAll = getStoresNeedingAttention(stores, sellers, productsByStore);
+const attentionAll = getStoresNeedingAttention(stores, sellers, productCounts);
 const attentionPageResult = paginate(attentionAll, parsePage(sp, 'apage'));
 
 // ── Advertising tab (platform-level, CURRENT_TASK.md → סשן ב׳) ──
@@ -152,15 +186,10 @@ const attentionPageResult = paginate(attentionAll, parsePage(sp, 'apage'));
 // least one visible product. Gated on isStoreDiscoverable rather than `!blocked` — the feed
 // itself runs off getIndexableStores, which also drops a store its seller paused or closed, and
 // an inline `!blocked` copy here would have gone on counting those and over-reported what the
-// platform is actually advertising. Reuses the already-fetched stores/productsByStore so this
-// tab adds no extra JSON reads.
-const feedStores = stores.filter((s) => isStoreDiscoverable(s) && (productsByStore.get(s.id) ?? []).some((p) => !p.blocked));
-const feedProductCount = feedStores.reduce((sum, s) => sum + (productsByStore.get(s.id) ?? []).filter((p) => !p.blocked).length, 0);
-const [brandCampaigns, adCampaigns, platformAdSettings] = await Promise.all([
-  getAllBrandCampaigns(),
-  getAllCampaigns(),
-  getPlatformAdSettings(),
-]);
+// platform is actually advertising. Reuses the already-fetched stores + the per-store product
+// counts, so this tab adds no read of its own.
+const feedStores = stores.filter((s) => isStoreDiscoverable(s) && (productCounts.get(s.id)?.unblocked ?? 0) > 0);
+const feedProductCount = feedStores.reduce((sum, s) => sum + (productCounts.get(s.id)?.unblocked ?? 0), 0);
 
 // Date range for all ad metrics (default: last 7 days — the Google/Meta
 // convention). `adpreset` drives it; `custom` reads adfrom/adto. Everything is
@@ -171,7 +200,20 @@ const adPreset: AdRangePreset = AD_RANGE_PRESETS.includes(adPresetRaw as AdRange
 const adRange = adPreset === 'custom' ? coerceRange(sp.get('adfrom'), sp.get('adto')) : presetRange(adPreset)!;
 const adPrevRange = previousPeriod(adRange.from, adRange.to);
 
-const adInputBase = { feedStores, feedProductCount, allStores: stores, campaigns: adCampaigns, brandCampaigns, ads: platform.ads, settings: platformAdSettings };
+// Campaigns are fetched for the WIDER of the two windows — the current range and the equal-length
+// previous period are drawn side by side, so one read has to cover both. `getCampaignsInRange` is
+// a superset narrowing; `campaignStatsInRange` still decides the exact overlap per window, so
+// widening the fetch cannot change a number, only which rows travelled.
+const adSpan = { from: adPrevRange.from < adRange.from ? adPrevRange.from : adRange.from, to: adRange.to > adPrevRange.to ? adRange.to : adPrevRange.to };
+const [brandCampaigns, adCampaigns, campaignTotals, brandTotals, platformAdSettings] = await Promise.all([
+  getBrandCampaignsInRange(adSpan.from, adSpan.to),
+  getCampaignsInRange(adSpan.from, adSpan.to),
+  getCampaignTotals(),
+  getBrandCampaignTotals(),
+  getPlatformAdSettings(),
+]);
+
+const adInputBase = { feedStores, feedProductCount, allStores: stores, campaigns: adCampaigns, brandCampaigns, campaignTotals, brandTotals, ads: platform.ads, settings: platformAdSettings };
 const adOverview = buildPlatformAdOverview({ ...adInputBase, range: adRange });
 const adPrevOverview = buildPlatformAdOverview({ ...adInputBase, range: adPrevRange });
 const pctChange = (cur: number, prev: number): number | null => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
@@ -182,11 +224,12 @@ const adCompare = {
 };
 
 // ── Messages tab ──
-const messageThreadsAll = await getAllAdminThreads();
-const unreadMessagesForAdmin = messageThreadsAll.reduce((sum, t) => sum + t.unreadForAdmin, 0);
+// One page of threads, narrowed and sorted in the query (§3) — this used to read every system
+// message on the platform, group them all in JS, and keep fifteen.
 const threadQuery = parseAdminThreadQuery(sp);
-const messageThreadsFiltered = filterAndSortAdminThreads(messageThreadsAll, threadQuery);
-const messagePageResult = paginate(messageThreadsFiltered, parsePage(sp, 'mpage'));
+const threadsPage = await getAdminThreadsPage(threadQuery, parsePage(sp, 'mpage'), ADMIN_PAGE_SIZE);
+const unreadMessagesForAdmin = threadsPage.unreadForAdmin;
+const messagePageResult = { items: threadsPage.threads, page: threadsPage.page, totalPages: threadsPage.totalPages, total: threadsPage.total };
 
 // ── Alerts tab ──
 // The write side enforces this same ceiling, so this really is the whole log — which is what lets
@@ -204,9 +247,9 @@ const errorStoreOptions = getErrorStoreNames(errorsAll);
 
 // ── Performance tab (platform-wide, aggregates every store) ──
 // SSR the default "this month" range so the charts never flash blank; range
-// changes re-fetch from /api/admin/platform-performance client-side. Reuses the
-// already-read `allOrders`/`stores` (no extra JSON reads) and the single-sourced
-// per-store math (buildPlatformPerformance → buildPerformanceSummary).
+// changes re-fetch from /api/admin/platform-performance client-side. Traffic and sales are one
+// query each for every store at once, and the single-sourced per-store math
+// (buildPlatformPerformance → assemblePerformanceSummary) is pure arithmetic over them.
 const perfLang = getLang(Astro.cookies);
 const perfDir = getDir(perfLang);
 // Business calendar (business-day.ts) — the same one the per-store summaries bucket
@@ -217,11 +260,15 @@ const perfToISO = businessTodayISO();
 const perfFromISO = businessMonthStartISO(perfToISO);
 const perfGranularity = pickGranularity(perfFromISO, perfToISO);
 const perfStoreInputs = buildPlatformStoreInputs(stores, sellers);
-// One query for every store's traffic, not one file read per store (45 of them, and the reason
-// store-pageviews.ts used to need a read cache at all — DB_MIGRATION_PLAN.md §5).
-const perfViews = await getStoreViewStats(perfStoreInputs.map((s) => s.id), perfFromISO, perfToISO, perfGranularity);
+// One query for every store's traffic and one for every store's sales, not a per-store pass over
+// either (DB_MIGRATION_PLAN.md §5 for the views, §3 for the sales).
+const [perfViews, perfSales, perfTiers] = await Promise.all([
+  getStoreViewStats(perfStoreInputs.map((s) => s.id), perfFromISO, perfToISO, perfGranularity),
+  getPlatformSales(perfStoreInputs.map((s) => s.slug), perfFromISO, perfToISO, perfGranularity),
+  getSubscriptionAccrual(perfFromISO, perfToISO),
+]);
 const platformPerf = buildPlatformPerformance(
-  allOrders,
+  perfSales,
   perfStoreInputs,
   perfViews,
   perfFromISO,
@@ -233,27 +280,38 @@ const platformPerf = buildPlatformPerformance(
 // are still honoured here so a deep-linked ?storeQ= renders server-side too.
 const perfStorePage = selectStoreRows(platformPerf.stores, parseStoreRowsQuery(sp));
 // Where the platform's income actually comes from — commission is only one of three.
+// Its own fetch, narrowed to the PERFORMANCE range: this tab and the Advertising tab carry
+// separate date pickers, so one list cannot be scoped to both. The numbers are unchanged — the
+// narrowing is a superset and `campaignStatsInRange` still decides the overlap.
+const perfCampaigns = await getCampaignsInRange(perfFromISO, perfToISO);
 const perfRevenue = buildPlatformRevenue(
   platformPerf.summary.platformCommissionAgorot,
   platformPerf.summary.commissionRate,
-  sellers,
-  adCampaigns,
+  perfTiers,
+  perfCampaigns,
   perfFromISO,
   perfToISO,
 );
 
 // ── Data tab (first-party analytics — CURRENT_TASK.md item 2) ──
 // The buyer-funnel window recomputes per ?datapreset via the panel-swap AJAX
-// (data-panel.ts); the seller onboarding funnel is a lifetime snapshot. Reuses
-// the already-read productsByStore for the top-product names (no extra reads).
+// (data-panel.ts); the seller onboarding funnel is a lifetime snapshot — five COUNTs, where it
+// used to read every seller, store, product and order on the platform (§3).
 const DATA_PRESETS: AdRangePreset[] = ['today', '7d', '30d', 'thisMonth'];
 const dataPresetRaw = sp.get('datapreset') as AdRangePreset | null;
 const dataPreset: AdRangePreset = DATA_PRESETS.includes(dataPresetRaw as AdRangePreset) ? dataPresetRaw! : '30d';
 const dataRange = presetRange(dataPreset)!;
-const analyticsOverview = await getAnalyticsOverview(dataRange.from, dataRange.to);
-const sellerFunnel = await getSellerFunnel();
-const productNames = new Map<string, string>();
-for (const list of productsByStore.values()) for (const p of list) productNames.set(p.id, p.name);
+const [analyticsOverview, sellerFunnel] = await Promise.all([
+  getAnalyticsOverview(dataRange.from, dataRange.to),
+  getSellerFunnel(),
+]);
+// Names for the handful of product ids the two top-lists actually name — a lookup by id, not a
+// pass over the whole catalogue (§3). A product that has since been deleted simply has no entry,
+// and the panel already falls back to rendering the id.
+const productNames = await getProductNames([
+  ...analyticsOverview.topAdded.map((p) => p.productId),
+  ...analyticsOverview.topAbandoned.map((p) => p.productId),
+]);
 
 // ── Money journal tab ──
 // Type narrowing happens inside getMoneyEvents so it covers the WHOLE journal before
@@ -290,7 +348,8 @@ const moneyLogTargetMissing = moneyLogQuery.eventId !== '' && moneyLogTargetPage
 const badgeCounts: Record<string, number> = {
   sellers: countSince(sellers, newSince.sellers, (s) => s.createdAt),
   stores: countSince(stores, newSince.stores, (s) => s.createdAt),
-  orders: countSince(allOrders, newSince.orders, (o) => o.createdAt),
+  // A COUNT, because this one cannot be taken off a list any more: the Orders tab holds one page.
+  orders: await countOrdersSince(newSince.orders),
   alerts: countSince(errorsAll, newSince.alerts, (e) => e.createdAt),
   messages: unreadMessagesForAdmin,
 };
@@ -350,7 +409,7 @@ const badgeCounts: Record<string, number> = {
 
       <div id="dash-panel-sellers" class="dash-panel" role="tabpanel" aria-labelledby="tab-sellers" hidden={initialPanel !== 'sellers'}>
         <AdminSellersPanel
-          sellerCards={sellerPageResult.items}
+          sellerCards={sellerPageCards}
           q={sellerQuery.q}
           sortCol={sellerQuery.sortCol}
           sortDir={sellerQuery.sortDir}
@@ -400,8 +459,8 @@ const badgeCounts: Record<string, number> = {
       <div id="dash-panel-orders" class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
         <AdminOrdersPanel
           orders={orderPageResult.items}
-          totalAll={allOrders.length}
-          totalFiltered={ordersFiltered.length}
+          totalAll={ordersPage.totalUnfiltered}
+          totalFiltered={ordersPage.total}
           q={oq}
           sortCol={oSortCol}
           sortDir={oSortDir}
@@ -454,12 +513,11 @@ const badgeCounts: Record<string, number> = {
       <div id="dash-panel-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
         <AdminMessagesPanel
           threads={messagePageResult.items}
-          allThreadsForSeed={messageThreadsAll}
           sellers={sellers}
           sortCol={threadQuery.sortCol}
           unreadOnly={threadQuery.unreadOnly}
-          totalAll={messageThreadsAll.length}
-          totalFiltered={messageThreadsFiltered.length}
+          totalAll={threadsPage.totalUnfiltered}
+          totalFiltered={threadsPage.total}
           page={messagePageResult.page}
           totalPages={messagePageResult.totalPages}
           buildUrl={(p) => tabUrl('messages', {
