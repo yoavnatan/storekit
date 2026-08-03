@@ -133,16 +133,25 @@ export function initSettingsForm(): void {
 }
 
 /**
- * "View store" opens a preview tab. The plain named-target link already reuses one tab,
- * but a link-opened context is only script-closable while it holds a single history
- * entry — going through window.open makes it script-created, so the store page's
- * "back to dashboard" bar can close it and return here however far the seller browsed.
- * The link itself stays the no-JS fallback.
+ * "View store" opens a preview tab.
+ *
+ * It goes through `window.open` rather than letting the link navigate, because a link-opened
+ * context is only script-closable while it holds a single history entry — script-creating it is
+ * what lets the store page's "back to dashboard" bar close the tab and return here however far the
+ * seller browsed. The link itself stays the no-JS fallback.
+ *
+ * **`_blank`, never a named target — reported by a seller 2026-08-03.** This used to open into a
+ * window NAMED `dezabin-store-preview`, so that a second click reused one preview tab instead of
+ * piling them up. A window name is browser-wide and it STICKS: once a tab has been given that name
+ * it keeps it after the seller navigates it somewhere else entirely, so the next "צפה בחנות"
+ * reached across and took over whatever they had open in it. Reusing one tab was never worth
+ * hijacking an unrelated one, and `_blank` costs nothing that mattered — the tab is still
+ * script-created, so it is still closable, which is the only reason `window.open` is here at all.
  */
 export function initStorePreviewLink(): void {
   const link = document.getElementById('dash-view-store') as HTMLAnchorElement | null;
   link?.addEventListener('click', (e) => {
-    const opened = window.open(link.href, 'dezabin-store-preview');
+    const opened = window.open(link.href, '_blank');
     if (opened) { e.preventDefault(); opened.focus(); }
   });
 }

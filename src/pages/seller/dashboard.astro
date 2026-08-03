@@ -629,15 +629,16 @@ const orderStatusColors: Record<string, string> = {
                 </li>
               </ul>
             </div>
-          {/* A NAMED target, not _blank: every click reuses the same preview tab instead of
-              opening another one — on mobile, where tabs are out of sight, _blank quietly piled
-              them up. The store page shows the owner a "back to dashboard" bar (see
-              [storeSlug]/index.astro) that closes this tab and returns here.
-              NO rel="noopener": it makes the browser ignore the target name and open a fresh
-              context anyway (measured), which is the whole thing we're avoiding. Safe here
-              because the destination is our own store page, never third-party — and the opener
-              link is what lets initStorePreviewLink's window.open reuse and close the tab. */}
-          <a id="dash-view-store" href={storeHomeHref(store)} class="btn btn--sm" target="dezabin-store-preview">
+          {/* This used to carry a NAMED target so every click reused one preview tab instead of
+              piling them up on mobile. REVERTED 2026-08-03, reported by a seller: a window name is
+              browser-wide and it sticks to a tab after that tab has been navigated elsewhere, so
+              the next click reached across and took over whatever they had open there. Saving a
+              tab was never worth hijacking an unrelated one.
+              NO rel="noopener" still, but for a different reason now: the opener link is what lets
+              initStorePreviewLink's window.open hand back a handle it can close, which is how the
+              store page's "back to dashboard" bar ([storeSlug]/index.astro) gets the seller back
+              here. Safe because the destination is our own store page, never third-party. */}
+          <a id="dash-view-store" href={storeHomeHref(store)} class="btn btn--sm" target="_blank">
             {d.viewLive}
           </a>
         </div>
