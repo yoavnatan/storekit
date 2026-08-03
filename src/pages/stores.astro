@@ -299,17 +299,44 @@ const jsonLd = {
   // `#stores-directory-results` output directly.
   const resultsWrap = document.getElementById('stores-directory-results');
 
+  // How long a category may take before the page is allowed to say it is loading. The same number
+  // and the same reasoning as the store page's own filter (see `[storeSlug]/index.astro`): a
+  // response inside half a second reads as the click landing and needs no narration, and a cue that
+  // flashes for less time than that is the flicker it is supposed to replace. This swap fetches a
+  // server-rendered page, so on a slow connection it genuinely can pass the threshold — that is
+  // when the cue is a fact rather than decoration.
+  const SWAP_CUE_AFTER_MS = 450;
+  let swapToken = 0;
+
   async function swapDirectory(url: string): Promise<void> {
     if (!resultsWrap) { window.location.href = url; return; }
+    const token = ++swapToken;
+    // Armed on a timer and cancelled if the answer beats it, so a fast switch shows nothing at all.
+    // `aria-busy` is the part that matters for a screen reader; the dimming is the sighted half.
+    const cue = setTimeout(() => {
+      if (token !== swapToken) return;
+      resultsWrap.setAttribute('aria-busy', 'true');
+      resultsWrap.style.transition = 'opacity 0.15s ease';
+      resultsWrap.style.opacity = '0.35';
+    }, SWAP_CUE_AFTER_MS);
+    const clearCue = (): void => {
+      clearTimeout(cue);
+      resultsWrap.removeAttribute('aria-busy');
+      if (resultsWrap.style.opacity && resultsWrap.style.opacity !== '1') resultsWrap.style.opacity = '1';
+    };
     let html: string;
     try {
       const res = await fetch(url);
       if (!res.ok) throw new Error(String(res.status));
       html = await res.text();
     } catch {
+      clearCue();
       window.location.href = url;
       return;
     }
+    // A newer click already went out: let that one own the results and the cue.
+    if (token !== swapToken) { clearTimeout(cue); return; }
+    clearCue();
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const newResults = doc.getElementById('stores-directory-results');
     if (!newResults) { window.location.href = url; return; }
