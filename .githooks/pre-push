@@ -44,9 +44,19 @@ else
 fi
 
 # ── 2. The gate ─────────────────────────────────────────────────────────────────
-# `npm run verify` is what CI runs (type check, lint against .eslint-baseline.json so only NEW
-# problems surface, and the tests). It skips the checks nothing touched, so the usual cost is a
-# fraction of the full run.
+# `npm run verify -- --all` is what CI runs (type check, lint against .eslint-baseline.json so only
+# NEW problems surface, and the tests).
+#
+# **`--all`, and it has to be — measured 2026-08-03, when this gate waved through 69 commits.**
+# Plain `verify` picks its checks from the WORKING diff, which is the right scope while you are
+# editing and the wrong one entirely here: at push time the working tree is usually clean, because
+# everything being pushed is already committed. It reported "nothing to check (no code touched)"
+# and exited 0 — a gate that passes hardest exactly when there is most to check. AI_INSTRUCTIONS
+# says the same thing about the session: a check skipped for a file committed earlier is still a
+# check that did not run. A push is that situation by definition.
+#
+# The cost is the full run on every push instead of a fraction of it. That is the price of the gate
+# meaning something, and it is paid once per push rather than once per edit.
 #
 # Lint alone would not be enough, and that is not hypothetical either: the CI failure that led here
 # was a TEST failure — a suite that only ever ran against gitignored files imported an empty
@@ -56,7 +66,7 @@ if [ ! -d "$REPO_ROOT/node_modules" ]; then
   exit 1
 fi
 
-if ! (cd "$REPO_ROOT" && npm run --silent verify); then
+if ! (cd "$REPO_ROOT" && npm run --silent verify -- --all); then
   echo "" >&2
   echo "[pre-push] REFUSED: verification is red, and CI will fail on the same thing." >&2
   echo "[pre-push] Fix it and push again, or run: npm run lint:fix" >&2
