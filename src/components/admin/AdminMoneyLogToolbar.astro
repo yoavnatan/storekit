@@ -1,7 +1,7 @@
 ---
 import { MONEY_EVENT_TYPES, MONEY_EVENT_LABELS } from '../../lib/money-events.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
-import { hasActiveMoneyLogFilters, type MoneyLogQuery } from '../../lib/admin-moneylog-filter.js';
+import { hasActiveMoneyLogFilters, MONEY_LOG_DEFAULT_DAYS, type MoneyLogQuery } from '../../lib/admin-moneylog-filter.js';
 import { formatBusinessDateShort } from '../../lib/format-date.js';
 
 /**
@@ -24,20 +24,28 @@ const { query, total } = Astro.props;
 // journal still gets a chip, and clicking it says so instead of quietly showing
 // everything. Every chip keeps the search + date window and drops the page.
 const FILTERS = [{ id: '', label: 'הכל' }, ...MONEY_EVENT_TYPES.map((t) => ({ id: t, label: MONEY_EVENT_LABELS[t] }))];
+// The default window is deliberately NOT written into these links. Freezing it into the URL would
+// turn "this is the default" into "the admin chose this", and the clear affordance would then
+// offer to remove a window that always applies.
 const chipUrl = (typeId: string) => buildAdminUrl('moneylog', {
   mtype: typeId || undefined,
   mq: query.q || undefined,
-  mfrom: query.from || undefined,
-  mto: query.to || undefined,
+  mfrom: query.defaultWindow ? undefined : (query.from || undefined),
+  mto: query.defaultWindow ? undefined : (query.to || undefined),
 });
 
 const dayLabel = (iso: string) => formatBusinessDateShort(`${iso}T12:00:00Z`);
-const rangeLabel = query.from && query.to
-  ? `${dayLabel(query.from)} – ${dayLabel(query.to)}`
-  : query.from ? `מ־${dayLabel(query.from)}`
-  : query.to ? `עד ${dayLabel(query.to)}`
-  : 'כל התאריכים';
-const rangeActive = Boolean(query.from || query.to);
+// The DEFAULT window is named rather than shown as two dates: it is not something the admin
+// picked, and a pair of dates on the button reads as a filter someone left on. The journal never
+// opens unbounded (admin-moneylog-filter.ts says why), so "all dates" is not one of the answers.
+const rangeLabel = query.defaultWindow
+  ? `${MONEY_LOG_DEFAULT_DAYS} הימים האחרונים`
+  : query.from && query.to
+    ? `${dayLabel(query.from)} – ${dayLabel(query.to)}`
+    : query.from ? `מ־${dayLabel(query.from)}`
+    : query.to ? `עד ${dayLabel(query.to)}`
+    : 'כל התאריכים';
+const rangeActive = !query.defaultWindow;
 const anyFilter = hasActiveMoneyLogFilters(query);
 ---
 
@@ -87,7 +95,7 @@ const anyFilter = hasActiveMoneyLogFilters(query);
 {/* One line that always answers "what am I looking at, and how do I get back to
     everything" — without it a narrowed journal and an empty one look identical. */}
 <p class="m-0 mb-3 text-[0.76rem] [color:var(--color-muted)] tabular-nums flex flex-wrap items-center gap-x-2">
-  <span>{total} אירועים{anyFilter ? ' תואמים לסינון' : ''}</span>
+  <span>{total} אירועים{anyFilter ? ' תואמים לסינון' : ` ב־${MONEY_LOG_DEFAULT_DAYS} הימים האחרונים`}</span>
   {anyFilter && (
     <a href={buildAdminUrl('moneylog', {})} class="[color:var(--color-primary)] no-underline hover:underline">נקה סינון</a>
   )}

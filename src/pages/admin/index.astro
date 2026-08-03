@@ -47,8 +47,8 @@ import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
 import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
 import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
-import { getMoneyEvents } from '../../lib/money-events.js';
-import { parseMoneyLogQuery, filterMoneyEvents, eventPage } from '../../lib/admin-moneylog-filter.js';
+import { getMoneyEventDay, getMoneyEvents } from '../../lib/money-events.js';
+import { parseMoneyLogQuery, filterMoneyEvents, eventPage, widenToEvent } from '../../lib/admin-moneylog-filter.js';
 import { reconcilePlatform } from '../../lib/reconcile.js';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
@@ -320,11 +320,18 @@ const productNames = await getProductNames([
 // 15/page like every other list tab. The one rule that lives HERE because it is about
 // this page's URL: a `?mev=` permalink picks the page holding that row, but an explicit
 // ?mlpage always wins — otherwise the next arrow click snaps back to the linked row.
-const moneyLogQuery = parseMoneyLogQuery(sp);
 // Type AND date window are pushed into the query (money-events.ts) — the journal is the one
 // table nothing is deleted from, so opening this tab must not mean reading every row ever
-// appended. The free-text pass stays in memory: it matches the Hebrew LABEL of an event type,
-// and the labels live in the code, not the database.
+// appended. That is why the window has a DEFAULT (30 days, decided with the owner 2026-08-03):
+// without one, "the admin opened the money log" was the last unbounded read on this page.
+// The free-text pass stays in memory: it matches the Hebrew LABEL of an event type and the
+// amount as it is RENDERED, and neither exists in the database (DB_MIGRATION_PLAN.md §8).
+//
+// A `?mev=` permalink widens the default window back to the row it names — otherwise every link
+// older than 30 days would answer "this row is not in the current filter", which is the exact
+// failure `moneyLogTargetMissing` exists to report, arriving by default.
+const requestedMoneyLog = parseMoneyLogQuery(sp);
+const moneyLogQuery = widenToEvent(requestedMoneyLog, await getMoneyEventDay(requestedMoneyLog.eventId));
 const moneyLogEvents = filterMoneyEvents(
   await getMoneyEvents(moneyLogQuery.type, moneyLogQuery.from, moneyLogQuery.to),
   moneyLogQuery,

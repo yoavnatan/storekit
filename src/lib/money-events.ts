@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { query, rows } from './db.js';
+import { isUuid, query, rows } from './db.js';
 import { BUSINESS_TIMEZONE, isDayISO } from './business-day.js';
 
 /**
@@ -226,6 +226,26 @@ export async function getMoneyEvents(type?: MoneyEventType, fromDay?: string, to
     [type ?? null, from, to, BUSINESS_TIMEZONE],
   );
   return found.map(toEvent);
+}
+
+/**
+ * The business day one event landed on, or `null` when there is no such row.
+ *
+ * One value, so that a `?mev=` permalink can widen the journal's default window back to the row it
+ * names (`admin-moneylog-filter.ts#widenToEvent`) instead of reporting it missing. The day is
+ * computed in SQL, in the platform's calendar, for the same reason the window itself is: a link
+ * resolved on one calendar and filtered on another lands one row off at the boundary.
+ *
+ * `id` is checked for shape first — Postgres REJECTS a malformed uuid literal rather than simply
+ * not matching it, so a hand-edited `?mev=nonsense` would be a 500 on the whole dashboard.
+ */
+export async function getMoneyEventDay(eventId: string): Promise<string | null> {
+  if (!isUuid(eventId)) return null;
+  const found = await rows<{ day: string }>(
+    `SELECT to_char(at AT TIME ZONE $2::text, 'YYYY-MM-DD') AS day FROM money_events WHERE id = $1`,
+    [eventId, BUSINESS_TIMEZONE],
+  );
+  return found[0]?.day ?? null;
 }
 
 /** The selection itself, over rows already in memory — split out so the ordering and the

@@ -1,4 +1,4 @@
-import { businessDayISO, dayInRange, isDayISO } from './business-day.js';
+import { businessDayISO, businessTodayISO, calendarDayISO, dayInRange, isDayISO } from './business-day.js';
 import { ADMIN_PAGE_SIZE } from './pagination.js';
 import { formatAgorot } from './money.js';
 import { isMoneyEventType, MONEY_EVENT_LABELS, type MoneyEvent, type MoneyEventType } from './money-events.js';
@@ -32,7 +32,29 @@ export interface MoneyLogQuery {
   to: string;
   /** A single event's id, from a copied row permalink (`?mev=`). */
   eventId: string;
+  /** True when the window above is the DEFAULT rather than something the admin picked.
+   *
+   *  It changes two things and neither is cosmetic: the toolbar names the window instead of
+   *  showing two dates the admin never chose, and "clear filters" does not offer to remove it —
+   *  clearing returns to the default, never to the whole journal. */
+  defaultWindow: boolean;
 }
+
+/**
+ * How far back the journal opens.
+ *
+ * **The journal is the one table nothing is ever deleted from**, so "the admin opened the money
+ * log" used to mean "read every event ever recorded" — the last unbounded read on the dashboard
+ * after §3 (DB_MIGRATION_PLAN.md §8). A row cap was the wrong answer and money-events.ts says why:
+ * it would make the "N events" count describe the cap rather than the journal, and hide older rows
+ * of a filtered type behind newer rows of other types.
+ *
+ * A default WINDOW is the right answer, and it is a product decision rather than a refactor
+ * because it changes what the owner sees on open — decided with him, 2026-08-03: 30 days. The
+ * picker still reaches any range, and a `?mev=` permalink to an older row widens the window back
+ * to that row rather than reporting it missing (admin/index.astro).
+ */
+export const MONEY_LOG_DEFAULT_DAYS = 30;
 
 const OPEN_FROM = '0000-01-01';
 const OPEN_TO = '9999-12-31';
@@ -50,7 +72,7 @@ const MAX_SEARCH_LENGTH = 200;
  *  filter so the two things that must agree — what a param means and what the filter
  *  expects — cannot drift. Every param is registered in ADMIN_TAB_PARAMS
  *  (admin-nav.ts), enforced by tests/admin-tab-params.test.ts. */
-export function parseMoneyLogQuery(sp: URLSearchParams): MoneyLogQuery {
+export function parseMoneyLogQuery(sp: URLSearchParams, today: string = businessTodayISO()): MoneyLogQuery {
   const type = sp.get('mtype') ?? '';
   // A REAL day, not a day-shaped string. These two bounds are handed to `getMoneyEvents`, which
   // casts them to `date` in SQL — and `?mfrom=2026-02-30` has the shape, no meaning, and would take
@@ -61,13 +83,45 @@ export function parseMoneyLogQuery(sp: URLSearchParams): MoneyLogQuery {
   // native date inputs let either be set first, and answering "0 events" to a range
   // the admin can see contains rows reads as a broken filter.
   if (from && to && from > to) [from, to] = [to, from];
+
+  // The default applies only when the admin named NEITHER bound. One bound alone is a deliberate
+  // half-open range ("everything since the 1st") and widening it to 30 days would be answering a
+  // different question than the one asked.
+  const defaultWindow = !from && !to;
+  if (defaultWindow) {
+    from = addDaysISO(today, -(MONEY_LOG_DEFAULT_DAYS - 1));
+    to = today;
+  }
+
   return {
     type: isMoneyEventType(type) ? type : undefined,
     q: (sp.get('mq') ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
     from,
     to,
     eventId: (sp.get('mev') ?? '').trim(),
+    defaultWindow,
   };
+}
+
+/** `iso` shifted by `days`, on the calendar rather than by instant arithmetic — the bound is a
+ *  synthetic date with no timezone meaning, which is the `calendar*` family's whole job
+ *  (business-day.ts). Inclusive of both ends, so 30 days back from today is `today - 29`. */
+function addDaysISO(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return calendarDayISO(d);
+}
+
+/** The window widened to include one specific event — what a `?mev=` permalink needs when the row
+ *  it names is older than the default window. Returns the query unchanged when the admin chose
+ *  their own range (theirs wins) or when the row is already inside it.
+ *
+ *  Without this the default window would have broken the permalink feature outright: an old link
+ *  would report "this row is not in the current filter" instead of showing the row, which is the
+ *  exact failure `moneyLogTargetMissing` was written to make visible, arriving by default. */
+export function widenToEvent(query: MoneyLogQuery, eventDay: string | null): MoneyLogQuery {
+  if (!query.defaultWindow || !eventDay || eventDay >= query.from) return query;
+  return { ...query, from: eventDay };
 }
 
 /** Everything about one row a search may legitimately match — including the Hebrew
@@ -132,5 +186,7 @@ export function eventPage(events: MoneyEvent[], eventId: string, pageSize = ADMI
  *  empty-state wording — "no events of this kind" and "nothing logged yet" are
  *  different answers, and showing the wrong one is how a working filter looks broken. */
 export function hasActiveMoneyLogFilters(query: MoneyLogQuery): boolean {
-  return Boolean(query.type || query.q || query.from || query.to);
+  // The DEFAULT window is not one of them. It is always on, so offering to "clear" it would either
+  // lie (clearing returns to the same window) or hand back the unbounded read it exists to prevent.
+  return Boolean(query.type || query.q || !query.defaultWindow);
 }

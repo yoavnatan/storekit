@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import crypto from 'node:crypto';
 import { getDatabase, query, setDatabase, type Database } from '../src/lib/db.js';
-import { getMoneyEvents, recordMoneyEvent } from '../src/lib/money-events.js';
+import { getMoneyEventDay, getMoneyEvents, recordMoneyEvent } from '../src/lib/money-events.js';
 
 /**
  * The money journal, against a real Postgres — moved with `orders`
@@ -148,5 +149,32 @@ describe('reading', () => {
       await expect(getMoneyEvents(undefined, impossible, undefined), impossible).resolves.toHaveLength(all.length);
       await expect(getMoneyEvents(undefined, undefined, impossible), impossible).resolves.toHaveLength(all.length);
     }
+  });
+});
+
+describe('getMoneyEventDay', () => {
+  // Resolves the BUSINESS day of one event, so a `?mev=` permalink can widen the journal's default
+  // window back to the row it names instead of reporting it missing (admin-moneylog-filter.ts).
+  it('answers the business day, not the UTC one', async () => {
+    // 23:30Z on the 28th is 02:30 on the 29th in Asia/Jerusalem — the row whose two calendars
+    // disagree, which is the whole reason business-day.ts exists. A link resolved on one calendar
+    // and filtered on the other lands one row outside the window it just widened to.
+    const id = crypto.randomUUID();
+    await query(
+      `INSERT INTO money_events (id, at, type, actor) VALUES ($1, $2::timestamptz, 'order_created', 'system')`,
+      [id, '2026-07-28T23:30:00.000Z'],
+    );
+    expect(await getMoneyEventDay(id)).toBe('2026-07-29');
+  });
+
+  it('answers null for a row that does not exist', async () => {
+    expect(await getMoneyEventDay('99999999-9999-4999-8999-0000000000ff')).toBeNull();
+  });
+
+  it('answers null for a malformed id rather than raising', async () => {
+    // Postgres REJECTS a bad uuid literal instead of not matching it, so a hand-edited `?mev=`
+    // would be a 500 on the WHOLE admin dashboard, not an empty result on one panel.
+    expect(await getMoneyEventDay('not-a-uuid')).toBeNull();
+    expect(await getMoneyEventDay('')).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import { formatBusinessTime, formatBusinessDateShort, formatBusinessDayLabel } f
 import { MONEY_EVENT_LABELS, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
 import { businessDayISO } from '../../lib/business-day.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
-import { hasActiveMoneyLogFilters, type MoneyLogQuery } from '../../lib/admin-moneylog-filter.js';
+import { hasActiveMoneyLogFilters, MONEY_LOG_DEFAULT_DAYS, type MoneyLogQuery } from '../../lib/admin-moneylog-filter.js';
 import AdminPager from './AdminPager.astro';
 import AdminReconciliationCard from './AdminReconciliationCard.astro';
 import AdminMoneyLogToolbar from './AdminMoneyLogToolbar.astro';
@@ -92,15 +92,22 @@ const highlightId = targetMissing ? '' : query.eventId;
         <Fragment>
           האירוע שאליו הקישור מפנה לא נמצא בסינון הנוכחי.
           <Fragment> </Fragment>
+          {/* Drops the type/search AND names the row's own window, so the link cannot land back on
+              the same default that hid it — see admin-moneylog-filter.ts#widenToEvent. */}
           <a href={buildAdminUrl('moneylog', { mev: query.eventId })} class="[color:var(--color-primary)]">חפשו אותו ביומן המלא</a>.
         </Fragment>
       ) : 'האירוע שאליו הקישור מפנה אינו קיים ביומן.'}
     </p>
   )}
 
+  {/* THREE answers, not two. Since the journal opens on a default window, "nothing here" no
+      longer means "nothing ever recorded" — saying so would be a flat lie to an owner whose
+      journal is simply older than 30 days, and it would hide the one control that fixes it. */}
   {events.length === 0 ? (
     <p class="text-[0.85rem] [color:var(--color-muted)] py-8 text-center">
-      {hasActiveMoneyLogFilters(query) ? 'אין אירועים שתואמים לסינון הזה.' : 'עדיין לא נרשמו אירועים כספיים.'}
+      {hasActiveMoneyLogFilters(query)
+        ? 'אין אירועים שתואמים לסינון הזה.'
+        : `לא נרשמו אירועים כספיים ב־${MONEY_LOG_DEFAULT_DAYS} הימים האחרונים. בחרו טווח תאריכים אחר כדי לראות רשומות ישנות יותר.`}
     </p>
   ) : (
     <div class="flex flex-col gap-5" id="admin-moneylog-rows" data-highlight={highlightId}>
