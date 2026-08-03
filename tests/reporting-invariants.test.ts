@@ -2,16 +2,33 @@ import { beforeAll, describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Order } from '../src/lib/orders.js';
-import { countsAsRevenue, getAllOrders } from '../src/lib/orders.js';
+import { countsAsRevenue } from '../src/lib/orders.js';
+import { query } from '../src/lib/db.js';
+import { getAdminOrdersPage } from '../src/lib/orders.js';
+import { getAllStores } from '../src/lib/stores.js';
+import { getAllSellers, getSubscriptionAccrual } from '../src/lib/seller-auth.js';
+import { getProductCountsByStore, getProductsByStoreIds, isProductVisible } from '../src/lib/store-products.js';
+import { getCampaignsInRange, getCampaignTotals, campaignTotalsOf } from '../src/lib/ad-campaigns.js';
+import { countOpenOrdersByStore } from '../src/lib/store-lifecycle.js';
+import { buildSellerFunnel, getSellerFunnel } from '../src/lib/seller-funnel.js';
+import { reconcileOrders, reconcilePlatform } from '../src/lib/reconcile.js';
+import { daysInRangeInclusive } from '../src/lib/date-range.js';
+import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, getStoreRevenueBySlug } from '../src/lib/order-reporting.js';
+
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
-import { buildPlatformPerformance } from '../src/lib/platform-performance.js';
+import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
 // Traffic is an input now; these invariants are about money, so they assert against no traffic.
 import { EMPTY_VIEW_STATS, type StoreViewStats } from '../src/lib/store-pageviews.js';
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
 const NO_VIEWS = new Map<string, StoreViewStats>();
-import { getPlatformOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
+import { getOrderTotals, getStoreOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
 import { businessDayISO, businessMonthKey, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
 import { storeSliceTotalAgorot } from '../src/lib/order-totals.js';
+
+/** The business month `getStoreRevenueMap`'s month column is asked about. These assertions are
+ *  about the ALL-TIME column, so the month is a constant that no clock decides. */
+const MONTH = '2026-01';
+
 
 /**
  * INVARIANTS — statements that must hold for EVERY input, not examples of bugs
@@ -300,14 +317,14 @@ describe('the admin surfaces reconcile with each other', () => {
     // admin tabs. The headline used to sum `order.totalAgorot` (shipping included,
     // discounts ignored) while the rows summed net subtotals, so the two could never
     // be made to agree by any amount of staring at them.
-    const overview = getPlatformOverview([], [], orders);
-    const rows = getStoreRevenueMap(orders);
+    const overview = getOrderTotals(orders);
+    const rows = getStoreRevenueMap(orders, MONTH);
     const rowSum = [...rows.values()].reduce((a, r) => a + r.totalRevenueAgorot, 0);
     expectSameMoney(overview.gmvAgorot, rowSum, 'overview GMV vs sum of per-store revenue');
   });
 
   it('the platform performance total equals the sum of its own store breakdown', () => {
-    const perf = buildPlatformPerformance(orders, [{ id: STORE, slug: STORE, name: 'S' }, { id: OTHER, slug: OTHER, name: 'O' }], NO_VIEWS, '2026-07-01', '2026-07-31', 'day');
+    const perf = buildPlatformPerformance(buildPlatformSales(orders, [STORE, OTHER], '2026-07-01', '2026-07-31', 'day'), [{ id: STORE, slug: STORE, name: 'S' }, { id: OTHER, slug: OTHER, name: 'O' }], NO_VIEWS, '2026-07-01', '2026-07-31', 'day');
     expectSameMoney(
       perf.stores.reduce((a, r) => a + r.revenueAgorot, 0),
       perf.summary.totalRevenueAgorot,
@@ -320,7 +337,7 @@ describe('the admin surfaces reconcile with each other', () => {
     // The number the owner sees must be the number the sellers see, added up. A
     // platform aggregate computed by its own second implementation is the classic
     // place for the two to drift.
-    const perf = buildPlatformPerformance(orders, [{ id: STORE, slug: STORE, name: 'S' }, { id: OTHER, slug: OTHER, name: 'O' }], NO_VIEWS, '2026-07-01', '2026-07-31', 'day');
+    const perf = buildPlatformPerformance(buildPlatformSales(orders, [STORE, OTHER], '2026-07-01', '2026-07-31', 'day'), [{ id: STORE, slug: STORE, name: 'S' }, { id: OTHER, slug: OTHER, name: 'O' }], NO_VIEWS, '2026-07-01', '2026-07-31', 'day');
     const sellerSum = [STORE, OTHER].reduce(
       (a, slug) => a + buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot, 0,
     );
@@ -331,15 +348,15 @@ describe('the admin surfaces reconcile with each other', () => {
     // The single predicate, asserted from the outside: whatever each surface
     // computes, adding a cancelled/failed/pending order must not move it.
     const live = orders.filter(countsAsRevenue);
-    expectSameMoney(getPlatformOverview([], [], orders).gmvAgorot, getPlatformOverview([], [], live).gmvAgorot, 'overview GMV ignores dead orders');
+    expectSameMoney(getOrderTotals(orders).gmvAgorot, getOrderTotals(live).gmvAgorot, 'overview GMV ignores dead orders');
     expectSameMoney(
       buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot,
       buildPerformanceSummary(live, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day').totalRevenueAgorot,
       'seller revenue ignores dead orders',
     );
     expectSameMoney(
-      [...getStoreRevenueMap(orders).values()].reduce((a, r) => a + r.totalRevenueAgorot, 0),
-      [...getStoreRevenueMap(live).values()].reduce((a, r) => a + r.totalRevenueAgorot, 0),
+      [...getStoreRevenueMap(orders, MONTH).values()].reduce((a, r) => a + r.totalRevenueAgorot, 0),
+      [...getStoreRevenueMap(live, MONTH).values()].reduce((a, r) => a + r.totalRevenueAgorot, 0),
       'per-store revenue ignores dead orders',
     );
   });
@@ -348,11 +365,11 @@ describe('the admin surfaces reconcile with each other', () => {
     // The showcase stores refuse checkout outright, so folding them into the
     // headline told the owner his marketplace was bigger than it is — on the one
     // card he would use to judge whether the business is actually working.
-    const overview = getPlatformOverview([], [
+    const overview = getStoreOverview(0, [
       { slug: 'real-1', name: 'R1', sellerId: 's1' },
       { slug: 'real-2', name: 'R2', sellerId: 's1' },
       { slug: 'demo-1', name: 'D1', sellerId: 's9', demo: true },
-    ] as never, []);
+    ] as never);
     expect(overview.totalStores).toBe(2);
     expect(overview.demoStores).toBe(1);
   });
@@ -361,7 +378,7 @@ describe('the admin surfaces reconcile with each other', () => {
     // An upper bound rather than an exact figure: it holds no matter how the
     // reporting is refactored, and it is what catches a future double-count.
     const maxPossible = orders.filter(countsAsRevenue).reduce((a, o) => a + orderNetTotal(o), 0);
-    expect(getPlatformOverview([], [], orders).gmvAgorot).toBeLessThanOrEqual(maxPossible);
+    expect(getOrderTotals(orders).gmvAgorot).toBeLessThanOrEqual(maxPossible);
   });
 });
 
@@ -457,7 +474,14 @@ describe('the reporting modules keep using the shared definitions', () => {
 
 describe('the stored orders satisfy the same invariants', () => {
   let live: Order[] = [];
-  beforeAll(async () => { live = await getAllOrders(); });
+  beforeAll(async () => {
+    // `getAllOrders()` is gone (§3) — this reads the whole fixture through the module's own paged
+    // reader instead, with a page big enough to hold it. The assertion below is what stops that
+    // from quietly becoming "the first page satisfies the invariants".
+    const page = await getAdminOrdersPage({}, 1, 10_000);
+    expect(page.total, 'the audit must cover every stored order, not one page of them').toBe(page.orders.length);
+    live = page.orders;
+  });
 
   it('every stored order holds only non-negative, bounded amounts', () => {
     // Not a hypothetical: this is a standing audit of the data an admin is looking at right now.
@@ -493,7 +517,224 @@ describe('the stored orders satisfy the same invariants', () => {
   });
 
   it('the admin GMV equals the sum of the per-store rows on the stored data too', () => {
-    const rowSum = [...getStoreRevenueMap(live).values()].reduce((a, r) => a + r.totalRevenueAgorot, 0);
-    expectSameMoney(getPlatformOverview([], [], live).gmvAgorot, rowSum, 'stored-data GMV reconciliation');
+    const rowSum = [...getStoreRevenueMap(live, MONTH).values()].reduce((a, r) => a + r.totalRevenueAgorot, 0);
+    expectSameMoney(getOrderTotals(live).gmvAgorot, rowSum, 'stored-data GMV reconciliation');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. §3 — every number that MOVED into the database still equals the JavaScript
+//    it moved out of.
+//
+// This is the section DB_MIGRATION_PLAN.md §3 required before the change could be called done:
+// five admin surfaces that display money were rewritten from "read everything and compute in
+// Node" to "let the database compute it", and every one of those numbers is one the owner reads
+// as fact. A SUM in SQL and a `reduce` in JS agreeing is not obvious — they differ on rounding,
+// on `bigint` arriving as a string, on which rows a LEFT JOIN keeps, and on which calendar
+// decides a business day.
+//
+// Each pure twin below is kept for exactly this: it is the definition, it needs no database, and
+// it is what lets these assertions say "the query still means what it meant" instead of
+// "the query returns some number".
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('§3 — the queries agree with the JavaScript they replaced', () => {
+  let stored: Order[] = [];
+  let slugs: string[] = [];
+
+  beforeAll(async () => {
+    stored = (await getAdminOrdersPage({}, 1, 10_000)).orders;
+    slugs = (await getAllStores()).map((s) => s.slug);
+  });
+
+  it('the platform headline: getPlatformOrderTotals === getOrderTotals', async () => {
+    const fromDb = await getPlatformOrderTotals();
+    const fromJs = getOrderTotals(stored);
+    expect(fromDb.totalOrders, 'order count').toBe(fromJs.totalOrders);
+    expect(fromDb.paidOrders, 'revenue-counting order count').toBe(fromJs.paidOrders);
+    expectSameMoney(fromDb.gmvAgorot, fromJs.gmvAgorot, 'GMV');
+  });
+
+  it('revenue per store: getStoreRevenueBySlug === getStoreRevenueMap', async () => {
+    // The month column is asked about with the SAME key both sides, because the month is a
+    // parameter now — it used to be `new Date()` inside the JS, so the Overview card and the
+    // Stores tab could be looking at two different months on the same render.
+    const month = businessMonthKey(new Date());
+    const fromDb = await getStoreRevenueBySlug(month);
+    const fromJs = getStoreRevenueMap(stored, month);
+    // Every slug either side knows about — a store missing from one map is exactly the drift.
+    for (const slug of new Set([...fromDb.keys(), ...fromJs.keys()])) {
+      expectSameMoney(fromDb.get(slug)?.totalRevenueAgorot ?? 0, fromJs.get(slug)?.totalRevenueAgorot ?? 0, `${slug} all-time`);
+      expectSameMoney(fromDb.get(slug)?.monthRevenueAgorot ?? 0, fromJs.get(slug)?.monthRevenueAgorot ?? 0, `${slug} this month`);
+    }
+  });
+
+  it('the GMV headline still equals the sum of the per-store rows — both sides from the DB', async () => {
+    // The check `reconcile.ts` runs on every admin render, asserted here as an invariant: an
+    // ungrouped aggregate against the sum of a grouped one. Two plans, one number.
+    const totals = await getPlatformOrderTotals();
+    const rows = await getStoreRevenueBySlug('');
+    expectSameMoney([...rows.values()].reduce((a, r) => a + r.totalRevenueAgorot, 0), totals.gmvAgorot, 'DB GMV vs DB per-store rows');
+  });
+
+  it('open orders per store: the query === countOpenOrdersByStore', async () => {
+    const fromDb = await getOpenOrderCountsByStore();
+    const fromJs = countOpenOrdersByStore(stored);
+    for (const slug of new Set([...fromDb.keys(), ...fromJs.keys()])) {
+      expect(fromDb.get(slug) ?? 0, `${slug} open orders`).toBe(fromJs.get(slug) ?? 0);
+    }
+  });
+
+  it('platform sales per store and per bucket: getPlatformSales === buildPlatformSales', async () => {
+    for (const granularity of ['day', 'month'] as const) {
+      const from = '2026-01-01';
+      const to = '2026-12-31';
+      const fromDb = await getPlatformSales(slugs, from, to, granularity, 5);
+      const fromJs = buildPlatformSales(stored, slugs, from, to, granularity, 5);
+      for (const slug of slugs) {
+        const a = fromDb.byStore.get(slug)!;
+        const b = fromJs.byStore.get(slug)!;
+        expectSameMoney(a.totalRevenueAgorot, b.totalRevenueAgorot, `${slug} revenue (${granularity})`);
+        expect(a.totalOrders, `${slug} orders (${granularity})`).toBe(b.totalOrders);
+        // Bucket by bucket, so a whole-range total that happens to match while the CHART is wrong
+        // cannot pass — that is the failure an admin sees and a total would hide.
+        const keyed = (buckets: readonly { key: string; revenueAgorot: number; orders: number }[]) =>
+          Object.fromEntries(buckets.map((x) => [x.key, [x.revenueAgorot, x.orders]]));
+        expect(keyed(a.buckets), `${slug} buckets (${granularity})`).toEqual(keyed(b.buckets));
+      }
+      expect(fromDb.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units]),
+        `top products (${granularity})`).toEqual(fromJs.topProducts.map((p) => [p.productId, p.revenueAgorot, p.units]));
+    }
+  });
+
+  it('the platform summary built from the query equals the one built from the orders', async () => {
+    // One level up from the previous case: the numbers the Performance tab actually renders.
+    const from = '2026-01-01';
+    const to = '2026-12-31';
+    const stores = slugs.map((slug) => ({ id: slug, slug, name: slug, commissionPercent: 10 }));
+    const fromDb = buildPlatformPerformance(await getPlatformSales(slugs, from, to, 'month'), stores, NO_VIEWS, from, to, 'month');
+    const fromJs = buildPlatformPerformance(buildPlatformSales(stored, slugs, from, to, 'month'), stores, NO_VIEWS, from, to, 'month');
+    expectSameMoney(fromDb.summary.totalRevenueAgorot, fromJs.summary.totalRevenueAgorot, 'platform revenue');
+    expectSameMoney(fromDb.summary.platformCommissionAgorot, fromJs.summary.platformCommissionAgorot, 'platform commission');
+    expect(fromDb.summary.totalOrders).toBe(fromJs.summary.totalOrders);
+    expect(fromDb.stores.map((r) => [r.slug, r.revenueAgorot, r.orders])).toEqual(fromJs.stores.map((r) => [r.slug, r.revenueAgorot, r.orders]));
+  });
+
+  it('the live reconciliation reaches the same verdict as the one over the orders', async () => {
+    const fromDb = await reconcilePlatform(slugs);
+    const fromJs = reconcileOrders(stored, slugs);
+    expect(fromDb.checkedOrders, 'orders checked').toBe(fromJs.checkedOrders);
+    expect(fromDb.clean, 'clean verdict').toBe(fromJs.clean);
+    // Compared as sets of (check, subject, drift): the two routes are free to report in a
+    // different ORDER, and requiring one would be asserting an implementation detail.
+    const key = (d: { check: string; subject?: string; drift: number }) => `${d.check}|${d.subject ?? ''}|${d.drift}`;
+    expect(new Set(fromDb.discrepancies.map(key))).toEqual(new Set(fromJs.discrepancies.map(key)));
+  });
+
+  // A reconciler that never fires is indistinguishable from one that is broken (the rule
+  // tests/reporting-fuzz.test.ts states), and a fixture that happens to be healthy makes every
+  // check here vacuous. So each check is broken deliberately, one at a time, and required to be
+  // named by BOTH routes — then the row is put back.
+  const damage: Array<{ what: string; break_: string; heal: string; severity: 'error' | 'warning' }> = [
+    {
+      what: 'the line items stop matching the stored subtotal',
+      break_: 'UPDATE order_stores SET subtotal_agorot = subtotal_agorot + 1 WHERE order_id = $1 AND store_slug = $2',
+      heal: 'UPDATE order_stores SET subtotal_agorot = subtotal_agorot - 1 WHERE order_id = $1 AND store_slug = $2',
+      severity: 'error',
+    },
+    {
+      what: 'a discount exceeds what it discounts',
+      // The TYPE goes on too, not just the amount: `toOrder` only rebuilds a discount object when
+      // there is a type, so an amount without one is a row shape the seller edit path cannot write
+      // — and asserting against it would be asserting about data that does not occur.
+      break_: "UPDATE order_stores SET discount_type = 'percent', discount_percent = 99, discount_applied_agorot = subtotal_agorot + 100 WHERE order_id = $1 AND store_slug = $2",
+      heal: 'UPDATE order_stores SET discount_type = NULL, discount_percent = NULL, discount_applied_agorot = 0 WHERE order_id = $1 AND store_slug = $2',
+      severity: 'warning',
+    },
+  ];
+
+  for (const { what, break_, heal, severity } of damage) {
+    it(`the reconciliation fires when ${what}, through the query as well`, async () => {
+      const victim = stored.find((o) => Object.keys(o.storeSubtotals ?? {}).length > 0)!;
+      const slug = Object.keys(victim.storeSubtotals)[0]!;
+      await query(break_, [victim.id, slug]);
+      try {
+        const fromDb = await reconcilePlatform(slugs);
+        const fromJs = reconcileOrders((await getAdminOrdersPage({}, 1, 10_000)).orders, slugs);
+        for (const [route, report] of [['query', fromDb], ['pure', fromJs]] as const) {
+          expect(report.clean, `${route}: damaged data must not read as clean`).toBe(false);
+          expect(
+            report.discrepancies.some((d) => d.severity === severity && d.subject?.includes(victim.id.slice(0, 8))),
+            `${route}: the damaged order must be named`,
+          ).toBe(true);
+        }
+      } finally {
+        await query(heal, [victim.id, slug]);
+      }
+    });
+  }
+
+  it('the funnel counts a seller by their LIVE stores — a deleted one does not qualify them', async () => {
+    // `getAllStores` filters `deleted_at`, so the JS this replaced never saw a deleted store. The
+    // fixture has none, which would have left that half of the query asserting nothing.
+    const store = (await getAllStores()).find((s) => s.slug === 'keramika')!;
+    const before = await getSellerFunnel();
+    await query('UPDATE stores SET deleted_at = now() WHERE id = $1', [store.id]);
+    try {
+      const after = await getSellerFunnel();
+      expect(after.withStore, 'a deleted store must not keep counting').toBeLessThan(before.withStore);
+    } finally {
+      await query('UPDATE stores SET deleted_at = NULL WHERE id = $1', [store.id]);
+    }
+  });
+
+  it('the seller onboarding funnel: the four counts === buildSellerFunnel', async () => {
+    const fromDb = await getSellerFunnel();
+    const fromJs = buildSellerFunnel(
+      await getAllSellers(),
+      await getAllStores(),
+      [...(await getProductsByStoreIds((await getAllStores()).map((s) => s.id))).entries()]
+        .flatMap(([storeId, list]) => list.map(() => ({ storeId }))),
+      stored,
+      fromDb.registerViews,
+    );
+    expect(fromDb).toEqual(fromJs);
+  });
+
+  it('product counts per store: the GROUP BY === counting the rows', async () => {
+    const stores = await getAllStores();
+    const counts = await getProductCountsByStore(stores.map((s) => s.id));
+    const products = await getProductsByStoreIds(stores.map((s) => s.id));
+    for (const store of stores) {
+      const list = products.get(store.id) ?? [];
+      expect(counts.get(store.id)?.total ?? 0, `${store.slug} total`).toBe(list.length);
+      expect(counts.get(store.id)?.visible ?? 0, `${store.slug} visible`).toBe(list.filter(isProductVisible).length);
+      expect(counts.get(store.id)?.unblocked ?? 0, `${store.slug} unblocked`).toBe(list.filter((p) => !p.blocked).length);
+    }
+  });
+
+  it('campaign totals: the COUNT/SUM === campaignTotalsOf', async () => {
+    // Not range-scoped on either side — "how many exist and what is committed now" is a
+    // forward-looking number, which is exactly why it stopped being counted off a narrowed list.
+    const wide = await getCampaignsInRange('2000-01-01', '2100-01-01');
+    expect(await getCampaignTotals()).toEqual(campaignTotalsOf(wide));
+  });
+
+  it('subscription accrual: the GROUP BY bills what the per-seller arithmetic billed', async () => {
+    // The tier rollup replaced a loop over every seller. Same money: the fee is a property of the
+    // tier and the only per-seller input is how many days of the range the account existed for.
+    const from = '2026-07-01';
+    const to = '2026-07-30';
+    const tiers = await getSubscriptionAccrual(from, to);
+    const sellers = await getAllSellers();
+    const billable = (createdAt: string): number => {
+      const signup = createdAt.slice(0, 10);
+      if (signup > to) return 0;
+      return daysInRangeInclusive(signup > from ? signup : from, to);
+    };
+    expect(tiers.reduce((a, t) => a + t.subscribers, 0), 'subscriber count')
+      .toBe(sellers.filter((s) => billable(s.createdAt) > 0).length);
+    expect(tiers.reduce((a, t) => a + t.billableDays, 0), 'billable days')
+      .toBe(sellers.reduce((a, s) => a + billable(s.createdAt), 0));
   });
 });

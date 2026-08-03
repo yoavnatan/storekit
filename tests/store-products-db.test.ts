@@ -29,7 +29,7 @@ import {
   createProduct,
   decrementStock,
   deleteProduct,
-  getAllProducts,
+  getProductsByStoreIds,
   getEffectiveStock,
   getProductById,
   getProductBySlug,
@@ -93,7 +93,7 @@ describe('reading the catalog', () => {
   // §7.14: row counts and money totals both pass while every nested field imports empty. A
   // product with no variant matrix looks entirely healthy and simply cannot be bought per combo.
   it('does not silently flatten a variant product into a plain one', async () => {
-    const rows = await getAllProducts();
+    const rows = [...(await getProductsByStoreIds([KERAMIKA, TACHSHITIM])).values()].flat();
     expect(rows.filter((p) => p.variants?.length).length).toBeGreaterThan(0);
     expect(rows.filter((p) => p.variantStock && Object.keys(p.variantStock).length).length).toBeGreaterThan(0);
   });
@@ -132,10 +132,12 @@ describe('reading the catalog', () => {
     expect(await getProductsByStoreId('store-1')).toEqual([]);
   });
 
-  it('spans every store in getAllProducts', async () => {
-    const ids = (await getAllProducts()).map((p) => p.id);
-    expect(ids).toContain(AGARTAL);
-    expect(ids).toContain(OTHER_AGARTAL);
+  it('spans every requested store in one batch', async () => {
+    // `getAllProducts()` is gone (§3) — the batched read is the shape that replaced it, and this is
+    // the property that mattered: two stores' shelves in ONE statement, each under its own key.
+    const byStore = await getProductsByStoreIds([KERAMIKA, TACHSHITIM]);
+    expect(byStore.get(KERAMIKA)!.map((p) => p.id)).toContain(AGARTAL);
+    expect(byStore.get(TACHSHITIM)!.map((p) => p.id)).toContain(OTHER_AGARTAL);
   });
 });
 
