@@ -6,7 +6,7 @@ import {
   createAdminThread,
   deleteAdminThread,
   getAdminThreadById,
-  getAllAdminThreads,
+  getAdminThreadsPage,
   markAdminThreadReadByAdmin,
   replyToAdminThread,
   MAX_ADMIN_CONTENT_LEN,
@@ -15,6 +15,7 @@ import {
 import { createNotification, deleteNotificationsByRelatedIds } from '../../../lib/notifications.js';
 import { getSellerById } from '../../../lib/seller-auth.js';
 import { withTransaction, type Queryable } from '../../../lib/db.js';
+import { ADMIN_PAGE_SIZE } from '../../../lib/pagination.js';
 
 const json = { 'Content-Type': 'application/json' };
 
@@ -41,7 +42,14 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     if (!thread) return new Response(JSON.stringify({ error: 'Thread not found' }), { status: 404, headers: json });
     return new Response(JSON.stringify({ messages: thread.messages }), { headers: json });
   }
-  return new Response(JSON.stringify({ threads: await getAllAdminThreads() }), { headers: json });
+  // The newest page of threads, not all of them (§3, 2026-08-03). Its only caller is the Messages
+  // tab's poll, and it acts on exactly two kinds of thread: one already in the page's DOM that has
+  // a new message, and — on page 1 — one that is brand new. Both are, by definition, at the top of
+  // the recency order the moment they change, so a page of the most recently active threads is
+  // everything the poll can use. It used to fetch every system message on the platform, with every
+  // thread's full message array, on a timer.
+  const page = await getAdminThreadsPage({ sortCol: 'recent', unreadOnly: false }, 1, ADMIN_PAGE_SIZE);
+  return new Response(JSON.stringify({ threads: page.threads }), { headers: json });
 };
 
 export const POST: APIRoute = async ({ request, cookies }) => {

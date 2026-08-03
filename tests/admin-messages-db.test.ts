@@ -5,13 +5,17 @@ import {
   deleteAdminThread,
   getAdminThreadById,
   getAdminThreadsForSeller,
-  getAllAdminThreads,
+  getAdminThreadsPage,
   getUnreadAdminThreadIdsForSeller,
   markAdminThreadReadByAdmin,
   markAdminThreadReadBySeller,
   replyToAdminThread,
   DEFAULT_ADMIN_SUBJECT,
 } from '../src/lib/admin-messages.js';
+
+/** `getAllAdminThreads()` is gone (§3) — the paged reader replaced it. These assertions are about
+ *  the whole (tiny) set, so they ask for one page big enough to hold it. */
+const allThreads = () => getAdminThreadsPage({ sortCol: 'recent', unreadOnly: false }, 1, 1000);
 
 /**
  * Admin ↔ seller "system" threads, against a real Postgres — moved with `messages` and
@@ -74,7 +78,7 @@ describe('replying', () => {
     // Written as one INSERT … SELECT rather than read-then-write: a thread deleted between the
     // check and the insert would otherwise leave a reply hanging off nothing.
     expect(await replyToAdminThread('99999999-9999-4999-8999-0000000000ff', 'admin', 'x')).toBeNull();
-    expect(await getAllAdminThreads()).toEqual([]);
+    expect((await allThreads()).threads).toEqual([]);
   });
 
   it('answers null for a malformed thread id rather than raising', async () => {
@@ -97,7 +101,7 @@ describe('whose inbox is whose', () => {
     await createAdminThread(SELLER, 'שלי', 'א');
     await createAdminThread(OTHER_SELLER, 'של אחר', 'ב');
     expect((await getAdminThreadsForSeller(SELLER)).map((t) => t.subject)).toEqual(['שלי']);
-    expect(await getAllAdminThreads()).toHaveLength(2);
+    expect((await allThreads()).threads).toHaveLength(2);
   });
 
   it('orders threads by most recent activity, and a reply moves its thread up', async () => {
@@ -175,7 +179,7 @@ describe('deleting a thread', () => {
     await replyToAdminThread(opened.id, 'seller', 'ערעור');
     expect(await deleteAdminThread(opened.id)).toBe(true);
     expect(await getAdminThreadById(opened.id)).toBeNull();
-    expect(await getAllAdminThreads()).toEqual([]);
+    expect((await allThreads()).threads).toEqual([]);
   });
 
   it('reports false for a thread already gone, and leaves the others standing', async () => {

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { isUuid, query, rows, type Queryable } from './db.js';
+import type { AdminThreadQuery } from './admin-threads-query.js';
 
 // Admin<->seller messages are subject-based threads, exactly like the
 // buyer<->seller ones in messages.ts (CURRENT_TASK "סשן ד׳"): the admin opens
@@ -135,17 +136,93 @@ export function groupAdminThreads(messages: AdminMessage[]): AdminThread[] {
 }
 
 /**
- * Every system thread on the platform — the admin's inbox.
+ * ONE page of the admin's inbox, plus the unread total (§3, 2026-08-03).
  *
- * Unbounded on purpose for now, exactly as the file version was: this is the only screen that shows
- * them and it has no pagination yet. It joins `getAllOrders`/`getAllStores`/`getAllSellers`/
- * `getAllProducts` in the "returns everything" list of DB_MIGRATION_PLAN.md §3, which is scheduled
- * as one piece of work for all of them.
+ * This used to be `getAllAdminThreads()` — every system message on the platform, grouped in JS,
+ * then filtered, sorted and sliced to fifteen threads. The narrowing has to happen at THREAD
+ * level, not message level, which is why it runs in two statements rather than one: the first
+ * decides which thread ids belong on this page (filter, sort, limit, and the unread total that
+ * the tab badge shows), the second fetches those threads' messages, and `groupAdminThreads`
+ * assembles them exactly as before.
+ *
+ * The sort keys are the two the toolbar offers (`admin-threads-query.ts`): most recent activity,
+ * or unread-first-then-recent. `filterAndSortAdminThreads` stays as the pure twin — it is what
+ * `tests/admin-messages.test.ts` drives without a database.
  */
-export async function getAllAdminThreads(): Promise<AdminThread[]> {
-  const found = await rows<AdminMessageRow>(`${SELECT_ADMIN_MESSAGE} ${OLDEST_FIRST}`);
-  return groupAdminThreads(found.map(toAdminMessage));
+export interface AdminThreadsPage {
+  threads: AdminThread[];
+  /** Threads matching the filter, before the page slice. */
+  total: number;
+  /** Threads that exist at all, ignoring the filter — "no conversations yet" and "none match this
+   *  filter" are different screens, and a page slice cannot tell them apart. */
+  totalUnfiltered: number;
+  page: number;
+  totalPages: number;
+  /** Unread admin-side messages across EVERY thread, filtered or not — the tab's "(N)" badge,
+   *  which must not change because a filter is open. */
+  unreadForAdmin: number;
 }
+
+/** Thread identity, activity and unread counts, as one row per thread. `COALESCE(reply_to_id, id)`
+ *  is the grouping key here — unlike a single-thread lookup, this cannot use the index either way,
+ *  because it is asking about all of them. */
+const THREAD_ROLLUP = `
+  SELECT COALESCE(m.reply_to_id, m.id)                                        AS thread_id,
+         MAX(m.created_at)                                                    AS last_at,
+         COUNT(*) FILTER (WHERE m.from_role = 'seller' AND NOT m.read_by_admin) AS unread_admin
+    FROM admin_messages m
+   GROUP BY COALESCE(m.reply_to_id, m.id)`;
+
+export async function getAdminThreadsPage(
+  query: AdminThreadQuery,
+  page: number,
+  pageSize: number,
+): Promise<AdminThreadsPage> {
+  const unreadFirst = query.sortCol === 'unread';
+  // Two numbers over the WHOLE rollup: how many threads the filter leaves (the pager), and how
+  // many unread messages exist regardless of it (the tab badge, which must not move because a
+  // filter is open — the same rule the other tabs' "(N)" badges follow).
+  const totals = await rows<{ total: string | number; every: string | number; unread_total: string | number }>(
+    `WITH t AS (${THREAD_ROLLUP})
+     SELECT COUNT(*) FILTER (WHERE $1::boolean IS NOT TRUE OR unread_admin > 0) AS total,
+            COUNT(*)                                                            AS every,
+            COALESCE(SUM(unread_admin), 0)                                      AS unread_total
+       FROM t`,
+    [query.unreadOnly],
+  );
+  const total = Number(totals[0]?.total ?? 0);
+  const totalUnfiltered = Number(totals[0]?.every ?? 0);
+  const unreadForAdmin = Number(totals[0]?.unread_total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+
+  const ids = (await rows<{ thread_id: string }>(
+    `WITH t AS (${THREAD_ROLLUP})
+     SELECT thread_id FROM t
+      WHERE $1::boolean IS NOT TRUE OR unread_admin > 0
+      ORDER BY ${unreadFirst ? '(unread_admin > 0) DESC,' : ''} last_at DESC, thread_id
+      LIMIT $2 OFFSET $3`,
+    [query.unreadOnly, pageSize, (safePage - 1) * pageSize],
+  )).map((r) => r.thread_id);
+
+  if (!ids.length) return { threads: [], total, totalUnfiltered, page: safePage, totalPages, unreadForAdmin };
+
+  const found = await rows<AdminMessageRow>(
+    `${SELECT_ADMIN_MESSAGE} WHERE COALESCE(reply_to_id, id) = ANY($1::uuid[]) ${OLDEST_FIRST}`,
+    [ids],
+  );
+  // Grouped by the same function the single-thread reads use, then put back into the order the
+  // query decided — `groupAdminThreads` sorts by recency, which is only one of the two sorts.
+  const byId = new Map(groupAdminThreads(found.map(toAdminMessage)).map((t) => [t.id, t]));
+  const threads = ids.map((id) => byId.get(id)).filter((t): t is AdminThread => Boolean(t));
+  return { threads, total, totalUnfiltered, page: safePage, totalPages, unreadForAdmin };
+}
+
+// `getAllAdminThreads()` was DELETED here (§3, 2026-08-03) — every system message on the platform,
+// with no bound. Both of its callers now ask for a page: the dashboard render and the Messages
+// tab's poll, which is the same function with page 1 and the recency sort. An export with no
+// caller is an export with no test, which is why four of them went the same way when this module
+// moved to Postgres.
 
 export async function getAdminThreadsForSeller(sellerId: string): Promise<AdminThread[]> {
   if (!isUuid(sellerId)) return [];

@@ -207,18 +207,12 @@ export async function createMessage(
   return toMessage(written[0]!);
 }
 
-/** Every message this person sent, newest first — the buyer's inbox. */
-export async function getMessagesByBuyer(userId: string): Promise<Message[]> {
-  const found = await rows<MessageRow>(`${SELECT_MESSAGE} WHERE from_user_id = $1 ${NEWEST_FIRST}`, [userId]);
-  return found.map(toMessage);
-}
-
-/** Every message addressed to this seller, newest first — roots and replies both. */
-export async function getMessagesBySeller(sellerId: string): Promise<Message[]> {
-  if (!isUuid(sellerId)) return [];
-  const found = await rows<MessageRow>(`${SELECT_MESSAGE} WHERE to_seller_id = $1 ${NEWEST_FIRST}`, [sellerId]);
-  return found.map(toMessage);
-}
+// `getMessagesByBuyer` / `getMessagesBySeller` were DELETED here (§3, 2026-08-03). They returned
+// every message a person is party to, unbounded, and their only caller was the un-narrowed branch
+// of `GET /api/messages` — which had no client of its own and is gone with them (see that route
+// for why it was removed rather than paginated). Every surface that used to be served by them
+// asks a narrower question: `getThreadRootsBy*` for an inbox, `getRepliesForMessages` for a
+// thread's bubbles, `getUnreadThreadIdsFor*` for a badge.
 
 /** The root messages this person opened, newest first — the buyer's inbox groups by thread. */
 export async function getThreadRootsByBuyer(userId: string): Promise<Message[]> {

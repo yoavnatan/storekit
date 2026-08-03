@@ -4,8 +4,6 @@ import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 import { getSellerSession, getSellerById } from '../../lib/seller-auth.js';
 import {
   createMessage,
-  getMessagesByBuyer,
-  getMessagesBySeller,
   getMessageReplies,
   getMessageById,
   getUnreadThreadIdsForSeller,
@@ -50,13 +48,21 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     return new Response(JSON.stringify({ unreadIds }), { headers: json });
   }
 
-  const messages = role === 'seller'
-    ? await getMessagesBySeller(userId)
-    : await getMessagesByBuyer(userId);
-
-  return new Response(JSON.stringify({ messages }), {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  // ── The un-narrowed branch was REMOVED, not paginated (§3, decided 2026-08-03) ──
+  // `GET /api/messages` with no parameters returned every message one person is party to, with no
+  // limit. DB_MIGRATION_PLAN.md §8 left it alive on the chance that something outside the repo
+  // called it. It cannot: this endpoint authenticates by SESSION COOKIE and the platform has no
+  // token auth and no public API, so the hypothetical external caller has no way in. Every client
+  // in the repo asks `?repliesFor=` or `?unread=1`.
+  //
+  // Paginating it instead would have meant designing a cursor and a response shape for a consumer
+  // that does not exist — and an endpoint with no caller has no test, which is why four exports
+  // were deleted for the same reason when this module moved. It answers 400 rather than 404 so a
+  // caller that does turn up is told what to ask for.
+  return new Response(
+    JSON.stringify({ error: 'Specify repliesFor=<threadId> or unread=1' }),
+    { status: 400, headers: { 'Content-Type': 'application/json' } },
+  );
 };
 
 export const POST: APIRoute = async ({ request, cookies }) => {

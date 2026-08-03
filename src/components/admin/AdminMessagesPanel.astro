@@ -7,7 +7,6 @@ import AdminPager from './AdminPager.astro';
 
 interface Props {
   threads: AdminThread[]; // current page only — what actually renders as rows
-  allThreadsForSeed: AdminThread[]; // full unpaginated list — seeds the client's unread-badge tracking so it starts accurate even for threads on other pages
   sellers: Seller[];
   sortCol: AdminThreadSortCol;
   unreadOnly: boolean;
@@ -17,7 +16,7 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { threads, allThreadsForSeed, sellers, sortCol, unreadOnly, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+const { threads, sellers, sortCol, unreadOnly, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
 
 const sellerById = new Map(sellers.map((s) => [s.id, s]));
 
@@ -27,11 +26,15 @@ const sortLabels: Record<AdminThreadSortCol, string> = {
 };
 ---
 
+{/* `data-threads-seed` carries THIS page's threads. It used to carry every thread on the platform,
+    serialized into the HTML on every render (§3) — and it no longer needs to: the poll reads the
+    most recently ACTIVE page, and a thread only becomes interesting to it once it has a new
+    message, which puts it there by definition. */}
 <div
   id="admin-msg-i18n"
   data-page={page}
   data-sellers={JSON.stringify(sellers.map((s) => ({ id: s.id, name: s.name, email: s.email })))}
-  data-threads-seed={JSON.stringify(allThreadsForSeed.map((t) => ({ threadId: t.id, sellerId: t.sellerId, subject: t.subject, lastMessageId: t.lastMessage.id, unreadForAdmin: t.unreadForAdmin })))}
+  data-threads-seed={JSON.stringify(threads.map((t) => ({ threadId: t.id, sellerId: t.sellerId, subject: t.subject, lastMessageId: t.lastMessage.id, unreadForAdmin: t.unreadForAdmin })))}
   hidden
 ></div>
 

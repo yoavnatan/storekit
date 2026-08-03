@@ -151,3 +151,31 @@ describe('who may read a conversation', () => {
     expect((await post({ toStoreId: STORE, subject: 'ש', content: 'ת' })).status).toBe(401);
   });
 });
+
+describe('the un-narrowed GET is gone (§3, 2026-08-03)', () => {
+  // It returned every message a person is party to, with no limit, and had no client of its own.
+  // Removing rather than paginating it was the decision (see the route for why); what a test has
+  // to hold is that it now says what to ask for instead of answering with the whole inbox.
+  it('answers 400 and names the parameters it accepts', async () => {
+    session = SELLER;
+    const res = await get('');
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error?: string };
+    expect(body.error).toContain('repliesFor');
+    expect(body.error).toContain('unread');
+  });
+
+  it('still refuses an unauthenticated caller BEFORE saying anything about parameters', async () => {
+    // Order matters: 401 first. A 400 to a signed-out caller would confirm the endpoint exists and
+    // what it takes, which is not something an unauthenticated request has earned.
+    session = null;
+    expect((await get('')).status).toBe(401);
+    session = SELLER;
+  });
+
+  it('the narrowed branches still work', async () => {
+    session = SELLER;
+    expect((await get('?unread=1&role=seller')).status).toBe(200);
+    expect((await get('?repliesFor=99999999-9999-4999-8999-0000000000ff')).status).toBe(200);
+  });
+});

@@ -5,8 +5,6 @@ import {
   deleteMessageThread,
   getMessageById,
   getMessageReplies,
-  getMessagesByBuyer,
-  getMessagesBySeller,
   getRepliesForMessages,
   getStoreIdsWithUnreadMessages,
   getThreadRootsByBuyer,
@@ -152,7 +150,7 @@ describe('reading an inbox', () => {
   it('gives the seller their own mail and nobody else’s', async () => {
     await root();
     await root({ toSellerId: OTHER_SELLER, toStoreId: OTHER_STORE, subject: 'לאחר' });
-    const mine = await getMessagesBySeller(SELLER);
+    const mine = await getThreadRootsBySeller(SELLER);
     expect(mine).toHaveLength(1);
     expect(mine[0]!.subject).toBe('שאלה');
   });
@@ -182,9 +180,11 @@ describe('reading an inbox', () => {
     await query('UPDATE messages SET created_at = $1 WHERE id = $2', ['2026-01-01T10:00:00.000Z', first.id]);
     const second = await root({ subject: 'שני' });
     await reply(second.id);
+    // Roots only — a reply belongs to its thread, not to the inbox list. The un-narrowed reader
+    // that used to be asserted beside this (`getMessagesByBuyer`) is deleted: it returned every
+    // message a person is party to with no bound, and its only caller went with it (§3).
     expect((await getThreadRootsByBuyer(BUYER)).map((m) => m.id)).toEqual([second.id, first.id]);
-    // The un-narrowed read still includes replies — /api/messages?role=buyer relies on that.
-    expect(await getMessagesByBuyer(BUYER)).toHaveLength(2);
+    expect(await getMessageReplies(second.id)).toHaveLength(1);
   });
 
   it('returns a thread’s replies oldest first — the order the conversation was written in', async () => {
@@ -381,7 +381,7 @@ describe('deleting a thread', () => {
     const kept = await root({ subject: 'נשארת' });
     await reply(kept.id);
     await deleteMessageThread(doomed.id);
-    expect(await getMessagesBySeller(SELLER)).toHaveLength(1);
+    expect(await getThreadRootsBySeller(SELLER)).toHaveLength(1);
     expect((await getThreadRootsBySeller(SELLER))[0]!.id).toBe(kept.id);
   });
 });
