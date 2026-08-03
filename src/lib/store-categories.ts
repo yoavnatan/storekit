@@ -24,6 +24,7 @@
  */
 import crypto from 'node:crypto';
 import { firstRow, isUuid, query, rows, withTransaction, type Queryable } from './db.js';
+import { toSlug } from './url-base.js';
 
 /** Keeps the dashboard tree editor and the store page's drill-down filter both simple to build and to use. */
 export const MAX_CATEGORY_DEPTH = 3;
@@ -190,6 +191,64 @@ export function countProductsPerCategory(
 /** "ביגוד › גברים › חולצות" — for table cells, badges, breadcrumbs; not for matching. */
 export function categoryPath(categories: StoreCategory[], categoryId: string): string {
   return getAncestorChain(categories, categoryId).map((c) => c.name).join(' › ');
+}
+
+/**
+ * The category's identity IN A URL — `?category=נעליים`, not `?category=<uuid>`.
+ *
+ * A category page is a page we WANT ranked: "נעליים" inside a store is a real search someone makes,
+ * and it is the page that should answer it. A UUID carries no keyword, tells a person nothing about
+ * where a link goes, and changes if the row is ever recreated. The slug is the same `toSlug` store
+ * and product URLs use, so it keeps Hebrew for the same reason they do (url-base.ts) — the site's
+ * language is its strongest keyword signal.
+ *
+ * **Known limit, deliberately not engineered around:** two categories with the same NAME under
+ * different parents slug identically, and `findCategoryByParam` then takes the first in tree order.
+ * A duplicate name among SIBLINGS is refused by a database index (see this file's header), so this
+ * needs a store that has, say, "נעליים" under both "נשים" and "גברים" — and in that case the two
+ * chip links point at the same page. The id form still resolves, so nothing breaks and no link
+ * 404s; it is a ranking nicety lost in a rare shape, and the alternative (path-joined slugs) makes
+ * every URL longer for every store to fix it for a few.
+ */
+export function categorySlug(name: string): string {
+  return toSlug(name);
+}
+
+/**
+ * What actually goes in `?category=` — the slug, or the id when the name cannot produce one.
+ *
+ * **Never call `categorySlug` directly to build a URL.** `toSlug` keeps letters and digits, so a
+ * name made only of symbols or emoji slugs to the EMPTY STRING: "★★★", "👍" and "---" all come out
+ * as "". Built into a link that is `?category=` with nothing after it — a chip that silently shows
+ * the whole catalog, and a sitemap entry that hands Google a second URL for the store page under a
+ * query it will treat as its own address. A seller can name a category anything, so this is a
+ * shape the field allows, not a hypothetical.
+ *
+ * The id is the fallback because `findCategoryByParam` already resolves one: the URL loses its
+ * keyword, which a name of three stars never had, and keeps working.
+ */
+export function categoryUrlParam(category: { id: string; name: string }): string {
+  return categorySlug(category.name) || category.id;
+}
+
+/**
+ * Resolve a `?category=` value to a category, accepting EITHER its slug or its id.
+ *
+ * Both, and not just the slug, because ids are what the parameter used to be: links shared or
+ * bookmarked before category URLs became slugs, and the `data-category-id` the client filter still
+ * carries, must keep working. A slug is tried first — it is the form we publish.
+ */
+export function findCategoryByParam(
+  categories: StoreCategory[],
+  param: string,
+): StoreCategory | null {
+  if (!param) return null;
+  const wanted = categorySlug(param);
+  // Only match by slug when the PARAM has one. Without this guard `?category=★` slugs to "" and
+  // matches the first category whose name is also unsluggable — a wrong shelf, silently.
+  return (wanted ? categories.find((c) => categorySlug(c.name) === wanted) : undefined)
+    ?? categories.find((c) => c.id === param)
+    ?? null;
 }
 
 export function buildCategoryTree(categories: StoreCategory[]): CategoryNode[] {

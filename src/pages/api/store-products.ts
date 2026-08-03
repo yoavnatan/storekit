@@ -4,7 +4,7 @@ import { getStoreBySlugOrPrevious, isStoreVisible } from '../../lib/stores.js';
 import { getVisibleProductsByStoreId, toPublicProduct } from '../../lib/store-products.js';
 import { getPurchasedCountsByStoreSlug } from '../../lib/orders.js';
 import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
-import { getCategoriesByStoreId, resolveCategoryFilterIds } from '../../lib/store-categories.js';
+import { getCategoriesByStoreId, resolveCategoryFilterIds, findCategoryByParam } from '../../lib/store-categories.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -43,7 +43,11 @@ export const GET: APIRoute = async ({ url }) => {
     getPurchasedCountsByStoreSlug(store.slug),
     getVisibleProductsByStoreId(store.id),
   ]);
-  const categoryIds = category ? resolveCategoryFilterIds(categories, category) : undefined;
+  // By slug or by id — the page's crawlable chip links carry `?category=נעליים` while the client
+  // filter still passes the `data-category-id` it holds, and both have to land on the same shelf
+  // (store-categories.ts#findCategoryByParam).
+  const selected = category ? findCategoryByParam(categories, category) : null;
+  const categoryIds = selected ? resolveCategoryFilterIds(categories, selected.id) : undefined;
 
   // `sale` rides along so a "price: low to high" page orders by what the shopper would pay.
   const filtered = filterAndSortProducts(visibleProducts, { categoryIds, sort, q, purchasedUnits, sale: store.sale });

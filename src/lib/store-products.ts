@@ -649,6 +649,10 @@ export interface ProductRef {
   storeId: string;
   slug: string;
   createdAt: string;
+  /** Which category it hangs under — only so the sitemap can tell an EMPTY category from one worth
+   *  listing. One uuid per row on a query that is already reading two columns; the alternative was
+   *  a second full pass over the catalogue to count them. */
+  categoryId: string | null;
 }
 
 /**
@@ -667,8 +671,8 @@ export async function getVisibleProductRefsByStoreIds(storeIds: readonly string[
   const ids = [...new Set(storeIds.filter(isUuid))];
   const byStore = new Map<string, ProductRef[]>(ids.map((id) => [id, []]));
   const found = ids.length
-    ? await rows<{ store_id: string; slug: string; created_at: Date | string }>(
-        `SELECT p.store_id, p.slug, p.created_at
+    ? await rows<{ store_id: string; slug: string; created_at: Date | string; category_id: string | null }>(
+        `SELECT p.store_id, p.slug, p.created_at, p.category_id
            FROM store_products p
           WHERE p.store_id = ANY($1::uuid[]) AND NOT p.hidden AND NOT p.blocked
           ORDER BY p.created_at DESC, p.id`,
@@ -680,6 +684,7 @@ export async function getVisibleProductRefsByStoreIds(storeIds: readonly string[
       storeId: row.store_id,
       slug: row.slug,
       createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+      categoryId: row.category_id ?? null,
     });
   }
   return byStore;

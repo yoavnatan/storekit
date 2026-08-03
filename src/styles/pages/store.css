@@ -584,7 +584,13 @@ body:has(.site-header.is-stuck) .store-banner {
 /* Fill + border-color + weight carry the pressed state on their own. No shadow:
    at chip size 2px of blur is invisible, and a third signal for one state is
    exactly the decoration the elevation rule (base/tokens.css) rules out. */
-.category-chip[aria-pressed="true"] {
+/* Two attributes for one state, and both are needed: the chip is a <button> in the
+   mobile drawer and an <a href> in the crawlable filter row (2026-08-03), and
+   `aria-pressed` is not valid ARIA on a link — a link that IS the current view says
+   `aria-current="page"`. Missing this pair is what made the selected chip lose its
+   fill the moment the row became links. */
+.category-chip[aria-pressed="true"],
+.category-chip[aria-current="page"] {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: #fff;
@@ -597,7 +603,8 @@ body:has(.site-header.is-stuck) .store-banner {
   border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
 }
 
-.category-chip[aria-pressed="true"]:hover {
+.category-chip[aria-pressed="true"]:hover,
+.category-chip[aria-current="page"]:hover {
   background: color-mix(in srgb, var(--color-primary) 87%, #000);
   border-color: color-mix(in srgb, var(--color-primary) 87%, #000);
   color: #fff;
@@ -609,7 +616,9 @@ body:has(.site-header.is-stuck) .store-banner {
 .category-chip > svg { color: var(--color-muted); transition: color 0.13s; }
 .category-chip:hover > svg { color: var(--color-primary); }
 .category-chip[aria-pressed="true"] > svg,
-.category-chip[aria-pressed="true"]:hover > svg { color: inherit; }
+.category-chip[aria-current="page"] > svg,
+.category-chip[aria-pressed="true"]:hover > svg,
+.category-chip[aria-current="page"]:hover > svg { color: inherit; }
 
 /* Store-level chips get no icon — these two carry the same job instead: how many
    products sit behind the chip, and whether it drills into subcategories. */
@@ -620,7 +629,8 @@ body:has(.site-header.is-stuck) .store-banner {
   font-variant-numeric: tabular-nums;
 }
 .category-chip:hover > .category-chip__count { color: var(--color-text); }
-.category-chip[aria-pressed="true"] > .category-chip__count {
+.category-chip[aria-pressed="true"] > .category-chip__count,
+.category-chip[aria-current="page"] > .category-chip__count {
   color: #fff;
   opacity: 0.75;
 }
