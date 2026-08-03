@@ -5,7 +5,8 @@ import type { Order } from '../src/lib/orders.js';
 import { countsAsRevenue } from '../src/lib/orders.js';
 import { query } from '../src/lib/db.js';
 import { getAdminOrdersPage } from '../src/lib/orders.js';
-import { getAllStores } from '../src/lib/stores.js';
+import { getAllStores, getStoresWithFeedUrl } from '../src/lib/stores.js';
+import { JOBS } from '../src/lib/jobs/registry.js';
 import { getAllSellers, getSubscriptionAccrual } from '../src/lib/seller-auth.js';
 import { getProductCountsByStore, getProductsByStoreIds, isProductVisible } from '../src/lib/store-products.js';
 import { getCampaignsInRange, getCampaignTotals, campaignTotalsOf } from '../src/lib/ad-campaigns.js';
@@ -736,5 +737,74 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
       .toBe(sellers.filter((s) => billable(s.createdAt) > 0).length);
     expect(tiers.reduce((a, t) => a + t.billableDays, 0), 'billable days')
       .toBe(sellers.reduce((a, s) => a + billable(s.createdAt), 0));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. §8 stage 4a — nothing the SCHEDULER runs may move money or stock.
+//
+// Three jobs now run on a timer, with nobody watching (DB_MIGRATION_PLAN.md §8, migration 0007).
+// Two of them are allowed to write: the campaign sweep flips campaign statuses, and the feed pull
+// sets product stock from a seller's external system. Neither has any business changing an amount.
+//
+// The distinction this section pins is precisely the one an unattended job blurs. A sweep that
+// paused a campaign is doing its job; a sweep that also re-budgeted it, or archived it instead of
+// pausing it, is destroying a number the seller committed and the owner reports — and it would do
+// so on a timer, quietly, at every store at once. The same for stock: no job may move a unit that
+// no feed asked to move.
+//
+// The double-run half of the standing rule (a job run twice = a job run once) is per-job and lives
+// in `tests/jobs-scheduler.test.ts`; what belongs here is the cross-surface statement.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('§8 — the scheduled jobs move statuses, never amounts', () => {
+  interface Ledger { orders: number; gmv: number; campaigns: number; budget: number; stock: number }
+
+  async function ledger(): Promise<Ledger> {
+    const totals = await getPlatformOrderTotals();
+    // Every campaign row, archived or not: the sweep is allowed to archive a finished campaign, and
+    // an archive that quietly dropped the row (or its budget) would be invisible to a live-only count.
+    const [money] = (await query<{ campaigns: number; budget: number }>(
+      'SELECT COUNT(*)::bigint AS campaigns, COALESCE(SUM(monthly_budget_agorot), 0)::bigint AS budget FROM ad_campaigns',
+    )).rows;
+    const [inventory] = (await query<{ stock: number }>(
+      'SELECT COALESCE(SUM(stock), 0)::bigint AS stock FROM store_products',
+    )).rows;
+    return {
+      orders: totals.totalOrders, gmv: totals.gmvAgorot,
+      campaigns: money!.campaigns, budget: money!.budget, stock: inventory!.stock,
+    };
+  }
+
+  it('a full pass over every job leaves the platform totals exactly where they were', async () => {
+    // The feed pull is the one job that reaches somebody else's server, and no store in the fixture
+    // has a feed URL — so it is a genuine no-op here rather than one arranged by the test. Asserting
+    // that keeps it honest: the day a fixture store gains a feed URL, this says so instead of
+    // silently making an outbound request from the test suite.
+    expect(await getStoresWithFeedUrl()).toEqual([]);
+
+    const before = await ledger();
+    for (const job of JOBS) await job.run();
+    const afterOnce = await ledger();
+    // Twice, because the lease reduces double-runs and does not rule them out. A job that moved a
+    // number by a little on each pass would look stable in a single-run test and drift in production.
+    for (const job of JOBS) await job.run();
+    const afterTwice = await ledger();
+
+    expect(afterOnce, 'after one pass').toEqual(before);
+    expect(afterTwice, 'after a second pass').toEqual(before);
+  });
+
+  it('the sweep may change a campaign\'s status and nothing else about it', async () => {
+    const columns = 'id, store_id, scope, platform, monthly_budget_agorot, duration_days, created_at';
+    const snapshot = async (): Promise<string> => JSON.stringify(
+      (await query(`SELECT ${columns} FROM ad_campaigns ORDER BY id`)).rows,
+    );
+
+    const before = await snapshot();
+    await JOBS.find((j) => j.name === 'campaign-sweep')!.run();
+    // Status, pausedReason, pausedAt and archivedAt are deliberately NOT in the column list — those
+    // are what the sweep exists to write. Everything the seller decided when they launched is.
+    expect(await snapshot()).toBe(before);
   });
 });

@@ -11,6 +11,7 @@ import { getSellerSession } from './lib/seller-auth.js';
 import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/stores.js';
 import { resolveCustomDomainRewrite, isUnclaimedCustomHost } from './lib/custom-domain.js';
 import { getProductBySlug } from './lib/store-products.js';
+import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
 
 // Stores live at the platform ROOT now — a store home is `/<slug>` and a product page is
 // `/<slug>/<product>` (no `/store/` prefix). So we can't tell a store path from a real platform
@@ -45,6 +46,12 @@ function resolveVisitorId(cookies: AstroCookies): string {
 // logError() directly, the same way checkout.ts does, so the log entry
 // carries a real message/stack instead of a content-free "unhandled 500".
 export const onRequest = defineMiddleware(async (context, next) => {
+  // The background scheduler's ignition (lib/jobs/scheduler.ts, DB_MIGRATION_PLAN.md §8 stage 4a).
+  // Astro's node adapter exposes no "server started" hook, so the first request this process
+  // handles is the earliest point that is guaranteed to run exactly once in a process that is
+  // actually serving. After that first call it is a single comparison and returns; it starts no
+  // work here and awaits nothing, so it cannot add latency to the request it rides in on.
+  ensureSchedulerStarted();
   try {
     const isGet = context.request.method === 'GET';
     const reqUrl = new URL(context.request.url);

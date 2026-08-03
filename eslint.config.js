@@ -135,6 +135,12 @@ export default tseslint.config(
       // refuse cleartext has to contain a cleartext URL to refuse.
       'sonarjs/no-clear-text-protocols': 'off',
 
+      // Exactly the same shape one rule further, and for the SSRF guard specifically: the literal
+      // addresses in `tests/feed-fetch-ssrf.test.ts` ARE the subject — 169.254.169.254 is the cloud
+      // metadata endpoint the guard exists to refuse, and ::ffff:127.0.0.1 is the spelling a
+      // hand-rolled check forgets. Naming them is the test; there is nothing to configure instead.
+      'sonarjs/no-hardcoded-ip': 'off',
+
       // tests/form-fallback-guard.test.ts runs the component's own `<script is:inline>` body
       // through `new Function`, which is the only way to test the shipped code rather than a
       // copy of it. The input is a file read off disk at test time, not anything a request reaches.

@@ -77,6 +77,30 @@ export function guessMapping(headers: string[], saved?: Record<string, MappableK
   });
 }
 
+/**
+ * The saved mapping and NOTHING else — the same shape, with the synonym guess removed.
+ *
+ * **Why the unattended pull cannot use `guessMapping` (2026-08-03, stage 4a).** The guess is correct
+ * for a human: they see the result in a preview and confirm it before anything is written. A timer
+ * sees nothing. And the saved record only lists the columns the seller mapped — a column they chose
+ * to IGNORE is simply absent from it, indistinguishable from one that did not exist yet. So under
+ * `guessMapping` the fallback fires for both, and the remote file gains a say it was never given:
+ * a supplier adding a `Price` column to their export would have the platform start rewriting that
+ * store's prices, every hour, with nobody in the loop. Same for a column the seller deliberately
+ * ignored — it would come back on its own.
+ *
+ * A new column is a change for the seller to look at in the panel, not one a schedule adopts.
+ */
+export function confirmedMapping(headers: string[], saved?: Record<string, MappableKey>): MappingEntry[] {
+  const used = new Set<MappableKey>();
+  return headers.map((source): MappingEntry => {
+    let key: MappableKey | null = saved?.[source] ?? saved?.[normalizeHeader(source)] ?? null;
+    if (key && used.has(key)) key = null;
+    if (key) used.add(key);
+    return { source, key };
+  });
+}
+
 export interface MappingStatus {
   mapped: MappableKey[];
   /** A matcher column — without it every row is treated as brand-new (creates duplicates on the next
