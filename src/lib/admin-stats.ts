@@ -1,20 +1,28 @@
+/**
+ * The admin dashboard's PURE arithmetic — the half of §3 that did not become a query.
+ *
+ * Everything here takes its data as a parameter, stays synchronous, and is testable without a
+ * database. That is deliberate and it is the rule the whole of §3 was decided by: a `GROUP BY`
+ * written as a `for` loop belongs in the database (`order-reporting.ts`,
+ * `store-products.ts#getProductCountsByStore`), and everything else belongs here, unchanged.
+ *
+ * What left this module on 2026-08-03: `getStoreRevenueMap` (a group-by over every order),
+ * `getProductsByStoreMap` (the whole catalogue, read to produce counts) and the order half of
+ * `getPlatformOverview`. What stayed: the shape of a seller card, the shape of a store row, the
+ * search/sort/filter predicates, and `orderNetForStore` — which is still the definition the SQL
+ * side is written FROM.
+ */
 import { storeLifecycle, type StoreLifecycle } from './store-status.js';
 import type { Seller } from './seller-auth.js';
 import type { Store } from './stores.js';
 import type { Order } from './orders.js';
+import type { StoreProduct, StoreProductCounts } from './store-products.js';
+import { EMPTY_STORE_REVENUE, type StoreRevenue } from './order-reporting.js';
 import { countsAsRevenue } from './orders.js';
-import { getAllProducts, type StoreProduct } from './store-products.js';
 import { businessMonthKey } from './business-day.js';
 import { isDemoStore } from './demo-stores.js';
 
-/** Both integer agorot (orders.ts) — these are SUMS, which is exactly the side of the boundary the
- *  unit flip was for. A caller that shows one renders it with `money.ts#formatAgorot`. */
-export interface StoreRevenue {
-  totalRevenueAgorot: number; // all-time, paid orders only, net of any seller-applied discount
-  monthRevenueAgorot: number; // current calendar month, same basis
-}
-
-const EMPTY_REVENUE: StoreRevenue = { totalRevenueAgorot: 0, monthRevenueAgorot: 0 };
+export type { StoreRevenue };
 
 // Net of any discount the seller later applied on that store's slice of the
 // order (see orders.ts's StoreSubtotal.discount) — subtotal alone would
@@ -53,19 +61,21 @@ export function orderNetTotal(order: Order): number {
   return total;
 }
 
-// One pass over all orders, keyed by storeSlug — callers (getSellerCards/
-// getStoreRows) look up per-store, then sum across a seller's own stores for
-// the seller-level total. Reporting only (see AI_INSTRUCTIONS.md → payment
-// architecture) — mirrors getPlatformOverview's paid-orders-only revenue rule.
-export function getStoreRevenueMap(orders: Order[]): Map<string, StoreRevenue> {
+/**
+ * The pure twin of `order-reporting.ts#getStoreRevenueBySlug` — the same group-by, over orders the
+ * caller already holds.
+ *
+ * It is no longer on the admin render path (that is the query), and it is kept for the same reason
+ * `filterAndSortOrders` and `selectMoneyEvents` are kept beside theirs: it is what makes the rule
+ * checkable without a database, and `tests/reporting-invariants.test.ts` runs the two over the same
+ * rows and requires the same map. `monthKey` is a parameter rather than `new Date()` inside so both
+ * routes are asked about the same month.
+ */
+export function getStoreRevenueMap(orders: Order[], monthKey: string): Map<string, StoreRevenue> {
   const map = new Map<string, StoreRevenue>();
-  // "This month" on the BUSINESS calendar (business-day.ts) — the same definition
-  // the performance tab buckets by. These were two different months: this read the
-  // server's local calendar, the performance tab read UTC.
-  const curMonth = businessMonthKey(new Date());
   for (const order of orders) {
     if (!countsAsRevenue(order)) continue;
-    const isThisMonth = businessMonthKey(new Date(order.createdAt)) === curMonth;
+    const isThisMonth = businessMonthKey(new Date(order.createdAt)) === monthKey;
     for (const storeSlug of Object.keys(order.storeSubtotals ?? {})) {
       const net = orderNetForStore(order, storeSlug);
       const entry = map.get(storeSlug) ?? { totalRevenueAgorot: 0, monthRevenueAgorot: 0 };
@@ -102,16 +112,31 @@ export interface PlatformOverview {
   gmvAgorot: number;
 }
 
-export function getPlatformOverview(sellers: Seller[], stores: Store[], orders: Order[]): PlatformOverview {
+/** The roster half of the Overview card. The three ORDER figures are a query
+ *  (`order-reporting.ts#getPlatformOrderTotals`) and are merged in by the caller — this is what is
+ *  left once the part that had to scan every order stopped being arithmetic over an array. */
+export function getStoreOverview(totalSellers: number, stores: Store[]): Pick<PlatformOverview, 'totalSellers' | 'totalStores' | 'demoStores'> {
+  const realStores = stores.filter((s) => !isDemoStore(s));
+  return {
+    totalSellers,
+    totalStores: realStores.length,
+    demoStores: stores.length - realStores.length,
+  };
+}
+
+/**
+ * The pure twin of `getPlatformOrderTotals`, over orders the caller already holds.
+ *
+ * Same arrangement as `getStoreRevenueMap` above: off the render path, kept because it is what
+ * `tests/reporting-invariants.test.ts` checks the query against, and because `reconcile.ts` reads
+ * it as one of its two independent routes to the same number.
+ */
+export function getOrderTotals(orders: Order[]): Pick<PlatformOverview, 'totalOrders' | 'paidOrders' | 'gmvAgorot'> {
   // Reporting only (split-payment architecture — see AI_INSTRUCTIONS.md): only
   // orders the processor confirmed as paid AND that were not cancelled count as
   // revenue (countsAsRevenue is the single definition — see orders.ts).
   const paid = orders.filter(countsAsRevenue);
-  const realStores = stores.filter((s) => !isDemoStore(s));
   return {
-    totalSellers: sellers.length,
-    totalStores: realStores.length,
-    demoStores: stores.length - realStores.length,
     totalOrders: orders.length,
     paidOrders: paid.length,
     // Summed through orderNetTotal, not `o.totalAmount`: the latter includes
@@ -121,30 +146,28 @@ export function getPlatformOverview(sellers: Seller[], stores: Store[], orders: 
   };
 }
 
-// One read of the whole catalog, grouped by store — callers pass the resulting
-// map into getSellerCards/getStoresNeedingAttention instead of each querying per
-// store. Carries the full product list (not just a count) so the sellers tab can
-// also surface a per-product "block" toggle (see AdminSellersPanel.astro) without
-// a second read. Inherits getAllProducts' open debt: it fetches every product in
-// the platform (§3), and pages when its neighbours do.
-export async function getProductsByStoreMap(): Promise<Map<string, StoreProduct[]>> {
-  const map = new Map<string, StoreProduct[]>();
-  for (const product of await getAllProducts()) {
-    const list = map.get(product.storeId) ?? [];
-    list.push(product);
-    map.set(product.storeId, list);
-  }
-  return map;
-}
-
 export interface SellerCardData {
   seller: Seller;
-  stores: Array<{ store: Store; products: StoreProduct[]; revenue: StoreRevenue }>;
+  stores: Array<{ store: Store; products: StoreProduct[]; productCount: number; revenue: StoreRevenue }>;
   totalProducts: number;
   revenue: StoreRevenue; // summed across the seller's own stores
 }
 
-export function getSellerCards(sellers: Seller[], stores: Store[], productsByStore: Map<string, StoreProduct[]>, revenueByStore: Map<string, StoreRevenue>): SellerCardData[] {
+/**
+ * Cards carry a product COUNT, never a product list — the count is one `GROUP BY` over the whole
+ * platform (§3), where this used to read the entire catalogue on every dashboard load.
+ *
+ * The count is its own field for a reason: it used to be `products.length`, so once the rows were
+ * fetched for only the rendered page, every other seller would have reported zero products — a
+ * wrong number with no error anywhere. `attachProducts` below is what fills the list in, for the
+ * page being rendered and nothing else.
+ */
+export function getSellerCards(
+  sellers: Seller[],
+  stores: Store[],
+  countsByStore: ReadonlyMap<string, StoreProductCounts>,
+  revenueByStore: ReadonlyMap<string, StoreRevenue>,
+): SellerCardData[] {
   const storesBySeller = new Map<string, Store[]>();
   for (const store of stores) {
     const list = storesBySeller.get(store.sellerId) ?? [];
@@ -156,13 +179,14 @@ export function getSellerCards(sellers: Seller[], stores: Store[], productsBySto
     .map((seller) => {
       const sellerStores = (storesBySeller.get(seller.id) ?? []).map((store) => ({
         store,
-        products: productsByStore.get(store.id) ?? [],
-        revenue: revenueByStore.get(store.slug) ?? EMPTY_REVENUE,
+        products: [] as StoreProduct[],
+        productCount: countsByStore.get(store.id)?.total ?? 0,
+        revenue: revenueByStore.get(store.slug) ?? EMPTY_STORE_REVENUE,
       }));
       return {
         seller,
         stores: sellerStores,
-        totalProducts: sellerStores.reduce((sum, s) => sum + s.products.length, 0),
+        totalProducts: sellerStores.reduce((sum, s) => sum + s.productCount, 0),
         revenue: {
           totalRevenueAgorot: sellerStores.reduce((sum, s) => sum + s.revenue.totalRevenueAgorot, 0),
           monthRevenueAgorot: sellerStores.reduce((sum, s) => sum + s.revenue.monthRevenueAgorot, 0),
@@ -170,6 +194,16 @@ export function getSellerCards(sellers: Seller[], stores: Store[], productsBySto
       };
     })
     .sort((a, b) => new Date(b.seller.createdAt).getTime() - new Date(a.seller.createdAt).getTime());
+}
+
+/** Fill in the product rows for the cards actually being rendered. The per-product block toggle
+ *  inside an expanded card is the only thing on this screen that needs a product ROW; everything
+ *  else reads `productCount`, which the cards already carry for every seller. */
+export function attachProducts(cards: SellerCardData[], productsByStore: ReadonlyMap<string, StoreProduct[]>): SellerCardData[] {
+  return cards.map((card) => ({
+    ...card,
+    stores: card.stores.map((s) => ({ ...s, products: productsByStore.get(s.store.id) ?? [] })),
+  }));
 }
 
 // Informational only — never written back to the Store record and never
@@ -209,17 +243,17 @@ export interface StoreRow {
 export function getStoreRows(
   stores: Store[],
   sellers: Seller[],
-  productsByStore: Map<string, StoreProduct[]>,
-  revenueByStore: Map<string, StoreRevenue>,
-  openOrdersByStore: Map<string, number> = new Map(),
+  countsByStore: ReadonlyMap<string, StoreProductCounts>,
+  revenueByStore: ReadonlyMap<string, StoreRevenue>,
+  openOrdersByStore: ReadonlyMap<string, number> = new Map(),
 ): StoreRow[] {
   const sellerById = new Map(sellers.map((s) => [s.id, s]));
   return stores
     .map((store) => ({
       store,
       seller: sellerById.get(store.sellerId),
-      productCount: productsByStore.get(store.id)?.length ?? 0,
-      revenue: revenueByStore.get(store.slug) ?? EMPTY_REVENUE,
+      productCount: countsByStore.get(store.id)?.total ?? 0,
+      revenue: revenueByStore.get(store.slug) ?? EMPTY_STORE_REVENUE,
       openOrders: openOrdersByStore.get(store.slug) ?? 0,
     }))
     .sort((a, b) => a.store.name.localeCompare(b.store.name, 'he'));
@@ -349,11 +383,11 @@ export function parseStoreQuery(sp: URLSearchParams): AdminStoreQuery {
   return { q: (sp.get('stq') ?? '').trim(), sortCol, sortDir, state };
 }
 
-export function getStoresNeedingAttention(stores: Store[], sellers: Seller[], productsByStore: Map<string, StoreProduct[]>): AttentionEntry[] {
+export function getStoresNeedingAttention(stores: Store[], sellers: Seller[], countsByStore: ReadonlyMap<string, StoreProductCounts>): AttentionEntry[] {
   const sellerById = new Map(sellers.map((s) => [s.id, s]));
   return stores
     .map((store) => {
-      const productCount = productsByStore.get(store.id)?.length ?? 0;
+      const productCount = countsByStore.get(store.id)?.total ?? 0;
       const reasons = attentionReasons(store, productCount);
       if (reasons.length === 0) return null;
       return { store, seller: sellerById.get(store.sellerId), reasons };

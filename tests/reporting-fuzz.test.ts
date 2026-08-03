@@ -2,16 +2,21 @@ import { describe, it, expect } from 'vitest';
 import type { Order } from '../src/lib/orders.js';
 import { countsAsRevenue } from '../src/lib/orders.js';
 import { buildPerformanceSummary, buildProductPerformance, pickGranularity } from '../src/lib/seller-performance.js';
-import { buildPlatformPerformance } from '../src/lib/platform-performance.js';
+import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
 // Traffic is an input to the reporting builders now; every property asserted below is about money
 // and order counts, so these pass none. See platform-performance.test.ts for why that is a gain.
 import { EMPTY_VIEW_STATS, type StoreViewStats } from '../src/lib/store-pageviews.js';
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
 const NO_VIEWS = new Map<string, StoreViewStats>();
-import { getPlatformOverview, getStoreRevenueMap, orderNetTotal } from '../src/lib/admin-stats.js';
+import { getOrderTotals, getStoreRevenueMap, orderNetTotal } from '../src/lib/admin-stats.js';
 import { reconcileOrders } from '../src/lib/reconcile.js';
 import { toAgorot } from '../src/lib/money.js';
 import { businessDayISO } from '../src/lib/business-day.js';
+
+/** The business month `getStoreRevenueMap`'s month column is asked about. These assertions are
+ *  about the ALL-TIME column, so the month is a constant that no clock decides. */
+const MONTH = '2026-01';
+
 
 /**
  * Property-based fuzzing over the reporting layer.
@@ -176,8 +181,8 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
         expect(buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, FROM, TO, 'day').totalRevenueAgorot, `seed ${seed} / ${slug}`)
           .toBe(buildPerformanceSummary(live, EMPTY_VIEW_STATS, slug, FROM, TO, 'day').totalRevenueAgorot);
       }
-      expect(getPlatformOverview([], [], orders).gmvAgorot, `seed ${seed} overview`)
-        .toBe(getPlatformOverview([], [], live).gmvAgorot);
+      expect(getOrderTotals(orders).gmvAgorot, `seed ${seed} overview`)
+        .toBe(getOrderTotals(live).gmvAgorot);
     }
   });
 
@@ -196,7 +201,7 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
   it('the platform total always equals the sum of the seller tabs', () => {
     for (const seed of SEEDS) {
       const orders = makeBatch(seed, 25);
-      const perf = buildPlatformPerformance(orders, STORES.map((slug) => ({ id: slug, slug, name: slug })), NO_VIEWS, FROM, TO, 'day');
+      const perf = buildPlatformPerformance(buildPlatformSales(orders, STORES, FROM, TO, 'day'), STORES.map((slug) => ({ id: slug, slug, name: slug })), NO_VIEWS, FROM, TO, 'day');
       const sellerSum = STORES.reduce(
         (a, slug) => a + buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, FROM, TO, 'day').totalRevenueAgorot, 0,
       );
@@ -208,8 +213,8 @@ describe('reporting survives arbitrary orders', { timeout: 120_000 }, () => {
   it('the admin GMV always equals the sum of the per-store rows', () => {
     for (const seed of SEEDS) {
       const orders = makeBatch(seed, 25);
-      const rowSum = ([...getStoreRevenueMap(orders).values()].reduce((a, r) => a + r.totalRevenueAgorot, 0));
-      expect(getPlatformOverview([], [], orders).gmvAgorot, `seed ${seed}`).toBe(rowSum);
+      const rowSum = ([...getStoreRevenueMap(orders, MONTH).values()].reduce((a, r) => a + r.totalRevenueAgorot, 0));
+      expect(getOrderTotals(orders).gmvAgorot, `seed ${seed}`).toBe(rowSum);
     }
   });
 

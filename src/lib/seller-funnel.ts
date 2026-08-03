@@ -1,7 +1,4 @@
-import { getAllSellers } from './seller-auth.js';
-import { getAllStores } from './stores.js';
-import { getAllProducts } from './store-products.js';
-import { getAllOrders } from './orders.js';
+import { firstRow } from './db.js';
 import { getLifetimeEventSessions } from './analytics.js';
 
 // The SELLER onboarding funnel — a lifetime, cumulative snapshot (NOT windowed
@@ -57,13 +54,38 @@ export function buildSellerFunnel(
   return { registerViews, registered: sellers.length, withStore, withProduct, withSale };
 }
 
-/** I/O wrapper — pulls the current records + lifetime register-page views. */
+/**
+ * The four bottom stages as four counts, in one statement (§3, 2026-08-03).
+ *
+ * This used to read every seller, every store, every product and every order on the platform to
+ * produce five integers. Each stage is a `COUNT(DISTINCT seller)` over an `EXISTS`, which is what
+ * `buildSellerFunnel` above expresses as three `Set`s and a loop — kept, because it is the
+ * definition this statement was written from and `tests/seller-funnel.test.ts` can drive it with
+ * no database at all. `tests/reporting-invariants.test.ts` requires the two to agree.
+ *
+ * `deleted_at IS NULL` matches what `getAllStores` returns — a store the seller deleted never
+ * counted toward "opened a store", and the JS this replaces was handed the same filtered list.
+ */
 export async function getSellerFunnel(): Promise<SellerFunnel> {
-  return buildSellerFunnel(
-    await getAllSellers(),
-    await getAllStores(),
-    await getAllProducts(),
-    await getAllOrders(),
-    await getLifetimeEventSessions('seller_register_view'),
-  );
+  const [counts, registerViews] = await Promise.all([
+    firstRow<{ registered: string | number; with_store: string | number; with_product: string | number; with_sale: string | number }>(
+      `SELECT
+         (SELECT COUNT(*) FROM sellers) AS registered,
+         COUNT(DISTINCT s.seller_id)                                            AS with_store,
+         COUNT(DISTINCT s.seller_id) FILTER (WHERE EXISTS (
+           SELECT 1 FROM store_products p WHERE p.store_id = s.id))             AS with_product,
+         COUNT(DISTINCT s.seller_id) FILTER (WHERE EXISTS (
+           SELECT 1 FROM order_items it WHERE it.store_slug = s.slug::text))     AS with_sale
+       FROM stores s
+      WHERE s.deleted_at IS NULL`,
+    ),
+    getLifetimeEventSessions('seller_register_view'),
+  ]);
+  return {
+    registerViews,
+    registered: Number(counts?.registered ?? 0),
+    withStore: Number(counts?.with_store ?? 0),
+    withProduct: Number(counts?.with_product ?? 0),
+    withSale: Number(counts?.with_sale ?? 0),
+  };
 }

@@ -42,7 +42,7 @@ function makeSellerCard(overrides: Partial<SellerCardData> = {}, storeOverrides:
   const seller = makeSeller(overrides.seller);
   return {
     seller,
-    stores: [{ store: makeStore({ sellerId: seller.id, ...storeOverrides }), products: [], revenue: { totalRevenueAgorot: 0, monthRevenueAgorot: 0 } }],
+    stores: [{ store: makeStore({ sellerId: seller.id, ...storeOverrides }), products: [], productCount: 0, revenue: { totalRevenueAgorot: 0, monthRevenueAgorot: 0 } }],
     totalProducts: 0,
     revenue: { totalRevenueAgorot: 0, monthRevenueAgorot: 0 },
     ...overrides,

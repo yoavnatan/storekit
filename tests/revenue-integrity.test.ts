@@ -3,9 +3,14 @@ import { countsAsRevenue, purchasedCountsFrom } from '../src/lib/orders.js';
 import { buildPerformanceSummary } from '../src/lib/seller-performance.js';
 // Traffic is an input now; every assertion here is about revenue, so it asserts against none.
 import { EMPTY_VIEW_STATS } from '../src/lib/store-pageviews.js';
-import { getPlatformOverview, getStoreRevenueMap } from '../src/lib/admin-stats.js';
+import { getOrderTotals, getStoreRevenueMap } from '../src/lib/admin-stats.js';
 import fs from 'node:fs';
 import path from 'node:path';
+
+/** The business month `getStoreRevenueMap`'s month column is asked about. These assertions are
+ *  about the ALL-TIME column, so the month is a constant that no clock decides. */
+const MONTH = '2026-01';
+
 
 type AnyOrder = Parameters<typeof countsAsRevenue>[0];
 
@@ -61,7 +66,7 @@ describe('a cancelled order leaves every revenue surface', () => {
   it('is excluded from the admin platform overview', () => {
     // `gmv` is the money figure; `totalOrders` is deliberately every row whatever
     // its state, so only paidOrders/gmv may shed the cancelled one.
-    const overview = getPlatformOverview([], [], [live, cancelled]);
+    const overview = getOrderTotals([live, cancelled]);
     expect(overview.gmvAgorot).toBe(100); // not 350
     expect(overview.paidOrders).toBe(1);
   });
@@ -71,7 +76,7 @@ describe('a cancelled order leaves every revenue surface', () => {
     // GMV/commission split both read this map.
     // Per-store revenue is the store's NET (its subtotal less its own discount),
     // not the order's gross total — so the live order contributes its subtotal.
-    const map = getStoreRevenueMap([live, cancelled]);
+    const map = getStoreRevenueMap([live, cancelled], MONTH);
     expect(map.get(STORE)?.totalRevenueAgorot ?? 0).toBe(100); // not 350
   });
 });
@@ -102,8 +107,8 @@ describe('a legacy order row without storeSubtotals cannot take a reporting surf
   const live = baseOrder('o1', 100);
 
   it('the admin overview and per-store map skip it and still report the live order', () => {
-    expect(getPlatformOverview([], [], [live, legacy]).gmvAgorot).toBe(100);
-    expect(getStoreRevenueMap([live, legacy]).get(STORE)?.totalRevenueAgorot ?? 0).toBe(100);
+    expect(getOrderTotals([live, legacy]).gmvAgorot).toBe(100);
+    expect(getStoreRevenueMap([live, legacy], MONTH).get(STORE)?.totalRevenueAgorot ?? 0).toBe(100);
   });
 
   it('the seller Performance tab skips it', () => {
