@@ -1,10 +1,15 @@
 import type { Store } from './stores.js';
-import type { StoreProduct } from './store-products.js';
+
 import { businessDayISO } from './business-day.js';
 
 export interface FeedStore {
   store: Store;
-  products: StoreProduct[];
+  /** The thumbnails this store's card draws — already narrowed to the few a card can show
+   *  (`store-products.ts#getStorePreviews`). This used to be the store's entire visible catalogue,
+   *  of which the card read one field of the first three or four rows; on a network that was most
+   *  of the homepage's time-to-first-byte. This module never reads it either way — it decides which
+   *  STORES go where — so it only has to carry it through to the shelf. */
+  previewImages: string[];
 }
 
 export interface CategoryShelf {

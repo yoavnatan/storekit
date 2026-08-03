@@ -512,6 +512,22 @@ export async function getStoresByIds(storeIds: readonly string[]): Promise<Store
 }
 
 
+/**
+ * The stores behind a list of slugs, in ONE statement, returned in the order the slugs were given.
+ *
+ * For a caller holding ranked slugs — search results — where looking each one up in a loop is 2N
+ * round trips on a shopper-typed page. Order is preserved explicitly because the ranking IS the
+ * answer there: a `WHERE slug = ANY(...)` returns rows in whatever order the plan produces, which
+ * would silently re-sort the results by nothing.
+ */
+export async function getStoresBySlugs(slugs: readonly string[]): Promise<Store[]> {
+  const wanted = [...new Set(slugs.filter(Boolean))];
+  if (!wanted.length) return [];
+  const found = await selectStores('s.slug = ANY($1::citext[])', [wanted]);
+  const bySlug = new Map(found.map((store) => [store.slug.toLowerCase(), store]));
+  return wanted.map((slug) => bySlug.get(slug.toLowerCase())).filter((s): s is Store => !!s);
+}
+
 /** Resolves an inbound request Host to the store that owns it as an ACTIVE custom domain — the
  *  routing counterpart the middleware calls on every custom-host request. Only a verified
  *  (status 'active') hostname is served; a 'pending' one is ignored so an unverified domain can

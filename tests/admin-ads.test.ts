@@ -275,7 +275,7 @@ describe('buildPlatformAdOverview', () => {
 describe('home-feed promotion (silent shop-window)', () => {
   const fs = (slug: string, promoWeight?: number): FeedStore => ({
     store: makeStore({ id: slug, slug, name: slug, promoWeight }),
-    products: [],
+    previewImages: [],
   });
 
   it('floats promoted stores to the front of the spotlight, above unpromoted', () => {

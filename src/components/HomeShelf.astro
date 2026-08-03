@@ -115,10 +115,10 @@ const arriveClass = eagerFirst
            with the row instead of leaving a ragged tail — see store-card.css. -->
       <div class={shelfClass + arriveClass} role="list" aria-label={title}
            style={`--shelf-count:${cardCount};--shelf-card-max:${cardMax}`}>
-        {stores.map(({ store, products }, i) => (
+        {stores.map(({ store, previewImages }, i) => (
           <StoreCard
             store={store}
-            previewImages={products.map((p) => p.images?.[0]).filter((u): u is string => !!u)}
+            previewImages={previewImages}
             eager={eagerFirst && i === 0}
             previewSlots={previewSlots}
             role="listitem"

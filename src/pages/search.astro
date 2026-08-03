@@ -5,8 +5,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import StoreCard from '../components/StoreCard.astro';
 import { store as platform, formatPrice } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
-import { getStoresBySellerId, getStoreBySlug, type Store } from '../lib/stores.js';
-import { getVisibleProductsByStoreId } from '../lib/store-products.js';
+import { getStoresBySellerId, getStoresBySlugs } from '../lib/stores.js';
+import { getStorePreviews, STORE_PREVIEW_SLOTS } from '../lib/store-products.js';
 import { searchSite } from '../lib/site-search.js';
 import { getLang, getT } from '../i18n/index.js';
 
@@ -25,18 +25,21 @@ const { stores: storeHits, products } = q
   ? await searchSite(q, { storeLimit: 24, productLimit: 60, imageWidth: 300 })
   : { stores: [], products: [] };
 
-// Store hits come back as the trimmed-down search shape (name/slug/tagline) —
-// re-fetch the full Store + its product preview images per hit so this page
-// can reuse the same StoreCard the homepage/directory already use, instead of
-// a second, thinner store-card design living only here.
-const storeCards = (await Promise.all(storeHits
-  .map(async (hit) => {
-    const store = await getStoreBySlug(hit.slug);
-    if (!store) return null;
-    const previewImages = (await getVisibleProductsByStoreId(store.id)).map((p) => p.images?.[0]).filter((u): u is string => !!u);
-    return { store, previewImages };
-  })))
-  .filter((c): c is { store: Store; previewImages: string[] } => !!c);
+// Store hits come back as the trimmed-down search shape (name/slug/tagline), so the full Store and
+// its thumbnails are re-read here — which lets this page reuse the same StoreCard the homepage and
+// directory draw, instead of a second, thinner store card living only here.
+//
+// **Two queries, not two per hit.** This was a `getStoreBySlug` AND a whole-catalogue read inside a
+// `map` — 2N round trips for N matches, all issued at once, on a page a shopper reaches by typing.
+// Ten hits meant twenty concurrent statements against a pool of ten, which is the stampede §7.16
+// describes: the eleventh waits for a free connection while holding a request open. Both halves are
+// batched now, and the preview read is the same narrowed one the homepage uses.
+const hitStores = await getStoresBySlugs(storeHits.map((h) => h.slug));
+const previewsByStore = await getStorePreviews(hitStores.map((s) => s.id), STORE_PREVIEW_SLOTS);
+const storeCards = hitStores.map((store) => ({
+  store,
+  previewImages: previewsByStore.get(store.id)?.images ?? [],
+}));
 
 const hasResults = storeCards.length > 0 || products.length > 0;
 

@@ -8,7 +8,7 @@ import { store as platform } from '../config/store.config.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores, byPromoWeight } from '../lib/stores.js';
 import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
-import { getVisibleProductsByStoreIds } from '../lib/store-products.js';
+import { getStorePreviews, STORE_PREVIEW_SLOTS } from '../lib/store-products.js';
 import { isLaunchMode, showShelfInvite, launchInviteCount, LAUNCH_GRID_SLOTS } from '../lib/launch-mode.js';
 import { getLang, getT } from '../i18n/index.js';
 
@@ -51,10 +51,13 @@ const previewedStores = previewParam === 'blank'
         return visibleStores.filter((s) => isDemoStore(s) || keptReal.has(s.id));
       })();
 const shopperStores = filterShopperStores(previewedStores);
-const productsByStore = await getVisibleProductsByStoreIds(shopperStores.map((s) => s.id));
+// Same narrowing as the homepage, and for the same measured reason — see
+// store-products.ts#getStorePreviews. This page draws the identical card.
+const previewsByStore = await getStorePreviews(shopperStores.map((s) => s.id), STORE_PREVIEW_SLOTS);
 const storesWithProducts = shopperStores
-  .map((s) => ({ store: s, products: productsByStore.get(s.id) ?? [] }))
-  .filter(({ products }) => products.length > 0);
+  .map((s) => ({ store: s, preview: previewsByStore.get(s.id) }))
+  .filter((e) => !!e.preview?.hasProducts)
+  .map(({ store, preview }) => ({ store, previewImages: preview!.images }));
 
 // Every category across the whole catalog, not just the current filtered
 // results — so picking one category never makes the others disappear from
@@ -231,10 +234,10 @@ const jsonLd = {
         </div>
       ) : (
         <div class="stores-directory__grid" role="list">
-          {gridStores.map(({ store, products }, i) => (
+          {gridStores.map(({ store, previewImages }, i) => (
             <StoreCard
               store={store}
-              previewImages={products.map((p) => p.images?.[0]).filter((u): u is string => !!u)}
+              previewImages={previewImages}
               eager={i === 0}
               role="listitem"
             />

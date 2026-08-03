@@ -11,7 +11,7 @@ import { store as platform } from '../config/store.config.js';
 import { getSellerSession, getSellerById } from '../lib/seller-auth.js';
 import { getStoreBySellerId, getVisibleStores } from '../lib/stores.js';
 import { countRealStores, filterShopperStores, isDemoStore, realStores } from '../lib/demo-stores.js';
-import { getVisibleProductsByStoreIds } from '../lib/store-products.js';
+import { getStorePreviews, getVisibleProductsByStoreIds, STORE_PREVIEW_SLOTS } from '../lib/store-products.js';
 import { getOrdersByBuyer } from '../lib/orders.js';
 import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
 import { getFavoriteStoresForUser, getRecentStoresForUser } from '../lib/user-carts.js';
@@ -57,10 +57,16 @@ const stores = filterShopperStores(previewedStores);
 
 // Applied before the feed is built, so every downstream surface (shelves,
 // spotlight, discovery) sees the same small catalog rather than a mixed picture.
-const productsByStore = await getVisibleProductsByStoreIds(stores.map((s) => s.id));
+// Only what a card draws: whether the store has anything to sell, and its few thumbnails. This
+// used to read every visible product of every visible store, with every column, to use one image
+// field from the first three or four of them — measured at ~900ms of a 778ms TTFB against Neon
+// (store-products.ts#getStorePreviews). A store with products but no photos keeps its place and
+// draws placeholders, so `hasProducts` is the filter, never `previewImages.length`.
+const previewsByStore = await getStorePreviews(stores.map((s) => s.id), STORE_PREVIEW_SLOTS);
 const storesWithProducts = stores
-  .map((s) => ({ store: s, products: productsByStore.get(s.id) ?? [] }))
-  .filter(({ products }) => products.length > 0);
+  .map((s) => ({ store: s, preview: previewsByStore.get(s.id) }))
+  .filter((e): e is { store: typeof e.store; preview: { hasProducts: boolean; images: string[] } } => !!e.preview?.hasProducts)
+  .map(({ store, preview }) => ({ store, previewImages: preview.images }));
 
 // Stores this buyer has actually bought from before, most-recent purchase first — same
 // buyerId-or-buyerEmail match the buyer dashboard's own order list uses (accounts are
@@ -87,6 +93,13 @@ const feed = buildHomeFeed(
   sellerId ? await getFavoriteStoresForUser(sellerId) : [],
   previousStoreSlugs,
 );
+
+// The spotlight is the one surface that draws real product CARDS rather than a card's thumbnail
+// strip, so it genuinely needs products — but only for the five stores the feed just chose, not for
+// every store on the platform. Fetched after the feed rather than before it for exactly that
+// reason: before, the set is "all of them"; after, it is five. This is the whole catalogue read
+// that used to sit above, reduced to the stores that actually render one.
+const spotlightProducts = await getVisibleProductsByStoreIds(feed.spotlight.map((fs) => fs.store.id));
 
 // ── Tabs (CURRENT_TASK.md → סשן ג׳, round 2): the old vertical shelf-stack
 // is now switchable tabs, reusing the seller/admin dashboard's own tab
@@ -513,7 +526,7 @@ const jsonLd = {
                     [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
                   role="list" aria-label={t.home.spotlightTitle}
                 >
-                  {feed.spotlight.map(({ store: s, products }, slideIndex) => (
+                  {feed.spotlight.map(({ store: s }, slideIndex) => (
                     <div class="home-spotlight-slide flex-[0_0_100%] min-w-0 [scroll-snap-align:start]" role="listitem">
                       <section
                         class="home-store-section"
@@ -563,7 +576,7 @@ const jsonLd = {
                           <div class="home-carousel-wrap">
                             <div class="home-carousel-fade home-carousel-fade--start" aria-hidden="true"></div>
                             <div class="home-carousel-fade home-carousel-fade--end" aria-hidden="true"></div>
-                            {products.length > 2 && (
+                            {(spotlightProducts.get(s.id)?.length ?? 0) > 2 && (
                               <>
                                 <button type="button" class="home-carousel-btn home-carousel-btn--prev"
                                         aria-label={lang === 'he' ? 'הקודם' : 'Previous'}>
@@ -588,7 +601,7 @@ const jsonLd = {
                                   100% wide), and only its first few tiles are in view before
                                   the carousel scrolls — those are the LCP candidates, so they
                                   load eagerly. Everything else stays native-lazy. */}
-                              {products.map((p, tileIndex) => (
+                              {(spotlightProducts.get(s.id) ?? []).map((p, tileIndex) => (
                                 <HomeProductCard product={p} storeSlug={s.slug} sale={s.sale} role="listitem"
                                                  priority={slideIndex === 0 && tileIndex < 3} />
                               ))}

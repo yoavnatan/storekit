@@ -644,6 +644,76 @@ export async function getVisibleProductsByStoreIds(storeIds: readonly string[]):
   return byStore;
 }
 
+/** Thumbnails to fetch per store card. Four, not three: a sparse shelf widens its cards and a
+ *  fourth thumb restores their proportion (HomeShelf.astro), so four is the most any card can
+ *  draw. Fetching the maximum once beats asking the layout first. */
+export const STORE_PREVIEW_SLOTS = 4;
+
+/** What a store card needs from its catalogue, and nothing else. */
+export interface StorePreview {
+  /** Whether the store has ANY visible product. The homepage drops a store with none, and a store
+   *  with products but no photos keeps its place and draws placeholder squares — so this is a
+   *  separate fact from the images below, not `images.length > 0`. */
+  hasProducts: boolean;
+  /** First image of each of the first few visible products, newest first — exactly the thumbnails
+   *  the card draws, in the order it would have drawn them. */
+  images: string[];
+}
+
+/**
+ * The homepage and `/stores` in one statement: does each store have anything to sell, and the
+ * handful of thumbnails its card shows.
+ *
+ * **Why this exists — measured 2026-08-03, and it is the shopper's most important page.** Both
+ * pages called `getVisibleProductsByStoreIds`, which reads every visible product of every visible
+ * store *with every column*, including the aggregated image, variant-stock and variant-sku arrays.
+ * They then used two things from it: whether the list was empty, and `products.map(p => p.images[0])`
+ * capped at three or four per card. Everything else was fetched, shipped across the network, parsed
+ * and dropped. Against Neon that measured **420ms for the products and 482ms for their images** —
+ * about 900ms of a 778ms time-to-first-byte, for 930 products and 2,259 image rows, to draw roughly
+ * 180 thumbnails. It was invisible as a JSON file read; over a network it is most of the page.
+ *
+ * `LIMIT` per store needs a window function rather than a plain `LIMIT`, which would cut the whole
+ * result rather than each store's share. The ranking repeats `ORDER BY created_at DESC, id` because
+ * that is what `getVisibleProductsByStoreIds` returns and therefore which products the card used to
+ * show — a different order here would silently reshuffle every card on the homepage.
+ *
+ * Products with no photo are excluded from the ranking, not ranked and then filtered: the old code
+ * mapped every product to its first image and dropped the blanks *before* slicing, so a store whose
+ * three newest products have no photos still shows its next three that do.
+ */
+export async function getStorePreviews(storeIds: readonly string[], perStore: number): Promise<Map<string, StorePreview>> {
+  const ids = [...new Set(storeIds.filter(isUuid))];
+  const byStore = new Map<string, StorePreview>(ids.map((id) => [id, { hasProducts: false, images: [] }]));
+  if (!ids.length) return byStore;
+
+  const rows_ = await rows<{ store_id: string; images: string[] | null }>(
+    `WITH visible AS (
+       SELECT p.id, p.store_id, p.created_at,
+              (SELECT i.url FROM product_images i WHERE i.product_id = p.id ORDER BY i.position LIMIT 1) AS image
+         FROM store_products p
+        WHERE p.store_id = ANY($1::uuid[]) AND NOT p.hidden AND NOT p.blocked
+     ),
+     ranked AS (
+       SELECT store_id, image,
+              row_number() OVER (PARTITION BY store_id ORDER BY created_at DESC, id) AS rn
+         FROM visible
+        WHERE image IS NOT NULL
+     )
+     SELECT v.store_id,
+            (SELECT array_agg(r.image ORDER BY r.rn)
+               FROM ranked r WHERE r.store_id = v.store_id AND r.rn <= $2) AS images
+       FROM visible v
+      GROUP BY v.store_id`,
+    [ids, perStore],
+  );
+
+  // A row here means the store has at least one visible product; `images` is null when none of them
+  // carries a photo, which is the placeholder case rather than an empty shelf.
+  for (const row of rows_) byStore.set(row.store_id, { hasProducts: true, images: row.images ?? [] });
+  return byStore;
+}
+
 /** A product with every seller-private field removed — what a public endpoint is allowed to
  *  serialize. `sellerNote` is explicitly dashboard-only (see its field doc), and returning a
  *  whole row verbatim is how it reaches a shopper by accident: /api/store-products (the store
