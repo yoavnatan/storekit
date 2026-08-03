@@ -1,6 +1,6 @@
 import type { AdCampaign } from './ad-campaigns.js';
+import type { TierAccrual } from './seller-auth.js';
 import { campaignStatsInRange } from './ad-metrics.js';
-import { daysInRangeInclusive } from './date-range.js';
 import { AD_PLATFORM_MARGIN_PERCENT, monthlyFeeForTier } from './pricing.js';
 import { toAgorot } from './money.js';
 
@@ -23,11 +23,9 @@ import { toAgorot } from './money.js';
 // seller + campaign lists, so this is directly testable and stays cheap at the
 // call sites that already hold both lists.
 
-/** The subset of a Seller this module needs — kept structural so tests don't build full records. */
-export interface RevenueSellerInput {
-  tier?: string;
-  createdAt: string;
-}
+/** What the subscription line needs, per tier rather than per seller — see
+ *  `seller-auth.ts#getSubscriptionAccrual`, which is the `GROUP BY` this shape comes out of. */
+export type RevenueTierInput = TierAccrual;
 
 /**
  * **Every money figure here is integer agorot, and this module is where two units meet.**
@@ -60,38 +58,31 @@ export interface PlatformRevenue {
 
 /** A month of subscription is billed as 30 days, so a partial range accrues pro-rata.
  *  Using the real calendar month length instead would make an identical 7-day window
- *  worth a different amount in February than in March — noise in a range-comparison view. */
-const BILLING_DAYS_PER_MONTH = 30;
-
-/** Days of [fromISO,toISO] during which this seller's account existed. A seller who
- *  registered mid-range is only billed from their signup day, not for the whole window.
+ *  worth a different amount in February than in March — noise in a range-comparison view.
  *
  *  Note: the free trial (14–30d, AI_INSTRUCTIONS.md → Business model) is NOT modelled —
  *  no trial-end date is stored on Seller yet, so a brand-new account accrues from day one.
  *  That makes this figure an upper bound until the trial field exists. */
-function billableDays(seller: RevenueSellerInput, fromISO: string, toISO: string): number {
-  const signup = seller.createdAt.slice(0, 10);
-  if (signup > toISO) return 0;
-  const start = signup > fromISO ? signup : fromISO;
-  return daysInRangeInclusive(start, toISO);
-}
+const BILLING_DAYS_PER_MONTH = 30;
 
 export function buildPlatformRevenue(
   /** Already agorot — it comes straight off `PerformanceSummary.platformCommissionAgorot`. */
   commissionAgorot: number,
   commissionRate: number,
-  sellers: RevenueSellerInput[],
+  /** Per TIER, not per seller: the fee is a property of the tier and the only per-seller input is
+   *  how many days of the range the account existed for, which the query already summed
+   *  (`seller-auth.ts#getSubscriptionAccrual`). This used to be the whole roster, looped here. */
+  tiers: RevenueTierInput[],
   campaigns: AdCampaign[],
   fromISO: string,
   toISO: string,
 ): PlatformRevenue {
   let subscriptions = 0;
   let subscribers = 0;
-  for (const seller of sellers) {
-    const days = billableDays(seller, fromISO, toISO);
-    if (days <= 0) continue;
-    subscribers++;
-    subscriptions += (monthlyFeeForTier(seller.tier) * days) / BILLING_DAYS_PER_MONTH;
+  for (const tier of tiers) {
+    if (tier.billableDays <= 0) continue;
+    subscribers += tier.subscribers;
+    subscriptions += (monthlyFeeForTier(tier.tier) * tier.billableDays) / BILLING_DAYS_PER_MONTH;
   }
 
   // Only seller-owned boost campaigns are billed onward — that's every row in

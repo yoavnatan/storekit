@@ -184,9 +184,6 @@ export function buildPerformanceSummary(
     return dayInRange(businessDayISO(new Date(o.createdAt)), fromISO, toISO);
   });
 
-  // ── period keys (x-axis), zero-filled so a quiet day/month still shows as 0, not a gap ──
-  const keys = rangeKeys(fromISO, toISO, granularity);
-
   const revenueByKey = new Map<string, number>();
   const ordersByKey = new Map<string, number>();
   let totalRevenueAgorot = 0;
@@ -197,7 +194,66 @@ export function buildPerformanceSummary(
     ordersByKey.set(key, (ordersByKey.get(key) ?? 0) + 1);
     totalRevenueAgorot += net;
   }
-  
+
+  const productMap = new Map<string, TopProduct>();
+  for (const o of inRange) {
+    for (const item of o.items) {
+      if (item.storeSlug !== storeSlug) continue;
+      const entry = productMap.get(item.productId) ?? { productId: item.productId, name: item.productName, revenueAgorot: 0, units: 0 };
+      entry.revenueAgorot += item.priceAgorot * item.qty;
+      entry.units += item.qty;
+      productMap.set(item.productId, entry);
+    }
+  }
+  const sortedProducts = [...productMap.values()].sort((a, b) => b.revenueAgorot - a.revenueAgorot);
+
+  return assemblePerformanceSummary(
+    {
+      buckets: [...revenueByKey].map(([key, revenueAgorot]) => ({ key, revenueAgorot, orders: ordersByKey.get(key) ?? 0 })),
+      totalRevenueAgorot,
+      totalOrders: inRange.length,
+    },
+    views,
+    fromISO,
+    toISO,
+    granularity,
+    commissionPercent,
+    topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts,
+  );
+}
+
+/**
+ * The half of a performance summary that is pure arithmetic over ALREADY-bucketed inputs — the
+ * x-axis, the totals, the commission split and the conversion rate.
+ *
+ * **Split out because the platform tab gets its buckets from the database (§3, 2026-08-03.)**
+ * `buildPerformanceSummary` above buckets an order array in JS, which is right for ONE store whose
+ * orders the caller already holds; the admin's platform tab asks for every store at once and gets
+ * back `order-reporting.ts#getPlatformSales` — one `GROUP BY` instead of a pass over every order,
+ * once per store. Both routes end here, so there is exactly one definition of what an average order
+ * value, a commission and a conversion rate are.
+ *
+ * `sales.buckets` may be sparse and in any order; the axis is rebuilt from the dates, so a key that
+ * is not on it is dropped and a quiet day still charts as zero rather than as a gap.
+ */
+export function assemblePerformanceSummary(
+  sales: { buckets: readonly { key: string; revenueAgorot: number; orders: number }[]; totalRevenueAgorot: number; totalOrders: number },
+  views: StoreViewStats,
+  fromISO: string,
+  toISO: string,
+  granularity: PerformanceGranularity,
+  commissionPercent = 0,
+  topProducts: TopProduct[] = [],
+): PerformanceSummary {
+  // ── period keys (x-axis), zero-filled so a quiet day/month still shows as 0, not a gap ──
+  const keys = rangeKeys(fromISO, toISO, granularity);
+
+  const revenueByKey = new Map<string, number>();
+  const ordersByKey = new Map<string, number>();
+  for (const b of sales.buckets) {
+    revenueByKey.set(b.key, (revenueByKey.get(b.key) ?? 0) + b.revenueAgorot);
+    ordersByKey.set(b.key, (ordersByKey.get(b.key) ?? 0) + b.orders);
+  }
 
   // Both numbers arrive already bucketed at this granularity, and the unique counts arrive
   // already DISTINCT — per bucket and, separately, across the whole range. That separation is the
@@ -223,20 +279,7 @@ export function buildPerformanceSummary(
     uniqueVisitors: uniquesByKey.get(key) ?? 0,
   }));
 
-  const totalOrders = inRange.length;
-
-  const productMap = new Map<string, TopProduct>();
-  for (const o of inRange) {
-    for (const item of o.items) {
-      if (item.storeSlug !== storeSlug) continue;
-      const entry = productMap.get(item.productId) ?? { productId: item.productId, name: item.productName, revenueAgorot: 0, units: 0 };
-      entry.revenueAgorot += item.priceAgorot * item.qty;
-      entry.units += item.qty;
-      productMap.set(item.productId, entry);
-    }
-  }
-    const sortedProducts = [...productMap.values()].sort((a, b) => b.revenueAgorot - a.revenueAgorot);
-  const topProducts = topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts;
+  const { totalRevenueAgorot, totalOrders } = sales;
 
   // A percentage of an integer number of agorot, rounded once to the agora.
   const platformCommissionAgorot = Math.round((totalRevenueAgorot * commissionPercent) / 100);

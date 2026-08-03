@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildPlatformSales,
   buildPlatformPerformance,
   parseStoreRowsQuery,
   selectStoreRows,
@@ -61,7 +62,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
       makeOrder('o2', { beta: 500 }, '2026-07-06T10:00:00.000Z'),
       makeOrder('o3', { alpha: 250 }, '2026-07-07T10:00:00.000Z'),
     ];
-    const p = buildPlatformPerformance(orders, STORES, NO_VIEWS, FROM, TO, 'day');
+    const p = buildPlatformPerformance(buildPlatformSales(orders, STORES.map((s) => s.slug), FROM, TO, 'day'), STORES, NO_VIEWS, FROM, TO, 'day');
     expect(p.summary.totalRevenueAgorot).toBe(1750);
     expect(p.summary.totalOrders).toBe(3);
     // commission (platform income) + payout (to sellers) reconcile to GMV
@@ -72,7 +73,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
 
   it('counts a multi-store order toward each store it touched', () => {
     const orders = [makeOrder('o1', { alpha: 300, beta: 200 }, '2026-07-05T10:00:00.000Z')];
-    const p = buildPlatformPerformance(orders, STORES, NO_VIEWS, FROM, TO, 'day');
+    const p = buildPlatformPerformance(buildPlatformSales(orders, STORES.map((s) => s.slug), FROM, TO, 'day'), STORES, NO_VIEWS, FROM, TO, 'day');
     // orders sum reconciles with the breakdown rows (alpha:1 + beta:1)
     expect(p.summary.totalOrders).toBe(2);
     const alpha = p.stores.find((s) => s.slug === 'alpha');
@@ -87,7 +88,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
       makeOrder('o1', { alpha: 1000 }, '2026-07-05T10:00:00.000Z'),
       makeOrder('o2', { alpha: 999 }, '2026-07-06T10:00:00.000Z', [], 'pending'),
     ];
-    const p = buildPlatformPerformance(orders, STORES, NO_VIEWS, FROM, TO, 'day');
+    const p = buildPlatformPerformance(buildPlatformSales(orders, STORES.map((s) => s.slug), FROM, TO, 'day'), STORES, NO_VIEWS, FROM, TO, 'day');
     expect(p.summary.totalRevenueAgorot).toBe(1000);
     expect(p.summary.totalOrders).toBe(1);
   });
@@ -99,7 +100,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
       // gamma has no orders and no views → present but active:false, so a search
       // can still find it while browsing hides it (selectStoreRows).
     ];
-    const p = buildPlatformPerformance(orders, STORES, NO_VIEWS, FROM, TO, 'day');
+    const p = buildPlatformPerformance(buildPlatformSales(orders, STORES.map((s) => s.slug), FROM, TO, 'day'), STORES, NO_VIEWS, FROM, TO, 'day');
     expect(p.stores.map((s) => s.slug)).toEqual(['beta', 'alpha', 'gamma']);
     expect(p.stores.map((s) => s.active)).toEqual([true, true, false]);
     // totalStores counts only the active ones — the default table universe.
@@ -114,14 +115,14 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
       makeOrder('o2', { beta: 300 }, '2026-07-06T10:00:00.000Z', items('beta', 'p2', 'Gadget', 300, 1)),
       makeOrder('o3', { alpha: 100 }, '2026-07-07T10:00:00.000Z', items('alpha', 'p1', 'Widget', 100, 1)),
     ];
-    const p = buildPlatformPerformance(orders, STORES, NO_VIEWS, FROM, TO, 'day', 5);
+    const p = buildPlatformPerformance(buildPlatformSales(orders, STORES.map((s) => s.slug), FROM, TO, 'day', 5), STORES, NO_VIEWS, FROM, TO, 'day');
     const p1 = p.summary.topProducts.find((t) => t.productId === 'p1');
     expect(p1?.units).toBe(3);       // 2 + 1 across two orders
     expect(p1?.revenueAgorot).toBe(300);   // 100 * 3
     // revenue-desc: gadget (300) ties widget (300) — both present, capped by topLimit
     expect(p.summary.topProducts.length).toBe(2);
 
-    const capped = buildPlatformPerformance(orders, STORES, NO_VIEWS, FROM, TO, 'day', 1);
+    const capped = buildPlatformPerformance(buildPlatformSales(orders, STORES.map((s) => s.slug), FROM, TO, 'day', 1), STORES, NO_VIEWS, FROM, TO, 'day');
     expect(capped.summary.topProducts.length).toBe(1);
   });
 
@@ -138,7 +139,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
       ['store-id-1', { buckets: [{ key: '2026-07-05', views: 30, uniqueVisitors: 9 }], totalViews: 30, totalUniqueVisitors: 9 }],
       ['store-id-2', { buckets: [{ key: '2026-07-05', views: 12, uniqueVisitors: 4 }], totalViews: 12, totalUniqueVisitors: 4 }],
     ]);
-    const p = buildPlatformPerformance([], stores, views, FROM, TO, 'day');
+    const p = buildPlatformPerformance(buildPlatformSales([], stores.map((s) => s.slug), FROM, TO, 'day'), stores, views, FROM, TO, 'day');
 
     expect(p.summary.totalViews).toBe(42);
     expect(p.summary.points.find((pt) => pt.key === '2026-07-05')!.views).toBe(42);
@@ -150,7 +151,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
   });
 
   it('zero-fills the point axis for an empty platform', () => {
-    const p = buildPlatformPerformance([], STORES, NO_VIEWS, FROM, TO, 'day');
+    const p = buildPlatformPerformance(buildPlatformSales([], STORES.map((s) => s.slug), FROM, TO, 'day'), STORES, NO_VIEWS, FROM, TO, 'day');
     expect(p.summary.totalRevenueAgorot).toBe(0);
     expect(p.summary.points.length).toBe(31); // full July, zero-filled
     expect(p.summary.points.every((pt) => pt.revenueAgorot === 0 && pt.orders === 0)).toBe(true);
@@ -162,7 +163,7 @@ describe('buildPlatformPerformance — aggregation across stores', () => {
   it('returns EVERY store, uncapped — paging is the caller\'s job now', () => {
     const many = Array.from({ length: 40 }, (_, i) => ({ id: `s${i}`, slug: `s${i}`, name: `S${i}` }));
     const orders = many.map((s, i) => makeOrder(`o${i}`, { [s.slug]: (i + 1) * 10 }, '2026-07-05T10:00:00.000Z'));
-    const p = buildPlatformPerformance(orders, many, NO_VIEWS, FROM, TO, 'day', 5);
+    const p = buildPlatformPerformance(buildPlatformSales(orders, many.map((s) => s.slug), FROM, TO, 'day', 5), many, NO_VIEWS, FROM, TO, 'day');
     expect(p.stores.length).toBe(40);
     expect(p.totalStores).toBe(40);
     // highest-revenue store leads
@@ -286,7 +287,7 @@ describe('mixed-tier commission', () => {
       makeOrder('o1', { alpha: 1000 }, '2026-07-05T10:00:00.000Z'),
       makeOrder('o2', { beta: 1000 }, '2026-07-06T10:00:00.000Z'),
     ];
-    const p = buildPlatformPerformance(orders, mixed, NO_VIEWS, FROM, TO, 'day');
+    const p = buildPlatformPerformance(buildPlatformSales(orders, mixed.map((s) => s.slug), FROM, TO, 'day'), mixed, NO_VIEWS, FROM, TO, 'day');
     expect(p.summary.totalRevenueAgorot).toBe(2000);
     expect(p.summary.platformCommissionAgorot).toBe(160); // 120 + 40, NOT 2000 * one rate
     expect(p.summary.commissionRate).toBe(8);       // revenue-weighted blend
@@ -294,11 +295,7 @@ describe('mixed-tier commission', () => {
   });
 
   it('takes no commission from a store whose rate is absent', () => {
-    const p = buildPlatformPerformance(
-      [makeOrder('o1', { alpha: 1000 }, '2026-07-05T10:00:00.000Z')],
-      [{ id: 'alpha', slug: 'alpha', name: 'Alpha' }],
-      NO_VIEWS, FROM, TO, 'day',
-    );
+    const p = buildPlatformPerformance(buildPlatformSales([makeOrder('o1', { alpha: 1000 }, '2026-07-05T10:00:00.000Z')], [{ id: 'alpha', slug: 'alpha', name: 'Alpha' }].map((s) => s.slug), FROM, TO, 'day'), [{ id: 'alpha', slug: 'alpha', name: 'Alpha' }], NO_VIEWS, FROM, TO, 'day');
     expect(p.summary.platformCommissionAgorot).toBe(0);
     expect(p.summary.commissionRate).toBe(0);
   });

@@ -165,6 +165,48 @@ export async function getAllSellers(): Promise<Seller[]> {
   return (await rows<SellerRow>(`SELECT ${COLUMNS} FROM sellers ORDER BY created_at, id`)).map(toSeller);
 }
 
+/** One pricing tier's share of the subscription accrual over a range. */
+export interface TierAccrual {
+  /** `undefined` = the default tier (lib/pricing.ts reads it that way). */
+  tier?: string;
+  /** Sellers on this tier whose account existed during any part of the range. */
+  subscribers: number;
+  /** Their billable days, SUMMED — a seller who registered mid-range accrues only from signup. */
+  billableDays: number;
+}
+
+/**
+ * Subscription accrual over [fromISO, toISO], grouped by tier (§3, 2026-08-03).
+ *
+ * `platform-revenue.ts` used to take the whole seller roster and loop it in JS to reach three
+ * numbers. Grouping by tier is the same arithmetic with the loop where it belongs: the fee is a
+ * property of the TIER, and the only per-seller input is how many days of the range their account
+ * existed for — which is a `SUM`.
+ *
+ * **The day boundary here is UTC, and that is deliberate rather than an oversight.** The JS it
+ * replaces read `seller.createdAt.slice(0, 10)`, i.e. the UTC date of a stored ISO instant.
+ * Reporting buckets money on the BUSINESS calendar (business-day.ts) and this does not, so the two
+ * disagree for an account opened between local midnight and 02:00 on a range boundary — worth
+ * one day of one seller's fee. Moving it is a change to a money figure the owner reads, so it is
+ * recorded here and in DB_MIGRATION_PLAN.md §3 rather than slipped in beside a refactor.
+ */
+export async function getSubscriptionAccrual(fromISO: string, toISO: string): Promise<TierAccrual[]> {
+  const found = await rows<{ tier: string | null; subscribers: string | number; billable_days: string | number }>(
+    `SELECT tier,
+            COUNT(*) AS subscribers,
+            SUM($2::date - GREATEST((created_at AT TIME ZONE 'UTC')::date, $1::date) + 1) AS billable_days
+       FROM sellers
+      WHERE (created_at AT TIME ZONE 'UTC')::date <= $2::date
+      GROUP BY tier`,
+    [fromISO, toISO],
+  );
+  return found.map((r) => ({
+    ...(r.tier ? { tier: r.tier } : {}),
+    subscribers: Number(r.subscribers),
+    billableDays: Number(r.billable_days),
+  }));
+}
+
 export async function getSellerByEmail(email: string): Promise<Seller | null> {
   const row = await firstRow<SellerRow>(`SELECT ${COLUMNS} FROM sellers WHERE email = $1`, [email]);
   return row ? toSeller(row) : null;

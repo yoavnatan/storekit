@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { isUuid, query, rows } from './db.js';
+import { firstRow, isUuid, query, rows } from './db.js';
 import type { AdScopeKind } from './ad-scope-label.js';
 
 /**
@@ -193,13 +193,74 @@ function toCampaign(row: CampaignRow): AdCampaign {
   return campaign;
 }
 
-/** Every campaign across all stores — for the admin's platform-wide advertising overview.
- *  Unbounded like `getAllStores`/`getAllOrders` beside it (§3), and moves when they do. */
-export async function getAllCampaigns(): Promise<AdCampaign[]> {
+/**
+ * Campaigns that could have accrued exposure inside [fromISO, toISO] — what every range-scoped ad
+ * figure is built from (the admin Advertising tab, and the ad-margin line of platform revenue).
+ *
+ * **This is a SUPERSET, on purpose, and that is the whole design (§3, 2026-08-03.)** It replaced
+ * `getAllCampaigns()`, which read every campaign the platform has ever run to compute a seven-day
+ * window. The exact rule for how many days a campaign ran inside a window is
+ * `ad-metrics.ts#overlapDays` — it clamps a paused campaign at its pause, a fixed-duration one at
+ * its end, and both up to the campaign's own start date — and a second copy of that in SQL is a
+ * copy that can drift, on numbers the owner reads as money. So the query only has to be sure it
+ * never DROPS a campaign that could contribute; anything extra it lets through scores zero in
+ * `campaignStatsInRange` and changes no total. The rule stays in one place, and the read stops
+ * growing with the platform's whole history.
+ *
+ * Archived (cancelled) campaigns are included: the money they spent is a fact, and both the
+ * exposure view and the revenue view bill the window they actually ran in.
+ */
+export async function getCampaignsInRange(fromISO: string, toISO: string): Promise<AdCampaign[]> {
   const found = await rows<CampaignRow>(
-    `SELECT ${COLUMNS} FROM ad_campaigns ORDER BY created_at DESC, id`,
+    `SELECT ${COLUMNS} FROM ad_campaigns
+      WHERE (created_at AT TIME ZONE 'UTC')::date <= $2::date
+        AND (status = 'active'
+             OR (created_at AT TIME ZONE 'UTC')::date >= $1::date
+             OR (COALESCE(paused_at, updated_at) AT TIME ZONE 'UTC')::date >= $1::date)
+        AND (duration_days IS NULL
+             OR (created_at AT TIME ZONE 'UTC')::date >= $1::date
+             OR (created_at AT TIME ZONE 'UTC')::date + (duration_days - 1) >= $1::date)
+      ORDER BY created_at DESC, id`,
+    [fromISO, toISO],
   );
   return found.map(toCampaign);
+}
+
+/** The two counters the Advertising tab shows beside the window: how many campaigns exist at all,
+ *  how many are running right now, and what those are committed to spend. Not range-scoped —
+ *  "committed now" is a forward-looking number — so it is a `COUNT`/`SUM`, never a list. */
+export interface CampaignTotals {
+  total: number;
+  active: number;
+  /** Sum of the ACTIVE campaigns' budgets, in integer agorot. Summed in SQL, which is also what
+   *  keeps it away from the `'50000' + '50000' = '5000050000'` trap `bigint` sets for `+=`. */
+  activeBudgetAgorot: number;
+}
+
+/** The pure twin of the two `getCampaignTotals` below, over a list the caller already holds.
+ *  It is what lets `admin-ads.ts` be tested with no database, and `tests/ad-campaigns-db.test.ts`
+ *  runs it against the query over the same rows so the two cannot drift. */
+export function campaignTotalsOf(campaigns: readonly { status: string; monthlyBudgetAgorot: number }[]): CampaignTotals {
+  const active = campaigns.filter((c) => c.status === 'active');
+  return {
+    total: campaigns.length,
+    active: active.length,
+    activeBudgetAgorot: active.reduce((sum, c) => sum + c.monthlyBudgetAgorot, 0),
+  };
+}
+
+export async function getCampaignTotals(): Promise<CampaignTotals> {
+  const row = await firstRow<{ total: string | number; active: string | number; budget: string | number }>(
+    `SELECT COUNT(*)                                              AS total,
+            COUNT(*) FILTER (WHERE status = 'active')             AS active,
+            COALESCE(SUM(monthly_budget_agorot) FILTER (WHERE status = 'active'), 0) AS budget
+       FROM ad_campaigns`,
+  );
+  return {
+    total: Number(row?.total ?? 0),
+    active: Number(row?.active ?? 0),
+    activeBudgetAgorot: Number(row?.budget ?? 0),
+  };
 }
 
 /** A store's LIVE campaigns — cancelled ones are history and come from getArchivedByStoreId. */

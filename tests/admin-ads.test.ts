@@ -5,6 +5,15 @@ import type { Store } from '../src/lib/stores.js';
 import type { AdCampaign } from '../src/lib/ad-campaigns.js';
 import type { BrandCampaign } from '../src/lib/brand-campaigns.js';
 
+// The two counters are a COUNT/SUM over the whole table now (§3), so the panel takes them as an
+// input rather than counting a list that a date range may have narrowed. `campaignTotalsOf` is the
+// pure twin of that query — here the list IS the whole table, so it is the same answer.
+import { campaignTotalsOf } from '../src/lib/ad-campaigns.js';
+const totals = (campaigns: unknown[] = [], brandCampaigns: unknown[] = []) => ({
+  campaignTotals: campaignTotalsOf(campaigns as never),
+  brandTotals: campaignTotalsOf(brandCampaigns as never),
+});
+
 function makeStore(over: Partial<Store> = {}): Store {
   return {
     id: over.id ?? 'store-' + (over.slug ?? 'x'),
@@ -56,7 +65,7 @@ describe('buildPlatformAdOverview', () => {
       feedStores: [makeStore({ slug: 'a' }), makeStore({ slug: 'b' })],
       feedProductCount: 12,
       allStores: [],
-      campaigns: [], brandCampaigns: [],
+      campaigns: [], brandCampaigns: [], ...totals(),
       ads: { googleTagId: 'GTM-123', metaPixelId: '' },
       settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
@@ -68,7 +77,7 @@ describe('buildPlatformAdOverview', () => {
 
   it('treats missing ads config as fully unconnected', () => {
     const o = buildPlatformAdOverview({
-      feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns: [],
+      feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns: [], ...totals(),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.connection.googleTag).toBe(false);
@@ -78,11 +87,11 @@ describe('buildPlatformAdOverview', () => {
   it('caps baseline estimated spend at the lifetime budget and computes used %', () => {
     const stores = [makeStore({ id: 's1' }), makeStore({ id: 's2' })];
     const uncapped = buildPlatformAdOverview({
-      feedStores: stores, feedProductCount: 4, allStores: stores, campaigns: [], brandCampaigns: [],
+      feedStores: stores, feedProductCount: 4, allStores: stores, campaigns: [], brandCampaigns: [], ...totals(),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     const capped = buildPlatformAdOverview({
-      feedStores: stores, feedProductCount: 4, allStores: stores, campaigns: [], brandCampaigns: [],
+      feedStores: stores, feedProductCount: 4, allStores: stores, campaigns: [], brandCampaigns: [], ...totals(),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 100 },
     });
     // With a 1₪ cap the spend can't exceed it, and used% is clamped to 100.
@@ -94,7 +103,7 @@ describe('buildPlatformAdOverview', () => {
   it('zeroes baseline spend + impressions when the campaign is paused', () => {
     const stores = [makeStore({ id: 's1' })];
     const o = buildPlatformAdOverview({
-      feedStores: stores, feedProductCount: 1, allStores: stores, campaigns: [], brandCampaigns: [],
+      feedStores: stores, feedProductCount: 1, allStores: stores, campaigns: [], brandCampaigns: [], ...totals(),
       ads: undefined, settings: { baselineStatus: 'paused', lifetimeBudgetAgorot: 50000 },
     });
     expect(o.baseline.status).toBe('paused');
@@ -108,7 +117,7 @@ describe('buildPlatformAdOverview', () => {
       makeCampaign({ id: 'b', status: 'paused', monthlyBudgetAgorot: 90000 }),
     ];
     const o = buildPlatformAdOverview({
-      feedStores: [], feedProductCount: 0, allStores: [], campaigns, brandCampaigns: [],
+      feedStores: [], feedProductCount: 0, allStores: [], campaigns, brandCampaigns: [], ...totals(campaigns),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.boost.activeCampaigns).toBe(1);
@@ -120,7 +129,7 @@ describe('buildPlatformAdOverview', () => {
   it('computes a blended PPC snapshot with safe zero-division guards', () => {
     // No stores, no campaigns → every derived ratio must be 0, never NaN/Infinity.
     const empty = buildPlatformAdOverview({
-      feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns: [],
+      feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns: [], ...totals(),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(empty.ppc).toMatchObject({ spend: 0, impressions: 0, clicks: 0, ctr: 0, cpc: 0, cpm: 0 });
@@ -129,7 +138,7 @@ describe('buildPlatformAdOverview', () => {
     // With baseline traffic, impressions/clicks/CTR must be positive and internally consistent.
     const stores = [makeStore({ id: 's1' }), makeStore({ id: 's2' })];
     const o = buildPlatformAdOverview({
-      feedStores: stores, feedProductCount: 4, allStores: stores, campaigns: [], brandCampaigns: [],
+      feedStores: stores, feedProductCount: 4, allStores: stores, campaigns: [], brandCampaigns: [], ...totals(),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.ppc.impressions).toBeGreaterThan(0);
@@ -144,11 +153,11 @@ describe('buildPlatformAdOverview', () => {
       makeBrand({ id: 'bb', status: 'paused', monthlyBudgetAgorot: 120000 }),
     ];
     const noBrand = buildPlatformAdOverview({
-      feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns: [],
+      feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns: [], ...totals(),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     const withBrand = buildPlatformAdOverview({
-      feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns,
+      feedStores: [], feedProductCount: 0, allStores: [], campaigns: [], brandCampaigns, ...totals([], brandCampaigns),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(withBrand.brand.activeCampaigns).toBe(1);
@@ -184,7 +193,7 @@ describe('buildPlatformAdOverview', () => {
       ads: undefined, settings: { baselineStatus: 'paused' as const, lifetimeBudgetAgorot: 0 },
       range: window,
     };
-    const o = buildPlatformAdOverview({ ...base, campaigns: [pausedBoost], brandCampaigns: [pausedBrand] });
+    const o = buildPlatformAdOverview({ ...base, campaigns: [pausedBoost], brandCampaigns: [pausedBrand], ...totals([pausedBoost], [pausedBrand]) });
 
     expect(o.boost.estimatedSpend).toBeGreaterThan(0);
     expect(o.boost.impressions).toBeGreaterThan(0);
@@ -202,6 +211,7 @@ describe('buildPlatformAdOverview', () => {
       ...base,
       campaigns: [{ ...pausedBoost, status: 'active', pausedAt: undefined }],
       brandCampaigns: [],
+      ...totals([{ ...pausedBoost, status: 'active' }]),
     });
     expect(stillActive.boost.estimatedSpend).toBeGreaterThanOrEqual(o.boost.estimatedSpend);
 
@@ -213,6 +223,7 @@ describe('buildPlatformAdOverview', () => {
       ...base,
       campaigns: [{ ...pausedBoost, updatedAt: '2026-01-31T00:00:00.000Z' }],
       brandCampaigns: [{ ...pausedBrand, updatedAt: '2026-01-31T00:00:00.000Z' }],
+      ...totals([pausedBoost], [pausedBrand]),
     });
     expect(editedLater.boost.estimatedSpend).toBe(o.boost.estimatedSpend);
     expect(editedLater.brand.estimatedSpend).toBe(o.brand.estimatedSpend);
@@ -221,7 +232,7 @@ describe('buildPlatformAdOverview', () => {
   it('caps per-store exposure at a top-N list, keeps the full store count (scalability)', () => {
     const stores = Array.from({ length: 15 }, (_, i) => makeStore({ id: `s${i}`, slug: `s${i}`, name: `Store ${i}` }));
     const o = buildPlatformAdOverview({
-      feedStores: stores, feedProductCount: 15, allStores: stores, campaigns: [], brandCampaigns: [],
+      feedStores: stores, feedProductCount: 15, allStores: stores, campaigns: [], brandCampaigns: [], ...totals(),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.exposure.topStores.length).toBeLessThanOrEqual(10); // never all 15
@@ -238,6 +249,7 @@ describe('buildPlatformAdOverview', () => {
       feedStores: stores, feedProductCount: 1, allStores: stores,
       campaigns: [makeCampaign({ id: 'c', status: 'active' })],
       brandCampaigns: [makeBrand({ id: 'b', status: 'active' })],
+      ...totals([makeCampaign({ id: 'c', status: 'active' })], [makeBrand({ id: 'b', status: 'active' })]),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     const { baseline, brand, boost } = o.exposure.bySource;
@@ -252,7 +264,7 @@ describe('buildPlatformAdOverview', () => {
       makeStore({ slug: 'top', name: 'Top', promoWeight: 2 }),
     ];
     const o = buildPlatformAdOverview({
-      feedStores: allStores, feedProductCount: 3, allStores, campaigns: [], brandCampaigns: [],
+      feedStores: allStores, feedProductCount: 3, allStores, campaigns: [], brandCampaigns: [], ...totals(),
       ads: undefined, settings: { baselineStatus: 'active', lifetimeBudgetAgorot: 0 },
     });
     expect(o.promotedStores.map((s) => s.slug)).toEqual(['top', 'boosted']);

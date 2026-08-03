@@ -25,7 +25,7 @@ import {
   archiveCampaigns,
   archiveCampaignsForStore,
   createCampaign,
-  getAllCampaigns,
+  getCampaignsInRange,
   getArchivedByStoreId,
   getCampaignsByStoreId,
   updateCampaign,
@@ -360,8 +360,8 @@ describe('a budget that arrives as a string from the real driver', () => {
     const real = getDatabase();
     setDatabase(strings);
     try {
-      const campaigns = await getAllCampaigns();
-      const total = campaigns.reduce((sum, c) => sum + c.monthlyBudgetAgorot, 0);
+      const campaigns = await getCampaignsInRange('2000-01-01', '2100-01-01');
+      const total = campaigns.reduce((sum: number, c) => sum + c.monthlyBudgetAgorot, 0);
       expect(total).toBe(50_000);
     } finally {
       setDatabase(real);

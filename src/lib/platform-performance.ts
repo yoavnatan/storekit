@@ -1,6 +1,7 @@
 import { storeLifecycle, type StoreLifecycle, type StoreLifecycleFlags } from './store-status.js';
 import type { Order } from './orders.js';
 import {
+  assemblePerformanceSummary,
   buildPerformanceSummary,
   buildZeroPoints,
   type PerformanceGranularity,
@@ -8,21 +9,24 @@ import {
   type PerformanceSummary,
   type TopProduct,
 } from './seller-performance.js';
+import { EMPTY_STORE_SALES, type PlatformSales, type StoreSales } from './order-reporting.js';
 import { EMPTY_VIEW_STATS, type StoreViewStats } from './store-pageviews.js';
 import { blendedCommissionRate, commissionPercentForTier } from './pricing.js';
 
 // Platform-wide ("app-wide") twin of seller-performance.ts's per-store summary,
 // for the ADMIN performance tab. It does NOT re-implement any of the bucketing/
-// revenue/views math — it calls buildPerformanceSummary() once per store (the
+// revenue/views math — it calls assemblePerformanceSummary() once per store (the
 // single source of that math) and merges the results, so the platform totals
 // can never drift from what each store's own performance view reports. The only
 // platform-specific logic here is the merge + the per-store breakdown rows.
 //
-// Cost note, resolved: this loop used to perform one store-pageviews FILE READ per
-// store — 45 per admin render, the reason that module grew a read cache at all.
-// Page views are now an input (`viewsByStoreId`), fetched by the caller in ONE query
-// for every store at once (store-pageviews.ts → getStoreViewStats). The loop below
-// stays O(stores) in arithmetic and is now O(1) in round trips.
+// Cost note, resolved in two steps and both were the same shape. This loop used to do one
+// store-pageviews FILE READ per store — 45 per admin render, the reason that module grew a read
+// cache at all; views became an input (`viewsByStoreId`), fetched in ONE query for every store.
+// **And then (§3, 2026-08-03) so did SALES.** The loop bucketed every order on the platform once
+// per store — O(stores × orders), which is 45 × 207 today and 1,000 × 100,000 the moment the
+// platform works — and that is now one `GROUP BY` (order-reporting.ts#getPlatformSales). This
+// function is pure arithmetic over two pre-aggregated inputs and does no I/O of its own.
 
 export interface PlatformStoreInput {
   /** The store's id — the key page-view statistics are gathered under (slugs change, ids do not). */
@@ -195,12 +199,56 @@ export function selectStoreRows(rows: PlatformStoreRow[], query: StoreRowsQuery)
 }
 
 /**
+ * The pure twin of `order-reporting.ts#getPlatformSales` — the same aggregation, over an order
+ * array the caller already holds.
+ *
+ * It is not on the render path and it is not meant to be: it buckets every order once per store,
+ * which is precisely the O(stores × orders) shape §3 moved into the database. What it IS good for
+ * is being checkable — `tests/reporting-invariants.test.ts` runs it and the query over the same
+ * rows and requires the same answer, and every invariant about platform money can be stated over
+ * hand-built orders with no database at all. Same arrangement as `purchasedCountsFrom` beside
+ * `getPurchasedCountsByStoreSlugs`.
+ */
+export function buildPlatformSales(
+  orders: Order[],
+  storeSlugs: readonly string[],
+  fromISO: string,
+  toISO: string,
+  granularity: PerformanceGranularity,
+  topLimit = 5,
+): PlatformSales {
+  const byStore = new Map<string, StoreSales>();
+  const productMap = new Map<string, TopProduct>();
+  for (const slug of new Set(storeSlugs)) {
+    const s = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, slug, fromISO, toISO, granularity, 0, 0);
+    byStore.set(slug, {
+      // Zero buckets are dropped: the query only returns groups that exist, and the axis is
+      // rebuilt from the dates either way.
+      buckets: s.points.filter((p) => p.revenueAgorot !== 0 || p.orders !== 0)
+        .map((p) => ({ key: p.key, revenueAgorot: p.revenueAgorot, orders: p.orders })),
+      totalRevenueAgorot: s.totalRevenueAgorot,
+      totalOrders: s.totalOrders,
+    });
+    for (const tp of s.topProducts) {
+      const entry = productMap.get(tp.productId) ?? { productId: tp.productId, name: tp.name, revenueAgorot: 0, units: 0 };
+      entry.revenueAgorot += tp.revenueAgorot;
+      entry.units += tp.units;
+      productMap.set(tp.productId, entry);
+    }
+  }
+  const sorted = [...productMap.values()].sort((a, b) => b.revenueAgorot - a.revenueAgorot);
+  return { byStore, topProducts: topLimit > 0 ? sorted.slice(0, topLimit) : sorted };
+}
+
+/**
  * Aggregates every store's performance into one platform-wide PerformanceSummary
- * plus a per-store breakdown, over [fromISO, toISO]. Pure given its inputs — the
- * orders array is the money data and `viewsByStoreId` the traffic data, both
- * fetched once by the caller. `topLimit` caps the aggregated topProducts
- * (default 5; <=0 = all, for the revenue-breakdown modal). The breakdown rows are
- * returned in full — paging/search is the caller's job (selectStoreRows).
+ * plus a per-store breakdown, over [fromISO, toISO]. Pure given its inputs — `sales` is the money
+ * data and `viewsByStoreId` the traffic data, both fetched once by the caller in one query each.
+ * The breakdown rows are returned in full — paging/search is the caller's job (selectStoreRows).
+ *
+ * `sales.topProducts` arrives already ranked and capped: the leaderboard is `ORDER BY revenue DESC
+ * LIMIT n` in the query, which is a true platform top-N. Merging per-store top-5s here would have
+ * produced a top-N of each store's top-5, a different and quietly wrong list.
  *
  * Note: unique visitors are SUMMED across stores (a browser visiting two stores
  * is counted once per store), so the platform figure is an upper bound. Exact
@@ -209,13 +257,12 @@ export function selectStoreRows(rows: PlatformStoreRow[], query: StoreRowsQuery)
  * and has none of the underlying ids, by design.
  */
 export function buildPlatformPerformance(
-  orders: Order[],
+  sales: PlatformSales,
   stores: PlatformStoreInput[],
   viewsByStoreId: ReadonlyMap<string, StoreViewStats>,
   fromISO: string,
   toISO: string,
   granularity: PerformanceGranularity,
-  topLimit = 5,
 ): PlatformPerformance {
   // Zero-filled point skeleton for the whole range, derived straight from the
   // dates — the exact x-axis keys/labels the seller math produces, so the merge
@@ -224,7 +271,6 @@ export function buildPlatformPerformance(
   const points: PerformancePoint[] = buildZeroPoints(fromISO, toISO, granularity);
   const keyIndex = new Map(points.map((p, i) => [p.key, i]));
 
-  const productMap = new Map<string, TopProduct>();
   const rows: PlatformStoreRow[] = [];
   let totalRevenueAgorot = 0;
   // Orders are summed per store: a rare multi-store order counts toward each
@@ -237,13 +283,10 @@ export function buildPlatformPerformance(
   let totalCommission = 0;
 
   for (const store of stores) {
-    // topLimit 0 here → the store contributes ALL its sold products to the
-    // platform product aggregation, so the platform top-N is a true top-N and
-    // not a top-N-of-each-store's-top-5.
-    const s = buildPerformanceSummary(
-      orders,
+    const s = assemblePerformanceSummary(
+      sales.byStore.get(store.slug) ?? EMPTY_STORE_SALES,
       viewsByStoreId.get(store.id) ?? EMPTY_VIEW_STATS,
-      store.slug, fromISO, toISO, granularity, store.commissionPercent ?? 0, 0,
+      fromISO, toISO, granularity, store.commissionPercent ?? 0,
     );
     totalRevenueAgorot += s.totalRevenueAgorot;
     totalCommission += s.platformCommissionAgorot;
@@ -258,13 +301,6 @@ export function buildPlatformPerformance(
       points[i]!.orders += p.orders;
       points[i]!.views += p.views;
       points[i]!.uniqueVisitors += p.uniqueVisitors;
-    }
-
-    for (const tp of s.topProducts) {
-      const entry = productMap.get(tp.productId) ?? { productId: tp.productId, name: tp.name, revenueAgorot: 0, units: 0 };
-      entry.revenueAgorot += tp.revenueAgorot;
-      entry.units += tp.units;
-      productMap.set(tp.productId, entry);
     }
 
     // EVERY store gets a row (its summary was computed either way — this costs
@@ -283,10 +319,7 @@ export function buildPlatformPerformance(
     });
   }
 
-  // The rounding pass that used to close this block is gone with the unit: every addend is an
-  // integer number of agorot, so the running totals are exact and there is nothing to trim.
-  const sortedProducts = [...productMap.values()].sort((a, b) => b.revenueAgorot - a.revenueAgorot);
-  const topProducts = topLimit > 0 ? sortedProducts.slice(0, topLimit) : sortedProducts;
+  const topProducts = sales.topProducts;
 
   // Each store's commission was rounded to the agora against its OWN tier rate (that is why this
   // sums per-store figures rather than applying one blended rate to the platform total), so the

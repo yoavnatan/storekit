@@ -1,5 +1,5 @@
 import type { Store } from './stores.js';
-import type { AdCampaign } from './ad-campaigns.js';
+import type { AdCampaign, CampaignTotals } from './ad-campaigns.js';
 import type { BrandCampaign } from './brand-campaigns.js';
 import type { PlatformAdSettings } from './platform-ads.js';
 import { baselineImpressionsInRange, campaignStatsInRange, brandStatsInRange } from './ad-metrics.js';
@@ -111,8 +111,16 @@ export interface PlatformAdInput {
   /** Every store (visible or not) — promoted-store list is drawn from here so an owner can still
    *  see a promotion they set on a store that later lost all its products. */
   allStores: Store[];
+  /** Campaigns that could have run inside `range` — `ad-campaigns.ts#getCampaignsInRange`, a
+   *  superset narrowing, with `campaignStatsInRange` still the authority on the exact overlap.
+   *  This used to be every campaign the platform ever ran, to compute a seven-day window (§3). */
   campaigns: AdCampaign[];
   brandCampaigns: BrandCampaign[];
+  /** "How many exist / how many are running / what they are committed to" — three COUNTs and a
+   *  SUM, and NOT range-scoped, which is exactly why they cannot be counted off the lists above
+   *  any more. `getCampaignTotals` / `getBrandCampaignTotals`. */
+  campaignTotals: CampaignTotals;
+  brandTotals: CampaignTotals;
   ads: { googleTagId?: string; metaPixelId?: string } | undefined;
   settings: PlatformAdSettings;
   /** Date window all mock metrics are measured over. Defaults to the last 7 days. */
@@ -120,7 +128,7 @@ export interface PlatformAdInput {
 }
 
 export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverview {
-  const { feedStores, feedProductCount, allStores, campaigns, brandCampaigns, ads, settings } = input;
+  const { feedStores, feedProductCount, allStores, campaigns, brandCampaigns, campaignTotals, brandTotals, ads, settings } = input;
   const { from, to } = input.range ?? presetRange('7d')!;
 
   const connection: AdConnectionStatus = {
@@ -151,18 +159,17 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
   // list) so the view stays bounded whether there are 5 boosts or 5000 — the
   // owner sees totals, not a row per seller. A per-store map is accumulated for
   // the per-store exposure view (also bounded, see topStores below).
-  const active = campaigns.filter((c) => c.status === 'active');
   // Two different questions, two different bases — and the split is the point:
-  //   · what RAN in this window  → every campaign, whatever its status is today. A campaign that
-  //     ran nine days and was then cancelled still spent that money, and platform-revenue.ts
-  //     bills it that way; filtering to currently-active here made the same window report two
-  //     different ad-spend figures on two admin screens.
-  //   · what is committed NOW    → only the active ones (count + monthly budget), which is a
-  //     forward-looking number and has nothing to do with the window.
+  //   · what RAN in this window  → every campaign that could have, whatever its status is today.
+  //     A campaign that ran nine days and was then cancelled still spent that money, and
+  //     platform-revenue.ts bills it that way; filtering to currently-active here made the same
+  //     window report two different ad-spend figures on two admin screens.
+  //   · what is committed NOW    → only the active ones (count + monthly budget), a
+  //     forward-looking number with nothing to do with the window — which is why it arrives as
+  //     `campaignTotals` and can no longer be counted off a list the window narrowed.
   let boostSpend = 0;
   let boostImpressions = 0;
   let boostClicks = 0;
-  let boostBudget = 0;
   const boostImpByStore = new Map<string, number>();
   for (const c of campaigns) {
     const stats = campaignStatsInRange(c, from, to);
@@ -174,15 +181,14 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
     boostClicks += stats.clicks;
     boostImpByStore.set(c.storeId, (boostImpByStore.get(c.storeId) ?? 0) + stats.impressions);
   }
-  // **Summed in agorot, converted once.** These are the two `+=` in the application that touch a
-  // `bigint` column, and `+` on the string `pg` returns for one CONCATENATES rather than adds —
-  // '50000' + '50000' is '5000050000', with no type error and no failing render. Integers also
-  // mean the total is exact however many campaigns a store runs.
-  for (const c of active) boostBudget += c.monthlyBudgetAgorot;
+  // The committed budget is `SUM(monthly_budget_agorot)` in the query now, which also settles the
+  // `bigint` trap that used to live here: `+` on the string `pg` returns for a `bigint` column
+  // CONCATENATES rather than adds — '50000' + '50000' is '5000050000', with no type error and no
+  // failing render. It arrives as one integer, and converts to ILS once.
   const boost: BoostOverview = {
-    activeCampaigns: active.length,
-    totalCampaigns: campaigns.length,
-    monthlyBudget: fromAgorot(boostBudget),
+    activeCampaigns: campaignTotals.active,
+    totalCampaigns: campaignTotals.total,
+    monthlyBudget: fromAgorot(campaignTotals.activeBudgetAgorot),
     estimatedSpend: Math.round(boostSpend),
     impressions: boostImpressions,
   };
@@ -195,12 +201,10 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
   // the same July window reporting a smaller platform ad cost after the pause than before it,
   // while brandStatsInRange had the right answer all along (it freezes at pausedAt rather than
   // returning zero, ad-metrics.ts#runPeriod).
-  const brandActive = brandCampaigns.filter((c) => c.status === 'active');
   let brandSpend = 0;
   let brandImpressions = 0;
   let brandClicks = 0;
   let brandConversions = 0;
-  let brandBudget = 0;
   for (const c of brandCampaigns) {
     const stats = brandStatsInRange(c, from, to);
     brandSpend += stats.spend;
@@ -208,11 +212,10 @@ export function buildPlatformAdOverview(input: PlatformAdInput): PlatformAdOverv
     brandClicks += stats.clicks;
     brandConversions += stats.conversions;
   }
-  for (const c of brandActive) brandBudget += c.monthlyBudgetAgorot; // agorot — see the boost sum
   const brand: BrandOverview = {
-    activeCampaigns: brandActive.length,
-    totalCampaigns: brandCampaigns.length,
-    monthlyBudget: fromAgorot(brandBudget),
+    activeCampaigns: brandTotals.active,
+    totalCampaigns: brandTotals.total,
+    monthlyBudget: fromAgorot(brandTotals.activeBudgetAgorot),
     estimatedSpend: Math.round(brandSpend),
     impressions: brandImpressions,
     clicks: brandClicks,

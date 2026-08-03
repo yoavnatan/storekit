@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { isUuid, query, rows } from './db.js';
+import { firstRow, isUuid, query, rows } from './db.js';
 import { safeRedirectPath } from './safe-redirect.js';
 import { toAgorot } from './money.js';
 import { sanitizeImageUrl as sanitizeImageUrlShared } from './image-url.js';
@@ -195,12 +195,55 @@ function toBrandCampaign(row: BrandRow): BrandCampaign {
 }
 
 /** Newest first — `created_at DESC, id`, never `created_at` alone: two campaigns created in the
- *  same second would otherwise swap places between loads (§7.13). */
+ *  same second would otherwise swap places between loads (§7.13). Kept unscoped because the admin
+ *  brand endpoint LISTS them: this is the screen that shows every brand campaign, one row each,
+ *  and it is the owner's own handful of adverts, not a per-seller table. */
 export async function getAllBrandCampaigns(): Promise<BrandCampaign[]> {
   const found = await rows<BrandRow>(
     `SELECT ${COLUMNS} FROM brand_campaigns ORDER BY created_at DESC, id`,
   );
   return found.map(toBrandCampaign);
+}
+
+/**
+ * The brand twin of `ad-campaigns.ts#getCampaignsInRange`, written in the same diff and for the
+ * reason memory `project_brand_boost_twin_drift` records: the two campaign kinds feed money in
+ * separate modules, and fixing one without the other IS the drift.
+ *
+ * Same contract — a SUPERSET narrowing, with `ad-metrics.ts#overlapDays` left as the single
+ * authority on how many days a campaign ran inside the window. Brand campaigns have no
+ * `archived_at`: cancelling one deletes it, which is why there is no archived clause here.
+ */
+export async function getBrandCampaignsInRange(fromISO: string, toISO: string): Promise<BrandCampaign[]> {
+  const found = await rows<BrandRow>(
+    `SELECT ${COLUMNS} FROM brand_campaigns
+      WHERE (created_at AT TIME ZONE 'UTC')::date <= $2::date
+        AND (status = 'active'
+             OR (created_at AT TIME ZONE 'UTC')::date >= $1::date
+             OR (COALESCE(paused_at, updated_at) AT TIME ZONE 'UTC')::date >= $1::date)
+        AND (duration_days IS NULL
+             OR (created_at AT TIME ZONE 'UTC')::date >= $1::date
+             OR (created_at AT TIME ZONE 'UTC')::date + (duration_days - 1) >= $1::date)
+      ORDER BY created_at DESC, id`,
+    [fromISO, toISO],
+  );
+  return found.map(toBrandCampaign);
+}
+
+/** How many brand campaigns exist and how many are running, with the active ones' committed
+ *  budget — the same three not-range-scoped numbers `getCampaignTotals` answers for boosts. */
+export async function getBrandCampaignTotals(): Promise<{ total: number; active: number; activeBudgetAgorot: number }> {
+  const row = await firstRow<{ total: string | number; active: string | number; budget: string | number }>(
+    `SELECT COUNT(*)                                              AS total,
+            COUNT(*) FILTER (WHERE status = 'active')             AS active,
+            COALESCE(SUM(monthly_budget_agorot) FILTER (WHERE status = 'active'), 0) AS budget
+       FROM brand_campaigns`,
+  );
+  return {
+    total: Number(row?.total ?? 0),
+    active: Number(row?.active ?? 0),
+    activeBudgetAgorot: Number(row?.budget ?? 0),
+  };
 }
 
 export async function createBrandCampaign(input: CreateBrandInput): Promise<BrandCampaign> {
