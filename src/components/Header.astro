@@ -1034,12 +1034,46 @@ const strEmpty   = t.store.noProductsFound;
     const MAX_RECENTS  = 5;
     const PLACEHOLDER_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
 
+    /**
+     * The product index this dropdown matches against.
+     *
+     * It used to be serialised into the page as `<script id="header-search-products">`
+     * — instant, but paid for by every visitor on every store and product page whether
+     * they searched or not (24.1KB of HTML on the biggest showcase store, growing with
+     * the catalog). It now comes from `/api/store-search-index`, and the matching is
+     * still done entirely in the browser: the fetch is moved OUT of the page load, not
+     * onto the keystroke.
+     *
+     * Warmed twice, so a first character never waits on it: once when the browser goes
+     * idle after paint, and once on first focus for anyone who beats that. `loadIndex`
+     * is idempotent and shares one in-flight promise, so those two calls are one request.
+     *
+     * A failure leaves `products` empty: the dropdown offers nothing and Enter still
+     * submits the query, which is exactly what a visitor without JS gets.
+     */
     type SearchProduct = { slug: string; name: string; price: number; basePrice?: number; image: string };
     let products: SearchProduct[] = [];
-    try {
-      const el = document.getElementById('header-search-products');
-      if (el) products = JSON.parse(el.textContent ?? '[]') as SearchProduct[];
-    } catch { /* no products data embedded */ }
+    let indexLoad: Promise<void> | null = null;
+
+    function loadIndex(): Promise<void> {
+      if (!indexLoad) {
+        indexLoad = fetch(`/api/store-search-index?store=${encodeURIComponent(storeSlug)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data: { ok?: boolean; products?: SearchProduct[] } | null) => {
+            if (data?.ok && Array.isArray(data.products)) products = data.products;
+          })
+          .catch(() => { /* suggestions unavailable; Enter still searches */ });
+      }
+      return indexLoad;
+    }
+
+    // Idle, not load: this is a convenience for an interaction that hasn't happened
+    // yet, so it must never compete with the page's own images or scripts.
+    // Same shape as seller/dashboard.astro's idle deferral — a `'x' in window`
+    // check narrows the else branch to `never`, so read the property instead.
+    const warm = () => { void loadIndex(); };
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1200));
+    idle(warm, { timeout: 3000 });
 
     function formatPrice(n: number) {
       return `${n.toLocaleString('he-IL')} ₪`;
@@ -1133,7 +1167,11 @@ const strEmpty   = t.store.noProductsFound;
       return nQuery.split(' ').every((word) => word && nName.includes(word));
     }
 
-    function renderResults(q: string) {
+    async function renderResults(q: string) {
+      await loadIndex();
+      // The index may have taken longer than the next keystroke or a blur. Anything
+      // rendered now would be answering a question the box no longer asks.
+      if (input.value.trim() !== q) return;
       const hits = products.filter((p) => matchesSearch(q, p.name)).slice(0, 5);
       if (!hits.length) {
         dropdown.innerHTML = `<div class="hsd-empty">${strEmpty}</div>`;
@@ -1162,8 +1200,10 @@ const strEmpty   = t.store.noProductsFound;
     }
 
     input.addEventListener('focus', () => {
+      // Catches anyone who focuses before the idle warm-up ran; it's the same promise.
+      void loadIndex();
       if (!input.value.trim()) renderRecents();
-      else renderResults(input.value.trim());
+      else void renderResults(input.value.trim());
     });
 
     let debounceTimer = 0;
@@ -1183,7 +1223,7 @@ const strEmpty   = t.store.noProductsFound;
         renderRecents();
         return;
       }
-      debounceTimer = window.setTimeout(() => renderResults(q), 150);
+      debounceTimer = window.setTimeout(() => void renderResults(q), 150);
     });
 
     input.addEventListener('keydown', (e) => {

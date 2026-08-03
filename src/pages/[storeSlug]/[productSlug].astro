@@ -717,16 +717,8 @@ const pmI18n = {
   </div>
 </BaseLayout>
 
-<script is:inline type="application/json" id="header-search-products" set:html={jsonForScript(
-  allStoreProducts.map((p) => ({
-    slug: p.slug,
-    name: p.name,
-    price: resolvePrice(p, shopStore.sale).price,
-    // Present only when discounted — the dropdown renders it struck through.
-    basePrice: resolvePrice(p, shopStore.sale).isDiscounted ? p.price : undefined,
-    image: p.images?.[0] ? cdnSrc(p.images[0], 72) : '',
-  }))
-)} />
+{/* The header search's product index used to be serialised here too — see the note
+    on the store page. It now comes from /api/store-search-index. */}
 
 <script>
   import { addItem, getCartQty } from '../../lib/cart.js';
