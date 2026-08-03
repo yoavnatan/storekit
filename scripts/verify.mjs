@@ -98,23 +98,38 @@ function changedFiles() {
 const IRRELEVANT = /(?:(?:^|\/)\.claude\/)|(?:\.md$)/;
 const relevant = (p) => p && !IRRELEVANT.test(p);
 
+// One `path → content hash` map for the whole tree, and nothing else. It deliberately says nothing
+// about what is staged, committed or in HEAD: `git commit` moves blobs from the working tree into
+// the index without changing one byte a check reads, and an earlier version keyed off the raw
+// `ls-files -s` text, so every commit threw the cache away and the pre-push gate paid the full
+// minute again for a tree it had already passed.
 function treeHash() {
   try {
-    const index = git('ls-files', '-s').split('\n').filter(relevant);
-    const dirty = [
-      ...git('diff', '--name-only').split('\n'),        // working tree vs index
+    const byPath = new Map();
+    for (const line of git('ls-files', '-s').split('\n')) {
+      // "<mode> <sha> <stage>\t<path>"
+      const tab = line.indexOf('\t');
+      if (tab < 0) continue;
+      const path = line.slice(tab + 1);
+      if (relevant(path)) byPath.set(path, line.slice(0, tab).split(' ')[1]);
+    }
+    // Working tree vs index, plus untracked: for these the index hash is not what a check will read.
+    const dirty = [...new Set([
+      ...git('diff', '--name-only').split('\n'),
       ...git('ls-files', '--others', '--exclude-standard').split('\n'),
-    ].filter(relevant);
-    // A deleted file has no content to hash, but its NAME is in `dirty` and that is what moves the
-    // hash — restore it and the name leaves the list again, returning the hash to where it was.
-    const present = [...new Set(dirty)].sort().filter((f) => existsSync(resolve(ROOT, f)));
-    // `--` so a file whose name begins with a dash is a path and not a flag.
-    const contents = present.length ? git('hash-object', '--', ...present) : '';
-    return createHash('sha256')
-      .update(index.join('\n'))
-      .update([...new Set(dirty)].sort().join('\n'))
-      .update(contents)
-      .digest('hex');
+    ].filter(relevant))].sort();
+    const present = dirty.filter((f) => existsSync(resolve(ROOT, f)));
+    // A deleted file simply leaves the map — restoring it puts the same entry back, so the hash
+    // returns to exactly where it was.
+    for (const f of dirty) if (!present.includes(f)) byPath.delete(f);
+    if (present.length) {
+      // `--` so a file whose name begins with a dash is a path and not a flag.
+      const hashes = git('hash-object', '--', ...present).split('\n');
+      present.forEach((f, i) => byPath.set(f, hashes[i]));
+    }
+    const digest = createHash('sha256');
+    for (const path of [...byPath.keys()].sort()) digest.update(`${path} ${byPath.get(path)}\n`);
+    return digest.digest('hex');
   } catch {
     return null; // no git / no hash → every check runs, which is the safe direction
   }
