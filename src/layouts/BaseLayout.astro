@@ -37,7 +37,34 @@ const {
 const lang = getLang(Astro.cookies);
 const dir  = getDir(lang);
 const t    = getT(lang);
-const i18nJson = jsonForScript({ cart: t.cart, confirm: t.confirm, dashboard: t.dashboard, gallery: t.gallery, wishlist: t.wishlist });
+/**
+ * `#i18n-data` — the strings client scripts read at runtime, because a script
+ * rendered by `innerHTML` has no access to `getT()`.
+ *
+ * **`dashboard` is the whole file and it only belongs on four routes.** Measured
+ * 2026-08-03: the island is ~36.7KB on every page and `t.dashboard` alone is
+ * 34.9KB of it — 95%. It was going out with every shopper-facing page (home, store,
+ * product, search, /stores, checkout), where nothing has ever read it: every
+ * consumer is under `src/scripts/dashboard/` or `src/scripts/admin/`, and those
+ * load only on the seller dashboard, the admin panels and the buyer area. It was
+ * pure page weight on exactly the pages whose weight is the SEO surface — bigger
+ * than the embedded catalog the same audit went looking for.
+ *
+ * Gated on the PATH rather than a `dashboardI18n` prop deliberately: a prop is one
+ * more thing to remember on a new dashboard page, and forgetting it fails silently
+ * as English fallback strings appearing in a Hebrew UI. Every consumer already
+ * lives under one of these three prefixes and `tests/i18n-island-scope.test.ts`
+ * fails the build if a new one appears outside them.
+ */
+const DASHBOARD_ROUTES = ['/seller/', '/admin/', '/buyer/'];
+const needsDashboardStrings = DASHBOARD_ROUTES.some((p) => Astro.url.pathname.startsWith(p));
+const i18nJson = jsonForScript({
+  cart: t.cart,
+  confirm: t.confirm,
+  gallery: t.gallery,
+  wishlist: t.wishlist,
+  ...(needsDashboardStrings ? { dashboard: t.dashboard } : {}),
+});
 
 function sanitizeTagId(id?: string): string {
   const clean = (id ?? '').replace(/[^A-Za-z0-9\-]/g, '');
