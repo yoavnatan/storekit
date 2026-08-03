@@ -20,16 +20,9 @@
  * The track itself stays in the DOM at all times — removing it would shift everything below by 2px
  * the moment loading ended, which is its own small jump.
  *
- * **Why the track is masked at both ends (owner, 2026-08-03).** The sweep is a 50%-wide element
- * whose gradient fades to transparent at each end, travelling from -200% to +200% inside an
- * `overflow-hidden` track. That reads soft only while it is fully inside. At the start and end of
- * every cycle it is half outside, and what you see is the gradient sliced through its solid middle
- * and pinned flat against the track's boundary — a hard vertical stop that made the bar look
- * chopped by the container's side padding rather than travelling through it. The mask fades the
- * outer 7% of the track to transparent, so the sweep thins out as it leaves instead of hitting a
- * wall: narrow at the edges, full-bodied through the middle, which is the shape it always claimed
- * to have. Chosen over widening the track to full-bleed because the bar describes the container's
- * content and should not out-measure it.
+ * The height, the clip and the fade at both ends all come from `.progress-track` (utils.css) —
+ * that class and `.progress-sweep` are a pair, and the reason the ends fade is written there. It is
+ * shared rather than local because the seller dashboard builds its own track for the same bar.
  *
  * Drive it from script with `startLoadingSweep(el)` / `stopLoadingSweep(el)` (lib/loading-sweep.ts).
  */
@@ -43,16 +36,4 @@ interface Props {
 const { id, label, class: className = '' } = Astro.props;
 ---
 
-<div
-  id={id}
-  class:list={[
-    'h-[2px] overflow-hidden',
-    // Symmetric, so it needs no [dir=rtl] variant — the sweep travels the same
-    // way in both directions and dissolves into either end.
-    '[mask-image:linear-gradient(to_right,transparent_0%,#000_7%,#000_93%,transparent_100%)]',
-    '[-webkit-mask-image:linear-gradient(to_right,transparent_0%,#000_7%,#000_93%,transparent_100%)]',
-    className,
-  ]}
-  role="status"
-  aria-label={label}
-></div>
+<div id={id} class:list={['progress-track', className]} role="status" aria-label={label}></div>

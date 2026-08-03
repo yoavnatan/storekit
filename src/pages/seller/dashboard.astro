@@ -772,7 +772,7 @@ const orderStatusColors: Record<string, string> = {
           its last frame equals its first, which a background-position shimmer
           could not be. The delayed fade sits on a wrapper because the sweep has
           already spent its `animation` on the loop. */}
-      <div id="dash-hydrating-bar" class="h-[2px] overflow-hidden" role="status" aria-label={d.dashHydrating}>
+      <div id="dash-hydrating-bar" class="progress-track" role="status" aria-label={d.dashHydrating}>
         <span class="block h-full opacity-0 [animation:fade-in_0.2s_ease_0.25s_forwards]">
           <span class="progress-sweep block h-full"></span>
         </span>
