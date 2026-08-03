@@ -2,6 +2,7 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import StoreAvatar from '../../components/StoreAvatar.astro';
+import LoadingSweep from '../../components/LoadingSweep.astro';
 import StoreDemoBadge from '../../components/StoreDemoBadge.astro';
 import StoreDemoBanner from '../../components/StoreDemoBanner.astro';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
@@ -604,6 +605,7 @@ const pmI18n = {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
+          <LoadingSweep id="store-products-loading" label={t.store.loadingMore} class="mb-1" />
           <ul class="product-grid" role="list" hidden={products.length === 0}>
             {products.map((p, idx) => {
               const isNew = new Date(p.createdAt).toDateString() === today;
@@ -781,6 +783,7 @@ const pmI18n = {
 
 <script>
   import { addItem, syncCartImages, getCartQty } from '../../lib/cart.js';
+  import { startLoadingSweep, stopLoadingSweep } from '../../lib/loading-sweep.js';
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
   import { cdnSrc, cdnSrcSet } from '../../config/store.config.js';
   import { spawnRipple } from '../../lib/ripple.js';
@@ -1739,26 +1742,11 @@ const pmI18n = {
 
   // How long a filter may take before it is allowed to say it is loading.
   //
-  // Two numbers bracket the honest answer: about 100ms is where a response
-  // stops feeling instant, and about a second is where a wait starts breaking
-  // someone's train of thought and genuinely needs explaining. Anything in
-  // between is a judgement call, and the judgement here is that a filter
-  // answering inside half a second needs no narration — the new results ARE the
-  // feedback. So the cue is reserved for the upper half: a poor mobile
-  // connection, a very large catalogue, a slow origin. That is when a dimmed
-  // grid tells the shopper something true instead of decorating a wait they
-  // were never going to notice.
-  //
-  // **Measured rather than guessed, and the measurement is why this is not
-  // 150ms.** With the endpoint's reads no longer serialised, a category click
-  // answers in ~280-350ms end-to-end from this laptop — which sits 66ms from
-  // the database in Frankfurt. In production the app server is in that same
-  // region, so the database half collapses from ~134ms to single digits. A
-  // threshold inside the measured band would fire on a quarter of the clicks
-  // during development and never once in production: it would show for a tenth
-  // of a second and disappear, which is the flicker this is meant to remove,
-  // not a message.
-  const DIM_AFTER_MS = 450;
+  // The loading cue is a 2px sweeping bar above the grid, not a grey-out of it (owner,
+  // 2026-08-03). Fading the products a shopper is reading says "loading" by taking something away —
+  // the page reads as broken rather than busy. The bar adds a signal instead, is what this project
+  // already uses elsewhere, and carries its own delay in CSS so a fast filter shows nothing at all.
+  const loadingBar = document.getElementById('store-products-loading');
 
   async function refreshFromServer(): Promise<void> {
     syncUrl();
@@ -1769,32 +1757,13 @@ const pmI18n = {
     // total height (switching to "All", the largest possible set, is the most
     // dramatic case). That swap is correct, but with nothing marking it as a
     // deliberate transition, an instant hard-cut between two very different
-    // renderings reads as the layout "resetting" — dimming the outgoing grid
-    // during the fetch and fading the new one in gives the eye a "this is
-    // loading" cue instead of an unexplained snap.
-    //
-    // **But the dim WAITS now (2026-08-03).** It used to be applied the moment
-    // the fetch started, which was right while this data came from a local JSON
-    // file: the reply came back in a few milliseconds, so the dim was a cue
-    // nobody consciously saw. Against a real database it is a network round
-    // trip, and the same line became a visible grey flash on every single chip
-    // click — the products fading out and back reads as the page working hard
-    // to do something that should feel like a filter. A loading cue is only
-    // honest once there is actually something to wait for, so it is armed on a
-    // timer and cancelled if the answer beats it: below the threshold the swap
-    // is instant with no grey at all, above it the cue still appears and still
-    // explains the wait. Same principle as the repo's rule that an interaction
-    // changing nothing must not move anything.
-    const dimTimer = setTimeout(() => {
-      // Only if this refresh is still the current one — a superseded request
-      // must not dim a grid that a newer one is already filling.
-      if (token !== refreshToken || !productGrid) return;
-      productGrid.style.transition = 'opacity 0.15s ease';
-      productGrid.style.opacity = '0.35';
-    }, DIM_AFTER_MS);
+    // renderings reads as the layout "resetting". The bar above the grid is
+    // that marker now — see LoadingSweep.astro for why it replaced dimming.
+    startLoadingSweep(loadingBar);
     const { products: page, hasMore } = await fetchProductsPage(0);
-    clearTimeout(dimTimer);
+    // A newer filter is already in flight: it owns the bar and the grid now.
     if (token !== refreshToken) return;
+    stopLoadingSweep(loadingBar);
     // renderCategoryNav() used to be called synchronously by the click handler,
     // immediately — well before this fetch resolves. That meant the breadcrumb/
     // chip row reflowed at one moment and the grid reflowed at another, separated
@@ -1820,11 +1789,7 @@ const pmI18n = {
     // single funnel for all three); scrollToResults only ever scrolls UP, so a
     // filter used from the top of the page doesn't yank anyone downward.
     scrollToResults();
-    // A no-op when the dim never fired, which is now the common case — the grid
-    // was never faded, so there is nothing to fade back and no frame is wasted.
-    if (productGrid.style.opacity && productGrid.style.opacity !== '1') {
-      requestAnimationFrame(() => { productGrid.style.opacity = '1'; });
-    }
+
   }
 
   loadMoreBtn?.addEventListener('click', async () => {

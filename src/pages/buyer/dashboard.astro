@@ -1101,6 +1101,7 @@ const shipLabel: Record<string, string> = {
   import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
   import { showErrorToast } from '../../lib/toast.js';
   import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
+  import { LOADING_CUE_DELAY_MS } from '../../lib/loading-sweep.js';
 
   const _i18nEl = document.getElementById('buyer-i18n') as HTMLElement;
   const I = {
@@ -2021,13 +2022,15 @@ const shipLabel: Record<string, string> = {
     if (!list) return;
     const mySeq = ++ordersRequestSeq;
 
-    // Only show the skeleton if the fetch is actually slow — a local/fast
-    // response swapping content in outright feels instant, but showing it
-    // unconditionally made every keystroke/tab-switch flash a skeleton for
-    // a split second, reading as noise rather than a loading state.
+    // Only show the skeleton if the fetch is actually slow. The guard was already here and the
+    // threshold was simply too low: at 200ms it fired on nearly every sub-tab switch, because these
+    // requests answer in roughly 220-380ms — so the skeleton appeared for a tenth of a second and
+    // vanished, which reads as noise rather than as loading (owner, 2026-08-03). It now shares the
+    // site's one threshold (lib/loading-sweep.ts), so switching between orders and history normally
+    // shows nothing at all and only a genuinely slow connection sees the skeleton.
     const skeletonTimer = setTimeout(() => {
       if (mySeq === ordersRequestSeq) list.innerHTML = renderOrderSkeletons(BUYER_ORDER_PAGE_SIZE);
-    }, 200);
+    }, LOADING_CUE_DELAY_MS);
 
     const params = new URLSearchParams();
     params.set('page', String(ordersCurrentPage));
