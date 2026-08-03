@@ -108,6 +108,12 @@ const initialStatusText =
 const productUrl = productCanonicalUrl(shopStore, productSlug);
 const storeCanonical = storeCanonicalUrl(shopStore);
 
+// Every "לתשלום" on this page names the store it was pressed in. Checkout reads `?store=` as
+// intent, not as a filter (checkout.astro): this store opens on top and pre-ticked, the rest of the
+// cart is listed under it untouched. Without it, pressing checkout from inside a store landed on a
+// page where every other store was ticked too — the inconsistency this parameter exists to remove.
+const checkoutHref = `/checkout?store=${encodeURIComponent(shopStore.slug)}`;
+
 // Pre-filtered to non-blocked (see store-products.ts#getVisibleProductsByStoreId) — this list
 // also feeds the header search-suggestions JSON below, which used to leak a blocked product
 // as a suggestion that led straight into a 404 (found in review, 2026-07-14).
@@ -244,7 +250,7 @@ const pmI18n = {
         </svg>
         {lang === 'he' ? 'לחנות' : 'To store'}
       </a>
-      <a href="/checkout"
+      <a href={checkoutHref}
          class="inline-flex items-center gap-1.5 text-sm transition-colors duration-150 hover:[color:var(--color-text)]"
          style="color:var(--color-muted);text-decoration:none">
         {lang === 'he' ? 'לתשלום' : 'Checkout'}
@@ -482,7 +488,7 @@ const pmI18n = {
                     <span class="btn-label">{t.store.addToCart}</span>
                   </button>
 
-                  <a href="/checkout" id="to-checkout-btn" class="btn btn--accent flex-shrink-0"
+                  <a href={checkoutHref} id="to-checkout-btn" class="btn btn--accent flex-shrink-0"
                      style="display:none;height:48px;white-space:nowrap;align-items:center;justify-content:center;font-size:0.9375rem;font-weight:600">
                     {t.store.toCheckout}
                   </a>
@@ -678,7 +684,7 @@ const pmI18n = {
             <span class="btn-label">{t.store.addToCart}</span>
           </button>
 
-          <a href="/checkout" id="sticky-to-checkout-btn" class="btn btn--accent flex-shrink-0"
+          <a href={checkoutHref} id="sticky-to-checkout-btn" class="btn btn--accent flex-shrink-0"
              style="display:none;height:44px;white-space:nowrap;align-items:center;justify-content:center;font-size:0.9375rem;font-weight:600">
             {t.store.toCheckout}
           </a>
@@ -722,6 +728,7 @@ const pmI18n = {
 
 <script>
   import { addItem, getCartQty } from '../../lib/cart.js';
+  import { initImageSkeletons } from '../../lib/img-skeleton.js';
   import { isWishlisted, toggleWishlist } from '../../lib/wishlist.js';
   import { spawnRipple } from '../../lib/ripple.js';
   import { trackViewContent, trackAddToCart } from '../../lib/tracking.js';
@@ -895,27 +902,15 @@ const pmI18n = {
   const thumbBtns = document.querySelectorAll<HTMLButtonElement>('.thumb-btn');
   let activeIndex = 0;
 
-  // ── Skeleton: remove shimmer once the initial images load ───────────
-  const mainImgWrapEl = document.getElementById('main-img-wrap');
-  const firstMainImg = document.getElementById('main-img') as HTMLImageElement | null;
-  if (firstMainImg && mainImgWrapEl) {
-    const doneMain = () => mainImgWrapEl.classList.remove('is-loading');
-    if (firstMainImg.complete && firstMainImg.naturalWidth > 0) doneMain();
-    else {
-      firstMainImg.addEventListener('load', doneMain, { once: true });
-      firstMainImg.addEventListener('error', doneMain, { once: true });
-    }
-  }
-  document.querySelectorAll<HTMLImageElement>('.thumb-btn img').forEach((img) => {
-    const wrap = img.closest<HTMLElement>('.thumb-btn');
-    if (!wrap) return;
-    const done = () => wrap.classList.remove('is-loading');
-    if (img.complete && img.naturalWidth > 0) done();
-    else {
-      img.addEventListener('load', done, { once: true });
-      img.addEventListener('error', done, { once: true });
-    }
-  });
+  // ── Skeleton ────────────────────────────────────────────────────────
+  // Through the shared helper, not the hand-rolled load/error pair this used to carry twice.
+  // That copy predated `img-skeleton.ts` and never learned what the shared one learned on
+  // 2026-08-03: a shimmer must not run for an image the browser has not started fetching. Left
+  // alone, the thumbnail strip's lazy images sat animating a grey band indefinitely — and because
+  // the shimmer sits UNDER the picture, on a background-removed product photo that band shows
+  // straight through the subject and reads as a skeleton painted ON the product (owner, twice).
+  initImageSkeletons('#main-img-wrap');
+  initImageSkeletons('.thumb-btn');
 
   function setThumbActive(idx: number) {
     thumbBtns.forEach((b) => {
