@@ -30,7 +30,7 @@ import {
   countOrdersByStoreSlug,
   countsAsRevenue,
   createOrder,
-  getAllOrders,
+  getAdminOrdersPage,
   getOrderById,
   getOrdersByBuyer,
   getOrdersBySellerStores,
@@ -204,7 +204,7 @@ describe('units sold', () => {
     // `purchasedCountsFrom` applies it in JS. Both read order-status-rules.ts, and this asserts
     // they land on the same number rather than trusting that they will.
     const fromSql = await getPurchasedCountsByStoreSlug('keramika');
-    const fromJs = purchasedCountsFrom(await getAllOrders(), 'keramika');
+    const fromJs = purchasedCountsFrom((await getAdminOrdersPage({}, 1, 10_000)).orders, 'keramika');
     expect(fromSql).toEqual(fromJs);
     // And it is not vacuously equal: the PENDING order's line is excluded by both.
     expect(fromSql[AGARTAL]).toBe(2);

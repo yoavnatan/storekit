@@ -30,9 +30,14 @@
  *   · **The item ORDER is a column now (migration 0004).** The lines were an array and arrays are
  *     ordered; rows are not. See the migration for why every alternative sort key is wrong.
  *
- * `getAllOrders()` stays, and stays unbounded, in the same state `getAllStores()` /
- * `getAllSellers()` are in (§3): its three remaining callers all aggregate over the whole platform
- * and want `SUM`/`GROUP BY`, which is one job, done for all three at once, not here.
+ *   · **`getAllOrders()` is gone (§3, 2026-08-03).** Its three remaining callers all aggregated
+ *     over the whole platform, and that work moved into the database in one piece:
+ *     `order-reporting.ts` holds every whole-platform `SUM`/`GROUP BY`, and `getAdminOrdersPage`
+ *     below is the admin Orders tab's own page — a `WHERE`, an `ORDER BY` and a `LIMIT`, where an
+ *     array of every order the platform has ever taken used to be filtered and sliced to fifteen
+ *     rows. The pure `filterAndSortOrders` beside it stays as that query's unit-testable twin
+ *     (`admin-orders-filter.ts`), the same arrangement `purchasedCountsFrom` and
+ *     `selectMoneyEvents` already have with their queries.
  */
 import crypto from 'node:crypto';
 import type { DeliveryMethod } from './shipping.js';
@@ -42,6 +47,7 @@ import {
   REVENUE_SHIPPING_STATUSES,
 } from './order-status-rules.js';
 import { firstRow, isUuid, rows, withTransaction, type Queryable } from './db.js';
+import { SHIPPING_SORT_ORDER, type AdminOrderQuery } from './admin-orders-filter.js';
 
 export interface OrderItem {
   productId: string;
@@ -329,10 +335,96 @@ export async function getOrderById(id: string): Promise<Order | null> {
   return row ? toOrder(row) : null;
 }
 
-/** Every order on the platform. See the module header: unbounded, on purpose, until its three
- *  aggregating callers are converted to `SUM`/`GROUP BY` together (§3). */
-export async function getAllOrders(): Promise<Order[]> {
-  return selectOrders('true');
+/**
+ * ONE page of the admin Orders tab — the whole toolbar pushed into the query (§3, 2026-08-03).
+ *
+ * What this replaced: `getAllOrders()` into memory, `filterAndSortOrders` over the array, then
+ * `paginate()` down to fifteen rows. Every order the platform has ever taken, to render a screen
+ * that shows fifteen of them.
+ *
+ * **The pure twin is `admin-orders-filter.ts#filterAndSortOrders`, and it is deliberately still
+ * there.** It is what makes the search/sort/filter rules testable without a database, and
+ * `tests/admin-orders-page.test.ts` runs both over the same rows and requires the same answer —
+ * so a predicate that drifts fails a test instead of quietly showing an admin a different list.
+ *
+ * One difference is real and is not a drift: the free-text haystack joins this order's store names
+ * in ALPHABETICAL order here and in first-appearance order in JS. It only shows for a query string
+ * that spans two store names across the join, and neither order is more correct than the other.
+ */
+export interface AdminOrdersPage {
+  orders: Order[];
+  /** Rows matching the filters, before the page slice — what the pager counts. */
+  total: number;
+  /** Orders on the platform, ignoring every filter. The panel needs both to tell "no orders yet"
+   *  from "no orders match what you typed", and those are different screens. It cannot be
+   *  `orders.length` any more, which is exactly the kind of number a page slice silently breaks. */
+  totalUnfiltered: number;
+  page: number;
+  totalPages: number;
+}
+
+export async function getAdminOrdersPage(
+  query: AdminOrderQuery & { newSince?: string },
+  page: number,
+  pageSize: number,
+): Promise<AdminOrdersPage> {
+  const q = query.q?.trim().toLowerCase() || null;
+  // Exactly the five the predicate names. A parameter a statement does not reference is a bind
+  // error, not a spare — which is why the sort order and the page bounds are appended per query
+  // rather than carried in one list.
+  const params = [
+    query.shippingStatus?.length ? query.shippingStatus : null,
+    query.paymentStatus?.length ? query.paymentStatus : null,
+    query.store?.length ? query.store : null,
+    q,
+    query.newSince ?? null,
+  ];
+  // The haystack `orderSearchHaystack` builds, as one expression. `position(… in …) > 0` is
+  // `String.includes`, and both sides are lowercased exactly as the JS is.
+  const HAYSTACK = `lower(
+      o.id::text || ' ' || COALESCE(o.checkout_ref, '') || ' ' || o.buyer_name || ' ' ||
+      o.buyer_email || ' ' || o.buyer_phone || ' ' ||
+      COALESCE((SELECT string_agg(DISTINCT it.store_name, ' ') FROM order_items it WHERE it.order_id = o.id), '')
+    )`;
+  const where = `
+       ($1::text[] IS NULL OR o.shipping_status = ANY($1::text[]))
+   AND ($2::text[] IS NULL OR o.payment_status  = ANY($2::text[]))
+   AND ($3::text[] IS NULL OR EXISTS (
+         SELECT 1 FROM order_items it WHERE it.order_id = o.id AND it.store_name = ANY($3::text[])))
+   AND ($4::text   IS NULL OR position($4::text in ${HAYSTACK}) > 0)
+   AND ($5::text   IS NULL OR o.created_at > $5::timestamptz)`;
+
+  // Sorted, then counted, then sliced — in that order, which is what makes page 2 of a search the
+  // real page 2. The trailing `created_at DESC, o.id` is not decoration: `Array.sort` is stable, so
+  // the JS twin breaks a tie by the order it was handed, which is exactly this.
+  const byStatus = query.sortCol === 'shippingStatus';
+  // The fulfilment order is handed over as DATA ($6). A `CASE WHEN 'pending' THEN 0 …` written
+  // here would be a second copy of the status table, in a language `tests/money-guards.test.ts`
+  // cannot read — which is exactly what that guard exists to stop.
+  const sortKey = query.sortCol === 'amount'
+    ? 'o.total_agorot'
+    : byStatus
+      ? 'COALESCE(array_position($6::text[], o.shipping_status), 99)'
+      : 'o.created_at';
+  const dir = query.sortDir === 'asc' ? 'ASC' : 'DESC';
+  const pageParams = byStatus ? [...params, SHIPPING_SORT_ORDER] : params;
+  const limitAt = pageParams.length + 1;
+
+  const counts = await firstRow<{ matched: string | number; every: string | number }>(
+    `SELECT COUNT(*) FILTER (WHERE ${where}) AS matched, COUNT(*) AS every FROM orders o`, params,
+  );
+  const total = bigIntOf(counts?.matched);
+  const totalUnfiltered = bigIntOf(counts?.every);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+
+  const found = await rows<OrderRow>(
+    `${SELECT_ORDERS} WHERE ${where}
+      ORDER BY ${sortKey} ${dir}, o.created_at DESC, o.id
+      LIMIT $${limitAt} OFFSET $${limitAt + 1}`,
+    [...pageParams, pageSize, (safePage - 1) * pageSize],
+  );
+  return { orders: found.map(toOrder), total, totalUnfiltered, page: safePage, totalPages };
 }
 
 /** Is this order one of `storeSlug`'s to see and to manage?

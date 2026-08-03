@@ -1,5 +1,6 @@
 import type { Order } from './orders.js';
 import { decodeList } from './admin-nav.js';
+import { SHIPPING_PIPELINE_ORDER } from './order-status-rules.js';
 
 // Server-side counterpart of the admin Orders tab's search/sort/filter
 // toolbar (src/scripts/admin/orders-filter.ts) — pagination meant the
@@ -7,10 +8,26 @@ import { decodeList } from './admin-nav.js';
 // filtering+sorting had to move here and run over the full order list before
 // slicing to a page, the same way product-listing.ts already does for the
 // public store page.
+//
+// **The page itself is a query now (§3, 2026-08-03): `orders.ts#getAdminOrdersPage`.** Reading
+// every order on the platform to show fifteen of them is the shape §3 exists to remove. What stays
+// here is the vocabulary — what each query parameter means — plus `filterAndSortOrders`, which is
+// no longer on the render path but IS the query's unit-testable twin: `tests/admin-orders-page.test.ts`
+// runs the two over the same rows and requires the same list, so the rules cannot drift apart
+// silently. Same arrangement `selectMoneyEvents` has with `getMoneyEvents`.
 export type AdminOrderSortCol = 'date' | 'amount' | 'shippingStatus';
 export type AdminOrderSortDir = 'asc' | 'desc';
 
-const SHIPPING_RANK: Record<string, number> = { pending: 0, processing: 1, ready: 2, shipped: 3, delivered: 4 };
+/** Fulfilment order as a LIST rather than a rank map, because that is the shape both consumers
+ *  need: the JS sort reads an index out of it, and the SQL sort is handed it as a `text[]` for
+ *  `array_position`. Derived from the status table (`order-status-rules.ts`) — a status missing
+ *  from it (only 'cancelled', the terminal one) sorts last in both. */
+export const SHIPPING_SORT_ORDER: readonly string[] = SHIPPING_PIPELINE_ORDER;
+
+const rankOf = (status: string): number => {
+  const i = SHIPPING_SORT_ORDER.indexOf(status);
+  return i === -1 ? 99 : i;
+};
 
 export interface AdminOrderQuery {
   q?: string;
@@ -47,8 +64,8 @@ export function filterAndSortOrders(orders: Order[], query: AdminOrderQuery): Or
   const col = query.sortCol ?? 'date';
   const dir = query.sortDir ?? 'desc';
   return filtered.sort((a, b) => {
-    const va = col === 'amount' ? a.totalAgorot : col === 'shippingStatus' ? (SHIPPING_RANK[a.shippingStatus] ?? 99) : a.createdAt;
-    const vb = col === 'amount' ? b.totalAgorot : col === 'shippingStatus' ? (SHIPPING_RANK[b.shippingStatus] ?? 99) : b.createdAt;
+    const va = col === 'amount' ? a.totalAgorot : col === 'shippingStatus' ? rankOf(a.shippingStatus) : a.createdAt;
+    const vb = col === 'amount' ? b.totalAgorot : col === 'shippingStatus' ? rankOf(b.shippingStatus) : b.createdAt;
     const cmp = va < vb ? -1 : va > vb ? 1 : 0;
     return dir === 'asc' ? cmp : -cmp;
   });
@@ -80,6 +97,10 @@ export function parseOrderQuery(sp: URLSearchParams): Required<AdminOrderQuery> 
 // Every store name across the whole (unfiltered) order set — the filter
 // dropdown's "store" column needs the full list regardless of which page is
 // currently shown, not just the stores appearing on the current page.
-export function getOrderStoreNames(orders: Order[]): string[] {
-  return [...new Set(orders.flatMap((o) => o.items.map((i) => i.storeName)))].sort((a, b) => a.localeCompare(b, 'he'));
+//
+// The names come from `order-reporting.ts#getAllOrderStoreNames` (one `SELECT DISTINCT`) now
+// rather than from a pass over every order; the Hebrew ordering stays here because it is a
+// `localeCompare('he')` and a database collation is not the same function.
+export function sortOrderStoreNames(names: string[]): string[] {
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'he'));
 }

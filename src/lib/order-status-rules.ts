@@ -99,6 +99,19 @@ const paymentWhere = (column: keyof PaymentStatusRule): PaymentStatus[] =>
 export const REVENUE_PAYMENT_STATUSES = paymentWhere('countsAsRevenue');
 export const REVENUE_SHIPPING_STATUSES = shippingWhere('countsAsRevenue');
 
+/**
+ * The fulfilment pipeline in order — what "sort by status" means on the admin Orders tab, in both
+ * the JS twin and the SQL that replaced it (`admin-orders-filter.ts`, `orders.ts`).
+ *
+ * DERIVED, never re-listed: the table's own row order IS the pipeline, and `cancelled` drops out
+ * because it is the one status the pipeline does not pass through (`terminal`). A hand-written
+ * `['pending','processing',…]` beside a sort is a second copy of this file, which is the exact
+ * thing `tests/money-guards.test.ts` refuses — and a new status added as a row would not appear
+ * in it.
+ */
+export const SHIPPING_PIPELINE_ORDER: ShippingStatus[] =
+  (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[]).filter((s) => !SHIPPING_STATUS_RULES[s].terminal);
+
 /** Both halves of `orderBlocksStoreClosure`. */
 export const CLOSURE_BLOCKING_PAYMENT_STATUSES = paymentWhere('blocksStoreClosure');
 export const CLOSURE_BLOCKING_SHIPPING_STATUSES = shippingWhere('blocksStoreClosure');
