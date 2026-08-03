@@ -1629,6 +1629,21 @@ function syncEditRowRev(displayRow: Element | null | undefined, rev: string | un
   if (form) form.dataset.baseRev = rev;
 }
 
+/**
+ * The upload failure the seller actually reads.
+ *
+ * Both call sites used to catch and discard, showing "Image upload failed. Please try again." for
+ * every cause — so a photo that was 12MB, or a HEIC the provider will never accept, produced a
+ * message whose only advice was to do the identical thing again. `cloudinaryUpload` now throws
+ * Cloudinary's own sentence (or its own pre-flight one); this puts it in front of the person who
+ * can act on it, and keeps the generic line only for a thrown value that carries no message.
+ */
+function uploadErrorText(err: unknown, i18n: Record<string, string>): string {
+  const reason = err instanceof Error ? err.message : '';
+  const generic = i18n.uploadFailed ?? 'Image upload failed. Please try again.';
+  return reason ? `${generic} (${reason})` : generic;
+}
+
 async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): Promise<void> {
   e.preventDefault();
   const form = e.target as HTMLFormElement;
@@ -1646,9 +1661,9 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
     const gallery = form.querySelector<Element>('.gallery-widget');
     try {
       if (gallery) await resolveGalleryUrls(gallery, cloud, preset);
-    } catch {
+    } catch (err) {
       submitBtns.forEach(btn => { btn.disabled = false; btn.textContent = origText; });
-      showStatus(i18n.uploadFailed ?? 'Image upload failed. Please try again.', true);
+      showStatus(uploadErrorText(err, i18n), true);
       return;
     }
 
@@ -1918,8 +1933,8 @@ export function initAddProduct(cloud: string, preset: string): void {
       const gallery = addForm.querySelector<Element>('.gallery-widget');
       try {
         if (gallery) await resolveGalleryUrls(gallery, cloud, preset);
-      } catch {
-        showStatus(i18n.uploadFailed ?? 'Image upload failed. Please try again.', true);
+      } catch (err) {
+        showStatus(uploadErrorText(err, i18n), true);
         return;
       }
 
