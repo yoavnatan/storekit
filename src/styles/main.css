@@ -215,15 +215,31 @@
   navigation: auto;
 }
 
-/* The header is the one element that is genuinely the SAME thing on both pages, so it is named and
- * therefore morphed rather than cross-faded — which is the point: it stops being torn down and
- * repainted on every click. Naming it also takes it OUT of the default root snapshot, so the page
- * body can cross-fade underneath a header that simply stays put.
+/* The header is the one element that is genuinely the SAME thing on both pages, so it is named —
+ * which takes it OUT of the root snapshot and lets the page body cross-fade underneath it.
  *
  * A `view-transition-name` must be UNIQUE per document, which is why it sits on the one `<header>`
  * BaseLayout renders once and never on anything repeated. */
 .site-header {
   view-transition-name: site-header;
+}
+
+/* …and then it is excluded from the animation entirely (owner, 2026-08-03).
+ *
+ * Naming an element is only half the job: by default its group still gets the built-in cross-fade,
+ * so the header dipped in opacity on every navigation. For a bar that is byte-identical on both
+ * pages that is motion describing nothing — the header is the site's fixed point, and the one
+ * thing it must never do is look like it reloaded.
+ *
+ * The old snapshot is removed rather than faded out, and the new one is shown with no animation at
+ * all, so across the whole transition the header is simply painted once and never touched. The page
+ * body underneath still cross-fades, which is the part that carries the sense of continuity. */
+::view-transition-old(site-header) {
+  display: none;
+}
+::view-transition-new(site-header) {
+  animation: none;
+  opacity: 1;
 }
 
 /* Short, and shorter than the 220-320ms springs elsewhere on purpose: a page transition is not a
