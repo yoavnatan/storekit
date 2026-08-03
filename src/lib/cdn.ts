@@ -119,6 +119,35 @@ export function cdnSrcSet(url: string, widths: number[]): string {
   return widths.map((w) => `${cdnSrc(url, w)} ${w}w`).join(', ');
 }
 
+/**
+ * Responsive `srcset` for a box with a FIXED ASPECT RATIO — the same width
+ * descriptors as `cdnSrcSet`, but every rung cropped to `w × w/ratio` at the CDN
+ * rather than delivered at the source's own proportions. Pair it with a `src`
+ * from `cdnThumb` at the same ratio.
+ *
+ * Why it exists, and when to reach for it: an `object-fit: cover` box discards
+ * every pixel outside its aspect ratio — AFTER the browser has paid to download
+ * and decode them. So a wide box fed a tall source is buying pixels it has
+ * already decided to throw away. The store banner is the case that found this:
+ * a 3/1 frame, and sellers routinely upload a square photo, so two thirds of the
+ * bytes were waste. Measured 2026-08-03 against a 1000x1000 source, same visible
+ * result: w_1600 uncropped 84.5KB / cropped 32.2KB; w_2048 112KB / 40.6KB.
+ *
+ * `g_auto` (inherited from cdnThumb) is what makes the crop safe — Cloudinary
+ * picks the crop window from the image's own content, so the subject survives the
+ * ratio change instead of being centre-cropped out of frame.
+ *
+ * Use `cdnSrcSet` instead whenever the box is `object-fit: contain`, or its
+ * height is driven by the image: there the source's proportions are the point,
+ * and cropping would cut the picture.
+ *
+ * Returns '' when the URL can't be transformed, so the caller keeps its plain src.
+ */
+export function cdnCropSrcSet(url: string, widths: number[], ratio: number): string {
+  if (!widths.length || !ratio || cdnThumb(url, widths[0], 1) === url) return '';
+  return widths.map((w) => `${cdnThumb(url, w, Math.round(w / ratio))} ${w}w`).join(', ');
+}
+
 /** A square-ish thumbnail cropped to fill exactly w×h, with Cloudinary choosing the
  *  crop window (`g_auto`) so the subject survives the aspect-ratio change.
  *  This is the right call for every fixed-size tile: cart rows, order rows,

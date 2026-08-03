@@ -31,7 +31,7 @@ import '../styles/main.css';
 const {
   title, description, image, type, noindex, jsonLd, canonical,
   isLoggedIn, hasStore, storeMode, storeName, storeSlug, sellerMode, hideNav, showSearch, isHome,
-  dataLayer, productPrice, productCurrency,
+  dataLayer, productPrice, productCurrency, preloadImage,
 } = Astro.props;
 
 const lang = getLang(Astro.cookies);
@@ -88,6 +88,24 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
         image on literally every page. Opening it in parallel with the HTML parse
         saves that round trip once per connection. */}
     <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
+    {/* The page's LCP image, when the page knows which one it is — BEFORE the ten
+        font preloads on purpose. The preload scanner does find an above-the-fold
+        <img> on its own, but only once it has parsed past the header and whatever
+        chrome sits above it, by which point the fonts have taken the connections.
+        Hoisting the largest element to the front of the queue is the whole point;
+        a page that passes this must hand the byte-identical href/srcset/sizes its
+        <img> uses, or the browser downloads the image twice. Store page first
+        (its banner measured 2.77s LCP, 2026-08-03). */}
+    {preloadImage?.href && (
+      <link
+        rel="preload"
+        as="image"
+        href={preloadImage.href}
+        imagesrcset={preloadImage.srcset}
+        imagesizes={preloadImage.sizes}
+        fetchpriority="high"
+      />
+    )}
     {/* All 10 weight/script combos preloaded — measured via Playwright's
        layout-shift observer (2026-07-16) that `font-display:optional` alone
        still let real text paint in the fallback font and visibly re-flow

@@ -173,4 +173,4 @@ export function formatPrice(amount: number | string): string {
  *  becomes an optimized one (see the header there for the rule). Re-exported here
  *  because most call sites already import their image helper alongside
  *  `formatPrice` from this config; both spellings hit the same implementation. */
-export { cdnSrc, cdnSrcSet, cdnThumb, cdnFill } from '../lib/cdn.js';
+export { cdnSrc, cdnSrcSet, cdnCropSrcSet, cdnThumb, cdnFill } from '../lib/cdn.js';

@@ -1,5 +1,5 @@
 ---
-import { cdnSrc } from '../config/store.config.js';
+import { cdnThumb } from '../config/store.config.js';
 import StoreAvatar from './StoreAvatar.astro';
 import StoreDemoBadge from './StoreDemoBadge.astro';
 import { storeHomeHref } from '../lib/custom-domain.js';
@@ -112,10 +112,18 @@ const markGlow = store.profileImage ? undefined : storeMark(store.slug || store.
     {extraCategoryCount > 0 && <span class="store-card__tag store-card__tag--more badge-finish">+{extraCategoryCount}</span>}
   </div>
   <div class="store-card__preview" aria-hidden="true">
+    {/* cdnThumb, not cdnSrc: this is a fixed 80x80 cell with object-fit:cover, which is
+        the case the standing rule names (pass 2x the CSS size). cdnSrc delivered the
+        source's own proportions and left the crop to the browser, so a portrait seller
+        photo arrived about a third larger than the square it was about to become — and
+        centre-cropped, where g_auto keeps the subject. Fewer bytes is also a shorter
+        shimmer, which is what these tiles show while they wait.
+        The comment sits OUTSIDE the expression because Astro's compiler rejects one as
+        the first child right after `{expr => (` (AI_INSTRUCTIONS → Architecture). */}
     {thumbs.map((img, i) => (
       <span class={`store-card__preview-img-wrap${eager && i === 0 ? '' : ' is-loading'}`}>
         <img
-          src={cdnSrc(img, 200)}
+          src={cdnThumb(img, 160, 160)}
           alt=""
           width="80"
           height="80"
