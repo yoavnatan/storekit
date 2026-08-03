@@ -215,6 +215,27 @@ export function initCategoryPicker(root: HTMLElement): void {
     if (e.key === 'Escape' && !menu.hidden) { close(); trigger.focus(); }
   });
 
+  /**
+   * Enter in the new-category field adds the category. It used to SAVE THE WHOLE PRODUCT and
+   * discard the half-typed category with it (reported 2026-08-03).
+   *
+   * This picker is rendered inside the product `<form>`, and a lone text input in a form makes
+   * Enter an implicit submit — the browser does it, no handler is involved, which is why nothing
+   * in this file looked wrong. The seller typed a name, pressed the key that means "confirm this",
+   * and got a product saved with no category on it.
+   *
+   * Bound on the menu rather than the input because the add-row is re-rendered on every `render()`,
+   * so a listener attached to the element itself would not survive its own creation.
+   */
+  menu.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    const input = (e.target as HTMLElement).closest<HTMLInputElement>('.category-picker__add-input');
+    if (!input) return;
+    e.preventDefault();   // the implicit submit — this is the whole bug
+    e.stopPropagation();
+    void saveNewCategory();
+  });
+
   menu.addEventListener('click', async (e) => {
     const target = e.target as HTMLElement;
 
@@ -267,32 +288,76 @@ export function initCategoryPicker(root: HTMLElement): void {
       return;
     }
 
-    if (target.closest('[data-save-add]')) {
-      const input = menu!.querySelector<HTMLInputElement>('.category-picker__add-input');
-      const name = input?.value.trim() ?? '';
-      if (!name) return;
-      const parentId = addingUnderId ?? null;
-
-      const fd = new FormData();
-      fd.set('_action', 'create-category');
-      fd.set('storeId', storeId());
-      fd.set('name', name);
-      fd.set('parentId', parentId ?? '');
-
-      const res = await fetch('/api/store-category', { method: 'POST', body: fd });
-      const data = await res.json() as { ok: boolean; tree?: CategoryNode[]; error?: string };
-      if (!data.ok || !data.tree) { showError(data.error ?? ''); return; }
-
-      // Deliberately doesn't select the new category or close the menu — creating a
-      // category and assigning *this* product to it are two different decisions; the
-      // seller might just be building out the tree. It's revealed (parent expanded)
-      // so picking it is one more click away, not auto-applied.
-      setCategoryTree(data.tree);
-      if (parentId) expanded.add(parentId);
-      addingUnderId = undefined;
-      render();
-    }
+    if (target.closest('[data-save-add]')) await saveNewCategory();
   });
+
+  /**
+   * Create the category the add-row names, then SELECT it and leave the menu open on it.
+   *
+   * **The previous behaviour was the opposite and it was deliberate**, on the reasoning that
+   * creating a category and assigning this product to it are two different decisions — so the new
+   * row was merely revealed and picking it was one more click. Overruled by the seller who uses it
+   * (2026-08-03): in the add-product form nobody types a category name except to put the product
+   * they are describing into it, and being handed a fresh category that the product is NOT in
+   * reads as the save having failed.
+   *
+   * So it is selected — and the menu deliberately stays OPEN on it rather than closing the way a
+   * plain pick does. That is what keeps the third requirement reachable: a tree is three levels
+   * deep, and the moment after creating "ריהוט" is exactly when a seller wants "+ תת-קטגוריה תחת
+   * ריהוט". Closing would make nesting a fresh category a matter of reopening the menu and hunting
+   * for the row they just made. It is expanded for the same reason: its own add-row is on screen.
+   *
+   * Multi-pick APPENDS instead of replacing — there the field is a set (the sale scope), and
+   * clearing the seller's other picks because they created a category would lose real work.
+   */
+  async function saveNewCategory(): Promise<void> {
+    const input = menu!.querySelector<HTMLInputElement>('.category-picker__add-input');
+    const name = input?.value.trim() ?? '';
+    if (!name) return;
+    const parentId = addingUnderId ?? null;
+
+    const fd = new FormData();
+    fd.set('_action', 'create-category');
+    fd.set('storeId', storeId());
+    fd.set('name', name);
+    fd.set('parentId', parentId ?? '');
+
+    const res = await fetch('/api/store-category', { method: 'POST', body: fd });
+    const data = await res.json() as { ok: boolean; tree?: CategoryNode[]; error?: string };
+    if (!data.ok || !data.tree) { showError(data.error ?? ''); return; }
+
+    setCategoryTree(data.tree);
+    const created = findCreated(data.tree, name, parentId);
+    if (created) {
+      if (multi) { if (!selectedIds.includes(created)) selectedIds.push(created); }
+      else { selectedIds.length = 0; selectedIds.push(created); }
+      hiddenInput!.value = selectedIds.join(',');
+      // Same order as a normal pick: repaint the trigger's label BEFORE notifying, because a
+      // listener may read that label as its source of truth.
+      updateLabel();
+      hiddenInput!.dispatchEvent(new Event('input', { bubbles: true }));
+      expanded.add(created);
+    }
+    if (parentId) expanded.add(parentId);
+    addingUnderId = undefined;
+    render();
+  }
+
+  /** The row the server just made: matched under the parent it was created under, so a name that
+   *  already exists elsewhere in the tree cannot be mistaken for it. */
+  function findCreated(tree: CategoryNode[], name: string, parentId: string | null): string | undefined {
+    const siblings = parentId ? findNode(tree, parentId)?.children ?? [] : tree;
+    return siblings.find((n) => n.name === name)?.id;
+  }
+
+  function findNode(nodes: CategoryNode[], id: string): CategoryNode | undefined {
+    for (const n of nodes) {
+      if (n.id === id) return n;
+      const hit = findNode(n.children, id);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
 
   updateLabel();
 }
