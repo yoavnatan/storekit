@@ -32,9 +32,14 @@ import { fileURLToPath } from 'node:url';
  * scroll targets → scroll-utils.ts, why no free trial → lib/pricing.ts, the lint-baseline history →
  * eslint.config.js, the payment-provider comparison → GO_LIVE_CHECKLIST §3.
  *
+ * The 2026-08-03 pass moved two more: the six leave-as-CSS cases and the legacy-file inventory (the
+ * hook already held them verbatim — this was deleting a duplicate, not relocating one), and the
+ * ads gender/age_group trap → `lib/audience-infer.ts`. It also *added* the one-command testing rule,
+ * paid for out of the same pass. 40.8k → 40.5k.
+ *
  * When this fails, lowering CEILING to the new number is the wrong move unless the number went down.
  */
-const CEILING = 40_800;
+const CEILING = 40_550;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
 

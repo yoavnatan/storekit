@@ -39,6 +39,8 @@
 // (That one burned a whole session. Do not hand-write an AST differ to binary-search it.)
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -50,22 +52,93 @@ const CACHE = resolve(ROOT, 'node_modules/.cache');
 const argv = process.argv.slice(2);
 const ALL = argv.includes('--all');
 const COMPACT = argv.includes('--compact'); // hook mode: nothing on success, failures only
+const NO_CACHE = argv.includes('--no-cache'); // force every check to actually run
+
+// Resolving git off PATH is the only portable option (no fixed path across mac/linux/CI), and this
+// is a local dev script: anyone who can shadow `git` on your PATH can already edit it.
+// `-c core.quotePath=false`: git C-quotes any path with a non-ASCII byte ("\327\252..."), and a
+// quoted name neither hashes nor exists — the hash would silently key off the wrong string. No
+// tracked path is non-ASCII today; this is what keeps that from mattering the day one is.
+const git = (...args) =>
+  // eslint-disable-next-line sonarjs/no-os-command-from-path
+  execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
 
 // Tracked changes AND untracked files — same definition the review gate uses (.claude/hooks/
 // review-state.sh); much of this repo's work sits uncommitted, so `diff HEAD` alone misses whole
 // new modules.
 function changedFiles() {
   try {
-    // Resolving git off PATH is the only portable option (no fixed path across mac/linux/CI), and
-    // this is a local dev script: anyone who can shadow `git` on your PATH can already edit it.
-    // eslint-disable-next-line sonarjs/no-os-command-from-path
-    const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
     const tracked = git('diff', 'HEAD', '--name-only');
     const untracked = git('ls-files', '--others', '--exclude-standard');
     return [...new Set((tracked + untracked).split('\n').filter(Boolean))];
   } catch {
     return null; // not a git repo / git unavailable — fall back to running everything
   }
+}
+
+// ── Don't run a check whose inputs are byte-identical to the last time it passed ──
+//
+// The measurement that forced this (2026-08-03, over the previous two days of sessions): 87% of all
+// command wall-time in a session was verification, and a large share of it was the SAME tree checked
+// twice — a checkpoint run, then the Stop hook's `--all` a minute later with nothing edited in
+// between; or a docs edit after a green run, which changes the hook's fingerprint but cannot change
+// a single check's answer. At `astro check` 84s that is a minute and a half of pure repetition per
+// turn.
+//
+// So each check records the content hash of the tree it passed against, and skips when the tree is
+// still exactly that. This is not a heuristic and it cannot go stale into a false green: identical
+// inputs, identical result. It is also NOT the same thing as the tools' own caches (eslint's,
+// tsc's) — those make a rerun cheaper, this makes it not happen.
+//
+// The hash is the true working-tree content, not mtimes: index blob hashes for every tracked file,
+// plus a real `hash-object` of anything modified or untracked. `.md` and `.claude/` are excluded on
+// purpose — no check reads them, and including them is what would make the session-close doc pass
+// re-run the whole suite. Everything else counts, `package-lock.json` included, so a dependency
+// change invalidates every marker.
+const IRRELEVANT = /(?:(?:^|\/)\.claude\/)|(?:\.md$)/;
+const relevant = (p) => p && !IRRELEVANT.test(p);
+
+function treeHash() {
+  try {
+    const index = git('ls-files', '-s').split('\n').filter(relevant);
+    const dirty = [
+      ...git('diff', '--name-only').split('\n'),        // working tree vs index
+      ...git('ls-files', '--others', '--exclude-standard').split('\n'),
+    ].filter(relevant);
+    // A deleted file has no content to hash, but its NAME is in `dirty` and that is what moves the
+    // hash — restore it and the name leaves the list again, returning the hash to where it was.
+    const present = [...new Set(dirty)].sort().filter((f) => existsSync(resolve(ROOT, f)));
+    // `--` so a file whose name begins with a dash is a path and not a flag.
+    const contents = present.length ? git('hash-object', '--', ...present) : '';
+    return createHash('sha256')
+      .update(index.join('\n'))
+      .update([...new Set(dirty)].sort().join('\n'))
+      .update(contents)
+      .digest('hex');
+  } catch {
+    return null; // no git / no hash → every check runs, which is the safe direction
+  }
+}
+
+const HASH = NO_CACHE ? null : treeHash();
+const MARKER = HASH && resolve(CACHE, 'verify', `${HASH}.json`);
+
+function passedBefore() {
+  if (!MARKER || !existsSync(MARKER)) return [];
+  try {
+    return JSON.parse(readFileSync(MARKER, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+/** Union with what an earlier (possibly narrower) run recorded, so a scoped pass helps `--all`. */
+function recordPassed(names) {
+  if (!MARKER) return;
+  try {
+    mkdirSync(resolve(CACHE, 'verify'), { recursive: true });
+    writeFileSync(MARKER, JSON.stringify([...new Set([...passedBefore(), ...names])]));
+  } catch { /* the cache is an optimisation; failing to write one must never fail the run */ }
 }
 
 const files = ALL ? null : changedFiles();
@@ -105,6 +178,12 @@ if (touchedSrc) {
   checks.push({ name: 'test', cmd: BIN('vitest'), args: ['run'] });
 }
 
+// `astro check` is a superset of `tsc`, so a recorded pass of the bigger one satisfies the smaller.
+const already = passedBefore();
+const cached = (name) => already.includes(name) || (name === 'tsc' && already.includes('astro check'));
+const fromCache = checks.filter((c) => cached(c.name)).map((c) => c.name);
+const toRun = checks.filter((c) => !cached(c.name));
+
 if (checks.length === 0) {
   if (!COMPACT) console.log('verify: nothing to check (no code touched).');
   process.exit(0);
@@ -137,13 +216,17 @@ function salient(check) {
   return lines.filter((l) => /✗|×|FAIL|Tests {2}|Test Files {2}/.test(l)).slice(0, 15);
 }
 
-const results = await Promise.all(checks.map(run));
+const results = await Promise.all(toRun.map(run));
 const failed = results.filter((r) => r.code !== 0);
 
 if (failed.length === 0) {
+  recordPassed(checks.map((c) => c.name));
   if (!COMPACT) {
-    console.log(`verify: green — ${results.map((r) => `${r.name} ${r.secs}s`).join(' · ')}`);
-    const skipped = ['astro check', 'lint', 'test'].filter((n) => !results.some((r) => r.name === n));
+    const ran = results.map((r) => `${r.name} ${r.secs}s`).join(' · ');
+    console.log(`verify: green — ${ran || 'nothing to re-run'}`);
+    // Both kinds of not-running are named. Silence is what would turn either into "it all passed".
+    if (fromCache.length) console.log(`        unchanged since it last passed: ${fromCache.join(', ')} — \`npm run verify -- --no-cache\` re-runs them.`);
+    const skipped = ['astro check', 'lint', 'test'].filter((n) => !checks.some((c) => c.name === n));
     if (skipped.length) console.log(`        skipped (untouched): ${skipped.join(', ')} — \`npm run verify -- --all\` forces them.`);
   }
   process.exit(0);

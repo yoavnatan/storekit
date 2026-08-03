@@ -15,10 +15,12 @@
  * in front, the provider multiplexes thousands of client connections onto few server ones, which
  * is what makes several instances safe.
  *
- * **The pool is lazy on purpose.** The app is mid-migration: most modules still read `data/*.json`
- * (DB_MIGRATION_PLAN.md §8 stage 2 replaces them one by one). Connecting at import time would make
- * `DATABASE_URL` mandatory for a repo that mostly does not need it yet, and would open a socket in
- * every unit test. Nothing connects until the first query.
+ * **The pool is lazy on purpose, and it stayed lazy after the migration finished (2026-08-03).**
+ * The original reason is gone — the app no longer reads `data/*.json` and `DATABASE_URL` is now
+ * required to boot — but the other one is permanent: connecting at import time would open a real
+ * socket in every unit test that so much as imports a lib module, including the ~130 files that
+ * never touch a database and the DB-backed ones that run against PGlite (`tests/helpers/test-db.ts`)
+ * rather than the configured server. Nothing connects until the first query.
  *
  * Configuration is read through `runtime-env.ts` — never `import.meta.env`, which is a build-time
  * text substitution and would bake a dev connection string into the production bundle.

@@ -8,6 +8,16 @@
 //
 // Pure/isomorphic (no node:fs), so both SSR (dashboard/admin frontmatter and
 // the future catalog feed) and any browser-bundled caller can import it.
+//
+// THE TRAP THIS MODULE EXISTS INSIDE (moved here from AI_INSTRUCTIONS.md
+// 2026-08-03, because it is only ever needed by whoever edits this file or the
+// campaign form it fills): gender and age_group describe **who the product is
+// FOR** — they are Merchant/Catalog *feed attributes* — and NOT who the ad is
+// shown to. A baby-clothes ad targets adult parents. So never turn either of
+// these into a *viewer* age band: a version that derived 18-24 / 25-34 … from
+// the product was tried and replaced the same day. What the seller sees is a
+// pre-filled, overridable suggestion about the product; the ad platform decides
+// who actually sees the ad.
 
 // Each gender is one regex. Latin words carry \b boundaries — that alone stops
 // the classic "men" ⊂ "women" / "man" ⊂ "woman" collision. Hebrew has no \b
