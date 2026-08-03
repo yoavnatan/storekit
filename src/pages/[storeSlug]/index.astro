@@ -20,7 +20,7 @@ import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
 import { storeCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { OG_IMAGE_FORMAT, resolveStoreImage, storeImageUrl } from '../../lib/store-image.js';
-import { store as platform, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
+import { store as platform, cdnSrc, cdnSrcSet, cdnCropSrcSet, cdnThumb } from '../../config/store.config.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
 import { isStoreFavorited } from '../../lib/user-carts.js';
@@ -207,6 +207,49 @@ const pmI18n = {
   showMore: lang === 'he' ? 'עוד' : 'More',
   showLess: lang === 'he' ? 'פחות' : 'Less',
 };
+
+/**
+ * The banner photo — this page's LCP element, measured at 2.77s by the owner
+ * (2026-08-03) before the two changes below. Built here rather than inline in the
+ * markup because the <head> preload and the <img> have to request the BYTE-IDENTICAL
+ * thing: any drift between the two strings and the browser fetches the banner twice,
+ * which is worse than not preloading it at all.
+ *
+ * 1. CROPPED at the CDN to the 3/1 frame it is painted into. `.store-banner__bg` is
+ *    `object-fit: cover`, so every pixel outside 3/1 was downloaded, decoded and then
+ *    discarded — and a seller's banner is very often a square photo. Measured on a
+ *    1000x1000 source, visually identical: 84.5KB → 32.2KB at w_1600, 112KB → 40.6KB
+ *    at w_2048. `g_auto` picks the crop window from the picture's own content, so the
+ *    subject is not centre-cropped out of frame (see lib/cdn.ts#cdnCropSrcSet).
+ * 2. PRELOADED in <head>, ahead of the ten font files. The preload scanner does find
+ *    this <img> in the markup, but only after the whole store header and owner bar,
+ *    and by then the fonts already hold the connections. It is the largest element on
+ *    the page; it goes first.
+ *
+ * Deliberately NOT made lazy even though the owner scrolls past it: it is above the
+ * fold and the LCP element, so deferring it would make the number worse, not better.
+ * The fix for "it loads after I have already scrolled" is for it to be small and
+ * early — which is exactly what these two do.
+ */
+const BANNER_RATIO = 3;
+const BANNER_WIDTHS = [800, 1200, 1600, 2048];
+const BANNER_SIZES = '(min-width: 1160px) 1128px, calc(100vw - 2rem)';
+/** The `src` rung — matches the `width`/`height` on the <img>. */
+const BANNER_W = 1600;
+const BANNER_H = Math.round(BANNER_W / BANNER_RATIO);
+// `cdnThumb`/`cdnCropSrcSet` are called at BOTH the <img> and the preload rather
+// than hoisted into a variable — tests/image-optimization.test.ts requires the CDN
+// helper to be visible at the markup, and it is right to: a variable is exactly how
+// a raw URL sneaks into an <img>. They cannot drift because both calls take the same
+// pure function and the same constants above; change a width in one place only and
+// the browser downloads the banner twice.
+const bannerPreload = !isDemo && shopStore.bannerImage
+  ? {
+      href: cdnThumb(shopStore.bannerImage, BANNER_W, BANNER_H),
+      srcset: cdnCropSrcSet(shopStore.bannerImage, BANNER_WIDTHS, BANNER_RATIO) || undefined,
+      sizes: BANNER_SIZES,
+    }
+  : undefined;
 ---
 
 <BaseLayout
@@ -216,6 +259,7 @@ const pmI18n = {
   jsonLd={jsonLd}
   canonical={storeUrl}
   noindex={!storeReady || isDemo}
+  preloadImage={bannerPreload}
   isLoggedIn={isLoggedIn}
   storeMode={true}
   storeName={shopStore.name}
@@ -283,12 +327,12 @@ const pmI18n = {
         <div class="container">
           <div class="store-banner__image-wrap is-loading">
             <img
-              src={cdnSrc(shopStore.bannerImage, 1600)}
-              srcset={`${cdnSrc(shopStore.bannerImage, 800)} 800w, ${cdnSrc(shopStore.bannerImage, 1200)} 1200w, ${cdnSrc(shopStore.bannerImage, 1600)} 1600w, ${cdnSrc(shopStore.bannerImage, 2048)} 2048w`}
-              sizes="(min-width: 1160px) 1128px, calc(100vw - 2rem)"
+              src={cdnThumb(shopStore.bannerImage, BANNER_W, BANNER_H)}
+              srcset={cdnCropSrcSet(shopStore.bannerImage, BANNER_WIDTHS, BANNER_RATIO) || undefined}
+              sizes={BANNER_SIZES}
               alt=""
-              width="1600"
-              height="533"
+              width={BANNER_W}
+              height={BANNER_H}
               loading="eager"
               fetchpriority="high"
               decoding="async"
@@ -770,16 +814,11 @@ const pmI18n = {
     same discounts.ts the server used, instead of the API shipping a second price shape. */}
 <script is:inline type="application/json" id="store-sale-data" set:html={jsonForScript(shopStore.sale ?? null)} />
 
-<script is:inline type="application/json" id="header-search-products" set:html={jsonForScript(
-  allProducts.map((p) => ({
-    slug: p.slug,
-    name: p.name,
-    price: resolvePrice(p, shopStore.sale).price,
-    // Present only when discounted — the dropdown renders it struck through.
-    basePrice: resolvePrice(p, shopStore.sale).isDiscounted ? p.price : undefined,
-    image: p.images?.[0] ? cdnSrc(p.images[0], 112) : '',
-  }))
-)} />
+{/* The header search's product index used to be serialised here — the whole visible
+    catalog, in the HTML, on every load, for an interaction most visitors never
+    start (24.1KB on the biggest showcase store, and it grows with the catalog).
+    It now comes from /api/store-search-index, warmed on idle by Header.astro, so
+    the matching stays local and instant while the bytes leave the critical path. */}
 
 <script>
   import { addItem, syncCartImages, getCartQty } from '../../lib/cart.js';
@@ -2019,13 +2058,42 @@ const pmI18n = {
   // keyboard focus — because a slide that arrives un-hydrated shows a blank
   // pixel. The strip's own `scroll` is the catch-all backstop; the rest just get
   // the fetch started earlier, before the slide has finished travelling in.
-  function hydrateCardSlides(card: HTMLElement): void {
-    card.querySelectorAll<HTMLImageElement>('.product-card__img[data-src]').forEach((img) => {
+  function hydrateCardSlides(card: HTMLElement, limit = Infinity): void {
+    const deferred = [...card.querySelectorAll<HTMLImageElement>('.product-card__img[data-src]')];
+    deferred.slice(0, limit).forEach((img) => {
       img.src = img.dataset.src ?? '';
       if (img.dataset.srcset) { img.srcset = img.dataset.srcset; delete img.dataset.srcset; }
       delete img.dataset.src;
     });
   }
+
+  /**
+   * Start slide 2 while the card is merely ON SCREEN, before anyone touches it.
+   *
+   * Measured 2026-08-03 on this page, which is what the owner was seeing: from the
+   * hover to the second photo being painted is ~790ms, and the `src` swap accounts
+   * for 0ms of it — the wiring below fires instantly, the wait is the image coming
+   * down from Cloudinary. So no amount of extra event wiring helps; the fetch has to
+   * begin before the gesture, or the gesture waits for it.
+   *
+   * ONE slide, not all of them. On this store page 15 cards carry 31 deferred images:
+   * hydrating everything on sight would nearly double the page's image traffic for
+   * photos most shoppers never scroll to, which is what the deferral exists to
+   * prevent (`feedback_image_optimization`). One neighbour is the slide a swipe or a
+   * hover actually lands on, and the rest still wait for the interaction.
+   *
+   * `rootMargin` starts it a screen early so a card is warm by the time it is
+   * readable. Unobserved after firing — this is a one-shot per card.
+   */
+  const slidePrefetch = 'IntersectionObserver' in window
+    ? new IntersectionObserver((entries, obs) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          obs.unobserve(entry.target);
+          hydrateCardSlides(entry.target as HTMLElement, 1);
+        }
+      }, { rootMargin: '600px 0px' })
+    : null;
 
   // ── Carousel dots ─────────────────────────────────────────────
   function initCarouselDots(card: HTMLElement): void {
@@ -2035,6 +2103,10 @@ const pmI18n = {
 
     const dots = Array.from(dotsEl.querySelectorAll<HTMLElement>('.product-card__dot'));
     if (dots.length < 2) return;
+
+    // Slide 2 is already on its way from the observer above by the time any of these
+    // fire; these bring in the REST of the strip.
+    slidePrefetch?.observe(card);
 
     const hydrate = () => hydrateCardSlides(card);
     const wrap = card.querySelector<HTMLElement>('.product-card__img-wrap') ?? slides;
