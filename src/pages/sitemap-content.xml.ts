@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getIndexableStores } from '../lib/stores.js';
-import { getVisibleProductsByStoreIds } from '../lib/store-products.js';
+import { getVisibleProductRefsByStoreIds } from '../lib/store-products.js';
 import { store as platform } from '../config/store.config.js';
 import { buildUrlSetXml, toSitemapDate, type SitemapEntry } from '../lib/sitemap.js';
 import { isStoreReady } from '../lib/store-readiness.js';
@@ -31,8 +31,10 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   const entries: SitemapEntry[] = [];
 
   const indexableStores = await getIndexableStores();
-  // One query for every store's shelf, not one per store — the sitemap walks the WHOLE mall.
-  const productsByStore = await getVisibleProductsByStoreIds(indexableStores.map((s) => s.id));
+  // One query for every store's shelf, not one per store — the sitemap walks the WHOLE mall. And
+  // only slug + date, which is all a <url> entry is: reading whole products here shipped every
+  // description, tag, spec and image array across the network to write two strings each.
+  const productsByStore = await getVisibleProductRefsByStoreIds(indexableStores.map((s) => s.id));
 
   for (const s of indexableStores) {
     // A store on a verified custom domain lives on THAT domain now — its platform URLs 301 there, so

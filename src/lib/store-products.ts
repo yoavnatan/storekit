@@ -644,6 +644,47 @@ export async function getVisibleProductsByStoreIds(storeIds: readonly string[]):
   return byStore;
 }
 
+/** Just enough of a product to name it in a sitemap or a link list. */
+export interface ProductRef {
+  storeId: string;
+  slug: string;
+  createdAt: string;
+}
+
+/**
+ * Every visible product of the given stores, as slug + date only.
+ *
+ * The sitemap walks the whole mall and writes two strings per product — a URL and a `lastmod`. It
+ * was reading the full catalogue to do it: descriptions, tags, specs, variant definitions, and the
+ * aggregated image / variant-stock / variant-sku arrays, all fetched, shipped and dropped. That is
+ * the same waste the homepage had, on the one route Google fetches on its own schedule.
+ *
+ * Grouped by store because the caller needs a per-store count too (a store with nothing visible is
+ * an empty shell and stays out of the sitemap entirely — `store-readiness.ts`). Same ORDER as the
+ * full reader, so the file's entries keep the order they had.
+ */
+export async function getVisibleProductRefsByStoreIds(storeIds: readonly string[]): Promise<Map<string, ProductRef[]>> {
+  const ids = [...new Set(storeIds.filter(isUuid))];
+  const byStore = new Map<string, ProductRef[]>(ids.map((id) => [id, []]));
+  const found = ids.length
+    ? await rows<{ store_id: string; slug: string; created_at: Date | string }>(
+        `SELECT p.store_id, p.slug, p.created_at
+           FROM store_products p
+          WHERE p.store_id = ANY($1::uuid[]) AND NOT p.hidden AND NOT p.blocked
+          ORDER BY p.created_at DESC, p.id`,
+        [ids],
+      )
+    : [];
+  for (const row of found) {
+    byStore.get(row.store_id)?.push({
+      storeId: row.store_id,
+      slug: row.slug,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    });
+  }
+  return byStore;
+}
+
 /** Thumbnails to fetch per store card. Four, not three: a sparse shelf widens its cards and a
  *  fourth thumb restores their proportion (HomeShelf.astro), so four is the most any card can
  *  draw. Fetching the maximum once beats asking the layout first. */

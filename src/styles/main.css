@@ -178,3 +178,69 @@
 
 /* Utilities */
 @import './utilities/utils.css';
+
+/* ── Cross-document view transitions (owner decision, 2026-08-03) ──────────────────────────────
+ *
+ * The native, JS-free form — `@view-transition` — NOT Astro's `<ClientRouter />`, and the
+ * difference is the whole reason this is safe to turn on now.
+ *
+ * **What it does.** The browser keeps the outgoing page painted, fetches the next document, and
+ * cross-fades between the two paints instead of showing a hard rebuild. Navigation stays a real
+ * navigation: same MPA, same SSR, same URLs, bfcache untouched. It is a rendering instruction, not
+ * a routing one.
+ *
+ * **Why not ClientRouter, which was the other option.** It replaces navigation with client-side
+ * soft navigation, and a soft navigation does not re-run page scripts: an `is:inline` block never
+ * executes again, and a module block runs once for the session unless it is rewired to
+ * `astro:page-load`. This repo has **34 `.astro` files carrying scripts — 20 inline blocks and 32
+ * module blocks — and not one of them listens for that event.** Turning it on would leave the cart,
+ * the category chips, the dashboards and the checkout inert from the second click onward, and the
+ * failure would be silent rather than a build error. That is a migration in its own right, on
+ * money-handling paths, and it is not what "make the header stop flashing" is worth.
+ *
+ * **Why it can be enabled at all now.** It was tried and reverted on 2026-07-16 for one measured
+ * reason: a cross-document transition waits for the incoming document's render-blocking resources,
+ * and the render-blocking cross-origin `fonts.googleapis.com` request in the head blew the
+ * browser's ~4s budget, so the transition silently never ran. Heebo is self-hosted now, with
+ * `font-display: optional` and every weight preloaded from this origin, so nothing render-blocking
+ * leaves the origin any more.
+ *
+ * **What it does NOT do: make anything faster.** The browser still waits for the next page's first
+ * byte before swapping. What removed the wait was the query work in `DB_MIGRATION_PLAN.md` §8;
+ * this only stops the swap from reading as a rebuild.
+ *
+ * Unsupported browsers ignore the whole at-rule and navigate exactly as they did before.
+ */
+@view-transition {
+  navigation: auto;
+}
+
+/* The header is the one element that is genuinely the SAME thing on both pages, so it is named and
+ * therefore morphed rather than cross-faded — which is the point: it stops being torn down and
+ * repainted on every click. Naming it also takes it OUT of the default root snapshot, so the page
+ * body can cross-fade underneath a header that simply stays put.
+ *
+ * A `view-transition-name` must be UNIQUE per document, which is why it sits on the one `<header>`
+ * BaseLayout renders once and never on anything repeated. */
+.site-header {
+  view-transition-name: site-header;
+}
+
+/* Short, and shorter than the 220-320ms springs elsewhere on purpose: a page transition is not a
+ * micro-interaction the user asked for, it is the connective tissue between two of them. Long
+ * enough to read as continuity, short enough that it never feels like waiting on an animation. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+
+/* Motion here is decoration over a navigation that works without it, so it is the first thing to go
+ * — and `animation: none` on the pseudo-elements is what actually disables a view transition
+ * (the at-rule itself has no reduced-motion form). */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

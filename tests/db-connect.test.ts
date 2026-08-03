@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import pg from 'pg';
-import { sslSetting as tsSsl, connectionConfig as tsConfig, connectWithWakeRetry, CONNECT_TIMEOUT_MESSAGE } from '../src/lib/db.js';
+import { sslSetting as tsSsl, connectionConfig as tsConfig, connectWithWakeRetry, CONNECT_TIMEOUT_MESSAGES } from '../src/lib/db.js';
 import { sslSetting as jsSsl, connectionConfig as jsConfig } from '../scripts/lib/pg-connect.mjs';
 
 // No credentials in any of these on purpose. The connection is never opened — only PARSED — so a
@@ -85,7 +85,7 @@ describe('database TLS', () => {
  * Retrying a query that failed after reaching the server could commit a write twice.
  */
 describe('waking a suspended database', () => {
-  const timeout = () => new Error(CONNECT_TIMEOUT_MESSAGE);
+  const timeout = () => new Error(CONNECT_TIMEOUT_MESSAGES[0]);
   const never = () => false;
   const always = () => true;
 
@@ -119,7 +119,7 @@ describe('waking a suspended database', () => {
     // Two retries would leave a visitor on a blank tab for fifteen seconds to learn what ten
     // already said.
     const a = attempts([timeout(), timeout(), 'ok']);
-    await expect(connectWithWakeRetry(a.connect, never)).rejects.toThrow(CONNECT_TIMEOUT_MESSAGE);
+    await expect(connectWithWakeRetry(a.connect, never)).rejects.toThrow(CONNECT_TIMEOUT_MESSAGES[0]);
     expect(a.calls).toHaveLength(2);
   });
 
@@ -128,7 +128,7 @@ describe('waking a suspended database', () => {
     // slot; retrying queues again and doubles the wait, which is precisely the pile-up the
     // fail-fast timeout was chosen to prevent. Only an unsaturated pool is waiting on the SERVER.
     const a = attempts([timeout(), 'ok']);
-    await expect(connectWithWakeRetry(a.connect, always)).rejects.toThrow(CONNECT_TIMEOUT_MESSAGE);
+    await expect(connectWithWakeRetry(a.connect, always)).rejects.toThrow(CONNECT_TIMEOUT_MESSAGES[0]);
     expect(a.calls, 'a saturated pool must fail fast').toHaveLength(1);
   });
 
@@ -141,18 +141,29 @@ describe('waking a suspended database', () => {
   });
 
   it('matches the message `pg` actually raises, not one we invented', async () => {
-    // The driver attaches no code to this error, so the string is the only handle — and a driver
-    // upgrade that rewords it would turn the retry into dead code with nothing failing. Port 1 is
-    // reserved and refuses instantly, so this resolves fast rather than waiting out a real timeout.
-    const pool = new pg.Pool({ host: '127.0.0.1', port: 1, connectionTimeoutMillis: 40 });
+    // The driver attaches no code to this error, so the string is the only handle, and a driver
+    // upgrade that reworded it would turn the retry into dead code with nothing failing.
+    //
+    // The address is deliberately one that HANGS rather than one that refuses: 198.51.100.0/24 is
+    // TEST-NET-2 (RFC 5737), reserved for documentation and routed nowhere, so the connection
+    // attempt goes unanswered and the timeout is the only way out. A refused port (127.0.0.1:1)
+    // was tried first and is the wrong tool — it usually errors with ECONNREFUSED before the
+    // timeout can fire, which made this assertion pass or skip itself depending on machine load.
+    const pool = new pg.Pool({ host: '198.51.100.1', port: 5432, connectionTimeoutMillis: 60 });
     const message = await pool.connect().then(() => 'connected', (e: Error) => e.message);
-    await pool.end();
-    // Either the machine refuses the port outright or the timeout fires; only the second is the
-    // string under test, and when it appears it must still be exactly this.
-    if (message === CONNECT_TIMEOUT_MESSAGE || /timeout/i.test(message)) {
-      expect(message).toBe(CONNECT_TIMEOUT_MESSAGE);
-    } else {
-      expect(message).toMatch(/ECONNREFUSED|connect/i);
-    }
+    await pool.end().catch(() => { /* the pool never connected; nothing to drain */ });
+
+    // **This assertion found a real hole.** The retry originally matched only the pool's own
+    // "timeout exceeded when trying to connect". A server that never answers — a suspended compute,
+    // which is the entire case the retry was written for — raises the SOCKET timeout instead, and
+    // the retry would have been dead code in exactly that situation, silently.
+    expect(message).toBe('Connection terminated due to connection timeout');
+    expect(CONNECT_TIMEOUT_MESSAGES).toContain(message);
+  });
+
+  it('retries the SOCKET timeout too, which is the suspended-database case', async () => {
+    const a = attempts([new Error('Connection terminated due to connection timeout'), 'ok']);
+    await expect(connectWithWakeRetry(a.connect, never)).resolves.toBe('client-2');
+    expect(a.calls).toHaveLength(2);
   });
 });

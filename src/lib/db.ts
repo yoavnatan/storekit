@@ -219,15 +219,24 @@ export function getPool(): pg.Pool {
 }
 
 /**
- * The exact message `pg` raises when `connectionTimeoutMillis` elapses. Matched on the string
- * because the driver attaches no code to it — asserted against a real `pg.Pool` in
- * `tests/db-connect.test.ts`, so a driver upgrade that reworded it fails a test rather than
- * silently turning the retry below into dead code.
+ * The messages `pg` raises when a connection cannot be established in time — and there are TWO,
+ * which a test found rather than a reading of the driver.
+ *
+ * The first fires when the pool's own `connectionTimeoutMillis` elapses; the second when the
+ * underlying socket connect times out, i.e. the server never answered at all. That second one is
+ * exactly the suspended-database case this retry exists for, and matching only the first would have
+ * left the retry as dead code in the situation it was written for — with nothing failing to say so.
+ *
+ * Matched on the string because the driver attaches no code to either. Both are asserted against a
+ * real `pg.Pool` in `tests/db-connect.test.ts`, so a driver that reworded one fails a test.
  */
-export const CONNECT_TIMEOUT_MESSAGE = 'timeout exceeded when trying to connect';
+export const CONNECT_TIMEOUT_MESSAGES = [
+  'timeout exceeded when trying to connect',
+  'Connection terminated due to connection timeout',
+] as const;
 
 function isConnectTimeout(err: unknown): boolean {
-  return err instanceof Error && err.message === CONNECT_TIMEOUT_MESSAGE;
+  return err instanceof Error && (CONNECT_TIMEOUT_MESSAGES as readonly string[]).includes(err.message);
 }
 
 /**
