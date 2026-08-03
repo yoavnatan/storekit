@@ -1,21 +1,33 @@
-// data/*.json → Postgres. The logic half of `npm run db:import` (DB_MIGRATION_PLAN.md §8, stage 1).
+// A directory of `*.json` in the legacy file shapes → Postgres.
 //
-// Kept apart from the CLI so the same code can be driven by a test against an in-process Postgres
-// — an import script that has never been executed against the real files is a guess, and this one
-// is executed against all 19 of them on every `npm test` (tests/db-import.test.ts).
+// **It no longer has a CLI, and that is the point (stage 3, 2026-08-03).** This began as the logic
+// half of `npm run db:import`, the one-time load of `data/*.json` into the new database (§8, stage
+// 1). That job is finished: the database has been the source of truth since stage 2, `data/` is
+// deleted, and re-running the import would have overwritten live values with year-old ones and
+// resurrected rows the application had deleted. So the entrypoint is gone — the hazard cannot be
+// invoked by accident any more — and this file stayed, because it turned out to have a second job
+// that outlived the first.
 //
-// Two properties matter more than speed:
+// **That second job: it builds the database every test runs against.** `tests/helpers/test-db.ts`
+// calls `importAll(db, { dataDir: FIXTURE })` over `tests/fixtures/db-data`, dumps the result, and
+// every one of the ~150 test files loads that image. So this is not dead migration code — it is
+// load-bearing for the whole suite, and `tests/db-import.test.ts` still executes it end to end
+// against a real schema, together with all of `verify-import.mjs`'s §9 anchors.
+//
+// Two properties matter more than speed, and both still do:
 //
 //  · RE-RUNNABLE. Every insert is `ON CONFLICT DO NOTHING`/`DO UPDATE`, so a run that fails
 //    halfway can be fixed and repeated without dropping the database. That is what makes the
 //    normalisation below iterative instead of one-shot.
 //  · IT COUNTS WHAT IT DROPS. A row whose foreign key no longer resolves (a page-view bucket for a
-//    product that was deleted — measured: 98 of 147) is skipped, and the skip is REPORTED. A
-//    partial import that says nothing is the failure mode this whole file exists to avoid (§7.15).
+//    product that was deleted — measured: 98 of 147 in the data this was written against) is
+//    skipped, and the skip is REPORTED. A partial import that says nothing is the failure mode
+//    this whole file exists to avoid (§7.15).
 //
 // §7.3 lives here too: fields added late in the JSON era are missing on older rows, and one field
 // has two shapes in the same file (`store-pageviews` holds both `64` and `{total, visitors[]}`).
-// Every reader below normalises rather than assumes.
+// Every reader below normalises rather than assumes. The fixture carries those shapes on purpose,
+// so deleting the real files did not delete the traps they taught.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -28,7 +40,7 @@ import crypto from 'node:crypto';
  * `src/lib/money.ts#roundMoney` applies, and the two must agree to the agora or the imported total
  * differs from the total the application has been showing. A price stored as 1.005 is really
  * 1.00499999999999989 in binary, which rounds DOWN without the nudge and UP with it —
- * `tests/db-import.test.ts` checks the two against every price and total in the real data.
+ * `tests/db-import.test.ts` checks the two against every price and total in the fixture.
  * (Restated here rather than imported because this script runs under plain node, which cannot load
  * a TypeScript module.)
  */

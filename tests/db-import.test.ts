@@ -1,5 +1,5 @@
 /**
- * The schema and the import script, executed for real against the repo's own `data/*.json`.
+ * The schema and the import script, executed for real against the committed fixture.
  *
  * **Why this can run with no database installed.** PGlite is Postgres itself compiled to WASM and
  * run in-process — the same parser, planner and constraint machinery, not an emulation. So a
@@ -10,7 +10,8 @@
  * is visible by reading.
  *
  * What this does NOT cover: connection pooling, concurrency, and `EXPLAIN ANALYZE` on the hot
- * queries (§9.2/§9.5) — those need a server and belong to the local docker Postgres.
+ * queries (§9.2/§9.5) — those need a server. Both were run against Neon in stage 3; §9.5 lives on
+ * as `tests/stock-concurrency-live.test.ts`, which skips itself without a `DATABASE_URL`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
@@ -26,10 +27,6 @@ import { roundMoney } from '../src/lib/money.js';
 const ROOT = process.cwd();
 const MIGRATIONS = path.join(ROOT, 'migrations');
 const FIXTURE = path.join(ROOT, 'tests/fixtures/db-data');
-// Overridable so the CI condition (an empty `data/`) can be reproduced on a dev machine by
-// pointing this at an empty directory, rather than by moving the live files out from under a
-// running dev server.
-const LIVE_DATA = process.env.STOREKIT_LIVE_DATA_DIR || path.join(ROOT, 'data');
 
 let db: PGlite;
 let dataDir: string;
@@ -50,8 +47,11 @@ type ImportReport = { counts: Record<string, number>; skipped: { what: string; r
  * catalogue, and one orphan of every kind so the drop paths are exercised. It found three wrong
  * anchors in verify-import.mjs within a minute of first running.
  *
- * The real data still gets imported below when it is present, because a fixture only ever contains
- * the traps someone thought of.
+ * **`data/` was deleted in stage 3 (2026-08-03), and this suite did not lose a check.** It used to
+ * import the real files a second time below, which read as the stronger half — a fixture only ever
+ * contains the traps someone thought of. But `data/` is gitignored, so that half had never run on
+ * any push: what gated every commit was always this fixture, and it still is. What is gone is the
+ * chance of a NEW surprise in a year-old file, which is not the same thing as coverage.
  */
 function migrationSql(): string[] {
   return fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort().map((name) =>
@@ -80,20 +80,6 @@ function snapshot(src: string): string {
     fs.copyFileSync(path.join(src, name), path.join(dir, name));
   }
   return dir;
-}
-
-/**
- * Whether a real `data/` is present — true on a dev machine, false in CI.
- *
- * It asks for the two files this section actually reads rather than for any `.json` at all, and
- * that is not pedantry: other suites in the same run write into `data/` (the money journal is
- * created by the checkout tests), so "the directory has a json in it" is true or false depending on
- * which file finished first. A CI run would then import a directory holding one unrelated file and
- * fail on the amount count, intermittently.
- */
-function hasLiveData(): boolean {
-  return ['orders.json', 'store-products.json']
-    .every((name) => fs.existsSync(path.join(LIVE_DATA, name)));
 }
 
 beforeAll(async () => {
@@ -280,51 +266,12 @@ describe('import of the fixture data', () => {
   });
 
   it('reports every row it could not write instead of dropping it silently (§7.15)', async () => {
-    // The real data contains page-view buckets for products that have since been deleted. The
-    // import must account for them out loud; a silent shortfall reads as "a quiet week".
+    // The fixture carries page-view buckets for products that no longer exist, because the real
+    // data did. The import must account for them out loud; a silent shortfall reads as "a quiet
+    // week".
     for (const s of report.skipped) {
       expect(s.reason).toBeTruthy();
       expect(s.count).toBeGreaterThan(0);
     }
-  });
-});
-
-/**
- * The same import over the REAL `data/*.json`, which exists on a dev machine and not in CI.
- *
- * A fixture only ever contains the traps someone thought of, and every §7 rule in the plan came
- * from a surprise in these files rather than from reasoning — so this half stays. It is skipped
- * rather than failed where the files are absent, which is honest only because the fixture above
- * runs everywhere: if this were the only coverage, CI would be verifying nothing while reporting
- * a pass.
- */
-describe.skipIf(!hasLiveData())('import of the real data/*.json (dev machines only)', () => {
-  let liveDb: PGlite;
-  let liveDir: string;
-  let liveReport: ImportReport;
-
-  beforeAll(async () => {
-    liveDir = snapshot(LIVE_DATA);
-    liveDb = await freshDb();
-    liveReport = await importAll(liveDb, { dataDir: liveDir });
-  }, 120_000);
-
-  afterAll(async () => {
-    await liveDb?.close();
-    if (liveDir) fs.rmSync(liveDir, { recursive: true, force: true });
-  });
-
-  it('passes every §9 verification check on the real files', async () => {
-    const checks = await verifyImport(liveDb, { dataDir: liveDir, skipped: liveReport.skipped });
-    const failed = checks.filter((c) => !c.ok);
-    expect(
-      failed.map((c) => `${c.name}: expected ${c.expected}, got ${c.actual}`),
-    ).toEqual([]);
-  });
-
-  it('converts every real amount by the same rule money.ts rounds by (§7.7)', () => {
-    const amounts = everyAmount(liveDir);
-    expect(amounts.length).toBeGreaterThan(500);
-    for (const amount of amounts) expect(toAgorot(amount)).toBe(Math.round(roundMoney(amount) * 100));
   });
 });

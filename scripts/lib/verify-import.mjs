@@ -1,5 +1,14 @@
 // Proof that the import landed intact — DB_MIGRATION_PLAN.md §9.
 //
+// **What it verifies now (stage 3, 2026-08-03).** These anchors were written against the real
+// `data/*.json` during stage 1, and they earned their keep there — §7.12's NULL-flag bug was caught
+// by one of them within a minute of the first import. Those files are deleted; the database has
+// been the source of truth since stage 2. The anchors did NOT go with them: they run on every
+// `npm test` against `tests/fixtures/db-data` (`tests/db-import.test.ts`), which is the only place
+// they have EVER run in CI — `data/` is gitignored, so no push has ever executed the other half.
+// The fixture carries the same traps deliberately rather than by luck, so what was lost is the
+// chance of a NEW surprise in a year-old file, not any coverage a push depended on.
+//
 // The reason this file exists at all: a migration that "works" can be quietly wrong. Every table
 // fills, every page renders, nothing throws — and a third of the catalogue is missing from the
 // storefront because an optional flag imported as NULL, or the analytics graphs look like a slow
@@ -41,7 +50,10 @@ async function scalar(db, sql) {
  * @param {{ dataDir?: string, skipped?: { what: string, reason: string, count: number }[] }} [options]
  * @returns {Promise<Check[]>}
  */
-export async function verifyImport(db, { dataDir = path.join(process.cwd(), 'data'), skipped = [] } = {}) {
+export async function verifyImport(db, { dataDir, skipped = [] } = {}) {
+  // No default. It used to fall back to `data/`, which no longer exists — a default pointing at a
+  // deleted directory would make every anchor compare 0 against 0 and report a confident pass.
+  if (!dataDir) throw new Error('verifyImport: dataDir is required (tests/fixtures/db-data).');
   /** @type {Check[]} */
   const checks = [];
   const dropped = (what) => skipped.filter((s) => s.what === what).reduce((n, s) => n + s.count, 0);
@@ -256,20 +268,4 @@ export async function verifyImport(db, { dataDir = path.join(process.cwd(), 'dat
     await scalar(db, 'SELECT COUNT(*) FROM recent_stores'));
 
   return checks;
-}
-
-/**
- * Human-readable report. Returns true when everything passed.
- * @param {Check[]} checks
- * @param {(line: string) => void} [log]
- */
-export function reportChecks(checks, log = console.log) {
-  const failed = checks.filter((c) => !c.ok);
-  for (const c of checks) {
-    const mark = c.ok ? '  ok  ' : ' FAIL ';
-    const detail = c.ok ? `${c.actual}` : `expected ${c.expected}, got ${c.actual}`;
-    log(`${mark} ${c.name.padEnd(38)} ${detail}${c.note ? `   (${c.note})` : ''}`);
-  }
-  log(failed.length ? `\n${failed.length} of ${checks.length} checks FAILED.` : `\nAll ${checks.length} checks passed.`);
-  return failed.length === 0;
 }
