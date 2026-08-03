@@ -151,6 +151,17 @@ export function startScheduler(): boolean {
   timers.push(setTimeout(() => void tick(), FIRST_TICK_MS));
   timers.push(setInterval(() => void tick(), TICK_MS));
   for (const t of timers) t.unref();
+
+  // **A timer outlives the module that created it, and hot-reload is where that bites.**
+  // Observed, not theorised: a dev server left running for hours had claimed and re-claimed jobs on
+  // the real database every minute, each time recording a claim that never finished. Every file
+  // save replaces this module, but `setInterval` belongs to the Node event loop, not to the module
+  // graph — so the previous instance kept ticking against half-disposed imports, taking the claim
+  // and then failing to write the result. Nothing was corrupted (the lease expires and the row is
+  // reclaimable), but every reload added another zombie, and they all held real leases.
+  // `dispose` is Vite's own answer to exactly this: it runs on the outgoing module before the new
+  // one takes over. Absent in a production build, where modules are never replaced.
+  import.meta.hot?.dispose(() => stopScheduler());
   return true;
 }
 
