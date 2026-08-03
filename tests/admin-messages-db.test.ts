@@ -12,6 +12,7 @@ import {
   replyToAdminThread,
   DEFAULT_ADMIN_SUBJECT,
 } from '../src/lib/admin-messages.js';
+import { filterAndSortAdminThreads } from '../src/lib/admin-threads-query.js';
 
 /** `getAllAdminThreads()` is gone (§3) — the paged reader replaced it. These assertions are about
  *  the whole (tiny) set, so they ask for one page big enough to hold it. */
@@ -188,5 +189,57 @@ describe('deleting a thread', () => {
     expect(await deleteAdminThread(doomed.id)).toBe(true);
     expect(await deleteAdminThread(doomed.id)).toBe(false);
     expect((await getAdminThreadsForSeller(SELLER)).map((t) => t.subject)).toEqual(['נשארת']);
+  });
+});
+
+describe('getAdminThreadsPage agrees with filterAndSortAdminThreads', () => {
+  // The paged reader (§3) narrows, sorts and slices at THREAD level in SQL, where the toolbar's
+  // rules used to run over every system message on the platform. `filterAndSortAdminThreads` is
+  // the pure twin those rules are defined in — so both routes run over the same threads here and
+  // have to produce the same list, for every sort the toolbar offers.
+  beforeEach(async () => {
+    await query('DELETE FROM admin_messages');
+    // The UNREAD thread is deliberately the OLDEST one. If it were also the most recent, the two
+    // sorts the toolbar offers would return the same list and the unread-first case would be
+    // asserting nothing — which is exactly what sabotaging the sort proved before this fixture.
+    const stale = await createAdminThread(SELLER, 'ישן ולא נענה', 'א');
+    // A seller reply is what makes a thread unread FOR THE ADMIN — the only kind that counts.
+    await replyToAdminThread(stale.id, 'seller', 'ערעור');
+    await query('UPDATE admin_messages SET created_at = $1 WHERE id = $2 OR reply_to_id = $2',
+      ['2026-01-01T10:00:00.000Z', stale.id]);
+    await createAdminThread(SELLER, 'חדש', 'ב');
+    await createAdminThread(OTHER_SELLER, 'חדש יותר', 'ג');
+  });
+
+  for (const sortCol of ['recent', 'unread'] as const) {
+    for (const unreadOnly of [false, true]) {
+      it(`sort=${sortCol} unreadOnly=${unreadOnly}`, async () => {
+        const q = { sortCol, unreadOnly };
+        const page = await getAdminThreadsPage(q, 1, 1000);
+        const pure = filterAndSortAdminThreads((await allThreads()).threads, q);
+        expect(page.threads.map((t) => t.id)).toEqual(pure.map((t) => t.id));
+        expect(page.total).toBe(pure.length);
+      });
+    }
+  }
+
+  it('counts unread over EVERY thread, not the filtered ones', async () => {
+    // The tab badge must not move because a filter is open — the same rule the other tabs follow.
+    const open = await getAdminThreadsPage({ sortCol: 'recent', unreadOnly: false }, 1, 1000);
+    const filtered = await getAdminThreadsPage({ sortCol: 'recent', unreadOnly: true }, 1, 1000);
+    expect(filtered.unreadForAdmin).toBe(open.unreadForAdmin);
+    expect(filtered.unreadForAdmin).toBeGreaterThan(0);
+    // …while `total` IS the filtered count, which is what the pager needs.
+    expect(filtered.total).toBeLessThan(open.total);
+    expect(filtered.totalUnfiltered).toBe(open.total);
+  });
+
+  it('pages without dropping or repeating a thread', async () => {
+    const all = (await getAdminThreadsPage({ sortCol: 'recent', unreadOnly: false }, 1, 1000)).threads.map((t) => t.id);
+    const seen: string[] = [];
+    for (let page = 1; page <= 3; page += 1) {
+      seen.push(...(await getAdminThreadsPage({ sortCol: 'recent', unreadOnly: false }, page, 1)).threads.map((t) => t.id));
+    }
+    expect(seen).toEqual(all);
   });
 });
