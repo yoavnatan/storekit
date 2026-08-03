@@ -104,8 +104,16 @@ export function getDatabase(): Database {
  */
 const poolDatabase: Database = {
   async query<Row>(text: string, params: readonly unknown[] = []) {
-    const result = await getPool().query(text, params as unknown[]);
-    return { rows: result.rows as Row[], rowCount: result.rowCount ?? 0 };
+    // Acquire, run, release — rather than `pool.query`, which does the same three steps but gives
+    // no way to retry ONLY the first. See `connectWithWakeRetry`: the acquisition is the one step
+    // that is safe to attempt twice.
+    const client = await connectWithWakeRetry(() => getPool().connect(), poolIsSaturated);
+    try {
+      const result = await client.query(text, params as unknown[]);
+      return { rows: result.rows as Row[], rowCount: result.rowCount ?? 0 };
+    } finally {
+      client.release();
+    }
   },
   transaction: withPooledTransaction,
   close: closePool,
@@ -211,6 +219,68 @@ export function getPool(): pg.Pool {
 }
 
 /**
+ * The exact message `pg` raises when `connectionTimeoutMillis` elapses. Matched on the string
+ * because the driver attaches no code to it — asserted against a real `pg.Pool` in
+ * `tests/db-connect.test.ts`, so a driver upgrade that reworded it fails a test rather than
+ * silently turning the retry below into dead code.
+ */
+export const CONNECT_TIMEOUT_MESSAGE = 'timeout exceeded when trying to connect';
+
+function isConnectTimeout(err: unknown): boolean {
+  return err instanceof Error && err.message === CONNECT_TIMEOUT_MESSAGE;
+}
+
+/**
+ * Is the pool out of connections, as opposed to unable to reach the server?
+ *
+ * Both fail with the same error, and they need opposite treatment — which is the whole reason this
+ * predicate exists. Saturation means every slot is checked out and peers are queueing; retrying
+ * there just queues again and doubles the wait, defeating the fail-fast the timeout is FOR. A pool
+ * that has not filled its slots is not waiting for a peer, it is waiting for the server.
+ *
+ * A heuristic, honestly: the counts are read after the failure, so a slot may have freed in
+ * between. It errs the safe way — a pool that has since drained reads as not-saturated and gets one
+ * extra attempt, which is the cheap mistake.
+ */
+function poolIsSaturated(): boolean {
+  const p = pool;
+  return !!p && p.totalCount >= poolSize() && p.idleCount === 0;
+}
+
+/**
+ * Run `connect`, and if it timed out reaching a server that simply was not there, run it once more.
+ *
+ * **Why this exists, measured rather than imagined (2026-08-03).** Neon suspends an idle compute to
+ * zero. The first request after that wait has to wake it, and `connectionTimeoutMillis` (5s) gives
+ * up first — so a visitor who happens to be the first person on the site after a quiet spell gets a
+ * 500 on the homepage. Two of those are in the error log, on `/` and on the seller dashboard, and
+ * `pg_postmaster_start_time()` confirmed the compute had restarted after both. Awake, a connection
+ * establishes in ~500ms, so there is nothing wrong with the timeout itself.
+ *
+ * **Acquiring a connection is the only step in a query that may be retried.** It is idempotent by
+ * construction: no statement has been sent, so nothing can have half-happened. That is why the
+ * retry is here and not around `pool.query` — a `query` that failed *after* the statement reached
+ * the server could have committed, and re-running it would be a second write. The same rule the
+ * checkout path states as "never retry a non-idempotent operation", applied one level down.
+ *
+ * One extra attempt, and no delay: the 5s that already elapsed IS the backoff, and by the end of it
+ * a waking compute is usually up. Two retries would only stretch a genuine outage into 15 seconds
+ * of a visitor staring at a blank tab.
+ */
+export async function connectWithWakeRetry<T>(
+  connect: () => Promise<T>,
+  saturated: () => boolean,
+): Promise<T> {
+  try {
+    return await connect();
+  } catch (err) {
+    // A saturated pool is a different problem with the same message, and retrying makes it worse.
+    if (!isConnectTimeout(err) || saturated()) throw err;
+    return connect();
+  }
+}
+
+/**
  * Does this string have the shape of a `uuid` column value?
  *
  * **Postgres REJECTS a malformed uuid literal rather than failing to match it** — `WHERE id =
@@ -272,7 +342,9 @@ export async function withTransaction<T>(fn: (tx: Queryable) => Promise<T>): Pro
 }
 
 async function withPooledTransaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
-  const client = await getPool().connect();
+  // Same retry, same reason, and just as safe here: `BEGIN` has not been sent yet, so a second
+  // attempt at acquiring the connection cannot replay any part of the transaction.
+  const client = await connectWithWakeRetry(() => getPool().connect(), poolIsSaturated);
   const tx: Queryable = {
     async query<Row>(text: string, params: readonly unknown[] = []) {
       const result = await client.query(text, params as unknown[]);

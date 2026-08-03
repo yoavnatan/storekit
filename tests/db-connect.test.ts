@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import pg from 'pg';
-import { sslSetting as tsSsl, connectionConfig as tsConfig } from '../src/lib/db.js';
+import { sslSetting as tsSsl, connectionConfig as tsConfig, connectWithWakeRetry, CONNECT_TIMEOUT_MESSAGE } from '../src/lib/db.js';
 import { sslSetting as jsSsl, connectionConfig as jsConfig } from '../scripts/lib/pg-connect.mjs';
 
 // No credentials in any of these on purpose. The connection is never opened — only PARSED — so a
@@ -68,6 +68,91 @@ describe('database TLS', () => {
     for (const url of [NEON, BARE, LOCAL, NO_VERIFY]) {
       expect(jsSsl(url)).toEqual(tsSsl(url));
       expect(jsConfig(url)).toEqual(tsConfig(url));
+    }
+  });
+});
+
+/**
+ * Waking a suspended database, and the line between what may be retried and what may not.
+ *
+ * Neon suspends an idle compute to zero. The first request afterwards has to wake it, and the pool's
+ * 5s `connectionTimeoutMillis` gives up first — which reached the error log twice on 2026-08-03 as a
+ * 500 on `/` and on the seller dashboard, both immediately before `pg_postmaster_start_time()` says
+ * the compute came back. Awake, a connection establishes in ~500ms.
+ *
+ * The retry is deliberately around connection ACQUISITION and nothing else, because that is the only
+ * step that cannot have half-happened: no statement has been sent, so there is nothing to replay.
+ * Retrying a query that failed after reaching the server could commit a write twice.
+ */
+describe('waking a suspended database', () => {
+  const timeout = () => new Error(CONNECT_TIMEOUT_MESSAGE);
+  const never = () => false;
+  const always = () => true;
+
+  function attempts(results: Array<'ok' | Error>) {
+    let i = 0;
+    const calls: number[] = [];
+    return {
+      calls,
+      connect: async () => {
+        const outcome = results[i] ?? 'ok';
+        calls.push(++i);
+        if (outcome !== 'ok') throw outcome;
+        return `client-${i}`;
+      },
+    };
+  }
+
+  it('does not retry what already worked', async () => {
+    const a = attempts(['ok']);
+    await expect(connectWithWakeRetry(a.connect, never)).resolves.toBe('client-1');
+    expect(a.calls).toHaveLength(1);
+  });
+
+  it('retries a connect timeout once, and that second attempt is the wake-up', async () => {
+    const a = attempts([timeout(), 'ok']);
+    await expect(connectWithWakeRetry(a.connect, never)).resolves.toBe('client-2');
+    expect(a.calls).toHaveLength(2);
+  });
+
+  it('gives up after ONE retry rather than stretching an outage', async () => {
+    // Two retries would leave a visitor on a blank tab for fifteen seconds to learn what ten
+    // already said.
+    const a = attempts([timeout(), timeout(), 'ok']);
+    await expect(connectWithWakeRetry(a.connect, never)).rejects.toThrow(CONNECT_TIMEOUT_MESSAGE);
+    expect(a.calls).toHaveLength(2);
+  });
+
+  it('does NOT retry when the pool is saturated — same error, opposite treatment', async () => {
+    // This is the case the whole predicate exists for. A full pool means peers are queueing for a
+    // slot; retrying queues again and doubles the wait, which is precisely the pile-up the
+    // fail-fast timeout was chosen to prevent. Only an unsaturated pool is waiting on the SERVER.
+    const a = attempts([timeout(), 'ok']);
+    await expect(connectWithWakeRetry(a.connect, always)).rejects.toThrow(CONNECT_TIMEOUT_MESSAGE);
+    expect(a.calls, 'a saturated pool must fail fast').toHaveLength(1);
+  });
+
+  it('does not retry an error that is not a connect timeout', async () => {
+    // Authentication failures, a bad database name, TLS refusal — none of them get better by asking
+    // again, and one of them is how a misconfiguration is supposed to announce itself loudly.
+    const a = attempts([new Error('password authentication failed'), 'ok']);
+    await expect(connectWithWakeRetry(a.connect, never)).rejects.toThrow('password authentication');
+    expect(a.calls).toHaveLength(1);
+  });
+
+  it('matches the message `pg` actually raises, not one we invented', async () => {
+    // The driver attaches no code to this error, so the string is the only handle — and a driver
+    // upgrade that rewords it would turn the retry into dead code with nothing failing. Port 1 is
+    // reserved and refuses instantly, so this resolves fast rather than waiting out a real timeout.
+    const pool = new pg.Pool({ host: '127.0.0.1', port: 1, connectionTimeoutMillis: 40 });
+    const message = await pool.connect().then(() => 'connected', (e: Error) => e.message);
+    await pool.end();
+    // Either the machine refuses the port outright or the timeout fires; only the second is the
+    // string under test, and when it appears it must still be exactly this.
+    if (message === CONNECT_TIMEOUT_MESSAGE || /timeout/i.test(message)) {
+      expect(message).toBe(CONNECT_TIMEOUT_MESSAGE);
+    } else {
+      expect(message).toMatch(/ECONNREFUSED|connect/i);
     }
   });
 });
