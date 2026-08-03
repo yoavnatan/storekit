@@ -107,6 +107,34 @@ describe('reading the feed', () => {
     expect((await getNotificationsForUser(USER, since)).map((n) => n.id)).toEqual([fresh.id]);
   });
 
+  /**
+   * The poll cursor IS `createdAt`, so `createdAt` must survive a round trip through the browser
+   * without losing precision — and until 2026-08-03 it did not.
+   *
+   * `created_at` is `timestamptz`: Postgres keeps microseconds, a JS `Date` holds milliseconds, and
+   * the mapper used to rebuild the field with `new Date(…).toISOString()`. A row stored at
+   * `…:09.503137Z` was handed to the client as `…:09.503Z`, and `created_at > '…503Z'` is still
+   * true for `…503137` — so the newest notification was returned on every poll forever. Inside one
+   * page the toast container's `shownKeys` hid it; a reload empties that set, so the seller got the
+   * same "new message" toast on every single refresh. Found by a person using the dashboard.
+   *
+   * The test above cannot see this: it pins `created_at` to `…10:00:00.000Z`, which has no
+   * microseconds to lose. **A fixture whose value is already round is a fixture that cannot catch
+   * rounding.**
+   */
+  it('does not hand back a row as newer than its own cursor (microsecond truncation)', async () => {
+    const n = await notify({ title: 'הודעה' });
+    await query('UPDATE notifications SET created_at = $1 WHERE id = $2',
+      ['2026-01-01T10:00:00.503137Z', n.id]);
+
+    const cursor = (await getNotificationsForUser(USER))[0]!.createdAt;
+
+    // Polling with the cursor this row produced must return NOTHING — it is not newer than itself.
+    expect((await getNotificationsForUser(USER, cursor)).map((x) => x.id)).toEqual([]);
+    // And the microseconds are the reason: they have to reach the client at all.
+    expect(cursor).toContain('.503137');
+  });
+
   it('IGNORES a cursor it cannot parse instead of raising or going silent', async () => {
     // The cursor lives in the browser's localStorage, so it can be anything. Postgres raises on a
     // timestamp literal it cannot parse, which would be a 500 on a poll that runs on every page;

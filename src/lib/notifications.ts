@@ -69,7 +69,11 @@ function toNotification(row: NotificationRow): Notification {
     title: row.title,
     body: row.body,
     read: row.read,
-    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : new Date(row.created_at).toISOString(),
+    // A string is passed through UNTOUCHED — the queries below format it in SQL at microsecond
+    // precision, and `new Date(s).toISOString()` here would truncate it straight back to
+    // milliseconds, which is the whole bug (see getNotificationsForUser). A `Date` can only ever
+    // have held milliseconds, so there is nothing to preserve on that branch.
+    createdAt: typeof row.created_at === 'string' ? row.created_at : row.created_at.toISOString(),
   };
   if (row.related_id) notification.relatedId = row.related_id;
   if (row.store_slug) notification.storeSlug = row.store_slug;
@@ -97,7 +101,8 @@ export async function createNotification(
   const { rows: written } = await runner(tx).query<NotificationRow>(
     `INSERT INTO notifications (id, user_id, role, type, title, body, read, related_id, store_slug, store_name)
      VALUES ($1, $2, $3, $4, $5, $6, false, $7, $8, $9)
-     RETURNING id, user_id, role, type, title, body, read, related_id, store_slug, store_name, created_at`,
+     RETURNING id, user_id, role, type, title, body, read, related_id, store_slug, store_name,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at`,
     [
       id, input.userId, input.role, input.type, input.title ?? '', input.body ?? '',
       input.relatedId ?? null, input.storeSlug ?? null, input.storeName ?? null,
@@ -107,7 +112,7 @@ export async function createNotification(
 }
 
 /**
- * A person's feed, newest first, capped at {@link FEED_LIMIT}.
+ * A person's feed, newest first, capped at {@link FEED_LIMIT}, plus the cursor to poll with next.
  *
  * `since` is the poll cursor and it comes from the browser's `localStorage`, which means it can be
  * anything at all. A value Postgres cannot parse as a timestamp raises an error rather than
@@ -115,11 +120,55 @@ export async function createNotification(
  * treated as "nothing is newer". Hiding the feed behind a corrupt cursor would be permanent (the
  * client only ever rewrites it from a returned row); ignoring it costs one repeated toast and heals
  * itself on the next poll.
+ *
+ * **The client polls with `notifications[0].createdAt`, so that field must not lose precision —
+ * measured against the live database 2026-08-03, where it did, and it was a live bug.**
+ * `created_at` is `timestamptz`, which Postgres keeps to the MICROSECOND; a JS `Date` holds
+ * milliseconds, so building the field with `toISOString()` silently dropped the last three digits:
+ * a real row stored at `…:09.503137Z` reached the browser as `…:09.503Z`. The client stored that
+ * as its cursor, and `created_at > '…503Z'` is still TRUE for `…503137` — so the newest
+ * notification came back on EVERY poll, forever. Inside one page the toast container's `shownKeys`
+ * hid the repeat; a reload empties that set, so the seller was shown the same "new message" toast
+ * on every single refresh.
+ *
+ * So `created_at` is formatted in SQL at full precision (`toNotification` passes a string through
+ * untouched) rather than round-tripped through a `Date` that cannot hold it. It is still ISO-8601
+ * and still `new Date()`-parseable; the extra digits are simply truncated by any reader that only
+ * wants a date. Truncating the COMPARISON instead (`date_trunc('milliseconds', …)`) would have
+ * re-introduced the tie this avoids. Same family as the `error_log` sequence in migration 0005: a
+ * clock's resolution is not a fact about your data.
  */
+/**
+ * The `since` cursor on its way INTO the query — and the precision has to survive this direction
+ * too, which is where the first attempt at the fix above still lost it.
+ *
+ * Two properties, and neither may be traded for the other:
+ *   · **Postgres must never see a literal it cannot parse.** It RAISES rather than matching
+ *     nothing, and this runs on every page load, so that is a 500 on the whole site.
+ *   · **A cursor this module issued must come back byte-identical.** `new Date(since).toISOString()`
+ *     satisfies the first property and destroys the second: it rounds `…503137Z` to `…503Z`, and a
+ *     row is then forever newer than its own cursor.
+ *
+ * So: a cursor that is ALREADY the instant this module would produce keeps the caller's extra
+ * precision, and anything else is normalised through `Date` exactly as before. The test is a prefix
+ * comparison rather than a pattern — `…503Z` normalised is a prefix of `…503137Z` issued — which
+ * keeps the shape-of-a-date question out of here entirely (`tests/day-iso.test.ts`: a day-shaped
+ * string is not a day, and a hand-rolled copy of that check is how `9999-99-99` gets in).
+ *
+ * An unparseable cursor is IGNORED rather than treated as "nothing is newer": hiding the feed
+ * behind a corrupt cursor would be permanent, since the client only rewrites it from a returned row.
+ */
+function normalizeCursor(since?: string): string | null {
+  if (!since || !Number.isFinite(Date.parse(since))) return null;
+  const millisecond = new Date(since).toISOString();
+  return since.startsWith(millisecond.slice(0, -1)) ? since : millisecond;
+}
+
 export async function getNotificationsForUser(userId: string, since?: string): Promise<Notification[]> {
-  const cursor = since && Number.isFinite(Date.parse(since)) ? new Date(since).toISOString() : null;
+  const cursor = normalizeCursor(since);
   const found = await rows<NotificationRow>(
-    `SELECT id, user_id, role, type, title, body, read, related_id, store_slug, store_name, created_at
+    `SELECT id, user_id, role, type, title, body, read, related_id, store_slug, store_name,
+            to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
        FROM notifications
       WHERE user_id = $1
         AND ($2::timestamptz IS NULL OR created_at > $2::timestamptz)
