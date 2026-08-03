@@ -25,6 +25,20 @@
      4.5:1 on white (it sits at ~5:1; do not lighten it toward #16a34a). */
   --color-sale: #15803d;
 
+  /* The travelling band of every skeleton shimmer on the site — the ONE definition,
+     because it was written out identically in ten places and a value in ten places
+     drifts into ten values.
+
+     Weakened from 12% to 7% of --color-muted on 2026-08-03, on the owner's call. The
+     shimmer sits UNDER the image by design (see store-card.css for what putting it on
+     top cost), and that is right for a photograph — but a background-removed product
+     photo is transparent, so the band travels visibly THROUGH the subject and the
+     skeleton reads as being on top of the product rather than behind it. At 7% it is
+     still clearly a moving cue on an empty tile and no longer registers as a grey
+     wash behind a picture. Below ~5% it stops reading as motion at all on white; that
+     is the floor, not a target. */
+  --color-skeleton: color-mix(in srgb, var(--color-muted) 7%, var(--color-surface));
+
   /* Placeholder store-card tiles (see lib/placeholder-art.ts) — ONE of these is
      the dominant colour of a whole card, rotated by card index, so the launch-
      mode shelf reads as a row of different stores rather than one repeated

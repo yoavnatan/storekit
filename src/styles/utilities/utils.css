@@ -54,7 +54,7 @@
   background: linear-gradient(
     90deg,
     var(--color-surface) 25%,
-    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+    var(--color-skeleton) 50%,
     var(--color-surface) 75%
   );
   background-size: 400% 100%;
@@ -115,6 +115,30 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .progress-sweep { animation: none; width: 100%; opacity: 0.5; }
+}
+
+/* The track a `.progress-sweep` travels inside — pair the two, always. It carries the
+   2px height, the clip, and the one thing that is not obvious: the fade at both ends.
+
+   Without it the bar looked chopped, and it genuinely was. The sweep is half the
+   track wide with a gradient that fades to transparent at each end, so it reads soft
+   only while it is fully inside. At the start and end of every cycle it is half
+   outside, and what shows is that gradient sliced through its solid middle and
+   pinned flat against the boundary — a hard vertical stop that made the bar look cut
+   off by the container's side padding rather than travelling through it (owner,
+   2026-08-03). Masking the outer 7% to transparent lets it thin out as it leaves:
+   narrow at the edges, full-bodied through the middle.
+
+   Symmetric, so RTL needs no variant. It lives here rather than in LoadingSweep.astro
+   because the seller dashboard's hydration bar is a second, hand-built track — the
+   fade has to be a property of the pairing, not of one component, or the two drift.
+   Kept as CSS rather than a Tailwind arbitrary value for the same reason: one
+   definition beats the same four-stop gradient escaped into brackets twice. */
+.progress-track {
+  height: 2px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 7%, #000 93%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 7%, #000 93%, transparent 100%);
 }
 
 /* ── Tapped-before-its-JS-arrived (DashTabsBoot.astro sets [data-opening]) ──

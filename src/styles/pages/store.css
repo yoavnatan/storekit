@@ -112,7 +112,7 @@ body:has(.site-header.is-stuck) .store-banner {
   background: linear-gradient(
     90deg,
     var(--color-surface) 25%,
-    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+    var(--color-skeleton) 50%,
     var(--color-surface) 75%
   );
   background-size: 400% 100%;
@@ -1097,7 +1097,7 @@ body:has(.site-header.is-stuck) .store-banner {
   background: linear-gradient(
     90deg,
     var(--color-surface) 25%,
-    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+    var(--color-skeleton) 50%,
     var(--color-surface) 75%
   );
   background-size: 400% 100%;
@@ -1133,7 +1133,7 @@ body:has(.site-header.is-stuck) .store-banner {
   background: linear-gradient(
     90deg,
     var(--color-surface) 25%,
-    color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%,
+    var(--color-skeleton) 50%,
     var(--color-surface) 75%
   );
   background-size: 400% 100%;

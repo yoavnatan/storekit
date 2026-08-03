@@ -747,7 +747,7 @@ textarea.input { resize: none; }
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, var(--color-surface) 25%, color-mix(in srgb, var(--color-muted) 12%, var(--color-surface)) 50%, var(--color-surface) 75%);
+  background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-skeleton) 50%, var(--color-surface) 75%);
   background-size: 400% 100%;
   animation: skeleton-shimmer 1.8s ease-in-out infinite;
 }
