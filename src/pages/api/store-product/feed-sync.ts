@@ -1,19 +1,17 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId, updateStore } from '../../../lib/stores.js';
-import { fetchFeedCsv } from '../../../lib/feed-fetch.js';
-import { parseCsv } from '../../../lib/csv-bulk.js';
+import { getStoresBySellerId } from '../../../lib/stores.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { guessMapping, buildCanonicalCsv, type MappableKey } from '../../../lib/feed-mapping.js';
-import { runProductImport } from '../../../lib/store-products-import.js';
+import { syncStoreFeed } from '../../../lib/store-feed-sync.js';
 
-// "Sync now": server-side pull of the store's saved external-inventory feed. Fetches the URL (behind
-// the SSRF guard), re-applies the saved column mapping to turn it into our canonical format, then
-// runs the exact same import routine as a manual upload — which matches rows to existing products by
-// sku when they carry no id, exactly what a feed keyed by the store's own sku needs. Two calls:
-// commit:false for the preview, commit:true to write. When a scheduler exists this same endpoint is
-// what it will call on a timer (see CURRENT_TASK / GO_LIVE).
+// "Sync now": the seller-pressed half of the external-inventory pull. Everything this route does is
+// what only a route can do — authenticate the session, prove the seller owns the store named in the
+// body, read that body under a cap. The pull itself (fetch behind the SSRF guard → re-apply the
+// saved column mapping → run the same import a manual upload runs) is `lib/store-feed-sync.ts`,
+// because the scheduler's `feed-sync` job runs the identical sequence with no session to present
+// (DB_MIGRATION_PLAN.md §8 stage 4a). Two calls from the dashboard: commit:false for the preview,
+// commit:true to write.
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -29,29 +27,6 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === (body.storeId ?? ''));
   if (!store) return json({ ok: false, error: 'Not authorized' }, 403);
 
-  const url = store.feedSync?.url?.trim();
-  if (!url) return json({ ok: false, error: 'no-feed-url' }, 400);
-
-  const fetched = await fetchFeedCsv(url);
-  if (!fetched.ok || fetched.csv === undefined) return json({ ok: false, error: `feed-${fetched.error}` }, 502);
-
-  const rows = parseCsv(fetched.csv);
-  if (!rows.length) return json({ ok: false, error: 'empty-file' }, 400);
-
-  // Guess from the live headers, biased by whatever mapping the seller confirmed last time.
-  const saved = store.feedSync?.mapping as Record<string, MappableKey> | undefined;
-  const entries = guessMapping(rows[0]!, saved);
-  const canonicalCsv = buildCanonicalCsv(rows, entries);
-
-  const { status, body: resBody } = await runProductImport({
-    storeId: store.id, sellerId, csv: canonicalCsv,
-    commit: !!body.commit,
-  });
-
-  if (body.commit && resBody.ok) {
-    const lastSyncAt = new Date().toISOString();
-    await updateStore(store.id, { feedSync: { ...store.feedSync, lastSyncAt } });
-    return json({ ...resBody, lastSyncAt }, status);
-  }
+  const { status, body: resBody } = await syncStoreFeed(store, !!body.commit);
   return json(resBody, status);
 };
