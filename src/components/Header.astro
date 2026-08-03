@@ -91,10 +91,10 @@ const strEmpty   = t.store.noProductsFound;
     <!-- Logo / store home -->
     <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
       {storeMode && storeName && storeSlug
-        ? <a href={`/${storeSlug}`} class="logo store-name-link" aria-label={storeName}>
+        ? <a href={`/${storeSlug}`} class="logo store-name-link" aria-label={storeName} data-astro-prefetch>
             <span class="store-name-text">{storeName}</span>
           </a>
-        : <a href="/" class="logo" aria-label={store.name}>
+        : <a href="/" class="logo" aria-label={store.name} data-astro-prefetch>
             <span>{logo.text}</span>
           </a>
       }
@@ -434,12 +434,42 @@ const strEmpty   = t.store.noProductsFound;
 
 <script>
   import { initHeaderScrolled } from '../lib/sticky-bar.js';
+  import { animateScrollTo } from '../scripts/dashboard/scroll-utils.js';
   import { getCount } from '../lib/cart.js';
   import { getWishlistCount } from '../lib/wishlist.js';
   import { updateBadge } from '../lib/badge-ticker.js';
   import { cdnThumb } from '../lib/cdn.js';
   // Two historic local names in this file, one implementation.
   import { escapeHtml as escH, escapeHtml as escHtml } from '../lib/html-escape.js';
+
+  // ── The logo, when it points at the page you are already on ──────────
+  // A full navigation to the current URL rebuilds the whole document: the header is torn down and
+  // repainted, which reads as the header "jumping" even though nothing about it changed. That was
+  // nearly free while a page was a file read; against a real database it is a few hundred
+  // milliseconds of the browser holding the old paint and then replacing it.
+  //
+  // The site's standing rule is that an interaction changing no state must not move anything, so
+  // the click is intercepted and does what a logo click actually means when you are already home:
+  // returns you to the top. `animateScrollTo` rather than native smooth scrolling — on this RTL
+  // site the native one drifts scrollX off zero mid-animation (scroll-utils.ts). Already at the
+  // top, it is a genuine no-op and nothing moves at all.
+  //
+  // Deliberately NOT a general same-URL guard for every link: elsewhere on the site a same-URL
+  // click can legitimately re-run a filtered view. This is the logo, whose one job is "go home".
+  document.querySelector<HTMLAnchorElement>('a.logo')?.addEventListener('click', (event) => {
+    const link = event.currentTarget as HTMLAnchorElement;
+    // Let the browser do its normal thing for anything that is not a plain left click — a
+    // middle-click or ctrl/cmd-click means "open this somewhere else", and that is still a real
+    // navigation.
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const target = new URL(link.href, window.location.href);
+    if (target.origin !== window.location.origin) return;
+    const samePage = target.pathname.replace(/\/$/, '') === window.location.pathname.replace(/\/$/, '')
+      && target.search === window.location.search;
+    if (!samePage) return;
+    event.preventDefault();
+    if (window.scrollY > 0) animateScrollTo(0);
+  });
 
   // Fades the header's shadow in the moment the page is scrolled at all — at the
   // top it is covering nothing, so it carries only its border (header.css).
