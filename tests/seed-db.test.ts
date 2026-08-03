@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
-import { purge, writeCatalog } from '../scripts/lib/seed-db.mjs';
+import { DEMO_EMAIL_SUFFIX, purge, writeCatalog } from '../scripts/lib/seed-db.mjs';
 import { getDatabase, query } from '../src/lib/db.js';
 import { getStoreBySlug, getVisibleStores } from '../src/lib/stores.js';
 import { getVisibleProductsByStoreId } from '../src/lib/store-products.js';
@@ -22,9 +22,6 @@ import { comboKey } from '../src/lib/variant-combo.js';
 /** What the seeders hand `writeCatalog`: a single client, so its BEGIN/COMMIT bracket the run. */
 const db = { query: (text: string, params?: unknown[]) => getDatabase().query(text, params) };
 
-const DEMO_SUFFIX = '@demo.local';
-const DEMO_SELLERS = `email LIKE '%' || $1`;
-const DEMO_STORES = `seller_id IN (SELECT id FROM sellers WHERE ${DEMO_SELLERS})`;
 
 /** One store's worth of seed records, in the shapes both seeders build. */
 function catalog(over: { slug?: string; email?: string; demo?: boolean } = {}) {
@@ -34,7 +31,7 @@ function catalog(over: { slug?: string; email?: string; demo?: boolean } = {}) {
   const productId = crypto.randomUUID();
   const slug = over.slug ?? `seeded-${crypto.randomBytes(3).toString('hex')}`;
   return {
-    sellers: [{ id: sellerId, name: 'נועה כהן', email: over.email ?? `${slug}${DEMO_SUFFIX}`, passwordHash: 'salt:hash', createdAt: '2026-01-01T00:00:00.000Z' }],
+    sellers: [{ id: sellerId, name: 'נועה כהן', email: over.email ?? `${slug}${DEMO_EMAIL_SUFFIX}`, passwordHash: 'salt:hash', createdAt: '2026-01-01T00:00:00.000Z' }],
     stores: [{
       id: storeId, sellerId, slug, name: 'סטודיו לבוש', tagline: 't', description: 'd',
       colors: { primary: '#111827', accent: '#f97316' }, categories: ['אופנה'],
@@ -72,7 +69,7 @@ function catalog(over: { slug?: string; email?: string; demo?: boolean } = {}) {
 }
 
 beforeEach(async () => {
-  await purge(db, { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_SUFFIX] });
+  await purge(db, 'demo');
 });
 
 describe('writeCatalog', () => {
@@ -144,7 +141,7 @@ describe('writeCatalog', () => {
     // Two products claiming one id — the insert raises, after the purge statement has run.
     broken.products = [broken.products[0]!, { ...broken.products[0]! }];
     await expect(writeCatalog(db, {
-      purge: { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_SUFFIX] },
+      purge: 'demo',
       ...broken,
     })).rejects.toThrow();
 
@@ -157,7 +154,7 @@ describe('writeCatalog', () => {
     await writeCatalog(db, first);
     const second = catalog();
     await writeCatalog(db, {
-      purge: { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_SUFFIX] },
+      purge: 'demo',
       ...second,
     });
     expect(await getStoreBySlug(first.ids.slug)).toBeNull();
@@ -171,7 +168,7 @@ describe('purge', () => {
     await writeCatalog(db, seeded);
     const realStores = (await getVisibleStores()).length;
 
-    const removed = await purge(db, { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_SUFFIX] });
+    const removed = await purge(db, 'demo');
     expect(removed).toEqual({ stores: 1, sellers: 1 });
     expect(await getStoreBySlug(seeded.ids.slug)).toBeNull();
 

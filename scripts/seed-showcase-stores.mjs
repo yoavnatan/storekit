@@ -35,13 +35,17 @@
  * printed "✅ 3 showcase stores", and created nothing.
  */
 import crypto from 'node:crypto';
-import { openSeedClient, purge, writeCatalog } from './lib/seed-db.mjs';
+import {
+  SEED_SCOPES, SHOWCASE_OWNER_EMAIL,
+  openSeedClient, purge, writeCatalog,
+} from './lib/seed-db.mjs';
 
 const uuid = () => crypto.randomUUID();
 
 /** The platform's own seller account. Every showcase store hangs off this one
- *  record so the whole set has a single owner to log in as / clean up by. */
-const OWNER_EMAIL = 'showcase@dezabin.com';
+ *  record so the whole set has a single owner to log in as / clean up by. Defined in
+ *  `seed-db.mjs`, because the purge gate there has to know it to allow this set to be deleted. */
+const OWNER_EMAIL = SHOWCASE_OWNER_EMAIL;
 const OWNER_PASSWORD = 'showcase1234';
 const OWNER_NAME = 'Dezabin';
 
@@ -311,11 +315,12 @@ async function seed(db, clean) {
   // The previous showcase set — matched on the flag itself plus the platform account, so it is
   // found even if a slug was edited by hand. Real data is never in it: no real store carries
   // `demo = true` and no real seller uses OWNER_EMAIL. Deleting a store cascades to its categories,
-  // products, images and per-combo stock (seed-db.mjs#purge).
-  const STALE_STORES = 'demo = true OR seller_id IN (SELECT id FROM sellers WHERE email = $1)';
+  // products, images and per-combo stock. The predicate lives in `seed-db.mjs` (THE PURGE GATE) —
+  // this file names the scope and borrows its store clause for the read below.
+  const STALE_STORES = SEED_SCOPES.showcase.stores;
 
   if (clean) {
-    const removed = await purge(db, { storeWhere: STALE_STORES, sellerWhere: 'email = $1', params: [OWNER_EMAIL] });
+    const removed = await purge(db, 'showcase');
     console.log(`\n🧹 Removed ${removed.stores} showcase store(s) + ${removed.sellers} platform seller account(s). Real data untouched.\n`);
     return;
   }
@@ -335,7 +340,7 @@ async function seed(db, clean) {
   // Slugs a REAL store holds. The set about to be replaced is excluded, or a re-seed would find
   // its own previous stores in the way and skip all three.
   const { rows: takenRows } = await db.query(
-    `SELECT slug::text AS slug FROM stores WHERE deleted_at IS NULL AND NOT (${STALE_STORES})`, [OWNER_EMAIL],
+    `SELECT slug::text AS slug FROM stores WHERE deleted_at IS NULL AND NOT (${STALE_STORES})`,
   );
   const taken = new Set(takenRows.map((r) => r.slug));
   const stores = [];
@@ -451,7 +456,9 @@ async function seed(db, clean) {
   // Purge + write as one transaction: everything above this line was network work, and a run that
   // fails after deleting the old set would take the site's only finished stores down with it.
   await writeCatalog(db, {
-    purge: { storeWhere: STALE_STORES, params: [OWNER_EMAIL] },
+    // `includeSellers: false` — the owner row is reused when it already exists (its password and
+    // anything filed against it survive a re-seed), so this purge must not delete it.
+    purge: { scope: 'showcase', includeSellers: false },
     sellers, stores, categories, products,
   });
 

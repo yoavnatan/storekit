@@ -21,12 +21,14 @@
  * nobody reads any more: it ran, printed "✅ Demo seed complete", and created nothing.
  */
 import crypto from 'node:crypto';
-import { openSeedClient, purge, purgeOrdersOfStores, writeCatalog } from './lib/seed-db.mjs';
+import {
+  DEMO_EMAIL_SUFFIX, SEED_SCOPES,
+  openSeedClient, purge, purgeOrdersOfStores, writeCatalog,
+} from './lib/seed-db.mjs';
 
 const uuid = () => crypto.randomUUID();
 const iso = (d) => new Date(d).toISOString();
 
-const DEMO_EMAIL_SUFFIX = '@demo.local';
 const DEMO_PASSWORD = 'demo1234';
 const NOW = Date.now();
 const DAY = 86_400_000;
@@ -141,11 +143,10 @@ async function fullCatalog() {
 const MAX_PER_STORE = 24;
 
 /** Everything a demo run creates hangs off a `@demo.local` account, which is what makes "remove
- *  the demo set and keep every real row" one predicate rather than a judgement call. */
-const DEMO_SELLERS = `email LIKE '%' || $1`;
-/** @param {string} storeAlias table alias the predicate is written against ('' for an unaliased DELETE). */
-const demoStores = (storeAlias = '') => `${storeAlias}seller_id IN (SELECT id FROM sellers WHERE ${DEMO_SELLERS})`;
-const DEMO_STORES = demoStores();
+ *  the demo set and keep every real row" one predicate rather than a judgement call. The predicate
+ *  itself is `seed-db.mjs`'s (see THE PURGE GATE there) — this seeder names the scope and reuses
+ *  its store clause for the read below, so there is exactly one definition of "a demo store". */
+const DEMO_STORES = SEED_SCOPES.demo.stores;
 
 async function main() {
   const db = await openSeedClient();
@@ -161,7 +162,7 @@ async function run(db) {
   // rather than derived from the files, because sellers/stores/products are rows now — the JSON
   // leftovers below (orders, page views, counters) are what still has to be filtered by hand.
   const { rows: realStoreRows } = await db.query(
-    `SELECT slug::text AS slug FROM stores WHERE deleted_at IS NULL AND NOT (${DEMO_STORES})`, [DEMO_EMAIL_SUFFIX],
+    `SELECT slug::text AS slug FROM stores WHERE deleted_at IS NULL AND NOT (${DEMO_STORES})`,
   );
   const realSlugs = new Set(realStoreRows.map((r) => r.slug));
 
@@ -181,9 +182,12 @@ async function run(db) {
 
   if (process.argv.includes('--clean')) {
     // Orders first, while the demo stores still exist to identify them by slug.
-    const removedOrders = await purgeOrdersOfStores(db, DEMO_STORES, [DEMO_EMAIL_SUFFIX]);
-    const removed = await purge(db, { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] });
-    console.log(`\n🧹 Demo data removed — ${removed.stores} store(s), ${removed.sellers} account(s), ${removedOrders} order(s). Real (non-@demo.local) data preserved.\n`);
+    const removedOrders = await purgeOrdersOfStores(db, 'demo');
+    const removed = await purge(db, 'demo');
+    console.log(`\n🧹 Demo data removed — ${removed.stores} store(s), ${removed.sellers} account(s), ${removedOrders.deleted} order(s). Real (non-${DEMO_EMAIL_SUFFIX}) data preserved.\n`);
+    if (removedOrders.keptShared) {
+      console.log(`   ${removedOrders.keptShared} order(s) kept: they also contain items from a store that is not demo data.\n`);
+    }
     return;
   }
 
@@ -312,7 +316,7 @@ async function run(db) {
   // work, and a run that failed after deleting the previous set would leave the dev environment
   // with no demo data at all.
   await writeCatalog(db, {
-    purge: { storeWhere: DEMO_STORES, sellerWhere: DEMO_SELLERS, params: [DEMO_EMAIL_SUFFIX] },
+    purge: 'demo',
     sellers, stores, categories, products, orders, pageViews, favorites, wishlists,
   });
 

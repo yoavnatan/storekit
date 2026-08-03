@@ -44,6 +44,93 @@ async function insertMany(db, table, columns, rows) {
   return rows.length;
 }
 
+// ============================================================================
+// THE PURGE GATE
+// ============================================================================
+//
+// Everything below this comment exists because `purge` used to take a WHERE clause and run it.
+// The safety then lived in the two seeders — each passed a predicate a real store cannot satisfy —
+// which means the FUNCTION was safe only for as long as every caller happened to be. A third
+// caller, or one careless edit to a constant in either seeder, deleted stores, their whole
+// catalogue and (through `purgeOrdersOfStores`) their orders, with nothing in the way. That is
+// acceptable while every row in the database is seeded; it stops being acceptable the day a real
+// seller signs up, and this is the half hour that closes it before then.
+//
+// Two layers, and they are deliberately not derived from each other:
+//
+//  1. **A caller names a scope, it does not write one.** `purge(db, 'demo')`. An unknown name
+//     throws. There is no parameter through which arbitrary SQL reaches a DELETE any more.
+//  2. **A scope is checked to be a SUBSET of the disposable set before anything is deleted.**
+//     `DISPOSABLE_*` below is the single definition of "a seeder made this row", and the scopes
+//     are narrowings of it — `demo` takes the demo half, `showcase` the showcase half. Layer 1
+//     alone would still be defeated by widening a scope constant; this layer counts the rows the
+//     scope matches that the disposable predicate does not, and refuses at the first one.
+//
+// The identifiers themselves live here rather than in the seeders, so the seeders no longer own
+// any part of the answer to "what may be deleted".
+
+/** Every demo account's email ends in this. Real registration cannot produce it — the domain does
+ *  not resolve and nothing accepts mail for it. */
+export const DEMO_EMAIL_SUFFIX = '@demo.local';
+/** The single platform-owned account the showcase stores hang off (`seed-showcase-stores.mjs`). */
+export const SHOWCASE_OWNER_EMAIL = 'showcase@dezabin.com';
+
+/**
+ * These predicates are composed — a scope clause and the disposable clause meet inside one
+ * statement — so a bind parameter is the wrong tool: the placeholder numbers of two independently
+ * written fragments would have to agree, and a fragment that happens not to mention `$2` makes
+ * Postgres reject the call outright ("bind message supplies 2 parameters, but prepared statement
+ * requires 1"). The values here are module constants, never caller or request input, so they are
+ * written into the SQL as literals. The escape is what makes that a rule rather than a habit.
+ */
+const lit = (value) => `'${String(value).replace(/'/g, "''")}'`;
+
+/** An account a seeder created. Nothing else may ever be deleted by this file. */
+const DISPOSABLE_SELLER = `(email LIKE '%' || ${lit(DEMO_EMAIL_SUFFIX)} OR email = ${lit(SHOWCASE_OWNER_EMAIL)})`;
+/** A store a seeder created — either flagged as demo content, or owned by a disposable account. */
+const DISPOSABLE_STORE = `(demo = true OR seller_id IN (SELECT id FROM sellers WHERE ${DISPOSABLE_SELLER}))`;
+
+/**
+ * The only two scopes that exist. Each is a NARROWING of the disposable predicates above: a run of
+ * `seed:demo` must not remove the showcase stores and a run of `seed:showcase` must not remove the
+ * demo ones, which is the whole reason there are two rather than one.
+ */
+export const SEED_SCOPES = {
+  demo: {
+    stores: `seller_id IN (SELECT id FROM sellers WHERE email LIKE '%' || ${lit(DEMO_EMAIL_SUFFIX)})`,
+    sellers: `email LIKE '%' || ${lit(DEMO_EMAIL_SUFFIX)}`,
+  },
+  showcase: {
+    stores: `demo = true OR seller_id IN (SELECT id FROM sellers WHERE email = ${lit(SHOWCASE_OWNER_EMAIL)})`,
+    sellers: `email = ${lit(SHOWCASE_OWNER_EMAIL)}`,
+  },
+};
+
+/** Layer 1. */
+function scopeOf(name) {
+  const scope = SEED_SCOPES[name];
+  if (!scope) {
+    throw new Error(`purge: unknown scope ${JSON.stringify(name)} — expected one of ${Object.keys(SEED_SCOPES).join(', ')}`);
+  }
+  return scope;
+}
+
+/**
+ * Layer 2. Counts what the scope matches and the disposable predicate does not, and throws on the
+ * first one rather than reporting afterwards — the whole point is that the DELETE has not run yet.
+ */
+async function assertSubsetOfDisposable(db, table, where, disposable) {
+  const { rows } = await db.query(
+    `SELECT count(*)::int AS n FROM ${table} WHERE (${where}) AND NOT ${disposable}`);
+  const n = Number(rows[0]?.n ?? 0);
+  if (n > 0) {
+    throw new Error(
+      `purge refused: ${n} row(s) in "${table}" match this scope but are not seeded data. `
+      + 'A scope may only ever narrow the disposable set (seed-db.mjs → THE PURGE GATE).',
+    );
+  }
+}
+
 /**
  * Remove whole stores and, optionally, the accounts that own them.
  *
@@ -52,21 +139,23 @@ async function insertMany(db, table, columns, rows) {
  * cascades. So the stores go first and take their categories, products, images, per-combo stock,
  * campaigns and analytics with them.
  *
- * @param {{ storeWhere?: string, sellerWhere?: string, params?: unknown[] }} scope
+ * @param {'demo'|'showcase'} scopeName
+ * @param {{ includeSellers?: boolean }} [opts] `false` keeps the accounts — what a re-seed wants
+ *   when it is about to reuse the same owner row rather than recreate it.
  */
-export async function purge(db, scope) {
-  const { storeWhere, sellerWhere, params = [] } = scope;
-  let stores = 0;
+export async function purge(db, scopeName, opts = {}) {
+  const { includeSellers = true } = opts;
+  const scope = scopeOf(scopeName);
+  await assertSubsetOfDisposable(db, 'stores', scope.stores, DISPOSABLE_STORE);
+  if (includeSellers) await assertSubsetOfDisposable(db, 'sellers', scope.sellers, DISPOSABLE_SELLER);
+
+  const storeRes = await db.query(`DELETE FROM stores WHERE ${scope.stores}`);
   let sellers = 0;
-  if (storeWhere) {
-    const res = await db.query(`DELETE FROM stores WHERE ${storeWhere}`, params);
-    stores = res.rowCount ?? 0;
-  }
-  if (sellerWhere) {
-    const res = await db.query(`DELETE FROM sellers WHERE ${sellerWhere}`, params);
+  if (includeSellers) {
+    const res = await db.query(`DELETE FROM sellers WHERE ${scope.sellers}`);
     sellers = res.rowCount ?? 0;
   }
-  return { stores, sellers };
+  return { stores: storeRes.rowCount ?? 0, sellers };
 }
 
 /**
@@ -80,20 +169,40 @@ export async function purge(db, scope) {
  * strand another set of demo orders that no store page, no revenue figure and no `--clean` could
  * ever reach again.
  *
+ * **A shared order is kept, not deleted — this is where the old version was actually wrong, not
+ * just unguarded.** One order can span several stores (`order_stores`, one row each), so a cart
+ * holding a demo product and a real one produces a single order that "belongs to" a demo store by
+ * the old predicate. Deleting it took a real seller's order and its money with it. The scope now
+ * selects orders every one of whose stores is disposable; the rest are counted and reported, so a
+ * leftover is visible rather than silent. A slug matching no store row at all (its store was
+ * deleted) counts as NOT disposable — nothing is left to prove it was seeded, and the safe
+ * direction under that doubt is to keep the order.
+ *
  * Children first, because `order_items`/`order_stores` reference `orders` with `ON DELETE RESTRICT`
  * — the same rule that protects a real order from a careless cascade.
+ *
+ * @param {'demo'|'showcase'} scopeName
+ * @returns {Promise<{ deleted: number, keptShared: number }>}
  */
-export async function purgeOrdersOfStores(db, storeWhere, params = []) {
+export async function purgeOrdersOfStores(db, scopeName) {
+  const scope = scopeOf(scopeName);
+  await assertSubsetOfDisposable(db, 'stores', scope.stores, DISPOSABLE_STORE);
+
+  const touchesScope = `SELECT DISTINCT order_id FROM order_stores
+      WHERE store_slug IN (SELECT slug::text FROM stores WHERE ${scope.stores})`;
+  const touchesKeeper = `SELECT DISTINCT order_id FROM order_stores
+      WHERE store_slug NOT IN (SELECT slug::text FROM stores WHERE ${DISPOSABLE_STORE})`;
+
   const { rows } = await db.query(
-    `SELECT DISTINCT os.order_id FROM order_stores os
-      WHERE os.store_slug IN (SELECT slug::text FROM stores WHERE ${storeWhere})`, params,
+    `SELECT order_id, order_id IN (${touchesKeeper}) AS shared FROM (${touchesScope}) s`,
   );
-  const ids = rows.map((r) => r.order_id);
-  if (!ids.length) return 0;
+  const ids = rows.filter((r) => !r.shared).map((r) => r.order_id);
+  const keptShared = rows.length - ids.length;
+  if (!ids.length) return { deleted: 0, keptShared };
   await db.query('DELETE FROM order_items WHERE order_id = ANY($1::uuid[])', [ids]);
   await db.query('DELETE FROM order_stores WHERE order_id = ANY($1::uuid[])', [ids]);
   const res = await db.query('DELETE FROM orders WHERE id = ANY($1::uuid[])', [ids]);
-  return res.rowCount ?? 0;
+  return { deleted: res.rowCount ?? 0, keptShared };
 }
 
 /**
@@ -115,7 +224,7 @@ export async function purgeOrdersOfStores(db, storeWhere, params = []) {
  * product prices beside them, and converts through the same `toAgorot` — a seeder builds the plain
  * numbers a person would type, and this file is the one place that decides what an agora is.
  *
- * @param {{ purge?: { storeWhere?: string, sellerWhere?: string, params?: unknown[] },
+ * @param {{ purge?: 'demo'|'showcase'|{ scope: 'demo'|'showcase', includeSellers?: boolean },
  *           sellers?: any[], stores?: any[], categories?: any[], products?: any[],
  *           orders?: any[] }} catalog
  */
@@ -124,12 +233,15 @@ export async function writeCatalog(db, catalog) {
     purge: scope, sellers = [], stores = [], categories = [], products = [], orders = [],
     pageViews = [], favorites = [], wishlists = [],
   } = catalog;
+  const scopeName = typeof scope === 'string' ? scope : scope?.scope;
   await db.query('BEGIN');
   try {
     // Orders before the stores that own them: `purge` deletes the stores, and once they are gone
     // there is no slug left to recognise their orders by (see purgeOrdersOfStores).
-    if (scope?.storeWhere) await purgeOrdersOfStores(db, scope.storeWhere, scope.params ?? []);
-    if (scope) await purge(db, scope);
+    if (scopeName) {
+      await purgeOrdersOfStores(db, scopeName);
+      await purge(db, scopeName, { includeSellers: typeof scope === 'string' || scope.includeSellers !== false });
+    }
     await insertMany(db, 'sellers', ['id', 'name', 'email', 'password_hash', 'created_at'],
       sellers.map((s) => [s.id, s.name ?? '', s.email, s.passwordHash ?? '', s.createdAt ?? null]));
 
