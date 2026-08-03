@@ -1078,7 +1078,17 @@ body:has(.site-header.is-stuck) .store-banner {
 /* Skeleton shimmer — @keyframes skeleton-shimmer lives in utils.css. It sits
    UNDER the images; see the note in store-card.css for why the image's visibility
    must never wait on JS. The deferred slides hold a transparent blank pixel until
-   they get their real src, so the shimmer still shows through them. */
+   they get their real src, so the shimmer still shows through them.
+
+   The comment above said all of that while the rule below it still did the
+   opposite: `.is-loading .product-card__img { opacity: 0 }` held EVERY card photo
+   invisible until initImageSkeleton() had run and removed the class. The
+   homepage's copy of this bug was found and removed on 2026-07-30 (store-card.css
+   has the measurement — ~700ms of already-decoded, already-cached photos held
+   blank on a prod build); the store page kept its copy for another four days
+   because the two were fixed by hand rather than by the rule. Deleted here
+   2026-08-03. The shimmer is now what it claims to be: a backdrop the photo
+   covers the instant it has pixels, with JS only stopping the animation. */
 .product-card__img-wrap.is-loading::before {
   content: '';
   position: absolute;
@@ -1093,10 +1103,6 @@ body:has(.site-header.is-stuck) .store-banner {
   background-size: 400% 100%;
   animation: skeleton-shimmer 1.4s ease infinite;
   border-radius: inherit;
-}
-
-.product-card__img-wrap.is-loading .product-card__img {
-  opacity: 0;
 }
 
 @media (hover: hover) {

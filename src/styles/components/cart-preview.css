@@ -44,7 +44,9 @@
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
   flex-shrink: 0;
-  background: var(--color-bg);
+  /* --color-surface, never --color-bg: a bg-removed product photo is transparent
+     and shows this through the subject. Same rule as .store-card__preview-img-wrap. */
+  background: var(--color-surface);
 }
 
 .cart-preview__info { min-width: 0; }

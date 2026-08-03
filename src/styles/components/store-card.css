@@ -155,7 +155,15 @@
   aspect-ratio: 1;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: var(--color-bg);
+  /* White, not the page's off-white --color-bg. A product photo shot on a
+     transparent background shows this colour THROUGH the subject, so --color-bg
+     read as "the product has a dirty grey backing" rather than as the page
+     behind it (owner, 2026-08-03). Same rule and same reason as
+     .product-card__img-wrap on the store page: an image container is always
+     --color-surface, never --color-bg and never none. If the seller wanted a
+     colour they baked one in with the background-cleanup tool, and that colour
+     is in the pixels — so the container's only job is to be neutral. */
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
 }
 
