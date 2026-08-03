@@ -1630,6 +1630,31 @@ function syncEditRowRev(displayRow: Element | null | undefined, rev: string | un
 }
 
 /**
+ * The label a save button wears while it is uploading photos rather than saving.
+ *
+ * Reported 2026-08-03: a seller who picks an image and presses Save without closing the image
+ * editor first pays for the whole Cloudinary upload inside that click. The button said "שומר..."
+ * for all of it — naming the fast half and denying the slow one — so a save that was working
+ * looked like a save that had hung. `.btn--busy` is the site's existing in-flight treatment
+ * (components/buttons.css: busy takes cursor:progress, disabled alone does not).
+ *
+ * The count is only shown when there is more than one photo: "מעלה תמונה 1/1" reads like a
+ * progress bar that learned nothing.
+ */
+function uploadProgressLabel(i18n: Record<string, string>, done: number, total: number): string {
+  const base = i18n.uploadingImage ?? 'Uploading image';
+  return total > 1 ? `${base} ${Math.min(done + 1, total)}/${total}…` : `${base}…`;
+}
+
+function setBusy(btns: HTMLButtonElement[], text: string): void {
+  btns.forEach((b) => { b.textContent = text; b.classList.add('btn--busy'); });
+}
+
+function clearBusy(btns: HTMLButtonElement[]): void {
+  btns.forEach((b) => b.classList.remove('btn--busy'));
+}
+
+/**
  * The upload failure the seller actually reads.
  *
  * Both call sites used to catch and discard, showing "Image upload failed. Please try again." for
@@ -1660,8 +1685,15 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
   try {
     const gallery = form.querySelector<Element>('.gallery-widget');
     try {
-      if (gallery) await resolveGalleryUrls(gallery, cloud, preset);
+      if (gallery) {
+        await resolveGalleryUrls(gallery, cloud, preset,
+          (done, total) => setBusy(submitBtns, uploadProgressLabel(i18n, done, total)));
+      }
+      // Back to plain "saving" for the part that really is saving.
+      clearBusy(submitBtns);
+      submitBtns.forEach(btn => { btn.textContent = i18n.saving ?? 'Saving…'; });
     } catch (err) {
+      clearBusy(submitBtns);
       submitBtns.forEach(btn => { btn.disabled = false; btn.textContent = origText; });
       showStatus(uploadErrorText(err, i18n), true);
       return;
@@ -1928,12 +1960,20 @@ export function initAddProduct(cloud: string, preset: string): void {
     const submitBtn = addForm.querySelector<HTMLButtonElement>('[type="submit"]');
     const origText = submitBtn?.textContent ?? (i18n.addProductBtn ?? 'Add product');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = i18n.saving ?? 'Saving…'; }
+    // Declared out here so `finally` can reach it — the busy class has to come off on every exit.
+    const btns = submitBtn ? [submitBtn] : [];
 
     try {
       const gallery = addForm.querySelector<Element>('.gallery-widget');
       try {
-        if (gallery) await resolveGalleryUrls(gallery, cloud, preset);
+        if (gallery) {
+          await resolveGalleryUrls(gallery, cloud, preset,
+            (done, total) => setBusy(btns, uploadProgressLabel(i18n, done, total)));
+        }
+        clearBusy(btns);
+        if (submitBtn) submitBtn.textContent = i18n.saving ?? 'Saving…';
       } catch (err) {
+        clearBusy(btns);
         showStatus(uploadErrorText(err, i18n), true);
         return;
       }
@@ -1966,6 +2006,9 @@ export function initAddProduct(cloud: string, preset: string): void {
       document.getElementById('toggle-add-form')?.removeAttribute('hidden');
       showStatus(i18n.productAdded ?? 'Product added.');
     } finally {
+      // The class too, not just the label — a button left `.btn--busy` keeps cursor:progress
+      // forever and reads as still working on something that finished.
+      clearBusy(btns);
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
     }
   });

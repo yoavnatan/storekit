@@ -520,15 +520,32 @@ export function initGalleryWidget(gallery: Element): void {
   doneBtn?.addEventListener('click', closePanel);
 }
 
-export async function resolveGalleryUrls(gallery: Element, cloud: string, preset: string): Promise<void> {
-  const slots = gallery.querySelectorAll<Element>('.gallery-slot');
-  for (const slot of slots) {
-    const st = wState.get(slot);
-    const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
-    if (!st?.original || !(cloud && preset)) continue;
-    const blob = st.useProcessed && st.processed ? st.processed : st.original;
+export async function resolveGalleryUrls(
+  gallery: Element, cloud: string, preset: string,
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
+  // **Counted BEFORE uploading, so a caller can say "1 of 3" rather than just "working".**
+  // Reported 2026-08-03: a seller who picks a photo and hits Save without closing the image editor
+  // first pays for the whole upload inside that click, and the button said "שומר..." throughout —
+  // so the slow part was the one part the label denied was happening. A total is the difference
+  // between a progress report and a spinner.
+  const pending: { slot: Element; blob: Blob }[] = [];
+  if (cloud && preset) {
+    for (const slot of gallery.querySelectorAll<Element>('.gallery-slot')) {
+      const st = wState.get(slot);
+      if (!st?.original) continue;
+      pending.push({ slot, blob: st.useProcessed && st.processed ? st.processed : st.original });
+    }
+  }
+  if (!pending.length) return;
+
+  onProgress?.(0, pending.length);
+  for (let i = 0; i < pending.length; i++) {
+    const { slot, blob } = pending[i]!;
     const url = await cloudinaryUpload(blob, cloud, preset);
+    const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
     if (urlInput) urlInput.value = url;
+    onProgress?.(i + 1, pending.length);
   }
 }
 
