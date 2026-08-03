@@ -15,6 +15,7 @@ import { normalizeStoreSale } from '../../lib/discount-input.js';
 import { resolveSaleScope, resolveSaleProductScope } from '../../lib/store-sale-scope.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
 import { storeSettingsRev, mergeByFieldRev, STORE_REV_FIELDS } from '../../lib/record-rev.js';
+import { warmBannerDerivations } from '../../lib/image-derive.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -96,6 +97,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       hoursVisible: merged.hoursVisible === true,
       shipping: { selfPickup },
     });
+    // A NEW banner: ask Cloudinary to render its four widths now, while the seller is already
+    // waiting on a save, rather than leaving the bill with whoever visits this store first. The
+    // banner is the store page's LCP element, so that visitor was watching ~0.8s of render before
+    // a byte moved — the same reason product images have been pre-derived since 2026-07-29, on the
+    // one image that was missed (lib/image-derive.ts). Only when it actually changed: re-requesting
+    // renders that already exist is a pointless burst at the CDN.
+    const newBanner = merged.bannerImage as string | undefined;
+    if (newBanner && newBanner !== target.bannerImage) warmBannerDerivations(newBanner);
+
     // Store page content changed — notify the index (fire-and-forget, no-op in dev).
     pingStoreChange(target);
     // The form stays on screen after saving, so it takes the revision it now holds —

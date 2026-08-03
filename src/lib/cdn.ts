@@ -93,6 +93,27 @@ export function cdnSrc(url: string, w = 400): string {
 export const LIGHTBOX_WIDTHS = [800, 1200, 1600] as const;
 
 /**
+ * The store banner's frame, and the only widths it is ever requested at — which, for exactly the
+ * reason written above `LIGHTBOX_WIDTHS`, are also the widths `image-derive.ts` pre-renders when a
+ * seller saves their store.
+ *
+ * It lives HERE and not in the store page because THREE places have to agree: the page that builds
+ * the `srcset`, the `<head>` preload that must request the byte-identical URL, and the warm-up that
+ * renders them before the first visitor arrives. A width in the markup that nobody pre-derived is
+ * the cold render this pairing exists to prevent — and the banner is the store page's LCP element,
+ * making it the single worst place on the site to pay it. Measured 2026-08-03: ~0.80s of Cloudinary
+ * render time on the first request for a given transform, ~0.19s on every one after.
+ *
+ * 3/1 because that is both the frame `.store-banner__image-wrap` paints into and the fixed aspect
+ * the dashboard's own crop tool already produces (`seller/dashboard.astro`'s `#banner-frame`,
+ * `aspect: 3`). So on a real seller upload `c_fill` is a pure resize with nothing left to re-frame,
+ * and the pixels reaching the visible band are identical to an uncropped delivery's — the crop only
+ * ever removes what `object-fit: cover` was going to throw away.
+ */
+export const BANNER_RATIO = 3;
+export const BANNER_WIDTHS = [800, 1200, 1600, 2048] as const;
+
+/**
  * Whether the delivery URL for `url` can have its pixels read back in a canvas
  * — i.e. whether it is safe to put `crossorigin="anonymous"` on that <img>.
  *
