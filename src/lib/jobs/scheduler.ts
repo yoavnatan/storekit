@@ -47,14 +47,32 @@ let state: 'stopped' | 'running' | 'disabled' = 'stopped';
 /**
  * Should this process run jobs at all?
  *
- * Off without Postgres — there is no claim table to coordinate through, and every job needs it.
- * Off when `SCHEDULER_ENABLED=0`, which is the escape hatch for a machine that shares the database
- * but must not act on it: a one-off maintenance instance, a load-test replica, or a developer with
- * production credentials who does not want their laptop pulling every seller's feed.
+ * **The default answers the question, so nobody has to remember to.** This started as
+ * "on wherever `DATABASE_URL` is set, switch it off by hand where it should not run" — and the
+ * place it should not run is a developer's machine, which is exactly the place a checklist item
+ * gets skipped. `.env` here holds the REAL Neon credentials, so an unset variable would have meant
+ * `npm run dev` quietly pulling every seller's feed URL from a home network and writing the
+ * production catalogue. A safety that depends on being remembered is not one.
+ *
+ * So the default is the build itself: the dev server does not run jobs, the built server does.
+ * That is a build-time fact rather than configuration, which is why it is the one place
+ * `import.meta.env` is the right tool and not the trap the runtime-env rule warns about
+ * (`runtime-env.ts` — a *value* baked at build time is the bug; "am I the dev server" is baked at
+ * build time by definition).
+ *
+ * `SCHEDULER_ENABLED` stays, and now overrides in BOTH directions, because a one-way switch could
+ * not express either case that actually comes up: `1` runs jobs under `astro dev` when you are
+ * working on one, and `0` silences a built instance that shares the database without being the
+ * server (a maintenance box, a load-test replica).
+ *
+ * Off without Postgres either way — there is no claim table to coordinate through.
  */
 export function schedulerEnabled(): boolean {
-  if (serverEnv('SCHEDULER_ENABLED') === '0') return false;
-  return isDbConfigured();
+  if (!isDbConfigured()) return false;
+  const configured = serverEnv('SCHEDULER_ENABLED');
+  if (configured === '0') return false;
+  if (configured === '1') return true;
+  return import.meta.env.PROD;
 }
 
 /**

@@ -18,7 +18,7 @@
  * The money/stock invariant the standing rule asks for lives in `reporting-invariants.test.ts` §8 —
  * it belongs with the other cross-surface invariants, not here.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import crypto from 'node:crypto';
 import { query } from '../src/lib/db.js';
 import { claimJob, finishJob, getJobRun } from '../src/lib/jobs/job-runs.js';
@@ -209,12 +209,44 @@ describe('the registry itself', () => {
 });
 
 describe('the timer', () => {
-  it('is off without a database, and stoppable', () => {
-    // No DATABASE_URL in the unit-test environment: there is no claim table to coordinate through,
-    // so a process that starts ticking anyway would just log a failure every minute.
+  afterEach(() => { vi.unstubAllEnvs(); stopScheduler(); });
+
+  it('is off without a database, whatever else is configured', () => {
+    // There is no claim table to coordinate through, so a process that started ticking anyway would
+    // just log a failure every minute.
+    vi.stubEnv('SCHEDULER_ENABLED', '1');
     expect(schedulerEnabled()).toBe(false);
     expect(startScheduler()).toBe(false);
+  });
+
+  it('is off in DEV by default, even with real credentials present', () => {
+    // The case this default exists for. `.env` on this machine holds the real Neon connection
+    // string, so "on wherever DATABASE_URL is set" would have meant `npm run dev` pulling every
+    // seller's feed URL from a home network and writing the production catalogue — guarded only by
+    // a checklist item, on the one machine where checklist items get skipped.
+    vi.stubEnv('DATABASE_URL', 'postgres://x/y');
+    expect(import.meta.env.PROD, 'the suite runs as dev, like the dev server').toBe(false);
+    expect(schedulerEnabled()).toBe(false);
+  });
+
+  it('overrides in BOTH directions, because a one-way switch fits neither case', () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://x/y');
+    // '1' — run jobs under `astro dev` while working on one.
+    vi.stubEnv('SCHEDULER_ENABLED', '1');
+    expect(schedulerEnabled()).toBe(true);
+    // '0' — a BUILT instance that shares the database without being the server.
+    vi.stubEnv('SCHEDULER_ENABLED', '0');
+    expect(schedulerEnabled()).toBe(false);
+  });
+
+  it('starts at most once and can be stopped', () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://x/y');
+    vi.stubEnv('SCHEDULER_ENABLED', '1');
+    expect(startScheduler()).toBe(true);
+    // Idempotent — which is what makes ensureSchedulerStarted safe on the request path.
+    expect(startScheduler()).toBe(false);
     stopScheduler();
+    expect(startScheduler()).toBe(true);
   });
 });
 
