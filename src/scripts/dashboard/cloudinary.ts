@@ -38,9 +38,14 @@ export async function cloudinaryUpload(blob: Blob, cloud: string, preset: string
   }
 
   const fd = new FormData();
-  // The third argument is the filename. Without it a Blob is sent as "blob" with no extension,
-  // which leaves the provider guessing at the format.
-  fd.append('file', blob, 'upload');
+  // **A picked File keeps its own name; only a nameless Blob is given one.** This is the line most
+  // likely to have been the 400 (2026-08-03) and it is worth stating precisely. A `File` from the
+  // picker carries `photo.jpg` and FormData uses it. A Blob produced by the cropper or the
+  // background remover has no name at all, and FormData then sends `filename="blob"` — no
+  // extension, nothing for the provider to key the format off. Passing a filename unconditionally
+  // would fix that and simultaneously THROW AWAY the real one, so the two cases are separated.
+  if (blob instanceof File) fd.append('file', blob);
+  else fd.append('file', blob, `upload.${blob.type === 'image/png' ? 'png' : 'jpg'}`);
   fd.append('upload_preset', preset);
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/image/upload`, { method: 'POST', body: fd });
