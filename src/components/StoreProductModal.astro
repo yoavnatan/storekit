@@ -415,7 +415,7 @@ const i18n = {
                     style="flex:1;height:2.25rem;display:flex;align-items:center;justify-content:center;gap:4px">
               <span class="pm-btn-label">${i18n.addToCart ?? 'הוסף לעגלה'}</span>
             </button>
-            <a href="/checkout" class="pm-to-checkout btn btn--accent btn--sm"
+            <a href="/checkout?store=${encodeURIComponent(storeSlug)}" class="pm-to-checkout btn btn--accent btn--sm"
                style="display:none;height:2.25rem;white-space:nowrap;align-items:center;gap:0.3rem">
               ${i18n.toCheckout ?? 'לתשלום'}
             </a>

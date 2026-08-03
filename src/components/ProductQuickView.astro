@@ -374,7 +374,11 @@ const strHalted    = t.store.haltedTitle;
           // bottom, so the header line is followed by the "פרטי תשלום" heading and nothing else.
           setTimeout(() => { if (toPaymentBtn) scrollBelowPinnedChrome(toPaymentBtn, 0, 'bottom'); }, 120);
         } else {
-          window.location.href = '/checkout?pay=1';
+          // Off the checkout page there is no payment section to open, so this navigates — and it
+          // names the store it was pressed in, exactly as the product page and the add-to-cart
+          // toast do. `?store=` pre-ticks that store on arrival; `?pay=1` still opens the payment
+          // accordion once there (checkout.astro).
+          window.location.href = `/checkout?store=${encodeURIComponent(storeSlug)}&pay=1`;
         }
       });
     }

@@ -30,6 +30,7 @@
 <script>
   import { getActiveStoreCarts, getSubtotal, getGrandTotal, hasBuyableItems, setQtyQuiet, removeItem } from '../lib/cart.js';
   import { refreshCartPrices, watchCartPrices } from '../lib/cart-prices.js';
+  import { sortCurrentStoreFirst } from '../lib/cart-sovereignty.js';
   import { formatPrice, cdnThumb } from '../config/store.config.js';
   import { escapeHtml as esc } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
@@ -128,15 +129,10 @@
   function render() {
     if (!lines) return;
     const i18n = getI18n().cart ?? {};
-    const allCarts = getActiveStoreCarts();
     const currentSlug = getCurrentStoreSlug();
-    const carts = currentSlug
-      ? [...allCarts].sort((a, b) => {
-          if (a.storeSlug === currentSlug) return -1;
-          if (b.storeSlug === currentSlug) return 1;
-          return 0;
-        })
-      : allCarts;
+    // Shared with the checkout page, which orders its store blocks the same way — see
+    // lib/cart-sovereignty.ts for why the comparator is not written twice.
+    const carts = sortCurrentStoreFirst(getActiveStoreCarts(), currentSlug);
 
     if (titleEl) titleEl.textContent = i18n.title ?? 'Cart';
     const closeBtn = document.getElementById('cart-close');

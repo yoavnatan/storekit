@@ -90,6 +90,9 @@ for (const s of await getVisibleStores()) {
     selectAllAria: c.selectAllAria,
     selectAtLeastOne: c.selectAtLeastOne,
     noItemsSelected: c.noItemsSelected,
+    // Borrowed from the cart drawer's namespace on purpose: it is the SAME heading over the same
+    // grouping, and a second string for it is how the two would end up worded differently.
+    otherStores: t.cart.otherStores,
   })}></script>
 
   <main id="main-content" class="max-w-[640px] mx-auto px-4 pt-7 pb-16">
@@ -242,6 +245,7 @@ for (const s of await getVisibleStores()) {
 
   <script>
     import { getActiveStoreCarts, setQty, removeItem, itemSaving, makeCartKey, applyStockLimit } from '../lib/cart.js';
+    import { sortCurrentStoreFirst } from '../lib/cart-sovereignty.js';
     import { refreshCartPrices, watchCartPrices, hasIncrease, stockCorrections } from '../lib/cart-prices.js';
     import { splitDemoCarts } from '../lib/demo-stores.js';
     import { formatPrice, cdnThumb } from '../config/store.config.js';
@@ -262,10 +266,23 @@ for (const s of await getVisibleStores()) {
       return p === 0 ? (i18n['freeShipping'] ?? 'חינם') : formatPrice(p);
     };
 
-    const storeFilter = new URLSearchParams(window.location.search).get('store') ?? '';
-    function getFilteredCarts() {
-      const all = getActiveStoreCarts();
-      return storeFilter ? all.filter(c => c.storeSlug === storeFilter) : all;
+    // `?store=` is the store the shopper CAME FROM — the toast they clicked, the product they had
+    // open. It used to FILTER the page down to that store, and that is what made "לתשלום" mean two
+    // different things depending on where it was pressed: from the add-to-cart toast you paid for
+    // one store, from a product page or modal (which linked to a bare /checkout) you paid for the
+    // whole cart.
+    //
+    // It now carries INTENT instead: that store floats to the top and starts selected, every other
+    // store is still listed underneath and starts UNSELECTED. One behaviour for every entry point,
+    // and the difference between them is only what arrives pre-ticked.
+    //
+    // Showing the other stores costs the buyer nothing — shipping is per store, and a store with
+    // nothing selected contributes no items, no shipping, and hides its shipping card entirely
+    // (see the totals loop). Filtering them away never protected the total; it only hid a cart the
+    // header was still counting.
+    const intentSlug = new URLSearchParams(window.location.search).get('store') ?? '';
+    function getOrderedCarts() {
+      return sortCurrentStoreFirst(getActiveStoreCarts(), intentSlug);
     }
 
     type StoreDeliveryCfg = { methods: string[]; address: string | null; demo?: boolean };
@@ -306,21 +323,31 @@ for (const s of await getVisibleStores()) {
       splitDemoCarts(carts, isDemoSlug).payable;
 
     // ── Selection (which items the buyer is actually paying for) ──
-    // Default: everything selectable is selected. Selection is per-page-load (not
-    // persisted) — resets to "all checked" every time checkout is opened.
+    // Default: the store the shopper arrived FROM (`?store=`), or everything selectable when they
+    // arrived without one. Selection is per-page-load (not persisted) — it resets on every open.
     const selKey = (storeSlug: string, cartKey: string) => `${storeSlug}::${cartKey}`;
     let selected = new Set<string>();
     let selectionInitialized = false;
 
-    function syncSelection(carts: ReturnType<typeof getFilteredCarts>): void {
+    function syncSelection(carts: ReturnType<typeof getOrderedCarts>): void {
       // Only payable carts contribute keys — that alone is what keeps a showcase
       // item out of the total, out of the submitted order, and out of the
       // "everything is checked by default" state.
       const currentKeys = new Set<string>();
+      const intentKeys = new Set<string>();
       payableCarts(carts).forEach(cart =>
-        cart.items.forEach(item => currentKeys.add(selKey(cart.storeSlug, item.cartKey))));
+        cart.items.forEach(item => {
+          const k = selKey(cart.storeSlug, item.cartKey);
+          currentKeys.add(k);
+          if (cart.storeSlug === intentSlug) intentKeys.add(k);
+        }));
       if (!selectionInitialized) {
-        selected = new Set(currentKeys);
+        // Falling back to everything when the intent store has nothing payable here is not a
+        // nicety — it is the difference between a working page and a dead one. A bookmarked or
+        // shared `?store=` whose cart was since emptied, and a showcase store (whose items are
+        // never selectable at all), would otherwise open checkout with zero ticked, a zero total
+        // and a disabled submit, next to a cart plainly holding things the buyer can pay for.
+        selected = intentKeys.size ? intentKeys : new Set(currentKeys);
         selectionInitialized = true;
       } else {
         for (const k of Array.from(selected)) if (!currentKeys.has(k)) selected.delete(k);
@@ -343,7 +370,7 @@ for (const s of await getVisibleStores()) {
     }
 
     function renderCart(): void {
-      const carts = getFilteredCarts();
+      const carts = getOrderedCarts();
       const contentEl = document.getElementById('cart-content');
       const footerEl  = document.getElementById('co-footer');
       if (!contentEl) return;
@@ -369,11 +396,27 @@ for (const s of await getVisibleStores()) {
         </div>`;
       }
 
+      // The same store-sovereignty heading the cart drawer uses: the store the shopper came from
+      // sits on top with no heading of its own, and the rest fall under one muted "מחנויות אחרות"
+      // line. It is what tells the buyer the unticked blocks below are not a mistake — they are
+      // simply the other stores in their cart, still there, still payable if they tick them.
+      // Only when there IS an intent store; a bare /checkout has no "current" to be other than.
+      const showOtherStoresLabel = !!intentSlug && carts.some(c => c.storeSlug === intentSlug);
+      let otherLabelShown = false;
+
       carts.forEach((cart, idx) => {
         // Initial paint only — recalculated precisely (per current selection) by
         // updateSelectionUI() right after this HTML is inserted into the DOM.
         const shipping = calcShipping(cart.storeSlug);
         const isDemo = isDemoSlug(cart.storeSlug);
+
+        const labelledHere = showOtherStoresLabel && cart.storeSlug !== intentSlug && !otherLabelShown;
+        if (labelledHere) {
+          otherLabelShown = true;
+          // Underline sized to the TEXT, not to the column — inline-block, exactly as
+          // .cart-other-stores-label does it in the drawer.
+          html += `<div class="inline-block text-[.72rem] font-semibold [color:var(--color-muted)] pb-[.15rem] mt-6 mb-1 border-b [border-color:var(--color-border)]">${esc(i18n['otherStores'] ?? 'מחנויות אחרות')}</div>`;
+        }
 
         html += `<div class="co-store-block contents" data-store-slug="${esc(cart.storeSlug)}"${isDemo ? ' data-demo' : ''}>`;
 
@@ -386,7 +429,9 @@ for (const s of await getVisibleStores()) {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
              </span>`
           : checkboxHtml('co-store-check', `data-store-slug="${esc(cart.storeSlug)}"`, `${i18n['selectStoreAria'] ?? ''} ${cart.storeName}`, true);
-        html += `<div class="flex items-center gap-2.5 ${idx === 0 ? 'mt-0' : 'mt-5'} mb-2.5">
+        // The heading carries its own gap above it, so the store row it introduces must not add a
+        // second one — same reason the drawer drops its <hr> where the heading appears.
+        html += `<div class="flex items-center gap-2.5 ${idx === 0 || labelledHere ? 'mt-0' : 'mt-5'} mb-2.5">
           ${rowLead}
           <a href="/${esc(cart.storeSlug)}" class="inline-block text-xs font-bold [color:var(--color-muted)] tracking-[.06em] uppercase no-underline transition-colors duration-[140ms] hover:underline">${esc(cart.storeName)}</a>
           ${isDemo
@@ -544,7 +589,7 @@ for (const s of await getVisibleStores()) {
     // shipping card (hidden entirely once a store has nothing selected), grand
     // total, each store's select-all checkbox state, and the pay button.
     function updateSelectionUI(): void {
-      const allCarts = getFilteredCarts();
+      const allCarts = getOrderedCarts();
       // Everything below counts and prices PAYABLE carts only — a view-only card
       // has no checkbox, no shipping card and no share of the total, so letting it
       // into these loops would only produce "(0 פריטים)" rows and a wrong x/y count.
@@ -903,8 +948,8 @@ for (const s of await getVisibleStores()) {
       e.preventDefault();
       if (!validate()) return;
 
-      const carts = getFilteredCarts();
-      const purchased: { storeSlug: string; item: ReturnType<typeof getFilteredCarts>[number]['items'][number] }[] = [];
+      const carts = getOrderedCarts();
+      const purchased: { storeSlug: string; item: ReturnType<typeof getOrderedCarts>[number]['items'][number] }[] = [];
       carts.forEach(cart => cart.items.forEach(item => {
         if (selected.has(selKey(cart.storeSlug, item.cartKey))) purchased.push({ storeSlug: cart.storeSlug, item });
       }));
