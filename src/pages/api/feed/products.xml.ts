@@ -1,8 +1,8 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getIndexableStores } from '../../../lib/stores.js';
-import { getVisibleProductsByStoreId } from '../../../lib/store-products.js';
-import { getCategoriesByStoreId, categoryPath } from '../../../lib/store-categories.js';
+import { getVisibleProductsByStoreIds } from '../../../lib/store-products.js';
+import { getCategoriesByStoreIds, categoryPath } from '../../../lib/store-categories.js';
 import { getPurchasedCountsByStoreSlugs } from '../../../lib/orders.js';
 import { store as platform } from '../../../config/store.config.js';
 import { buildFeedItems, toMerchantXml, type FeedItem } from '../../../lib/product-feed.js';
@@ -41,10 +41,21 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   // `store-categories` moved, in the very next module (DB_MIGRATION_PLAN.md §8).
   const purchasedByStore = await getPurchasedCountsByStoreSlugs(stores.map((s) => s.slug));
 
+  // **The rest of that same N+1, finished (2026-08-03).** The note above batched the purchase
+  // counts and left the other two reads inside the loop — a category tree and a catalogue per
+  // store, in series. Measured: 45 stores took this endpoint to **6.1 seconds**, which is the
+  // shape §7.16 warns about and long enough that Merchant Center's own fetch can give up on the
+  // feed entirely. Two statements now, whatever the platform grows to.
+  const storeIds = stores.map((s) => s.id);
+  const [categoriesByStore, productsByStore] = await Promise.all([
+    getCategoriesByStoreIds(storeIds),
+    getVisibleProductsByStoreIds(storeIds),
+  ]);
+
   for (const store of stores) {
-    const categories = await getCategoriesByStoreId(store.id);
+    const categories = categoriesByStore.get(store.id) ?? [];
     const purchased = purchasedByStore.get(store.slug) ?? {};
-    for (const product of await getVisibleProductsByStoreId(store.id)) {
+    for (const product of productsByStore.get(store.id) ?? []) {
       const cPath = product.categoryId ? categoryPath(categories, product.categoryId) : undefined;
       items.push(...buildFeedItems(product, {
         storeName: store.name,

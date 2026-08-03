@@ -87,6 +87,26 @@ export async function getCategoriesByStoreId(storeId: string): Promise<StoreCate
     .map(toCategory);
 }
 
+/**
+ * The category trees of MANY stores, grouped, in one statement.
+ *
+ * For a caller holding a list of stores and needing each one's tree — the Merchant/Meta product
+ * feed walks every indexable store to name each product's category path. Per-store that was a round
+ * trip each: 45 stores took the feed to six seconds, which is long enough for Merchant Center's own
+ * fetch to give up on it. The single-store reader stays; this is the batched twin, and it keeps the
+ * identical `ORDER` so each store's slice is the tree it would have got on its own.
+ */
+export async function getCategoriesByStoreIds(storeIds: readonly string[]): Promise<Map<string, StoreCategory[]>> {
+  const ids = [...new Set(storeIds.filter(isUuid))];
+  const byStore = new Map<string, StoreCategory[]>(ids.map((id) => [id, []]));
+  // No ids means no statement — an empty `ANY(…)` is a query asking for nothing.
+  const found = ids.length
+    ? await rows<CategoryRow>(`SELECT ${COLUMNS} FROM store_categories WHERE store_id = ANY($1::uuid[]) ${ORDER}`, [ids])
+    : [];
+  for (const row of found) byStore.get(row.store_id)?.push(toCategory(row));
+  return byStore;
+}
+
 export async function getCategoryById(id: string): Promise<StoreCategory | null> {
   if (!isUuid(id)) return null;
   const row = await firstRow<CategoryRow>(`SELECT ${COLUMNS} FROM store_categories WHERE id = $1`, [id]);

@@ -69,12 +69,20 @@ if (cdRedirect) return Astro.redirect(cdRedirect, 301);
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
 // One row, asked by store id — not the buyer's whole saved-store list filtered in memory.
-const isFavorited = userId ? await isStoreFavorited(userId, shopStore.id) : false;
-
-// Blocked individual products (store itself still fine) never show in the
-// store's own grid/search/category filters — getVisibleProductsByStoreId is
-// the shared helper every listing surface should call (see store-products.ts).
-const allProducts = await getVisibleProductsByStoreId(shopStore.id);
+// **Three independent reads, issued together (2026-08-03).** None of them needs another's answer —
+// only `shopStore`, which is already in hand. Awaited in sequence they were three round trips in
+// series on the platform's most-indexed page type, and time-to-first-byte is a Core Web Vitals
+// input, so this is an SEO number and not only a feel one. Free as file reads, three network hops
+// as queries: the same shape found on the homepage and in the product feed the same day.
+// One row for the favourite, asked by store id — not the buyer's whole saved-store list filtered in
+// memory. Blocked individual products (store itself still fine) never show in the store's own
+// grid/search/category filters — getVisibleProductsByStoreId is the shared helper every listing
+// surface should call (see store-products.ts).
+const [isFavorited, allProducts, storeCategories] = await Promise.all([
+  userId ? isStoreFavorited(userId, shopStore.id) : Promise.resolve(false),
+  getVisibleProductsByStoreId(shopStore.id),
+  getCategoriesByStoreId(shopStore.id),
+]);
 // A store with nothing to buy stays reachable by direct link (the seller previews and shares it)
 // but must not enter Google's index as an empty page — same gate the sitemap and site search use.
 // See lib/store-readiness.ts.
@@ -93,7 +101,6 @@ const demoIndex = isDemo ? Math.max(0, (await getDemoStores()).findIndex((s) => 
 // to exist in the JS card renderer further down (SSR/AJAX parity).
 const DEMO_PRODUCT_BADGE_CLASS = 'inline-flex items-center gap-1 mb-1 text-[0.66rem] font-medium leading-[1.5] whitespace-nowrap [color:var(--color-muted)]';
 const DEMO_PRODUCT_BADGE_ICON = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.6"/></svg>';
-const storeCategories = await getCategoriesByStoreId(shopStore.id);
 const categoryTree = buildCategoryTree(storeCategories);
 // A store's own categories are free text, so they get no icons (see
 // lib/category-icons.ts) — this count is what makes a chip row read as a live
