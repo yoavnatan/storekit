@@ -1222,16 +1222,6 @@ const pmI18n = {
     row: categoryFilters, prev: categoryFiltersPrev, next: categoryFiltersNext,
   });
 
-  /** Move the pressed state to `btn` within its own chip row — the whole visual answer to a click,
-   *  and cheap: an attribute on two elements, no DOM rebuilt. Scoped to the row so the drawer's and
-   *  the hover-flyout's own copies of a category are left alone. */
-  function pressChip(btn: HTMLElement): void {
-    const row = btn.closest('.category-filters-row') ?? btn.parentElement;
-    row?.querySelectorAll<HTMLElement>('.category-chip[aria-pressed="true"]')
-      .forEach((chip) => chip.setAttribute('aria-pressed', 'false'));
-    if (btn.classList.contains('category-chip')) btn.setAttribute('aria-pressed', 'true');
-  }
-
   function renderCategoryNav(): void {
     if (!storeControls) return;
     const selected = activeTag ? flatCategories.find((c) => c.id === activeTag) ?? null : null;
@@ -1289,16 +1279,6 @@ const pmI18n = {
     activeTag = btn.dataset.categoryId ?? '';
     pendingCategoryNav = true;
     updateDrawerToggleLabel();
-    // **Acknowledge the click NOW, before anything is fetched.** Which chip is selected is local
-    // state — the server is not consulted about it — but the chip row is rebuilt by
-    // `renderCategoryNav()`, which deliberately waits for the results so the row and the grid reflow
-    // together instead of twice around a round trip. That left the press itself unanswered: for the
-    // couple of hundred milliseconds the fetch takes, nothing on screen moved at all and the click
-    // read as ignored. It went unnoticed while the grid dimmed instantly, because the dim was
-    // standing in for this; removing the dim (it was hiding the content rather than adding a signal)
-    // made the gap visible for what it always was. The pressed state is swapped here and
-    // `renderCategoryNav()` still owns the full rebuild — it simply arrives at the same answer.
-    pressChip(btn);
     refreshFromServer();
   });
 
