@@ -468,6 +468,39 @@ export async function getAllStores(): Promise<Store[]> {
   return (await rows<StoreRow>(`SELECT ${COLUMNS} ${FROM_LIVE} ${ORDER}`)).map(toStore);
 }
 
+/**
+ * The stores that have a saved external-inventory feed URL — the scheduler's `feed-sync` work list
+ * (`lib/jobs/registry.ts`, DB_MIGRATION_PLAN.md §8 stage 4a).
+ *
+ * A query rather than `getAllStores().filter(…)` for the reason §3 settled every other list on:
+ * the job runs on a timer whether or not anyone is looking, and reading every store on the platform
+ * to find the handful with a feed is O(platform) work to produce an O(few) answer. The predicate is
+ * cheap enough to belong in SQL — it is `is this JSON field non-empty`, not a business rule, so
+ * there is no pure-function twin here to drift from.
+ *
+ * It does NOT filter on whether the store may sell. That stays in the job, over `canStoreSell`, so
+ * the lifecycle table (`store-status.ts`) keeps exactly one definition and the database never grows
+ * a second copy of it.
+ *
+ * **Bounded, and ordered by who has waited longest.** The job's work is one outbound request per
+ * store to a server we do not control, run in sequence, so it is the one job whose duration grows
+ * with the platform: at a thousand feed-syncing stores an unbounded run would outlast its own
+ * 30-minute lease, and a second instance would start a duplicate pass over the same stores. Nothing
+ * would break — every job is idempotent — but the platform would spend the hour doing the work
+ * twice. `lastSyncAt ASC NULLS FIRST` makes the cap a rotation rather than a cut-off: a store that
+ * did not fit in this run is first in the next one, and a store that has never synced goes first of
+ * all. The job says out loud when the cap bound it (`registry.ts`) — a silent truncation reads as
+ * "everyone was synced".
+ */
+export async function getStoresWithFeedUrl(limit = 200): Promise<Store[]> {
+  return (await rows<StoreRow>(
+    `SELECT ${COLUMNS} ${FROM_LIVE} AND btrim(coalesce(s.feed_sync->>'url', '')) <> ''
+      ORDER BY s.feed_sync->>'lastSyncAt' ASC NULLS FIRST, s.id
+      LIMIT $1`,
+    [limit],
+  )).map(toStore);
+}
+
 /** The stores behind a known set of ids, in one statement — for a caller that holds references
  *  (a message's `toStoreId`, a favourite) and needs the name/avatar beside each. The buyer
  *  dashboard read EVERY store on the platform to look up the handful its message threads point at

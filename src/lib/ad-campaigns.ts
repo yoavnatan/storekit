@@ -268,6 +268,24 @@ export async function getCampaignsByStoreId(storeId: string): Promise<AdCampaign
   return byStore(storeId, 'archived_at IS NULL');
 }
 
+/**
+ * Every store that still has a campaign the health sweep could act on — the scheduler's
+ * `campaign-sweep` work list (`lib/jobs/registry.ts`).
+ *
+ * Only the store IDS, deliberately: the sweep re-reads each store's campaigns anyway, inside
+ * `getCampaignsForStore`, which is where the pause/resume decisions live. Returning the rows here
+ * too would mean the job held one snapshot while the sweep acted on another.
+ *
+ * A store drops out of this list once its last campaign is archived, so a platform where nobody
+ * advertises costs the job one query per tick and nothing else.
+ */
+export async function getStoreIdsWithLiveCampaigns(): Promise<string[]> {
+  const found = await rows<{ store_id: string }>(
+    'SELECT DISTINCT store_id FROM ad_campaigns WHERE archived_at IS NULL ORDER BY store_id',
+  );
+  return found.map((r) => r.store_id);
+}
+
 /** The cancelled ones, newest first. Read-only everywhere: nothing may be resumed or re-budgeted
  *  out of here, it exists to answer "what did I run, and what did it cost". */
 export async function getArchivedByStoreId(storeId: string): Promise<AdCampaign[]> {
