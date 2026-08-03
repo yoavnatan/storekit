@@ -15,6 +15,7 @@ export const translations = {
       switchLang: 'EN',
       switchLangLabel: 'Switch to English',
       skipToMain: 'דלג לתוכן הראשי',
+      loading: 'טוען עמוד',
     },
     home: {
       yourCarts: 'העגלות שלך',
@@ -1292,6 +1293,7 @@ export const translations = {
       switchLang: 'עב',
       switchLangLabel: 'עבור לעברית',
       skipToMain: 'Skip to main content',
+      loading: 'Loading page',
     },
     home: {
       yourCarts: 'Your carts',

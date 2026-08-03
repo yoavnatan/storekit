@@ -209,6 +209,14 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
     {platformPixel && <noscript set:html={`<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${platformPixel}&ev=PageView&noscript=1" alt="" />`} />}
     <a href="#main-content" class="skip-link">{t.nav.skipToMain}</a>
     <script type="application/json" id="i18n-data" is:inline set:html={i18nJson}></script>
+    {/* Navigation in flight. This is a multi-page app, so between the click and the
+        next paint the browser simply holds the old page — nothing on screen says a
+        thing is happening, and /stores to / is a couple of seconds of that (owner,
+        2026-08-03). The same `.progress-sweep` every other wait on this site uses,
+        pinned under the fixed header: one vocabulary, nothing new to learn.
+        Empty until a navigation actually starts, and it needs no teardown — the
+        document is replaced. */}
+    <div id="nav-progress" class="progress-track fixed inset-x-0 top-[var(--site-header-h,3.4rem)] z-[70] pointer-events-none" role="status" aria-label={t.nav.loading}></div>
     <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} isHome={isHome} initialUnreadCount={initialUnreadCount} />
     <main id="main-content">
       <slot />
@@ -225,6 +233,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
     <script>import '../lib/cart-sync.js';</script>
     <script>import { initErrorReporter } from '../scripts/error-reporter.js'; initErrorReporter();</script>
     <script>import { initIconTooltips } from '../scripts/icon-tooltips.js'; initIconTooltips();</script>
+    <script>import { initNavProgress } from '../scripts/nav-progress.js'; initNavProgress();</script>
     {sessionUserId && (
       <script is:inline set:html={`
 (function(){
