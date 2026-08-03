@@ -1,6 +1,6 @@
 import { getShopperStores } from './stores.js';
 import { isStoreReady } from './store-readiness.js';
-import { getAllProducts, isProductVisible } from './store-products.js';
+import { getProductCountsByStore, searchVisibleProducts } from './store-products.js';
 import { matchesQueryWords } from './product-listing.js';
 import { cdnSrc } from '../config/store.config.js';
 import { resolvePrice } from './discounts.js';
@@ -32,6 +32,17 @@ const DEFAULT_STORE_LIMIT = 6;
 const DEFAULT_PRODUCT_LIMIT = 8;
 const DEFAULT_IMAGE_WIDTH = 112;
 
+/**
+ * How much of a search box this endpoint will read.
+ *
+ * `/api/search` is UNAUTHENTICATED and a query string carries ~16KB, so the length of the term is
+ * request-controlled on a single-threaded SSR server. It always was — the JS matcher walked the
+ * whole catalogue with it — and it matters more now that the term becomes a `LIKE` pattern probed
+ * against a trigram index. Same cap and the same reasoning as the money journal's own search
+ * (`admin-moneylog-filter.ts#MAX_SEARCH_LENGTH`); no real search is longer, so it costs nothing.
+ */
+const MAX_QUERY_LENGTH = 200;
+
 export interface SiteSearchOptions {
   /** Caller-tuned caps — the header dropdown wants a short preview (defaults), the
    * dedicated /search results page wants a real page's worth. */
@@ -46,11 +57,18 @@ export interface SiteSearchOptions {
 // name+slug so a product result can show "which store it's in" next to it. Powers
 // both the header dropdown preview (small caps) and the dedicated /search results
 // page (larger caps) — same matching logic, just different limits/image size.
-// Scans every product on every request (same JSON-file-era tradeoff already accepted
-// for sellerHasAnyAlert — see AI_INSTRUCTIONS.md → Hard rules → Scalability; becomes an
-// indexed/full-text query once this is a real DB, no shape change needed here).
+//
+// **The product half is a query, not a scan (§3, 2026-08-03.)** This used to call
+// `getAllProducts()` and filter in Node — the whole catalogue into memory on every keystroke of
+// the header search box, to keep eight rows. It is now one indexed `LIKE` per query word against
+// `store_products.search_text` (store-products.ts#searchVisibleProducts), which carries the same
+// Hebrew normalisation `matchesQueryWords` applies here to the STORE half.
+//
+// The store half stays in memory deliberately: it matches name+tagline+description over the
+// shopper roster, which the caller already holds and which is bounded by how many stores exist,
+// not by how much they sell.
 export async function searchSite(rawQuery: string, options: SiteSearchOptions = {}): Promise<{ stores: StoreSearchHit[]; products: ProductSearchHit[] }> {
-  const q = rawQuery.trim();
+  const q = rawQuery.trim().slice(0, MAX_QUERY_LENGTH);
   if (!q) return { stores: [], products: [] };
 
   const storeLimit = options.storeLimit ?? DEFAULT_STORE_LIMIT;
@@ -63,17 +81,20 @@ export async function searchSite(rawQuery: string, options: SiteSearchOptions = 
   // shopper-discovery surface, so it follows the same rule the homepage does.
   const stores = await getShopperStores();
   const storeById = new Map(stores.map((s) => [s.id, s]));
+  const storeIds = stores.map((s) => s.id);
 
-  const allProducts = await getAllProducts();
+  // Two independent narrowings, so they go together: the readiness counts for the store half and
+  // the matching products for the product half.
+  const [counts, products] = await Promise.all([
+    getProductCountsByStore(storeIds),
+    searchVisibleProducts(q, storeIds, productLimit),
+  ]);
+
   // Store hits are also gated on readiness (lib/store-readiness.ts): a store with nothing to buy
   // is a dead end, and a search result is a promise that the link goes somewhere. Filtered BEFORE
   // the limit slice so an unready store can't consume one of the few store slots.
-  const storesWithVisibleProducts = new Set(
-    allProducts.filter(isProductVisible).map((p) => p.storeId),
-  );
-
   const matchedStores: StoreSearchHit[] = stores
-    .filter((s) => isStoreReady({ visibleProductCount: storesWithVisibleProducts.has(s.id) ? 1 : 0 }))
+    .filter((s) => isStoreReady({ visibleProductCount: counts.get(s.id)?.visible ?? 0 }))
     .filter((s) => matchesQueryWords(q, `${s.name} ${s.tagline} ${s.description}`))
     .slice(0, storeLimit)
     .map((s) => ({
@@ -84,10 +105,7 @@ export async function searchSite(rawQuery: string, options: SiteSearchOptions = 
     }));
 
   const matchedProducts: ProductSearchHit[] = [];
-  for (const p of allProducts) {
-    if (matchedProducts.length >= productLimit) break;
-    if (!isProductVisible(p)) continue;
-    if (!matchesQueryWords(q, `${p.name} ${(p.tags ?? []).join(' ')}`)) continue;
+  for (const p of products) {
     const store = storeById.get(p.storeId);
     if (!store) continue;
     const pv = resolvePrice(p, store.sale);

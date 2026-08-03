@@ -31,6 +31,7 @@ import { comboKey, isFullyPerCombo } from './variant-combo.js';
 import { toSlug } from './url-base.js';
 import { fromAgorot, toAgorot } from './money.js';
 import { MAX_DISCOUNT_PERCENT, MIN_DISCOUNT_PERCENT, type ProductDiscount } from './discounts.js';
+import { normalizeHe } from './product-listing.js';
 import { firstRow, isUuid, query, rows, withTransaction, type Queryable } from './db.js';
 export { LOW_STOCK_THRESHOLD } from './variant-combo.js';
 
@@ -230,8 +231,8 @@ function on(tx?: Queryable) {
   };
 }
 
-async function selectProducts(where: string, params: readonly unknown[] = [], tx?: Queryable): Promise<StoreProduct[]> {
-  return (await on(tx).rows<ProductRow>(`SELECT ${COLUMNS} FROM store_products p WHERE ${where} ${ORDER}`, params))
+async function selectProducts(where: string, params: readonly unknown[] = [], tx?: Queryable, tail = ''): Promise<StoreProduct[]> {
+  return (await on(tx).rows<ProductRow>(`SELECT ${COLUMNS} FROM store_products p WHERE ${where} ${ORDER} ${tail}`, params))
     .map(toProduct);
 }
 
@@ -475,15 +476,100 @@ export async function getProductsByStoreIdIn(tx: Queryable, storeId: string): Pr
 }
 
 /**
- * Every product in the catalog, across every store.
+ * How many products a store holds, on the three populations anything asks about.
  *
- * Three callers need exactly this — site search, the seller funnel and the admin sellers tab —
- * and each of them used to read the whole JSON file. It carries the same open debt as
- * `getAllStores()`/`getAllSellers()` beside it (§3): it does not scale and it is not paginated,
- * and all three will be replaced by a query that filters in the database rather than in Node.
+ * **This is what replaced `getAllProducts()` for every counting caller (§3, 2026-08-03.)** The
+ * admin dashboard used to read the WHOLE catalogue to render numbers: the Stores tab wanted a
+ * count per row, the Attention tab wanted "is it zero", and the Advertising tab wanted the size of
+ * the feed. Three counts over one `GROUP BY` answer all of them in a single round trip, and none
+ * of them grows with the size of the catalogue.
+ *
+ * `storeIds` narrows it; omitted, it counts every store. Every requested id gets an entry (zeroed
+ * when the store has nothing), so a caller never has to tell "no products" from "not asked".
  */
-export async function getAllProducts(): Promise<StoreProduct[]> {
-  return selectProducts('true');
+export interface StoreProductCounts {
+  /** Every row, whatever its flags — what the admin roster calls "products". */
+  total: number;
+  /** `isProductVisible`: not seller-hidden, not admin-blocked. What a shopper can reach. */
+  visible: number;
+  /** Not admin-blocked. The product feed's population — a seller-hidden product is still
+   *  exported, which is why this is its own number and not `visible`. */
+  unblocked: number;
+}
+
+const ZERO_COUNTS: StoreProductCounts = { total: 0, visible: 0, unblocked: 0 };
+
+export async function getProductCountsByStore(storeIds?: readonly string[]): Promise<Map<string, StoreProductCounts>> {
+  const ids = storeIds ? [...new Set(storeIds.filter(isUuid))] : null;
+  const counts = new Map<string, StoreProductCounts>((ids ?? []).map((id) => [id, { ...ZERO_COUNTS }]));
+  if (ids && ids.length === 0) return counts;
+  const found = await rows<{ store_id: string; total: number; visible: number; unblocked: number }>(
+    `SELECT store_id,
+            COUNT(*)                                        AS total,
+            COUNT(*) FILTER (WHERE NOT hidden AND NOT blocked) AS visible,
+            COUNT(*) FILTER (WHERE NOT blocked)             AS unblocked
+       FROM store_products
+      WHERE $1::uuid[] IS NULL OR store_id = ANY($1::uuid[])
+      GROUP BY store_id`,
+    [ids],
+  );
+  // `COUNT` is `bigint` — a string from `pg`, a number from PGlite (DB_MIGRATION_PLAN.md §8).
+  for (const row of found) {
+    counts.set(row.store_id, {
+      total: Number(row.total),
+      visible: Number(row.visible),
+      unblocked: Number(row.unblocked),
+    });
+  }
+  return counts;
+}
+
+/** How many escaped LIKE patterns one search may carry. A query is a header search box, not a
+ *  language: past this the extra words only narrow, and each one is another index probe. */
+const MAX_SEARCH_WORDS = 6;
+
+/** `%`, `_` and `\` are LIKE metacharacters. Un-escaped, a shopper typing `50%` would be asking
+ *  for "50 followed by anything", which is a wrong answer rather than an error — and a query of
+ *  `%` alone would match the entire catalogue. */
+function likeContains(word: string): string {
+  return `%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * The platform's product search — every word of `query` present in the product's normalised
+ * name+tags, newest first, capped.
+ *
+ * **The matching rule is `product-listing.ts#matchesQueryWords`, and both halves of it moved.**
+ * The normalisation is `store_products.search_text`, a stored generated column written by
+ * `product_search_text()` (migration 0006) — a character-for-character port of `normalizeHe`,
+ * pinned to it by `tests/product-search-normalize.test.ts`. The word-by-word AND is one
+ * `LIKE` per word against that column, which the trigram index answers.
+ *
+ * This is the §3 caller that mattered most: `site-search.ts` read the entire catalogue into memory
+ * on every keystroke of the header search box, filtered it in Node and kept eight rows.
+ *
+ * `storeIds` scopes the search to the stores the caller is willing to show (the shopper roster —
+ * a hit in a paused or blocked store is a dead link), and is required: an unscoped platform search
+ * would surface products whose store the caller already decided not to list.
+ */
+export async function searchVisibleProducts(
+  query: string,
+  storeIds: readonly string[],
+  limit: number,
+): Promise<StoreProduct[]> {
+  const words = normalizeHe(query).split(' ').filter(Boolean).slice(0, MAX_SEARCH_WORDS);
+  const ids = [...new Set(storeIds.filter(isUuid))];
+  if (!words.length || !ids.length || limit <= 0) return [];
+  // $1 = store ids, $2 = limit, $3.. = one pattern per word. Built as separate predicates rather
+  // than `LIKE ALL(array)` on purpose: the planner only reaches the trigram index through a plain
+  // `LIKE`, and the whole point of the column is that it is indexed.
+  const wordParams = words.map((_, i) => `p.search_text LIKE $${i + 3} ESCAPE '\\'`).join(' AND ');
+  return selectProducts(
+    `p.store_id = ANY($1::uuid[]) AND ${VISIBLE} AND ${wordParams}`,
+    [ids, limit, ...words.map(likeContains)],
+    undefined,
+    'LIMIT $2',
+  );
 }
 
 /** false for an admin-blocked OR seller-hidden product. Every public discovery/purchase
@@ -523,6 +609,31 @@ export async function getVisibleProductsByStoreId(storeId: string): Promise<Stor
  * Every requested id gets an entry, empty if the store has nothing on its shelves, so a caller
  * never has to distinguish "no products" from "store not asked about".
  */
+/** productId → name, for a known set of ids. The admin Data tab labels eight analytics rows and
+ *  read the whole catalogue to do it (§3); an id with no row (a product since deleted, which
+ *  `analytics_products` deliberately keeps — §4) simply has no entry. */
+export async function getProductNames(productIds: readonly string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(productIds.filter(isUuid))];
+  if (!ids.length) return new Map();
+  const found = await rows<{ id: string; name: string }>(
+    'SELECT id, name FROM store_products WHERE id = ANY($1::uuid[])',
+    [ids],
+  );
+  return new Map(found.map((r) => [r.id, r.name]));
+}
+
+/** The same batch WITHOUT the visibility filter — the admin sellers tab, which renders a
+ *  per-product block toggle and therefore has to see the products that are already blocked or
+ *  hidden. Scoped to the ids on the page being rendered, never the whole catalogue (§3). */
+export async function getProductsByStoreIds(storeIds: readonly string[]): Promise<Map<string, StoreProduct[]>> {
+  const ids = [...new Set(storeIds.filter(isUuid))];
+  const byStore = new Map<string, StoreProduct[]>(ids.map((id) => [id, []]));
+  // No ids means no statement — an empty `ANY(…)` is a query for nothing.
+  const products = ids.length ? await selectProducts('p.store_id = ANY($1::uuid[])', [ids]) : [];
+  for (const product of products) byStore.get(product.storeId)?.push(product);
+  return byStore;
+}
+
 export async function getVisibleProductsByStoreIds(storeIds: readonly string[]): Promise<Map<string, StoreProduct[]>> {
   const ids = [...new Set(storeIds.filter(isUuid))];
   const byStore = new Map<string, StoreProduct[]>(ids.map((id) => [id, []]));
