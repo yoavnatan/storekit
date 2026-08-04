@@ -48,7 +48,26 @@ export function buildIndexNowPayload(paths: string[], cfg: { key: string; siteUr
   const base = stripTrailingSlashes(cfg.siteUrl);
   const host = new URL(base).hostname;
   const abs = Array.from(
-    new Set(paths.map((u) => (/^https?:\/\//i.test(u) ? u : `${base}${u.startsWith('/') ? '' : '/'}${u}`))),
+    new Set(
+      paths
+        .map((u) => (/^https?:\/\//i.test(u) ? u : `${base}${u.startsWith('/') ? '' : '/'}${u}`))
+        // Percent-encode the path. Store AND product slugs carry Hebrew (url-base.ts#toSlug keeps
+        // it, by the owner's decision), and this is a MACHINE surface — the same rule the sitemap's
+        // <loc>, the feed's <link> and the canonical already follow. Until 2026-08-05 this was the
+        // one that didn't: it string-concatenated, so a Hebrew store submitted
+        // `https://dezabin.co.il/חנות-הנעליים/נעל-ריצה` raw, which is not a valid URL and which the
+        // endpoint is entitled to reject — taking the whole batch with it, silently, since the
+        // submit is fire-and-forget. Invisible on the seed catalog, whose slugs are all latin.
+        //
+        // The URL constructor rather than urlSegment() per segment, precisely because it is
+        // IDEMPOTENT: it leaves an already-encoded `%D7%97` alone, while re-encoding a segment
+        // would turn it into `%25D7%2597`. A caller passing an encoded path is a question this
+        // then never has to ask.
+        .map((u) => {
+          try { return new URL(u).href; } catch { return null; }
+        })
+        .filter((u): u is string => !!u),
+    ),
   ).slice(0, MAX_URLS);
   return { host, key: cfg.key, keyLocation: `${base}/${cfg.key}.txt`, urlList: abs };
 }
@@ -79,9 +98,30 @@ export type PingTarget = { slug: string; demo?: boolean };
 
 /** Convenience: notify of a changed product page (and its store page, whose
  *  listing the change also affects). No-op for a showcase store. */
-export function pingProductChange(store: PingTarget, productSlug: string): void {
-  if (isDemoStore(store)) return;
+export function pingProductChange(store: PingTarget | undefined, productSlug: string): void {
+  // `undefined` is accepted rather than assumed away, and this is not defensive noise. Every call
+  // site reaches the store with `stores.find(...)!` after an ownership guard, so it cannot be
+  // undefined today — but the ping runs AFTER the write, and `isDemoStore` reads `.demo`
+  // synchronously, OUTSIDE pingIndexNow's try/catch. So the day a guard above one of those call
+  // sites moves, a successful delete answers 500. This file's contract is that indexing never
+  // breaks a mutation; that has to hold for the synchronous half too.
+  if (!store || isDemoStore(store)) return;
   void pingIndexNow([`/${store.slug}/${productSlug}`, `/${store.slug}`]);
+}
+
+/**
+ * Several products of one store changed at once — a bulk discount, a CSV import, a bulk delete.
+ *
+ * ONE submission carrying every URL, not N calls: the protocol takes a list precisely so a
+ * catalog-wide change is a single request, and looping `pingProductChange` would fire a fetch per
+ * product (a 500-row import becoming 500 POSTs is how a best-effort ping turns into rate-limiting).
+ * The store page is included once at the end for the same reason it rides along on a single-product
+ * ping — its listing changed too.
+ */
+export function pingProductsChanged(store: PingTarget | undefined, productSlugs: readonly string[]): void {
+  if (!store || isDemoStore(store) || !productSlugs.length) return;
+  const paths = productSlugs.map((slug) => `/${store.slug}/${slug}`);
+  void pingIndexNow([...paths, `/${store.slug}`]);
 }
 
 /** Convenience: notify of a changed store page. No-op for a showcase store. */

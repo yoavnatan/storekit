@@ -7,6 +7,8 @@ import {
 } from './csv-bulk.js';
 import { mergeVariantGroups } from './variant-csv.js';
 import { deleteNotificationsByRelatedIds } from './notifications.js';
+import { getStoreById } from './stores.js';
+import { pingProductsChanged } from './indexnow.js';
 
 // Single home for the whole CSV → catalog routine, so the two things that trigger it — the seller
 // uploading/pasting a canonical file (POST /api/store-product/bulk) and the "sync now" URL pull
@@ -133,6 +135,20 @@ export async function runProductImport({ storeId, sellerId, csv, commit }: RunIm
     .map((u, i) => (u.action === 'update' && validRows[i]!.input!.stock !== undefined ? u.id : null))
     .filter((id): id is string => !!id);
   if (restockedIds.length) await deleteNotificationsByRelatedIds(restockedIds, sellerId);
+
+  // Tell Bing (→ ChatGPT/Copilot) about every page this import created or changed, in ONE
+  // submission. An import is the single largest catalog change the platform has — a seller
+  // uploading their whole inventory — and until 2026-08-05 it was also the quietest: the feed
+  // and sitemap self-refresh, but nothing announced it, so hundreds of new pages waited on an
+  // organic crawl. `pingProductsChanged` is a no-op without a key, on a placeholder domain, or
+  // for a showcase store, so this costs nothing before launch.
+  const changedSlugs = upserted
+    .map((u) => (u.action === 'not-found' ? null : u.product?.slug ?? null))
+    .filter((s): s is string => !!s);
+  if (changedSlugs.length) {
+    const store = await getStoreById(storeId);
+    if (store) pingProductsChanged(store, changedSlugs);
+  }
 
   let cursor = 0;
   return {

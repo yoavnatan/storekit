@@ -9,7 +9,7 @@ import { normalizeProductDiscount } from '../../lib/discount-input.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
-import { pingProductChange } from '../../lib/indexnow.js';
+import { pingProductChange, pingProductsChanged } from '../../lib/indexnow.js';
 import { warmImageDerivations } from '../../lib/image-derive.js';
 import { deriveAutoTags } from '../../lib/tag-suggest.js';
 import { productEditRev, mergeByFieldRev, PRODUCT_REV_FIELDS } from '../../lib/record-rev.js';
@@ -251,6 +251,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // full edit form — treat that as acknowledging any low-stock/out-of-stock
     // alert for it, same as an order's status change clearing its own notification.
     await deleteNotificationsByRelatedIds([productId], sellerId);
+    // The public page's title, description, price and images just changed — the same reason a
+    // brand-new product is submitted. Missing here until 2026-08-05 while the docs claimed every
+    // product update pinged: the feed and sitemap self-refresh (built per request), but nothing
+    // TOLD anyone, so an edit waited for an organic crawl. The slug is `updated`'s, not the
+    // stored one — a rename moves the page.
+    pingProductChange(ownedStores.find((s) => s.id === product.storeId)!, updated.slug);
     const categoryPathStr = updated.categoryId ? categoryPath(await getCategoriesByStoreId(product.storeId), updated.categoryId) : '';
     // The edit row stays in the DOM after a save, so it gets the revision it now
     // holds — otherwise a second save from the same open row would report a conflict
@@ -316,6 +322,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Only clear when the stock cell itself was the one edited — a name/price/sku
     // inline edit shouldn't silently dismiss an unrelated low-stock alert.
     if ('stock' in patch) await deleteNotificationsByRelatedIds([productId], sellerId);
+    // An inline cell edit changes name/price — both of which the product page and the feed
+    // publish, so it is as public a change as the full form's.
+    pingProductChange(stores.find((s) => s.id === product.storeId)!, updated.slug);
     // The partial-save actions return the new revision so the open edit row — which the
     // client patches field-by-field to match — stays in step and doesn't report the
     // seller's own inline edit as a conflict.
@@ -389,6 +398,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
     const updated = await updateProduct(productId, { images });
     warmImageDerivations(images.filter((u) => !(product.images ?? []).includes(u)));
+    // The gallery IS the listing to a shopping surface — image_link is what the feed leads with.
+    if (updated) pingProductChange(stores.find((s) => s.id === product.storeId)!, updated.slug);
     return json({ ok: true, rev: updated ? productEditRev(updated) : undefined, images: updated?.images ?? [] });
   }
 
@@ -444,6 +455,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       await updateProduct(p.id, { discount });
       applied.push({ id: p.id, discount: discount ?? null });
     }
+    // Price is the single attribute a shopping surface re-checks most, so a markdown nobody is
+    // told about is the least useful kind of silence. One submission for the whole batch.
+    pingProductsChanged(ownerStore, targets.map((p) => p.slug));
     return json({ ok: true, count: applied.length, applied });
   }
 
@@ -454,6 +468,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const stores = await getStoresBySellerId(sellerId);
     if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
     await deleteProduct(productId);
+    // Submitting a URL that is now GONE is correct IndexNow usage, not a mistake: the point is to
+    // get it recrawled, and what the crawler finds is a 404 — which is how it leaves the index.
+    // Without this a deleted product goes on being offered in results, and in AI shopping answers,
+    // until an organic crawl happens to trip over it. Read the slug BEFORE the row is gone.
+    pingProductChange(stores.find((s) => s.id === product.storeId)!, product.slug);
     return json({ ok: true, stockAlerts: await countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 

@@ -14,6 +14,18 @@ vi.mock('../src/lib/notifications.js', () => ({
   deleteNotificationsByRelatedIds: () => {},
 }));
 
+/** Captures what the import announces to IndexNow, so the test below can assert on the URL LIST
+ *  rather than on the fact that a ping happened — the interesting property is which rows are in it. */
+const indexNowPings: Array<{ storeSlug: string; slugs: readonly string[] }> = [];
+vi.mock('../src/lib/indexnow.js', () => ({
+  pingIndexNow: () => {},
+  pingProductChange: () => {},
+  pingStoreChange: () => {},
+  pingProductsChanged: (store: { slug: string }, slugs: readonly string[]) => {
+    indexNowPings.push({ storeSlug: store.slug, slugs });
+  },
+}));
+
 const { query } = await import('../src/lib/db.js');
 const { CSV_FIELDS } = await import('../src/lib/csv-bulk.js');
 const { createProduct, getProductById } = await import('../src/lib/store-products.js');
@@ -177,5 +189,45 @@ describe('runProductImport — a single stock number can never move a per-combo 
     const results = await preview(csv);
     expect(results[0]!.action).toBe('update');
     expect(results[0]!.errors).toEqual([]);
+  });
+});
+
+describe('what an import announces to IndexNow', () => {
+  beforeEach(() => { indexNowPings.length = 0; });
+
+  it('submits ONLY the rows that actually changed, not every row in the file', async () => {
+    // The owner's question, and the reason it matters: a seller re-uploads their whole 100-row
+    // inventory sheet to change five prices. Submitting all 100 would be a weekly full-catalog
+    // push to Bing for five real edits, which is how a best-effort ping earns a rate limit.
+    //
+    // It works because the ping rides on `upserted`, and the commit path already drops unchanged
+    // rows (updateChangesProduct is a field-by-field diff). Pinning it here so that a later
+    // refactor pinging from `results` — which DOES include the unchanged rows — fails loudly.
+    const storeId = await freshStore();
+    const seeded = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        createProduct(storeId, { name: `Item ${i}`, price: 100 + i, stock: 5, description: '' })),
+    );
+
+    // Re-upload every product; only the first two carry a different price.
+    const csv = [
+      COLS.join(','),
+      ...seeded.map((p, i) => row({ id: p.id, name: p.name, price: String(i < 2 ? p.price + 50 : p.price) })),
+    ].join('\n');
+
+    await runProductImport({ storeId, sellerId: 'seller', csv, commit: true });
+
+    expect(indexNowPings).toHaveLength(1);
+    expect([...indexNowPings[0]!.slugs].sort()).toEqual([seeded[0]!.slug, seeded[1]!.slug].sort());
+  });
+
+  it('says nothing at all when the re-upload changes nothing', async () => {
+    const storeId = await freshStore();
+    const p = await createProduct(storeId, { name: 'Same', price: 100, stock: 5, description: '' });
+    const csv = [COLS.join(','), row({ id: p.id, name: 'Same', price: '100' })].join('\n');
+
+    await runProductImport({ storeId, sellerId: 'seller', csv, commit: true });
+
+    expect(indexNowPings).toEqual([]);
   });
 });

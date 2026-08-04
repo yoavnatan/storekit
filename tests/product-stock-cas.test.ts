@@ -38,7 +38,15 @@ vi.mock('../src/lib/notifications.js', () => ({
   createNotification: () => {},
   deleteNotificationsByRelatedIds: () => {},
 }));
-vi.mock('../src/lib/indexnow.js', () => ({ pingIndexNow: () => {} }));
+// Stubbed whole, so nothing here reaches the network. Every export the route may call has to be
+// listed: a partial mock throws on the first one that isn't, which is how adding a ping to
+// `patch-product-fields` turned three unrelated stock tests red (2026-08-05).
+vi.mock('../src/lib/indexnow.js', () => ({
+  pingIndexNow: () => {},
+  pingProductChange: () => {},
+  pingProductsChanged: () => {},
+  pingStoreChange: () => {},
+}));
 
 const { POST } = await import('../src/pages/api/product.js');
 
