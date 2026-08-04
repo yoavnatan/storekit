@@ -6,7 +6,6 @@ import { adItemId, adComboItemId } from './ad-item-id.js';
 import { isColorVariant } from './color-variants.js';
 import { resolvePrice, type StoreSale } from './discounts.js';
 import { toAbsoluteImageUrl } from './image-url.js';
-import { urlSegment } from './url-base.js';
 import { xmlEscape, xmlCdata } from './xml-text.js';
 import { feedShippingWeight } from './product-weight.js';
 
@@ -80,8 +79,24 @@ export interface FeedContext {
 // silently — the seller sees a product on the storefront and no ad behind it, with nothing
 // anywhere saying why. Cut here rather than at the XML layer so every future consumer of a
 // FeedItem (a JSON catalog, a per-store feed) inherits the same compliant values.
+// Checked against the published product data spec on 2026-08-04. Everything here is a value a
+// SELLER can make arbitrarily long — a store name (which becomes `brand` when no brand is set), a
+// pasted SKU, a variant option, a deep category path — and none of them is capped at input, because
+// none of them is an ad-platform field at input. Capping them there would put Google's rules on the
+// seller's own storefront; capping them here puts them exactly where they apply.
 const TITLE_MAX = 150;
 const DESCRIPTION_MAX = 5000;
+const BRAND_MAX = 70;
+/** One colour value; the attribute allows 100 across all of them but only 40 per colour, and a
+ *  feed row carries one. */
+const COLOR_MAX = 40;
+const SIZE_MAX = 100;
+const PRODUCT_TYPE_MAX = 750;
+const CUSTOM_LABEL_MAX = 100;
+/** `mpn` is 70 — but an identifier is not clamped, it is DROPPED. Half a manufacturer part number
+ *  is not a shorter part number, it is a different one, and `identifierExists` would then be
+ *  asserting that a wrong identifier exists. */
+const MPN_MAX = 70;
 
 /** Cut to `max` CHARACTERS without splitting a surrogate pair — slicing an emoji in half
  *  produces a lone surrogate, which is exactly what XML_ILLEGAL would then have to strip,
@@ -103,8 +118,9 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
   // The seller's own brand field when they filled one in (a reseller listing someone else's
   // product), else the store name. Merchant Center matches listings across the market on brand,
   // so getting this wrong doesn't just mislabel the item — it stops it joining the real product.
-  const brand = product.brand?.trim() || ctx.storeName;
-  const mpn = product.sku || undefined;
+  const brand = clampText((product.brand?.trim() || ctx.storeName).trim(), BRAND_MAX);
+  // Over-length → no mpn at all, not a cut one (see MPN_MAX).
+  const mpn = product.sku && product.sku.length <= MPN_MAX ? product.sku : undefined;
   const gtin = undefined; // no barcode field yet — optional in the feed spec
   const identifierExists = Boolean(gtin || (mpn && brand));
 
@@ -148,8 +164,8 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
     ...(gtin ? { gtin } : {}),
     ...(shippingWeight ? { shippingWeight } : {}),
     identifierExists,
-    ...(ctx.categoryPath ? { productType: ctx.categoryPath } : {}),
-    customLabels,
+    ...(ctx.categoryPath ? { productType: clampText(ctx.categoryPath, PRODUCT_TYPE_MAX) } : {}),
+    customLabels: customLabels.map((l) => clampText(l, CUSTOM_LABEL_MAX)),
   };
 }
 
@@ -171,8 +187,20 @@ export interface FeedItem extends FeedAttributes {
 }
 
 export interface FeedBuildContext extends FeedContext {
-  storeSlug: string;
-  baseUrl: string; // origin, no trailing slash — e.g. https://shop.example
+  /**
+   * One product slug → the product page's PUBLIC url. Must be `custom-domain.ts#productCanonicalUrl`
+   * bound to this store, which is the same function the page's own `<link rel="canonical">` calls.
+   *
+   * A closure rather than a slug + base, because the two must be one value and not two that agree.
+   * They stopped agreeing the moment custom domains shipped: the feed built
+   * `${platform.url}/${store}/${product}`, while a store on a verified domain 301s that URL to
+   * `https://their-domain/${product}` and declares THAT its canonical. Merchant Center follows the
+   * `<link>`, lands on a redirect to a domain the account has not claimed, and disapproves the item
+   * — for the sellers who did the most to look professional. Nothing was wrong on either side alone:
+   * the feed's URL resolved, the page's canonical was correct, and only the join was broken.
+   */
+  productLink: (productSlug: string) => string;
+  baseUrl: string; // origin, no trailing slash — e.g. https://shop.example; used to absolutize images
 }
 
 /** Expand one product into its feed rows (variant combos → item_group_id rows).
@@ -191,9 +219,10 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
   const imageLink = images[0];
   if (!imageLink || product.price <= 0) return [];
   const additionalImageLinks = images.slice(1, 11); // Google caps additional images at 10
-  // Encoded per segment: slugs carry Hebrew (store-products.ts#slugify) and Merchant Center
-  // validates this as a URL, not as display text.
-  const link = `${ctx.baseUrl}/${urlSegment(ctx.storeSlug)}/${urlSegment(product.slug)}`;
+  // The page's own canonical, built by the page's own function — see FeedBuildContext.productLink.
+  // (It percent-encodes per segment: slugs carry Hebrew and Merchant Center validates this as a
+  // URL, not as display text.)
+  const link = ctx.productLink(product.slug);
 
   const variants = product.variants ?? [];
   if (!variants.length) {
@@ -216,9 +245,9 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
       link,
       imageLink,
       additionalImageLinks,
-      ...(comboMpn ? { mpn: comboMpn, identifierExists: Boolean(base.brand) } : {}),
-      ...(colorDim && combo[colorDim.name] ? { color: combo[colorDim.name] } : {}),
-      ...(sizeDim && combo[sizeDim.name] ? { size: combo[sizeDim.name] } : {}),
+      ...(comboMpn && comboMpn.length <= MPN_MAX ? { mpn: comboMpn, identifierExists: Boolean(base.brand) } : {}),
+      ...(colorDim && combo[colorDim.name] ? { color: clampText(combo[colorDim.name]!, COLOR_MAX) } : {}),
+      ...(sizeDim && combo[sizeDim.name] ? { size: clampText(combo[sizeDim.name]!, SIZE_MAX) } : {}),
     } as FeedItem;
   });
 }

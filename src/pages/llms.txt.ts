@@ -3,6 +3,7 @@ import type { APIContext } from 'astro';
 import { store as platform } from '../config/store.config.js';
 import { getIndexableStores } from '../lib/stores.js';
 import { stripTrailingSlashes } from '../lib/url-base.js';
+import { storeCanonicalUrl } from '../lib/custom-domain.js';
 
 // /llms.txt — the emerging convention (llmstxt.org) for giving AI answer
 // engines a curated, human-readable map of the site, the "AIO" companion to
@@ -29,7 +30,12 @@ export async function GET(_ctx: APIContext): Promise<Response> {
   const storeLines = shown
     .map((s) => {
       const note = (s.tagline || s.description || '').trim().replace(/\s+/g, ' ').slice(0, 120);
-      return `- [${s.name}](${baseUrl}/${s.slug})${note ? `: ${note}` : ''}`;
+      // `storeCanonicalUrl`, not `${baseUrl}/${s.slug}`. Two things were wrong with the string
+      // version and both are the same mistake — this file is READ BY A MACHINE, so it owes the same
+      // URL every other machine surface publishes. It concatenated the raw slug, which on this
+      // catalogue is Hebrew (an unencoded URL, the bug indexnow.ts had), and it ignored a verified
+      // custom domain, so an answer engine was given a platform URL that 301s somewhere else.
+      return `- [${s.name}](${storeCanonicalUrl(s)})${note ? `: ${note}` : ''}`;
     })
     .join('\n');
 

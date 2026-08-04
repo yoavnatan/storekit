@@ -7,6 +7,7 @@ import { getPurchasedCountsByStoreSlugs } from '../../../lib/orders.js';
 import { store as platform } from '../../../config/store.config.js';
 import { buildFeedItems, toMerchantXml, type FeedItem } from '../../../lib/product-feed.js';
 import { stripTrailingSlashes } from '../../../lib/url-base.js';
+import { productCanonicalUrl } from '../../../lib/custom-domain.js';
 
 // Platform-wide product feed (CURRENT_TASK.md item 14) — the single bulk export
 // Google Merchant Center / Meta Catalog fetch on a schedule to power the
@@ -59,7 +60,10 @@ export async function GET(_ctx: APIContext): Promise<Response> {
       const cPath = product.categoryId ? categoryPath(categories, product.categoryId) : undefined;
       items.push(...buildFeedItems(product, {
         storeName: store.name,
-        storeSlug: store.slug,
+        // The product page's canonical, from the page's own helper — a store on a verified custom
+        // domain 301s the platform path to its own, so a feed that built the platform URL itself
+        // was submitting a cross-domain redirect (product-feed.ts#FeedBuildContext.productLink).
+        productLink: (slug) => productCanonicalUrl(store, slug),
         baseUrl,
         categoryPath: cPath,
         purchasedUnits: purchased[product.id],

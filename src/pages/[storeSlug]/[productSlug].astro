@@ -20,6 +20,8 @@ import { comboKey, isProductInStock } from '../../lib/variant-combo.js';
 import { getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { jsonForScript } from '../../lib/json-script.js';
+import { machineUrl } from '../../lib/url-base.js';
+import { toAbsoluteImageUrl } from '../../lib/image-url.js';
 
 const { storeSlug, productSlug } = Astro.params;
 if (!storeSlug || !productSlug) return Astro.redirect('/404');
@@ -29,7 +31,9 @@ if (!shopStore) {
   // Store URL renamed → 301 the old slug (keeping the product path) to the current one, preserving
   // SEO + shared links instead of 404-ing (see renameStoreSlug).
   const moved = await getStoreByPreviousSlug(storeSlug);
-  if (moved) return Astro.redirect(`/${moved.slug}/${productSlug}`, 301);
+  // `machineUrl`, because both halves are DECODED route params: a Hebrew slug in a Location header
+  // throws rather than redirects (url-base.ts#machineUrl).
+  if (moved) return Astro.redirect(machineUrl(`/${moved.slug}/${productSlug}`), 301);
   return Astro.redirect('/404');
 }
 // Not serving a storefront at all: an admin block (admin-moderation.ts) answers 404, so the store
@@ -59,7 +63,7 @@ if (showsPausedNotice(shopStore)) {
 const isDemo = isDemoStore(shopStore);
 
 const product = await getProductBySlug(shopStore.id, productSlug);
-if (!product) return Astro.redirect(`/${storeSlug}`);
+if (!product) return Astro.redirect(machineUrl(`/${storeSlug}`));
 if (!isProductVisible(product)) return Astro.redirect('/404');
 
 // SEO: verified custom domain is the store's home — 301 the platform product URL to it (see the
@@ -108,6 +112,12 @@ const initialStatusText =
 // (custom-domain.ts). Drives <link rel=canonical>, og:url and the JSON-LD so all SEO signals agree.
 const productUrl = productCanonicalUrl(shopStore, productSlug);
 const storeCanonical = storeCanonicalUrl(shopStore);
+// Resolved against the store's OWN origin — on a verified custom domain that is the seller's
+// domain, and a picture served from a domain the page does not claim is a mismatch a validator
+// reports and a shopping answer engine acts on.
+const jsonLdImages = images
+  .map((img) => toAbsoluteImageUrl(img, new URL(storeCanonical).origin))
+  .filter((url): url is string => url !== null);
 
 // Every "לתשלום" on this page names the store it was pressed in. Checkout reads `?store=` as
 // intent, not as a filter (checkout.astro): this store opens on top and pre-ticked, the rest of the
@@ -148,7 +158,11 @@ const jsonLd = {
   '@type': 'Product',
   name: product.name,
   ...(product.description ? { description: product.description } : {}),
-  ...(images.length ? { image: images } : {}),
+  // Absolute, like the feed's `image_link` — `sanitizeImageUrl` accepts a site-relative path by
+  // design, and a relative URL inside JSON-LD is a URL the parser has to guess a base for. The feed
+  // already resolves them (product-feed.ts#buildFeedItems); this is the same picture, so it is the
+  // same string. Unusable entries drop out rather than emitting a broken `image`.
+  ...(jsonLdImages.length ? { image: jsonLdImages } : {}),
   // brand/sku/mpn enrich both Google rich results and AI-answer comprehension (AIO). The
   // seller's own brand field when they set one (a reseller listing someone else's product),
   // else the store name — a small business is its own brand. Same fallback as the ad feed

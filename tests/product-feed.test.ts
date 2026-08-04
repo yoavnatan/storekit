@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { buildProductFeedAttributes, buildFeedItems, toMerchantXml } from '../src/lib/product-feed.js';
 import type { StoreProduct } from '../src/lib/store-products.js';
 
-const CTX = { storeName: 'חנות', storeSlug: 'my-store', baseUrl: 'https://shop.example' };
+const CTX = {
+  storeName: 'חנות',
+  // Stands in for `custom-domain.ts#productCanonicalUrl` bound to this store — the real feed passes
+  // the page's own canonical builder, so the row's <link> and the page's canonical are one value.
+  productLink: (slug: string) => `https://shop.example/my-store/${encodeURIComponent(slug)}`,
+  baseUrl: 'https://shop.example',
+};
 
 function product(overrides: Partial<StoreProduct> = {}): StoreProduct {
   return {
