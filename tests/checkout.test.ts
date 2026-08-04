@@ -29,6 +29,10 @@ const STORES: Record<string, { id: string; slug: string; name: string; sellerId:
 const createOrder = vi.fn((input: Record<string, unknown>) => ({ id: 'order-1', ...input }));
 const createNotification = vi.fn();
 const getSellerSession = vi.fn(() => null as string | null);
+// Seller accounts keyed by address. The real column is `citext`, so the lookup is
+// case-insensitive — mirrored here, because case is exactly how a half-done guard gets walked past.
+const SELLER_ACCOUNTS: Record<string, { id: string; email: string }> = {};
+const getSellerByEmail = vi.fn(async (email: string) => SELLER_ACCOUNTS[email.trim().toLowerCase()] ?? null);
 const removeCartLines = vi.fn(async (_id: string, _lines: unknown) => {});
 const logError = vi.fn();
 
@@ -61,7 +65,10 @@ vi.mock('../src/lib/orders.js', () => ({ createOrder: (input: Record<string, unk
 vi.mock('../src/lib/notifications.js', () => ({
   createNotification: async (input: Record<string, unknown>) => createNotification(input),
 }));
-vi.mock('../src/lib/seller-auth.js', () => ({ getSellerSession: () => getSellerSession() }));
+vi.mock('../src/lib/seller-auth.js', () => ({
+  getSellerSession: () => getSellerSession(),
+  getSellerByEmail: (email: string) => getSellerByEmail(email),
+}));
 // `async` for the same reason as the notifications mock above: checkout awaits this now, and a
 // mock that is not a promise tests a contract that does not exist.
 vi.mock('../src/lib/user-carts.js', () => ({
@@ -143,6 +150,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   ledger.clear();
   getSellerSession.mockReturnValue(null);
+  // Emptied per test: an account left behind would silently 403 every later checkout.
+  for (const key of Object.keys(SELLER_ACCOUNTS)) delete SELLER_ACCOUNTS[key];
 });
 
 describe('POST /api/checkout — server-side price re-validation', () => {
@@ -407,6 +416,61 @@ describe('POST /api/checkout — server-side price re-validation', () => {
     // Pre-pass, like the demo guard — no stock moved, so nothing to roll back.
     expect(decrementStock).not.toHaveBeenCalled();
     expect(restockProduct).not.toHaveBeenCalled();
+  });
+
+  it('refuses a SIGNED-OUT seller buying from his own store, matched on the email he typed', async () => {
+    // The likeliest version of the problem, and the one the session guard could never see: a
+    // seller testing his own checkout does it from a phone or a private window. He is the person
+    // for whom an accidental first sale is most expensive — under the pricing model it starts his
+    // monthly fee — and he is signed out at exactly that moment.
+    SELLER_ACCOUNTS[validBuyer.buyerEmail] = { id: 'seller-1', email: validBuyer.buyerEmail };
+    const res = await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'own-store' });
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(decrementStock).not.toHaveBeenCalled();
+  });
+
+  it('matches that address case-insensitively', async () => {
+    // `A@x.com` vs `a@x.com` is the whole bypass, and it costs one lowercase to close.
+    SELLER_ACCOUNTS[validBuyer.buyerEmail] = { id: 'seller-1', email: validBuyer.buyerEmail };
+    const res = await POST(makeContext({
+      ...validBuyer,
+      buyerEmail: validBuyer.buyerEmail.toUpperCase(),
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(res.status).toBe(403);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("still lets a seller buy from somebody ELSE's store", async () => {
+    // The rule is about his own store, not about sellers shopping. Getting this wrong would turn
+    // every registered business on the platform into someone who cannot buy anything here.
+    STORES['other-store'] = { id: 's4', slug: 'other-store', name: 'Other', sellerId: 'seller-9' };
+    SELLER_ACCOUNTS[validBuyer.buyerEmail] = { id: 'seller-1', email: validBuyer.buyerEmail };
+    try {
+      const res = await POST(makeContext({
+        ...validBuyer,
+        items: [{ storeSlug: 'other-store', productSlug: 'widget', qty: 1 }],
+      }));
+      expect(res.status).toBe(201);
+      expect(createOrder).toHaveBeenCalled();
+    } finally {
+      delete STORES['other-store'];
+    }
+  });
+
+  it('lets an ordinary guest through — the lookup finds no account', async () => {
+    // The common case, asserted so the guard cannot quietly become "nobody may check out".
+    const res = await POST(makeContext({
+      ...validBuyer,
+      items: [{ storeSlug: 'test-store', productSlug: 'widget', qty: 1 }],
+    }));
+    expect(res.status).toBe(201);
+    expect(createOrder).toHaveBeenCalled();
   });
 
   it('refuses the WHOLE cart when only one of its stores belongs to the logged-in seller', async () => {

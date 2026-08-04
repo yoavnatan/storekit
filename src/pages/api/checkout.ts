@@ -10,7 +10,7 @@ import { paymentProvider } from '../../lib/payment.js';
 import { normalizeDeliveryMethod, shippingPrice } from '../../lib/shipping.js';
 import { sendOrderConfirmationEmails } from '../../lib/email/order-confirmation.js';
 import { createNotification } from '../../lib/notifications.js';
-import { getSellerSession } from '../../lib/seller-auth.js';
+import { getSellerByEmail, getSellerSession } from '../../lib/seller-auth.js';
 import { removeCartLines, type CartLineRef } from '../../lib/user-carts.js';
 import { isValidEmail } from '../../lib/email-address.js';
 import { makeCartKey } from '../../lib/cart.js';
@@ -98,6 +98,24 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   const userId = getSellerSession(cookies);
 
+  // **Who this buyer is, as a seller account — by SESSION and by EMAIL, not by session alone.**
+  //
+  // The guard below used to ask only "is the signed-in user this store's owner", which left the
+  // likeliest version of the problem wide open: a seller checking that his own checkout works
+  // does it from his phone or a private window, i.e. signed OUT, and that is precisely the person
+  // for whom an accidental first sale is expensive (it starts his monthly fee). The address he
+  // types is the same identity the session would have proved.
+  //
+  // One lookup, before the loop rather than per item, so a ten-store cart still costs one query;
+  // `citext` on the column makes the match case-insensitive, which is what stops `A@x.com` from
+  // walking past it. Both identities are collected rather than one-or-the-other — checking only
+  // the session is the hole being closed, and checking only the email would reopen it for a
+  // seller signed in who types a different address.
+  const buyerSellerIds = new Set<string>();
+  if (userId) buyerSellerIds.add(userId);
+  const buyerAccount = await getSellerByEmail(buyerEmail);
+  if (buyerAccount) buyerSellerIds.add(buyerAccount.id);
+
   // Pre-pass guards, both refusing the whole checkout before the loop below reserves any
   // stock — each is a static property of the store, so neither needs a rollback path.
   for (const raw of items) {
@@ -117,7 +135,9 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // The storefront also refuses this client-side (lib/own-store-guard.ts), but a
     // hidden button is not a rule: the cart is client state and this endpoint is
     // directly callable. This is the guarantee; that is only the explanation.
-    if (userId && preStore.sellerId === userId) return json({ error: 'own-store' }, 403);
+    //
+    // Buying from ANOTHER seller's store is untouched by this — the rule is about his own.
+    if (buyerSellerIds.has(preStore.sellerId)) return json({ error: 'own-store' }, 403);
   }
 
   // Binds the key to this buyer, so a completed record can only ever be replayed back to them.
