@@ -73,7 +73,7 @@ async function insertMany(db, table, columns, rows) {
  *  not resolve and nothing accepts mail for it. */
 export const DEMO_EMAIL_SUFFIX = '@demo.local';
 /** The single platform-owned account the showcase stores hang off (`seed-showcase-stores.mjs`). */
-export const SHOWCASE_OWNER_EMAIL = 'showcase@dezabin.com';
+export const SHOWCASE_OWNER_EMAIL = 'showcase@dezabin.co.il';
 
 /**
  * These predicates are composed — a scope clause and the disposable clause meet inside one

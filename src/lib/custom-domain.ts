@@ -111,7 +111,7 @@ export function productCanonicalUrl(store: Pick<Store, 'slug' | 'customDomain'>,
 
 /** When a store has an active custom domain and the current request is NOT already on it, returns the
  *  absolute custom-domain URL to 301-redirect to — so every hit on the platform path
- *  (dezabin.com/<slug>, incl. the store's old default URL) permanently moves to the seller's domain
+ *  (dezabin.co.il/<slug>, incl. the store's old default URL) permanently moves to the seller's domain
  *  and Google consolidates all accumulated ranking there (chosen 2026-07-26). Returns null when
  *  there's no active domain OR the request is already being served on it (guards the redirect loop
  *  for custom-domain traffic, which the middleware rewrites onto this same route). `pathOnCustom` is

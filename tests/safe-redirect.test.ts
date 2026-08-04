@@ -55,7 +55,7 @@ describe('safeRedirectPath', () => {
 });
 
 describe('safeRefererPath', () => {
-  const origin = 'https://dezabin.com';
+  const origin = 'https://dezabin.co.il';
 
   it('follows our own referrer, keeping path + query', () => {
     expect(safeRefererPath(`${origin}/store/acme?sort=new`, origin)).toBe('/store/acme?sort=new');
@@ -64,11 +64,11 @@ describe('safeRefererPath', () => {
   it('refuses a foreign referrer — this is the /api/lang open redirect', () => {
     expect(safeRefererPath('https://evil.com/anything', origin)).toBe('/');
     // Same registrable-looking prefix, different host.
-    expect(safeRefererPath('https://dezabin.com.evil.com/', origin)).toBe('/');
+    expect(safeRefererPath('https://dezabin.co.il.evil.com/', origin)).toBe('/');
   });
 
   it('refuses a different scheme on the same host', () => {
-    expect(safeRefererPath('http://dezabin.com/store', origin)).toBe('/');
+    expect(safeRefererPath('http://dezabin.co.il/store', origin)).toBe('/');
   });
 
   it('falls back on a missing referrer', () => {

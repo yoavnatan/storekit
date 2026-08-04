@@ -14,8 +14,8 @@ function walk(dir: string): string[] {
 
 describe('stripTrailingSlashes', () => {
   it('trims one slash or many, and leaves interior slashes alone', () => {
-    expect(stripTrailingSlashes('https://dezabin.com/')).toBe('https://dezabin.com');
-    expect(stripTrailingSlashes('https://dezabin.com///')).toBe('https://dezabin.com');
+    expect(stripTrailingSlashes('https://dezabin.co.il/')).toBe('https://dezabin.co.il');
+    expect(stripTrailingSlashes('https://dezabin.co.il///')).toBe('https://dezabin.co.il');
     expect(stripTrailingSlashes('/store/product/')).toBe('/store/product');
     expect(stripTrailingSlashes('/a//b/')).toBe('/a//b');
   });

@@ -71,7 +71,7 @@ export interface ProductSeoPreview {
   storeSlug: string;
   /** The stored slug on an edit; empty while adding, where it is derived from the typed name. */
   productSlug?: string;
-  /** Bare host, e.g. "dezabin.com" — the preview shows a readable URL, not a live link. */
+  /** Bare host, e.g. "dezabin.co.il" — the preview shows a readable URL, not a live link. */
   host: string;
 }
 

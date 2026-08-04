@@ -82,7 +82,7 @@ interface PlatformConfig {
 
 export const store: PlatformConfig = {
   name: 'Dezabin',
-  url: 'https://dezabin.com',
+  url: 'https://dezabin.co.il',
   tagline: 'Your store, open today',
   description: 'Dezabin is an online marketplace where anyone can open a store and start selling in minutes — no code, no complexity.',
   language: 'he',
@@ -91,7 +91,7 @@ export const store: PlatformConfig = {
 
   business: {
     legalName: 'Dezabin',
-    email: 'hello@dezabin.com',
+    email: 'hello@dezabin.co.il',
     phone: '',
     address: '',
     currency: 'ILS',
@@ -152,9 +152,13 @@ export const store: PlatformConfig = {
   },
 
   seo: {
-    // Generate a key (e.g. a random 32-char hex) and paste it here at go-live to
-    // enable active IndexNow submission. Empty = disabled. See GO_LIVE_CHECKLIST.md.
-    indexNowKey: '',
+    // IndexNow submission key. NOT a secret — the protocol requires it to be publicly readable at
+    // https://<host>/<key>.txt, which src/pages/[key].txt.ts serves from this value, and that file
+    // is the ownership proof. So it belongs in the repo like any other config, and rotating it is
+    // just replacing this string.
+    // Still inert until the site is on a real domain: indexnow.ts refuses to submit from an
+    // example.com host, so this being set costs nothing before launch.
+    indexNowKey: '7bb22f21787b9c8d861ef4b4db177ee9',
   },
 };
 

@@ -35,12 +35,12 @@ describe('isGoogleAuthEnabled', () => {
 
 describe('googleRedirectUri', () => {
   it('defaults to this app\'s callback on the requesting origin', () => {
-    expect(googleRedirectUri('https://dezabin.com')).toBe('https://dezabin.com/api/auth/google/callback');
+    expect(googleRedirectUri('https://dezabin.co.il')).toBe('https://dezabin.co.il/api/auth/google/callback');
   });
 
   it('is overridable, for a proxy that rewrites the host', () => {
     process.env.GOOGLE_REDIRECT_URI = 'https://proxied.example/cb';
-    expect(googleRedirectUri('https://dezabin.com')).toBe('https://proxied.example/cb');
+    expect(googleRedirectUri('https://dezabin.co.il')).toBe('https://proxied.example/cb');
   });
 });
 

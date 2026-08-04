@@ -299,7 +299,7 @@ export function normalizeSlug(input: string): string {
 }
 
 /** Top-level path segments a store slug must NEVER equal — every one is a real platform route
- *  (page or folder under src/pages). Because stores now live at the ROOT (dezabin.com/<slug>, not
+ *  (page or folder under src/pages). Because stores now live at the ROOT (dezabin.co.il/<slug>, not
  *  /store/<slug>), a slug colliding with one of these would be permanently shadowed by the static
  *  route (Astro resolves static routes before the dynamic [storeSlug] one) and the store would be
  *  unreachable. createStore() bumps a colliding slug (foo → foo-2); the middleware + custom-domain

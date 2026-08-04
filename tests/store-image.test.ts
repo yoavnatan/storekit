@@ -157,10 +157,10 @@ describe('store image resolution', () => {
   });
 
   it('returns absolute URLs for off-site consumers', () => {
-    expect(storeImageUrl({ slug: 'bella-shop' }, 'landscape', 'https://dezabin.com/')).toBe(
-      'https://dezabin.com/api/store-image/bella-shop/landscape.png',
+    expect(storeImageUrl({ slug: 'bella-shop' }, 'landscape', 'https://dezabin.co.il/')).toBe(
+      'https://dezabin.co.il/api/store-image/bella-shop/landscape.png',
     );
-    expect(storeImageUrl({ slug: 'bella-shop', profileImage: CLOUDINARY }, 'square', 'https://dezabin.com')).toContain(
+    expect(storeImageUrl({ slug: 'bella-shop', profileImage: CLOUDINARY }, 'square', 'https://dezabin.co.il')).toContain(
       'res.cloudinary.com',
     );
   });
@@ -168,15 +168,15 @@ describe('store image resolution', () => {
 
 describe('ad creative set', () => {
   it('is complete and absolute for a store with no uploads at all', () => {
-    const creative = storeAdCreative({ slug: 'bella-shop' }, 'https://dezabin.com');
+    const creative = storeAdCreative({ slug: 'bella-shop' }, 'https://dezabin.co.il');
     expect(Object.keys(creative).sort()).toEqual([...FORMATS].sort());
-    for (const url of Object.values(creative)) expect(url.startsWith('https://dezabin.com/')).toBe(true);
+    for (const url of Object.values(creative)) expect(url.startsWith('https://dezabin.co.il/')).toBe(true);
   });
 
   it('uses the seller’s own imagery where it can, per ratio', () => {
     const creative = storeAdCreative(
       { slug: 'bella-shop', profileImage: CLOUDINARY, bannerImage: CLOUDINARY.replace('store', 'banner') },
-      'https://dezabin.com',
+      'https://dezabin.co.il',
     );
     expect(creative.logo).toContain('w_512,h_512');
     expect(creative.landscape).toContain('w_1200,h_628');

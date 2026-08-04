@@ -8,7 +8,7 @@ import { gzipResponse, shouldCompress } from '../src/lib/http-compress.js';
  *  — it breaks it. */
 
 const req = (accept?: string): Request =>
-  new Request('https://dezabin.com/', accept ? { headers: { 'accept-encoding': accept } } : undefined);
+  new Request('https://dezabin.co.il/', accept ? { headers: { 'accept-encoding': accept } } : undefined);
 
 const res = (body: string | null, type = 'text/html; charset=utf-8', extra: Record<string, string> = {}): Response =>
   new Response(body, { headers: { 'content-type': type, ...extra } });

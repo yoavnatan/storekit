@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeHostname, resolveCustomDomainRewrite, storeCanonicalUrl, productCanonicalUrl, storeHomeHref, isPlatformHost, isUnclaimedCustomHost, customDomainRedirectUrl } from '../src/lib/custom-domain.js';
 
-// Platform host is store.config.ts → 'https://dezabin.com'.
+// Platform host is store.config.ts → 'https://dezabin.co.il'.
 describe('normalizeHostname', () => {
   it('accepts a valid external hostname and lowercases it', () => {
     expect(normalizeHostname('Shop.MyBrand.co.il')).toBe('shop.mybrand.co.il');
@@ -18,10 +18,10 @@ describe('normalizeHostname', () => {
   });
 
   it('SECURITY: refuses to claim the platform domain or any subdomain of it', () => {
-    expect(normalizeHostname('dezabin.com')).toBeNull();
-    expect(normalizeHostname('www.dezabin.com')).toBeNull();
-    expect(normalizeHostname('evil.dezabin.com')).toBeNull();
-    expect(normalizeHostname('https://dezabin.com/store/x')).toBeNull();
+    expect(normalizeHostname('dezabin.co.il')).toBeNull();
+    expect(normalizeHostname('www.dezabin.co.il')).toBeNull();
+    expect(normalizeHostname('evil.dezabin.co.il')).toBeNull();
+    expect(normalizeHostname('https://dezabin.co.il/store/x')).toBeNull();
   });
 });
 
@@ -60,13 +60,13 @@ describe('canonical URLs (SEO credit follows an active custom domain)', () => {
   const active = { slug: 'acme', customDomain: { hostname: 'shop.acme.co.il', status: 'active' as const, addedAt: '' } };
 
   it('store home: platform path unless a domain is active', () => {
-    expect(storeCanonicalUrl(noDomain)).toBe('https://dezabin.com/acme');
-    expect(storeCanonicalUrl(pending)).toBe('https://dezabin.com/acme'); // pending is NOT canonical
+    expect(storeCanonicalUrl(noDomain)).toBe('https://dezabin.co.il/acme');
+    expect(storeCanonicalUrl(pending)).toBe('https://dezabin.co.il/acme'); // pending is NOT canonical
     expect(storeCanonicalUrl(active)).toBe('https://shop.acme.co.il');
   });
 
   it('product: platform path unless a domain is active (served from root on the custom domain)', () => {
-    expect(productCanonicalUrl(noDomain, 'blue-widget')).toBe('https://dezabin.com/acme/blue-widget');
+    expect(productCanonicalUrl(noDomain, 'blue-widget')).toBe('https://dezabin.co.il/acme/blue-widget');
     expect(productCanonicalUrl(active, 'blue-widget')).toBe('https://shop.acme.co.il/blue-widget');
   });
 
@@ -78,21 +78,21 @@ describe('canonical URLs (SEO credit follows an active custom domain)', () => {
 
   it('customDomainRedirectUrl: 301 the platform path to the seller domain, but never loop on it', () => {
     // On the platform host → redirect out to the custom domain (SEO consolidates there).
-    expect(customDomainRedirectUrl(active, 'dezabin.com', '')).toBe('https://shop.acme.co.il');
-    expect(customDomainRedirectUrl(active, 'dezabin.com', '?sort=price')).toBe('https://shop.acme.co.il?sort=price');
+    expect(customDomainRedirectUrl(active, 'dezabin.co.il', '')).toBe('https://shop.acme.co.il');
+    expect(customDomainRedirectUrl(active, 'dezabin.co.il', '?sort=price')).toBe('https://shop.acme.co.il?sort=price');
     expect(customDomainRedirectUrl(active, 'localhost:4321', '/blue-widget')).toBe('https://shop.acme.co.il/blue-widget');
     // Already ON the custom domain (middleware rewrote onto this route) → no redirect (no loop).
     expect(customDomainRedirectUrl(active, 'shop.acme.co.il', '')).toBeNull();
     expect(customDomainRedirectUrl(active, 'shop.acme.co.il:443', '')).toBeNull();
     // No active domain → never redirect.
-    expect(customDomainRedirectUrl(noDomain, 'dezabin.com', '')).toBeNull();
-    expect(customDomainRedirectUrl(pending, 'dezabin.com', '')).toBeNull();
+    expect(customDomainRedirectUrl(noDomain, 'dezabin.co.il', '')).toBeNull();
+    expect(customDomainRedirectUrl(pending, 'dezabin.co.il', '')).toBeNull();
   });
 });
 
 describe('host classification (routing safety)', () => {
   it('isPlatformHost: our own hosts + loopback served normally; foreign domains are not', () => {
-    for (const h of ['dezabin.com', 'www.dezabin.com', 'dezabin.com:443', 'localhost', 'localhost:4321', '127.0.0.1', '::1']) {
+    for (const h of ['dezabin.co.il', 'www.dezabin.co.il', 'dezabin.co.il:443', 'localhost', 'localhost:4321', '127.0.0.1', '::1']) {
       expect(isPlatformHost(h)).toBe(true);
     }
     for (const h of ['demo-shop.test', 'shop.acme.co.il', 'evil.example.com']) {
@@ -108,7 +108,7 @@ describe('host classification (routing safety)', () => {
     // Claimed → served, never 404.
     expect(isUnclaimedCustomHost('demo-shop.test', true)).toBe(false);
     // Never 404 these (would break the platform / health checks / dev):
-    for (const h of ['dezabin.com', 'www.dezabin.com', 'localhost', '127.0.0.1', '10.0.0.5', '192.168.1.20', 'origin-internal', 'demo.localhost', '']) {
+    for (const h of ['dezabin.co.il', 'www.dezabin.co.il', 'localhost', '127.0.0.1', '10.0.0.5', '192.168.1.20', 'origin-internal', 'demo.localhost', '']) {
       expect(isUnclaimedCustomHost(h, false)).toBe(false);
     }
   });
