@@ -14,6 +14,13 @@
 #
 # Bounded like the review gate: at most two blocks per fingerprint, then it lets the turn end with a
 # visible warning. A gate with no escape hatch gets switched off, and then it protects nothing.
+#
+# The `timeout` beside this hook in settings.json is 420s, raised from 240s on 2026-08-04, and it is
+# the one number here that must stay generous. Hitting it does not fail the turn — it KILLS the hook,
+# so the turn ends with nothing checked and nothing said, which is the single worst outcome this file
+# has. The full suite measures ~85s warm and ~140s cold in a fresh worktree, and two parallel
+# worktree sessions sharing 12 cores stretch that further. Waiting longer costs only the seconds
+# verification actually takes; the old margin was thin enough to lose the check entirely.
 set -uo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

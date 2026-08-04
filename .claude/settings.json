@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/one-session-per-tree.sh",
+            "timeout": 15,
+            "statusMessage": "Checking for another session in this tree..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write",
@@ -45,7 +57,7 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/require-green.sh",
-            "timeout": 240,
+            "timeout": 420,
             "statusMessage": "Verifying types, lint and tests..."
           }
         ]

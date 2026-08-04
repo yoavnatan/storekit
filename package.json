@@ -15,6 +15,7 @@
     "seed:showcase": "node --env-file-if-exists=.env ./scripts/seed-showcase-stores.mjs",
     "seed:demo": "node --env-file-if-exists=.env ./scripts/seed-demo-data.mjs",
     "verify": "node scripts/verify.mjs",
+    "worktree:setup": "node scripts/worktree-setup.mjs",
     "lint": "eslint . --suppressions-location .eslint-baseline.json --pass-on-unpruned-suppressions --quiet",
     "lint:fix": "eslint . --fix",
     "lint:all": "eslint .",
