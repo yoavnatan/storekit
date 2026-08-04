@@ -249,6 +249,23 @@ describe('the gate stays in one place', () => {
     expect(bundled[0]).toContain('csrf-client');
   });
 
+  it('names the header and the meta tag in exactly one place', () => {
+    // The two ends run in different runtimes and cannot import each other — lib/csrf.ts pulls in
+    // node:crypto and the database pool — so these strings were written out twice, once per side.
+    // A rename on the server would then have turned every mutating request into a silent 403.
+    const client = readFileSync(path.join(SRC_ROOT, 'scripts', 'csrf-client.ts'), 'utf8');
+    expect(client).toContain("from '../lib/csrf-names.js'");
+    expect(client).not.toMatch(/['"`]x-csrf-token['"`]|['"`]X-CSRF-Token['"`]/i);
+    expect(client).not.toMatch(/meta\[name="csrf-token"\]/);
+
+    // And nothing else may re-type them either.
+    const offenders = srcFiles(SRC_ROOT)
+      .filter((file) => !file.endsWith(path.join('lib', 'csrf-names.ts')))
+      .filter((file) => /['"`](?:x-csrf-token|_csrf)['"`]/i.test(readFileSync(file, 'utf8')))
+      .map((file) => path.relative(SRC_ROOT, file));
+    expect(offenders).toEqual([]);
+  });
+
   it('is never written into a saved draft', () => {
     // FormFallbackGuard snapshots a blocked form into localStorage and offers it back on the next
     // load. A token is a credential, not typing worth preserving — and a draft written before a

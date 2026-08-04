@@ -106,18 +106,3 @@ export function buildSellerBalances(
     };
   });
 }
-
-/** The platform-wide totals of the same list — what the admin's Sellers tab puts at the top.
- *  Summed from the per-seller figures rather than recomputed from revenue, so the header can never
- *  disagree with the rows underneath it (the invariant `reporting-invariants.test.ts` asserts). */
-export function totalSellerBalances(balances: readonly SellerBalance[]): {
-  grossRevenueAgorot: number;
-  commissionAgorot: number;
-  totalEarnedAgorot: number;
-} {
-  return {
-    grossRevenueAgorot: balances.reduce((sum, b) => sum + b.grossRevenueAgorot, 0),
-    commissionAgorot: balances.reduce((sum, b) => sum + b.commissionAgorot, 0),
-    totalEarnedAgorot: balances.reduce((sum, b) => sum + b.totalEarnedAgorot, 0),
-  };
-}

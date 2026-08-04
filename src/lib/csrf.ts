@@ -5,6 +5,7 @@ import { requiredSecret } from './runtime-env.js';
 import { getSellerSession } from './seller-auth.js';
 import { isAdminRequest } from './admin-auth.js';
 import { BODY_LIMIT, readFormBody } from './request-body.js';
+import { CSRF_FIELD, CSRF_HEADER } from './csrf-names.js';
 
 /**
  * The SECOND layer against cross-site request forgery. The first two are already in place and are
@@ -44,13 +45,10 @@ import { BODY_LIMIT, readFormBody } from './request-body.js';
  * greps `src/` to keep it that way.
  */
 
-/** Where a client puts the token. The header is the AJAX path (see `src/scripts/csrf-client.ts`);
- *  the form field is the no-JS path for the handful of forms the browser really does submit
- *  itself (see `src/components/CsrfField.astro`). */
-export const CSRF_HEADER = 'x-csrf-token';
-export const CSRF_FIELD = '_csrf';
-/** The name of the `<meta>` tag BaseLayout renders the token into — the client's only source. */
-export const CSRF_META = 'csrf-token';
+/** The names the token travels under live in `csrf-names.ts` — a module with no imports, so the
+ *  BROWSER half (`src/scripts/csrf-client.ts`) can share them rather than write its own copies of
+ *  the same two strings. Re-exported here so a server-side caller has one import, not two. */
+export { CSRF_FIELD, CSRF_HEADER, CSRF_META } from './csrf-names.js';
 
 /** Matches the seller session's own TTL (seller-auth.ts). A token that expired while its page was
  *  still open would reject a save with nothing on screen explaining why, and the session cookie it

@@ -16,13 +16,19 @@
  * The token itself comes from the `<meta>` tag, not from a cookie: keeping it out of a cookie means
  * there is no JS-readable cookie to steal and no "cookie tossing" from a neighbouring host to
  * worry about, since the server verifies the SIGNATURE rather than comparing against a cookie.
+ *
+ * The two names are imported, never re-typed: `lib/csrf.ts` cannot be imported here (it pulls in
+ * node:crypto and the database pool), so the strings lived in both files — and renaming the header
+ * on the server would have turned every mutating request into a silent 403. `lib/csrf-names.ts`
+ * has no imports of its own, so this side can share them for the cost of two strings.
  */
+import { CSRF_HEADER, CSRF_META } from '../lib/csrf-names.js';
 
-const HEADER = 'X-CSRF-Token';
+
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function token(): string {
-  return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
+  return document.querySelector<HTMLMetaElement>(`meta[name="${CSRF_META}"]`)?.content ?? '';
 }
 
 /** The URL a fetch argument actually addresses, resolved against the page so a relative
@@ -57,7 +63,7 @@ export function initCsrf(): void {
     // Authorization survive. `fetch(input, init)` builds `new Request(input, init)`, which means
     // method and body still come from `input` when it is a Request — only the headers are ours.
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-    headers.set(HEADER, token());
+    headers.set(CSRF_HEADER, token());
     return original(input, { ...init, headers });
   };
 }

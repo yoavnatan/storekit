@@ -18,7 +18,16 @@ import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, ge
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
 import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
-import { buildSellerBalances, totalSellerBalances } from '../src/lib/seller-balance.js';
+import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
+
+/** The platform-wide totals of a balance list. In the test rather than the module: no screen shows
+ *  this figure (the admin Performance tab already reports what is paid out to sellers), and an
+ *  exported helper with no caller reads as one that is wired to something. */
+const platformTotals = (bs: readonly SellerBalance[]) => ({
+  grossRevenueAgorot: bs.reduce((a, b) => a + b.grossRevenueAgorot, 0),
+  commissionAgorot: bs.reduce((a, b) => a + b.commissionAgorot, 0),
+  totalEarnedAgorot: bs.reduce((a, b) => a + b.totalEarnedAgorot, 0),
+});
 import { commissionPercentForTier } from '../src/lib/pricing.js';
 // Traffic is an input now; these invariants are about money, so they assert against no traffic.
 import { EMPTY_VIEW_STATS, type StoreViewStats } from '../src/lib/store-pageviews.js';
@@ -417,7 +426,7 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
         expectSameMoney(store.commissionAgorot + store.totalEarnedAgorot, store.grossRevenueAgorot, `${store.storeSlug}: closes`);
       }
     }
-    const totals = totalSellerBalances(balances);
+    const totals = platformTotals(balances);
     expectSameMoney(balances.reduce((a, b) => a + b.totalEarnedAgorot, 0), totals.totalEarnedAgorot, 'platform total vs seller rows');
     expectSameMoney(totals.commissionAgorot + totals.totalEarnedAgorot, totals.grossRevenueAgorot, 'platform totals close');
   });
@@ -442,7 +451,7 @@ describe('a seller balance closes, and agrees with the seller\'s own tab', () =>
     expect(byId.get('sel-none')!.totalEarnedAgorot).toBe(0);
     // And the platform total is every store's revenue, none double-counted.
     expectSameMoney(
-      totalSellerBalances(balances).grossRevenueAgorot,
+      platformTotals(balances).grossRevenueAgorot,
       [...REVENUE.values()].reduce((a, r) => a + r.totalRevenueAgorot, 0),
       'balance gross vs the revenue map it came from',
     );
