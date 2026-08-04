@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import crypto from 'node:crypto';
 import { safeRedirectPath } from '../../../lib/safe-redirect.js';
 import { googleClientId, googleRedirectUri } from '../../../lib/google-oauth.js';
+import { machineUrl } from '../../../lib/url-base.js';
 
 export const GET: APIRoute = ({ redirect, cookies, url }) => {
   // Sanitised HERE, before it is stored — the callback redirects to this cookie's value, so a
@@ -43,5 +44,8 @@ export const GET: APIRoute = ({ redirect, cookies, url }) => {
     prompt: 'select_account',
   });
 
-  return redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  // `URLSearchParams` already encodes, so this is belt-and-braces — but the rule is that no
+  // interpolated destination reaches a Location header un-normalised, and a rule with a
+  // "this one is obviously fine" exemption is the rule that stops being checked.
+  return redirect(machineUrl(`https://accounts.google.com/o/oauth2/v2/auth?${params}`));
 };

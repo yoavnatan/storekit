@@ -18,6 +18,28 @@ describe('safeRedirectPath', () => {
     expect(safeRedirectPath('/\\evil.com')).toBe('/');
   });
 
+  it('refuses a dot-segment path that RESOLVES to a protocol-relative one', () => {
+    // Caught reviewing the 2026-08-04 encoding change, which introduced it. The candidate starts
+    // with `/.`, so a raw `//` check waves it through — and percent-encoding resolves the `..` into
+    // `//evil.example`, which the browser reads as a host. The order is the fix: encode first,
+    // judge the encoded value.
+    expect(safeRedirectPath('/..//evil.example')).toBe('/');
+    expect(safeRedirectPath('/./..//evil.example')).toBe('/');
+    expect(safeRedirectPath('/%2e%2e//evil.example')).toBe('/');
+    // Resolving inside the site is fine — it is still this origin.
+    expect(safeRedirectPath('/seller/../checkout')).toBe('/checkout');
+  });
+
+  it('a reject-listed path cannot be reached through a dot segment', () => {
+    expect(safeRedirectPath('/seller/./login', '/', ['/seller/login'])).toBe('/');
+  });
+
+  it('encodes a Hebrew destination, because a raw one cannot be a header value', () => {
+    // `?next=` arrives decoded, and `new Response(…, { Location: 'נעל' })` throws (a 500, not a
+    // wrong URL) — tests/external-contract.test.ts pins that mechanism.
+    expect(safeRedirectPath('/חנות/נעל')).toBe('/%D7%97%D7%A0%D7%95%D7%AA/%D7%A0%D7%A2%D7%9C');
+  });
+
   it('refuses an absolute URL and a scheme', () => {
     expect(safeRedirectPath('https://evil.com')).toBe('/');
     expect(safeRedirectPath('javascript:alert(1)')).toBe('/');

@@ -20,6 +20,8 @@
 // a fifth (`/api/lang`, which trusted `Referer` — an off-site value by definition). One shared
 // function is what stops the next flow from being the sixth. Guarded by tests/safe-redirect.test.ts.
 
+import { machineUrl } from './url-base.js';
+
 /**
  * A path safe to redirect to, or `fallback` when the candidate is anything else.
  *
@@ -33,13 +35,26 @@ export function safeRedirectPath(raw: string | null | undefined, fallback = '/',
   const candidate = raw.trim();
   if (!candidate.startsWith('/')) return fallback;
   // Protocol-relative (`//host`) and the backslash variant browsers normalise to it (`/\host`)
-  // both leave this origin while looking path-shaped.
+  // both leave this origin while looking path-shaped. Checked on the RAW candidate as well as on
+  // the encoded one below: `//evil.example/x` parses as a host plus a path, so encoding alone would
+  // silently REPAIR it into `/x` and redirect somewhere the caller never asked for, instead of
+  // refusing a destination that was hostile as written.
   if (candidate.startsWith('//') || candidate.startsWith('/\\')) return fallback;
   // A control character can truncate the Location header; a well-formed path never holds one.
   // eslint-disable-next-line no-control-regex -- matching control characters IS the check here
   if (/[\x00-\x1f\x7f]/.test(candidate)) return fallback;
-  if (reject.includes(candidate.split('?')[0] ?? candidate)) return fallback;
-  return candidate;
+  // Percent-encoded FIRST, then judged — and the order is the security property, not a detail.
+  // Every caller puts this straight into a `Location`, where a character above U+00FF makes the
+  // `Response` constructor throw instead of redirecting (url-base.ts#machineUrl); `?next=` arrives
+  // DECODED from `searchParams.get`, and on this catalogue "the page you were on" is a Hebrew path.
+  // But encoding also RESOLVES dot segments, and that can turn a path-shaped candidate into an
+  // off-site one: `/..//evil.example` starts with `/.`, so it passes a raw `//` check, and
+  // normalises to `//evil.example` — which a browser reads as a HOST. Judging the encoded value is
+  // what closes that, and it also means `/seller/./login` can no longer walk around `reject`.
+  const encoded = machineUrl(candidate);
+  if (!encoded.startsWith('/') || encoded.startsWith('//') || encoded.startsWith('/\\')) return fallback;
+  if (reject.includes(encoded.split('?')[0] ?? encoded)) return fallback;
+  return encoded;
 }
 
 /**

@@ -103,3 +103,52 @@ export function toSlug(input: string): string {
 export function urlSegment(slug: string): string {
   return encodeURIComponent(slug);
 }
+
+/** Only used to give a path an origin to be parsed against; never appears in the result. */
+const PARSE_ORIGIN = 'https://parse.invalid';
+
+/** An absolute URL split into `origin` and everything after it, so the origin can be passed through
+ *  untouched. Reassembling from `new URL().href` instead would rewrite `https://host` as
+ *  `https://host/`, and this site's canonical form has no trailing slash — a redirect target that
+ *  disagrees with the canonical it points at is the very thing this file exists to prevent. */
+const ABSOLUTE = /^([a-z][a-z0-9+.-]*:\/\/[^/?#]*)([\s\S]*)$/i;
+
+/** The path/query/hash part, percent-encoded. Empty in, empty out, and a value that starts at the
+ *  query (`?sort=x`) does not grow a `/` it did not have. */
+function encodeRest(rest: string): string {
+  if (!rest) return '';
+  try {
+    const u = new URL(rest, PARSE_ORIGIN);
+    return `${/^[?#]/.test(rest) ? '' : u.pathname}${u.search}${u.hash}`;
+  } catch {
+    return rest;
+  }
+}
+
+/**
+ * A whole URL or path, encoded so it may be put in an HTTP header — a `Location`, above all.
+ *
+ * **This is not a nicety, it is a 500 (found 2026-08-04).** A header value is a byte string: the
+ * `Response` constructor throws `TypeError: Cannot convert argument to a ByteString` on any
+ * character above U+00FF, and Node's `writeHead` throws `ERR_INVALID_CHAR` behind it. `Astro.redirect(p)`
+ * is `new Response(null, { headers: { Location: p } })`, so a redirect to a Hebrew path does not
+ * degrade — it throws inside the page and the visitor gets a 500.
+ *
+ * And the paths ARE Hebrew. `Astro.params` is taken from the DECODED pathname (Astro's own
+ * `safeDecodeURI`, `core/app/base.js`), so `params.productSlug` is `נעל-ריצה`, not `%D7%A0...` —
+ * which is exactly why a lookup against the database works and why interpolating that same value
+ * back into a redirect looks correct and is not. Four redirects did it, and all four are on the
+ * paths the SEO bet is built on: the two slug-rename 301s (every link a store earned before it was
+ * renamed), the fall-back to the store home when a product is gone, and the custom-domain 301.
+ *
+ * IDEMPOTENT, which is what lets a caller use it without first knowing which form it holds: the URL
+ * parser leaves an existing `%D7%97` alone instead of re-encoding it to `%25D7%2597`. Same reason
+ * `indexnow.ts` reaches for the constructor rather than for `urlSegment` per segment.
+ *
+ * Returns the input unchanged if it cannot be parsed at all — a caller passing something that is
+ * neither a path nor a URL has a different bug, and swallowing it here would hide it.
+ */
+export function machineUrl(value: string): string {
+  const abs = ABSOLUTE.exec(value);
+  return abs ? `${abs[1]}${encodeRest(abs[2] ?? '')}` : encodeRest(value);
+}

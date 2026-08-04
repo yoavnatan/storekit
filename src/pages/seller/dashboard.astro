@@ -1,6 +1,9 @@
 ---
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
+// Every interpolated redirect goes through it — here the interpolated value is a form-supplied
+// store id, so this is also what stops a crafted POST putting an arbitrary string in a header.
+import { machineUrl } from '../../lib/url-base.js';
 import PerfProductSection from '../../components/dashboard/PerfProductSection.astro';
 import OnboardingChecklist from '../../components/dashboard/OnboardingChecklist.astro';
 import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
@@ -170,7 +173,7 @@ if (Astro.request.method === 'POST') {
       const target = stores.find((s) => s.id === storeId) ?? stores[0];
       if (target) {
         await updateStore(target.id, { name, tagline, description, colors: target.colors });
-        return Astro.redirect(`/seller/dashboard?store=${target.id}&saved=1`);
+        return Astro.redirect(machineUrl(`/seller/dashboard?store=${target.id}&saved=1`));
       }
     }
   } else if (action === 'create-store') {
@@ -190,7 +193,7 @@ if (Astro.request.method === 'POST') {
       // Same sanitizer the settings endpoint uses — the picker is convenience, this is the rule.
       const initialCategories = sanitizeStoreCategories(String(form.get('categories') ?? '').split(','));
       if (initialCategories.length) await updateStore(newStoreId, { categories: initialCategories });
-      return Astro.redirect(`/seller/dashboard?store=${newStoreId}`);
+      return Astro.redirect(machineUrl(`/seller/dashboard?store=${newStoreId}`));
     }
   } else if (action === 'add-product') {
     const storeId = String(form.get('storeId') || '');
@@ -205,7 +208,7 @@ if (Astro.request.method === 'POST') {
       error = d.priceInvalid;
     } else {
       await createProduct(storeId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
-      return Astro.redirect(`/seller/dashboard?store=${storeId}&added=1`);
+      return Astro.redirect(machineUrl(`/seller/dashboard?store=${storeId}&added=1`));
     }
   } else if (action === 'edit-product') {
     const productId = String(form.get('productId') || '');
@@ -221,13 +224,13 @@ if (Astro.request.method === 'POST') {
     } else {
       await updateProduct(productId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
       const sid = Astro.url.searchParams.get('store') ?? '';
-      return Astro.redirect(sid ? `/seller/dashboard?store=${sid}` : '/seller/dashboard');
+      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
     }
   } else if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
     const sid = String(form.get('storeId') || '');
     await deleteProduct(productId);
-    return Astro.redirect(sid ? `/seller/dashboard?store=${sid}` : '/seller/dashboard');
+    return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
   }
 }
 

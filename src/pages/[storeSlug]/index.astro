@@ -18,7 +18,7 @@ import { filterAndSortProducts, PRODUCTS_PAGE_SIZE } from '../../lib/product-lis
 import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCategoryFilterIds, categoryPath, countProductsPerCategory, categoryUrlParam, findCategoryByParam } from '../../lib/store-categories.js';
 import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
-import { urlSegment } from '../../lib/url-base.js';
+import { machineUrl, urlSegment } from '../../lib/url-base.js';
 import { storeCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { OG_IMAGE_FORMAT, resolveStoreImage, storeImageUrl } from '../../lib/store-image.js';
 import { store as platform, cdnSrc, cdnSrcSet, cdnCropSrcSet, cdnThumb } from '../../config/store.config.js';
@@ -38,7 +38,9 @@ if (!shopStore) {
   // The seller may have renamed the store URL — 301 an old slug to the current one so links +
   // Google's index carry over instead of 404-ing (see renameStoreSlug).
   const moved = await getStoreByPreviousSlug(slug);
-  if (moved) return Astro.redirect(`/${moved.slug}${Astro.url.search}`, 301);
+  // `machineUrl`: a store slug carries Hebrew, and a Hebrew Location header throws instead of
+  // redirecting (url-base.ts#machineUrl) — this is the 301 that keeps a renamed store's links alive.
+  if (moved) return Astro.redirect(machineUrl(`/${moved.slug}${Astro.url.search}`), 301);
   return Astro.redirect('/404');
 }
 // Not serving a storefront at all: an admin block (admin-moderation.ts) answers 404, so the store

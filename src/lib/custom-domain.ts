@@ -10,7 +10,7 @@
 // never go offline if the custom domain's DNS/SSL lapses.
 
 import { store as platform } from '../config/store.config.js';
-import { urlSegment } from './url-base.js';
+import { machineUrl, urlSegment } from './url-base.js';
 import { isReservedSlug, type Store } from './stores.js';
 import { createCloudflareProvider } from './custom-domain-cloudflare.js';
 import { serverEnv } from './runtime-env.js';
@@ -126,7 +126,10 @@ export function customDomainRedirectUrl(
   if (cd?.status !== 'active') return null;
   const reqHost = (requestHost ?? '').toLowerCase().replace(/:\d+$/, '');
   if (reqHost === cd.hostname) return null;
-  return `https://${cd.hostname}${pathOnCustom}`;
+  // Encoded HERE and not at the two call sites: `pathOnCustom` is built from `Astro.params`, which
+  // is decoded, so on this Hebrew-slug catalogue the raw value cannot go into a Location header at
+  // all — it throws (url-base.ts#machineUrl). One place, so a third caller inherits the answer.
+  return machineUrl(`https://${cd.hostname}${pathOnCustom}`);
 }
 
 /** The href a platform surface (store card, cart/wishlist group, discovery shelf) should use to link
