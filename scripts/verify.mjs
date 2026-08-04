@@ -95,8 +95,24 @@ function changedFiles() {
 // purpose — no check reads them, and including them is what would make the session-close doc pass
 // re-run the whole suite. Everything else counts, `package-lock.json` included, so a dependency
 // change invalidates every marker.
+//
+// ⚠️ EXCEPT the docs a test actually reads, and this was a real false green (found 2026-08-04).
+// `tests/instructions-integrity.test.ts` and `tests/instructions-budget.test.ts` read
+// AI_INSTRUCTIONS.md, so a docs-only edit CAN turn the suite red — but excluding `.md` left the
+// fingerprint identical, and `verify --all` reported green from cache without running them. That is
+// precisely the "identical inputs, identical result" claim this cache is built on, broken by a file
+// that was assumed to be input to nothing. `tests/verify-doc-inputs.test.ts` is the guard: it fails
+// if any test reads a `.md` this regex still ignores, so the next one cannot be silent.
+//
+// `.claude/hooks/` and `.claude/skills/` are carved back in for the same reason, found by inspection
+// the same day rather than by a failure: the integrity test asserts that every pointer in the
+// always-read rules resolves, and several of them point at exactly those files — so renaming or
+// deleting one would turn the suite red while this cache reported green. Both are tracked and
+// stable, so counting them costs nothing; `settings.local.json` and the state that actually churns
+// stay out.
+const CHECKED_DOCS = /(?:^|\/)AI_INSTRUCTIONS\.md$|(?:^|\/)\.claude\/(?:hooks|skills)\//;
 const IRRELEVANT = /(?:(?:^|\/)\.claude\/)|(?:\.md$)/;
-const relevant = (p) => p && !IRRELEVANT.test(p);
+const relevant = (p) => p && (CHECKED_DOCS.test(p) || !IRRELEVANT.test(p));
 
 // One `path → content hash` map for the whole tree, and nothing else. It deliberately says nothing
 // about what is staged, committed or in HEAD: `git commit` moves blobs from the working tree into
@@ -191,6 +207,19 @@ if (touchedCode) {
 }
 if (touchedSrc) {
   checks.push({ name: 'test', cmd: BIN('vitest'), args: ['run'] });
+}
+// The one check no other check can stand in for. Everything above reads FILES; the app reads a
+// DATABASE, and the test suite builds its own from migrations/ — so a migration written but never
+// applied leaves the whole suite green while every page that touches the table throws
+// `column X does not exist`. Exactly that shipped a broken dev site on 2026-08-04 (0008_product_brand).
+// Cheap (one query), and it names the fix. `--env-file-if-exists` mirrors the db:migrate npm script,
+// since DATABASE_URL lives in .env rather than the shell.
+if (has(/^migrations\//)) {
+  checks.push({
+    name: 'db migrations',
+    cmd: process.execPath,
+    args: ['--env-file-if-exists=.env', resolve(ROOT, 'scripts/db-migrate.mjs'), '--check'],
+  });
 }
 
 // `astro check` is a superset of `tsc`, so a recorded pass of the bigger one satisfies the smaller.

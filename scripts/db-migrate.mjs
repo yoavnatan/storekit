@@ -6,8 +6,17 @@
 // — the index and constraint choices in DB_MIGRATION_PLAN.md §6/§7 are the point, and they should
 // be visible as SQL, not generated from TypeScript.
 //
-//   npm run db:migrate          apply everything pending
-//   npm run db:migrate -- --dry list what would run, touch nothing
+//   npm run db:migrate            apply everything pending
+//   npm run db:migrate -- --dry   list what would run, touch nothing
+//   npm run db:migrate -- --check same, but EXITS 1 if anything is pending — what `npm run verify`
+//                                 runs, because writing a migration and forgetting to apply it is
+//                                 invisible to every other check. The test suite builds its own
+//                                 database from migrations/, so the whole suite stays green while
+//                                 the running app throws `column X does not exist` on page load.
+//                                 That happened on 2026-08-04 (migration 0008) and cost a broken
+//                                 dev site; this flag is what makes it impossible to repeat.
+//                                 With no DATABASE_URL it reports "skipped" and exits 0, so a
+//                                 checkout without a database is not a failure.
 //
 // Rules this enforces:
 //  · Each file runs inside ONE transaction — a migration that fails halfway leaves no partial
@@ -22,7 +31,16 @@ import crypto from 'node:crypto';
 import { createClient, requireDatabaseUrl } from './lib/pg-connect.mjs';
 
 const MIGRATIONS_DIR = path.join(process.cwd(), 'migrations');
-const dryRun = process.argv.includes('--dry');
+const checkOnly = process.argv.includes('--check');
+const dryRun = process.argv.includes('--dry') || checkOnly;
+
+// `--check` is a gate that runs on every verify, including on a clone with no database configured.
+// Demanding one there would make "I have not set up Postgres yet" look like a failing migration,
+// so it reports the skip by name (verify's own rule: a check that did not run is always named).
+if (checkOnly && !process.env.DATABASE_URL) {
+  console.log('db migrations: skipped — no DATABASE_URL.');
+  process.exit(0);
+}
 
 const client = createClient(requireDatabaseUrl());
 
@@ -71,6 +89,12 @@ async function main() {
   }
   if (dryRun) {
     console.log(`${pending.length} pending:\n${pending.map((m) => `  · ${m.name}`).join('\n')}`);
+    // Naming the fix in the failure itself: the whole point is that the person who sees this is
+    // the one who just wrote the migration and has no reason to suspect their database.
+    if (checkOnly) {
+      console.log('\nThe database is behind migrations/. Run: npm run db:migrate');
+      process.exitCode = 1;
+    }
     return;
   }
 
