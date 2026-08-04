@@ -65,6 +65,12 @@
             "command": "bash .claude/hooks/require-green.sh",
             "timeout": 420,
             "statusMessage": "Verifying types, lint and tests..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/worktree-handoff.sh",
+            "timeout": 15,
+            "statusMessage": "Checking what this session leaves behind..."
           }
         ]
       }
