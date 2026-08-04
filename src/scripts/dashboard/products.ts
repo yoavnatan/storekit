@@ -290,6 +290,7 @@ function brandFieldHtml(brand: string, i18n: Record<string, string>): string {
   return `<label class="field max-w-[280px]">
     <span>${esc(i18n.brandLabel ?? 'Brand')}</span>
     <input class="input" name="brand" maxlength="70" value="${esc(brand)}" placeholder="${esc(storeName)}">
+    <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">${esc(i18n.brandFallbackNote ?? '')}</p>
   </label>`;
 }
 
