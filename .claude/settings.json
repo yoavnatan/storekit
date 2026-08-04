@@ -8,6 +8,12 @@
             "command": "bash .claude/hooks/one-session-per-tree.sh",
             "timeout": 15,
             "statusMessage": "Checking for another session in this tree..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/worktrees-outstanding.sh",
+            "timeout": 15,
+            "statusMessage": "Checking for worktrees with unmerged work..."
           }
         ]
       }
