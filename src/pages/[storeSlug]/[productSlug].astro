@@ -492,6 +492,7 @@ const pmI18n = {
                           class="btn flex-auto"
                           style="white-space:nowrap;height:48px;font-size:0.9375rem;font-weight:600"
                           data-slug={product.slug}
+                          data-product-id={product.id}
                           data-name={product.name}
                           data-price={String(pv.price)}
                           data-base-price={pv.isDiscounted ? String(pv.basePrice) : undefined}
@@ -747,6 +748,7 @@ const pmI18n = {
   import { spawnRipple } from '../../lib/ripple.js';
   import { trackViewContent, trackAddToCart } from '../../lib/tracking.js';
   import { comboKey } from '../../lib/variant-combo.js';
+  import { adItemId } from '../../lib/ad-item-id.js';
   import { arrowStep } from '../../lib/arrow-step.js';
   import { isColorVariant } from '../../lib/color-variants.js';
   import { initReadMore } from '../../lib/read-more.js';
@@ -802,7 +804,9 @@ const pmI18n = {
     const addBtnEl = document.getElementById('add-to-cart-btn') as HTMLButtonElement | null;
     if (addBtnEl?.dataset.slug) {
       trackViewContent({
-        id: addBtnEl.dataset.slug,
+        // The catalog id, never the slug: a slug is unique per store, not platform-wide, and the
+        // Merchant feed keys on this uuid (lib/ad-item-id.ts). No combo is chosen on load.
+        id: adItemId(addBtnEl.dataset.productId ?? ''),
         name: addBtnEl.dataset.name ?? '',
         price: Number(addBtnEl.dataset.price ?? 0),
         category: addBtnEl.dataset.category,
@@ -1246,10 +1250,10 @@ const pmI18n = {
     addBtn.addEventListener('click', () => {
       if (addBtn.disabled) return;
       if (pageVariants.length && flagMissingVariants()) return;
-      const { slug = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
+      const { slug = '', productId = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
       const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy, false);
-      trackAddToCart({ id: slug, name, price: Number(price), category }, qty);
+      addItem(storeSlug, storeName, { slug, productId, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy, false);
+      trackAddToCart({ id: adItemId(productId, variantsCopy), productId, name, price: Number(price), category }, qty);
       updateQty(1);
 
       if (toCheckoutBtn) toCheckoutBtn.style.display = 'inline-flex';
@@ -1289,10 +1293,10 @@ const pmI18n = {
     stickyAddBtn.addEventListener('click', () => {
       if (addBtn.disabled || stickyAddBtn.disabled) return;
       if (pageVariants.length && flagMissingVariants()) return;
-      const { slug = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
+      const { slug = '', productId = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
       const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
-      addItem(storeSlug, storeName, { slug, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy, false);
-      trackAddToCart({ id: slug, name, price: Number(price), category }, qty);
+      addItem(storeSlug, storeName, { slug, productId, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy, false);
+      trackAddToCart({ id: adItemId(productId, variantsCopy), productId, name, price: Number(price), category }, qty);
       updateQty(1);
 
       if (stickyToCheckoutBtn) stickyToCheckoutBtn.style.display = 'inline-flex';

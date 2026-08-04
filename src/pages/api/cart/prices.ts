@@ -31,6 +31,9 @@ interface PriceRequestLine {
 export interface CartPriceRow {
   storeSlug: string;
   slug: string;
+  /** The product's uuid. Not needed to price anything — it is the id the ad networks know this
+   *  item by (`lib/ad-item-id.ts`), backfilled onto cart lines stored before the field existed. */
+  productId?: string;
   /** What the buyer would pay right now. Absent `gone`, this is authoritative for display. */
   price: number;
   /** Pre-discount price — present only while the line is discounted. */
@@ -101,6 +104,11 @@ export const POST: APIRoute = async ({ request }) => {
     items.push({
       storeSlug,
       slug,
+      // Not for this endpoint's own job — it is what lets the checkout page name this line to
+      // Google and Meta by the id their catalog knows (lib/ad-item-id.ts). It rides along because
+      // this request has already resolved the product, so the alternative would be a second
+      // round trip to learn something the server is holding anyway.
+      productId: product.id,
       price: view.price,
       ...(view.isDiscounted ? { basePrice: view.basePrice } : {}),
       ...(answersStock ? { stock: Math.max(0, getEffectiveStock(product, selectedVariants)) } : {}),

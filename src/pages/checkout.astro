@@ -253,6 +253,7 @@ for (const s of await getVisibleStores()) {
     import { spawnRipple } from '../lib/ripple.js';
     import { checkoutAttemptKey, clearCheckoutAttemptKey } from '../lib/checkout-attempt-key.js';
     import { trackInitiateCheckout } from '../lib/tracking.js';
+    import { adItemId } from '../lib/ad-item-id.js';
     import { isValidEmail } from '../lib/email-address.js';
     import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../scripts/dashboard/select-dropdown.js';
     // Not scrollIntoView: the site header is `position:fixed`, and `block:'start'` parks the
@@ -1107,9 +1108,17 @@ for (const s of await getVisibleStores()) {
       // (syncSelection only ever adds payable ones), so the one class of line that can never become
       // an order is already out. Read through the same key so the two can't drift.
       getOrderedCarts().forEach(cart => cart.items.forEach(item => {
-        if (selected.has(selKey(cart.storeSlug, item.cartKey))) {
-          lines.push({ id: item.slug, name: item.name, price: item.price, qty: item.qty });
-        }
+        if (!selected.has(selKey(cart.storeSlug, item.cartKey))) return;
+        // The id both networks look this item up by is the catalog id, narrowed to the combo the
+        // buyer chose (lib/ad-item-id.ts). A line stored before that field existed carries none
+        // and is skipped rather than reported under its slug: a slug matches no catalog row and
+        // is not even unique across stores, so it would be a wrong id, not a rough one. The
+        // re-price this runs after backfills it, so the gap closes by itself.
+        if (!item.productId) return;
+        lines.push({
+          id: adItemId(item.productId, item.selectedVariants),
+          name: item.name, price: item.price, qty: item.qty,
+        });
       }));
       if (!lines.length) return; // an empty or showcase-only cart started no checkout
       checkoutStartReported = true;

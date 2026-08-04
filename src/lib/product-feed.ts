@@ -2,6 +2,7 @@ import type { StoreProduct } from './store-products.js';
 import { inferAudienceGender, inferAgeGroup } from './audience-infer.js';
 import { deriveProductLabels } from './product-labels.js';
 import { generateCombos, comboKey, canonicalDimName } from './variant-combo.js';
+import { adItemId, adComboItemId } from './ad-item-id.js';
 import { isColorVariant } from './color-variants.js';
 import { resolvePrice, type StoreSale } from './discounts.js';
 import { toAbsoluteImageUrl } from './image-url.js';
@@ -120,7 +121,9 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
   const description = clampText(product.description.trim() || title, DESCRIPTION_MAX);
 
   return {
-    id: product.id,
+    // Through the shared helper even though it is the bare uuid: this line and the tracking
+    // events are the two halves of one join, and `ad-item-id.ts` is where that is stated once.
+    id: adItemId(product.id),
     title,
     description,
     availability: product.stock > 0 ? 'in_stock' : 'out_of_stock',
@@ -160,13 +163,6 @@ export interface FeedBuildContext extends FeedContext {
   baseUrl: string; // origin, no trailing slash — e.g. https://shop.example
 }
 
-// A feed row id must be stable + unique; keep the human-readable combo but
-// swap the key/value separators for id-safe ones (Unicode option values, incl.
-// Hebrew, are preserved so two combos never collapse to the same id).
-function comboRowId(productId: string, key: string): string {
-  return `${productId}-${key.replace(/=/g, '-').replace(/,/g, '_')}`;
-}
-
 /** Expand one product into its feed rows (variant combos → item_group_id rows).
  *  Returns [] when a required field is missing (no usable image, or price ≤ 0) so the
  *  caller simply skips it rather than emitting a row the platforms would reject. */
@@ -202,7 +198,7 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
     const comboMpn = product.variantSku?.[key];
     return {
       ...base,
-      id: comboRowId(product.id, key),
+      id: adComboItemId(product.id, key),
       itemGroupId: product.id,
       availability: stock > 0 ? 'in_stock' : 'out_of_stock',
       link,

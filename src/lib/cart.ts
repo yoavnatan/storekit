@@ -5,6 +5,16 @@ import { blockOwnStorePurchase } from './own-store-guard.js';
 export interface CartItem {
   cartKey: string;
   slug: string;
+  /** The product's uuid — carried for ONE purpose: the id Google and Meta know this item by
+   *  (`lib/ad-item-id.ts`), which the checkout page needs when it reports InitiateCheckout. The
+   *  slug beside it cannot serve: it is unique per store, not platform-wide.
+   *
+   *  Optional, and every reader must cope without it. A line added before this field existed has
+   *  none until the next re-price fills it in (`applyServerPrices`), and nothing here is allowed to
+   *  matter enough to justify a migration for it — it is display/reporting only, never money and
+   *  never identity: `/api/checkout` re-resolves every line from `storeSlug` + `slug` server-side
+   *  and would ignore this even if a tampered cart supplied one. */
+  productId?: string;
   name: string;
   /** What the buyer pays — already the discounted figure (discounts.ts resolves it at the
    *  surface the item was added from, and /api/checkout re-derives it server-side). */
@@ -70,8 +80,17 @@ function readStoreCart(storeSlug: string): StoreCart | null {
 }
 
 function writeStoreCart(cart: StoreCart): void {
-  localStorage.setItem(storeKey(cart.storeSlug), JSON.stringify(cart));
+  persistStoreCart(cart);
   window.dispatchEvent(new CustomEvent('cart:change'));
+}
+
+/** Store the cart WITHOUT announcing a change — for a write that alters nothing anyone can see.
+ *  `cart:change` is what redraws the header badge and the drawer, so firing it for an invisible
+ *  bookkeeping field would repaint the chrome for no reason a shopper could point at (memory: a
+ *  no-op interaction has to be invisible). Every write that a buyer WOULD notice goes through
+ *  `writeStoreCart` above; this one has exactly one caller and its own justification. */
+function persistStoreCart(cart: StoreCart): void {
+  localStorage.setItem(storeKey(cart.storeSlug), JSON.stringify(cart));
 }
 
 export function getStoreItems(storeSlug: string): CartItem[] {
@@ -90,7 +109,7 @@ export function getCartQty(
 export function addItem(
   storeSlug: string,
   storeName: string,
-  product: Pick<CartItem, 'slug' | 'name' | 'price' | 'image' | 'basePrice'> & { stock?: number },
+  product: Pick<CartItem, 'slug' | 'name' | 'price' | 'image' | 'basePrice' | 'productId'> & { stock?: number },
   qty = 1,
   selectedVariants?: Record<string, string>,
   // Product cards are the only place with no add-to-cart feedback of their
@@ -241,6 +260,9 @@ export interface CartPriceChange {
 export interface CartServerRow {
   storeSlug: string;
   slug: string;
+  /** The product's uuid, resolved server-side. Backfills `CartItem.productId` on lines stored
+   *  before that field existed, or rebuilt from the server cart (which does not carry it). */
+  productId?: string;
   price: number;
   basePrice?: number;
   /** Units available for this exact line. Applied only when the row was matched by cart key —
@@ -273,6 +295,45 @@ function markGoneLines(rows: CartServerRow[]): void {
   }
 }
 
+/**
+ * Backfills `CartItem.productId` from the server's answer.
+ *
+ * Its own pass, deliberately kept OUT of the re-pricing loop below: that loop returns early the
+ * moment nothing about a line has moved, which is the normal case and exactly the case a backfill
+ * has to cover. Threading it through there would also have put a purely cosmetic field inside the
+ * function that decides whether to interrupt a buyer about a price — this writes nothing anyone
+ * sees, reports no change, and can never produce a re-render.
+ *
+ * Only ever fills a gap; an existing id is left alone, so this cannot rewrite what a page already
+ * reported. Persisted silently (`persistStoreCart`): nothing about the cart a shopper can see has
+ * changed, and `cart:change` would repaint the header badge and the drawer for it.
+ */
+function fillProductIds(rows: CartServerRow[]): void {
+  const byStore = new Map<string, CartServerRow[]>();
+  for (const row of rows) {
+    if (!row.productId) continue;
+    const list = byStore.get(row.storeSlug) ?? [];
+    list.push(row);
+    byStore.set(row.storeSlug, list);
+  }
+  for (const [storeSlug, list] of byStore) {
+    const cart = readStoreCart(storeSlug);
+    if (!cart) continue;
+    const bySlug = new Map(list.map((r) => [r.slug, r]));
+    let changed = false;
+    for (const item of Object.values(cart.items)) {
+      if (item.productId) continue;
+      // Every row for one slug carries the same product id whatever the combo, so the slug map is
+      // the right lookup here — unlike stock, which is per combo and must never be taken this way.
+      const id = bySlug.get(item.slug)?.productId;
+      if (!id) continue;
+      item.productId = id;
+      changed = true;
+    }
+    if (changed) persistStoreCart(cart);
+  }
+}
+
 /** Re-syncs every cart line with the server's answer (see /api/cart/prices): price, strikethrough,
  *  and the stock ceiling. Returns the lines that actually moved, so a caller re-renders only on a
  *  real change — a cart already current must not repaint (memory: a no-op interaction has to be
@@ -283,6 +344,7 @@ function markGoneLines(rows: CartServerRow[]): void {
 export function applyServerPrices(rows: CartServerRow[]): CartPriceChange[] {
   const changes: CartPriceChange[] = [];
   markGoneLines(rows);
+  fillProductIds(rows);
   const byStore = new Map<string, CartServerRow[]>();
   for (const row of rows) {
     if (row.gone) continue;

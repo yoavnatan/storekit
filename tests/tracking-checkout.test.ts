@@ -9,15 +9,23 @@
 // screen would ever show, because our own funnel counts this stage server-side and would look right
 // the whole time.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { trackInitiateCheckout } from '../src/lib/tracking.js';
+import { trackAddToCart, trackInitiateCheckout } from '../src/lib/tracking.js';
 
 type Pushed = Record<string, unknown>;
 const fbq = vi.fn();
+const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
+  Promise.resolve(new Response(null, { status: 204 })));
+
+/** The JSON body of the nth first-party analytics POST. */
+const sentBody = (n = 0): Record<string, unknown> =>
+  JSON.parse(String(fetchMock.mock.calls[n]![1]!.body)) as Record<string, unknown>;
 
 beforeEach(() => {
   (window as unknown as { dataLayer: Pushed[] }).dataLayer = [];
   (window as unknown as { fbq: unknown }).fbq = fbq;
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
   fbq.mockClear();
+  fetchMock.mockClear();
 });
 
 const dl = () => (window as unknown as { dataLayer: Pushed[] }).dataLayer;
@@ -58,11 +66,51 @@ describe('trackInitiateCheckout', () => {
     expect(fbq).not.toHaveBeenCalled();
   });
 
+  it('reports an item it cannot name to nobody', () => {
+    // An empty catalog id means a surface that was never wired. Both networks would accept
+    // content_ids:[''], match it to nothing, and file it under "events with no catalog item" —
+    // a number the owner would then be debugging instead of reading.
+    trackInitiateCheckout([{ ...line(), id: '' }]);
+    expect(dl()).toHaveLength(0);
+    expect(fbq).not.toHaveBeenCalled();
+  });
+
   it('does not throw when no pixel is configured yet', () => {
     // The live state today: `store.config.ts` carries no GTM id and no Meta pixel, so neither
     // global exists. Every checkout on the platform runs through this line.
     (window as unknown as { dataLayer?: unknown }).dataLayer = undefined;
     (window as unknown as { fbq?: unknown }).fbq = undefined;
     expect(() => trackInitiateCheckout([line()])).not.toThrow();
+  });
+});
+
+/**
+ * The two identifiers `trackAddToCart` carries are different things, and conflating them is what
+ * emptied the admin Data tab's "top added"/"top abandoned" lists: it sent the CATALOG id to
+ * `/api/analytics/event`, which accepts only a uuid, so every add_to_cart was recorded with no
+ * product at all. Nothing errored — the stage was counted, the product silently was not.
+ */
+describe('trackAddToCart keeps the catalog id and the product uuid apart', () => {
+  const UUID = '11111111-1111-4111-8111-000000000001';
+
+  it('sends the raw uuid to our own funnel and the catalog id to the networks', () => {
+    // A variant line: the catalog id carries a combo suffix, so it is NOT uuid-shaped and would be
+    // dropped by /api/analytics/event. This is exactly the case the two fields exist for.
+    trackAddToCart({ id: `${UUID}-צבע-אדום`, productId: UUID, name: 'אגרטל', price: 20 }, 2);
+    expect(fbq.mock.calls[0]![2].content_ids).toEqual([`${UUID}-צבע-אדום`]);
+    expect(sentBody()).toEqual({ type: 'add_to_cart', productId: UUID });
+  });
+
+  it('still records the funnel stage when the catalog id is missing', () => {
+    // An unwired surface must not cost the internal funnel its event — the two halves fail
+    // independently because their failure modes are unrelated.
+    trackAddToCart({ id: '', productId: UUID, name: 'אגרטל', price: 20 }, 1);
+    expect(fbq).not.toHaveBeenCalled();
+    expect(sentBody()['productId']).toBe(UUID);
+  });
+
+  it('omits the product rather than sending a blank one', () => {
+    trackAddToCart({ id: UUID, name: 'אגרטל', price: 20 }, 1);
+    expect(sentBody()).toEqual({ type: 'add_to_cart' });
   });
 });

@@ -88,6 +88,7 @@ const i18n = {
   import { escapeHtml as escHtml } from '../lib/html-escape.js';
   import { spawnRipple } from '../lib/ripple.js';
   import { trackAddToCart } from '../lib/tracking.js';
+  import { adItemId } from '../lib/ad-item-id.js';
   import { comboKey } from '../lib/variant-combo.js';
   import { resolveVariantColor, isColorVariant } from '../lib/color-variants.js';
   import { initReadMore } from '../lib/read-more.js';
@@ -100,6 +101,8 @@ const i18n = {
   interface SPMProduct {
     // `price` is already the price the buyer would be charged; the extra fields describe
     // WHY, so the modal can show the struck-through original + the badge (see /api/store-product).
+    /** The catalog id the ad networks key on — see lib/ad-item-id.ts. */
+    id: string;
     slug: string; name: string; price: number; description: string;
     basePrice?: number; isDiscounted?: boolean; percentOff?: number; showSaleBadge?: boolean;
     stock: number; images: string[]; category: string;
@@ -719,8 +722,10 @@ const i18n = {
       if (pmVariants.length && pmFlagMissingVariants()) return;
       const pmVariantsCopy = Object.keys(pmSelectedVariants).length ? { ...pmSelectedVariants } : undefined;
       const pmView = pmPriceView(product);
-      addItem(storeSlug, storeName, { slug, name, price, basePrice: pmView.isDiscounted ? pmView.basePrice : undefined, image: mainImgUrl, stock: pmEffectiveStock(pmSelectedVariants) }, pmQty, pmVariantsCopy, false);
-      trackAddToCart({ id: slug, name, price, category }, pmQty);
+      addItem(storeSlug, storeName, { slug, productId: product.id, name, price, basePrice: pmView.isDiscounted ? pmView.basePrice : undefined, image: mainImgUrl, stock: pmEffectiveStock(pmSelectedVariants) }, pmQty, pmVariantsCopy, false);
+      // The catalog id narrowed to the combo just chosen — the feed gives every combo its own
+      // row and no parent row, so the bare product id would match nothing (lib/ad-item-id.ts).
+      trackAddToCart({ id: adItemId(product.id, pmVariantsCopy), productId: product.id, name, price, category }, pmQty);
       updatePmQty(1);
       pmAddBtn.disabled = true;
       pmAddBtn.classList.add('btn--confirmed');

@@ -59,6 +59,10 @@ export const GET: APIRoute = async ({ url, cookies, request }) => {
   const priceView = resolvePrice(product, store.sale);
 
   return json({
+    // The quick-view's add-to-cart reports to Google and Meta, and they key on the catalog id —
+    // which is this uuid, never the slug (lib/ad-item-id.ts). Additive; an older client ignoring
+    // it behaves exactly as before.
+    id:          product.id,
     slug:        product.slug,
     name:        product.name,
     price:       priceView.price,
