@@ -92,8 +92,16 @@ describe('generated mark PNG', () => {
     expect(pixels[centre]).not.toBe(pixels[0]);
   });
 
-  // Encodes every share-image size in pure JS — ~1.5s alone, but it shares CPU with the
-  // rest of the suite, so the default 5s timeout made it fail on load rather than on merit.
+  // Encodes every share-image size in pure JS — ~1.5s alone, but it shares CPU with the rest of the
+  // suite, so the default 5s timeout made it fail on load rather than on merit.
+  //
+  // **The per-test 20s override that used to sit here is gone, and its absence is the fix
+  // (2026-08-04).** `vitest.config.ts` raised the SUITE timeout to 30s for exactly this class —
+  // CPU-bound work going red because eight workers and `astro check` are competing for twelve
+  // cores, never because anything is wrong — and a local override BELOW that ceiling can only
+  // reintroduce what the raise removed. It did: this test took 22.7s in a full run and 1.9s alone.
+  // Nothing here waits on a network or a human, so the suite-wide 30s already means "hung", and a
+  // second, stricter number in one file was a private answer to a question the project had settled.
   it('renders every whitelisted format', () => {
     for (const format of FORMATS) {
       const { width, height } = STORE_IMAGE_FORMATS[format];
@@ -101,7 +109,7 @@ describe('generated mark PNG', () => {
       expect(png.readUInt32BE(16)).toBe(width);
       expect(png.readUInt32BE(20)).toBe(height);
     }
-  }, 20_000);
+  });
 });
 
 describe('cdnFill', () => {
