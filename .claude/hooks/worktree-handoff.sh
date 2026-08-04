@@ -57,11 +57,33 @@ done <<EOF
 $(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
 EOF
 
+# Has real work been COMMITTED in this worktree, as opposed to it having just been created?
+#
+# The distinction the "clean and merged" line below cannot do without. A brand-new worktree and a
+# finished one look identical to `main..HEAD` — both say zero — so without this the hook would open
+# every worktree session by suggesting you delete the worktree you just made. The branch's own
+# reflog separates them: a commit made HERE leaves a `commit:` entry, and creation alone does not.
+did_work_in() {
+  [ "$(git -C "$1" reflog show HEAD 2>/dev/null | grep -c 'commit')" -gt 0 ]
+}
+
 mine=""
+finished=""
 orphans=""
 while IFS=$'\t' read -r status wt branch detail; do
   [ -n "${status:-}" ] || continue
   case "$status" in
+    clean)
+      # Nothing outstanding — and THAT is the moment the worktree should stop existing. This hook
+      # used to go silent here, which is precisely the hole the owner walked into on 2026-08-04: the
+      # work was merged and pushed, the report had nothing to say, and the leftover directory was
+      # noticed by him rather than by the mechanism. Silence is right for "nothing happened here";
+      # it is wrong for "this is done".
+      did_work_in "$wt" || continue
+      if [ "$wt" = "$here" ] || ! session_live_in "$wt"; then
+        finished+="  ✅ ${wt}  [${branch}]\n"
+      fi
+      ;;
     orphan)
       if [ "$wt" = "$here" ]; then
         mine="[${branch}] ${detail}"
@@ -79,7 +101,7 @@ done <<EOF
 $(scan_worktrees "$REPO_ROOT")
 EOF
 
-[ -n "$mine" ] || [ -n "$orphans" ] || exit 0
+[ -n "$mine" ] || [ -n "$orphans" ] || [ -n "$finished" ] || exit 0
 
 echo "worktree handoff — say this to the user in Hebrew, at the END of your reply, in one line each:"
 echo
@@ -90,6 +112,17 @@ if [ -n "$mine" ]; then
     deliberate). Do not merge it on your own initiative — but do not let the session end with the
     user unaware that it exists. If the work IS finished and he has said to merge, merge it, push,
     and then `ExitWorktree remove` so it stops being an entry in this list.
+EOF
+fi
+if [ -n "$finished" ]; then
+  echo
+  echo "DONE AND STILL ON DISK — merged into main, nothing uncommitted, work was committed there:"
+  printf '%b' "$finished"
+  cat <<'EOF'
+  → Remove it as part of finishing, without being asked: `ExitWorktree remove` for your own tree,
+    `git worktree remove <path>` for one nobody is in. This is the ONE worktree state where the
+    action is unambiguous and nothing can be lost — the commits are on main. Leaving it is how the
+    list fills up with directories nobody trusts, until a real ⚠️ reads like more of the same.
 EOF
 fi
 if [ -n "$orphans" ]; then
