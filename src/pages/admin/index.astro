@@ -38,6 +38,7 @@ import { pickGranularity } from '../../lib/seller-performance.js';
 import { getLang, getDir } from '../../i18n/index.js';
 import AdminOverviewPanel from '../../components/admin/AdminOverviewPanel.astro';
 import AdminSellersPanel from '../../components/admin/AdminSellersPanel.astro';
+import { buildSellerBalances } from '../../lib/seller-balance.js';
 import AdminStoresPanel from '../../components/admin/AdminStoresPanel.astro';
 import AdminOrdersPanel from '../../components/admin/AdminOrdersPanel.astro';
 import AdminAttentionPanel from '../../components/admin/AdminAttentionPanel.astro';
@@ -151,6 +152,13 @@ const sellerPageResult = paginate(sellerCardsFiltered, parsePage(sp, 'spage'));
 const sellerPageCards = attachProducts(
   sellerPageResult.items,
   await getProductsByStoreIds(sellerPageResult.items.flatMap((c) => c.stores.map((s) => s.store.id))),
+);
+// Accrued balances (lib/seller-balance.ts) — reporting only: the processor pays each seller
+// directly, so nothing here is an instruction to do anything. Costs no query: it is derived from
+// the same `revenueByStore` map the cards above are already built from, which is also what makes
+// the balance and the gross figure printed beside it literally the same number.
+const balanceBySeller = new Map(
+  buildSellerBalances(sellers, stores, revenueByStore).map((b) => [b.sellerId, b]),
 );
 
 // ── Stores tab ──
@@ -417,6 +425,7 @@ const badgeCounts: Record<string, number> = {
       <div id="dash-panel-sellers" class="dash-panel" role="tabpanel" aria-labelledby="tab-sellers" hidden={initialPanel !== 'sellers'}>
         <AdminSellersPanel
           sellerCards={sellerPageCards}
+          balanceBySeller={balanceBySeller}
           q={sellerQuery.q}
           sortCol={sellerQuery.sortCol}
           sortDir={sellerQuery.sortDir}

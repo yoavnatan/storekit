@@ -1,5 +1,6 @@
 ---
 import type { AdminSellerSortCol, AdminSortDir, SellerCardData } from '../../lib/admin-stats.js';
+import type { SellerBalance } from '../../lib/seller-balance.js';
 import AdminStoreStateBadge from './AdminStoreStateBadge.astro';
 import { formatAgorot } from '../../lib/money.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
@@ -9,6 +10,10 @@ import AdminNewOnlyToggle from './AdminNewOnlyToggle.astro';
 
 interface Props {
   sellerCards: SellerCardData[]; // current page only
+  /** sellerId → what they have earned (lib/seller-balance.ts). REPORTING ONLY — the payment
+   *  processor pays each seller directly, so no action on this screen follows from it and nothing
+   *  is ever marked "paid". */
+  balanceBySeller: ReadonlyMap<string, SellerBalance>;
   q: string;
   sortCol: AdminSellerSortCol;
   sortDir: AdminSortDir;
@@ -22,7 +27,7 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { sellerCards, q, sortCol, sortDir, blockedOnly, newSince, newOnly, newCount, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
+const { sellerCards, balanceBySeller, q, sortCol, sortDir, blockedOnly, newSince, newOnly, newCount, totalAll, totalFiltered, page, totalPages, buildUrl } = Astro.props;
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -66,6 +71,7 @@ const sortLabels: Record<string, string> = {
     <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
   <div class="admin-seller-list" id="admin-seller-list">
     {sellerCards.map(({ seller, stores, totalProducts, revenue }) => {
+      const balance = balanceBySeller.get(seller.id);
       return (
       <details class="admin-seller-card">
         <summary class="admin-seller-card__summary">
@@ -97,6 +103,14 @@ const sortLabels: Record<string, string> = {
             <span class="admin-seller-card__stat admin-seller-card__stat--rev">
               <span class="admin-seller-card__stat-label">הכנסות החודש</span>
               <span class="admin-seller-card__stat-value">{formatAgorot(revenue.monthRevenueAgorot)}</span>
+            </span>
+            {/* The tile the other four do not answer: "הכנסות" is what the shopper paid, this is
+                what the seller is left with once the platform's commission comes out. Deliberately
+                the last tile — it is a consequence of the one before it, and reading them in that
+                order is what makes the pair legible. */}
+            <span class="admin-seller-card__stat admin-seller-card__stat--rev" title={`אחרי עמלת פלטפורמה של ${balance?.commissionRate ?? 0}% (${formatAgorot(balance?.commissionAgorot ?? 0)}). דמי המנוי החודשיים נגבים בנפרד ואינם יורדים מכאן.`}>
+              <span class="admin-seller-card__stat-label">יתרה למוכר/ת</span>
+              <span class="admin-seller-card__stat-value">{formatAgorot(balance?.totalEarnedAgorot ?? 0)}</span>
             </span>
           </div>
           {/* Actions moved into a three-dot kebab menu (CURRENT_TASK admin item) —
@@ -131,6 +145,7 @@ const sortLabels: Record<string, string> = {
                 </span>
                 <span class="admin-store-block__nums">{products.length} מוצרים</span>
                 <span class="admin-store-block__nums">{formatAgorot(revenue.totalRevenueAgorot)} סה"כ · {formatAgorot(revenue.monthRevenueAgorot)} החודש</span>
+                <span class="admin-store-block__nums">{formatAgorot(balance?.stores.find((b) => b.storeId === store.id)?.totalEarnedAgorot ?? 0)} יתרה</span>
                 <svg class="admin-store-link__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
               </a>
             ))

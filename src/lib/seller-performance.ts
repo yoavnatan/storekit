@@ -4,6 +4,7 @@ import { orderNetForStore } from './admin-stats.js';
 import type { StoreViewStats, ViewGranularity } from './store-pageviews.js';
 import type { ProductViewStats } from './product-pageviews.js';
 import { businessDayISO, businessMonthKey, calendarDayISO, calendarMonthKey, dayInRange, BUSINESS_TIMEZONE } from './business-day.js';
+import { commissionOnAgorot } from './pricing.js';
 
 /**
  * One definition, aliased rather than repeated: the bucket size a report is drawn at is the same
@@ -281,8 +282,10 @@ export function assemblePerformanceSummary(
 
   const { totalRevenueAgorot, totalOrders } = sales;
 
-  // A percentage of an integer number of agorot, rounded once to the agora.
-  const platformCommissionAgorot = Math.round((totalRevenueAgorot * commissionPercent) / 100);
+  // A percentage of an integer number of agorot, rounded once to the agora — and through
+  // pricing.ts, so this figure and the accrued balance in seller-balance.ts are the same
+  // arithmetic rather than two copies of it.
+  const platformCommissionAgorot = commissionOnAgorot(totalRevenueAgorot, commissionPercent);
   const netProfitAgorot = totalRevenueAgorot - platformCommissionAgorot;
 
   // Conversion = orders per *distinct* visitor (the honest "share of people who

@@ -18,6 +18,8 @@ import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, ge
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
 import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
+import { buildSellerBalances, totalSellerBalances } from '../src/lib/seller-balance.js';
+import { commissionPercentForTier } from '../src/lib/pricing.js';
 // Traffic is an input now; these invariants are about money, so they assert against no traffic.
 import { EMPTY_VIEW_STATS, type StoreViewStats } from '../src/lib/store-pageviews.js';
 import { EMPTY_PRODUCT_VIEW_STATS } from '../src/lib/product-pageviews.js';
@@ -380,6 +382,103 @@ describe('the admin surfaces reconcile with each other', () => {
     // reporting is refactored, and it is what catches a future double-count.
     const maxPossible = orders.filter(countsAsRevenue).reduce((a, o) => a + orderNetTotal(o), 0);
     expect(getOrderTotals(orders).gmvAgorot).toBeLessThanOrEqual(maxPossible);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3b. A seller's accrued balance. Reporting only — but a number the owner reads
+//     about somebody else's money, so it gets the same treatment as one that moves.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('a seller balance closes, and agrees with the seller\'s own tab', () => {
+  const SELLERS = [
+    { id: 'sel-a', name: 'A', email: 'a@x.com', passwordHash: '', tier: 'starter' as const, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'sel-b', name: 'B', email: 'b@x.com', passwordHash: '', tier: 'enterprise' as const, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'sel-none', name: 'N', email: 'n@x.com', passwordHash: '', createdAt: '2026-01-01T00:00:00.000Z' },
+  ];
+  const STORES = [
+    { id: 'st-1', slug: STORE, name: 'S1', sellerId: 'sel-a' },
+    { id: 'st-2', slug: OTHER, name: 'S2', sellerId: 'sel-a' },
+    { id: 'st-3', slug: 'inv-third', name: 'S3', sellerId: 'sel-b' },
+  ];
+  const REVENUE = new Map([
+    [STORE, { totalRevenueAgorot: 123_457, monthRevenueAgorot: 1_000 }],
+    [OTHER, { totalRevenueAgorot: 8_999, monthRevenueAgorot: 0 }],
+    ['inv-third', { totalRevenueAgorot: 250_000, monthRevenueAgorot: 5_000 }],
+  ]);
+
+  it('the parts sum to the whole, at every level', () => {
+    const balances = buildSellerBalances(SELLERS, STORES, REVENUE);
+    for (const b of balances) {
+      expectSameMoney(b.commissionAgorot + b.totalEarnedAgorot, b.grossRevenueAgorot, `${b.sellerId}: commission + earned vs gross`);
+      expectSameMoney(b.stores.reduce((a, s) => a + s.totalEarnedAgorot, 0), b.totalEarnedAgorot, `${b.sellerId}: stores vs seller total`);
+      expectSameMoney(b.stores.reduce((a, s) => a + s.grossRevenueAgorot, 0), b.grossRevenueAgorot, `${b.sellerId}: store gross vs seller gross`);
+      for (const store of b.stores) {
+        expectSameMoney(store.commissionAgorot + store.totalEarnedAgorot, store.grossRevenueAgorot, `${store.storeSlug}: closes`);
+      }
+    }
+    const totals = totalSellerBalances(balances);
+    expectSameMoney(balances.reduce((a, b) => a + b.totalEarnedAgorot, 0), totals.totalEarnedAgorot, 'platform total vs seller rows');
+    expectSameMoney(totals.commissionAgorot + totals.totalEarnedAgorot, totals.grossRevenueAgorot, 'platform totals close');
+  });
+
+  it('never reports a seller more than the mall took, or less than nothing', () => {
+    // The bounds, not an example: a balance above gross would be the platform paying out money no
+    // buyer ever spent, and a negative one would be a seller owing us for having sold something.
+    for (const b of buildSellerBalances(SELLERS, STORES, REVENUE)) {
+      expect(b.totalEarnedAgorot).toBeLessThanOrEqual(b.grossRevenueAgorot);
+      expect(b.totalEarnedAgorot).toBeGreaterThanOrEqual(0);
+      expect(b.commissionAgorot).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('counts only the stores their owner actually owns', () => {
+    const balances = buildSellerBalances(SELLERS, STORES, REVENUE);
+    const byId = new Map(balances.map((b) => [b.sellerId, b]));
+    expect(byId.get('sel-a')!.stores.map((s) => s.storeId)).toEqual(['st-1', 'st-2']);
+    expect(byId.get('sel-b')!.stores.map((s) => s.storeId)).toEqual(['st-3']);
+    // A seller with no stores is still a row, at zero — an absent row would read as "not loaded".
+    expect(byId.get('sel-none')!.stores).toEqual([]);
+    expect(byId.get('sel-none')!.totalEarnedAgorot).toBe(0);
+    // And the platform total is every store's revenue, none double-counted.
+    expectSameMoney(
+      totalSellerBalances(balances).grossRevenueAgorot,
+      [...REVENUE.values()].reduce((a, r) => a + r.totalRevenueAgorot, 0),
+      'balance gross vs the revenue map it came from',
+    );
+  });
+
+  it('applies the seller\'s OWN tier, not one rate for everybody', () => {
+    // Two sellers on different tiers is the case a single platform-wide percent gets wrong the
+    // moment the second tier is sold — and it gets it wrong silently, in the platform's favour.
+    const byId = new Map(buildSellerBalances(SELLERS, STORES, REVENUE).map((b) => [b.sellerId, b]));
+    expect(byId.get('sel-a')!.commissionRate).toBe(commissionPercentForTier('starter'));
+    expect(byId.get('sel-b')!.commissionRate).toBe(commissionPercentForTier('enterprise'));
+    // An account with no tier recorded is the default tier, never zero commission.
+    expect(byId.get('sel-none')!.commissionRate).toBe(commissionPercentForTier(undefined));
+    expect(byId.get('sel-none')!.commissionRate).toBeGreaterThan(0);
+  });
+
+  it('is the same number the seller\'s own performance tab shows', () => {
+    // Two surfaces, one fact: the admin's "יתרה למוכר/ת" and the seller's "net profit" are the
+    // same subtraction, so they must not be able to disagree by an agora of rounding.
+    const rate = commissionPercentForTier('starter');
+    const sales = [
+      makeOrder('bal-1', { items: [{ productId: 'p1', priceAgorot: 1999, qty: 3 }], shippingAgorot: 2500 }),
+      makeOrder('bal-2', { items: [{ productId: 'p1', priceAgorot: 10000, qty: 1 }], shippingAgorot: 0, discount: { type: 'percent', value: 25, appliedAgorot: 2500 } }),
+    ];
+    const summary = buildPerformanceSummary(sales, EMPTY_VIEW_STATS, STORE, '2026-07-01', '2026-07-31', 'day', rate);
+    const balances = buildSellerBalances(
+      [SELLERS[0]!],
+      [{ id: 'st-1', slug: STORE, name: 'S1', sellerId: 'sel-a' }],
+      new Map([[STORE, { totalRevenueAgorot: summary.totalRevenueAgorot, monthRevenueAgorot: 0 }]]),
+    );
+    // Non-vacuous: two surfaces agreeing on zero would prove nothing, and the commission on this
+    // revenue does not divide evenly, so it is a real rounding both sides have to make the same way.
+    expect(summary.totalRevenueAgorot).toBeGreaterThan(0);
+    expect((summary.totalRevenueAgorot * rate) % 100).not.toBe(0);
+    expectSameMoney(balances[0]!.totalEarnedAgorot, summary.netProfitAgorot, 'admin balance vs seller net profit');
+    expectSameMoney(balances[0]!.commissionAgorot, summary.platformCommissionAgorot, 'admin commission vs seller commission');
   });
 });
 

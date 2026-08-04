@@ -81,6 +81,20 @@ export function commissionPercentForTier(id: string | undefined | null): number 
   return resolveTier(id).commissionPercent;
 }
 
+/**
+ * The platform's cut of a revenue figure held in integer AGOROT.
+ *
+ * Its own function because `money.ts#percentOf` is the ILS version — it rounds to two decimals,
+ * which on an agorot input leaves a fraction of an agora rather than removing one. This rounds to
+ * the agora, once, at the end. Written here rather than at each reporting surface so the seller's
+ * "platform commission" line, the admin's income line and a seller's accrued balance
+ * (lib/seller-balance.ts) are arithmetically the same number and not three roundings of it.
+ */
+export function commissionOnAgorot(revenueAgorot: number, commissionPercent: number): number {
+  if (!Number.isFinite(revenueAgorot) || !Number.isFinite(commissionPercent)) return 0;
+  return Math.round((revenueAgorot * commissionPercent) / 100);
+}
+
 /** The fixed monthly fee for a seller's tier, ILS. */
 export function monthlyFeeForTier(id: string | undefined | null): number {
   return resolveTier(id).monthlyFee;
