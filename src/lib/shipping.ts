@@ -36,3 +36,34 @@ export function normalizeDeliveryMethod(method: unknown, offersSelfPickup: boole
   const allowed = availableDeliveryMethods(offersSelfPickup) as string[];
   return typeof method === 'string' && allowed.includes(method) ? (method as DeliveryMethod) : 'courier';
 }
+
+/**
+ * schema.org `OfferShippingDetails` for a product offer — what Google's merchant-listing
+ * requirements ask for, and one of the inputs an AI shopping assistant reads before it will
+ * recommend an item ("does it ship to me, and for how much").
+ *
+ * Derived entirely from `SHIPPING_RATES` above, so it is zero-touch and can never disagree with
+ * what checkout actually charges. The courier rate is published (not the cheaper pickup point):
+ * a merchant listing states the cost of getting it to the buyer's address, and quoting the
+ * cheaper method as the shipping cost would understate what most shoppers pay.
+ *
+ * **`deliveryTime` is deliberately absent.** It is a recommended property, not a required one,
+ * and the platform has no delivery-time commitment yet — that arrives with the real carrier
+ * integration (GO_LIVE_CHECKLIST.md §5). An invented handling/transit window would be a promise
+ * published in structured data, which is the one place a guess becomes a claim. Add it here, once,
+ * when the carrier gives real numbers.
+ */
+export function offerShippingDetails(): Record<string, unknown> {
+  return {
+    '@type': 'OfferShippingDetails',
+    shippingRate: {
+      '@type': 'MonetaryAmount',
+      value: String(SHIPPING_RATES.courier),
+      currency: 'ILS',
+    },
+    shippingDestination: {
+      '@type': 'DefinedRegion',
+      addressCountry: 'IL',
+    },
+  };
+}

@@ -4,7 +4,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
 import { createProduct, updateProduct, deleteProduct, getProductById, getProductsByStoreId, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
 import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, comboStockRows, isFullyPerCombo, sumComboOverrides } from '../../lib/variant-combo.js';
-import { parseImages, parseCategoryId, parseSku, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
+import { parseImages, parseCategoryId, parseSku, parseBrand, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
 import { normalizeProductDiscount } from '../../lib/discount-input.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
@@ -99,6 +99,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const categoryId = await resolveCategoryId(parseCategoryId(form), storeId);
     const tags = parseTags(form);
     const sku = parseSku(form);
+    const brand = parseBrand(form);
     const specs = parseSpecs(form);
     const sellerNote = parseSellerNote(form);
     const discount = parseProductDiscount(form, price);
@@ -107,9 +108,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
     if (sku && await isSkuTaken(storeId, sku)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
-    const spamHit = findSpamKeyword(name, description, ...tags);
+    // `brand` joins the gate for the same reason name/description/tags are in it: it is seller
+    // free text that reaches a public surface (Product JSON-LD + the ad feed), so it is one more
+    // place to stuff keywords onto the shared domain.
+    const spamHit = findSpamKeyword(name, description, brand, ...tags);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
-    const stuffingHit = findKeywordStuffing(name, description, ...tags);
+    const stuffingHit = findKeywordStuffing(name, description, brand, ...tags);
     if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
     const catPathStr = categoryId ? categoryPath(await getCategoriesByStoreId(storeId), categoryId) : '';
@@ -121,6 +125,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       categoryId,
       tags: finalTags.length ? finalTags : undefined,
       sku: sku || undefined,
+      brand: brand || undefined,
       specs: specs.length ? specs : undefined,
       discount,
       sellerNote: sellerNote || undefined,
@@ -157,6 +162,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       categoryId: await resolveCategoryId(parseCategoryId(form), product.storeId),
       tags: parseTags(form),
       sku: parseSku(form) || undefined,
+      brand: parseBrand(form) || undefined,
       specs: parseSpecs(form),
       discount: parseProductDiscount(form, submittedPrice),
       sellerNote: parseSellerNote(form) || undefined,
@@ -188,6 +194,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const categoryId = merged.categoryId as string | undefined;
     const tags = (merged.tags ?? []) as string[];
     const sku = (merged.sku ?? '') as string;
+    const brand = (merged.brand ?? '') as string;
     const specs = (merged.specs ?? []) as ReturnType<typeof parseSpecs>;
     const sellerNote = (merged.sellerNote ?? '') as string;
     const discount = merged.discount as StoreProduct['discount'];
@@ -198,9 +205,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
     if (sku && await isSkuTaken(product.storeId, sku, productId)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
-    const spamHit = findSpamKeyword(name, description, ...tags);
+    const spamHit = findSpamKeyword(name, description, brand, ...tags);
     if (spamHit) return json({ ok: false, error: spamRejectionMessage(spamHit) }, 400);
-    const stuffingHit = findKeywordStuffing(name, description, ...tags);
+    const stuffingHit = findKeywordStuffing(name, description, brand, ...tags);
     if (stuffingHit) return json({ ok: false, error: stuffingRejectionMessage(stuffingHit) }, 400);
 
     // Per-combo SKUs are set only via CSV import; the editor doesn't render them, so preserve the
@@ -225,6 +232,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       categoryId,
       tags: finalTags.length ? finalTags : [],
       sku: sku || undefined,
+      brand: brand || undefined,
       specs: specs.length ? specs : [],
       discount,
       sellerNote: sellerNote || undefined,

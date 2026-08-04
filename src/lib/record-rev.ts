@@ -60,9 +60,14 @@ function normalize(value: unknown): unknown {
 }
 
 /** The product fields the dashboard's full edit form submits (api/product.ts `edit-product`). `variantSku` is deliberately absent — the editor preserves it rather than writing it, so a CSV import that only touched per-combo codes must not disturb an open edit row. */
+/** APPEND-ONLY, and positional — a rev is these fields' hashes joined in this order. Inserting
+ *  mid-list would make every open form's baseline describe the wrong fields; appending only makes
+ *  it the wrong LENGTH, which `mergeByFieldRev` already treats as "client doesn't speak revisions"
+ *  and falls back from safely (see its header). That is what makes adding a field deploy-safe. */
 export const PRODUCT_REV_FIELDS = [
   'name', 'description', 'price', 'stock', 'images', 'categoryId', 'tags',
   'sku', 'specs', 'discount', 'sellerNote', 'variants', 'variantStock', 'variantImages',
+  'brand',
 ] as const;
 
 /** The store fields the Settings form submits (api/store.ts `save-settings`). Everything else on the store — sale, bg colours, feed config, export token, custom domain, slug — saves live from its own section and is intentionally outside this revision. */

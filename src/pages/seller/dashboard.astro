@@ -14,6 +14,8 @@ import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import SkelBar from '../../components/dashboard/SkelBar.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
+import { productSeoPanelHtml, productSeoLabels } from '../../lib/product-seo-field.js';
+import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
 import { getSellerById, getSellerSession } from '../../lib/seller-auth.js';
@@ -124,6 +126,16 @@ const t    = getT(lang);
 const d    = t.dashboard;
 // Built once — the discount block's labels are the same for every product row.
 const discountLabels = discountFieldLabels(d);
+// Same, for the "will this be found" panel. `seoPreviewCtx` is per-store, not per-product; the
+// edit rows override `productSlug` from the product they render.
+const seoLabels = productSeoLabels(d);
+// Bare host for the preview's URL line — it is text a seller reads, never a link, so the origin
+// is stripped rather than rendered. Derived from the config so the go-live domain switch carries.
+const platformHost = new URL(platformConfig.url).host;
+/** A product that does not exist yet — what the add form's panel starts from. */
+const EMPTY_PRODUCT_SEO: ProductSeoInput = {
+  name: '', description: '', imageCount: 0, hasCategory: false, specCount: 0,
+};
 // "-25%" for any product a shopper currently sees discounted — its own markdown OR the running
 // store-wide sale. The seller asked "which of these is on sale", and the honest answer is the one
 // the storefront gives, so this resolves through the same discounts.ts, sale included.
@@ -246,6 +258,13 @@ if (store && store.id !== lastStoreId) {
     maxAge: 60 * 60 * 24 * 180,
   });
 }
+// Store-level context for the search preview in the product form's "will this be found" panel
+// (per-store, not per-product — each edit row overrides `productSlug` with its own).
+const seoPreviewCtx = {
+  storeName: store?.name ?? '',
+  storeSlug: store?.slug ?? '',
+  host: platformHost,
+};
 const settingsSuccess = !hasNoStore && Astro.url.searchParams.get('saved') === '1';
 const productSuccess = !hasNoStore && Astro.url.searchParams.get('added') === '1';
 // **Six reads that only ever needed `store`, issued together (2026-08-03).** They were awaited one
@@ -569,7 +588,7 @@ const orderStatusColors: Record<string, string> = {
   ) : store ? (
   <Fragment>
   <FormFallbackGuard message={d.saveUnavailable} draftFound={d.draftFound} draftRestore={d.draftRestore} draftDiscard={d.draftDiscard} />
-  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
+  <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-host={platformHost} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
   <section class="section container dash-section dash-section--bleed">
     <div id="dash-main-card" class="card seller-dash" style="margin-bottom:1.5rem">
 
@@ -972,6 +991,17 @@ const orderStatusColors: Record<string, string> = {
                 <input class="input" id="add-product-sku" name="sku" placeholder={d.skuPlaceholder} />
               </div>
 
+              {/* The placeholder IS the explanation: an empty field showing the store's own name
+                  greyed out says "this is what will be published" without the seller reading the
+                  tip. Only a reseller needs to type anything here. */}
+              <div class="field max-w-[280px] mt-3">
+                <label class="inline-flex items-center gap-[0.35rem]" for="add-product-brand">
+                  {d.brandLabel}
+                </label>
+                <InfoTip text={d.brandHint} class="ms-[0.35rem]" />
+                <input class="input" id="add-product-brand" name="brand" maxlength="70" placeholder={store.name} />
+              </div>
+
               <div class="field max-w-none" data-tags-field>
                 <span class="inline-flex items-center gap-[0.35rem]">
                   {d.tagsLabel}
@@ -1033,6 +1063,10 @@ const orderStatusColors: Record<string, string> = {
                 <span class="field-label">{d.productImages}</span>
                 <div set:html={galleryWidgetHtml([], g)}></div>
               </div>
+
+              {/* Advice, never a gate — it sits ABOVE the submit row on purpose (a seller reads it
+                  on the way to saving) and disables nothing. See lib/product-seo-field.ts. */}
+              <div set:html={productSeoPanelHtml(EMPTY_PRODUCT_SEO, seoPreviewCtx, seoLabels)}></div>
 
               <div class="flex gap-2 mt-2">
                 <button class="btn" type="submit">{d.addProductBtn}</button>
@@ -1328,6 +1362,15 @@ const orderStatusColors: Record<string, string> = {
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                         {d.productHiddenChip}
                       </span>
+                      {/* NO "this listing is thin" marker here — tried and removed 2026-08-04, do not
+                          re-add without solving the column first. `.name-col` is 13% under
+                          `table-layout: fixed`: a text pill wraps to two lines and reads as a fault, an
+                          icon-only version (a magnifying glass) could not be decoded even by the person
+                          who commissioned it, and giving it its own line adds height to exactly the rows
+                          that already differ. The guidance lives in the edit form's panel, which has the
+                          room for it. If per-row discovery is wanted later, a TOOLBAR FILTER is the
+                          shape that fits this table — `needsSeoAttention` in product-seo-hints.ts is
+                          the predicate, already tested. */}
                       {p.description && <span class="product-desc">{p.description}</span>}
                     </td>
                     <td class="sku-col"><span class="sku-col-label">{d.skuLabel}: </span>{p.sku || <span style="color:var(--color-border)">—</span>}</td>
@@ -1467,6 +1510,12 @@ const orderStatusColors: Record<string, string> = {
                             <span>{d.skuLabel}</span>
                             <input class="input" name="sku" value={p.sku ?? ''} placeholder={d.skuPlaceholder} />
                           </label>
+                          {/* Third cell of the existing 3-column grid — the row already had a free
+                              slot, so brand costs no extra vertical space in an already long form. */}
+                          <label class="field max-w-[280px]">
+                            <span>{d.brandLabel}</span>
+                            <input class="input" name="brand" maxlength="70" value={p.brand ?? ''} placeholder={store.name} />
+                          </label>
                         </div>
 
                         <div class="field max-w-none" data-tags-field>
@@ -1602,6 +1651,9 @@ const orderStatusColors: Record<string, string> = {
                           <span class="field-label">{d.productImages}</span>
                           <div set:html={galleryWidgetHtml(p.images ?? [], g)}></div>
                         </div>
+                        {/* Rendered from the STORED product, so it is already correct on first
+                            paint and the script only has to keep it correct. */}
+                        <div set:html={productSeoPanelHtml(productSeoInputFrom(p), { ...seoPreviewCtx, productSlug: p.slug }, seoLabels)}></div>
                         <div class="flex gap-2 mt-2">
                           <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
                           <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit={p.id}>{d.cancel}</button>
@@ -3015,14 +3067,19 @@ const orderStatusColors: Record<string, string> = {
 
   const LOADERS: Record<string, () => Promise<void>> = {
     products: async () => {
-      const [p, gallery, csv, picker, select] = await Promise.all([
+      const [p, gallery, csv, picker, select, seo] = await Promise.all([
         import('../../scripts/dashboard/products.js'),
         import('../../scripts/dashboard/gallery.js'),
         import('../../scripts/dashboard/csv-import.js'),
         import('../../scripts/dashboard/category-picker.js'),
         import('../../scripts/dashboard/select-dropdown.js'),
+        import('../../scripts/dashboard/product-seo.js'),
         imageEditors(),
       ]);
+      // Delegated at the document, so it covers rows the table rebuilds later too. Registered
+      // first because it only ever reads the form and rewrites a block of static text — it can
+      // never interfere with an editor below, and every one of them writes fields it reads.
+      seo.initProductSeoHints();
       p.initSpecsEditors();
       // Registered before the editors below: its document-level click listener
       // must see the pre-click "is anything armed?" state before either editor's

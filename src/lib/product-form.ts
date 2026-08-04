@@ -20,6 +20,13 @@ export function parseSku(form: FormData): string {
   return String(form.get('sku') ?? '').trim();
 }
 
+/** The manufacturer's brand, for a reseller. Capped because it is a name, not a description —
+ *  and it lands in the ad feed and the Product JSON-LD, where a pasted paragraph is a rejected
+ *  item rather than a long one. Blank is the normal answer: it keeps the store-name fallback. */
+export function parseBrand(form: FormData): string {
+  return String(form.get('brand') ?? '').trim().slice(0, 70);
+}
+
 /** Private seller-only note. Capped to keep a runaway paste out of the JSON store. */
 export function parseSellerNote(form: FormData): string {
   return String(form.get('sellerNote') ?? '').trim().slice(0, 2000);

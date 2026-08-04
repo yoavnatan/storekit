@@ -8,7 +8,8 @@ import { isDemoStore } from '../../lib/demo-stores.js';
 import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../lib/store-products.js';
 import { store as platform, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
-import { resolvePrice } from '../../lib/discounts.js';
+import { resolvePrice, priceValidUntil } from '../../lib/discounts.js';
+import { offerShippingDetails } from '../../lib/shipping.js';
 import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
 import StoreSaleBanner from '../../components/StoreSaleBanner.astro';
 import OwnerStoreBar from '../../components/OwnerStoreBar.astro';
@@ -139,6 +140,8 @@ const saleScopeLabel = saleScopeCategoryLabel(storeCategoriesForProduct, shopSto
 // The price to display, charge and publish — resolved once from the product + its store's
 // sale, exactly as /api/checkout resolves it (discounts.ts).
 const pv = resolvePrice(product, shopStore.sale);
+// The day this price stops holding, when a dated sale is what produced it (discounts.ts).
+const saleEndsAfter = priceValidUntil(product, shopStore.sale);
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -146,9 +149,11 @@ const jsonLd = {
   name: product.name,
   ...(product.description ? { description: product.description } : {}),
   ...(images.length ? { image: images } : {}),
-  // brand/sku/mpn enrich both Google rich results and AI-answer comprehension
-  // (AIO) — a small business is its own brand; the SKU doubles as the mpn.
-  brand: { '@type': 'Brand', name: shopStore.name },
+  // brand/sku/mpn enrich both Google rich results and AI-answer comprehension (AIO). The
+  // seller's own brand field when they set one (a reseller listing someone else's product),
+  // else the store name — a small business is its own brand. Same fallback as the ad feed
+  // (product-feed.ts), on purpose: the two must never name a different brand for one product.
+  brand: { '@type': 'Brand', name: product.brand?.trim() || shopStore.name },
   ...(product.sku ? { sku: product.sku, mpn: product.sku } : {}),
   ...(productCategoryPathStr ? { category: productCategoryPathStr } : {}),
   ...(product.tags?.length ? { keywords: product.tags.join(', ') } : {}),
@@ -164,12 +169,19 @@ const jsonLd = {
     '@type': 'Offer',
     price: String(pv.price),
     priceCurrency: 'ILS',
+    // Google's merchant-listing requirements: without it the discounted price is treated as
+    // open-ended and can be shown after the sale has ended. Omitted when there is no sale or
+    // no end date — see discounts.ts#priceValidUntil for the inclusive/exclusive off-by-one.
+    ...(saleEndsAfter ? { priceValidUntil: saleEndsAfter } : {}),
     itemCondition: 'https://schema.org/NewCondition',
     availability: isProductInStock(product.stock, product.variants, product.variantStock)
       ? 'https://schema.org/InStock'
       : 'https://schema.org/OutOfStock',
     url: productUrl,
     seller: { '@type': 'Organization', name: shopStore.name },
+    // Platform-set, identical for every store (shipping.ts) — a merchant listing has to say
+    // what delivery costs, and it is also what an AI shopping answer checks before recommending.
+    shippingDetails: offerShippingDetails(),
   },
 };
 

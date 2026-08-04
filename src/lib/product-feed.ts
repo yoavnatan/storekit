@@ -18,8 +18,9 @@ import { xmlEscape, xmlCdata } from './xml-text.js';
 //
 // Attributes and how each is sourced:
 //   gender / age_group  → inferred from category + name + tags (audience-infer)
-//   brand               → the store name (a small business is its own brand;
-//                         a future optional product override can supersede it)
+//   brand               → the product's own `brand` when the seller set one (a
+//                         reseller listing someone else's goods), else the store
+//                         name (a small business is its own brand)
 //   condition           → 'new' (platform sellers are registered businesses
 //                         selling new goods — not a P2P used-goods marketplace)
 //   mpn                 → the seller SKU; gtin stays optional (many SKUs have
@@ -88,7 +89,10 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
   const a = inferAgeGroup(inferText);
   const ageGroup: FeedAttributes['ageGroup'] = a === 'infant' ? 'infant' : a === 'kids' ? 'kids' : 'adult';
 
-  const brand = ctx.storeName;
+  // The seller's own brand field when they filled one in (a reseller listing someone else's
+  // product), else the store name. Merchant Center matches listings across the market on brand,
+  // so getting this wrong doesn't just mislabel the item — it stops it joining the real product.
+  const brand = product.brand?.trim() || ctx.storeName;
   const mpn = product.sku || undefined;
   const gtin = undefined; // no barcode field yet — optional in the feed spec
   const identifierExists = Boolean(gtin || (mpn && brand));

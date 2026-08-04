@@ -29,6 +29,18 @@ describe('buildProductFeedAttributes', () => {
     expect(f.condition).toBe('new');
   });
 
+  it("publishes the product's OWN brand when the seller set one — the reseller case", () => {
+    // Merchant Center matches listings across the market on brand, so a distributor's product
+    // labelled with the shop's name competes as a one-off instead of joining the real product.
+    const f = buildProductFeedAttributes(product({ brand: 'Nike' }), { storeName: 'סטור ABC' });
+    expect(f.brand).toBe('Nike');
+  });
+
+  it('falls back to the store name for a blank/whitespace brand, never publishing an empty one', () => {
+    expect(buildProductFeedAttributes(product({ brand: '   ' }), { storeName: 'סטור ABC' }).brand).toBe('סטור ABC');
+    expect(buildProductFeedAttributes(product({ brand: '' }), { storeName: 'סטור ABC' }).brand).toBe('סטור ABC');
+  });
+
   it('uses the SKU as mpn and reports identifierExists via brand+mpn', () => {
     const withSku = buildProductFeedAttributes(product({ sku: 'ABC-1' }), { storeName: 'חנות' });
     expect(withSku.mpn).toBe('ABC-1');

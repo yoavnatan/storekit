@@ -205,12 +205,40 @@ const newTabInvites = launchMode
   ? Math.max(MIN_SHELF_INVITES, launchInviteCount(feed.newStores.length))
   : (feed.newStores.length === 0 ? MIN_SHELF_INVITES : (shelfInvite ? 1 : 0));
 
+// Two nodes in one graph rather than two separate <script> blocks: they describe the same
+// subject, and `@graph` is how you say "the Organization and the WebSite are this site" without
+// making a parser guess. `WebSite` + `SearchAction` is what makes a sitelinks search box possible
+// in Google's result for the platform, and it is also the machine-readable statement that this
+// site HAS a search — an AI answer engine looking for a way to query the catalog reads it here.
+// The `{search_term_string}` placeholder is the protocol's own literal, not a template hole:
+// Google substitutes the shopper's query into it. `/search?q=` must stay the real search route.
 const jsonLd = {
   '@context': 'https://schema.org',
-  '@type': 'Organization',
-  name: platform.name,
-  url: platform.url,
-  description: platform.description,
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${platform.url}#organization`,
+      name: platform.name,
+      url: platform.url,
+      description: platform.description,
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${platform.url}#website`,
+      name: platform.name,
+      url: platform.url,
+      inLanguage: platform.language,
+      publisher: { '@id': `${platform.url}#organization` },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: `${platform.url}/search?q={search_term_string}`,
+        },
+        'query-input': 'required name=search_term_string',
+      },
+    },
+  ],
 };
 
 ---

@@ -59,6 +59,14 @@ export interface StoreProduct {
   tags?: string[];
   /** Seller-defined product code (SKU) — distinct from `id` (our internal UUID); optional, unique per store when set. */
   sku?: string;
+  /** The manufacturer's brand, when it ISN'T the store itself — a reseller/distributor listing
+   *  someone else's product. Absent (the common case: a business selling what it makes) falls
+   *  back to the store name, which is what the feed and the Product JSON-LD did unconditionally
+   *  until 2026-08-04. That fallback is right for a maker and WRONG for a reseller, and Merchant
+   *  Center matches products on brand — so an unbranded reseller listing competes as its own
+   *  one-off product instead of joining the real one. Never write the store name in here: an
+   *  empty value is what keeps the fallback live if the store is later renamed. */
+  brand?: string;
   specs?: ProductSpec[];
   variants?: ProductVariant[];
   /** Optional per-combination stock override, keyed by variant-combo.ts#comboKey(). Combos with no entry fall back to `stock`. */
@@ -105,7 +113,7 @@ export interface StoreProduct {
  * across a timezone boundary (§7.8) — a sale that starts tomorrow is stored as text and read as
  * the same text.
  */
-const COLUMNS = `p.id, p.store_id, p.slug, p.name, p.description, p.price_agorot, p.stock, p.sku,
+const COLUMNS = `p.id, p.store_id, p.slug, p.name, p.description, p.price_agorot, p.stock, p.sku, p.brand,
     p.category_id, p.hidden, p.blocked, p.tags, p.specs, p.variants, p.seller_note,
     p.discount_type, p.discount_percent, p.discount_amount_agorot, p.discount_show_badge,
     to_char(p.discount_starts_at, 'YYYY-MM-DD') AS discount_starts_at,
@@ -141,6 +149,7 @@ interface ProductRow {
   price_agorot: number;
   stock: number;
   sku: string | null;
+  brand: string | null;
   category_id: string | null;
   hidden: boolean;
   blocked: boolean;
@@ -205,6 +214,7 @@ function toProduct(row: ProductRow): StoreProduct {
   if (row.category_id) product.categoryId = row.category_id;
   if (row.tags?.length) product.tags = row.tags;
   if (row.sku) product.sku = row.sku;
+  if (row.brand) product.brand = row.brand;
   if (row.specs?.length) product.specs = row.specs;
   if (row.variants?.length) product.variants = row.variants;
   const variantStock = nonEmpty(row.variant_stock);
@@ -276,6 +286,7 @@ interface CreateProductInput {
   categoryId?: string;
   tags?: string[];
   sku?: string;
+  brand?: string;
   specs?: ProductSpec[];
   discount?: ProductDiscount;
   sellerNote?: string;
@@ -415,7 +426,7 @@ export async function createProduct(storeId: string, input: CreateProductInput):
  */
 export async function createProductIn(tx: Queryable, storeId: string, input: CreateProductInput): Promise<StoreProduct> {
   const {
-    name, description = '', price, stock = 0, images, categoryId, tags, sku, specs,
+    name, description = '', price, stock = 0, images, categoryId, tags, sku, brand, specs,
     discount, sellerNote, variants, variantStock, variantSku, variantImages,
   } = input;
   const base = slugify(name) || 'product';
@@ -427,17 +438,17 @@ export async function createProductIn(tx: Queryable, storeId: string, input: Cre
     const id = crypto.randomUUID();
     const { rows: created } = await tx.query<{ id: string }>(
       `INSERT INTO store_products (
-         id, store_id, slug, name, description, price_agorot, stock, sku, category_id,
+         id, store_id, slug, name, description, price_agorot, stock, sku, brand, category_id,
          tags, specs, variants, seller_note,
          discount_type, discount_percent, discount_amount_agorot, discount_show_badge,
          discount_starts_at, discount_ends_at, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::uuid,
-               $10::text[], $11::jsonb, $12::jsonb, $13,
-               $14, $15, $16, $17, $18::date, $19::date, now())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid,
+               $11::text[], $12::jsonb, $13::jsonb, $14,
+               $15, $16, $17, $18, $19::date, $20::date, now())
        ON CONFLICT (store_id, slug) DO NOTHING
        RETURNING id`,
       [
-        id, storeId, slug, name, description, agorot(price), units(stock), sku || null,
+        id, storeId, slug, name, description, agorot(price), units(stock), sku || null, brand || null,
         categoryId && isUuid(categoryId) ? categoryId : null,
         tags?.length ? tags : [],
         JSON.stringify(specs ?? []),
@@ -836,6 +847,7 @@ const UPDATABLE: Record<string, { sql: string; value: (v: unknown) => unknown }>
   price: { sql: 'price_agorot = $', value: (v) => agorot(v) },
   stock: { sql: 'stock = $', value: (v) => units(v) },
   sku: { sql: 'sku = $', value: (v) => (v ? String(v) : null) },
+  brand: { sql: 'brand = $', value: (v) => (v ? String(v) : null) },
   categoryId: { sql: 'category_id = $::uuid', value: (v) => (typeof v === 'string' && isUuid(v) ? v : null) },
   tags: { sql: 'tags = $::text[]', value: (v) => (Array.isArray(v) ? v : []) },
   specs: { sql: 'specs = $::jsonb', value: (v) => JSON.stringify(Array.isArray(v) ? v : []) },

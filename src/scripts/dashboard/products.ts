@@ -17,6 +17,9 @@ import { initCategoryPicker } from './category-picker.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
 import { suggestTags } from '../../lib/tag-suggest.js';
 import { discountFieldHtml, discountFieldLabels } from '../../lib/discount-field.js';
+import { productSeoPanelHtml, productSeoLabels, type ProductSeoPreview } from '../../lib/product-seo-field.js';
+import { productSeoInputFrom } from '../../lib/product-seo-hints.js';
+import { refreshProductSeoPanels } from './product-seo.js';
 import { resolvePrice, type ProductDiscount, type StoreSale } from '../../lib/discounts.js';
 import { refreshDiscountFieldsIn } from './discount-field.js';
 import { markDashboardStale, conflictMessage, registerPanelRefresh } from './tab-sync.js';
@@ -25,6 +28,8 @@ export interface ProductData {
   id: string; storeId: string; slug?: string; name: string;
   description: string; price: number; stock: number; images?: string[];
   categoryId?: string; tags?: string[]; sku?: string;
+  /** Empty/absent = the store's own name is published as the brand (store-products.ts). */
+  brand?: string;
   specs?: Array<{ label: string; value: string }>;
   sellerNote?: string;
   /** The product's own markdown, so a client-rebuilt edit row shows the same discount block the
@@ -266,6 +271,25 @@ function skuFieldHtml(sku: string, i18n: Record<string, string>): string {
   return `<label class="field max-w-[280px]">
     <span>${esc(i18n.skuLabel ?? 'SKU')}</span>
     <input class="input" name="sku" value="${esc(sku)}" placeholder="${esc(i18n.skuPlaceholder ?? '')}">
+  </label>`;
+}
+
+/** Mirrors the server-rendered brand cell in dashboard.astro. It has to exist here too, and not
+ *  only because it would look different: this form submits EVERY field, so a rebuilt row that
+ *  omitted `brand` would send none and clear the seller's stored value on the next save. The
+ *  placeholder is the store's own name — the same "this is what gets published" hint. */
+/** Store-level context for the search preview, read from the same `#upload-config` element the
+ *  uploader and the store switcher use — one place holding "which store is open". */
+function seoPreviewCtx(): ProductSeoPreview {
+  const cfg = document.getElementById('upload-config')?.dataset ?? {};
+  return { storeName: cfg.storeName ?? '', storeSlug: cfg.storeSlug ?? '', host: cfg.host ?? '' };
+}
+
+function brandFieldHtml(brand: string, i18n: Record<string, string>): string {
+  const storeName = document.getElementById('upload-config')?.dataset.storeName ?? '';
+  return `<label class="field max-w-[280px]">
+    <span>${esc(i18n.brandLabel ?? 'Brand')}</span>
+    <input class="input" name="brand" maxlength="70" value="${esc(brand)}" placeholder="${esc(storeName)}">
   </label>`;
 }
 
@@ -1592,7 +1616,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
         </div>
         ${discountFieldHtml(p.discount, discountFieldLabels(i))}
         <label class="field"><span>${i.descLabel ?? 'Description'}</span><textarea class="input" name="description" rows="2">${esc(p.description)}</textarea></label>
-        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">${categoryFieldHtml(p.categoryId ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}</div>
+        <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">${categoryFieldHtml(p.categoryId ?? '', i)}${skuFieldHtml(p.sku ?? '', i)}${brandFieldHtml(p.brand ?? '', i)}</div>
         ${tagsFieldHtml(p.tags ?? [], i)}
         ${variantsEditorHtml(p.variants ?? [], p.variantStock ?? {}, p.stock, i, p.variantImages ?? {})}
         ${specsEditorHtml(p.specs ?? [], i)}
@@ -1601,6 +1625,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
           <span class="field-label">${i.productImages ?? 'Product images'}</span>
           ${galleryWidgetHtml(p.images ?? [], g)}
         </div>
+        ${productSeoPanelHtml(productSeoInputFrom(p), { ...seoPreviewCtx(), productSlug: p.slug }, productSeoLabels(i))}
         <div class="flex gap-2 mt-2">
           <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">${i.save ?? 'Save'}</button>
           <button class="btn btn--ghost btn--sm" type="button" data-cancel-edit="${p.id}">${i.cancel ?? 'Cancel'}</button>
@@ -1870,7 +1895,9 @@ function scrollStickyHeaderIntoView(container: HTMLElement, headerSelector: stri
   const header = container.querySelector<HTMLElement>(headerSelector);
   if (!header) return;
 
-  // margin 0: this header is itself sticky and should land flush at its own pinned offset.
+  // margin 0: land it flush against the bottom of whatever is pinned above it. (The edit-row
+  // header used to be sticky itself and this read "at its own pinned offset" — it is not anymore,
+  // see .edit-row-header in dashboard.css, but flush is still exactly where it belongs.)
   const scrollToHeader = () => scrollBelowPinnedChrome(header, 0);
   scrollToHeader();
 
@@ -2003,6 +2030,10 @@ export function initAddProduct(cloud: string, preset: string): void {
       resetVariantsEditor(addForm);
       resetTagsField(addForm);
       if (gallery) resetGallery(gallery);
+      // Same reason as the three resets above: `form.reset()` fires no `input`/`change`, so the
+      // panel would go on describing the product that was just saved while the form behind it is
+      // blank — advice about a listing that no longer exists in it.
+      refreshProductSeoPanels(addForm);
       addFormWrap?.setAttribute('hidden', '');
       document.getElementById('toggle-add-form')?.removeAttribute('hidden');
       showStatus(i18n.productAdded ?? 'Product added.');

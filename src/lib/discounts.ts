@@ -24,6 +24,9 @@
  */
 
 import { roundMoney } from './money.js';
+// A sale's endsAt is a date-only string on a synthetic calendar, not an instant — the
+// `calendar*` family, never the `business*` one (business-day.ts's file header says why).
+import { calendarDayISO, isDayISO } from './business-day.js';
 
 export type DiscountType = 'percent' | 'amount';
 
@@ -155,6 +158,37 @@ export function resolvePrice(
     showBadge: best.showBadge,
     source: best.source,
   };
+}
+
+/**
+ * The date the currently-shown price stops being the price — schema.org `priceValidUntil`, which
+ * Google requires on a merchant listing offer and treats as "after this, the price is unknown".
+ *
+ * Derived from whichever discount actually WON (`PriceView.source`), never from whatever schedule
+ * happens to exist: a product carrying a dated markdown that lost to a bigger store-wide sale
+ * would otherwise publish an expiry belonging to a price nobody is being charged.
+ *
+ * **The off-by-one is the whole point.** `endsAt` here is INCLUSIVE — the sale runs through the
+ * end of that day (see the field's own comment) — while `priceValidUntil` is the first day the
+ * price no longer holds. So it is the day AFTER, computed in UTC because these are date-only
+ * strings on a synthetic calendar, not instants (business-day.ts's distinction). Publishing the
+ * inclusive last day instead would retire the rich result a day early, every time.
+ *
+ * Undefined when the price is not discounted, or the winning discount has no end date — an
+ * open-ended price has no expiry to state, and omitting the property is how you say that.
+ */
+export function priceValidUntil(
+  product: { id?: string; price: number; discount?: ProductDiscount; categoryId?: string },
+  sale?: StoreSale | null,
+  now: Date = new Date(),
+): string | undefined {
+  const view = resolvePrice(product, sale, now);
+  if (!view.isDiscounted) return undefined;
+  const endsAt = view.source === 'product' ? product.discount?.endsAt : sale?.endsAt;
+  if (!endsAt || !isDayISO(endsAt)) return undefined;
+  const dayAfter = new Date(`${endsAt}T00:00:00Z`);
+  dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
+  return calendarDayISO(dayAfter);
 }
 
 /** Convenience for the many call sites that only need the number to charge/display. */

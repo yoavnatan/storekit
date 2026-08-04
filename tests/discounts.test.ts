@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  discountedPrice, effectivePrice, isSaleScoped, isScheduleOpen, isStoreSaleLive, resolvePrice, saleCoversProduct,
+  discountedPrice, effectivePrice, isSaleScoped, isScheduleOpen, isStoreSaleLive, priceValidUntil, resolvePrice, saleCoversProduct,
   type ProductDiscount, type StoreSale,
 } from '../src/lib/discounts.js';
 import { clampDiscountValue, normalizeDay, normalizeProductDiscount, normalizeStoreSale } from '../src/lib/discount-input.js';
@@ -323,5 +323,49 @@ describe('CSV sale-price column', () => {
   it('treats a blank cell as "leave unchanged" and 0 as "end the sale"', () => {
     expect(validateRows([row({ name: 'חולצה', price: '100' })], new Set())[0]!.input!.salePrice).toBeUndefined();
     expect(validateRows([row({ name: 'חולצה', price: '100', salePrice: '0' })], new Set())[0]!.input!.salePrice).toBe(0);
+  });
+});
+
+describe('priceValidUntil — schema.org merchant-listing expiry', () => {
+  const AUG4 = new Date('2026-08-04T09:00:00Z');
+  const product = (discount?: ProductDiscount) => ({ id: 'p1', price: 100, discount });
+
+  it('is absent when nothing is discounted — an undated price has no expiry to state', () => {
+    expect(priceValidUntil(product(), undefined, AUG4)).toBeUndefined();
+  });
+
+  it('is absent when the winning discount runs open-ended', () => {
+    expect(priceValidUntil(product({ type: 'percent', value: 20 }), undefined, AUG4)).toBeUndefined();
+  });
+
+  it('is the day AFTER the last sale day, because endsAt is inclusive', () => {
+    // The off-by-one this function exists for: the sale runs THROUGH 2026-08-10, so the price
+    // stops holding on the 11th. Publishing the 10th retires the rich result a day early.
+    expect(priceValidUntil(product({ type: 'percent', value: 20, endsAt: '2026-08-10' }), undefined, AUG4))
+      .toBe('2026-08-11');
+  });
+
+  it('rolls over a month and a year boundary', () => {
+    expect(priceValidUntil(product({ type: 'percent', value: 20, endsAt: '2026-08-31' }), undefined, AUG4)).toBe('2026-09-01');
+    expect(priceValidUntil(product({ type: 'percent', value: 20, endsAt: '2026-12-31' }), undefined, AUG4)).toBe('2027-01-01');
+  });
+
+  it('takes the date from the discount that actually WON, not from whichever one has a date', () => {
+    // The product's own dated markdown loses to the bigger store-wide sale, so publishing its
+    // end date would state an expiry for a price nobody is being charged.
+    const sale: StoreSale = { active: true, title: 'סוף עונה', percent: 50, endsAt: '2026-09-30' };
+    const p = product({ type: 'percent', value: 10, endsAt: '2026-08-10' });
+    expect(effectivePrice(p, sale, AUG4)).toBe(50);
+    expect(priceValidUntil(p, sale, AUG4)).toBe('2026-10-01');
+  });
+
+  it('is absent when the winning store sale has no end date, even if the losing markdown does', () => {
+    const sale: StoreSale = { active: true, title: 'סוף עונה', percent: 50 };
+    expect(priceValidUntil(product({ type: 'percent', value: 10, endsAt: '2026-08-10' }), sale, AUG4)).toBeUndefined();
+  });
+
+  it('ignores a malformed stored date rather than emitting junk into the JSON-LD', () => {
+    expect(priceValidUntil(product({ type: 'percent', value: 20, endsAt: '2026-02-30' }), undefined, AUG4)).toBeUndefined();
+    expect(priceValidUntil(product({ type: 'percent', value: 20, endsAt: 'soon' }), undefined, AUG4)).toBeUndefined();
   });
 });

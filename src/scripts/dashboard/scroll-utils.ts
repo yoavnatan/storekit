@@ -89,6 +89,14 @@ export function pinnedTopChrome(el: HTMLElement): number {
     const panel = el.closest<HTMLElement>('.dash-panel');
     if (panel) stack += barH('.dash-panel-head', panel) + barH('.products-header', panel);
   }
+  // The products table's column headings are sticky too, and they are the LAST bar in the stack —
+  // but only for a target inside that table. Counted unconditionally they would over-scroll every
+  // target that sits ABOVE it (the CSV and feed-sync panels both do), leaving a gap instead of
+  // landing flush. Matters since 2026-08-04, when the headings stopped unsticking for an open edit
+  // row: without this, clicking "edit" parked the form's own header — with its Save button —
+  // underneath them.
+  const table = el.closest<HTMLElement>('#products-table');
+  if (table) stack += barH('thead th', table);
   return stack;
 }
 

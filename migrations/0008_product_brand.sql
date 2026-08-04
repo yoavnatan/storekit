@@ -1,0 +1,12 @@
+-- The manufacturer's brand, for the reseller case.
+--
+-- Until now both the ad feed (product-feed.ts) and the Product JSON-LD hardcoded
+-- `brand = store name`, on the assumption that a small business is its own brand. True for a
+-- maker, false for anyone distributing someone else's product — and Merchant Center matches
+-- products across the market on brand, so an unbranded reseller listing competes as a one-off
+-- instead of joining the real product.
+--
+-- NULL keeps the store-name fallback, so every existing row behaves exactly as it does today and
+-- no backfill is needed. Additive column, safe under the zero-downtime rule: the previous deploy
+-- neither reads nor writes it.
+ALTER TABLE store_products ADD COLUMN IF NOT EXISTS brand text;
