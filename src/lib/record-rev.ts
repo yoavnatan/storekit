@@ -67,7 +67,7 @@ function normalize(value: unknown): unknown {
 export const PRODUCT_REV_FIELDS = [
   'name', 'description', 'price', 'stock', 'images', 'categoryId', 'tags',
   'sku', 'specs', 'discount', 'sellerNote', 'variants', 'variantStock', 'variantImages',
-  'brand',
+  'brand', 'weightGrams',
 ] as const;
 
 /** The store fields the Settings form submits (api/store.ts `save-settings`). Everything else on the store — sale, bg colours, feed config, export token, custom domain, slug — saves live from its own section and is intentionally outside this revision. */

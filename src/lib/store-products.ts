@@ -30,6 +30,7 @@ import crypto from 'node:crypto';
 import { comboKey, isFullyPerCombo } from './variant-combo.js';
 import { toSlug } from './url-base.js';
 import { fromAgorot, toAgorot } from './money.js';
+import { parseWeightGrams } from './product-weight.js';
 import { MAX_DISCOUNT_PERCENT, MIN_DISCOUNT_PERCENT, type ProductDiscount } from './discounts.js';
 import { normalizeHe } from './product-listing.js';
 import { firstRow, isUuid, query, rows, withTransaction, type Queryable } from './db.js';
@@ -67,6 +68,12 @@ export interface StoreProduct {
    *  one-off product instead of joining the real one. Never write the store name in here: an
    *  empty value is what keeps the fallback live if the store is later renamed. */
   brand?: string;
+  /** Shipping weight in whole GRAMS, absent when the seller has not stated one — and absent is not
+   *  zero (lib/product-weight.ts). Collected before there is anything to price it: the carrier
+   *  quotes on address + weight, so a catalogue that starts filling in today is one that does not
+   *  have to be revisited the day Sendit is connected. Already read by the ad feed's
+   *  `shipping_weight`. */
+  weightGrams?: number;
   specs?: ProductSpec[];
   variants?: ProductVariant[];
   /** Optional per-combination stock override, keyed by variant-combo.ts#comboKey(). Combos with no entry fall back to `stock`. */
@@ -114,6 +121,7 @@ export interface StoreProduct {
  * the same text.
  */
 const COLUMNS = `p.id, p.store_id, p.slug, p.name, p.description, p.price_agorot, p.stock, p.sku, p.brand,
+    p.weight_grams,
     p.category_id, p.hidden, p.blocked, p.tags, p.specs, p.variants, p.seller_note,
     p.discount_type, p.discount_percent, p.discount_amount_agorot, p.discount_show_badge,
     to_char(p.discount_starts_at, 'YYYY-MM-DD') AS discount_starts_at,
@@ -150,6 +158,7 @@ interface ProductRow {
   stock: number;
   sku: string | null;
   brand: string | null;
+  weight_grams: number | null;
   category_id: string | null;
   hidden: boolean;
   blocked: boolean;
@@ -215,6 +224,7 @@ function toProduct(row: ProductRow): StoreProduct {
   if (row.tags?.length) product.tags = row.tags;
   if (row.sku) product.sku = row.sku;
   if (row.brand) product.brand = row.brand;
+  if (row.weight_grams) product.weightGrams = row.weight_grams;
   if (row.specs?.length) product.specs = row.specs;
   if (row.variants?.length) product.variants = row.variants;
   const variantStock = nonEmpty(row.variant_stock);
@@ -287,6 +297,7 @@ interface CreateProductInput {
   tags?: string[];
   sku?: string;
   brand?: string;
+  weightGrams?: number;
   specs?: ProductSpec[];
   discount?: ProductDiscount;
   sellerNote?: string;
@@ -426,7 +437,7 @@ export async function createProduct(storeId: string, input: CreateProductInput):
  */
 export async function createProductIn(tx: Queryable, storeId: string, input: CreateProductInput): Promise<StoreProduct> {
   const {
-    name, description = '', price, stock = 0, images, categoryId, tags, sku, brand, specs,
+    name, description = '', price, stock = 0, images, categoryId, tags, sku, brand, weightGrams, specs,
     discount, sellerNote, variants, variantStock, variantSku, variantImages,
   } = input;
   const base = slugify(name) || 'product';
@@ -438,17 +449,18 @@ export async function createProductIn(tx: Queryable, storeId: string, input: Cre
     const id = crypto.randomUUID();
     const { rows: created } = await tx.query<{ id: string }>(
       `INSERT INTO store_products (
-         id, store_id, slug, name, description, price_agorot, stock, sku, brand, category_id,
-         tags, specs, variants, seller_note,
+         id, store_id, slug, name, description, price_agorot, stock, sku, brand, weight_grams,
+         category_id, tags, specs, variants, seller_note,
          discount_type, discount_percent, discount_amount_agorot, discount_show_badge,
          discount_starts_at, discount_ends_at, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid,
-               $11::text[], $12::jsonb, $13::jsonb, $14,
-               $15, $16, $17, $18, $19::date, $20::date, now())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+               $11::uuid, $12::text[], $13::jsonb, $14::jsonb, $15,
+               $16, $17, $18, $19, $20::date, $21::date, now())
        ON CONFLICT (store_id, slug) DO NOTHING
        RETURNING id`,
       [
         id, storeId, slug, name, description, agorot(price), units(stock), sku || null, brand || null,
+        parseWeightGrams(weightGrams) ?? null,
         categoryId && isUuid(categoryId) ? categoryId : null,
         tags?.length ? tags : [],
         JSON.stringify(specs ?? []),
@@ -848,6 +860,10 @@ const UPDATABLE: Record<string, { sql: string; value: (v: unknown) => unknown }>
   stock: { sql: 'stock = $', value: (v) => units(v) },
   sku: { sql: 'sku = $', value: (v) => (v ? String(v) : null) },
   brand: { sql: 'brand = $', value: (v) => (v ? String(v) : null) },
+  // `?? null`, not `|| null`: parseWeightGrams has already turned every unusable value into
+  // undefined, and a CLEAR has to reach the column as NULL rather than be skipped — this map is
+  // built from the keys a caller passed, never from their values (see its header).
+  weightGrams: { sql: 'weight_grams = $', value: (v) => parseWeightGrams(v) ?? null },
   categoryId: { sql: 'category_id = $::uuid', value: (v) => (typeof v === 'string' && isUuid(v) ? v : null) },
   tags: { sql: 'tags = $::text[]', value: (v) => (Array.isArray(v) ? v : []) },
   specs: { sql: 'specs = $::jsonb', value: (v) => JSON.stringify(Array.isArray(v) ? v : []) },

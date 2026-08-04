@@ -70,6 +70,7 @@ import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg } from '../
 import StoreCategoryPicker from '../../components/StoreCategoryPicker.astro';
 import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
 import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
+import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
 
 
@@ -1003,6 +1004,18 @@ const orderStatusColors: Record<string, string> = {
                 <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">{d.brandFallbackNote}</p>
               </div>
 
+              {/* Optional on purpose, and it stays optional: the carrier integration that will
+                  price on it does not exist yet (GO_LIVE §5), so gating a product on a weight
+                  today would block a sale for a number nothing reads. The field is here now so a
+                  catalogue fills in as it is edited rather than all at once on connection day. */}
+              <div class="field max-w-[280px] mt-3">
+                <label class="inline-flex items-center gap-[0.35rem]" for="add-product-weight">
+                  {d.weightLabel}
+                </label>
+                <InfoTip text={d.weightHint} class="ms-[0.35rem]" />
+                <input class="input" id="add-product-weight" name="weightGrams" type="number" min="1" max={MAX_WEIGHT_GRAMS} step="1" inputmode="numeric" placeholder={d.weightPlaceholder} />
+              </div>
+
               <div class="field max-w-none" data-tags-field>
                 <span class="inline-flex items-center gap-[0.35rem]">
                   {d.tagsLabel}
@@ -1517,6 +1530,10 @@ const orderStatusColors: Record<string, string> = {
                             <span>{d.brandLabel}</span>
                             <input class="input" name="brand" maxlength="70" value={p.brand ?? ''} placeholder={store.name} />
                             <p class="muted" style="margin:0.3rem 0 0;font-size:0.76rem">{d.brandFallbackNote}</p>
+                          </label>
+                          <label class="field max-w-[280px]">
+                            <span>{d.weightLabel}</span>
+                            <input class="input" name="weightGrams" type="number" min="1" max={MAX_WEIGHT_GRAMS} step="1" inputmode="numeric" value={p.weightGrams ?? ''} placeholder={d.weightPlaceholder} />
                           </label>
                         </div>
 

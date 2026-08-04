@@ -258,7 +258,7 @@ describe('productsToFeedJson (outbound feed)', () => {
       categoryId: 'c2', tags: ['summer'], sku: 'SH-1', createdAt: '2026-01-01T00:00:00.000Z',
     }];
     expect(productsToFeedJson(products, categories)).toEqual([{
-      id: 'p1', sku: 'SH-1', name: 'Shirt', price: 49.9, stock: 7,
+      id: 'p1', sku: 'SH-1', name: 'Shirt', price: 49.9, stock: 7, weightGrams: 0,
       categoryPath: ['Clothing', 'Men'], tags: ['summer'], description: 'nice',
     }]);
   });

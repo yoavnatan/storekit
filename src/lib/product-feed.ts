@@ -8,6 +8,7 @@ import { resolvePrice, type StoreSale } from './discounts.js';
 import { toAbsoluteImageUrl } from './image-url.js';
 import { urlSegment } from './url-base.js';
 import { xmlEscape, xmlCdata } from './xml-text.js';
+import { feedShippingWeight } from './product-weight.js';
 
 // Maps a StoreProduct to the standard Google Merchant Center / Meta Catalog
 // product-feed attributes. The whole point (see CURRENT_TASK.md item 14): the
@@ -26,6 +27,10 @@ import { xmlEscape, xmlCdata } from './xml-text.js';
 //                         selling new goods — not a P2P used-goods marketplace)
 //   mpn                 → the seller SKU; gtin stays optional (many SKUs have
 //                         no barcode — identifierExists then rides on brand+mpn)
+//   shipping_weight     → the seller's stated weight in grams, omitted when they
+//                         have not stated one. The one attribute here that CAN'T
+//                         be derived, and the only reason a weight field exists
+//                         before shipping is priced on it (lib/product-weight.ts)
 //   product_type        → the category path the product sits under
 //   custom_labels       → five stable, positional campaign-segmentation buckets
 //                         (price / performance / availability / audience / store
@@ -48,6 +53,11 @@ export interface FeedAttributes {
   ageGroup: 'newborn' | 'infant' | 'toddler' | 'kids' | 'adult';
   mpn?: string;
   gtin?: string;
+  /** `shipping_weight` — `"<n> g"`, the format Google's fixed unit vocabulary takes, built by
+   *  lib/product-weight.ts#feedShippingWeight. Absent when the seller has not stated a weight, and
+   *  absent is the honest answer: Merchant Center uses this to show a shipping estimate, and a
+   *  guessed weight is a quoted delivery price that the checkout would then contradict. */
+  shippingWeight?: string;
   identifierExists: boolean;
   productType?: string;
   customLabels: string[];
@@ -117,6 +127,7 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
   // (api/product.ts) — only `name` is enforced. An empty one is a disapproval, so fall back to
   // the title: never invented copy, always non-empty, and it describes the item as well as the
   // seller chose to. Both fields trimmed + capped; see TITLE_MAX/DESCRIPTION_MAX.
+  const shippingWeight = feedShippingWeight(product.weightGrams);
   const title = clampText(product.name.trim(), TITLE_MAX);
   const description = clampText(product.description.trim() || title, DESCRIPTION_MAX);
 
@@ -135,6 +146,7 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
     ageGroup,
     ...(mpn ? { mpn } : {}),
     ...(gtin ? { gtin } : {}),
+    ...(shippingWeight ? { shippingWeight } : {}),
     identifierExists,
     ...(ctx.categoryPath ? { productType: ctx.categoryPath } : {}),
     customLabels,
@@ -256,6 +268,7 @@ function itemXml(it: FeedItem, currency: string): string {
   if (it.size) lines.push(g('size', it.size));
   if (it.mpn) lines.push(g('mpn', it.mpn));
   if (it.gtin) lines.push(g('gtin', it.gtin));
+  if (it.shippingWeight) lines.push(g('shipping_weight', it.shippingWeight));
   if (!it.identifierExists) lines.push(g('identifier_exists', 'no'));
   it.customLabels.forEach((l, i) => lines.push(g(`custom_label_${i}`, l)));
   return `<item>\n${lines.join('\n')}\n</item>`;

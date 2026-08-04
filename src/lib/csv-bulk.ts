@@ -1,8 +1,10 @@
 import { findSpamKeyword, findKeywordStuffing } from './spam-filter.js';
+import { parseWeightGrams } from './product-weight.js';
 
 export interface CsvField {
   key: 'id' | 'sku' | 'name' | 'price' | 'stock' | 'category' | 'subcategory1' | 'subcategory2' | 'tags' | 'description' | 'group'
-    | 'option1Name' | 'option1Value' | 'option2Name' | 'option2Value' | 'option3Name' | 'option3Value' | 'salePrice';
+    | 'option1Name' | 'option1Value' | 'option2Name' | 'option2Value' | 'option3Name' | 'option3Value' | 'salePrice'
+    | 'weight';
   he: string;
   en: string;
 }
@@ -47,6 +49,10 @@ export const CSV_FIELDS: CsvField[] = [
   // to say the same thing, which is how a spreadsheet ends up disagreeing with itself.
   // Blank = leave unchanged (the standard rule for every column here); 0 = end the sale.
   { key: 'salePrice',    he: 'מחיר מבצע',              en: 'Sale price' },
+  // Appended, never inserted — every seller's older file still imports, its missing trailing
+  // column simply reading blank, i.e. "leave unchanged". Grams, matching the single-product form
+  // and the column; this is the only realistic way a catalogue of dozens gets weights at all.
+  { key: 'weight',       he: 'משקל (גרם)',             en: 'Weight (grams)' },
 ];
 
 export const BOM = '﻿';
@@ -102,23 +108,23 @@ export function toCsvCell(value: string): string {
 // the option name/value pairs. The sweatshirt rows show a two-dimension product (צבע×מידה); the table
 // rows show that a dimension can be ANYTHING (חומר) — not just color/size — so the format is
 // self-documenting from the template alone.
-// Columns: id, sku, name, price, stock, category, subcategory1, subcategory2, tags, description, group, option1Name, option1Value, option2Name, option2Value, option3Name, option3Value, salePrice
+// Columns: id, sku, name, price, stock, category, subcategory1, subcategory2, tags, description, group, option1Name, option1Value, option2Name, option2Value, option3Name, option3Value, salePrice, weight
 const TEMPLATE_EXAMPLE_ROWS: Record<'he' | 'en', string[][]> = {
   he: [
-    ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'גברים', '', 'קיץ, מבצע', 'חולצת כותנה איכותית', '', '', '', '', '', '', '', '69.9'],
-    ['', 'SW-BL-L', 'סווטשירט', '129.9', '5', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'L', '', '', ''],
-    ['', 'SW-BL-S', 'סווטשירט', '129.9', '8', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'S', '', '', ''],
-    ['', 'SW-OR-L', 'סווטשירט', '129.9', '3', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כתום', 'מידה', 'L', '', '', ''],
-    ['', 'TBL-W', 'שולחן', '450', '4', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'עץ', '', '', '', '', ''],
-    ['', 'TBL-M', 'שולחן', '450', '2', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'מתכת', '', '', '', '', ''],
+    ['', '', 'חולצת כותנה קיץ', '89.9', '15', 'ביגוד', 'גברים', '', 'קיץ, מבצע', 'חולצת כותנה איכותית', '', '', '', '', '', '', '', '69.9', '220'],
+    ['', 'SW-BL-L', 'סווטשירט', '129.9', '5', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'L', '', '', '', '600'],
+    ['', 'SW-BL-S', 'סווטשירט', '129.9', '8', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כחול', 'מידה', 'S', '', '', '', '600'],
+    ['', 'SW-OR-L', 'סווטשירט', '129.9', '3', 'ביגוד', 'גברים', '', '', 'סווטשירט חמים', 'סווטשירט', 'צבע', 'כתום', 'מידה', 'L', '', '', '', '600'],
+    ['', 'TBL-W', 'שולחן', '450', '4', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'עץ', '', '', '', '', '', '18000'],
+    ['', 'TBL-M', 'שולחן', '450', '2', 'ריהוט', '', '', '', 'שולחן עץ מלא', 'שולחן', 'חומר', 'מתכת', '', '', '', '', '', '21000'],
   ],
   en: [
-    ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'Men', '', 'summer, sale', 'High quality cotton shirt', '', '', '', '', '', '', '', '69.9'],
-    ['', 'SW-BL-L', 'Sweatshirt', '129.9', '5', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'L', '', '', ''],
-    ['', 'SW-BL-S', 'Sweatshirt', '129.9', '8', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'S', '', '', ''],
-    ['', 'SW-OR-L', 'Sweatshirt', '129.9', '3', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Orange', 'Size', 'L', '', '', ''],
-    ['', 'TBL-W', 'Table', '450', '4', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Wood', '', '', '', '', ''],
-    ['', 'TBL-M', 'Table', '450', '2', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Metal', '', '', '', '', ''],
+    ['', '', 'Summer cotton shirt', '89.9', '15', 'Clothing', 'Men', '', 'summer, sale', 'High quality cotton shirt', '', '', '', '', '', '', '', '69.9', '220'],
+    ['', 'SW-BL-L', 'Sweatshirt', '129.9', '5', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'L', '', '', '', '600'],
+    ['', 'SW-BL-S', 'Sweatshirt', '129.9', '8', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Blue', 'Size', 'S', '', '', '', '600'],
+    ['', 'SW-OR-L', 'Sweatshirt', '129.9', '3', 'Clothing', 'Men', '', '', 'Warm sweatshirt', 'sweatshirt', 'Color', 'Orange', 'Size', 'L', '', '', '', '600'],
+    ['', 'TBL-W', 'Table', '450', '4', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Wood', '', '', '', '', '', '18000'],
+    ['', 'TBL-M', 'Table', '450', '2', 'Furniture', '', '', '', 'Solid wood table', 'table', 'Material', 'Metal', '', '', '', '', '', '21000'],
   ],
 };
 
@@ -209,6 +215,9 @@ export interface BulkProductInput {
   categoryPath?: string[];
   tags?: string[];
   description?: string;
+  /** Shipping weight in grams, undefined = blank cell = leave unchanged. Validated, not clamped:
+   *  see the note at the parse site. */
+  weightGrams?: number;
   /** Not used to match/find rows (only the id column is) — a plain data field like category/tags, kept in sync with the single-product editor. Uniqueness IS validated here (unlike other bulk fields) — see validateRows' sku-duplicate check — to match the same guarantee the single-product add/edit form enforces via isSkuTaken(). On a variant-group row this is the individual combo's sku. */
   sku?: string;
   /** Raw variant dimensions parsed from the option name/value column pairs (in slot order), consumed
@@ -265,6 +274,15 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
       } else salePrice = parsed;
     }
 
+    // A stated weight that cannot be used is an ERROR, not a silent drop: a seller who typed
+    // "2.5" meaning kilograms would otherwise see the row import cleanly with no weight at all,
+    // and only find out on the day a carrier quote is wrong. `weight-invalid` names it on the line.
+    let weightGrams: number | undefined;
+    if (raw.cells.weight?.trim()) {
+      weightGrams = parseWeightGrams(raw.cells.weight);
+      if (weightGrams === undefined) errors.push('weight-invalid');
+    }
+
     const sku = raw.cells.sku?.trim() || undefined;
     if (sku) {
       const catalogOwner = existingSkuOwners.get(sku);
@@ -303,6 +321,7 @@ export function validateRows(rawRows: RawImportRow[], existingIds: Set<string>, 
       tags: tags?.length ? tags : undefined,
       description: raw.cells.description?.trim() || undefined,
       sku,
+      weightGrams,
       variantOptions: variantOptions.length ? variantOptions : undefined,
     };
     return { line: raw.line, action: id ? 'update' : 'create', id, group, input, errors: [] };

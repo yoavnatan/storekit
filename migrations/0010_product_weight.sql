@@ -1,0 +1,27 @@
+-- Shipping weight, in whole grams.
+--
+-- Collected now and priced later, deliberately. The carrier integration (Sendit, GO_LIVE §5) quotes
+-- a parcel on address + weight, so on the day it is connected every product without a weight is a
+-- product that cannot be quoted — and asking a seller to go back through a catalogue of dozens of
+-- items at that point is the worst possible moment to ask. The field being present from today means
+-- the catalogue fills in as it is edited, and it earns its keep before then anyway: `shipping_weight`
+-- is a real Merchant Center attribute, and a listing that carries one can be shown with a shipping
+-- estimate instead of without.
+--
+-- Grams, integer, not kilograms as a decimal: a 250g item is 250 with no rounding to argue about,
+-- and every Israeli carrier's own tariff table is written in grams. `int` tops out around two
+-- million tonnes, which is not a limit anyone will meet; the sane ceiling is enforced at the form
+-- and the API (lib/product-weight.ts), where a mistyped number can still be explained to the seller.
+--
+-- NULL means "not stated" and must keep meaning that — it is NOT zero. A zero-gram parcel is a
+-- quote of ₪0 from a carrier that will happily return one, whereas an absent weight is a question
+-- the seller has not answered yet. Every read side treats the two differently.
+--
+-- Additive column, safe under the zero-downtime rule: the previous deploy neither reads nor writes
+-- it, and no existing row needs backfilling.
+-- The CHECK is `> 0`, not `>= 0`, for the reason above: zero is not a lighter parcel, it is a
+-- missing answer wearing a number, and NULL already says that. Same shape as the other guards in
+-- 0001_init.sql (`discount_amount_agorot > 0`) — a value the application clamps anyway, refused
+-- once more by the table so no future write path can reintroduce it.
+ALTER TABLE store_products ADD COLUMN IF NOT EXISTS weight_grams int
+  CONSTRAINT store_products_weight_positive CHECK (weight_grams IS NULL OR weight_grams > 0);

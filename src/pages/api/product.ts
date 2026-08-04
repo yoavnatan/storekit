@@ -4,7 +4,7 @@ import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId } from '../../lib/stores.js';
 import { createProduct, updateProduct, deleteProduct, getProductById, getProductsByStoreId, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
 import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, comboStockRows, isFullyPerCombo, sumComboOverrides } from '../../lib/variant-combo.js';
-import { parseImages, parseCategoryId, parseSku, parseBrand, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
+import { parseImages, parseCategoryId, parseSku, parseBrand, parseWeight, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
 import { normalizeProductDiscount } from '../../lib/discount-input.js';
 import { getCategoryById, getCategoriesByStoreId, categoryPath } from '../../lib/store-categories.js';
 import { deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
@@ -126,6 +126,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       tags: finalTags.length ? finalTags : undefined,
       sku: sku || undefined,
       brand: brand || undefined,
+      weightGrams: parseWeight(form),
       specs: specs.length ? specs : undefined,
       discount,
       sellerNote: sellerNote || undefined,
@@ -163,6 +164,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       tags: parseTags(form),
       sku: parseSku(form) || undefined,
       brand: parseBrand(form) || undefined,
+      weightGrams: parseWeight(form),
       specs: parseSpecs(form),
       discount: parseProductDiscount(form, submittedPrice),
       sellerNote: parseSellerNote(form) || undefined,
@@ -233,6 +235,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       tags: finalTags.length ? finalTags : [],
       sku: sku || undefined,
       brand: brand || undefined,
+      // From the merge, not from the form: another tab may have set a weight this tab never saw,
+      // and re-sending this tab's blank would silently clear it (record-rev.ts).
+      weightGrams: (merged.weightGrams as number | undefined) || undefined,
       specs: specs.length ? specs : [],
       discount,
       sellerNote: sellerNote || undefined,

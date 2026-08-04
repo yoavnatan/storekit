@@ -23,6 +23,9 @@ export interface MergedProductInput {
   categoryPath?: string[];
   tags?: string[];
   description?: string;
+  /** Product-level too, for the same reason as `salePrice`: a parcel weight belongs to the
+   *  product, not to the blue-L combo. */
+  weightGrams?: number;
   variants?: ProductVariant[];
   variantStock?: Record<string, number>;
   variantSku?: Record<string, string>;
@@ -169,6 +172,10 @@ function finalizeGroup(rows: BulkRowResult[]): MergedRowResult {
     categoryPath: first.categoryPath,
     tags: first.tags,
     description: first.description,
+    // A product-level field, so it comes from the first row like name/price/description — a parcel
+    // weight belongs to the product, not to the blue-L combo. (If a seller ever needs per-combo
+    // weights, that is a new column, not a reinterpretation of this one.)
+    weightGrams: first.weightGrams,
     variants,
     variantStock,
     variantSku: Object.keys(variantSku).length ? variantSku : undefined,

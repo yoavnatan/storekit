@@ -3,6 +3,7 @@ import { comboKey, generateCombos } from './variant-combo.js';
 import { sanitizeImageUrl, sanitizeImageUrls } from './image-url.js';
 import { normalizeProductDiscount } from './discount-input.js';
 import type { ProductDiscount } from './discounts.js';
+import { parseWeightGrams } from './product-weight.js';
 
 /** Every image URL a seller submits, validated + normalized (image-url.ts).
  *  Anything that isn't an https:// or site-relative URL is dropped here rather
@@ -25,6 +26,12 @@ export function parseSku(form: FormData): string {
  *  item rather than a long one. Blank is the normal answer: it keeps the store-name fallback. */
 export function parseBrand(form: FormData): string {
   return String(form.get('brand') ?? '').trim().slice(0, 70);
+}
+
+/** Shipping weight in grams. The rules — including why an unusable value becomes "not stated"
+ *  rather than 0 — belong to lib/product-weight.ts, so the form path has no second opinion. */
+export function parseWeight(form: FormData): number | undefined {
+  return parseWeightGrams(form.get('weightGrams'));
 }
 
 /** Private seller-only note. Capped to keep a runaway paste out of the JSON store. */

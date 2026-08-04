@@ -24,6 +24,9 @@ export interface BulkUpsertInput {
   tags?: string[];
   description?: string;
   sku?: string;
+  /** Shipping weight in grams; undefined = blank cell = leave unchanged, same rule as every
+   *  other column here. Already validated by csv-bulk.ts — an unusable value failed the row. */
+  weightGrams?: number;
   /** Assembled by variant-csv.ts#mergeVariantGroups from a group of CSV rows. When present the row
    *  describes a variant product: `variants`/`variantStock`/`variantSku` replace the product's whole
    *  variant matrix and `stock` is the combo total. Absent = a plain single product (variant fields
@@ -89,6 +92,7 @@ export async function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[
         if (row.tags !== undefined) updates.tags = row.tags;
         if (row.description !== undefined) updates.description = row.description;
         if (row.sku !== undefined) updates.sku = row.sku;
+        if (row.weightGrams !== undefined) updates.weightGrams = row.weightGrams;
         if (rowDiscount !== undefined) updates.discount = rowDiscount ?? undefined;
         if (isVariant) {
           updates.variants = row.variants;
@@ -110,6 +114,7 @@ export async function bulkUpsertProducts(storeId: string, rows: BulkUpsertInput[
           ...(categoryId ? { categoryId } : {}),
           ...(row.tags?.length ? { tags: row.tags } : {}),
           ...(row.sku ? { sku: row.sku } : {}),
+          ...(row.weightGrams ? { weightGrams: row.weightGrams } : {}),
           ...(rowDiscount ? { discount: rowDiscount } : {}),
           ...(isVariant ? { variants: row.variants } : {}),
           ...(isVariant && row.variantStock && Object.keys(row.variantStock).length ? { variantStock: row.variantStock } : {}),
@@ -154,6 +159,7 @@ export function updateChangesProduct(existing: StoreProduct, input: BulkUpsertIn
   }
   if (input.stock !== undefined && input.stock !== existing.stock) return true;
   if (input.sku !== undefined && input.sku !== existing.sku) return true;
+  if (input.weightGrams !== undefined && input.weightGrams !== existing.weightGrams) return true;
   if (input.salePrice !== undefined) {
     const nextValue = input.salePrice > 0 && input.salePrice < input.price
       ? roundMoney(input.price - input.salePrice)
@@ -187,6 +193,9 @@ export interface FeedJsonProduct {
   name: string;
   price: number;
   stock: number;
+  /** Grams; `0` means the seller has not stated one. A consumer of this feed sees the same
+   *  distinction the rest of the system keeps — 0 is never a real parcel weight. */
+  weightGrams: number;
   categoryPath: string[];
   tags: string[];
   description: string;
@@ -206,6 +215,7 @@ export function productsToFeedJson(products: StoreProduct[], categories: StoreCa
       name: p.name,
       price: p.price,
       stock: p.stock,
+      weightGrams: p.weightGrams ?? 0,
       categoryPath: chain.map((c) => c.name),
       tags: p.tags ?? [],
       description: p.description ?? '',
@@ -224,6 +234,12 @@ export function productsToFeedJson(products: StoreProduct[], categories: StoreCa
 /** The product's OWN discount as an absolute price, for the export column. The store-wide sale is
  *  deliberately not folded in: it isn't a property of any single product, and re-importing a file
  *  where it had been baked into every row would freeze it into permanent per-product discounts. */
+/** Grams as typed, blank when unstated — so a round-trip through the file leaves an unweighed
+ *  product unweighed rather than writing a 0 the importer would have to interpret. */
+function weightCell(p: StoreProduct): string {
+  return p.weightGrams ? String(p.weightGrams) : '';
+}
+
 function salePriceCell(p: StoreProduct): string {
   const d = p.discount;
   if (!d) return '';
@@ -262,7 +278,7 @@ export function productsToCsv(products: StoreProduct[], categories: StoreCategor
     const blankOptions = ['', '', '', '', '', '']; // three name/value pairs
     if (!isCsvExpandable(p)) {
       // id, sku, [name, price], stock, [category…description], group, + 3 blank option pairs
-      return [[p.id, sanitizeCsvCell(p.sku ?? ''), ...shared, String(p.stock), ...tail, '', ...blankOptions, salePriceCell(p)].map(toCsvCell).join(',')];
+      return [[p.id, sanitizeCsvCell(p.sku ?? ''), ...shared, String(p.stock), ...tail, '', ...blankOptions, salePriceCell(p), weightCell(p)].map(toCsvCell).join(',')];
     }
 
     const dims = p.variants!; // 1–3 dimensions, any name
@@ -291,6 +307,9 @@ export function productsToCsv(products: StoreProduct[], categories: StoreCategor
         sanitizeCsvCell(group),
         ...optionCells,
         salePriceCell(p),
+        // The weight is the PRODUCT's, not the combo's, so every row of a variant group carries
+        // the same number — the same treatment name/price/description already get above.
+        weightCell(p),
       ].map(toCsvCell).join(',');
     });
   });
