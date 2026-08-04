@@ -34,7 +34,9 @@ import { comboKey, type VariantSelection } from './variant-combo.js';
  *
  * Keeps the human-readable combo and only swaps the separators `comboKey` uses for id-safe ones, so
  * two combos can never collapse onto one id. Unicode option values (Hebrew included) are preserved
- * deliberately — folding them would be exactly such a collapse.
+ * deliberately — folding them would be exactly such a collapse. When the readable form would break
+ * Google's 50-character cap the combo is hashed instead of dropped or truncated (see `ID_MAX`);
+ * truncation would be that same collapse, arrived at from the other direction.
  *
  * An empty selection is treated as no selection: `{}` is what a caller passes when the shopper has
  * chosen nothing yet, and it must not produce a third id shaped like neither.
@@ -48,5 +50,52 @@ export function adItemId(productId: string, selectedVariants?: VariantSelection)
  *  than reading a shopper's selection. Both spellings must produce the same string, which is the
  *  property `tests/ad-item-id.test.ts` pins. */
 export function adComboItemId(productId: string, key: string): string {
-  return `${productId}-${key.replace(/=/g, '-').replace(/,/g, '_')}`;
+  const readable = `${productId}-${key.replace(/=/g, '-').replace(/,/g, '_')}`;
+  return readable.length <= ID_MAX ? readable : `${productId}-${shortHash(key)}`;
+}
+
+/**
+ * Google's hard cap on the `id` attribute: **50 characters** (Merchant Center product data spec,
+ * checked against the published spec on 2026-08-04 — Meta's own limit is looser, so this is the
+ * binding one). Over it the row is REJECTED, and rejected the way this whole file exists to prevent:
+ * silently, one item at a time, with a storefront that still shows the product and no ad behind it.
+ *
+ * A uuid is 36, which leaves 13 for `-` + the combo — and a Hebrew combo does not fit in 13.
+ * `צבע=אדום,מידה=42` alone is 17, so a two-dimension Hebrew variant product blew the cap on every
+ * row it had. And a variant product emits NO parent row (see the header), so the product was not
+ * partly advertised: it was absent from the catalogue entirely.
+ */
+const ID_MAX = 50;
+
+/**
+ * The combo key as a short, stable, id-safe token — used ONLY when the readable form does not fit.
+ *
+ * Deliberately not applied everywhere: an id that fits today keeps the exact string it already has,
+ * so nothing that Merchant Center has already approved changes identity for the sake of tidiness.
+ * The rows that change are the rows that were being thrown away.
+ *
+ * FNV-1a over the UTF-16 code units, twice with different offsets, so the token carries ~62 bits
+ * rather than 32 — a collision would put two combos of one product on one id, which is the single
+ * thing this module promises cannot happen. Hand-rolled because this file is bundled into the
+ * BROWSER (every tracking call site imports it), where `node:crypto` does not exist and a hashing
+ * dependency would be a network cost paid on the product page.
+ *
+ * **Exactly 12 characters, fixed width.** 36 (uuid) + 1 (`-`) + 12 = 49, which is the whole point:
+ * the hashed form has to fit under ID_MAX for every input, so its length cannot depend on the
+ * value. Each half is taken modulo 36⁶ and zero-padded to six.
+ */
+const BASE36_6 = 36 ** 6;
+
+function shortHash(key: string): string {
+  const fnv = (offset: number): string => {
+    let h = offset;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      // `Math.imul` + `>>> 0` on every step: a plain `*` loses the high bits to float precision,
+      // and JS bitwise operators are signed 32-bit.
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return (h % BASE36_6).toString(36).padStart(6, '0');
+  };
+  return `${fnv(0x811c9dc5)}${fnv(0x9dc5811c)}`;
 }

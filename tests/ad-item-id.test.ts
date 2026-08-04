@@ -38,7 +38,11 @@ function product(over: Partial<StoreProduct> = {}): StoreProduct {
   } as StoreProduct;
 }
 
-const ctx = { storeName: 'קרמיקה', storeSlug: 'keramika', baseUrl: 'https://dezabin.com' };
+const ctx = {
+  storeName: 'קרמיקה',
+  productLink: (slug: string) => `https://dezabin.com/keramika/${encodeURIComponent(slug)}`,
+  baseUrl: 'https://dezabin.com',
+};
 
 describe('adItemId', () => {
   it('is the product uuid when no combo is chosen', () => {
