@@ -252,6 +252,7 @@ for (const s of await getVisibleStores()) {
     import { escapeHtml as esc } from '../lib/html-escape.js';
     import { spawnRipple } from '../lib/ripple.js';
     import { checkoutAttemptKey, clearCheckoutAttemptKey } from '../lib/checkout-attempt-key.js';
+    import { trackInitiateCheckout } from '../lib/tracking.js';
     import { isValidEmail } from '../lib/email-address.js';
     import { initSelectDropdown, COMPACT_TRIGGER_CLASS } from '../scripts/dashboard/select-dropdown.js';
     // Not scrollIntoView: the site header is `position:fixed`, and `block:'start'` parks the
@@ -1093,7 +1094,40 @@ for (const s of await getVisibleStores()) {
       if (!changes.length) return;
       if (!applyStockChanges(stockCorrections(changes, (c) => selected.has(selKey(c.storeSlug, c.cartKey))))) renderCart();
     };
-    void refreshCartPrices().then(reconcile);
+    // GA4 `begin_checkout` / Meta `InitiateCheckout` — the third-party half of the stage the
+    // middleware already counted server-side for our own funnel (lib/tracking.ts says why both
+    // exist). Fired ONCE per page load: the cart re-renders on every tick, quantity change and
+    // price correction, and one arrival at checkout is one event — a per-render fire would teach
+    // both networks that a shopper who fiddled with quantities is worth five of one who didn't.
+    let checkoutStartReported = false;
+    function reportCheckoutStart(): void {
+      if (checkoutStartReported) return;
+      const lines: { id: string; name: string; price: number; qty: number }[] = [];
+      // Exactly what the pay button would submit — `selected` never holds a showcase store's items
+      // (syncSelection only ever adds payable ones), so the one class of line that can never become
+      // an order is already out. Read through the same key so the two can't drift.
+      getOrderedCarts().forEach(cart => cart.items.forEach(item => {
+        if (selected.has(selKey(cart.storeSlug, item.cartKey))) {
+          lines.push({ id: item.slug, name: item.name, price: item.price, qty: item.qty });
+        }
+      }));
+      if (!lines.length) return; // an empty or showcase-only cart started no checkout
+      checkoutStartReported = true;
+      trackInitiateCheckout(lines);
+    }
+
+    // Reported AFTER the re-price settles, not beside the first paint: `value` is the number Meta
+    // optimises a campaign against, and the stored prices are what a sale that started or ended
+    // while the cart sat would have made stale.
+    //
+    // The `.catch` sits BETWEEN the two, so the report runs on every outcome — a failed refresh, or
+    // a `reconcile` that throws, still leaves a shopper standing at checkout. Chaining the report as
+    // the success handler of `.then(reconcile)` instead would have dropped the event on exactly
+    // those paths and left the rejection unhandled besides.
+    void refreshCartPrices()
+      .then(reconcile)
+      .catch(() => { /* stale prices still started a real checkout */ })
+      .then(reportCheckoutStart);
 
     // The summary must keep telling the truth for as long as the page is open, not only for the
     // first paint: a shopper who leaves this tab and comes back an hour later would otherwise
