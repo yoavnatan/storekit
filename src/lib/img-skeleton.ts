@@ -1,3 +1,18 @@
+/**
+ * A SKELETON IS A BACKDROP, NEVER A COVER (2026-07-30; moved here from AI_INSTRUCTIONS 2026-08-04,
+ * because this is the module every shimmer goes through).
+ *
+ * The shimmer sits UNDER the image — `z-index: 0` on the shimmer, `position: relative; z-index: 1`
+ * on the `<img>` — and JS only ever stops the animation. It must never gate visibility. The version
+ * that did (an on-top `::before` plus `opacity: 0` until JS ran) held 85 already-decoded photos
+ * invisible for ~700-820ms on a build, on a warm cache, where the browser had the pixels and was
+ * waiting on our bundle for permission to show them.
+ *
+ * The only images allowed to stay JS-driven are the ones with no real `src` yet — a deferred
+ * `data-src` or a blank pixel (`.pm-slide`, `#sticky-mini-img-wrap`). Memory
+ * `project_skeleton_js_visibility_gate`.
+ */
+
 /** Removes `is-loading` (the shared shimmer class, see utils.css's skeleton-shimmer
  *  keyframe) off `wrapSelector`'s closest ancestor once `img` actually loads or errors —
  *  never a fixed timer, so a slow/broken image can't flash the shimmer away early or get

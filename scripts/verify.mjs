@@ -37,6 +37,14 @@
 // And when a `.astro` compile error gives no file/line — not in the dev overlay, not in astro check —
 // run `npx astro build`: its [CompilerError] output carries a `Location:` with the exact file:line.
 // (That one burned a whole session. Do not hand-write an AST differ to binary-search it.)
+//
+// THE FAILURE THAT REPORTS NOTHING AT ALL (moved here from AI_INSTRUCTIONS 2026-08-04, because this
+// is the tool you reach for when it happens): Astro 7's compiler rejects an HTML comment as the
+// first child right after `{expr && (` — put comments ABOVE the expression, never inside it. In a
+// PAGE this fails silently in dev: the route simply stops building, so a static route falls through
+// to a dynamic sibling — `/stores` began 302-ing to `/404` via `[storeSlug]` with nothing logged
+// anywhere, and `astro check` still reported 0 errors. A page that suddenly 404s or redirects right
+// after an edit is this, not a routing bug.
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
