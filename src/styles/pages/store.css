@@ -983,6 +983,22 @@ body:has(.site-header.is-stuck) .store-banner {
   contain-intrinsic-size: auto 360px;
 }
 
+/* What the note above does NOT cover: a DESCENDANT's outset paint. Paint
+   containment is on at all times here — `auto` drops the SIZE containment once
+   the card is on screen, not the paint containment — and it clips descendants to
+   the padding box. The global focus ring is `outline: 2px; outline-offset: 2px`
+   (base/reset.css), i.e. drawn entirely OUTSIDE its element, and the card's image
+   wrap is a role="button" tabindex="0" spanning the card's full width — so a
+   keyboard user tabbing to it got a ring sliced off flat on both sides. Nobody
+   saw it because with a mouse there is nothing to see: the hover shadow belongs
+   to the card itself, and an element's own shadow is never clipped by its own
+   containment. Releasing containment on focus costs nothing — a focused card is
+   on screen and already laid out, so this only lifts the clip and repaints.
+   tests/content-visibility-clip.test.ts keeps the pair together. */
+.product-grid > .product-card:focus-within {
+  content-visibility: visible;
+}
+
 .product-card:hover {
   box-shadow: var(--shadow-hover);
 }
