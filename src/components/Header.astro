@@ -22,6 +22,7 @@
 //    ripple-triggered position change on first click would silently move the dot's containing
 //    block (fixed 2026-07-16).
 import { store } from '../config/store.config.js';
+import CsrfField from './CsrfField.astro';
 import { getLang, getT } from '../i18n/index.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { sellerHasAnyAlert } from '../lib/seller-alerts.js';
@@ -398,6 +399,7 @@ const strEmpty   = t.store.noProductsFound;
                 redirect, and it must keep working even with every module on the page dead
                 (see dashboard/FormFallbackGuard.astro). */}
             <form method="POST" action="/seller/logout" data-native-submit>
+              <CsrfField />
               <input type="hidden" name="_next" value={currentPath} />
               <button class="user-dropdown__item user-dropdown__item--btn" type="submit" role="menuitem">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>

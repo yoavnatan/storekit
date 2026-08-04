@@ -10,6 +10,7 @@ import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/st
 import { resolveCustomDomainRewrite, isUnclaimedCustomHost } from './lib/custom-domain.js';
 import { getProductBySlug } from './lib/store-products.js';
 import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
+import { csrfRejection, csrfRequired, csrfTokenFromRequest, verifyCsrfToken } from './lib/csrf.js';
 import { ensureShutdownHookInstalled, trackRequest } from './lib/shutdown.js';
 import { captureAttribution } from './lib/attribution.js';
 
@@ -62,6 +63,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const isGet = context.request.method === 'GET';
     const reqUrl = new URL(context.request.url);
     const pathname = reqUrl.pathname;
+
+    // The CSRF gate — the ONE place this application checks a token, for every on-demand route it
+    // has (lib/csrf.ts carries the reasoning, including what the other two layers already cover).
+    // First, so a forged request is refused before it costs a database lookup, a rewrite, or a
+    // page-view write. GET/HEAD/OPTIONS fall straight through on a set lookup.
+    if (csrfRequired(context.request.method, pathname)
+        && !verifyCsrfToken(await csrfTokenFromRequest(context.request), context.cookies)) {
+      return csrfRejection();
+    }
 
     // Custom-domain routing (see custom-domain.ts). A seller's own domain (shop.mybrand.co.il),
     // once verified, serves their store from the root. Cloudflare-for-SaaS proxies the request to

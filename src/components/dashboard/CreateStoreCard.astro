@@ -5,6 +5,7 @@
 // Both POST `_action=create-store` back to /seller/dashboard, which redirects to the new store.
 import { getLang, getT } from '../../i18n/index.js';
 import StoreCategoryPicker from '../StoreCategoryPicker.astro';
+import CsrfField from '../CsrfField.astro';
 import { store as platformConfig } from '../../config/store.config';
 
 interface Props {
@@ -32,6 +33,7 @@ const host = new URL(platformConfig.url).hostname;
     {/* data-native-submit: this one really is a browser POST back to the page, which answers
         with a redirect to the new store (see dashboard/FormFallbackGuard.astro). */}
     <form method="POST" class="mt-4" style="text-align:start" data-native-submit>
+      <CsrfField />
       <input type="hidden" name="_action" value="create-store" />
       <label class="field">
         <span>{d.storeNameReq}</span>

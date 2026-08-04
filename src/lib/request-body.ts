@@ -51,6 +51,53 @@ export type BodyResult<T> =
  * string full of replacement characters that then fails to parse for a confusing reason.
  */
 export async function readJsonBody<T = unknown>(request: Request, maxBytes: number): Promise<BodyResult<T>> {
+  const read = await readText(request, maxBytes);
+  if (!read.ok) return read;
+  try {
+    return { ok: true, value: JSON.parse(read.value) as T };
+  } catch {
+    return { ok: false, status: 400 };
+  }
+}
+
+/**
+ * The same bounded read, decoded as an HTML form body (`application/x-www-form-urlencoded`), on a
+ * request whose body SOMEBODY ELSE still has to read.
+ *
+ * Added for the CSRF gate (lib/csrf.ts), which has to find one hidden field in a body the page
+ * route will read again afterwards — so it hands over a `request.clone()`. Two things follow, and
+ * both were measured rather than assumed:
+ *
+ *  - It could not simply `await clone.formData()`. That buffers whatever arrives with no ceiling,
+ *    which is the exact shape this module exists to refuse.
+ *  - It must NOT cancel the reader when it gives up. `clone()` tees the stream, and a `cancel()` on
+ *    one branch of a tee never settles while the other branch is still live — the middleware would
+ *    hang forever, holding the request open, on any oversized form POST. Abandoning the read
+ *    instead stops pulling, so the source stops being drained (measured: it produced 49KB past a
+ *    32KB ceiling and no more) and the other branch still reads the body in full.
+ */
+export async function readFormBody(request: Request, maxBytes: number): Promise<BodyResult<URLSearchParams>> {
+  const read = await readText(request, maxBytes, { cancelOnOverflow: false });
+  if (!read.ok) return read;
+  try {
+    return { ok: true, value: new URLSearchParams(read.value) };
+  } catch {
+    return { ok: false, status: 400 };
+  }
+}
+
+/**
+ * The shared half: at most `maxBytes` of the body, as text.
+ *
+ * The declared length is still honoured first — rejecting an honest 5MB upload without reading it
+ * is strictly better than reading 2KB of it before giving up — but the bytes that actually arrive
+ * are what the ceiling is applied to.
+ */
+async function readText(
+  request: Request,
+  maxBytes: number,
+  { cancelOnOverflow = true }: { cancelOnOverflow?: boolean } = {},
+): Promise<BodyResult<string>> {
   const declared = Number(request.headers.get('content-length') ?? Number.NaN);
   if (Number.isFinite(declared) && declared > maxBytes) return { ok: false, status: 413 };
 
@@ -68,8 +115,9 @@ export async function readJsonBody<T = unknown>(request: Request, maxBytes: numb
       total += value.byteLength;
       // Over the ceiling: stop reading and drop what arrived. Cancelling the stream matters as much
       // as the status code — without it the sender keeps writing into a request nobody is draining.
+      // The one caller that must not cancel is `readFormBody` on a clone; its header says why.
       if (total > maxBytes) {
-        await reader.cancel().catch(() => undefined);
+        if (cancelOnOverflow) await reader.cancel().catch(() => undefined);
         return { ok: false, status: 413 };
       }
       chunks.push(value);
@@ -83,7 +131,7 @@ export async function readJsonBody<T = unknown>(request: Request, maxBytes: numb
   for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
 
   try {
-    return { ok: true, value: JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer)) as T };
+    return { ok: true, value: new TextDecoder('utf-8', { fatal: true }).decode(buffer) };
   } catch {
     return { ok: false, status: 400 };
   }

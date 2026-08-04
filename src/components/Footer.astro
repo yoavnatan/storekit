@@ -1,5 +1,6 @@
 ---
 import { store } from '../config/store.config.js';
+import CsrfField from './CsrfField.astro';
 import { getLang, getT } from '../i18n/index.js';
 
 const year     = new Date().getFullYear();
@@ -22,6 +23,7 @@ const nextLang = lang === 'he' ? 'en' : 'he';
               re-render the page in the new language. Without the opt-out the dashboard's
               FormFallbackGuard blocks it and the seller is told saving is unavailable. */}
           <form method="POST" action={`/api/lang?l=${nextLang}`} class="lang-toggle-form" data-native-submit>
+            <CsrfField />
             <button type="submit" class="lang-toggle-btn" aria-label={t.nav.switchLangLabel}>
               {t.nav.switchLang}
             </button>

@@ -91,10 +91,21 @@ export function initAdminTabNav(): void {
   // Closing the browser / navigating away is also "leaving the tab" — without
   // this, an admin who only ever works inside one tab and then closes the page
   // would never acknowledge it, and the same "(N)" would greet them forever.
-  // sendBeacon survives page teardown where fetch does not; the endpoint reads
-  // the body as JSON regardless of the Blob's content type.
+  //
+  // `keepalive`, not `sendBeacon`, and the difference matters here: both survive
+  // page teardown, but a beacon cannot carry a request header, and every mutating
+  // request on this site now carries the CSRF token in one (src/lib/csrf.ts). The
+  // beacon would have needed an exemption from that check — a hole opened for a
+  // convenience, on the one endpoint that is easiest to forget about again. Same
+  // shape the error reporter and the tracking module already use; the 64KB
+  // keepalive ceiling is irrelevant to a body that holds one tab name.
   window.addEventListener('pagehide', () => {
     if (!isTrackedAdminTab(activePanel)) return;
-    navigator.sendBeacon('/api/admin/tab-view', new Blob([JSON.stringify({ tab: activePanel })], { type: 'application/json' }));
+    void fetch('/api/admin/tab-view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tab: activePanel }),
+      keepalive: true,
+    }).catch(() => {});
   });
 }

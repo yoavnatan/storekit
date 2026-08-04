@@ -1,6 +1,7 @@
 ---
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import CsrfField from '../../components/CsrfField.astro';
 import { loginSeller, setSellerSession, getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { store } from '../../config/store.config';
@@ -86,6 +87,7 @@ if (Astro.request.method === 'POST') {
       )}
 
       <form method="POST" class="auth-form">
+        <CsrfField />
         <input type="hidden" name="_next" value={safeNext} />
         <label class="field">
           <span>{t.auth.email}</span>

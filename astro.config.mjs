@@ -70,6 +70,16 @@ export default defineConfig({
 
   devToolbar: { enabled: false },
 
+  // Astro's own cross-site POST protection: an on-demand route refuses a form-encoded request
+  // whose `Origin` is not this site. It is ALREADY Astro's default — pinned here anyway because
+  // the default is conditional in a way that is invisible from this file: it applies only when the
+  // build output is `server`, which for `output: 'static'` means "only while at least one route
+  // still says `prerender = false`". Every page does today; the day one of those lines moves, this
+  // protection would switch itself off with no error and no diff to point at.
+  // It is the FIRST of three layers, not the whole of it — `sameSite:'lax'` session cookies are
+  // the zeroth, and `src/lib/csrf.ts` is the signed-token layer that does not depend on either.
+  security: { checkOrigin: true },
+
   // Astro's own prefetch (no ClientRouter, no soft navigation) — opt-in per link
   // via `data-astro-prefetch`, never site-wide: prefetching every link on a
   // product-dense page would download store pages nobody asked for. Marked links

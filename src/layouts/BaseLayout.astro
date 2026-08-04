@@ -14,6 +14,7 @@ import { getLang, getDir, getT } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
 import { jsonForScript } from '../lib/json-script.js';
 import { getSellerSession } from '../lib/seller-auth.js';
+import { CSRF_META, issueCsrfToken } from '../lib/csrf.js';
 import { getUnreadCountForUser } from '../lib/notifications.js';
 import heebo400HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-400-normal.woff2?url';
 import heebo500HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-500-normal.woff2?url';
@@ -98,6 +99,13 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
+    {/* The CSRF token this page's requests will carry (src/lib/csrf.ts), and the one module that
+        attaches it. A meta tag rather than a cookie: the server verifies the token's SIGNATURE, so
+        nothing has to be echoed back and there is no JS-readable cookie to steal. The script must
+        stay HERE — bundled scripts are deferred modules that run in document order, so one in the
+        head runs before every other module on the page, including the ones that fetch on load. */}
+    <meta name={CSRF_META} content={issueCsrfToken(Astro.cookies)} />
+    <script>import { initCsrf } from '../scripts/csrf-client.js'; initCsrf();</script>
     {/* Runs before the browser restores scroll. A store quick-view modal pushes a
         product URL while the store is scrolled; if that URL is later reloaded, the
         browser would restore the STORE's scroll here (product opens scrolled down).
