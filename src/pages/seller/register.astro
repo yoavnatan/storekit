@@ -9,6 +9,10 @@ import { getVisibleProductsByStoreIds } from '../../lib/store-products.js';
 import { safeRedirectPath } from '../../lib/safe-redirect.js';
 import { isValidEmail } from '../../lib/email-address.js';
 import { isGoogleAuthEnabled } from '../../lib/google-oauth.js';
+import { clientIp } from '../../lib/client-ip.js';
+import {
+  checkAuthRate, countAuthAttempt, registerRules, retryAfterMinutes,
+} from '../../lib/rate-limit.js';
 
 if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
 
@@ -50,12 +54,26 @@ if (Astro.request.method === 'POST') {
   } else if (password.length < 6) {
     error = t.auth.passwordTooShort;
   } else {
-    const seller = await registerSeller(email, password, name);
-    if (!seller) {
-      error = t.auth.emailExists;
+    // Per-source only, and counted on EVERY attempt that reaches this point — including a
+    // successful one. Unlike login, the two behaviours being limited here are enumeration ("is
+    // this address taken?", which `emailExists` answers truthfully by design) and bulk account
+    // creation, and a success is exactly what the second one looks like. Counting failures alone
+    // would leave mass signup unbounded. Deliberately NOT keyed to the submitted address: that
+    // would let anyone lock a competitor out of registering by burning their address first.
+    const rules = registerRules(clientIp(Astro.request, Astro.clientAddress));
+    const gate = await checkAuthRate(rules);
+    if (!gate.allowed) {
+      Astro.response.status = 429;
+      error = t.auth.tooManyAttempts.replace('{n}', String(retryAfterMinutes(gate.retryAfterSec)));
     } else {
-      setSellerSession(Astro.cookies, seller.id);
-      return Astro.redirect(next);
+      await countAuthAttempt(rules);
+      const seller = await registerSeller(email, password, name);
+      if (!seller) {
+        error = t.auth.emailExists;
+      } else {
+        setSellerSession(Astro.cookies, seller.id);
+        return Astro.redirect(next);
+      }
     }
   }
 }

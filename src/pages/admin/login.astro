@@ -2,6 +2,10 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { isAdminRequest, checkAdminPassword, setAdminCookie } from '../../lib/admin-auth.js';
+import { clientIp } from '../../lib/client-ip.js';
+import {
+  adminLoginRules, checkAuthRate, clearAuthRate, countAuthAttempt, retryAfterMinutes,
+} from '../../lib/rate-limit.js';
 
 if (isAdminRequest(Astro.cookies)) {
   return Astro.redirect('/admin');
@@ -11,11 +15,21 @@ let error = '';
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const password = String(form.get('password') ?? '');
-  if (checkAdminPassword(password)) {
+  // The tightest limit on the platform: one shared secret, no second factor, and behind it every
+  // seller's data and every number the platform holds (lib/rate-limit.ts).
+  const rules = adminLoginRules(clientIp(Astro.request, Astro.clientAddress));
+  const gate = await checkAuthRate(rules);
+  if (!gate.allowed) {
+    Astro.response.status = 429;
+    error = `יותר מדי ניסיונות. נסה שוב בעוד ${retryAfterMinutes(gate.retryAfterSec)} דקות.`;
+  } else if (checkAdminPassword(password)) {
+    await clearAuthRate(rules);
     setAdminCookie(Astro.cookies);
     return Astro.redirect('/admin');
+  } else {
+    await countAuthAttempt(rules);
+    error = 'סיסמה שגויה';
   }
-  error = 'סיסמה שגויה';
 }
 ---
 

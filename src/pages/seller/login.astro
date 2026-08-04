@@ -6,6 +6,10 @@ import { getLang, getT } from '../../i18n/index.js';
 import { store } from '../../config/store.config';
 import { safeRedirectPath } from '../../lib/safe-redirect.js';
 import { isGoogleAuthEnabled } from '../../lib/google-oauth.js';
+import { clientIp } from '../../lib/client-ip.js';
+import {
+  checkAuthRate, clearAuthRate, countAuthAttempt, retryAfterMinutes, sellerLoginRules,
+} from '../../lib/rate-limit.js';
 
 if (getSellerSession(Astro.cookies)) return Astro.redirect('/seller/dashboard');
 
@@ -30,12 +34,25 @@ if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const email    = String(form.get('email')    || '');
   const password = String(form.get('password') || '');
-  const seller = await loginSeller(email, password);
-  if (seller) {
-    setSellerSession(Astro.cookies, seller.id);
-    return Astro.redirect(String(form.get('_next') || safeNext));
+
+  // Asked BEFORE the password is verified — the cost being defended against is bcrypt's, so a gate
+  // that checks first and refuses afterwards has already paid it (lib/rate-limit.ts).
+  const rules = sellerLoginRules(email, clientIp(Astro.request, Astro.clientAddress));
+  const gate = await checkAuthRate(rules);
+  if (!gate.allowed) {
+    Astro.response.status = 429;
+    error = t.auth.tooManyAttempts.replace('{n}', String(retryAfterMinutes(gate.retryAfterSec)));
+  } else {
+    const seller = await loginSeller(email, password);
+    if (seller) {
+      // A correct password wipes the slate, so yesterday's typos can never add up to a lockout.
+      await clearAuthRate(rules);
+      setSellerSession(Astro.cookies, seller.id);
+      return Astro.redirect(String(form.get('_next') || safeNext));
+    }
+    await countAuthAttempt(rules);
+    error = t.auth.wrongCredentials;
   }
-  error = t.auth.wrongCredentials;
 }
 ---
 

@@ -18,6 +18,7 @@
  * down. So the two per-store jobs isolate each store and report counts.
  */
 import { purgeExpiredCheckouts } from '../checkout-idempotency.js';
+import { purgeExpiredAuthAttempts } from '../rate-limit.js';
 import { getStoresWithFeedUrl, canStoreSell } from '../stores.js';
 import { syncStoreFeed, syncedRowCount } from '../store-feed-sync.js';
 import { getStoreIdsWithLiveCampaigns } from '../ad-campaigns.js';
@@ -142,6 +143,28 @@ const campaignSweep: Job = {
   },
 };
 
+/**
+ * Drop failed-sign-in counters whose window has lapsed (`lib/rate-limit.ts`).
+ *
+ * *Idempotent:* a `DELETE … WHERE window_start < cutoff`, like `purge-checkouts`. A second pass
+ * finds nothing.
+ *
+ * *Correctness does not depend on it,* which is what makes it safe to run rarely: an expired row is
+ * already invisible to `checkAuthRate`, which tests the window rather than the row's existence, and
+ * the next failure on that bucket rolls it forward in one statement. This job manages table size —
+ * and the size it manages is specifically the aftermath of a credential-stuffing run, which leaves
+ * one row per address tried and would otherwise sit there indefinitely, since normal use deletes its
+ * own row on the next successful sign-in.
+ */
+const purgeAuthAttempts: Job = {
+  name: 'purge-auth-attempts',
+  intervalSec: 6 * HOUR,
+  leaseSec: 5 * MINUTE,
+  async run() {
+    return `purged ${await purgeExpiredAuthAttempts()}`;
+  },
+};
+
 /** The registry. The jobs are independent and the scheduler starts them concurrently, so this order
  *  is only what the log reads like — no job can delay another past its own interval. */
-export const JOBS: readonly Job[] = [purgeCheckouts, campaignSweep, feedSync];
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync];
