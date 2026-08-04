@@ -122,6 +122,17 @@ describe('no redirect interpolates a value into a header without encoding it', (
  * Google Merchant Center product data spec, checked 2026-08-04. Over a limit the item is REJECTED,
  * and rejected silently: the seller sees the product on the storefront and no ad behind it.
  *
+ * **One table for both networks, and that is a checked claim, not an assumption.** The same document
+ * is submitted to Meta Catalog, and Meta's published limits were read the same day: on every shared
+ * attribute Google's is the tighter one — id 50 vs 100, title 150 vs 200, description 5000 vs 9999,
+ * brand 70 vs 100, colour 40 vs 200, size 100 vs 200, product_type 750 vs 750. So passing this table
+ * passes Meta's. If that ever stops being true, the limit that moves goes in here with its source.
+ *
+ * What a table of lengths CANNOT settle is a vocabulary difference — Meta's docs spell availability
+ * `in stock` where Google requires `in_stock` — and no local test can, because only the receiving
+ * account's own ingestion report answers it. Logged with its trigger and its fallback in
+ * GO_LIVE_CHECKLIST §2.5 layer 1, which is the moment it becomes answerable.
+ *
  * The table is exhaustive on purpose — see the "no unknown attribute" test. Every seller-controlled
  * string reaches one of these, and none of them is capped where the seller types it, because none
  * of them is an ad-platform field where the seller types it.
@@ -145,7 +156,11 @@ const FEED_LIMITS: Record<string, number> = {
   'g:custom_label_2': 100,
   'g:custom_label_3': 100,
   'g:custom_label_4': 100,
-  // Enumerations rather than lengths — bounded by the values the spec accepts, checked below.
+  // Enumerations and formats rather than lengths — bounded by the values the spec accepts, checked
+  // below. `shipping_weight` is `"<number> <unit>"` with the unit in a fixed English vocabulary
+  // (lb/oz/g/kg) and a metric ceiling of 1000 kg; a Hebrew unit is a rejected item, not a localised
+  // one, and `lib/product-weight.ts` caps the input at 100 kg well inside that.
+  'g:shipping_weight': 20,
   'g:availability': 20,
   'g:condition': 20,
   'g:gender': 20,
@@ -166,6 +181,7 @@ function adversarialProduct(): StoreProduct {
     description: 'ת'.repeat(9000),
     price: 199.99,
     stock: 7,
+    weightGrams: 100_000, // the module's own ceiling — the largest value that can ever reach the feed
     sku: 'S'.repeat(120),
     images: Array.from({ length: 14 }, (_, i) => `https://cdn.example/${i}.jpg`),
     variants: [
@@ -220,6 +236,27 @@ describe('the Merchant/Catalog feed cannot emit a value the platforms reject', (
     expect(unknown, 'add it to FEED_LIMITS with its limit from the published spec').toEqual([]);
   });
 
+  it('and no attribute the SOURCE can emit is undeclared, whatever this fixture happens to trigger', () => {
+    // The test above can only see what the fixture produces, and an optional attribute is exactly
+    // the kind that a fixture forgets — `shipping_weight` arrived from another session and slipped
+    // through until the product here was given a weight. So the tags are also read off the
+    // serializer itself, which cannot forget: every tag `itemXml` is capable of writing must be
+    // declared, whether or not any fixture reaches it.
+    const source = readFileSync(join(SRC, 'lib/product-feed.ts'), 'utf8');
+    const emitted = new Set<string>();
+    for (const [, name] of source.matchAll(/\bg\('([a-z_0-9]+)'/g)) emitted.add(`g:${name}`);
+    for (const [, name] of source.matchAll(/<(g:[a-z_0-9]+)>/g)) emitted.add(name);
+    for (const [, name] of source.matchAll(/<(title|description|link)>/g)) emitted.add(name);
+    // The five positional labels are written through a template (`custom_label_${i}`), so they are
+    // named once in the source and five times in the document.
+    if (/custom_label_\$\{/.test(source)) for (let i = 0; i < 5; i++) emitted.add(`g:custom_label_${i}`);
+
+    expect([...emitted].filter((tag) => !(tag in FEED_LIMITS)), 'declare it in FEED_LIMITS').toEqual([]);
+    // …and the reverse, so a limit for an attribute nobody emits any more is noticed rather than
+    // quietly outliving its field.
+    expect(Object.keys(FEED_LIMITS).filter((tag) => !emitted.has(tag)), 'stale limit, no such attribute').toEqual([]);
+  });
+
   it('the catalog id fits, including the hashed fallback for a long Hebrew combo', () => {
     // The bug: a uuid is 36 of the 50, and `צבע=אדום,מידה=42` alone is 17 — so EVERY row of a
     // two-dimension Hebrew variant product was over. A variant product emits no parent row, so the
@@ -238,6 +275,17 @@ describe('the Merchant/Catalog feed cannot emit a value the platforms reject', (
     // Half a part number is a different part number, and `identifier_exists` would then be
     // asserting that a wrong identifier exists.
     for (const row of rows) expect(row.mpn).toBeUndefined();
+  });
+
+  it('shipping_weight is a number plus a unit Google actually accepts', () => {
+    // The attribute that arrived from another session while this file was being written — which is
+    // the test working: an unknown attribute failed here until its contract was written down.
+    const weights = pairs.filter(([tag]) => tag === 'g:shipping_weight').map(([, v]) => v);
+    expect(weights.length).toBeGreaterThan(0);
+    for (const w of weights) {
+      expect(w, 'format is "<number> <unit>", unit in lb/oz/g/kg').toMatch(/^\d+(\.\d+)? (lb|oz|g|kg)$/);
+      expect(Number(w.split(' ')[0]), 'over Google\'s 1000 kg metric ceiling').toBeLessThanOrEqual(1_000_000);
+    }
   });
 
   it('availability and condition stay inside the accepted vocabulary', () => {

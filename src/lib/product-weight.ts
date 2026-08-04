@@ -10,7 +10,7 @@
  *
  * **Absent is not zero, and the distinction is the whole reason this module exists.** A zero-gram
  * parcel is a carrier quote of ₪0, which a carrier will cheerfully return; an absent weight is a
- * question the seller has not answered. Both the column (NULL, `migrations/0010_product_weight.sql`)
+ * question the seller has not answered. Both the column (NULL, `migrations/0011_product_weight.sql`)
  * and every read side keep them apart, so nothing may "helpfully" default one to the other.
  */
 
