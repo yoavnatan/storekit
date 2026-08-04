@@ -287,6 +287,51 @@ describe('creating an order', () => {
   });
 });
 
+/**
+ * The ad click stamped on the order (migration 0010, `lib/attribution.ts`, GO_LIVE §2.5 layer 5).
+ * `attribution.test.ts` owns the parsing and the window; what only a database can answer is whether
+ * the record survives `jsonb` intact and whether an organic order stays OUT of the partial index —
+ * a `JSON.stringify(null)` would write the string `'null'`, which `IS NOT NULL` counts as present
+ * and would put every organic order the platform ever takes inside it.
+ */
+describe('order attribution', () => {
+  it('round-trips the click through jsonb, Hebrew campaign included', async () => {
+    const attribution = {
+      gclid: 'Cj0KCQ-abc', utmSource: 'google', utmMedium: 'cpc', utmCampaign: 'קיץ 2026',
+      landedAt: '2026-07-20T09:30:00.000Z',
+    };
+    const created = await createOrder(input({ attribution }));
+    expect(created.attribution).toEqual(attribution);
+    expect((await getOrderById(created.id))!.attribution).toEqual(attribution);
+  });
+
+  it('leaves the column SQL NULL for an organic order, not the JSON null', async () => {
+    const created = await createOrder(input());
+    expect('attribution' in created).toBe(false);
+    const [row] = (await query<{ present: boolean }>(
+      'SELECT attribution IS NOT NULL AS present FROM orders WHERE id = $1', [created.id],
+    )).rows;
+    expect(row!.present).toBe(false);
+  });
+
+  it('refuses to write a record that no reader could see', async () => {
+    // Cleaned on the way in as well as out: a cookie-shaped object with no timestamp is not an
+    // attribution, and storing it would leave the column holding something `toOrder` drops.
+    const created = await createOrder(input({
+      attribution: { gclid: 'abc' } as unknown as NonNullable<CreateOrderInput['attribution']>,
+    }));
+    expect('attribution' in created).toBe(false);
+  });
+
+  it('keeps a record older than the lookback window — an order is history, not a live claim', async () => {
+    // The window decides whether a click may claim a NEW purchase. Applying it on the way out would
+    // empty the attribution of every order more than a month old, which is the report itself.
+    const attribution = { fbclid: 'IwAR-old', landedAt: '2024-01-01T00:00:00.000Z' };
+    const created = await createOrder(input({ attribution }));
+    expect((await getOrderById(created.id))!.attribution).toEqual(attribution);
+  });
+});
+
 describe('updating an order', () => {
   it('touches only the keys the caller sent, and CLEARS one whose value is empty', async () => {
     const created = await createOrder(input({ trackingNumber: 'IL-1' }));

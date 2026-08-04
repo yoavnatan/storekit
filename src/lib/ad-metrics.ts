@@ -45,14 +45,17 @@ export interface RangeStat {
    *    purchase on a desktop, a cleared cookie or an ad-blocker all break the join; both networks
    *    fill those gaps with MODELLED conversions. Two networks can also each claim the same sale,
    *    so summing campaigns can exceed the store's real order count.
-   *  - **The only deterministic version is first-party**: read `gclid`/`fbclid`/`utm_*` off the
-   *    landing URL, keep it in a first-party cookie for the window, and stamp it on the order at
-   *    checkout — then "sales" is a list of real orders, not an estimate. Deliberately NOT built
-   *    yet: nothing produces those parameters until real ad accounts exist, so it would report a
-   *    true 0 next to these mock thousands. Trigger + scope live in `GO_LIVE_CHECKLIST.md` §2.5.
+   *  - **The only deterministic version is first-party, and the CAPTURE half of it now exists**
+   *    (`lib/attribution.ts`, migration 0010, 2026-08-04): the click id and UTM tags come off the
+   *    landing URL into a first-party cookie and are stamped on every order at checkout. What is
+   *    still missing is the report that reads them, which is part of the real integration — so
+   *    nothing in this module consumes `orders.attribution` yet, on purpose. Until real ad accounts
+   *    exist no link carries those parameters, and a true 0 beside these mock thousands would be
+   *    worse than either number alone. Scope for the remaining half: `GO_LIVE_CHECKLIST.md` §2.5.
    *
-   *  Until then the seller-facing label says "משוער"/"(est.)" and the glossary states the window —
-   *  the honest framing the user asked for, not a precision we do not have. */
+   *  Until that report is built the seller-facing label says "משוער"/"(est.)" and the glossary
+   *  states the window — the honest framing the user asked for, not a precision we do not have.
+   *  **Both change together with the report, never before it.** */
   conversions: number;
   roas: number;
 }

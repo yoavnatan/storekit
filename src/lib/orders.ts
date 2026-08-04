@@ -46,6 +46,7 @@ import {
   REVENUE_PAYMENT_STATUSES,
   REVENUE_SHIPPING_STATUSES,
 } from './order-status-rules.js';
+import { sanitizeAttribution, type OrderAttribution } from './attribution.js';
 import { firstRow, isUuid, rows, withTransaction, type Queryable } from './db.js';
 import { SHIPPING_SORT_ORDER, type AdminOrderQuery } from './admin-orders-filter.js';
 
@@ -105,6 +106,16 @@ export interface Order {
    *  scoped `notes` array, never this whole map. Legacy data may hold a single string per
    *  store — read it through orderStoreNotes(), which coerces string → one-item list. */
   sellerNotes?: Record<string, string[]>;
+  /** The ad click this purchase came from, if any — click id and/or UTM tags plus the moment the
+   *  visitor landed (`lib/attribution.ts`, migration 0010). A SNAPSHOT like every other field here:
+   *  it records what the cookie said at the moment of purchase, and `updateOrder` cannot touch it.
+   *  Absent on an organic order, which is most of them.
+   *
+   *  **Platform-internal — never sent to a seller or a buyer** (`tests/order-client-projection.ts`
+   *  enforces it). The platform advertises out of one Google account and one Meta pixel for every
+   *  store, so the campaign names in here are the OWNER's marketing structure and not the seller's
+   *  data. */
+  attribution?: OrderAttribution;
   createdAt: string;
   updatedAt: string;
 }
@@ -189,6 +200,11 @@ interface OrderRow {
   payment_status: Order['paymentStatus'];
   shipping_status: Order['shippingStatus'];
   tracking_number: string | null;
+  /** `jsonb`, so the driver hands back a parsed object. Typed `unknown` on purpose: it is
+   *  re-validated through `attribution.ts` on the way out rather than trusted for having been in
+   *  our own column, which also means a row written by an older or hand-edited shape degrades to
+   *  "no attribution" instead of putting a malformed record on an order. */
+  attribution: unknown;
   created_at: Date | string | null;
   updated_at: Date | string | null;
   items: ItemRow[] | null;
@@ -280,6 +296,10 @@ function toOrder(row: OrderRow): Order {
   if (row.buyer_id) order.buyerId = row.buyer_id;
   if (row.payment_ref) order.paymentRef = row.payment_ref;
   if (row.tracking_number) order.trackingNumber = row.tracking_number;
+  // Through the sanitiser, not straight off the column — see its doc for why our own `jsonb` is
+  // still re-validated, and why NO lookback window is applied on the way out.
+  const attribution = sanitizeAttribution(row.attribution);
+  if (attribution) order.attribution = attribution;
 
   const sellerNotes: Record<string, string[]> = {};
   for (const s of row.stores ?? []) {
@@ -305,7 +325,7 @@ const SELECT_ORDERS = `
   SELECT o.id, o.checkout_ref, o.buyer_id, o.buyer_name, o.buyer_email, o.buyer_phone,
          o.buyer_city, o.buyer_street, o.buyer_zip, o.shipping_agorot, o.total_agorot,
          o.payment_ref, o.payment_status, o.shipping_status, o.tracking_number,
-         o.created_at, o.updated_at,
+         o.attribution, o.created_at, o.updated_at,
          i.items, s.stores
     FROM orders o
     LEFT JOIN LATERAL (
@@ -670,14 +690,20 @@ async function writeStores(
  * order records the actual charge outcome rather than assuming it. When a real webhook-based
  * confirm step lands, that becomes the place it flips paid.
  */
+/** Attribution → the `jsonb` bind value. See the call site for why `null` and `'null'` differ. */
+function attributionOf(attribution: OrderAttribution | undefined): string | null {
+  const clean = sanitizeAttribution(attribution);
+  return clean ? JSON.stringify(clean) : null;
+}
+
 export async function createOrder(input: CreateOrderInput): Promise<Order> {
   const id = crypto.randomUUID();
   return withTransaction(async (tx) => {
     await tx.query(
       `INSERT INTO orders (id, checkout_ref, buyer_id, buyer_name, buyer_email, buyer_phone,
                            buyer_city, buyer_street, buyer_zip, shipping_agorot, total_agorot,
-                           payment_ref, payment_status, shipping_status, tracking_number)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending', $14)`,
+                           payment_ref, payment_status, shipping_status, tracking_number, attribution)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending', $14, $15::jsonb)`,
       [
         id, input.checkoutRef || null,
         input.buyerId && isUuid(input.buyerId) ? input.buyerId : null,
@@ -686,6 +712,14 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
         nonNegative(input.shippingAgorot), nonNegative(input.totalAgorot),
         input.paymentRef || null, input.paymentStatus,
         input.trackingNumber || null,
+        // Cleaned on the way IN as well as on the way out. The caller reads it from a cookie, and a
+        // record that would not survive `toOrder` must not be written in the first place — the
+        // column would then hold something no reader can see, which is worse than holding nothing.
+        //
+        // SQL `NULL` for an organic order, never the string `'null'`: `'null'::jsonb` is a JSON null
+        // — a present value — and it would put every one of the platform's organic orders inside
+        // `orders_attribution_campaign_idx`, whose whole point is that they stay out of it.
+        attributionOf(input.attribution),
       ],
     );
     await writeItems(tx, id, input.items ?? []);

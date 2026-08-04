@@ -22,6 +22,7 @@ import { recordMoneyEvent } from '../../lib/money-events.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { toAgorot, fromAgorot, formatAgorot } from '../../lib/money.js';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
+import { readAttribution } from '../../lib/attribution.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -324,6 +325,17 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // Shared reference for the buyer to identify the full purchase across all stores
   const checkoutRef = crypto.randomUUID().slice(0, 8).toUpperCase();
 
+  // The ad click that produced this purchase, off the first-party cookie middleware wrote when the
+  // buyer landed (lib/attribution.ts, GO_LIVE §2.5 layer 5). Read from the COOKIE and never from
+  // the request body, for the same reason prices are: the client would otherwise be choosing which
+  // campaign gets credited, and once a campaign's spend is billed to a seller that is money.
+  //
+  // Stamped identically on every order of this checkout — a multi-store cart is one click, and
+  // splitting the credit or giving it to the first store would both be inventions. Deliberately NOT
+  // cleared afterwards: both networks count a click for every purchase inside its window, so the
+  // same landing may legitimately claim a second order days later.
+  const attribution = readAttribution(cookies);
+
   const orderIds: string[] = [];
   const createdOrders: Order[] = [];
   // Flips the moment the order rows exist, and it is what the catch below reads.
@@ -377,6 +389,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         storeSubtotals: { [storeSlug]: sub },
         shippingAgorot: sub.shippingAgorot,
         totalAgorot:    storeTotalAgorot,
+        ...(attribution ? { attribution } : {}),
       });
       orderIds.push(storeOrder.id);
       createdOrders.push(storeOrder);

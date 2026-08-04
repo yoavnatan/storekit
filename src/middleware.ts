@@ -11,6 +11,7 @@ import { resolveCustomDomainRewrite, isUnclaimedCustomHost } from './lib/custom-
 import { getProductBySlug } from './lib/store-products.js';
 import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
 import { ensureShutdownHookInstalled, trackRequest } from './lib/shutdown.js';
+import { captureAttribution } from './lib/attribution.js';
 
 // Stores live at the platform ROOT now — a store home is `/<slug>` and a product page is
 // `/<slug>/<product>` (no `/store/` prefix). So we can't tell a store path from a real platform
@@ -97,6 +98,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
       && !pathname.startsWith('/admin')
       && !/\.[a-z0-9]+$/i.test(pathname);
     const vid = isPageCandidate ? resolveVisitorId(context.cookies) : '';
+
+    // First-party ad attribution (lib/attribution.ts, GO_LIVE_CHECKLIST.md §2.5 layer 5). If THIS
+    // landing carries a click id or UTM tags they go into a first-party cookie, and /api/checkout
+    // stamps them onto the orders. Same gate as the visitor id, for the same reason — an ad click
+    // is a human arriving on a page — and a landing without parameters is a no-op that leaves an
+    // earlier click's cookie intact, which is what makes a lookback window mean anything.
+    if (isPageCandidate) captureAttribution(reqUrl, context.cookies);
 
     // Resolve the first path segment to a store (root-level routing). A one-segment path that
     // resolves to a store counts a store visit; a two-segment path additionally counts a product
