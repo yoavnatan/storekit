@@ -28,7 +28,12 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   const filtered = filterBuyerOrders(orders, query);
   const page = paginate(filtered, parsePage(url.searchParams, 'page'), BUYER_ORDER_PAGE_SIZE);
 
-  // Strip the sellers' private per-store notes — they must never reach the buyer.
-  const items = page.items.map(({ sellerNotes, ...rest }) => rest);
+  // Strip the sellers' private per-store notes — they must never reach the buyer. `attribution`
+  // goes with them: it is the platform's own ad bookkeeping (which campaign produced this order),
+  // nothing on this screen reads it, and echoing a shopper's click id back into their browser is
+  // the opposite of keeping it in an httpOnly cookie. Both are dropped here because the line
+  // spreads a whole `Order` and therefore inherits every field the model gains — which is how
+  // `sellerNotes` reached a client in the first place.
+  const items = page.items.map(({ sellerNotes, attribution, ...rest }) => rest);
   return json({ ok: true, items, page: page.page, totalPages: page.totalPages, total: page.total });
 };

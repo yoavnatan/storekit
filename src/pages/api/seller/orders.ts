@@ -22,8 +22,16 @@ import { isValidEmail } from '../../../lib/email-address.js';
 // Never ship the whole per-store sellerNotes map to the client — on a multi-store
 // order that would expose another store's seller's private notes. Replace it with
 // just THIS store's own list, scoped as a `notes` array.
-function scopeOrder(o: Order, storeSlug: string): Omit<Order, 'sellerNotes'> & { notes: string[] } {
-  const { sellerNotes, ...rest } = o;
+//
+// `attribution` is dropped for a different reason and it is not the seller's to see: the platform
+// advertises out of ONE Google account and ONE Meta pixel for every store, so the campaign names in
+// those UTM tags are the OWNER's marketing structure — which channels he buys, what he calls his
+// campaigns — and this route would hand them to every seller who opens devtools. The seller has no
+// use for a click id either. Both are stripped here rather than at the screen, because the leak was
+// never on the screen: this function spreads a whole `Order`, so it picks up every field the model
+// gains. That is exactly how `sellerNotes` got out, and `attribution` would have been the second.
+function scopeOrder(o: Order, storeSlug: string): Omit<Order, 'sellerNotes' | 'attribution'> & { notes: string[] } {
+  const { sellerNotes, attribution, ...rest } = o;
   return { ...rest, notes: orderStoreNotes(o, storeSlug) };
 }
 
