@@ -10,6 +10,7 @@ import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/st
 import { resolveCustomDomainRewrite, isUnclaimedCustomHost } from './lib/custom-domain.js';
 import { getProductBySlug } from './lib/store-products.js';
 import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
+import { ensureShutdownHookInstalled, trackRequest } from './lib/shutdown.js';
 
 // Stores live at the platform ROOT now — a store home is `/<slug>` and a product page is
 // `/<slug>/<product>` (no `/store/` prefix). So we can't tell a store path from a real platform
@@ -50,6 +51,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // actually serving. After that first call it is a single comparison and returns; it starts no
   // work here and awaits nothing, so it cannot add latency to the request it rides in on.
   ensureSchedulerStarted();
+  // Same ignition point, same reason (lib/shutdown.ts): the adapter owns the HTTP server and hands
+  // `src/` no "server started" hook, so the first served request is where our signal handlers get
+  // installed. `release()` sits in the outermost `finally` below — a request that leaks its slot
+  // makes every future deploy wait out the full drain deadline.
+  ensureShutdownHookInstalled();
+  const releaseRequest = trackRequest();
   try {
     const isGet = context.request.method === 'GET';
     const reqUrl = new URL(context.request.url);
@@ -167,5 +174,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
       statusCode: 500,
     }, { pathname, cookies: context.cookies });
     throw err;
+  } finally {
+    // Outermost, so a thrown request releases its slot too — see the note at `trackRequest`.
+    releaseRequest();
   }
 });
