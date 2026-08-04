@@ -50,6 +50,17 @@
 - [x] **שפת/מיקום התוכן** — `language: 'he'`, `direction: 'rtl'`, `locale: 'he_IL'`.
 - [ ] **האתר באוויר על הדומיין בפועל** — אחסון + DNS. כל שאר הסעיף (וגם רוב סעיפים 2 ו-8)
   תלוי בזה בפועל, לא רק בערך שבקונפיג.
+- [ ] **⚠️ שתי הפניות 301 בשרת — לא בקוד, ובלעדיהן יש תוכן כפול (נוסף 2026-08-05).** לפלטפורמה
+  יש היום שלוש כתובות שמגיעות לאותו מקום, וה-DNS *חייב* שיהיה כך (מי שיקליד `www` או `.com` צריך
+  להגיע). מה שמונע תוכן כפול הוא לא מחיקת רשומת DNS אלא **הפניה בשרת**:
+  1. `www.dezabin.co.il` → `dezabin.co.il` — הכתובת בלי `www` היא הרשמית: `store.url` בלעדיה,
+     ולכן כל canonical, כל `<loc>` בסייטמאפ וכל קישור מוחלט מצביעים לשם.
+  2. `dezabin.com` → `dezabin.co.il` — שומר את הדומיין רשום ואת התנועה, ומרכז את כוח הדירוג
+     בכתובת אחת. הפיך: אם הפלטפורמה תצא מישראל, מחליפים כיוון (memory `project_domain_switch`).
+  **בדיקה אחרי ההעלאה:** `curl -sI https://www.dezabin.co.il | grep -i '^location'` — חייב להחזיר
+  את הכתובת בלי `www`, וב-`301` (לא 302: זמנית לא מעבירה כוח דירוג).
+  נכס מסוג **Domain** ב-Search Console מכסה את כל שלוש הכתובות בנכס אחד — זו הסיבה לבחור בו
+  ולא ב-URL prefix.
 - [ ] **דומיין מותאם למוכר (Cloudflare for SaaS)** — הקוד מוכן ואגנוסטי (`src/lib/custom-domain.ts` + `custom-domain-cloudflare.ts` + middleware), רץ עם stub בטוח בפיתוח. כדי להפעיל בפרודקשן:
   (1) להקים **Cloudflare for SaaS / SSL for SaaS** על הזון של הפלטפורמה ולהגדיר Fallback Origin שמצביע ל-origin שלנו;
   (2) להזין ENV: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, ו-`CUSTOM_DOMAIN_TARGET` (יעד ה-CNAME שהמוכרים מפנים אליו — ה-Fallback Origin/`customers.dezabin.co.il`);
