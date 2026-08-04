@@ -58,8 +58,13 @@ export default defineConfig({
     // advertised in the sitemap either — Search Console flags "submitted URL marked
     // noindex" otherwise. `/stores` stays: its base (unfiltered) page IS indexable;
     // only its filtered variants set noindex, and those aren't build-time routes.
+    // `/store-gone` and `/store-unavailable` are the same case as `/search` and were missed
+    // (fixed 2026-08-05): both set `noindex={true}` in their own frontmatter, and both were being
+    // advertised in the sitemap regardless — the exact "submitted URL marked noindex" contradiction
+    // the note above describes, waiting in Search Console on the day it gets connected. They are
+    // status pages a shopper is redirected to, never destinations to arrive at from a search.
     sitemap({
-      filter: (page) => !/\/(admin|checkout|seller|buyer|search)(\/|$)/.test(new URL(page).pathname),
+      filter: (page) => !/\/(admin|checkout|seller|buyer|search|store-gone|store-unavailable)(\/|$)/.test(new URL(page).pathname),
     }),
   ],
 
