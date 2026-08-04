@@ -440,7 +440,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     ) : shopStore.bannerImage && (
       <div class="store-banner-pin">
         <div class="container">
-          <div class="store-banner__image-wrap is-loading">
+          <div class="store-banner__image-wrap" data-skeleton>
             <img
               src={cdnThumb(shopStore.bannerImage, BANNER_W, BANNER_H)}
               srcset={cdnCropSrcSet(shopStore.bannerImage, [...BANNER_WIDTHS], BANNER_RATIO) || undefined}
@@ -814,7 +814,8 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                     data-variants={p.variants?.length ? JSON.stringify(p.variants) : undefined}
                     data-variant-stock={p.variantStock ? JSON.stringify(p.variantStock) : undefined}
                     data-variant-images={p.variantImages ? JSON.stringify(p.variantImages) : undefined}>
-                  <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable is-loading' : ''}`}
+                  <div class={`product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}`}
+                       data-skeleton={hasImages ? '' : undefined}
                        role={hasImages ? 'button' : undefined}
                        aria-label={hasImages ? p.name : undefined}
                        tabindex={hasImages ? 0 : undefined}>
@@ -1859,7 +1860,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         ${p.variants?.length ? `data-variants="${escHtml(JSON.stringify(p.variants))}"` : ''}
         ${p.variantStock ? `data-variant-stock="${escHtml(JSON.stringify(p.variantStock))}"` : ''}
         ${p.variantImages ? `data-variant-images="${escHtml(JSON.stringify(p.variantImages))}"` : ''}>
-      <div class="product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable is-loading' : ''}" ${hasImages ? `role="button" aria-label="${escHtml(p.name)}" tabindex="0"` : ''}>
+      <div class="product-card__img-wrap${hasImages ? ' product-card__img-wrap--clickable' : ''}"${hasImages ? ' data-skeleton' : ''} ${hasImages ? `role="button" aria-label="${escHtml(p.name)}" tabindex="0"` : ''}>
         <div class="product-card__slides">${slidesHtml}</div>
         ${isNew ? `<span class="badge badge--new">${escHtml(pi.badgeNew ?? '')}</span>` : ''}
         ${saleBadgeHtml(pv, pi.saleBadge)}

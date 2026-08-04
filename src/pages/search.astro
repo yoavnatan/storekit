@@ -104,7 +104,7 @@ const jsonLd = {
               {products.map((p, i) => (
                 <li>
                   <a href={`/${p.storeSlug}/${p.slug}`} class="search-product-card card">
-                    <div class={`search-product-card__img-wrap${p.image ? ' is-loading' : ''}`}>
+                    <div class="search-product-card__img-wrap" data-skeleton={p.image ? '' : undefined}>
                       {p.image
                         ? <Image src={p.image} alt={p.name} width={300} height={300} class="search-product-card__img" loading={i < 6 ? 'eager' : 'lazy'} />
                         : (

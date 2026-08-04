@@ -121,7 +121,7 @@ const markGlow = store.profileImage ? undefined : storeMark(store.slug || store.
         The comment sits OUTSIDE the expression because Astro's compiler rejects one as
         the first child right after `{expr => (` (AI_INSTRUCTIONS → Architecture). */}
     {thumbs.map((img, i) => (
-      <span class={`store-card__preview-img-wrap${eager && i === 0 ? '' : ' is-loading'}`}>
+      <span class="store-card__preview-img-wrap" data-skeleton={eager && i === 0 ? undefined : ''}>
         <img
           src={cdnThumb(img, 160, 160)}
           alt=""

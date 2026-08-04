@@ -393,20 +393,33 @@ const shipLabel: Record<string, string> = {
        enough to signal "clickable" here. */
     .o-card:hover { border-color: color-mix(in srgb, var(--color-text) 20%, var(--color-border)); }
     .o-thumbs { grid-area: thumbs; display: flex; flex-direction: row-reverse; margin-inline-end: 0.5rem; flex-shrink: 0; }
-    /* Collapsed-card thumbnails are visible immediately (no expand click
-       gating it, unlike .o-item__img-wrap below) so they need their own
-       shimmer-until-decoded wrapper — same o-shimmer keyframe/pattern. */
+    /* Collapsed-card thumbnails are visible immediately — no expand click gates
+       them, unlike .o-item__img-wrap below, which is why these two look alike but
+       are wired differently.
+
+       Being visible immediately is exactly what made the old wiring wrong: the
+       wrap animated from first paint and .o-thumb sat at opacity 0 until this
+       page's bundle ran and img.decode() resolved. That is the pair of defects
+       lib/img-skeleton.ts exists to prevent — a shimmer claiming a fetch that
+       finished long ago (and showing straight through a background-removed photo),
+       and a cached, already-decoded picture held invisible waiting for JS. Fixed
+       2026-08-04 by handing these to the shared module: the photo now paints the
+       moment it has pixels, and `is-loading` is added only while a fetch is really
+       in flight. .o-item__img-wrap keeps its own decode-and-reveal because it is
+       inside a hidden panel until the card is expanded — nothing there can paint
+       before JS anyway. */
     .o-thumb-wrap {
       position: relative; width: 52px; height: 52px; border-radius: var(--radius); overflow: hidden;
       margin-inline-start: -12px;
+      background: var(--color-surface);
+    }
+    .o-thumbs .o-thumb-wrap:last-child { margin-inline-start: 0; }
+    .o-thumb-wrap.is-loading {
       background: linear-gradient(90deg, var(--color-border) 25%, var(--color-bg) 50%, var(--color-border) 75%);
       background-size: 200% 100%;
       animation: o-shimmer 1.3s infinite linear;
     }
-    .o-thumbs .o-thumb-wrap:last-child { margin-inline-start: 0; }
-    .o-thumb-wrap.loaded { background: var(--color-surface); animation: none; }
-    .o-thumb { width: 52px; height: 52px; border-radius: var(--radius); object-fit: cover; border: 1px solid var(--color-border); opacity: 0; transition: opacity 0.18s; display: block; }
-    .o-thumb-wrap.loaded .o-thumb { opacity: 1; }
+    .o-thumb { width: 52px; height: 52px; border-radius: var(--radius); object-fit: cover; border: 1px solid var(--color-border); display: block; position: relative; }
     /* The id/date line is its own full-width row ABOVE the thumbs at every
        width (user, 2026-07-30: it should sit in the same place on every card,
        not move between breakpoints). It has to leave the text column to do
@@ -760,7 +773,7 @@ const shipLabel: Record<string, string> = {
                   {o.items.some((i) => i.image) && (
                     <div class="o-thumbs">
                       {o.items.filter((i) => i.image).slice(0, 3).map((i) => (
-                        <span class="o-thumb-wrap"><img src={cdnThumb(i.image!, 104, 104)} alt={i.productName} width="52" height="52" loading="lazy" decoding="async" class="o-thumb" /></span>
+                        <span class="o-thumb-wrap" data-skeleton><img src={cdnThumb(i.image!, 104, 104)} alt={i.productName} width="52" height="52" loading="lazy" decoding="async" class="o-thumb" /></span>
                       ))}
                     </div>
                   )}
@@ -1096,6 +1109,7 @@ const shipLabel: Record<string, string> = {
   import { formatPrice, cdnThumb } from '../../config/store.config.js';
   import { escapeHtml as escB } from '../../lib/html-escape.js';
   import { debounce } from '../../lib/admin-nav.js';
+  import { initImageSkeletons } from '../../lib/img-skeleton.js';
   import { BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
   import { filterClearButtonHtml } from '../../lib/toolbar-portal.js';
   import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
@@ -1885,13 +1899,13 @@ const shipLabel: Record<string, string> = {
     card.dataset.bound = '1';
     const hd = card.querySelector<HTMLElement>('.o-card__hd');
     const body = card.querySelector<HTMLElement>('.o-card__body');
-    // Collapsed-header thumbnails are visible immediately (unlike the
-    // expanded body's own item images, gated below on first expand), so
-    // they decode-and-reveal as soon as the card is bound.
-    card.querySelectorAll<HTMLElement>('.o-thumb-wrap:not(.loaded)').forEach((wrap) => {
-      const img = wrap.querySelector<HTMLImageElement>('img');
-      if (img) img.decode().then(() => wrap.classList.add('loaded')).catch(() => wrap.classList.add('loaded'));
-    });
+    // Collapsed-header thumbnails are visible immediately (unlike the expanded
+    // body's own item images, gated below on first expand). They used to be
+    // decoded-then-revealed here, which held cached photos invisible until this
+    // bundle ran and shimmered over them meanwhile; the shared module owns that
+    // now and this call only has to reach the newly bound card. It is idempotent
+    // — it consumes the data-skeleton marker as it takes each wrap.
+    initImageSkeletons('.o-thumb-wrap');
     hd?.addEventListener('click', () => {
       const isOpen = card.classList.contains('o-card--open');
       card.classList.toggle('o-card--open', !isOpen);
@@ -1932,7 +1946,7 @@ const shipLabel: Record<string, string> = {
     const storeNameBySlug = new Map(o.items.map((i) => [i.storeSlug, i.storeName]));
     const thumbs = o.items.filter((i) => i.image).slice(0, 3);
     const thumbsHtml = thumbs.length ? `<div class="o-thumbs">${thumbs.map((i) =>
-      `<span class="o-thumb-wrap"><img src="${escB(cdnThumb(i.image!, 104, 104))}" alt="${escB(i.productName)}" width="52" height="52" loading="lazy" decoding="async" class="o-thumb" /></span>`).join('')}</div>` : '';
+      `<span class="o-thumb-wrap" data-skeleton><img src="${escB(cdnThumb(i.image!, 104, 104))}" alt="${escB(i.productName)}" width="52" height="52" loading="lazy" decoding="async" class="o-thumb" /></span>`).join('')}</div>` : '';
     const storesHtml = stores.map((slug, idx) =>
       `<span>${escB(storeNameBySlug.get(slug) ?? '')}</span>${idx < stores.length - 1 ? '<span aria-hidden="true">, </span>' : ''}`).join('');
     const itemsLine = o.items.map((i) => `${escB(i.productName)} × ${i.qty}`).join(' · ');

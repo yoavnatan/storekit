@@ -422,13 +422,16 @@ textarea.input { resize: none; }
 
 .edit-row td { padding: 1rem 0.75rem; background: var(--color-surface); }
 .inline-edit-form { margin: 0; }
-/* Sticks to the same top offset the toolbar/column-header used — while a
-   product is open for editing, neither of those is relevant anymore (see
-   rules below that unstick them), so this becomes the one sticky bar on
-   screen instead of stacking on top of it. Constrained to this row's own
-   <td> as its containing block, so plain position:sticky already gives us
-   "stays while I'm inside this edit section, scrolls away once I'm past
-   it" for free — no scroll-tracking JS needed. */
+/* NOT sticky, and that is the decision — it used to be, pinned at the same offset as the column
+   headers so it would replace them (which is why they were unstuck outright).
+   Two rewrites of that idea both failed on the same geometry (2026-08-04): the edit row is
+   `<td class="row-num">` + `<td colspan>`, so a bar living in the wide cell can never cover the
+   table's first column, and the headings peeked out beside it however the cell was padded. And
+   the reason they were unstuck in the first place — no headings anywhere once you scrolled past
+   the form — was the original complaint.
+   So only ONE bar competes for that line now: the column headings stay pinned (they describe the
+   rows above and below the form, which are still listed), and this header scrolls away with the
+   form it belongs to. Nothing is lost — the form carries Save/Cancel at its foot as well. */
 .edit-row-header {
   display: flex;
   align-items: center;
@@ -436,17 +439,21 @@ textarea.input { resize: none; }
   padding-block: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--color-border);
   margin-bottom: 0.75rem;
-  position: sticky;
-  top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
-  z-index: 6;
   background: var(--color-surface);
 }
 
-/* An open edit row makes the column headers meaningless (they describe
-   table columns, not the single-product form now on screen) — unstick them
-   so they scroll away normally instead of floating uselessly over the form. */
+/* An open edit row makes the column headers meaningless *while the form is on screen* — they
+   describe columns, not the single-product form. They used to be unstuck outright for that, but
+   the edit row sits INSIDE a table whose other rows are still listed above and below it: scroll
+   past the form and you were reading an ordinary product table with no column headings at all
+   (owner, 2026-08-04). So they stay sticky and the form's own header COVERS them instead.
+   That needs no measurement and no JS: `.edit-row-header` already pins at this exact offset with
+   a higher z-index and an opaque background, and it is the taller of the two, so while its row is
+   on screen it hides them completely — and the moment the row scrolls away it un-pins with the
+   row and reveals the headings, still pinned, right where the table needs them.
+   The `top` drops by the toolbar's height because the toolbar itself unsticks below. */
 #products-table:has(tr.edit-row:not([hidden])) > thead th {
-  position: static;
+  top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
 }
 
 /* Same reasoning for the toolbar (title/select-all/bulk actions) — while
@@ -465,8 +472,12 @@ textarea.input { resize: none; }
 .products-header:has(~ #bulk-upload-panel:not([hidden])) {
   position: static;
 }
+/* Same correction as the edit row above, and for the same reason: the panel is its own section
+   ABOVE the table, so scrolling past it lands you in an ordinary product table — which had no
+   column headings at all while it was open. It keeps them; the panel's own header pins higher and
+   un-pins with the panel, so the two never fight for the same line. */
 #bulk-upload-panel:not([hidden]) ~ #products-table thead th {
-  position: static;
+  top: calc(var(--site-header-h, 3.3rem) + var(--dash-tabs-h, 2.9rem));
 }
 .edit-row-title { font-weight: 600; font-size: 0.95rem; }
 
@@ -743,24 +754,34 @@ textarea.input { resize: none; }
      separate it from the table row — both sit on the same white surface. */
   border: 1px solid var(--color-border);
 }
-.thumb-wrap::before {
+/* The shimmer runs only while lib/img-skeleton.ts says a fetch is in flight, and it sits
+   BEHIND the photo (z-index 0 against the image's 1) rather than on top of it.
+
+   It used to be the other way round on both counts, which is two defects: `::before` had no
+   gating class at all, so it animated from the first paint until the dashboard bundle ran
+   and `initThumbs` added `.loaded`; and `.product-thumb` sat at `opacity: 0` until that same
+   moment, so a photo already in cache and already decoded was held INVISIBLE waiting for JS.
+   That second one is the regression store-card.css measured at ~700ms on the homepage and
+   removed there; this table kept its copy because the two were fixed by hand rather than by
+   a rule. Fixed 2026-08-04 — the class is now the shared one, added by the shared module.
+   The photo's visibility no longer depends on JS at all. */
+.thumb-wrap.is-loading::before {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: 0;
   background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-skeleton) 50%, var(--color-surface) 75%);
   background-size: 400% 100%;
   animation: skeleton-shimmer 1.8s ease-in-out infinite;
 }
-.thumb-wrap.loaded::before { display: none; }
 .product-thumb {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  opacity: 0;
-  transition: opacity 0.2s;
+  position: relative;
+  z-index: 1;
 }
-.thumb-wrap.loaded .product-thumb { opacity: 1; }
 
 .name-col { padding-inline-start: 0.2rem; vertical-align: middle; }
 

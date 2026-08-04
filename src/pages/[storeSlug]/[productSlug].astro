@@ -269,7 +269,8 @@ const pmI18n = {
         <!-- Images column -->
         <div>
           <div id="main-img-wrap"
-               class={`relative overflow-hidden${images[0] ? ' is-loading' : ''}`}
+               class="relative overflow-hidden"
+               data-skeleton={images[0] ? '' : undefined}
                style="aspect-ratio:1/1;border-radius:var(--radius)"
                role={images.length > 0 ? 'button' : undefined}
                tabindex={images.length > 0 ? '0' : undefined}
@@ -317,7 +318,8 @@ const pmI18n = {
                   type="button"
                   role="listitem"
                   data-img-index={String(i)}
-                  class="thumb-btn is-loading flex-shrink-0 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
+                  class="thumb-btn flex-shrink-0 overflow-hidden p-0 border-2 cursor-pointer transition-all duration-150"
+                  data-skeleton
                   style={`width:4rem;height:4rem;border-radius:var(--radius);border-color:${i === 0 ? 'var(--color-text)' : 'transparent'};opacity:${i === 0 ? 1 : 0.55}`}
                   aria-pressed={i === 0 ? 'true' : 'false'}
                   aria-label={`${product.name} ${i + 1}`}

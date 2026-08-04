@@ -8,6 +8,7 @@ import { resolveVariantColor, isColorVariant } from '../../lib/color-variants.js
 import { canonicalDimName, LOW_STOCK_THRESHOLD, comboStockRows, type VariantDimension } from '../../lib/variant-combo.js';
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
+import { initImageSkeletons, SKELETON_ATTR } from '../../lib/img-skeleton.js';
 import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree } from './category-tree-cache.js';
 import { NO_CATEGORY_TOKEN } from '../../lib/seller-products-query.js';
@@ -1535,7 +1536,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
   display.innerHTML = `
     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check="${p.id}" aria-label="${esc(p.name)}" style="cursor:pointer;width:15px;height:15px"></td>
     <td class="num row-num pe-[0.2rem]"></td>
-    <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap"><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async"></span>` : ''}</td>
+    <td class="thumb-col">${p.images?.[0] ? `<span class="thumb-wrap" data-skeleton><img src="${esc(thumbUrl(p.images[0]))}" alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async"></span>` : ''}</td>
     <td class="name-col">
       <span class="product-name cursor-text">${esc(p.name)}</span>
       <span class="sale-chip ms-1.5 align-middle" data-row-sale="${esc(p.id)}" dir="ltr"${rowSaleLabel(p) ? '' : ' hidden'}>${rowSaleLabel(p)}</span>
@@ -1782,7 +1783,7 @@ async function handleEditSubmit(e: SubmitEvent, cloud: string, preset: string): 
             thumbCol.append(wrap);
           }
           if (thumb) thumb.src = thumbUrl(thumbSrc);
-          wrap.classList.remove('loaded');
+          armThumbSkeleton(wrap);
           initThumbs(thumbCol);
         } else { wrap?.remove(); }
       }
@@ -2151,20 +2152,30 @@ function thumbSrcOf(wrap: HTMLElement): string {
   return wrap.querySelector<HTMLImageElement>('.product-thumb')?.getAttribute('src') ?? '';
 }
 
+/** Kept as a name because five call sites (including dashboard.astro) use it; the mechanism
+ *  underneath is the shared one now. It used to decode-then-reveal, which meant every
+ *  thumbnail — including one already in cache and already decoded — sat at opacity 0 until
+ *  this bundle ran, under a shimmer that had been animating since the first paint. See
+ *  dashboard.css for what that cost and lib/img-skeleton.ts for why it is the module's job.
+ *  Re-arm a wrap with `armThumbSkeleton()` before calling this again for it. */
 export function initThumbs(root: ParentNode = document): void {
-  root.querySelectorAll<HTMLElement>('.thumb-wrap').forEach(wrap => {
-    if (wrap.classList.contains('loaded')) return;
-    const img = wrap.querySelector<HTMLImageElement>('.product-thumb');
-    if (!img) return;
-    const markLoaded = () => wrap.classList.add('loaded');
-    const decodeAndMark = () => img.decode().then(markLoaded).catch(markLoaded);
-    if (img.complete) {
-      if (img.naturalWidth > 0) decodeAndMark(); else markLoaded();
-    } else {
-      img.addEventListener('load', decodeAndMark, { once: true });
-      img.addEventListener('error', markLoaded, { once: true });
-    }
-  });
+  initImageSkeletons('.thumb-wrap', root);
+}
+
+/** Hand a thumbnail back to the skeleton module after its `src` changed (an inline edit, a
+ *  newly uploaded image). The module consumes the marker as it takes each wrap, so re-arming
+ *  is what makes it look again — the old code cleared a `.loaded` class for the same reason. */
+export function armThumbSkeleton(wrap: HTMLElement): void {
+  wrap.classList.remove('is-loading');
+  wrap.setAttribute(SKELETON_ATTR, '');
+}
+
+/** Has this thumbnail's photo already arrived? Replaces the old `.thumb-wrap.loaded` check —
+ *  the class is a statement about a fetch in flight now, not a permanent "done" mark, so the
+ *  image itself is the thing to ask. */
+function thumbIsResolved(wrap: HTMLElement): boolean {
+  const img = wrap.querySelector<HTMLImageElement>('.product-thumb');
+  return !!img?.complete && img.naturalWidth > 0;
 }
 
 // Number of <th>s in the products table — the empty-state row spans all of them.
@@ -2262,8 +2273,8 @@ export async function applyPagination(): Promise<void> {
   const decodedThumbs = new Map<string, HTMLElement>();
   tbody.querySelectorAll<HTMLElement>('[data-product-display]').forEach((row) => {
     const id = row.dataset.productDisplay ?? '';
-    const wrap = row.querySelector<HTMLElement>('.thumb-wrap.loaded');
-    if (id && wrap) decodedThumbs.set(id, wrap);
+    const wrap = row.querySelector<HTMLElement>('.thumb-wrap');
+    if (id && wrap && thumbIsResolved(wrap)) decodedThumbs.set(id, wrap);
   });
 
   // One fragment, one insertion: building straight into the live tbody reflows
@@ -3406,10 +3417,9 @@ export function initBulkSelect(cloud: string, preset: string): void {
                 }
                 if (rowThumb) rowThumb.src = thumbUrl(firstUrl);
                 // initThumbs needs an ANCESTOR of .thumb-wrap (it does root.querySelectorAll,
-                // which never matches root itself) — passing wrap directly here was a no-op:
-                // the "loaded" class was removed but never re-added, leaving the skeleton
-                // shimmer stuck forever even though the image had already loaded fine.
-                if (wrap) { wrap.classList.remove('loaded'); initThumbs(thumbCol); }
+                // which never matches root itself) — passing wrap directly here was a no-op
+                // that left the shimmer stuck forever over an image that had loaded fine.
+                if (wrap) { armThumbSkeleton(wrap); initThumbs(thumbCol); }
               }
             }
             if (statusEl) {

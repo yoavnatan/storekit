@@ -1314,7 +1314,7 @@ const orderStatusColors: Record<string, string> = {
                     <td class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" class="bulk-check" data-bulk-check={p.id} aria-label={p.name} style="cursor:pointer;width:15px;height:15px"></td>
                     <td class="num row-num pe-[0.2rem]">{(productsPage.page - 1) * productsPageSize + idx + 1}</td>
                     <td class="thumb-col">
-                      {p.images?.[0] && <span class="thumb-wrap"><img src={thumbUrl(p.images[0])} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" /></span>}
+                      {p.images?.[0] && <span class="thumb-wrap" data-skeleton><img src={thumbUrl(p.images[0])} alt="" class="product-thumb" width="42" height="42" loading="lazy" decoding="async" /></span>}
                     </td>
                     <td class="name-col">
                       <span class="product-name cursor-text">{p.name}</span>

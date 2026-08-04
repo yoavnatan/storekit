@@ -3,8 +3,9 @@
  * One product tile on the homepage — the spotlight's per-store carousel.
  *
  * Lifted out of index.astro (which is long enough that pulling a self-contained
- * card out of it is worth it on its own), plus the `is-loading` skeleton class
- * that initImageSkeletons() clears once the image resolves.
+ * card out of it is worth it on its own), plus the `data-skeleton` marker that
+ * initImageSkeletons() promotes to a shimmer only while the image is in flight
+ * (never server-side — see lib/img-skeleton.ts for what that cost).
  *
  * The image carries a REAL `src`/`srcset` and native `loading="lazy"`. It used to
  * hold the URL in `data-lazy-src` for a hand-rolled IntersectionObserver, which
@@ -49,7 +50,7 @@ const WIDTHS = [220, 440];
   role={role}
   aria-label={`${p.name} — ${formatPrice(pv.price)}`}
 >
-  <div class={`home-product-card__img-wrap${p.images?.[0] ? ' is-loading' : ''}`}>
+  <div class="home-product-card__img-wrap" data-skeleton={p.images?.[0] ? '' : undefined}>
     {p.images?.[0]
       ? <img
           src={cdnSrc(p.images[0], 220)}
