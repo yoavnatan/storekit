@@ -26,7 +26,7 @@
  * builds — the paginated inline product editor — can only exist if that same module graph is
  * alive, in which case the block never fires and there is no draft to restore.
  *
- * Never stored: file and password inputs.
+ * Never stored: file and password inputs, and the CSRF token — see SKIP_NAME below.
  *
  * A form that genuinely wants the browser to post it (server-rendered redirect flows — logout,
  * store creation) opts out with `data-native-submit`.
@@ -47,6 +47,11 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
     var PREFIX = 'dz-draft:';
     var MAX_AGE = 7 * 24 * 60 * 60 * 1000;
     var SKIP = { file: 1, password: 1, submit: 1, button: 1, reset: 1, image: 1 };
+    // Never stored, and never restored over the fresh one the server just rendered: a CSRF token
+    // (src/lib/csrf.ts) is a credential, not typing worth preserving. A draft written before a
+    // sign-in or sign-out carries a token bound to the OTHER identity, and putting it back would
+    // turn a recovered form into a 403 the seller cannot explain.
+    var SKIP_NAME = { _csrf: 1 };
 
     /** Identity that survives a reload: the form's own id (or its field names when it has none),
      *  scoped by the record it edits, so two products' editors never share a draft.
@@ -72,7 +77,7 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
       var out = {};
       for (var i = 0; i < form.elements.length; i++) {
         var el = form.elements[i];
-        if (!el.name || el.disabled || SKIP[el.type]) continue;
+        if (!el.name || el.disabled || SKIP[el.type] || SKIP_NAME[el.name]) continue;
         out[fieldKey(form, el)] = el.type === 'checkbox' || el.type === 'radio' ? { c: el.checked } : { v: el.value };
       }
       return out;
@@ -94,7 +99,7 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
     function apply(form, values) {
       for (var i = 0; i < form.elements.length; i++) {
         var el = form.elements[i];
-        if (!el.name || el.disabled || SKIP[el.type]) continue;
+        if (!el.name || el.disabled || SKIP[el.type] || SKIP_NAME[el.name]) continue;
         var saved = values[fieldKey(form, el)];
         if (!saved) continue;
         if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!saved.c;

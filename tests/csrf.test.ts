@@ -249,6 +249,17 @@ describe('the gate stays in one place', () => {
     expect(bundled[0]).toContain('csrf-client');
   });
 
+  it('is never written into a saved draft', () => {
+    // FormFallbackGuard snapshots a blocked form into localStorage and offers it back on the next
+    // load. A token is a credential, not typing worth preserving — and a draft written before a
+    // sign-in carries a token bound to the OTHER identity, so restoring it over the fresh one the
+    // server just rendered turns a recovered form into a 403 nobody can explain.
+    const guard = readFileSync(path.join(SRC_ROOT, 'components', 'dashboard', 'FormFallbackGuard.astro'), 'utf8');
+    expect(guard).toMatch(/SKIP_NAME\s*=\s*\{\s*_csrf:\s*1\s*\}/);
+    // Both halves — the write and the restore — must consult it.
+    expect(guard.match(/SKIP_NAME\[el\.name\]/g) ?? []).toHaveLength(2);
+  });
+
   it('has no request-sending path that cannot carry a header', () => {
     // sendBeacon cannot set one, so a beacon would need an exemption from the check — a hole
     // opened for convenience on the endpoint easiest to forget about. `fetch(…, {keepalive:true})`
