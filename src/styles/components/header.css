@@ -28,7 +28,14 @@
      (`body:has(.site-header.is-stuck) .store-banner`) to know the page has moved. It no
      longer means anything about depth. */
   border-bottom: 1px solid var(--color-border);
-  padding-block: 0.65rem;
+  /* Derived, not typed (2026-08-05). The header's height is pinned INLINE at
+     3.4rem with `box-sizing:border-box`, and 1px of that is the bottom border, so
+     the white bar the eye actually sees is 3.4rem − 1px tall. A flat `0.65rem`
+     left 10.4px above the 2rem row and 11.0px below it — the row, and therefore
+     every icon and every word in it, sat 0.3px high in a bar it was supposed to
+     be centred in. Expressing the padding as the leftover halved makes it
+     correct by construction, and it stays correct if the row height changes. */
+  padding-block: calc((3.4rem - 1px - 2rem) / 2);
 }
 
 /* compensate for the fixed header height (pinned to 3.4rem inline on <header>) */
@@ -668,8 +675,15 @@ nav a:hover { color: var(--color-text); }
    The reference is the ICON ROW, not the header box: the icons are what the eye
    compares the logo against, and they centre on `.container`.
 
-   The wordmark is 0.166em because "Dezabin" has no descender: its ink IS its cap
-   band, and that band measured 3.45px high at a 20.8px font.
+   The wordmark is 0.113em, and it is 0.113 and not 0.166 because 0.166
+   OVERSHOT (re-measured 2026-08-05 on the BUILT page at 8x, after the owner
+   reported the letters still not sitting at the icons' height — the same
+   complaint as before with the sign flipped, which is why it kept coming back).
+   Solved rather than nudged: the cap band's centre is linear in the transform,
+   0 em puts it 2.383px above the bar's centre and 0.166em puts it 1.117px below,
+   so the zero is 2.383/21.08 = 0.113em. Do not re-derive this from the box or
+   from a font metric — measure the two endpoints on a build and read off the
+   crossing, which is the only method that has ever landed it.
 
    A store NAME is the harder case and 0.095em is a deliberate compromise, not a
    measurement. A name with a descender ("MegaMart", or any Hebrew name with
@@ -687,7 +701,7 @@ nav a:hover { color: var(--color-text); }
    renders a <span> when the seller uploaded nothing and an <img> when they did,
    so stores with no logo had their badge pushed 4px down and stores with one did
    not. Two stores, two vertical positions, from a selector that looked harmless. */
-.site-header .dz-logo { transform: translateY(0.166em); }
+.site-header .dz-logo { transform: translateY(0.113em); }
 .site-header .store-name-text { transform: translateY(0.095em); }
 
 /* A store's header wears that store's own colour as a 2px line along its bottom
