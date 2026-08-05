@@ -2,6 +2,7 @@ import type { CategoryNode } from '../../lib/store-categories.js';
 import { getCategoryTree, setCategoryTree } from './category-tree-cache.js';
 import { escapeHtml as esc } from '../../lib/html-escape.js';
 import { formatScopeNames } from '../../lib/sale-scope-label.js';
+import { announceValueChange } from './unsaved-guard.js';
 
 const MAX_CATEGORY_DEPTH = 3;
 
@@ -267,7 +268,7 @@ export function initCategoryPicker(root: HTMLElement): void {
       updateLabel();
       // Let listeners (the tag-suggestion recompute, the sale preview) react to a category
       // change — a plain `.value =` assignment fires no event on its own.
-      hiddenInput!.dispatchEvent(new Event('input', { bubbles: true }));
+      announceValueChange(hiddenInput!);
       // Multi-pick keeps the menu open: closing after every tick would make choosing four
       // categories four round trips through the trigger. Re-rendered in place so the ticks and
       // the trigger's label follow the click that caused them.
@@ -335,7 +336,7 @@ export function initCategoryPicker(root: HTMLElement): void {
       // Same order as a normal pick: repaint the trigger's label BEFORE notifying, because a
       // listener may read that label as its source of truth.
       updateLabel();
-      hiddenInput!.dispatchEvent(new Event('input', { bubbles: true }));
+      announceValueChange(hiddenInput!);
       expanded.add(created);
     }
     if (parentId) expanded.add(parentId);

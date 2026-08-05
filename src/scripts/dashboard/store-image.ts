@@ -2,6 +2,7 @@ import { openCropModal } from './crop-modal.js';
 import { cloudinaryUpload } from './cloudinary.js';
 import { cdnSrc } from '../../config/store.config.js';
 import { showErrorToast } from '../../lib/toast.js';
+import { announceValueChange } from './unsaved-guard.js';
 
 export interface StoreImageWidgetConfig {
   frameId: string;
@@ -98,6 +99,7 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
     const done = busy(btn, cfg.labels.uploading);
     try {
       hiddenInput!.value = await cloudinaryUpload(croppedBlob, cfg.cloud, cfg.preset);
+      announceValueChange(hiddenInput!);
       return true;
     } catch (err) {
       showErrorToast(cfg.labels.failed, err instanceof Error ? err.message : '');
@@ -132,6 +134,7 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
         try {
           sourceInput.value = await cloudinaryUpload(file, cfg.cloud, cfg.preset);
         } catch { /* keep the crop, lose only the re-framing across reloads */ }
+        announceValueChange(sourceInput);
       })();
     }, { vpWidth: cfg.vpWidth, aspect: cfg.aspect, round: cfg.round });
   });
@@ -179,7 +182,8 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
 
   removeBtn?.addEventListener('click', () => {
     hiddenInput!.value = '';
-    if (sourceInput) sourceInput.value = '';
+    announceValueChange(hiddenInput!);
+    if (sourceInput) { sourceInput.value = ''; announceValueChange(sourceInput); }
     sourceBlob = null;
     sourceBlobFor = '';
     render();

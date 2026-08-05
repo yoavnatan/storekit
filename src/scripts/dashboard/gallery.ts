@@ -3,6 +3,7 @@ import { removeBackgroundInWorker, cancelBgWorker, warmBgWorker } from './bg-wor
 import { cloudinaryUpload } from './cloudinary.js';
 import { openCropModal } from './crop-modal.js';
 import { openCleanupModal } from './cleanup-modal.js';
+import { announceValueChange } from './unsaved-guard.js';
 
 export { galleryWidgetHtml };
 
@@ -114,7 +115,7 @@ export function initGalleryWidget(gallery: Element): void {
     if (slotImg) slotImg.src = '';
     empty?.removeAttribute('hidden');
     filled?.setAttribute('hidden', '');
-    if (urlInput) urlInput.value = '';
+    if (urlInput) { urlInput.value = ''; announceValueChange(urlInput); }
     updateBatchAvailability();
   }
 
@@ -134,7 +135,7 @@ export function initGalleryWidget(gallery: Element): void {
     const filled    = slot.querySelector<HTMLElement>('.gallery-slot__filled');
     const urlInput  = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
     batchSelected.delete(slot); markSelected(slot, false);
-    if (urlInput) urlInput.value = initialUrl;
+    if (urlInput) { urlInput.value = initialUrl; announceValueChange(urlInput); }
     if (slotImg) slotImg.src = initialUrl;
     empty?.toggleAttribute('hidden', !!initialUrl);
     filled?.toggleAttribute('hidden', !initialUrl);
@@ -544,7 +545,7 @@ export async function resolveGalleryUrls(
     const { slot, blob } = pending[i]!;
     const url = await cloudinaryUpload(blob, cloud, preset);
     const urlInput = slot.querySelector<HTMLInputElement>('.gallery-slot__url');
-    if (urlInput) urlInput.value = url;
+    if (urlInput) { urlInput.value = url; announceValueChange(urlInput); }
     onProgress?.(i + 1, pending.length);
   }
 }
@@ -590,7 +591,7 @@ export function resetGallery(gallery: Element): void {
     if (slotImg) slotImg.src = '';
     empty?.removeAttribute('hidden');
     filled?.setAttribute('hidden', '');
-    if (urlInput) urlInput.value = '';
+    if (urlInput) { urlInput.value = ''; announceValueChange(urlInput); }
   });
   const sharedFileInput = gallery.querySelector<HTMLInputElement>('.gallery-shared-file-input');
   if (sharedFileInput) sharedFileInput.value = '';

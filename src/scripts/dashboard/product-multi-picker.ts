@@ -12,6 +12,7 @@
  */
 import { escapeHtml } from '../../lib/html-escape.js';
 import { formatPrice } from '../../config/store.config.js';
+import { announceValueChange } from './unsaved-guard.js';
 
 export interface ProductPickerOption { id: string; name: string; price: number }
 
@@ -51,6 +52,7 @@ export function initProductMultiPicker(config: ProductPickerConfig): ProductMult
     hidden.value = [...selected].join(',');
     if (count) count.textContent = selected.size ? `(${selected.size} ${labels.selected ?? ''})` : '';
     onChange?.([...selected]);
+    announceValueChange(hidden);
   };
 
   const render = (): void => {

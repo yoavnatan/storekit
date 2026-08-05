@@ -352,6 +352,8 @@ export const translations = {
       storeImageChange: 'החלף תמונה',
       // Re-frame the image that is already saved, without picking a new file.
       adjustImage: 'התאם תמונה',
+      // Read out as part of a tab's accessible name when that tab holds unsaved work.
+      unsavedTabHint: 'יש שינויים שלא נשמרו',
       removeImage: 'הסר',
       uploadingImage: 'מעלה תמונה',
       loadingImage: 'טוען תמונה',
@@ -1618,6 +1620,7 @@ export const translations = {
       storeProfileImageHint: 'Shown next to your store name across the site',
       storeImageChange: 'Change image',
       adjustImage: 'Adjust image',
+      unsavedTabHint: 'Unsaved changes',
       removeImage: 'Remove',
       uploadingImage: 'Uploading image',
       loadingImage: 'Loading image',
