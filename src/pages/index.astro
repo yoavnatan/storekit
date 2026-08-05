@@ -292,10 +292,10 @@ const jsonLd = {
           <h1>: the component carries the accessible name, so the page's heading is
           still "Dezabin — קניון דיגיטלי ישראלי" to a crawler and a screen reader. */}
       <h1 class="m-0 leading-none"><BrandLogo size="clamp(1.9rem,5.5vw,3rem)" tagline={true} /></h1>
-      {/* The hero's own tagline line is gone: the lockup above already carries
-          "קניון דיגיטלי ישראלי", and printing it twice under itself is the
-          clearest possible way to say the logo is decoration. `t.home.heroTagline`
-          still exists for anywhere else that wants the sentence. */}
+      {/* No separate tagline line here: the lockup above carries the slogan, and
+          printing it twice under itself is the clearest possible way to say the
+          logo is decoration. `t.home.heroTagline` went with it — it held the OLD
+          slogan, so leaving it would have been a second, contradicting source. */}
       <div class="flex flex-wrap items-center justify-center gap-x-[1.1rem] gap-y-[0.6rem] mt-[0.6rem]">
         <a href="/stores" class="btn btn--ghost btn--sm">
           {t.home.viewAllStores}

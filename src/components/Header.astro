@@ -57,7 +57,6 @@ const initialUnreadLabel = initialUnreadCount > 99 ? '99+' : String(initialUnrea
 const hasStoreForAlert = Astro.props.hasStore || storeMode || sellerMode;
 const sellerIdForAlert = hasStoreForAlert ? getSellerSession(Astro.cookies) : null;
 const initialSellerAlert = sellerIdForAlert ? await sellerHasAnyAlert(sellerIdForAlert) : false;
-const logo = store.logo;
 
 // A store's header wears that store's own colour as a 2px line along its bottom
 // edge (header.css, `.site-header--store::after`) — the same identity the store

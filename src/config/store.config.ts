@@ -42,11 +42,6 @@ interface PlatformConfig {
     currency: string;
     currencySymbol: string;
   };
-  logo: {
-    type: string;
-    text: string;
-    image: string;
-  };
   homepage: {
     hero: {
       enabled: boolean;
@@ -107,12 +102,6 @@ export const store: PlatformConfig = {
     address: '',
     currency: 'ILS',
     currencySymbol: '₪',
-  },
-
-  logo: {
-    type: 'text',
-    text: 'Dezabin',
-    image: '/logo.svg',
   },
 
   homepage: {
