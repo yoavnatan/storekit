@@ -26,6 +26,15 @@
  * Cost note: fetch delivery bills a transformation per distinct URL, once, and
  * only for NON-Cloudinary origins — i.e. in practice only for the demo dataset.
  * Real seller images are Cloudinary uploads and never touch the fetch path.
+ *
+ * And the corollary rule, which lives here because this is the file anyone
+ * reaches for when they set out to "make the images load better": NEVER
+ * hand-roll lazy-loading — an IntersectionObserver plus `data-lazy-src`. An
+ * `<img>` with no `src` is invisible to the browser's preload scanner, so
+ * nothing downloads until the page's own JS module has run and executed. The
+ * native `loading="lazy"` attribute costs nothing and does not have that
+ * problem; above-the-fold/LCP images take `loading="eager"` +
+ * `fetchpriority="high"` instead.
  */
 
 const CLOUD = import.meta.env.PUBLIC_CLOUDINARY_CLOUD_NAME as string | undefined;
