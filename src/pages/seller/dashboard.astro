@@ -1306,7 +1306,10 @@ const orderStatusColors: Record<string, string> = {
             <thead>
               <tr>
                 <th class="check-col w-8 text-center align-middle px-[0.15rem]"><input type="checkbox" id="bulk-select-all" class="bulk-select-all" aria-label={d.bulkSelectAll} style="cursor:pointer;width:15px;height:15px;flex-shrink:0"></th>
-                <th class="num row-num pe-[0.2rem]" style="width:2rem">#</th>
+                {/* Width lives in dashboard.css, not here: under `table-layout: fixed` the
+                    declared width is the column's REAL width rather than a minimum, and an
+                    inline 2rem (narrower than a 4-digit row number) beats any stylesheet. */}
+                <th class="num row-num pe-[0.2rem]">#</th>
                 <th class="thumb-col"></th>
                 <th class="name-col">
                   <button type="button" class="sort-btn" data-sort-col="name" aria-label={`${d.sortByLabel} ${d.colName}`}><span class="sort-btn__label">{d.colName}</span><svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
