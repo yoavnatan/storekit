@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import { isUuid, query } from './db.js';
 import { deriveSeverity, type ErrorSeverity } from './error-severity.js';
+import { alertOnCriticalError } from './critical-alert.js';
 import { getSellerSession, getSellerById } from './seller-auth.js';
 import { getStoreBySellerId, getStoreBySlug } from './stores.js';
 
@@ -248,6 +249,7 @@ export async function logError(
     // The caller's own fields win — it knows more than a path segment does — so the resolved
     // context only fills what was left unset.
     const merged = { ...ctx, ...definedOnly(entry) };
+    const severity = deriveSeverity({ source: merged.source, route: merged.route, statusCode: merged.statusCode });
 
     await query(
       // One statement: insert the entry and enforce the ceiling, both on `error_log_seq_idx`.
@@ -282,13 +284,25 @@ export async function logError(
         clamp(merged.actorId, MAX_LABEL_LEN),
         clamp(merged.actorLabel, MAX_LABEL_LEN),
         clamp(merged.resolutionHint, MAX_HINT_LEN),
-        // Derived here, never taken from the caller — `merged.severity` is deliberately ignored.
+        // Derived above, never taken from the caller — `merged.severity` is deliberately ignored.
         // One rule, one file, one answer to "is this critical", and it is computed from the fields
         // the SERVER decided (source, route, status) rather than from anything a request supplied.
-        deriveSeverity({ source: merged.source, route: merged.route, statusCode: merged.statusCode }),
+        severity,
         MAX_ENTRIES - 1,
       ],
     );
+
+    // The one error in this application that reaches for a person instead of waiting to be read.
+    //
+    // AFTER the insert and inside the same `try`, both deliberately. After, because an alert about
+    // an entry that failed to store would point at a log that cannot show it — and because the
+    // successful write is itself the proof that the database is answering, which is what lets
+    // `critical-alert.ts` spend a query on de-duplication at all. Unawaited, because `logError` is
+    // fire-and-forget by contract and must not start waiting on an SMTP provider now.
+    //
+    // `critical-alert.ts` never calls back into this function: that would be a loop, entered exactly
+    // when things are already going wrong.
+    if (severity === 'critical') void alertOnCriticalError({ ...merged, severity, createdAt: new Date().toISOString() });
   } catch (err) {
     // Logging must never itself throw — but a swallowed failure used to leave no trace at all.
     console.error('[error-log] write failed:', err instanceof Error ? err.message : String(err), '|', entry.message);
