@@ -1,11 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="9.5 6.5 24.6 31">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="9.5 6.5 26 31">
   <!-- The bare D — no tile. The path is byte-identical to the one in
        BrandLogo.astro and the avatar dropdown, so the tab, the menu and the
        header are one drawing and cannot drift apart. The viewBox is cropped to
-       the letter's own ink plus a hair of breathing room — 1.75 units either
-       side, which is why its width moved with the letter when the wordmark went
-       to Heebo 600 — so at 16px the browser spends every pixel it has on the
-       letter rather than on a plate around it.
+       the letter's own ink plus a hair of breathing room, so at 16px the browser
+       spends every pixel it has on the letter rather than on a plate around it.
 
        The fill follows the browser's theme rather than being fixed: a dark ink
        on a dark tab strip is an invisible favicon, which is the one thing a
@@ -17,6 +15,6 @@
     @media (prefers-color-scheme: dark) { path { fill: #ffffff; } }
   </style>
   <path fill-rule="evenodd"
-        d="M11.25 8 L24.148 8 L32.348 16.2 L32.348 27.8 L24.148 36 L11.25 36 Z
-           M16.377 12.096 L21.692 12.096 L27.221 17.625 L27.221 26.375 L21.692 31.904 L16.377 31.904 Z"/>
+        d="M11.25 8 L24.55 8 L32.75 16.2 L32.75 27.8 L24.55 36 L11.25 36 Z
+           M17.17 12.73 L21.714 12.73 L26.83 17.846 L26.83 26.154 L21.714 31.27 L17.17 31.27 Z"/>
 </svg>
