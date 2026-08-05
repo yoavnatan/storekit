@@ -10,6 +10,7 @@ import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/st
 import { resolveCustomDomainRewrite, isUnclaimedCustomHost } from './lib/custom-domain.js';
 import { getProductBySlug } from './lib/store-products.js';
 import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
+import { HEALTH_PATH } from './pages/api/health.js';
 import { csrfRejection, csrfRequired, csrfTokenFromRequest, verifyCsrfToken } from './lib/csrf.js';
 import { ensureShutdownHookInstalled, trackRequest } from './lib/shutdown.js';
 import { captureAttribution } from './lib/attribution.js';
@@ -63,6 +64,20 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const isGet = context.request.method === 'GET';
     const reqUrl = new URL(context.request.url);
     const pathname = reqUrl.pathname;
+
+    // `/api/health` runs before anything else this middleware does, and the reason is the outage it
+    // exists to report. Everything below this line touches the database — the custom-domain lookup
+    // first, then the analytics tap — so with Postgres unreachable the middleware throws and the
+    // route never executes. The endpoint whose entire job is to answer "503, the database is down"
+    // would instead be a 500 HTML error page, i.e. it would be broken in exactly and only the
+    // situation it was built for. (Found by pointing DATABASE_URL at a dead host, 2026-08-05; it
+    // is invisible in any environment where the database works.)
+    //
+    // Nothing above is skipped: the two ignition calls and `trackRequest()` have already run, so
+    // the probe is still counted by the graceful-shutdown drain. Nothing below is needed: it takes
+    // no cookies, resolves no store, and is not a page view. `HEALTH_PATH` lives in the route file
+    // so the path is declared once, by the thing that owns it.
+    if (pathname === HEALTH_PATH) return next();
 
     // The CSRF gate — the ONE place this application checks a token, for every on-demand route it
     // has (lib/csrf.ts carries the reasoning, including what the other two layers already cover).
