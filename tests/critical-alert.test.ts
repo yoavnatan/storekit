@@ -61,8 +61,10 @@ describe('alertOnCriticalError', () => {
     expect(send).toHaveBeenCalledTimes(1);
     const message = send.mock.calls[0]![0];
     expect(message.to).toBe('owner@example.com');
-    // The route belongs in the subject: a phone shows the subject and nothing else, and "where" is
-    // what decides whether this is worth opening now.
+    // Meaning first, route second — the two fail in opposite directions. The sentence is useless
+    // without a WHERE when the route is one the meaning map does not know; the route is useless to
+    // anyone who does not already know the codebase. A phone truncating the line keeps the sentence.
+    expect(message.subject).toContain('קונה לא הצליח להשלים רכישה');
     expect(message.subject).toContain('/api/checkout');
     expect(message.html).toContain('charge declined');
   });
@@ -203,5 +205,97 @@ describe('the subject line is a header, not a body', () => {
     expect(subject.length).toBeLessThanOrEqual(200);
     // The route is still readable — sanitising must not turn the one useful word into noise.
     expect(subject).toContain('/api/checkout');
+  });
+});
+
+/**
+ * What the mail has to contain for the workflow it exists to serve: phone → laptop → a conversation
+ * with somebody who was not there. A mail that only summarises sends the reader to the dashboard to
+ * fetch the stack, at the worst possible moment.
+ */
+describe('the mail is usable without opening the dashboard', () => {
+  it('leads with what happened to a person, not with a route', async () => {
+    // The subject is all a phone shows, and the question it must answer in one glance is "does this
+    // need me now". "/api/checkout" answers that only for someone who already knows the codebase.
+    vi.stubEnv('ALERT_EMAIL', 'owner@example.com');
+    dbReturningCount(1);
+    const send = spySend();
+
+    await alertOnCriticalError(entry({ id: '4f8c2a1e-9b3d-4c7f-8e2a-1d6b9f3c8e4a' }));
+
+    expect(send.mock.calls[0]![0].subject).toContain('קונה לא הצליח להשלים רכישה');
+  });
+
+  it('carries the reference code that the dashboard row shows', async () => {
+    vi.stubEnv('ALERT_EMAIL', 'owner@example.com');
+    dbReturningCount(1);
+    const send = spySend();
+
+    await alertOnCriticalError(entry({ id: '4f8c2a1e-9b3d-4c7f-8e2a-1d6b9f3c8e4a' }));
+
+    const message = send.mock.calls[0]![0];
+    expect(message.subject).toContain('#4f8c2a1e');
+    expect(message.html).toContain('#4f8c2a1e');
+    expect(message.text).toContain('#4f8c2a1e');
+  });
+
+  it('includes the stack, which is the thing worth pasting', async () => {
+    vi.stubEnv('ALERT_EMAIL', 'owner@example.com');
+    dbReturningCount(1);
+    const send = spySend();
+
+    await alertOnCriticalError(entry({ stack: 'Error: charge declined\n    at chargeCard (payment.ts:42)' }));
+
+    const message = send.mock.calls[0]![0];
+    expect(message.text).toContain('at chargeCard (payment.ts:42)');
+    expect(message.html).toContain('at chargeCard (payment.ts:42)');
+  });
+
+  it('says so when it truncates the stack, rather than cutting silently', async () => {
+    // A truncation the reader cannot see is worse than no stack: they would debug against what
+    // looks like a complete trace.
+    vi.stubEnv('ALERT_EMAIL', 'owner@example.com');
+    dbReturningCount(1);
+    const send = spySend();
+
+    await alertOnCriticalError(entry({ stack: 'x'.repeat(5000) }));
+
+    expect(send.mock.calls[0]![0].text).toContain('נחתך');
+  });
+
+  it('keeps the plain-text part standing on its own', async () => {
+    // On a phone the text part is often what gets selected, so it has to be the whole thing rather
+    // than a summary of something else.
+    vi.stubEnv('ALERT_EMAIL', 'owner@example.com');
+    dbReturningCount(1);
+    const send = spySend();
+
+    await alertOnCriticalError(entry({
+      id: '4f8c2a1e-9b3d-4c7f-8e2a-1d6b9f3c8e4a',
+      stack: 'Error: boom\n    at x (y.ts:1)',
+      statusCode: 500,
+    }));
+
+    const text = send.mock.calls[0]![0].text!;
+    expect(text).toContain('#4f8c2a1e');
+    expect(text).toContain('קונה לא הצליח להשלים רכישה');
+    expect(text).toContain('/api/checkout');
+    expect(text).toContain('charge declined');
+    expect(text).toContain('at x (y.ts:1)');
+  });
+
+  it('escapes the pasted block instead of letting a stack close the tag it sits in', async () => {
+    // The stack is server-controlled text that lands inside <pre> in an HTML mail. `</pre>` in a
+    // message would end the block early and put the rest into the document — the same class as the
+    // JSON-in-script sink, one element over.
+    vi.stubEnv('ALERT_EMAIL', 'owner@example.com');
+    dbReturningCount(1);
+    const send = spySend();
+
+    await alertOnCriticalError(entry({ message: '</pre><img src=x onerror=alert(1)>' }));
+
+    const html = send.mock.calls[0]![0].html!;
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;');
   });
 });
