@@ -2334,6 +2334,11 @@ const orderStatusColors: Record<string, string> = {
           <div class="dash-panel-head mb-5 py-[0.6rem] border-b border-[color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
             <h2 class="text-[color:var(--color-text)] m-0">{d.tabSettings}</h2>
             <div class="flex items-center gap-3">
+              {/* The way back. Disabled while there is nothing to discard rather than hidden: an
+                  appearing button shifts "save" sideways under the seller's cursor, and a control
+                  that only exists once you already need it cannot be noticed before then.
+                  `type="button"` — inside a form, a bare <button> submits it. */}
+              <button class="btn btn--sm btn--ghost" type="button" form="settings-form" data-discard id="settings-discard-btn" disabled>{d.discardChanges}</button>
               <button class="btn btn--sm" type="submit" form="settings-form" id="settings-save-btn">{d.saveChanges}</button>
             </div>
           </div>

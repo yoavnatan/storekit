@@ -1,4 +1,5 @@
 import { escapeHtml as esc } from '../lib/html-escape.js';
+import { announceValueChange } from './dashboard/unsaved-guard.js';
 
 /**
  * Client half of StoreCategoryPicker.astro. Purely a convenience layer over a hidden
@@ -51,7 +52,21 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
   /** Set once the seller has been shown the near-duplicate suggestions and still wants their label. */
   let insistOn: string | null = null;
 
-  const sync = (): void => { valueInput.value = chosen.join(', '); };
+  // Announced, because assigning `.value` fires nothing at all — so without this the unsaved-changes
+  // notice never learns that the categories were edited (unsaved-guard.ts states the whole trap).
+  const sync = (): void => {
+    valueInput.value = chosen.join(', ');
+    announceValueChange(valueInput);
+  };
+
+  // Repaint from the field after "discard changes" restored it — the chips are this widget's own
+  // copy of that value, and a stale chip row is a claim about what will be saved.
+  valueInput.closest('form')?.addEventListener('dash:discarded', () => {
+    chosen = valueInput.value.split(',').map((c) => c.trim()).filter(Boolean);
+    insistOn = null;
+    renderChips();
+    renderList();
+  });
 
   function renderChips(): void {
     chipsEl!.innerHTML = chosen.map((c) =>

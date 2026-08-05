@@ -189,5 +189,15 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
     render();
   });
 
+  // "Discard changes" put the stored URLs back into the hidden fields (unsaved-guard.ts). This
+  // widget paints from those fields, so it has to repaint — otherwise the seller sees the picture
+  // they just discarded sitting above a field that no longer holds it, and the next save writes the
+  // one they cannot see. The cached source blob goes too: it belonged to the crop that was undone.
+  hiddenInput.closest('form')?.addEventListener('dash:discarded', () => {
+    sourceBlob = null;
+    sourceBlobFor = '';
+    render();
+  });
+
   render();
 }

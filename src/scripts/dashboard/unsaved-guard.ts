@@ -1,30 +1,45 @@
 /**
- * One "you have unsaved changes" prompt for the whole seller dashboard.
+ * Unsaved work in the seller dashboard: knowing about it, being told about it, and getting back.
  *
- * Panels are swapped client-side (ui.ts toggles [hidden], no navigation), so moving
- * between tabs never drops anything — the only way typed-but-unsaved input disappears
- * is the document itself going away: tab closed, reloaded, or navigated off. That is
- * exactly what `beforeunload` covers. It has to stay silent unless something really is
- * unsaved: a prompt on every exit trains the seller to dismiss it without reading.
+ * Panels are swapped client-side (ui.ts toggles [hidden], no navigation), so moving between tabs
+ * never drops anything — the only way typed-but-unsaved input disappears is the document itself
+ * going away: tab closed, reloaded, or navigated off.
  *
- * Dirty = a guarded form's current field values differ from the baseline taken the
- * moment the seller first touched it. Diffing (rather than "an input event fired")
- * means typing something and undoing it leaves no warning behind.
+ * Dirty = a guarded form's current field values differ from the baseline taken the moment the seller
+ * first touched it. Diffing (rather than "an input event fired") means typing something and undoing
+ * it leaves no warning behind. A form opts in with `data-unsaved-guard`. How each goes clean again:
+ *  - product inline edit / add product: a successful save closes the surface, and a hidden surface is
+ *    skipped below — the same reason Cancel needs no signal here.
+ *  - settings: the form stays on screen after saving, so its save path fires `dash:saved` with the
+ *    form and the baseline is retaken.
  *
- * A form opts in with `data-unsaved-guard`. How each one goes clean again:
- *  - product inline edit / add product: a successful save closes the surface, and a
- *    hidden surface is skipped below — the same reason Cancel needs no signal here.
- *  - settings: the form stays on screen after saving, so its save path fires
- *    `dash:saved` with the form and the baseline is retaken.
- *
- * The browser shows its own generic wording; a custom message is not possible.
+ * Three things come out of that one piece of knowledge, and they answer different questions:
+ *  1. `beforeunload` — "you are about to LOSE this". Last resort, fires once, and the browser insists
+ *     on its own generic wording; a custom message is not possible, which is why it cannot be the
+ *     whole answer.
+ *  2. The floating notice — "did I save that?", answered continuously and in words, but only for a
+ *     section that is off screen (see `refreshUnsavedNotice`).
+ *  3. `discardChanges` — "how do I get back?", which had no answer at all before 2026-08-05 except
+ *     reloading the page.
  */
 
 import { scrollRowBackIntoView } from './scroll-utils.js';
 
 const GUARDED = 'form[data-unsaved-guard]';
 
-const baselines = new WeakMap<HTMLFormElement, string>();
+/** One field as it stood at the last save: enough to compare against, and enough to put back. */
+interface FieldState { name: string; type: string; value: string; checked: boolean; }
+
+/**
+ * Each guarded form's last-saved state, FIELD BY FIELD rather than as one comparable string.
+ *
+ * It used to be the string alone, which is all "are we dirty" needs. "Discard changes" has to write
+ * the values back, and the obvious way — `form.reset()` — turns out to restore nothing that matters
+ * here: a `type="hidden"` input has value mode "default", so assigning `.value` writes the content
+ * attribute too and its `defaultValue` moves with it. The image cropper and both category pickers
+ * keep everything they own in hidden inputs. Caught by a test on 2026-08-05, not in production.
+ */
+const baselines = new WeakMap<HTMLFormElement, FieldState[]>();
 
 /**
  * A value as the save would actually store it, so an edit that changes nothing real
@@ -33,24 +48,39 @@ const baselines = new WeakMap<HTMLFormElement, string>();
  * and warning about that is the kind of false alarm that gets the whole prompt ignored.
  * Numbers are compared numerically, so 10 → 10.0 is not "a change" either.
  */
-function fieldValue(f: HTMLInputElement): string {
+function fieldValue(f: { type: string; value: string }): string {
   const v = f.value.trim();
   if (f.type !== 'number' || v === '') return v;
   const n = Number(v);
   return Number.isNaN(n) ? v : String(n);
 }
 
-/** Field values as one comparable string. Files are compared by count only — a File can't be serialised, and re-picking the same file is not a change worth a prompt. */
-function snapshot(form: HTMLFormElement): string {
-  const parts: string[] = [];
+/** Every named, enabled field's RAW state, in document order. Raw, because this is also what gets
+ *  written back on discard — the normalising that comparison needs must never reach the DOM. */
+function capture(form: HTMLFormElement): FieldState[] {
+  const out: FieldState[] = [];
   for (const el of Array.from(form.elements)) {
     const f = el as HTMLInputElement;
     if (!f.name || f.disabled) continue;
-    if (f.type === 'file') parts.push(`${f.name}=${f.files?.length ?? 0}`);
-    else if (f.type === 'checkbox' || f.type === 'radio') parts.push(`${f.name}=${f.checked}`);
-    else parts.push(`${f.name}=${fieldValue(f)}`);
+    // A File cannot be serialised or restored, so it is tracked by count only — and re-picking the
+    // same file is not a change worth a prompt either way.
+    out.push({
+      name: f.name, type: f.type, checked: f.checked,
+      value: f.type === 'file' ? String(f.files?.length ?? 0) : f.value,
+    });
   }
-  return parts.join('\x01');
+  return out;
+}
+
+/** The comparable form of a capture — where trimming and numeric equality live. */
+function serialize(states: FieldState[]): string {
+  return states
+    .map((f) => (f.type === 'checkbox' || f.type === 'radio' ? `${f.name}=${f.checked}` : `${f.name}=${fieldValue(f)}`))
+    .join('\x01');
+}
+
+function snapshot(form: HTMLFormElement): string {
+  return serialize(capture(form));
 }
 
 /**
@@ -70,12 +100,13 @@ function isLive(form: HTMLFormElement): boolean {
 function remember(target: EventTarget | null): void {
   if (!(target instanceof Element)) return;
   const form = target.closest(GUARDED) as HTMLFormElement | null;
-  if (form && !baselines.has(form)) baselines.set(form, snapshot(form));
+  if (form && !baselines.has(form)) baselines.set(form, capture(form));
 }
 
 /** Is this ONE form holding unsaved work right now. */
 function isDirty(form: HTMLFormElement): boolean {
-  return baselines.has(form) && isLive(form) && baselines.get(form) !== snapshot(form);
+  const base = baselines.get(form);
+  return !!base && isLive(form) && serialize(base) !== snapshot(form);
 }
 
 /** Exported for tab-sync.ts: a live cross-tab refresh must never redraw over work in progress, and this is already the one place that knows what "in progress" means. */
@@ -115,6 +146,13 @@ function tabLabel(tab: Element): string {
 /** Where the notice sends the seller: the panel holding the FIRST unsaved form, in tab order. */
 let noticeTarget: HTMLElement | null = null;
 
+/** Everything that answers "is there unsaved work, and where" — the notice and the way back.
+ *  One entry point so no trigger can update half the answer. */
+function refreshState(): void {
+  refreshUnsavedNotice();
+  refreshDiscardButtons();
+}
+
 /**
  * Recompute the notice. Cheap — one snapshot per guarded form, and there are three of them.
  *
@@ -132,7 +170,14 @@ function refreshUnsavedNotice(): void {
     // `.dash-panel` names its own tab through `aria-labelledby` — the mapping already exists for
     // accessibility, so nothing new has to be kept in sync with the markup.
     const panel = document.querySelector<HTMLElement>(`.dash-panel[aria-labelledby="${tab.id}"]`);
-    if (panel && Array.from(panel.querySelectorAll<HTMLFormElement>(GUARDED)).some(isDirty)) dirtyTabs.push(tab);
+    // **Only a panel the seller cannot currently see.** Standing in the section, looking at the form
+    // and its own save button, a floating bar announcing that section is noise — it tells them what
+    // is already in front of them, and a notice that is sometimes noise gets dismissed as noise
+    // always. The gap this exists for is the OTHER case: the edit that is real but off-screen.
+    // (`hasUnsavedChanges` below deliberately does NOT filter this way — `beforeunload` must still
+    // speak for the panel the seller is looking at.)
+    if (!panel?.hidden) continue;
+    if (Array.from(panel.querySelectorAll<HTMLFormElement>(GUARDED)).some(isDirty)) dirtyTabs.push(tab);
   }
 
   noticeTarget = dirtyTabs[0] ?? null;
@@ -144,6 +189,56 @@ function refreshUnsavedNotice(): void {
 
   if (msgEl.textContent !== message) msgEl.textContent = message;
   bar.classList.toggle('!hidden', !message);
+}
+
+/**
+ * Put a form back to what was last SAVED, and tell the page it happened.
+ *
+ * Asked for on 2026-08-05: the notice said "you have unsaved changes" and there was no way back
+ * except reloading the page, which no seller is going to guess is the answer.
+ *
+ * Writes the remembered state back field by field. `form.reset()` was the obvious implementation and
+ * is the wrong one — see `baselines`: it cannot restore a `type="hidden"` input, which is where the
+ * image cropper and both category pickers keep everything they own. The baseline is re-taken on
+ * `dash:saved`, so "discard" always means "back to the last save", never "back to how the page
+ * loaded" — which would quietly undo a save made minutes ago and then write the stale values back.
+ *
+ * Matched by NAME through a queue rather than by position, so a form that gained or lost a field
+ * since the baseline was taken restores what it can instead of writing values into the wrong inputs.
+ *
+ * `dash:discarded` fires AFTER the values are back — unlike
+ * the native `reset` event, which fires BEFORE and would show every listener the values it is about
+ * to replace. Widgets that paint their own state from a field (the image cropper, the category
+ * pickers) redraw from this.
+ */
+export function discardChanges(form: HTMLFormElement): void {
+  const base = baselines.get(form);
+  if (!base) return;
+  const queue = new Map<string, FieldState[]>();
+  for (const f of base) {
+    const list = queue.get(f.name);
+    if (list) list.push(f); else queue.set(f.name, [f]);
+  }
+  for (const el of Array.from(form.elements)) {
+    const f = el as HTMLInputElement;
+    if (!f.name || f.disabled || f.type === 'file') continue;
+    const want = queue.get(f.name)?.shift();
+    if (!want || want.type !== f.type) continue;
+    if (f.type === 'checkbox' || f.type === 'radio') f.checked = want.checked;
+    else f.value = want.value;
+  }
+  form.dispatchEvent(new CustomEvent('dash:discarded', { bubbles: true }));
+  refreshState();
+}
+
+/** Offer the way back only while there IS one: a "discard" that discards nothing is a control that
+ *  teaches the seller its button does nothing. Disabled rather than hidden, so it does not shift the
+ *  save button beside it and so its existence is discoverable before it is needed. */
+function refreshDiscardButtons(): void {
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('button[data-discard][form]')) {
+    const form = document.getElementById(btn.getAttribute('form')!) as HTMLFormElement | null;
+    btn.disabled = !form || !isDirty(form);
+  }
 }
 
 /**
@@ -166,8 +261,31 @@ export function initUnsavedGuard(): void {
   // Both phases matter: `remember` above runs in CAPTURE, before the value changes, so a baseline
   // exists; these run in BUBBLE, after it changed, so the notice reflects the new state. `input`
   // covers typing and `announceValueChange`; `change` covers a checkbox, a select and a file pick.
-  document.addEventListener('input', refreshUnsavedNotice);
-  document.addEventListener('change', refreshUnsavedNotice);
+  document.addEventListener('input', refreshState);
+  document.addEventListener('change', refreshState);
+
+  // A panel becoming visible is the other half of "is this section on screen" (DashTabsBoot fires
+  // `dashtab:show` on the panel it just revealed, and hides the rest synchronously before that). It
+  // fires no input event, so without this the notice would neither appear on walking AWAY from an
+  // edited section nor clear on walking back into it.
+  document.addEventListener('dashtab:show', refreshState);
+
+  document.querySelectorAll<HTMLButtonElement>('button[data-discard][form]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const form = document.getElementById(btn.getAttribute('form')!) as HTMLFormElement | null;
+      if (!form || !isDirty(form)) return;
+      // Confirmed, because this throws away work the seller typed — and through the site's own
+      // modal, never `confirm()`, which is banned here (lib/toast.ts records why).
+      window.dispatchEvent(new CustomEvent('confirm:open', {
+        detail: {
+          title: i18nDash('discardTitle', 'Discard changes?'),
+          message: i18nDash('discardMsg', 'Everything you changed since the last save will be undone.'),
+          okLabel: i18nDash('discardOk', 'Discard'),
+          onConfirm: () => discardChanges(form),
+        },
+      }));
+    });
+  });
 
   // Take the seller to the section, and to the button — but never press it for them. A floating
   // control that submitted a form they cannot see would be the opposite of the clarity this is for.
@@ -189,8 +307,9 @@ export function initUnsavedGuard(): void {
 
   window.addEventListener('dash:saved', (e) => {
     const form = (e as CustomEvent<{ form?: HTMLFormElement }>).detail?.form;
-    if (form) baselines.set(form, snapshot(form));
-    refreshUnsavedNotice();
+    // What was just written IS the state a later "discard" has to come back to.
+    if (form) baselines.set(form, capture(form));
+    refreshState();
   });
 
   window.addEventListener('beforeunload', (e) => {
