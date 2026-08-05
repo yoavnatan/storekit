@@ -197,6 +197,29 @@ describe('updating a store', () => {
     expect(after.address).toBe('somewhere');
   });
 
+  it('round-trips the uncropped originals behind the two store images (0012)', async () => {
+    const store = await createStore(DANA, { name: 'Img', slug: freshBase() });
+    // Nothing uploaded yet, and nothing uploaded before the column existed: absent, not null —
+    // the widget reads `?? ''` into a hidden input, and a null would render the string "null".
+    expect(store).not.toHaveProperty('profileImageSource');
+    expect(store).not.toHaveProperty('bannerImageSource');
+
+    const crop = 'https://res.cloudinary.com/demo/image/upload/v1/avatar-crop.png';
+    const source = 'https://res.cloudinary.com/demo/image/upload/v1/avatar-source.jpg';
+    await updateStore(store.id, { profileImage: crop, profileImageSource: source });
+    const after = (await getStoreById(store.id))!;
+    expect(after.profileImage).toBe(crop);
+    expect(after.profileImageSource).toBe(source);
+    // The site never serves the source — only the crop — so the two must stay distinguishable.
+    expect(after.bannerImageSource).toBeUndefined();
+
+    // Removing the image clears its original too: nothing can reach it afterwards.
+    await updateStore(store.id, { profileImage: undefined, profileImageSource: undefined });
+    const cleared = (await getStoreById(store.id))!;
+    expect(cleared).not.toHaveProperty('profileImage');
+    expect(cleared).not.toHaveProperty('profileImageSource');
+  });
+
   it('round-trips the nested records the storefront renders', async () => {
     const store = await createStore(DANA, { name: 'N', slug: freshBase() });
     const hours = { sun: { closed: false, open: '09:00', close: '17:00' } } as never;

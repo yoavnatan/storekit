@@ -7,6 +7,7 @@ import {
   STORE_IMAGE_FORMATS,
   STORE_RENDER_FORMATS,
   isStoreRenderFormat,
+  pairedImageSource,
   parseStoreImageFile,
   resolveStoreImage,
   storeAdCreative,
@@ -267,5 +268,52 @@ describe('store favicon', () => {
     const unusable = 'https://example.com/logo.png';
     const icon = storeIconUrl({ slug: 'bella-shop', profileImage: unusable }, 'favicon');
     expect(icon === unusable).toBe(false);
+  });
+});
+
+describe('the uncropped original stays paired with its crop', () => {
+  const CROP_A = 'https://res.cloudinary.com/demo/image/upload/v1/crop-a.png';
+  const CROP_B = 'https://res.cloudinary.com/demo/image/upload/v1/crop-b.png';
+  const SRC_A  = 'https://res.cloudinary.com/demo/image/upload/v1/src-a.jpg';
+  const SRC_B  = 'https://res.cloudinary.com/demo/image/upload/v1/src-b.jpg';
+
+  it('takes this tab\u2019s original when this tab\u2019s crop won the merge', () => {
+    expect(pairedImageSource({
+      chosen: CROP_A, submitted: CROP_A, submittedSource: SRC_A, stored: CROP_B, storedSource: SRC_B,
+    })).toBe(SRC_A);
+  });
+
+  it('takes the stored original when another tab\u2019s crop won', () => {
+    // This seller\u2019s crop lost the merge, so their original has to lose with it — otherwise
+    // "adjust" opens a photo that has nothing to do with the avatar on screen.
+    expect(pairedImageSource({
+      chosen: CROP_B, submitted: CROP_A, submittedSource: SRC_A, stored: CROP_B, storedSource: SRC_B,
+    })).toBe(SRC_B);
+  });
+
+  it('keeps the stored original when the image itself did not change', () => {
+    // Including when the request carries no source field at all (a tab still running the previous
+    // deploy, or a hand-built POST): an unchanged picture must never cost the seller its original.
+    expect(pairedImageSource({
+      chosen: CROP_A, submitted: CROP_A, submittedSource: undefined, stored: CROP_A, storedSource: SRC_A,
+    })).toBe(SRC_A);
+    expect(pairedImageSource({
+      chosen: CROP_A, submitted: undefined, submittedSource: undefined, stored: CROP_A, storedSource: SRC_A,
+    })).toBe(SRC_A);
+  });
+
+  it('drops the original when the image was removed', () => {
+    expect(pairedImageSource({
+      chosen: undefined, submitted: undefined, submittedSource: SRC_A, stored: CROP_A, storedSource: SRC_B,
+    })).toBe(undefined);
+    expect(pairedImageSource({
+      chosen: '', submitted: '', submittedSource: SRC_A, stored: CROP_A, storedSource: SRC_B,
+    })).toBe(undefined);
+  });
+
+  it('carries no original when there never was one (uploaded before 0012)', () => {
+    expect(pairedImageSource({
+      chosen: CROP_A, submitted: CROP_A, submittedSource: undefined, stored: undefined, storedSource: undefined,
+    })).toBe(undefined);
   });
 });

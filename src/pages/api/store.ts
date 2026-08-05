@@ -16,6 +16,7 @@ import { resolveSaleScope, resolveSaleProductScope } from '../../lib/store-sale-
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
 import { storeSettingsRev, mergeByFieldRev, STORE_REV_FIELDS } from '../../lib/record-rev.js';
 import { warmBannerDerivations } from '../../lib/image-derive.js';
+import { pairedImageSource } from '../../lib/store-image.js';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -58,6 +59,16 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       shipping: { selfPickup: form.get('selfPickup') === 'on' },
     };
 
+    // The uncropped originals travel with the form but deliberately stay OUT of the merge below.
+    // A source is not an independent field — it is the photo its crop was cut from, and the two
+    // have to be decided together or a later "adjust" re-frames the wrong picture. So the merge
+    // decides the visible image, and `sourceFor` hands back whichever original belongs to the
+    // value it chose (see below).
+    const submittedSources = {
+      bannerImage: sanitizeImageUrl(form.get('bannerImageSource')) || undefined,
+      profileImage: sanitizeImageUrl(form.get('profileImageSource')) || undefined,
+    };
+
     // Merge rather than overwrite — see the same treatment in api/product.ts. The fields
     // are only the ones THIS form owns (record-rev.ts), so the sale, the categories tree,
     // the domain and the feed token — each saving live from its own section — are outside
@@ -83,6 +94,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const selfPickup = (merged.shipping as { selfPickup?: boolean } | undefined)?.selfPickup === true;
     if (selfPickup && !address) return json({ ok: false, error: 'כדי לאפשר איסוף עצמי יש להזין כתובת חנות.' }, 400);
 
+    // Which original goes with the image the merge settled on (store-image.ts states the rule).
+    const sourceFor = (field: 'bannerImage' | 'profileImage'): string | undefined => pairedImageSource({
+      chosen: merged[field] as string | undefined,
+      submitted: submitted[field],
+      submittedSource: submittedSources[field],
+      stored: target[field],
+      storedSource: target[`${field}Source`],
+    });
+
     const saved = await updateStore(target.id, {
       name,
       tagline: String(merged.tagline ?? ''),
@@ -91,6 +111,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       categories,
       bannerImage: merged.bannerImage as string | undefined,
       profileImage: merged.profileImage as string | undefined,
+      bannerImageSource: sourceFor('bannerImage'),
+      profileImageSource: sourceFor('profileImage'),
       address,
       addressVisible: merged.addressVisible === true,
       hours: merged.hours as ReturnType<typeof parseStoreHoursForm>,

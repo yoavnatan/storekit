@@ -1,0 +1,29 @@
+-- The uncropped upload behind each of the two store images.
+--
+-- `banner_image` / `profile_image` hold what the site SERVES: the square (or 3:1) crop the seller
+-- framed in the dashboard's crop tool. That is the right thing to store for delivery, and the wrong
+-- thing to store for a second edit — once the crop is the only copy that exists, "move the photo a
+-- little inside the circle" is impossible by construction. Panning a square image inside a square
+-- viewport at zoom 1 moves nothing, so the seller's only remaining lever is zooming further IN,
+-- which is not what they were asking for. Reported 2026-08-05: the avatar "doesn't sit right on the
+-- circle" and there was no way to nudge it after upload.
+--
+-- So the widget uploads twice — the crop, and the original beside it — and these columns remember
+-- the original. Re-framing then starts from the full photo every time, at full resolution, however
+-- many times the seller changes their mind, and it never degrades: each crop is cut from the source,
+-- never from the previous crop.
+--
+-- Nothing outside the dashboard's own image widget reads these. The storefront, the feeds, the OG
+-- images and the ad creatives all keep reading the cropped column exactly as before — which is the
+-- reason this is a second column and not a transform baked into the delivered URL. A URL carrying
+-- its own `c_crop` would be treated as "already optimized" by lib/cdn.ts and stop being resized at
+-- all (`HAS_TRANSFORM`), and `cdnFill` would hand ad platforms an empty string.
+--
+-- NULL means "no original kept" — true for every store uploaded before today, and true whenever the
+-- source upload fails while the crop succeeds. Both cases must stay usable, so the widget falls back
+-- to re-cropping the delivered image, which is what it did before this column existed.
+--
+-- Additive columns, safe under the zero-downtime rule: the previous deploy neither reads nor writes
+-- them, and no existing row needs backfilling.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS banner_image_source  text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS profile_image_source text;
