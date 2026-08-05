@@ -72,13 +72,13 @@ function page({ path, size, tone, tagline, background }) {
     .logo{display:inline-flex;flex-direction:column;align-items:flex-start;gap:.05em;font-size:${size}px}
     .word{direction:ltr;display:flex;align-items:baseline;font-family:'Heebo';font-weight:800;
           line-height:1;letter-spacing:-.04em;${textFill}}
-    .word svg{height:.71em;width:auto;flex:none;display:block;margin-inline-end:-.0156em}
+    .word svg{height:.75em;width:auto;flex:none;display:block;margin-inline-end:-.0163em}
     .tag{font-family:'Heebo';font-weight:500;font-size:.3886em;line-height:1;direction:rtl;
          margin-inline-start:-.0532em;color:${tone === 'white' ? '#fff' : BRAND_A}}
   </style>
   <div class="logo">
     <div class="word">
-      <svg viewBox="10.75 8 22.79 28"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <svg viewBox="10.75 8 21.626 28"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0" stop-color="${BRAND_A}"/><stop offset="1" stop-color="${D_SLICE_END}"/>
       </linearGradient></defs><path fill="${ink}" fill-rule="evenodd" d="${path}"/></svg><span>ezabin</span>
     </div>
@@ -89,12 +89,12 @@ function page({ path, size, tone, tagline, background }) {
 /** The favicon tile, at the sizes iOS and Android ask for.
  *
  *  The letter is nudged to centre it, and that is not a tweak: the D's ink runs
- *  11.25 → 33.04 inside a 44-wide tile, so it sits off-centre by its own width
+ *  11.25 → 31.876 inside a 44-wide tile, so it sits off-centre by its own width
  *  change. It was exactly centred only because the 700 drawing happened to be
  *  21.5 wide. Off by even 1% of the tile is visible on a home screen, where the
  *  icon is the only thing in its box. */
 function tilePage({ path, px }) {
-  const centreShift = ((44 - 21.79) / 2 - 11.25).toFixed(3);
+  const centreShift = ((44 - 20.626) / 2 - 11.25).toFixed(3);
   return `<!doctype html><meta charset="utf-8"><style>html,body{margin:0}
     svg{display:block}</style>
   <svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 44 44">

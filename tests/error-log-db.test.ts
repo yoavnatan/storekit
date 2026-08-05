@@ -16,6 +16,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { AstroCookies } from 'astro';
 import { query } from '../src/lib/db.js';
+import * as emailModule from '../src/lib/email/index.js';
+import { resetAlertBudget } from '../src/lib/critical-alert.js';
 import {
   logError,
   getRecentErrors,
@@ -26,7 +28,7 @@ import {
 } from '../src/lib/error-log.js';
 
 /** Every test here writes the log, so each starts from an empty one and leaves it empty. */
-beforeEach(async () => { await query('DELETE FROM error_log'); });
+beforeEach(async () => { await query('DELETE FROM error_log'); resetAlertBudget(); });
 afterEach(async () => { await query('DELETE FROM error_log'); });
 
 async function countRows(): Promise<number> {
@@ -372,5 +374,45 @@ describe('severity on the written row', () => {
          VALUES (gen_random_uuid(), 'server', 'x', 'catastrophic', false, now())`,
       ),
     ).rejects.toThrow();
+  });
+});
+
+/**
+ * The wiring between the log and the one thing that reaches for a person.
+ *
+ * `tests/critical-alert.test.ts` owns the limits — when a mail is suppressed and why. What it cannot
+ * show is that `logError` calls the module at all, and that the call carries a usable entry. Both
+ * failed silently in the first draft: the alert was handed the in-flight insert payload, which has
+ * no `createdAt` on it, so the mail would have gone out reading "Invalid Date" and no unit test of
+ * either module would have noticed.
+ */
+describe('a critical entry reaches the alerter', () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+
+  it('sends one mail carrying the route, message and a real timestamp', async () => {
+    vi.stubEnv('ALERT_EMAIL', 'owner@example.com');
+    const send = vi.spyOn(emailModule, 'sendEmail').mockResolvedValue({ ok: true, provider: 'test' });
+
+    await logError({ source: 'server', route: '/api/checkout', message: 'gateway refused', statusCode: 500 });
+    // `logError` voids the alert, so it settles a tick after the write it rides on.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    const message = send.mock.calls[0]![0];
+    expect(message.subject).toContain('/api/checkout');
+    expect(message.html).toContain('gateway refused');
+    expect(message.html).not.toContain('Invalid Date');
+    expect(message.html).not.toContain('undefined');
+  });
+
+  it('does not mail for an ordinary server error or a browser report', async () => {
+    vi.stubEnv('ALERT_EMAIL', 'owner@example.com');
+    const send = vi.spyOn(emailModule, 'sendEmail').mockResolvedValue({ ok: true, provider: 'test' });
+
+    await logError({ source: 'server', route: '/search', message: 'boom', statusCode: 500 });
+    await logError({ source: 'client', route: '/checkout', message: 'undefined is not a function' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(send).not.toHaveBeenCalled();
   });
 });

@@ -479,6 +479,7 @@ Google Ads / Meta Ads Manager ונמצאו זהים.
   **⚠️ למה תת-דומיין ולא הדומיין הראשי — מלכודת שנשברת בשקט:** לדומיין מותרת **רשומת SPF אחת בלבד**. ב-DNS של דזבין כבר יושבת אחת עבור תיבות הדואר (`v=spf1 a mx include:_spf.myinbox.co.il ~all`, שירות myinbox שנמכר עם הדומיין), והוספת `v=spf1` שנייה **פוסלת את שתיהן** — גם המייל האישי וגם מיילי האתר מתחילים ליפול לספאם, בלי שום הודעת שגיאה. לתת-דומיין יש SPF משל עצמו, כך שההתנגשות לא קיימת, והמוניטין של הדיוור התפעולי מופרד מהמייל האישי (זו גם ההמלצה של Resend עצמם). האלטרנטיבה — למזג `include:` נוסף לתוך הרשומה הקיימת — עובדת, אבל היא רשומה אחת שתי מערכות נשענות עליה.
   אז `EMAIL_FROM` יהיה על תת-הדומיין (`Dezabin <no-reply@send.dezabin.co.il>`), בעוד `replyTo` ממשיך להיות הכתובת העסקית שאתה קורא.
 - [ ] **להזין רשומות DNS: SPF + DKIM + DMARC** אצל רשם הדומיין. **זה הדבר שבאמת קובע הגעה לתיבות ישראליות** (Gmail/Walla/Outlook) — בלי אימות תקין המיילים ייפלו לספאם. זהה בכל ספק.
+- [ ] **למלא ב-`.env`: `ALERT_EMAIL`** — הכתובת שאליה יישלח מייל על **שגיאה קריטית** (`lib/critical-alert.ts`). בלי הכתובת הפיצ׳ר כבוי לגמרי. זה הדבר היחיד שמגיע אליך אקטיבית על תקלה בתוך האתר — ה-uptime של §1 יודע רק להגיד "האתר נפל".
 - [ ] **למלא ב-`.env`: `RESEND_API_KEY`** (מ-Resend) **ו-`EMAIL_FROM`** (כתובת על **תת-הדומיין** המאומת — `Dezabin <no-reply@send.dezabin.co.il>`, ולא על הדומיין הראשי; הסיבה בסעיף שמעל, התנגשות SPF).
 - [ ] **לבדוק בפועל** — לבצע הזמנת-בדיקה ולוודא שהמיילים מגיעים לתיבה (לא ספאם) ונראים תקין במובייל.
 
@@ -694,7 +695,7 @@ Google Ads / Meta Ads Manager ונמצאו זהים.
   `serverEnv`/`requiredSecret` (`src/lib/runtime-env.ts`) — ישירות מ-`process.env` של התהליך החי —
   כך שהגדרה במשתני הסביבה של השרת באמת עובדת, והחלפת סוד היא restart ולא build מחדש.
   סריקה על כל `src/` ב-`tests/runtime-env.test.ts` מונעת חזרה לצורה הישנה. (המשתנים שתוקנו:
-  `AUTH_SECRET`, `ADMIN_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, `GOOGLE_CLIENT_ID`,
+  `AUTH_SECRET`, `ADMIN_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, `ALERT_EMAIL`, `GOOGLE_CLIENT_ID`,
   `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`,
   `CUSTOM_DOMAIN_TARGET`, `PLATFORM_HOSTS`. `PUBLIC_*` נשארים build-time בכוונה — הם נכנסים לחבילת
   הדפדפן.)

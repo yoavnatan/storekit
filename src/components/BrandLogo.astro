@@ -22,27 +22,73 @@
  * instead is the axis he actually asked about: one weight heavier and one step
  * tighter, so the block is denser than it was.
  *
- * EVERY NUMBER IN THE DRAWING FOLLOWS THE WEIGHT, because they are all Heebo's
- * own, re-measured at 800 (the same scan reproduces the previous figures exactly
- * at 700, which is what says it is the method that produced them):
+ * IT STANDS TO THE ASCENDER (0.75em), NOT TO THE CAP LINE (owner, סשן ג׳: "רואים
+ * בבירור שה-D יותר נמוכה ורחבה"). He was right, and it is measurable. In Heebo
+ * 800 the ink tops are: b 0.75em, i 0.745em, D 0.71em. A capital is SHORTER than
+ * the ascenders around it — normal in running text, where a capital reads as a
+ * capital. Here the mark is a flat-topped slab and the deficit reads as squat
+ * instead, and it is the widest single glyph in the word (0.5525em against the
+ * b's 0.485), so "low and wide" was a literal description of a 0.04em gap.
  *
- *   cap height        28 units in this viewBox   (0.71em — a weight can't move it)
- *   back (vertical)   6.507 = 0.2324 of cap — Heebo 800's stem  (700: 0.2113)
- *   bowl's right side 6.507 — a straight edge beside a straight edge; a lighter
+ * THIS IS A DELIBERATE LOGOTYPE OVERRIDE, NOT A METRIC ERROR — DO NOT "FIX" IT.
+ * Cap height IS the typographically correct height for a capital, and the mark
+ * was moved back to 0.71em for exactly one hour on 2026-08-05 to check. Heebo's
+ * own overshoot table, measured off the font, leaves no room to argue the point
+ * on typographic grounds:
+ *
+ *   flat tops    H, E, D    0% above the cap line
+ *   round tops   O, C, S    +1.41%
+ *   pointed      A, V, W    0%
+ *
+ * Only curves overshoot in this font, and this mark's top edge is flat across
+ * 60% of its width against Heebo's own D at 51% — it is FLATTER than the letter
+ * it replaces, so by the font's rules it earns nothing at all. The owner was
+ * shown that and chose the taller mark anyway, which is his call to make: this
+ * is a drawn symbol standing in for a letter, not a letter, and aligning such a
+ * mark to the tallest thing in the word is ordinary logotype practice. The rule
+ * being broken is a rule about TEXT.
+ *
+ * The other repair was tried too and is a dead end: deepening the octagon's cut
+ * to shorten that flat top (10.7 units matches Heebo's D exactly) turns the
+ * counter into a wedge, and the mark reads as a ▶ play triangle instead of a D.
+ * The cut stays at 8.2. Don't re-walk either of these.
+ *
+ * The fix is height only. The ink is NOT wider or narrower than before — the
+ * width/height ratio drops from 0.78 to 0.74 because the height moved, which is
+ * the whole trick: nothing about the letter's mass changed, it simply stopped
+ * being the short one. The stem is held at its measured ABSOLUTE weight while
+ * the box grows, or a taller mark would silently become a heavier one.
+ *
+ * The bottom stays ON the baseline. Round letters (e, a, o) overshoot 0.0075em
+ * below it and flat ones do not; that asymmetry is the font's, and copying the
+ * overshoot onto a flat edge would make the mark hang.
+ *
+ * EVERY OTHER NUMBER FOLLOWS THE WEIGHT, because they are all Heebo's own,
+ * re-measured at 800 (the same scan reproduces the previous figures exactly at
+ * 700, which is what says it is the method that produced them). In this viewBox
+ * 28 units = 0.75em, so a unit is 0.02679em:
+ *
+ *   height            28 units = 0.75em — Heebo 800's ascender, not its cap
+ *   back (vertical)   6.160 = 0.165em — Heebo 800's stem, unchanged in absolute
+ *                             terms (it was 6.507 units when a unit was smaller)
+ *   bowl's right side 6.160 — a straight edge beside a straight edge; a lighter
  *                             one reads as a mistake rather than as contrast
- *   diagonals         5.880 = 0.9037 of the stem — a diagonal looks lighter than
+ *   diagonals         5.567 = 0.9037 of the stem — a diagonal looks lighter than
  *                             its measured width
- *   horizontals       5.199 = 0.799 of the stem — a horizontal looks heavier
- *   letter width      21.79 = 0.7782 of cap, exactly Heebo 800's D  (700: 0.7676)
+ *   horizontals       4.922 = 0.799 of the stem — a horizontal looks heavier
+ *   letter width      20.626 = 0.5525em, exactly Heebo 800's own D — unchanged
+ *   octagon cut       8.2 = 28/(2+√2), tied to the HEIGHT, which is what keeps
+ *                             the silhouette half of a REGULAR octagon
  *
  * The two optical ratios (0.799 and 0.9037) are deliberately CARRIED OVER from
  * the 700 drawing rather than re-measured: they correct for how an eye reads a
  * horizontal and a diagonal, which is not a fact about a weight. The stem and
  * the width are the only measured inputs.
  *
- * THE `-0.0156em` BETWEEN THE D AND THE `e` is derived, not chosen:
+ * THE `-0.0163em` BETWEEN THE D AND THE `e` is derived, not chosen:
  *   margin = the font's own D right-side-bearing + the tracking - the SVG's padding
- *          = 0.03711 + (-0.04) - 0.01268
+ *          = 0.03711 + (-0.04) - 0.01339
+ * (the padding term is 0.5 units, so it moved when the unit did)
  * The bearing is Heebo 800's; the tracking is there because every OTHER pair in
  * the word gets it, so a mark that skipped it would sit looser than the letters
  * around it; the padding is the 0.5 units this viewBox carries outside the ink.
@@ -56,9 +102,10 @@
  * Giving the D its own full gradient makes it end light and the `e` restart
  * dark, which reads as two pieces stuck together.
  *
- * Height is `0.71em`, not `1cap`: Heebo's cap ratio is a known, measured
- * constant here, and hard-coding it means the mark can't shift if the font
- * fails to load and a fallback with different metrics paints for a frame.
+ * Height is a hard-coded `0.75em`, not a font-relative unit like `1cap` or
+ * `1ex`: Heebo's metrics are known and measured here, and hard-coding them
+ * means the mark can't shift if the font fails to load and a fallback with
+ * different metrics paints for a frame.
  *
  * ACCESSIBILITY. The `D` is a drawing and the rest is text, so the DOM says
  * "ezabin" — a screen reader, and anything else reading the accessible name,
@@ -114,8 +161,8 @@ const toneClass =
       that shrank icons in the products table. `shrink-0` does not cover it,
       because max-width is not flex shrinking. */}
   <svg
-    class="h-[0.71em] w-auto max-w-none shrink-0 block me-[-0.0156em]"
-    viewBox="10.75 8 22.79 28"
+    class="h-[0.75em] w-auto max-w-none shrink-0 block me-[-0.0163em]"
+    viewBox="10.75 8 21.626 28"
     aria-hidden="true"
     focusable="false"
   >
@@ -131,8 +178,8 @@ const toneClass =
     <path
       fill={tone === 'white' ? '#fff' : 'url(#dz-d-grad)'}
       fill-rule="evenodd"
-      d="M11.25 8 L24.84 8 L33.04 16.2 L33.04 27.8 L24.84 36 L11.25 36 Z
-         M17.757 13.199 L21.724 13.199 L26.533 18.009 L26.533 25.991 L21.724 30.801 L17.757 30.801 Z"
+      d="M11.25 8 L23.676 8 L31.876 16.2 L31.876 27.8 L23.676 36 L11.25 36 Z
+         M17.410 12.922 L20.726 12.922 L25.716 17.912 L25.716 26.088 L20.726 31.078 L17.410 31.078 Z"
     />
     </svg><span class="text-[1em] leading-none" aria-hidden="true">ezabin</span>
   </span>
