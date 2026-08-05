@@ -250,6 +250,11 @@ export async function logError(
     // context only fills what was left unset.
     const merged = { ...ctx, ...definedOnly(entry) };
     const severity = deriveSeverity({ source: merged.source, route: merged.route, statusCode: merged.statusCode });
+    // Hoisted out of the parameter list so the alert below can carry the SAME id the row is stored
+    // under. That is what lets the mail print a reference code the admin tab can be matched against
+    // — `seq` would be the natural incident number and is assigned by the database on insert, i.e.
+    // too late for a mail built here (`lib/error-reference.ts`).
+    const id = crypto.randomUUID();
 
     await query(
       // One statement: insert the entry and enforce the ceiling, both on `error_log_seq_idx`.
@@ -272,7 +277,7 @@ export async function logError(
          SELECT seq FROM error_log ORDER BY seq DESC OFFSET $14
        )`,
       [
-        crypto.randomUUID(),
+        id,
         normalizeSource(merged.source),
         clamp(merged.route, MAX_ROUTE_LEN),
         clamp(merged.message, MAX_MESSAGE_LEN) ?? '',
@@ -302,7 +307,7 @@ export async function logError(
     //
     // `critical-alert.ts` never calls back into this function: that would be a loop, entered exactly
     // when things are already going wrong.
-    if (severity === 'critical') void alertOnCriticalError({ ...merged, severity, createdAt: new Date().toISOString() });
+    if (severity === 'critical') void alertOnCriticalError({ ...merged, id, severity, createdAt: new Date().toISOString() });
   } catch (err) {
     // Logging must never itself throw — but a swallowed failure used to leave no trace at all.
     console.error('[error-log] write failed:', err instanceof Error ? err.message : String(err), '|', entry.message);

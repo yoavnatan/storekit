@@ -1,6 +1,7 @@
 ---
 import type { AlertsSortDir, ErrorLogEntry } from '../../lib/error-log.js';
 import { SEVERITY_ORDER, type ErrorSeverity } from '../../lib/error-severity.js';
+import { errorRef, errorMeaning } from '../../lib/error-reference.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import AdminPager from './AdminPager.astro';
 import AdminNewBadge from './AdminNewBadge.astro';
@@ -143,6 +144,10 @@ function buildCopyText(e: ErrorLogEntry): string {
                   the "חדשה" mark is actually about. */}
               <td class="admin-nowrap admin-alerts-time">
                 {formatHeDateTime(e.createdAt)}
+                {/* The code the alert mail carries in its subject. It is here so that "my phone
+                    buzzed about #a1b2c3d4" can be found on this screen by eye — a lookup aid, never
+                    an identifier; nothing keys on it and resolving a row still uses the full uuid. */}
+                <span class="block text-[.72rem] [color:var(--color-muted)] font-mono" dir="ltr">{errorRef(e.id)}</span>
                 {e.createdAt > newSince && <AdminNewBadge label="חדשה" block />}
               </td>
               {/* Severity leads and source follows it: when the list is long the first thing worth
@@ -162,7 +167,14 @@ function buildCopyText(e: ErrorLogEntry): string {
               <td class="admin-nowrap admin-alerts-route" title={e.route ?? undefined}>
                 <span class="admin-alerts-field-label">נתיב: </span>{e.route ?? '—'}
               </td>
-              <td class="admin-alerts-message" title={e.message}>{e.message}</td>
+              {/* The plain sentence above the raw message, because "/api/checkout" and "500" say
+                  everything except the one thing that decides what happens next: whether a customer
+                  was hurt. Same wording the alert mail leads with, from the same function — a row
+                  and its mail describing the same failure differently is worse than either alone. */}
+              <td class="admin-alerts-message" title={e.message}>
+                <span class="block font-semibold">{errorMeaning(e.route, severityOf(e))}</span>
+                <span class="block text-[.8rem] [color:var(--color-muted)] mt-[.15rem]">{e.message}</span>
+              </td>
               <td class="admin-nowrap admin-alerts-actions">
                 <button
                   type="button"
