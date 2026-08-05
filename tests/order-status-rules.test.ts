@@ -44,7 +44,7 @@ describe('the table covers every status that exists', () => {
 
   it('every row answers every question', () => {
     // A row with a missing column is the half-filled table this file exists to stop.
-    const facets = ['countsAsRevenue', 'holdsStock', 'cancellableFrom', 'terminal', 'notifiesBuyer'] as const;
+    const facets = ['countsAsRevenue', 'holdsStock', 'cancellableFrom', 'terminal', 'notifiesBuyer', 'buyerAwaiting', 'blocksStoreClosure'] as const;
     for (const [status, rule] of Object.entries(SHIPPING_STATUS_RULES)) {
       for (const facet of facets) {
         expect(typeof rule[facet], `${status}.${facet}`).toBe('boolean');

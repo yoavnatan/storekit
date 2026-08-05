@@ -195,7 +195,7 @@ const discounted = products
         {discounted.map(({ p, view }) => (
           <li class="flex items-center gap-3 flex-wrap py-2 px-2.5 rounded-[var(--radius-sm)] border border-[color:var(--color-border)]" data-discounted-row={p.id}>
             <span class="min-w-0 flex-1">
-              <span class="font-semibold text-[0.86rem] block overflow-hidden text-ellipsis whitespace-nowrap" dir="auto">{p.name}</span>
+              <span class="font-semibold text-[0.86rem] block overflow-hidden text-ellipsis whitespace-nowrap"><bdi>{p.name}</bdi></span>
               {/* Which lever decided this price. Only worth saying while a store-wide sale is
                   actually running — with no sale there is nothing to disambiguate. */}
               {saleLive && (

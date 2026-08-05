@@ -41,6 +41,14 @@ export interface ShippingStatusRule {
   /** Does reaching this status tell the buyer anything? Mirrors the copy table in
    *  order-status-copy.ts — internal work states and redundant ones stay quiet. */
   notifiesBuyer: boolean;
+  /** Is the BUYER still waiting on this? What splits their order list into "פעילות" and
+   *  "היסטוריה" (buyer-purchases.ts). Deliberately its own column and not a reading of
+   *  `blocksStoreClosure`, which they currently agree with to the row: that one asks whether
+   *  the SELLER still owes work, and the two come apart the moment a status exists that the
+   *  seller is done with and the buyer is not — a returns window, say. Until 2026-08-05 this
+   *  was a bare `=== 'delivered'` at the dashboard, which is why a cancelled order sat in
+   *  "active" forever with nothing left to happen to it. */
+  buyerAwaiting: boolean;
   /** Does this order still owe the buyer something, so the store may not finish closing while
    *  it exists (store-lifecycle.ts)? A buyer who paid must get their goods — the seller may
    *  stop SELLING the moment they want (that is what pausing is for), but walking away from a
@@ -50,12 +58,12 @@ export interface ShippingStatusRule {
 }
 
 export const SHIPPING_STATUS_RULES: Record<ShippingStatus, ShippingStatusRule> = {
-  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, blocksStoreClosure: true  },
-  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, blocksStoreClosure: true  },
-  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , blocksStoreClosure: true  },
-  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , blocksStoreClosure: true  },
-  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, blocksStoreClosure: false },
-  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , blocksStoreClosure: false },
+  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true  },
+  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true  },
+  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true  },
+  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true  },
+  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false },
+  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false },
 };
 
 export interface PaymentStatusRule {

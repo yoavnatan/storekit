@@ -66,7 +66,7 @@ export function initProductMultiPicker(config: ProductPickerConfig): ProductMult
     list.innerHTML = shown.map((o) => `
       <label class="flex items-center gap-2 py-1.5 px-2 rounded-[var(--radius-sm)] cursor-pointer hover:bg-[color:var(--color-bg)]">
         <input type="checkbox" value="${escapeHtml(o.id)}" style="width:15px;height:15px;cursor:pointer"${selected.has(o.id) ? ' checked' : ''}>
-        <span class="text-[0.85rem] flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" dir="auto">${escapeHtml(o.name)}</span>
+        <span class="text-[0.85rem] flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"><bdi>${escapeHtml(o.name)}</bdi></span>
         <span class="muted text-[0.78rem]">${escapeHtml(formatPrice(o.price))}</span>
       </label>`).join('')
       + (matches.length > shown.length

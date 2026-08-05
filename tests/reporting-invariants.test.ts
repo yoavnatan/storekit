@@ -36,6 +36,7 @@ const NO_VIEWS = new Map<string, StoreViewStats>();
 import { getOrderTotals, getStoreOverview, getStoreRevenueMap, orderNetForStore, orderNetTotal } from '../src/lib/admin-stats.js';
 import { businessDayISO, businessMonthKey, BUSINESS_TIMEZONE } from '../src/lib/business-day.js';
 import { storeSliceTotalAgorot } from '../src/lib/order-totals.js';
+import { groupBuyerPurchases } from '../src/lib/buyer-purchases.js';
 
 /** The business month `getStoreRevenueMap`'s month column is asked about. These assertions are
  *  about the ALL-TIME column, so the month is a constant that no clock decides. */
@@ -245,6 +246,37 @@ describe('an order card agrees with the revenue that order produces', () => {
       );
     });
   }
+});
+
+// The buyer's own card is the third surface reading these rows, and the only one that shows a
+// number spanning MORE than one row: checkout splits a basket into one order per store, and the
+// card adds those back up (lib/buyer-purchases.ts). So its headline must equal the per-store
+// totals printed underneath it — the parts and the whole are both on screen at once here, which
+// is the case where a disagreement is not merely wrong but visibly wrong.
+describe('a buyer\'s order card totals the stores it is showing', () => {
+  it('the grand total equals the store totals listed inside it', () => {
+    const rows = [
+      makeOrder('split-a', { items: [{ productId: 'p1', priceAgorot: 3333, qty: 3 }], shippingAgorot: 1990, discount: { type: 'percent', value: 10, appliedAgorot: 1000 } }),
+      makeOrder('split-b', { items: [{ productId: 'p2', priceAgorot: 1250, qty: 1, storeSlug: OTHER }], shippingAgorot: 0 }),
+    ].map((o) => ({ ...o, checkoutRef: 'CK-INV', totalAgorot: storeSliceTotalAgorot(Object.values(o.storeSubtotals)[0]!) }));
+
+    const [purchase] = groupBuyerPurchases(rows);
+    const printedPerStore = purchase!.slices.map((s) => storeSliceTotalAgorot(s.order.storeSubtotals[s.storeSlug]!));
+    expectSameMoney(
+      purchase!.totalAgorot,
+      printedPerStore.reduce((a, b) => a + b, 0),
+      'the card headline is the sum of the per-store totals it prints',
+    );
+  });
+
+  it('never shows a total larger than the orders it is made of', () => {
+    const rows = [
+      makeOrder('cap-a', { items: [{ productId: 'p1', priceAgorot: 500, qty: 2 }], shippingAgorot: 0 }),
+      makeOrder('cap-b', { items: [{ productId: 'p2', priceAgorot: 900, qty: 1, storeSlug: OTHER }], shippingAgorot: 0 }),
+    ].map((o) => ({ ...o, checkoutRef: 'CK-CAP' }));
+    const [purchase] = groupBuyerPurchases(rows);
+    expect(purchase!.totalAgorot).toBe(rows.reduce((a, o) => a + o.totalAgorot, 0));
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

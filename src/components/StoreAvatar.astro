@@ -18,6 +18,25 @@ interface Props {
   sampleColor?: boolean;
 }
 
+/**
+ * ALWAYS A CIRCLE — a rounded-square "logo plate" was built and reverted the same
+ * day (2026-08-05), and the reason is worth keeping so it isn't rebuilt.
+ *
+ * The reasoning for it was sound on paper: a circle crops the corners off a mark,
+ * and `cover` then crops the sides off a wordmark. What it missed is that on a
+ * store card the slot sits directly above the product thumbnails, and a
+ * `--radius` box with a 1px border on `--color-surface` is *byte for byte* those
+ * thumbnails' own recipe. So the store's identity stopped reading as "who this
+ * is" and started reading as a fourth product that had drifted to the top of the
+ * card — the owner's words were "under renovation". Removing the plate's inner
+ * padding (the first attempt at fixing it) made that worse, not better.
+ *
+ * A circle is what separates a WHO from a WHAT, and nothing else in this design
+ * system is round. The real complaint underneath all of this was SIZE, and that
+ * is fixed where it belongs: the store card asks for 56px instead of 40.
+ * Cropping is the seller's own decision anyway — the upload widget crops to 1:1
+ * before storing, so what a circle trims is the corners of a square they chose.
+ */
 const { name, slug, profileImage, size = 40, class: className = '', sampleColor = false } = Astro.props;
 // Same identity the PNG endpoint renders for this store: one hue per store, so a
 // store with no uploaded picture is still recognisable from list to list — the

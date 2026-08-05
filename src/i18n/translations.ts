@@ -1233,6 +1233,11 @@ export const translations = {
       shippingDelivered: 'נמסר',
       shippingCancelled: 'בוטלה',
       freeShipping: 'חינם',
+      // One order split across several stores. The collapsed card names two of them and counts
+      // the rest — a deliberate cut, never a CSS ellipsis through the middle of a store's name.
+      // The grand total is what the whole purchase came to; the per-store totals are slices of it.
+      orderStoresMore: 'ועוד {count}',
+      orderTotalAll: 'סה"כ להזמנה',
       // A discount the seller gave on this order after it was placed — shown so the store's
       // total reads as items + משלוח − הנחה instead of a number that just looks too low.
       orderDiscount: 'הנחה',
@@ -2449,6 +2454,8 @@ export const translations = {
       shippingDelivered: 'Delivered',
       shippingCancelled: 'Cancelled',
       freeShipping: 'Free',
+      orderStoresMore: '+{count} more',
+      orderTotalAll: 'Order total',
       orderDiscount: 'Discount',
       trackingNumber: 'Tracking number',
       menuBtn: 'Open menu',

@@ -8,8 +8,8 @@
 .store-card {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.9rem;
+  gap: 0.8rem;
+  padding: 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
@@ -22,62 +22,33 @@
   /* The deep variant: this card rises 4px, so its shadow has to be the taller
      one — see the two hover tokens in base/tokens.css. */
   box-shadow: var(--shadow-hover-deep);
-  /* Navy (--color-primary), not the accent blue — the hover edge should read as
-     the platform's own dark tone (user, 2026-07-28). Navy is darker than the
-     accent, so a lower mix keeps the same perceived weight. */
-  border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
+  /* The store's OWN colour, the same one the halo below uses — a card the mouse
+     is on identifies its store, rather than every card on the page lighting up
+     in the one platform tone (user, 2026-08-05). `--store-glow` is the vivid
+     colour read off the logo (lib/dominant-color.ts), and a store that has none
+     falls back to the navy edge that shipped before: --color-primary, never the
+     accent blue (user, 2026-07-28) and never a colour this store hasn't got.
+     TWO nested mixes, not one, because the two cases want different strengths —
+     navy is dark and 22% already carries; a vivid mid-tone at 22% disappears.
+     The fallback is pre-mixed to 40% and then diluted to 55% of that by the line
+     below, which is 22% exactly: the no-colour card's hover is unchanged to the
+     byte, and only a store WITH a colour gets the stronger edge. */
+  --store-edge: var(--store-glow, color-mix(in srgb, var(--color-primary) 40%, var(--color-border)));
+  border-color: color-mix(in srgb, var(--store-edge) 55%, var(--color-border));
   transform: translateY(-4px);
 }
 
 .store-card__head {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.75rem;
   min-width: 0;
 }
 
-/* Soft glow around the avatar — the one deliberate "color play" touch, kept
-   subtle (two low mixes, fading to nothing) so it reads as depth, not a badge.
-   Drawn as an OUTER box-shadow on a circle matching the avatar exactly, never
-   as a radial-gradient fill: this pseudo-element paints above the avatar (the
-   image inside is not positioned), so any background here tints the logo and
-   the halo reads as an inward smudge instead of a glow. An outer shadow is
-   clipped to outside the border box by definition, so it cannot touch the
-   picture — including a logo with a transparent background. */
-.store-card__avatar-wrap {
-  position: relative;
-  flex-shrink: 0;
-  display: flex;
-}
-
-.store-card__avatar-wrap::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  /* Both blurred, neither solid: a hard `0 0 0 Npx` ring is what made the first pass read as a
-     dense outline rather than a glow. The tight one starts AT the avatar's edge so the halo stays
-     attached to the picture, the wide one carries it outward and is what does the diffusing. Low
-     mixes on purpose — the two overlap where they meet, and anything stronger stacks into a rim. */
-  /* `--store-glow` is the store's OWN colour — set on the card server-side from
-     its generated mark, or on the client from the uploaded logo's pixels
-     (scripts/store-glow.ts, which clamps it into a band that stays visible at
-     these mixes and refuses a white/greyscale logo outright).
-     The fallback for every one of those refusals is a light grey, not the
-     platform accent: a blue halo around a black-and-white logo claims a colour
-     the store doesn't have. Lightened from the site's own neutral rather than
-     picked as a fresh hex, and only part-way — pushed further toward white it
-     stops being visible at all, which is a missing halo, not a quiet one. */
-  --glow: var(--store-glow, color-mix(in srgb, var(--color-muted) 70%, #fff));
-  box-shadow:
-    0 0 6px 1px color-mix(in srgb, var(--glow) 12%, transparent),
-    0 0 18px 5px color-mix(in srgb, var(--glow) 14%, transparent);
-  opacity: 0;
-  transition: opacity 0.24s ease;
-  pointer-events: none;
-}
-
-.store-card:hover .store-card__avatar-wrap::before {
+/* The halo itself is `.store-glow-wrap` in utilities/utils.css — shared with the
+   spotlight carousel's store header, which lights the same glow on ITS hover.
+   All this file owns is the trigger: on a card, the whole card is the target. */
+.store-card:hover .store-glow-wrap::before {
   opacity: 1;
 }
 
@@ -88,8 +59,12 @@
   min-width: 0;
 }
 
+/* Type stepped up with the avatar (user, 2026-08-05: the card's contents read
+   as too quiet). Still one line each — the ellipsis and the always-rendered
+   tagline are what keep every card in a row the same height, and a wrapping
+   name would undo that on the first long store name. */
 .store-card__name {
-  font-size: 0.9rem;
+  font-size: 0.97rem;
   font-weight: 700;
   color: var(--color-text);
   white-space: nowrap;
@@ -98,7 +73,7 @@
 }
 
 .store-card__tagline {
-  font-size: 0.76rem;
+  font-size: 0.815rem;
   color: var(--color-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -323,11 +298,18 @@
    shift on the homepage's main content, which is the one thing the LCP/CLS
    budget here can least afford. The steps are chosen so a store card never
    drops below ~165px (mobile) or ~240px (desktop): 2 up to 776px of viewport,
-   then 3, then 4 from 1028px, where the row is 996px and a quarter of it is
-   exactly 240. There is no 5th step — the site caps at 1160px, so four is as
-   many as a full-width row ever holds. */
-@media (min-width: 776px)  { .home-shelf { --shelf-fit: 3; } }
-@media (min-width: 1028px) { .home-shelf { --shelf-fit: 4; } }
+   then 3.
+
+   THE TOP STEP USED TO BE 4, FROM 1028px, AND THAT IS WHAT MADE THE ROWS
+   DISAGREE (user, 2026-08-05). A category shelf holds a handful of stores, so
+   --shelf-count was the divisor and its cards came out ~370px; a discovery or
+   "new" shelf holds more than fit, so --shelf-fit was, and the identical card
+   came out ~280px directly underneath. The complaint was never "these cards
+   are small" in the abstract — it was that the same card is two sizes on one
+   page, and the smaller one looks like the mistake. Three at every desktop
+   width makes every row agree, and nothing is lost: these rows scroll, so a
+   long shelf still holds everything it did. There is no 4th step. */
+@media (min-width: 776px) { .home-shelf { --shelf-fit: 3; } }
 
 .home-shelf .store-card {
   /* Both counts come from the shelf (HomeShelf sets --shelf-count inline, the

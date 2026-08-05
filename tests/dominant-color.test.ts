@@ -24,6 +24,10 @@ const lightnessOf = (hex: string) => {
   const n = parseInt(hex.slice(1), 16);
   return rgbToHsl((n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff).l;
 };
+const saturationOf = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16);
+  return rgbToHsl((n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff).s;
+};
 /** Circular hue distance, so a red answer near 0° isn't scored as 355° off. */
 const hueGap = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 
@@ -95,6 +99,18 @@ describe('dominantGlowColor', () => {
     expect(hueGap(hueOf(hex), 39)).toBeLessThan(20);
   });
 
+  it('returns the vivid core of the winning hue, not that hue averaged', () => {
+    // A red mark whose washed-out anti-aliased fringe outnumbers its own flat
+    // interior 200:60 — what every downscaled sample of a thin logo looks like.
+    // Averaging the family gives s≈0.66 at the lightness ceiling, i.e. a dusty
+    // pink; the vivid quarter gives the red the logo actually is.
+    const hex = dominantGlowColor(pixels([[WHITE, 300], [[240, 190, 190], 200], [[220, 30, 30], 60]]))!;
+    expect(hex).not.toBeNull();
+    expect(hueGap(hueOf(hex), 0)).toBeLessThan(15);
+    expect(saturationOf(hex)).toBeGreaterThanOrEqual(0.72);
+    expect(lightnessOf(hex)).toBeLessThanOrEqual(0.56);
+  });
+
   it('never returns a colour for an empty buffer', () => {
     expect(dominantGlowColor(new Uint8ClampedArray(0))).toBeNull();
   });
@@ -103,15 +119,18 @@ describe('dominantGlowColor', () => {
 describe('the memoised colour is never trusted on the way back in', () => {
   const SRC = 'https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_80/v1/logo.png';
 
-  /** One card with a sampleable avatar, already "loaded" — jsdom images never
-   *  load, so `complete`/`naturalWidth` are forced to what a real one reports. */
+  /** One glow host with a sampleable avatar, already "loaded" — jsdom images
+   *  never load, so `complete`/`naturalWidth` are forced to what a real one
+   *  reports. The host is found by `data-glow-host`, NOT by `.store-card`: the
+   *  spotlight carousel's store header is one too, and hardcoding the card class
+   *  here would let the second surface break with this suite still green. */
   function card(): HTMLElement {
-    document.body.innerHTML = '<a class="store-card"><span class="store-card__avatar-wrap"><img data-glow></span></a>';
+    document.body.innerHTML = '<a class="store-card" data-glow-host><span class="store-glow-wrap"><img data-glow></span></a>';
     const img = document.querySelector('img')!;
     img.src = SRC;
     Object.defineProperty(img, 'complete', { value: true });
     Object.defineProperty(img, 'naturalWidth', { value: 80 });
-    return document.querySelector<HTMLElement>('.store-card')!;
+    return document.querySelector<HTMLElement>('[data-glow-host]')!;
   }
   /** Seed the cache, then run a FRESH copy of the module against it. The module
    *  reads sessionStorage once and memoises in a closure — correct for a page
@@ -157,7 +176,8 @@ describe('wiring', () => {
   const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8');
   const avatar = read('src/components/StoreAvatar.astro');
   const card = read('src/components/StoreCard.astro');
-  const css = read('src/styles/components/store-card.css');
+  const css = read('src/styles/components/store-card.css') + read('src/styles/utilities/utils.css');
+  const home = read('src/pages/index.astro');
 
   it('tags the avatar for sampling ONLY when the URL is CORS-clean', () => {
     // `crossorigin` on a host that sends no ACAO header stops the image loading
@@ -174,15 +194,56 @@ describe('wiring', () => {
     expect(card).toContain('store.profileImage ? undefined : storeMark(');
   });
 
-  it('falls back to a light grey — never the accent — when the store colour is unknown', () => {
-    // A blue halo on a black-and-white logo asserts a colour that store hasn't
-    // got; grey is the honest "no colour found". Every use of the variable must
-    // carry that fallback, so a new one can't quietly ship without a halo.
+  it('every surface that draws the halo also declares a host to paint it on', () => {
+    // The two halves are far apart — the wrapper is in the markup, the host
+    // attribute is on an ancestor, and the client script writes the colour onto
+    // the SECOND one. Miss it and the halo still renders, in grey, forever: no
+    // error, nothing in the console, just a store that never shows its colour.
+    for (const [name, source] of [['StoreCard.astro', card], ['index.astro', home]] as const) {
+      if (!source.includes('store-glow-wrap')) continue;
+      expect(source, `${name} draws the halo but declares no data-glow-host`).toContain('data-glow-host');
+    }
+    // …and the one known consumer is actually here, so a rename can't empty the loop.
+    expect(card).toContain('store-glow-wrap');
+  });
+
+  it('keeps the halo off the spotlight header, where it cannot fit', () => {
+    // Added and reverted on 2026-08-05. The header sits at the edge of a slide
+    // inside a scroll container, so the glow is clipped; widening the track to
+    // free it reveals the NEXT store's header down both edges, and buying the
+    // room from the inside pushes the products off the line every other row on
+    // the page ends on. The store card is where the halo has space. This asserts
+    // the outcome rather than the reasoning — home.css carries that — so the
+    // third attempt starts by reading why the first two failed.
+    expect(home).not.toContain('store-glow-wrap');
+    expect(read('src/styles/pages/home.css')).not.toContain('store-glow-wrap');
+    // The hover the halo came with STAYS: the header still lights its title and
+    // its button together, and is a link end to end.
+    expect(home).toContain('group-hover/hdr:');
+    expect(home).toContain("after:absolute after:inset-0");
+  });
+
+  it('never falls back to the accent when the store colour is unknown', () => {
+    // An accent-blue halo (or edge) on a black-and-white logo asserts a colour
+    // that store hasn't got. Every use must declare SOME fallback — a bare
+    // `var(--store-glow)` renders nothing at all on such a store — and none of
+    // them may be the accent.
     const uses = css.match(/var\(--store-glow[^;]*?\)\)/g) ?? [];
     expect(uses.length).toBeGreaterThan(0);
     for (const use of uses) {
-      expect(use).toContain('--color-muted');
+      expect(use).toContain('--store-glow,');
       expect(use).not.toContain('--color-accent');
     }
+  });
+
+  it('keeps each consumer on its own honest fallback', () => {
+    // The halo answers "what colour is this store" and grey is the honest
+    // "none found"; the hover edge answers "is this card under the mouse" and
+    // has to stay visible either way, so its no-colour answer is the platform
+    // navy that shipped before the glow existed. Pinned separately because they
+    // are different questions with the same source.
+    expect(css).toMatch(/--glow: var\(--store-glow, color-mix\(in srgb, var\(--color-muted\)/);
+    expect(css).toMatch(/--store-edge: var\(--store-glow, color-mix\(in srgb, var\(--color-primary\)/);
+    expect(css).toMatch(/border-color: color-mix\(in srgb, var\(--store-edge\)/);
   });
 });

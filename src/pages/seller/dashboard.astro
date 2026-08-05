@@ -2360,6 +2360,12 @@ const orderStatusColors: Record<string, string> = {
                  child: the upload widget owns this element's innerHTML (store-image.ts), so
                  the seller sees exactly the colour buyers and ad platforms get while the
                  slot is empty — including right after "remove image". -->
+            <!-- Round and cover-cropped, because that is exactly what StoreAvatar
+                 renders on every card and on the storefront. A preview that
+                 disagrees with the site is worse than no preview and it fails
+                 silently — the seller crops, saves, and finds something else on
+                 their own store page. Briefly a rounded-square plate on
+                 2026-08-05, reverted with the render it was mirroring. -->
             <div
               id="avatar-frame"
               class="h-20 w-20 overflow-hidden rounded-full border border-[var(--color-border)]"

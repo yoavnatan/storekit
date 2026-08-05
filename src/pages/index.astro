@@ -180,6 +180,17 @@ const bgOffset = Math.floor(Math.random() * 3);
 // three of them switch it off and hide themselves along with it.
 const liveStoreCount = countRealStores(storesWithProducts.map((s) => s.store));
 const launchMode = isLaunchMode(liveStoreCount);
+// The thin-but-not-launch band (5-9 real stores). It used to append one "open a store" card to
+// the tail of the discovery and New shelves — where, in a row that scrolls, it was the LAST card
+// of up to ten and effectively unreachable, while still being a recruitment tile sitting in a
+// row the shopper is browsing stores in. Both halves of that are wrong, and widening the cards
+// on 2026-08-05 only made the first half worse (user).
+//
+// So on the homepage this band no longer touches the shelves at all: it turns on the seller CTA
+// section at the BOTTOM of the page instead — one readable block, below everything the shopper
+// came for, which is what "the homepage is a buyer's page first" actually asks for. Launch mode
+// is untouched (there the invitation IS the page's job, and it renders in a wrapping grid where
+// nothing is buried), and /stores keeps its tail tile because that grid wraps too.
 const shelfInvite = !launchMode && showShelfInvite(liveStoreCount);
 
 // What the launch shelf actually holds. Split real vs showcase first, because the
@@ -195,15 +206,17 @@ const launchShelf = planLaunchShelf(
 // thing the mall has. So the tab never falls back to a bare empty state while the
 // mall is thin — it pads out with placeholder cards in launch mode, and keeps at
 // least one of them as long as it would otherwise have nothing to show. Past the
-// launch thresholds the shelf is real stores again, plus the same single closing
-// invite the discovery shelf already carries.
+// launch thresholds the shelf is real stores again.
 // MIN_SHELF_INVITES is the floor even when the stores already fill the row — the
 // same guarantee planLaunchShelf makes for the discover shelf, and for the same
 // reason: the one card that recruits sellers must not vanish the moment enough
 // stores exist to fill the slots while launch mode is still on.
+// Past launch the placeholder survives ONLY as the empty tab's own content — a tab with nothing
+// in it has to show something, and that is a different job from wedging a recruitment card into
+// the tail of a row that already has stores in it (see `shelfInvite` above).
 const newTabInvites = launchMode
   ? Math.max(MIN_SHELF_INVITES, launchInviteCount(feed.newStores.length))
-  : (feed.newStores.length === 0 ? MIN_SHELF_INVITES : (shelfInvite ? 1 : 0));
+  : (feed.newStores.length === 0 ? MIN_SHELF_INVITES : 0);
 
 // Two nodes in one graph rather than two separate <script> blocks: they describe the same
 // subject, and `@graph` is how you say "the Organization and the WebSite are this site" without
@@ -549,6 +562,13 @@ const jsonLd = {
                     </button>
                   </div>
                 )}
+                <!-- NO padding/negative-margin bleed on this track, and that is deliberate
+                     (tried and reverted 2026-08-05). Widening the box to let the store
+                     avatar's halo escape also widened what the box SHOWS, so 16px of the
+                     neighbouring store's header — its logo, its name, its button — appeared
+                     down both edges. This element's clipping is what makes one slide one
+                     store; the halo gets its room from the inside instead, see
+                     `.home-store-section` in home.css. -->
                 <div
                   class="home-spotlight-track flex overflow-x-auto [overflow-y:clip] [scroll-snap-type:x_mandatory]
                     [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
@@ -562,14 +582,38 @@ const jsonLd = {
                         data-tagline={(s.tagline || s.description || '').toLowerCase()}
                         aria-labelledby={`sh-${s.slug}`}
                       >
-                          <div class="home-section-header">
+                          <!-- The WHOLE header is one hover target (user, 2026-08-05): pointing
+                               anywhere on it lights the store's name AND the "כנס לחנות" button,
+                               so the header reads as a single door into the store rather than as
+                               separate things that each light up on their own.
+                               The store's colour HALO was part of this and had to come back out
+                               — it cannot be drawn at a scroll container's edge without either
+                               revealing the next slide or moving the products off the page's
+                               line; `.home-store-section` in home.css has the full account.
+                               `group/hdr` is named because the button below carries its own
+                               unnamed `group` for a different effect; an anonymous second group
+                               would have the arrow answering to whichever is nearer. -->
+                          <div class="home-section-header group/hdr relative">
                             <div class="home-store-section__title-group">
-                              <a href={`/${s.slug}`} class="flex items-center gap-2.5" style="color:inherit;text-decoration:none">
+                              <!-- STRETCHED LINK: the `::after` covers the whole header, so the
+                                   empty middle between the name and the button goes to the store
+                                   too. It is here because the hover came first and left the header
+                                   lighting up under a pointer that could not click it, which reads
+                                   as broken (user, 2026-08-05) — the fix is to honour the hover,
+                                   not to shrink it back to two elements. Safe as a single overlay:
+                                   the only other interactive thing in this header is the button
+                                   below, which is lifted above it, and it points at the same store.
+                                   `inset-0` resolves against `.home-section-header` (the `relative`
+                                   above), not against this link, which is unpositioned. -->
+                              <a href={`/${s.slug}`} class="flex items-center gap-2.5 after:absolute after:inset-0 after:content-['']" style="color:inherit;text-decoration:none">
                                 <StoreAvatar name={s.name} slug={s.slug} profileImage={s.profileImage} size={36} />
-                                <h2 id={`sh-${s.slug}`} class="home-section-title hover:text-[var(--color-accent)] transition-colors duration-150">{s.name}</h2>
+                                <!-- A shade larger than a shelf heading (1rem): this is a store's
+                                     NAME beside its logo, not a row label, and at 1rem next to a
+                                     36px avatar it read as the smaller of the two. -->
+                                <h2 id={`sh-${s.slug}`} class="home-section-title text-[1.15rem] group-hover/hdr:text-[var(--color-accent)] transition-colors duration-150">{s.name}</h2>
                               </a>
                               {(s.tagline || s.description) && (
-                                <p class="home-store-section__tagline" dir="auto">{s.tagline || s.description}</p>
+                                <p class="home-store-section__tagline"><bdi>{s.tagline || s.description}</bdi></p>
                               )}
                               <!-- The spotlight is the one surface a shopper can browse a
                                    showcase store's products from without ever seeing its
@@ -584,15 +628,24 @@ const jsonLd = {
                                  `!bg` override to --color-surface. The arrow's translate
                                  needs the rtl branch: `translate` applies in the parent's
                                  coordinate space *after* `rtl:-scale-x-100`'s flip, so it
-                                 would otherwise slide against the arrowhead in Hebrew. -->
+                                 would otherwise slide against the arrowhead in Hebrew.
+                                 Driven by `group-hover/hdr`, not by the button's own hover:
+                                 the trigger is the whole header. The plain `hover:` variants
+                                 stay alongside it — `group-hover` does not fire for a touch
+                                 or keyboard user reaching the button directly. -->
+                            <!-- `relative z-[1]` keeps it above the stretched link's overlay —
+                                 same destination either way, but it has to keep its own focus
+                                 ring and its own hit area rather than becoming a painted-on
+                                 label that the overlay swallows. -->
                             <a
                               href={`/${s.slug}`}
-                              class="btn btn--sm btn--ghost group inline-flex items-center gap-1.5 shrink-0
+                              class="btn btn--sm btn--ghost inline-flex items-center gap-1.5 shrink-0 relative z-[1]
                                 [transition:background-color_0.15s,box-shadow_0.18s]
-                                hover:!bg-[color:var(--color-surface)] hover:shadow-[var(--shadow-xs)]"
+                                hover:!bg-[color:var(--color-surface)] hover:shadow-[var(--shadow-xs)]
+                                group-hover/hdr:!bg-[color:var(--color-surface)] group-hover/hdr:shadow-[var(--shadow-xs)]"
                             >
                               {t.home.visitStore}
-                              <svg class="rtl:-scale-x-100 group-hover:translate-x-[3px] rtl:group-hover:-translate-x-[3px]
+                              <svg class="rtl:-scale-x-100 group-hover/hdr:translate-x-[3px] rtl:group-hover/hdr:-translate-x-[3px]
                                      [transition:translate_0.18s_cubic-bezier(0.34,1.56,0.64,1)]"
                                    width="11" height="11" viewBox="0 0 24 24" fill="none"
                                    stroke="currentColor" stroke-width="2.5" aria-hidden="true">
@@ -650,7 +703,7 @@ const jsonLd = {
                  rather than more to explore. ── -->
             {!launchMode && (
               <HomeShelf id={discoveryShelf.id} title={discoveryShelf.title} stores={discoveryShelf.stores}
-                         dotIndex={categoryShelves.length + 1 + bgOffset} invites={shelfInvite ? 1 : 0} />
+                         dotIndex={categoryShelves.length + 1 + bgOffset} />
             )}
 
             <!-- Nothing closes the discover panel in launch mode, deliberately
@@ -674,6 +727,14 @@ const jsonLd = {
        the hero's own "open a store" link and doesn't need a second pitch) — but
        in launch mode recruiting sellers IS the page's job, so guests see it too.
 
+       …and from 2026-08-05 also while the mall is merely thin (`shelfInvite`,
+       5-9 stores). That band used to recruit with a placeholder card at the tail
+       of the discovery shelf; this is where that moved. It is the same message in
+       the place built for it — one block, at the bottom, after everything the
+       shopper came for — instead of a seller pitch inside a row of stores. Past
+       10 stores a guest sees no pitch here at all, which is the mature state and
+       stays that way.
+
        Restyled 2026-07-28 (user: "לא שייך לאתר"). Was a full-bleed dark navy
        band with a radial glow and a white shadowed button — a marketing slab
        lifted from a different site, sitting under a page built out of light
@@ -683,7 +744,7 @@ const jsonLd = {
 
        The copy is deliberately NOT the "open a store in minutes / no code /
        free" script — see the note on `home.startSelling` in translations.ts. -->
-  {!hasStore && (isLoggedIn || launchMode) && (
+  {!hasStore && (isLoggedIn || launchMode || shelfInvite) && (
     <section class="home-cta" aria-labelledby="cta-heading">
       <div class="container">
         <div class="home-cta__card">

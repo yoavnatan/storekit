@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   LAUNCH_GRID_SLOTS,
   LAUNCH_MODE_MAX_STORES,
@@ -51,6 +53,26 @@ describe('launch-mode thresholds', () => {
   it('grid slot count divides evenly by every column count the grid can use', () => {
     // Otherwise the last row ends with a single orphan card at some viewport width.
     for (const columns of [2, 3, 4]) expect(LAUNCH_GRID_SLOTS % columns).toBe(0);
+  });
+
+  it('…and that column list is the one the CSS can actually produce', () => {
+    // The list above is hand-written, which makes it a claim about a file it does not read.
+    // Widening the grid's minimum on 2026-08-05 (240 → 280, four cards to three) moved that
+    // number without anything checking it — and lowering it instead is what would let a FIFTH
+    // column appear, where 12 leaves two orphans on the last row. Derived from the CSS itself so
+    // the next change to either side has to agree with this one.
+    const css = readFileSync(join(process.cwd(), 'src/styles/pages/stores.css'), 'utf8');
+    const tokens = readFileSync(join(process.cwd(), 'src/styles/base/tokens.css'), 'utf8');
+    const minTrack = Number(/\.stores-directory__grid\s*\{[^}]*minmax\((\d+)px/.exec(css)![1]);
+    const gap = Number(/\.stores-directory__grid\s*\{[^}]*gap:\s*([\d.]+)rem/.exec(css)![1]) * 16;
+    const maxWidth = Number(/--max-width:\s*(\d+)px/.exec(tokens)![1]);
+    // No page padding subtracted — an upper bound on the columns, so a pass here is a pass on
+    // the real, narrower container too.
+    const maxColumns = Math.floor((maxWidth + gap) / (minTrack + gap));
+    expect(maxColumns).toBeGreaterThan(1);
+    for (let columns = 1; columns <= maxColumns; columns++) {
+      expect(LAUNCH_GRID_SLOTS % columns, `${columns} columns leaves an orphan row`).toBe(0);
+    }
   });
 
   it('shelf slot count is even — the shelf is a 2-column grid on mobile', () => {

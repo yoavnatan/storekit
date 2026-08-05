@@ -1,13 +1,16 @@
 /**
- * Repaints each store card's avatar halo in that store's own colour.
+ * Repaints a store avatar's halo in that store's own colour.
  *
- * The halo itself is pure CSS (`store-card.css`) and defaults to the platform
- * accent; all this does is set `--store-glow` on the card once the avatar's
- * pixels are readable. So every failure mode here — no CORS header, a tainted
- * canvas, a black-and-white logo, JS off entirely — lands on the accent glow
- * that shipped before, never on no halo.
+ * The halo itself is pure CSS (`.store-glow-wrap`, utilities/utils.css) and
+ * defaults to a neutral grey; all this does is set `--store-glow` on the
+ * surrounding `[data-glow-host]` once the avatar's pixels are readable. So every
+ * failure mode here — no CORS header, a tainted canvas, a black-and-white logo,
+ * JS off entirely — lands on the grey halo that shipped before, never on no halo.
  *
- * Costs no extra bytes: it samples the avatar image the card was already
+ * Two surfaces have a host today: the store card, and the spotlight carousel's
+ * store header. The same colour feeds the card's hover border (store-card.css).
+ *
+ * Costs no extra bytes: it samples the avatar image the page was already
  * loading (tagged `data-glow` by StoreAvatar, which also sets `crossorigin`
  * so the canvas stays readable), reduced to 24×24 in a single shared canvas.
  * Results are memoised per image URL in sessionStorage, so moving between the
@@ -78,14 +81,19 @@ function sample(img: HTMLImageElement): string | null {
 }
 
 function apply(img: HTMLImageElement): void {
-  const card = img.closest<HTMLElement>('.store-card');
+  // The element that OWNS this store's colour, marked `data-glow-host` by whoever
+  // renders it — a store card, or the spotlight carousel's store header. It used
+  // to be hardcoded to `.store-card`, which silently made the whole mechanism
+  // card-only: a second surface could add the halo markup and the avatar's
+  // `data-glow`, and the colour would simply never be set on it, with no error.
+  const host = img.closest<HTMLElement>('[data-glow-host]');
   const src = img.currentSrc || img.src;
-  if (!card || !src) return;
+  if (!host || !src) return;
   const cached = readCache()[src];
   // '' is a real answer ("this logo has no usable colour"), not a cache miss.
   const hex = cached !== undefined ? cached : sample(img) ?? '';
   if (cached === undefined) writeCache(src, hex);
-  if (hex) card.style.setProperty('--store-glow', hex);
+  if (hex) host.style.setProperty('--store-glow', hex);
 }
 
 export function initStoreGlow(): void {

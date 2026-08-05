@@ -1,14 +1,24 @@
 /**
  * The one colour a picture is "about" — used for the halo behind a store's
- * avatar on a store card, so the glow belongs to that store's own logo instead
- * of every card on the homepage sharing the platform accent.
+ * avatar on a store card AND for that card's hover border, so both belong to
+ * the store's own logo instead of every card on the homepage sharing the
+ * platform accent.
  *
- * Deliberately NOT an average. Averaging a logo (a coloured mark on a white
- * plate) returns a pale wash of the plate, which at the halo's ~13% opacity is
- * invisible — the exact failure this file exists to avoid. Instead every pixel
- * that carries visible colour votes for a hue bucket, and the winning bucket's
- * colour is pulled into the lightness/saturation band where a soft glow
- * actually reads on a light surface.
+ * Deliberately NOT an average, at either of the two steps. Averaging a logo (a
+ * coloured mark on a white plate) returns a pale wash of the plate, which at
+ * the halo's ~13% opacity is invisible — the exact failure this file exists to
+ * avoid. So: every pixel that carries visible colour votes for a hue bucket
+ * (step 1, which hue), and then only the most saturated pixels INSIDE the
+ * winning hue decide the colour returned (step 2, which shade of it).
+ *
+ * Step 2 is what the second consumer forced (2026-08-05). Taking the winning
+ * hue's mean saturation is still an average, just a narrower one, and it lands
+ * a red logo on a dusty brick rather than on its red: a downscaled sample
+ * blends every edge pixel of the mark with the white behind it, and those
+ * washed-out fringe pixels outnumber the flat interior of a thin mark. Fine at
+ * 13% opacity behind an avatar, plainly wrong as a 1px border the eye reads as
+ * a line of colour. The vivid head of the distribution is what a person would
+ * name as "that logo's colour", so that is what gets returned.
  *
  * Pure and DOM-free (the caller hands over pixels), so the canvas plumbing
  * stays in scripts/store-glow.ts and the decision itself stays unit-testable.
@@ -34,11 +44,19 @@ const MIN_COLOURED_SHARE = 0.02;
 
 /** The band a glow is visible in, on this site's light surfaces. A pastel logo
  *  clamps UP into it and a near-black one clamps down, so every store that has
- *  any colour at all gets a halo you can actually see. */
-const SAT_MIN = 0.45;
+ *  any colour at all gets a halo you can actually see. The saturation floor was
+ *  raised from 0.45 when the hover border started reading this: a border is a
+ *  line, not a wash, and 0.45 on a light grey edge reads as "slightly dirty
+ *  grey" rather than as the store's colour. */
+const SAT_MIN = 0.55;
 const SAT_MAX = 0.95;
 const LIGHT_MIN = 0.38;
 const LIGHT_MAX = 0.6;
+
+/** How much of the winning hue's own pixels decide its shade — the most
+ *  saturated quarter. Not 1 pixel (a single JPEG artefact would name the
+ *  colour) and not all of them (that is the average this file rejects). */
+const VIVID_SHARE = 0.25;
 
 export interface Hsl {
   /** 0–360 */
@@ -88,35 +106,27 @@ export function hslToHex(h: number, s: number, l: number): string {
  */
 export function dominantGlowColor(pixels: ArrayLike<number>): string | null {
   const weight = new Array<number>(BUCKETS).fill(0);
-  // Hue accumulates as unit vectors, never as a plain mean: red straddles 0°,
-  // so averaging 355° with 5° the arithmetic way returns cyan.
-  const hx = new Array<number>(BUCKETS).fill(0);
-  const hy = new Array<number>(BUCKETS).fill(0);
-  const sSum = new Array<number>(BUCKETS).fill(0);
-  const lSum = new Array<number>(BUCKETS).fill(0);
   let opaque = 0;
-  let coloured = 0;
+  // Every pixel that carries colour, kept so step 2 can go back over the
+  // winning hue's own pixels. A 24×24 sample is 576 of them (store-glow.ts),
+  // so this is a few kilobytes for the length of one call.
+  const lit: Array<{ h: number; s: number; l: number; b: number }> = [];
 
   for (let i = 0; i + 3 < pixels.length; i += 4) {
     if (pixels[i + 3]! < MIN_ALPHA) continue;
     opaque++;
     const { h, s, l } = rgbToHsl(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!);
     if (s < MIN_SAT || l < MIN_LIGHT || l > MAX_LIGHT) continue;
-    coloured++;
+    const b = Math.min(BUCKETS - 1, Math.floor(h / BUCKET_DEG));
+    lit.push({ h, s, l, b });
     // Vivid mid-tones speak loudest: they are what a viewer would name as
     // "the colour of that logo".
-    const w = s * (1 - Math.abs(l - 0.5));
-    const b = Math.min(BUCKETS - 1, Math.floor(h / BUCKET_DEG));
-    const rad = (h * Math.PI) / 180;
-    weight[b]! += w;
-    hx[b]! += Math.cos(rad) * w;
-    hy[b]! += Math.sin(rad) * w;
-    sSum[b]! += s * w;
-    lSum[b]! += l * w;
+    weight[b]! += s * (1 - Math.abs(l - 0.5));
   }
 
-  if (!opaque || coloured / opaque < MIN_COLOURED_SHARE) return null;
+  if (!opaque || lit.length / opaque < MIN_COLOURED_SHARE) return null;
 
+  // ── Step 1: which hue ───────────────────────────────────────────────
   // Scored in adjacent PAIRS, not single buckets: one flat logo colour landing
   // near a bucket edge splits its vote in two, and a smaller rival that happens
   // to sit mid-bucket would win on the raw count.
@@ -131,10 +141,30 @@ export function dominantGlowColor(pixels: ArrayLike<number>): string | null {
   }
   if (bestScore <= 0) return null;
 
+  // ── Step 2: which shade of it ───────────────────────────────────────
   const next = (best + 1) % BUCKETS;
-  const total = weight[best]! + weight[next]!;
-  const h = ((Math.atan2(hy[best]! + hy[next]!, hx[best]! + hx[next]!) * 180) / Math.PI + 360) % 360;
-  const s = clamp((sSum[best]! + sSum[next]!) / total, SAT_MIN, SAT_MAX);
-  const l = clamp((lSum[best]! + lSum[next]!) / total, LIGHT_MIN, LIGHT_MAX);
+  const family = lit.filter((p) => p.b === best || p.b === next);
+  // Descending saturation, then the head of it. `sort` is stable in every
+  // engine this ships to, so equally saturated pixels keep buffer order and the
+  // answer is deterministic for a given image.
+  family.sort((a, b) => b.s - a.s);
+  const head = family.slice(0, Math.max(1, Math.round(family.length * VIVID_SHARE)));
+
+  // Hue accumulates as unit vectors, never as a plain mean: red straddles 0°,
+  // so averaging 355° with 5° the arithmetic way returns cyan.
+  let hx = 0;
+  let hy = 0;
+  let sSum = 0;
+  let lSum = 0;
+  for (const p of head) {
+    const rad = (p.h * Math.PI) / 180;
+    hx += Math.cos(rad) * p.s;
+    hy += Math.sin(rad) * p.s;
+    sSum += p.s;
+    lSum += p.l;
+  }
+  const h = ((Math.atan2(hy, hx) * 180) / Math.PI + 360) % 360;
+  const s = clamp(sSum / head.length, SAT_MIN, SAT_MAX);
+  const l = clamp(lSum / head.length, LIGHT_MIN, LIGHT_MAX);
   return hslToHex(h, s, l);
 }

@@ -40,13 +40,16 @@ const copy = t.launch.invites[index % t.launch.invites.length]!;
      transform, with the same curve and duration. -->
 <a href="/seller/register" class="store-card group" role={role}>
   <div class="store-card__head">
-    <span class="store-card__avatar-wrap">
+    <span class="store-glow-wrap">
+      <!-- Tracks StoreCard's avatar exactly — 56px and round. A different size
+           or shape here and the open slot stops lining up with the real cards
+           beside it, which is the one thing this component exists to do. -->
       <span
-        class="flex items-center justify-center w-10 h-10 rounded-full
+        class="flex items-center justify-center w-14 h-14 rounded-full
                bg-[color:var(--color-bg)] [color:var(--color-muted)]"
         aria-hidden="true"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
       </span>
