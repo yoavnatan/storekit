@@ -126,25 +126,14 @@
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 
-/* Rubik, ONE face and one job: the Hebrew line under the wordmark
- * (components/BrandLogo.astro). It is not an interface font here and must never
- * become one — the site is Heebo, and a second family loose in the UI is exactly
- * the drift the design line exists to stop.
- *
- * Hebrew subset only (the line is Hebrew), weight 600 only, and `font-display:
- * optional` for the same reason every Heebo face above carries it: the tagline
- * sits directly under the name, so a swap repaint would visibly re-flow the
- * lockup on every navigation. Cold first visit renders it in the fallback for
- * that page view; the width is solved for Rubik, so the line is a little short
- * of the name for that one paint and correct from then on. */
-@font-face {
-  font-family: 'Rubik';
-  font-style: normal;
-  font-display: optional;
-  font-weight: 600;
-  src: url('@fontsource/rubik/files/rubik-hebrew-600-normal.woff2') format('woff2');
-  unicode-range: U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;
-}
+/* HEEBO IS THE ONLY FAMILY ON THIS SITE, including inside the logo (2026-08-05).
+ * A single Rubik face lived here for one line — the Hebrew under the wordmark in
+ * BrandLogo.astro — and it is gone: it cost an eleventh font preload on every
+ * page for a line that renders on one, and being a second `font-display:optional`
+ * face it could be refused at first paint and silently fall back to Heebo at the
+ * wrong metrics, which is precisely how the lockup shipped misaligned. Heebo is
+ * Rubik's own Hebrew companion, so the family was buying almost nothing for it.
+ * Do not re-add a second family for a single component. */
 
 /* ============================================================
  *  main.css — single entry point for all styles.

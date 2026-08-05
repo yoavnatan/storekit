@@ -16,6 +16,7 @@ import { jsonForScript } from '../lib/json-script.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { CSRF_META, issueCsrfToken } from '../lib/csrf.js';
 import { getUnreadCountForUser } from '../lib/notifications.js';
+import { storeIconUrl } from '../lib/store-image.js';
 import heebo400HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-400-normal.woff2?url';
 import heebo500HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-500-normal.woff2?url';
 import heebo600HebrewUrl from '@fontsource/heebo/files/heebo-hebrew-600-normal.woff2?url';
@@ -26,13 +27,11 @@ import heebo500LatinUrl from '@fontsource/heebo/files/heebo-latin-500-normal.wof
 import heebo600LatinUrl from '@fontsource/heebo/files/heebo-latin-600-normal.woff2?url';
 import heebo700LatinUrl from '@fontsource/heebo/files/heebo-latin-700-normal.woff2?url';
 import heebo800LatinUrl from '@fontsource/heebo/files/heebo-latin-800-normal.woff2?url';
-// The logo's Hebrew line (BrandLogo.astro). It MUST be preloaded like the rest:
-// main.css gives every face `font-display: optional`, and an optional face that
-// is not already available at first paint is not used AT ALL for that page view.
-// Without this the lockup silently fell back to Heebo — a different face with
-// different metrics, so the line both looked wrong and stopped lining up with
-// the name above it, which is exactly what it was solved to do.
-import rubik600HebrewUrl from '@fontsource/rubik/files/rubik-hebrew-600-normal.woff2?url';
+// There is no eleventh preload here on purpose: the logo's Hebrew line is Heebo
+// too now (BrandLogo.astro), so it is already covered by the five Hebrew weights
+// below. A second family needed its own preload — `font-display:optional` refuses
+// any face that is not available at first paint — for a line that renders on one
+// page, on every page of the site.
 
 import '../styles/main.css';
 
@@ -45,6 +44,18 @@ const {
 const lang = getLang(Astro.cookies);
 const dir  = getDir(lang);
 const t    = getT(lang);
+
+// The tab's icon on a shopper-facing store page — see the <link> block below for
+// which pages qualify and why. Resolved here rather than inline so the two slots
+// are one decision: a page can't end up with the store's favicon and the
+// platform's touch icon.
+const storeIcon =
+  storeSlug && !sellerMode
+    ? {
+        favicon: storeIconUrl({ slug: storeSlug, profileImage: storeLogo }, 'favicon'),
+        touch: storeIconUrl({ slug: storeSlug, profileImage: storeLogo }, 'touch'),
+      }
+    : null;
 /**
  * `#i18n-data` — the strings client scripts read at runtime, because a script
  * rendered by `innerHTML` has no access to `getT()`.
@@ -123,11 +134,42 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
         history.scrollRestoration = 'manual';
       }
     </script>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    {/* iOS ignores an SVG favicon entirely and screenshots the page for the
-        home screen unless this exists. Both files are generated together by
-        scripts/generate-brand-assets.mjs from the one D in BrandLogo.astro. */}
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    {/* A STORE PAGE WEARS THE STORE'S OWN ICON IN THE TAB, everything else wears
+        the platform D (2026-08-05, answering "what do we do about each store's
+        favicon" in CURRENT_TASK סשן ב׳).
+
+        It follows from the rule the whole product is built on — each store is
+        sovereign, and platform chrome fades inside a store: a shopper with six tabs
+        open is looking at six shops, not six copies of us. The picture is the one
+        they already met on the store card and in the header, so it is recognition
+        rather than a seventh asset (store-image.ts#storeIconUrl), and it costs a
+        seller nothing: a store that uploaded no logo still has its generated mark,
+        so there is no "set your favicon" step anywhere and never will be.
+
+        Gated on `storeSlug && !sellerMode`, which is the shopper-facing store only.
+        `storeMode` alone is the LAYOUT, and thirteen pages that are not a store ask
+        for it — the homepage, /stores, /search, /checkout, 404 and every seller and
+        admin screen. Those are ours and keep the D. So does the seller's dashboard:
+        it is the platform's tool for running a store, not the store.
+
+        No `type` on the store's icon on purpose: it resolves either to Cloudinary
+        under `f_auto` (whatever the browser's own `Accept` asked for) or to our PNG
+        endpoint, so declaring one here could only ever be a guess that contradicts
+        the response. */}
+    {storeIcon ? (
+      <>
+        <link rel="icon" href={storeIcon.favicon} />
+        <link rel="apple-touch-icon" href={storeIcon.touch} />
+      </>
+    ) : (
+      <>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        {/* iOS ignores an SVG favicon entirely and screenshots the page for the
+            home screen unless this exists. Both files are generated together by
+            scripts/generate-brand-assets.mjs from the one D in BrandLogo.astro. */}
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      </>
+    )}
     <link rel="sitemap" href="/sitemap-index.xml" />
     {/* Every product/store image is delivered from Cloudinary (src/lib/cdn.ts), so
         the DNS+TLS handshake for that host is on the critical path of the first
@@ -169,8 +211,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
        the full matrix removes the race everywhere instead of chasing it
        page-by-page; each file is ~5-12KB. */}
     {[heebo400HebrewUrl, heebo500HebrewUrl, heebo600HebrewUrl, heebo700HebrewUrl, heebo800HebrewUrl,
-      heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl,
-      rubik600HebrewUrl].map((href) => (
+      heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} />
