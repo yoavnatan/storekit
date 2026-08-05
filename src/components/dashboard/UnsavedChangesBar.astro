@@ -1,0 +1,43 @@
+---
+// "You have changes you haven't saved" — raised by scripts/dashboard/unsaved-guard.ts.
+//
+// **Words, not a marker, and that was a decision (owner, 2026-08-05).** The first attempt put a
+// coloured dot on the tab. He rejected it, and the reason is the one that matters: the site already
+// uses that exact dot for unread messages, so it read as "something is waiting for you to deal with
+// it" — and a seller who has never met an editor's unsaved-document convention has no way to learn
+// what a second dot means. A notice can only work here if it says what it means in a sentence.
+//
+// Floating, for the reason StaleDataBar's own header gives:
+// it appears while the seller is mid-task, so a bar at the top of the page would either be
+// off-screen behind a long table or shove the thing they are reading. It also has to be visible
+// from EVERY tab, which is the whole complaint that started this — panels are hidden, not
+// destroyed, so an edit in Settings survives a trip to Products with nothing on screen saying so.
+//
+// It never saves anything. The button carries the seller TO the save button and focuses it; a
+// floating control that submitted a form they cannot see would be the opposite of clarity.
+//
+// It takes the bottom slot and StaleDataBar sits 5.5rem above it: this one is the frequent,
+// actionable notice, so it belongs nearest the thumb. Each bar positions ITSELF rather than sharing
+// a stack container — the elevation guard wants the element casting a shadow to declare that it
+// floats, and an ancestor cannot vouch for it.
+//
+// Hidden with the `!hidden` utility, not the `hidden` attribute: this element is display:flex and a
+// flex utility beats the attribute's display:none (the trap is documented across the dashboard).
+interface Props {
+  goLabel: string;
+}
+const { goLabel } = Astro.props;
+---
+
+<div
+  id="dash-unsaved-bar"
+  role="status"
+  aria-live="polite"
+  class="!hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 max-w-[calc(100vw-2rem)] py-[0.55rem] ps-[0.9rem] pe-[0.55rem] rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.85rem]"
+>
+  <svg class="shrink-0 max-w-none [color:var(--color-warning)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+  </svg>
+  <span id="dash-unsaved-msg"></span>
+  <button type="button" id="dash-unsaved-go" class="btn btn--sm shrink-0">{goLabel}</button>
+</div>

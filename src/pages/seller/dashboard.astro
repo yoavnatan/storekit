@@ -13,6 +13,7 @@ import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
 import BoostFormFields from '../../components/dashboard/BoostFormFields.astro';
 import CampaignHistory from '../../components/dashboard/CampaignHistory.astro';
 import StaleDataBar from '../../components/dashboard/StaleDataBar.astro';
+import UnsavedChangesBar from '../../components/dashboard/UnsavedChangesBar.astro';
 import DashTabsBoot from '../../components/dashboard/DashTabsBoot.astro';
 import SkelBar from '../../components/dashboard/SkelBar.astro';
 import FormFallbackGuard from '../../components/dashboard/FormFallbackGuard.astro';
@@ -749,6 +750,7 @@ const orderStatusColors: Record<string, string> = {
           data-panel="messages"
           aria-selected={initialPanel === 'messages'}
           tabindex={initialPanel === 'messages' ? 0 : -1}
+          style="position:relative"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>הודעות
           {unreadMsgRows > 0 && (
@@ -803,6 +805,10 @@ const orderStatusColors: Record<string, string> = {
       {/* Raised by tab-sync.ts when another tab of this same store saves something —
           advisory only, the seller chooses when to take the fresh data. */}
       <StaleDataBar message={d.staleDataMsg} refreshLabel={d.staleDataRefresh} dismissLabel={d.staleDataDismiss} />
+
+      {/* Raised by unsaved-guard.ts while any dashboard form holds work that has not been saved.
+          Each bar owns its own fixed position; they are offset so they cannot overlap. */}
+      <UnsavedChangesBar goLabel={d.unsavedGo} />
 
       <!-- ── Panel: Overview ── -->
       <div id="dash-panel-overview" class="dash-panel" role="tabpanel" aria-labelledby="tab-overview" hidden={initialPanel !== 'overview'}>

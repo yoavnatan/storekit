@@ -1377,13 +1377,6 @@ textarea.input { resize: none; }
 .dash-tabs::-webkit-scrollbar { display: none; }
 
 .dash-tab {
-  /* A positioning context for the corner markers a tab can carry — the unread-messages dot and
-     the unsaved-changes dot (unsaved-guard.ts). It lived as `style="position:relative"` on the one
-     tab that had a dot, which read as "this tab is special" when the truth is that ANY tab can
-     grow one; the second one made that false. Safe for admin.css, which shares this class: it
-     only changes where an absolutely-positioned DESCENDANT anchors, and admin's tab children
-     (`.dash-tab__count`) are inline. */
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;

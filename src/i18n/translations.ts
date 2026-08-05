@@ -352,8 +352,12 @@ export const translations = {
       storeImageChange: 'החלף תמונה',
       // Re-frame the image that is already saved, without picking a new file.
       adjustImage: 'התאם תמונה',
-      // Read out as part of a tab's accessible name when that tab holds unsaved work.
-      unsavedTabHint: 'יש שינויים שלא נשמרו',
+      // The floating "not saved yet" notice (UnsavedChangesBar). A sentence, not a marker: the
+      // seller has never met an editor's unsaved-document convention and a symbol can only puzzle
+      // them. {section} is the tab's own label, so no section needs a second name here.
+      unsavedNotice: 'יש שינויים שלא שמרת ב{section}',
+      unsavedNoticeMany: 'יש שינויים שלא שמרת ביותר ממקום אחד',
+      unsavedGo: 'קח אותי לשם',
       removeImage: 'הסר',
       uploadingImage: 'מעלה תמונה',
       loadingImage: 'טוען תמונה',
@@ -1620,7 +1624,9 @@ export const translations = {
       storeProfileImageHint: 'Shown next to your store name across the site',
       storeImageChange: 'Change image',
       adjustImage: 'Adjust image',
-      unsavedTabHint: 'Unsaved changes',
+      unsavedNotice: 'You have unsaved changes in {section}',
+      unsavedNoticeMany: 'You have unsaved changes in more than one place',
+      unsavedGo: 'Take me there',
       removeImage: 'Remove',
       uploadingImage: 'Uploading image',
       loadingImage: 'Loading image',

@@ -20,6 +20,8 @@
  * The browser shows its own generic wording; a custom message is not possible.
  */
 
+import { scrollRowBackIntoView } from './scroll-utils.js';
+
 const GUARDED = 'form[data-unsaved-guard]';
 
 const baselines = new WeakMap<HTMLFormElement, string>();
@@ -82,58 +84,66 @@ export function hasUnsavedChanges(): boolean {
 }
 
 /**
- * A dot on the TAB whose panel is holding unsaved work.
+ * The floating "you haven't saved this" notice — a SENTENCE, naming the section it means.
  *
  * Why it exists (reported 2026-08-05): switching tabs loses nothing — panels are hidden, not
- * destroyed, so the values are all still there — but the seller had no way to KNOW that a change was
- * pending once they walked away from the panel. The only signal was `beforeunload`, which speaks at
- * the very end, in the browser's own words, about "changes" it cannot name. That is a warning about
- * losing work, not an answer to "did I save that?". So the answer is now on screen, continuously.
+ * destroyed, so every value is still sitting in its form — and that is exactly why nothing spoke up.
+ * The seller had no way to KNOW a change was pending once they walked away from the panel. The only
+ * signal was `beforeunload`: once, at the very end, in the browser's own words, about "changes" it
+ * cannot name. That warns about losing work; it does not answer "did I save that".
  *
- * Deliberately the same 7px dot the messages tab already uses for "this tab wants you" — the site
- * had settled that treatment, so this is not a new visual idea. `--color-warning`, not `--color-danger`:
- * unsaved is a state, not a failure. Created only when dirty and removed when clean, rather than
- * rendered hidden and toggled — an injected element that starts visible is a flash, and one that
- * lingers empty is a class waiting to be styled wrong.
+ * **A marker was tried first and rejected by the owner, and the reason is the design rule here:** a
+ * coloured dot on the tab collided with the dot the messages tab already uses for unread messages,
+ * so it read as "something is waiting for you", and a seller who has never met an editor's
+ * unsaved-document convention cannot learn what a second dot means. Words, or nothing.
+ *
+ * The section's name is the TAB'S OWN LABEL, read at runtime. No panel needs a second name in
+ * `translations.ts` that could drift from the tab it describes — and a section renamed in one place
+ * is renamed here too, for free.
  */
-const DOT_CLASS = 'dash-tab-unsaved';
-
-function markTab(tab: HTMLElement, dirty: boolean): void {
-  const existing = tab.querySelector(`.${DOT_CLASS}`);
-  if (dirty === !!existing) return;   // no-op interactions must not touch the DOM
-  if (!dirty) { existing?.remove(); return; }
-  const dot = document.createElement('span');
-  dot.className = DOT_CLASS;
-  dot.setAttribute('style', 'position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-warning);border-radius:50%');
-  // The label carries the meaning; the dot alone is invisible to a screen reader, and a `title`
-  // would fight the tooltip layer. Read out as part of the tab's own accessible name.
-  const label = document.createElement('span');
-  label.className = 'sr-only';
-  label.textContent = unsavedLabel();
-  dot.appendChild(label);
-  tab.appendChild(dot);
-}
-
-function unsavedLabel(): string {
+function i18nDash(key: string, fallback: string): string {
   try {
-    return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard?.unsavedTabHint
-      ?? 'Unsaved changes';
-  } catch { return 'Unsaved changes'; }
+    return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').dashboard?.[key] ?? fallback;
+  } catch { return fallback; }
 }
 
-/** Recompute every tab's dot. Cheap — one snapshot per guarded form, and there are three. */
-function refreshTabMarkers(): void {
-  const dirtyTabs = new Set<string>();
-  for (const form of document.querySelectorAll<HTMLFormElement>(GUARDED)) {
-    if (!isDirty(form)) continue;
+/** The visible text of a tab button — its icon is an <svg>, so `textContent` is already the label. */
+function tabLabel(tab: Element): string {
+  return (tab.textContent ?? '').trim();
+}
+
+/** Where the notice sends the seller: the panel holding the FIRST unsaved form, in tab order. */
+let noticeTarget: HTMLElement | null = null;
+
+/**
+ * Recompute the notice. Cheap — one snapshot per guarded form, and there are three of them.
+ *
+ * Only ever writes when something actually changed, so a keystroke that leaves the state alone
+ * doesn't rewrite a live region a screen reader is watching (`aria-live="polite"` would re-announce
+ * an identical sentence) or re-run layout on a fixed element.
+ */
+function refreshUnsavedNotice(): void {
+  const bar = document.getElementById('dash-unsaved-bar');
+  const msgEl = document.getElementById('dash-unsaved-msg');
+  if (!bar || !msgEl) return;
+
+  const dirtyTabs: HTMLElement[] = [];
+  for (const tab of document.querySelectorAll<HTMLElement>('.dash-tab')) {
     // `.dash-panel` names its own tab through `aria-labelledby` — the mapping already exists for
     // accessibility, so nothing new has to be kept in sync with the markup.
-    const id = form.closest('.dash-panel')?.getAttribute('aria-labelledby');
-    if (id) dirtyTabs.add(id);
+    const panel = document.querySelector<HTMLElement>(`.dash-panel[aria-labelledby="${tab.id}"]`);
+    if (panel && Array.from(panel.querySelectorAll<HTMLFormElement>(GUARDED)).some(isDirty)) dirtyTabs.push(tab);
   }
-  for (const tab of document.querySelectorAll<HTMLElement>('.dash-tab')) {
-    markTab(tab, dirtyTabs.has(tab.id));
-  }
+
+  noticeTarget = dirtyTabs[0] ?? null;
+  const message = !noticeTarget ? ''
+    : dirtyTabs.length > 1
+      ? i18nDash('unsavedNoticeMany', 'You have unsaved changes in more than one place')
+      : i18nDash('unsavedNotice', 'You have unsaved changes in {section}')
+          .replace('{section}', tabLabel(noticeTarget));
+
+  if (msgEl.textContent !== message) msgEl.textContent = message;
+  bar.classList.toggle('!hidden', !message);
 }
 
 /**
@@ -154,15 +164,33 @@ export function initUnsavedGuard(): void {
   document.addEventListener('pointerdown', (e) => remember(e.target), true);
 
   // Both phases matter: `remember` above runs in CAPTURE, before the value changes, so a baseline
-  // exists; these run in BUBBLE, after it changed, so the dot reflects the new state. `input`
+  // exists; these run in BUBBLE, after it changed, so the notice reflects the new state. `input`
   // covers typing and `announceValueChange`; `change` covers a checkbox, a select and a file pick.
-  document.addEventListener('input', refreshTabMarkers);
-  document.addEventListener('change', refreshTabMarkers);
+  document.addEventListener('input', refreshUnsavedNotice);
+  document.addEventListener('change', refreshUnsavedNotice);
+
+  // Take the seller to the section, and to the button — but never press it for them. A floating
+  // control that submitted a form they cannot see would be the opposite of the clarity this is for.
+  document.getElementById('dash-unsaved-go')?.addEventListener('click', () => {
+    const tab = noticeTarget;
+    if (!tab) return;
+    tab.click();   // the tab's own handler owns panel switching (ui.ts) — don't reimplement it
+    const panel = document.querySelector<HTMLElement>(`.dash-panel[aria-labelledby="${tab.id}"]`);
+    const submit = panel?.querySelector<HTMLElement>('form[data-unsaved-guard] [type="submit"]');
+    if (!submit) return;
+    // The house helper, not `scrollIntoView`: it accounts for the fixed header (which would
+    // otherwise cover the button it just scrolled to) and it does NOTHING when the button is
+    // already fully on screen — pressing a notice about the section you are looking at must not
+    // move the page. `animateScrollTo` underneath it, because the root's smooth scroll-behavior
+    // breaks rAF scrolling (scroll-utils.ts owns both facts).
+    scrollRowBackIntoView(submit);
+    submit.focus();
+  });
 
   window.addEventListener('dash:saved', (e) => {
     const form = (e as CustomEvent<{ form?: HTMLFormElement }>).detail?.form;
     if (form) baselines.set(form, snapshot(form));
-    refreshTabMarkers();
+    refreshUnsavedNotice();
   });
 
   window.addEventListener('beforeunload', (e) => {
