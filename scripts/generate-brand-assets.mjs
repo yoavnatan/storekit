@@ -45,14 +45,20 @@ function readMarkPath() {
 
 /**
  * One lockup, as HTML. Every number here is the same one the component uses:
- * tracking −0.03em on the name, −0.015em between the D and the e (Heebo's own
- * "De" ink gap), and a tagline that lands at exactly the name's width because of
- * its SIZE — Heebo 500 at 0.39em, at the font's own spacing. It used to be Rubik
- * stretched with tracking to the same width; see BrandLogo.astro for why both
- * halves of that changed.
+ * Heebo 600 at the font's own tracking, 0.0356em between the D and the e (what
+ * is left of Heebo 600's own "De" ink gap after the SVG's internal padding), and
+ * a tagline that lands at exactly the name's width because of its SIZE — Heebo
+ * 500 at 0.409em, at the font's own spacing.
+ *
+ * These five numbers are typed twice, here and in BrandLogo.astro, and that is
+ * the one thing this file cannot check for you: the D's PATH is read out of the
+ * component so it can't drift, but the typography around it isn't. If you change
+ * the weight, the tracking, the margin or the tagline size there, change them
+ * here and re-run `npm run brand:assets` — a stale mail header is invisible from
+ * inside the site.
  */
 function page({ path, size, tone, tagline, background }) {
-  const heeboLatin = b64(`${FONTS}/heebo/files/heebo-latin-700-normal.woff2`);
+  const heeboLatin = b64(`${FONTS}/heebo/files/heebo-latin-600-normal.woff2`);
   const heeboHebrew = b64(`${FONTS}/heebo/files/heebo-hebrew-500-normal.woff2`);
   const ink = tone === 'white' ? '#fff' : `url(#g)`;
   const textFill =
@@ -60,20 +66,20 @@ function page({ path, size, tone, tagline, background }) {
       ? 'color:#fff'
       : `background-image:linear-gradient(135deg,${BRAND_A},${BRAND_B});-webkit-background-clip:text;background-clip:text;color:transparent`;
   return `<!doctype html><meta charset="utf-8"><style>
-    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboLatin}) format('woff2');font-weight:700;}
+    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboLatin}) format('woff2');font-weight:600;}
     @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboHebrew}) format('woff2');font-weight:500;}
     html,body{margin:0;height:100%}
     body{background:${background};display:flex;align-items:center;justify-content:center}
     .logo{display:inline-flex;flex-direction:column;align-items:flex-start;gap:.05em;font-size:${size}px}
-    .word{direction:ltr;display:flex;align-items:baseline;font-family:'Heebo';font-weight:700;
-          line-height:1;letter-spacing:-.03em;${textFill}}
-    .word svg{height:.71em;width:auto;flex:none;display:block;margin-inline-end:-.015em}
-    .tag{font-family:'Heebo';font-weight:500;font-size:.39em;line-height:1;direction:rtl;
+    .word{direction:ltr;display:flex;align-items:baseline;font-family:'Heebo';font-weight:600;
+          line-height:1;letter-spacing:normal;${textFill}}
+    .word svg{height:.71em;width:auto;flex:none;display:block;margin-inline-end:.0356em}
+    .tag{font-family:'Heebo';font-weight:500;font-size:.409em;line-height:1;direction:rtl;
          color:${tone === 'white' ? '#fff' : BRAND_A}}
   </style>
   <div class="logo">
     <div class="word">
-      <svg viewBox="10.75 8 23 28"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <svg viewBox="10.75 8 22.1 28"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0" stop-color="${BRAND_A}"/><stop offset="1" stop-color="${D_SLICE_END}"/>
       </linearGradient></defs><path fill="${ink}" fill-rule="evenodd" d="${path}"/></svg><span>ezabin</span>
     </div>
@@ -81,15 +87,22 @@ function page({ path, size, tone, tagline, background }) {
   </div>`;
 }
 
-/** The favicon tile, at the sizes iOS and Android ask for. */
+/** The favicon tile, at the sizes iOS and Android ask for.
+ *
+ *  The letter is nudged right by 0.2 units, and that is not a tweak: the D's ink
+ *  runs 11.25 → 32.348 inside a 44-wide tile, so it sits 0.4 units left of
+ *  centre. It used to be exactly centred, because the 700 drawing happened to be
+ *  21.5 wide; Heebo 600's D is 21.098. Off-centre by 1% of the tile is visible
+ *  on a home screen, where the icon is the only thing in its own box. */
 function tilePage({ path, px }) {
+  const centreShift = ((44 - 21.098) / 2 - 11.25).toFixed(3);
   return `<!doctype html><meta charset="utf-8"><style>html,body{margin:0}
     svg{display:block}</style>
   <svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 44 44">
     <defs><linearGradient id="t" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="${BRAND_A}"/><stop offset="1" stop-color="${BRAND_B}"/></linearGradient></defs>
     <rect width="44" height="44" fill="url(#t)"/>
-    <path fill="#fff" fill-rule="evenodd" d="${path}"/>
+    <path fill="#fff" fill-rule="evenodd" transform="translate(${centreShift} 0)" d="${path}"/>
   </svg>`;
 }
 
@@ -107,7 +120,7 @@ async function shot(html, { width, height, scale = 1, file, transparent = false,
   // `fonts.status` alone is not enough — it reads "loaded" before anything has
   // been asked for. Ask about the two faces by name instead.
   await p.waitForFunction(
-    'document.fonts.check("700 34px Heebo") && document.fonts.check("500 12px Heebo", "ק")',
+    'document.fonts.check("600 34px Heebo") && document.fonts.check("500 12px Heebo", "ק")',
   );
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(

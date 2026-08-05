@@ -9,6 +9,7 @@ import {
 } from '../../../../lib/seller-auth.js';
 import { safeRedirectPath } from '../../../../lib/safe-redirect.js';
 import { googleClientId, googleClientSecret, googleRedirectUri } from '../../../../lib/google-oauth.js';
+import { outboundFetch } from '../../../../lib/outbound-fetch.js';
 
 interface GoogleTokenResponse {
   access_token: string;
@@ -56,7 +57,7 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   // Exchange code for access token
   let accessToken: string;
   try {
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    const tokenRes = await outboundFetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -79,7 +80,7 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   // Fetch user info
   let googleUser: GoogleUserInfo;
   try {
-    const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+    const userRes = await outboundFetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     googleUser = (await userRes.json()) as GoogleUserInfo;

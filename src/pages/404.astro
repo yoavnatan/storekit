@@ -2,6 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoresBySellerId } from '../lib/stores.js';
+import { getLang, getDir, getT } from '../i18n/index.js';
 
 // SSR (not Astro's static build-time 404 fallback) so a redirect here — from
 // a missing/blocked store or product, see admin-moderation.ts — actually
@@ -12,21 +13,30 @@ import { getStoresBySellerId } from '../lib/stores.js';
 export const prerender = false;
 Astro.response.status = 404;
 
+const lang = getLang(Astro.cookies);
+const dir  = getDir(lang);
+const t    = getT(lang);
+
 const sellerId   = getSellerSession(Astro.cookies);
 const isLoggedIn = !!sellerId;
 const hasStore   = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
 ---
 <BaseLayout
-  title="Page not found"
+  title={t.errorPage.notFoundTitle}
   noindex={true}
   isLoggedIn={isLoggedIn}
   hasStore={hasStore}
   storeMode={true}
   showSearch={true}
 >
-  <section class="section container center">
-    <h1>404</h1>
-    <p class="muted">The page you were looking for doesn't exist.</p>
-    <p style="margin-top:1rem"><a href="/" class="btn">Back to home</a></p>
+  {/* Same shape as /store-unavailable and /store-gone — one line and a way back. The bare "404"
+      numeral that used to be the heading is gone with the English copy it sat above: on a
+      Hebrew-first site it named the status to a shopper who cannot act on it, while the sentence
+      underneath was the only part doing any work.
+      `!` on the size for the reason documented in store-unavailable.astro: tokens.css is imported
+      UNLAYERED, so its bare `h1` rule outranks any @layer'd utility. */}
+  <section class="section container center" dir={dir}>
+    <h1 class="!text-[1.35rem] !font-semibold">{t.errorPage.notFoundTitle}</h1>
+    <p style="margin-top:1rem"><a href="/" class="btn">{t.errorPage.backHome}</a></p>
   </section>
 </BaseLayout>

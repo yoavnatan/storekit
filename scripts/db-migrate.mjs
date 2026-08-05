@@ -48,10 +48,36 @@ function checksum(sql) {
   return crypto.createHash('sha256').update(sql).digest('hex').slice(0, 16);
 }
 
-function pendingFiles(applied) {
-  const files = fs.existsSync(MIGRATIONS_DIR)
+/** Files on disk, in the order they run. */
+function migrationFiles() {
+  return fs.existsSync(MIGRATIONS_DIR)
     ? fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()
     : [];
+}
+
+/**
+ * A ledger row naming a file that is NOT on disk — the other direction of the checksum rule, and
+ * the one nothing was watching.
+ *
+ * It is not hypothetical: found on 2026-08-05 with 13 rows against 12 files. Two parallel sessions
+ * both wrote `0010_*` (a worktree cannot isolate the next NUMBER — that is written down in the
+ * parallel-sessions rules), the loser was renumbered to `0011_product_weight.sql`, and the ledger
+ * kept the row for the `0010_product_weight.sql` that no longer exists. Harmless there only by luck:
+ * the file was `ADD COLUMN IF NOT EXISTS`, so running it twice under two names did nothing the
+ * second time.
+ *
+ * Why it must be loud rather than tidy-up-later: this database's history no longer matches any
+ * checkout of the repo, so a fresh environment cannot be proven to reach the same schema — which is
+ * the single thing this ledger exists to guarantee. Reported, never auto-deleted: only a person can
+ * know whether the row is a renumbering to forget or a migration file somebody lost.
+ */
+function orphanRows(applied) {
+  const onDisk = new Set(migrationFiles());
+  return [...applied.keys()].filter((name) => !onDisk.has(name)).sort();
+}
+
+function pendingFiles(applied) {
+  const files = migrationFiles();
   const pending = [];
   for (const name of files) {
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8');
@@ -81,6 +107,20 @@ async function main() {
 
   const { rows } = await client.query('SELECT name, checksum FROM schema_migrations');
   const applied = new Map(rows.map((r) => [r.name, r.checksum]));
+
+  const orphans = orphanRows(applied);
+  if (orphans.length) {
+    console.error(
+      `\nschema_migrations names ${orphans.length} migration(s) that are not in migrations/:\n` +
+        orphans.map((n) => `  · ${n}`).join('\n') +
+        '\n\nThis database ran something no checkout of the repo contains, so a fresh environment\n' +
+        'cannot be shown to reach the same schema. Usually a renumbered migration (two sessions both\n' +
+        'wrote the same number) — confirm the SQL really did land under its new name, then delete the\n' +
+        "stale row: DELETE FROM schema_migrations WHERE name = '<name>';\n",
+    );
+    process.exitCode = 1;
+  }
+
   const pending = pendingFiles(applied);
 
   if (!pending.length) {

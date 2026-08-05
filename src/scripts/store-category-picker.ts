@@ -59,9 +59,10 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
     announceValueChange(valueInput);
   };
 
-  // Repaint from the field after "discard changes" restored it — the chips are this widget's own
-  // copy of that value, and a stale chip row is a claim about what will be saved.
-  valueInput.closest('form')?.addEventListener('dash:discarded', () => {
+  // Repaint from the field after something rewrote it — "discard changes", or a recovered draft
+  // being put back (unsaved-guard.ts names both). The chips are this widget's own copy of that
+  // value, and a stale chip row is a claim about what will be saved.
+  valueInput.closest('form')?.addEventListener('dash:fieldsrewritten', () => {
     chosen = valueInput.value.split(',').map((c) => c.trim()).filter(Boolean);
     insistOn = null;
     renderChips();

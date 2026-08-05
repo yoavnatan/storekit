@@ -206,10 +206,17 @@ function refreshUnsavedNotice(): void {
  * Matched by NAME through a queue rather than by position, so a form that gained or lost a field
  * since the baseline was taken restores what it can instead of writing values into the wrong inputs.
  *
- * `dash:discarded` fires AFTER the values are back — unlike
- * the native `reset` event, which fires BEFORE and would show every listener the values it is about
- * to replace. Widgets that paint their own state from a field (the image cropper, the category
- * pickers) redraw from this.
+ * Two events go out, and they are not the same statement:
+ *  - `dash:fieldsrewritten` — "this form's fields were replaced under you, repaint". Widgets that
+ *    paint from a field (the image cropper, both category pickers) redraw from this. It is fired
+ *    here AND by the draft-restore in FormFallbackGuard.astro, which does the same thing for a
+ *    different reason, so the widgets serve both without knowing either.
+ *  - `dash:discarded` — "the seller threw this work away on purpose", which only makes sense here.
+ *    FormFallbackGuard listens for it to delete its stored copy: a draft offered back after an
+ *    explicit, confirmed discard would be the page arguing with a decision the seller just made.
+ *
+ * Both fire AFTER the values are back — unlike the native `reset` event, which fires BEFORE and
+ * would show every listener the values it is about to replace.
  */
 export function discardChanges(form: HTMLFormElement): void {
   const base = baselines.get(form);
@@ -227,6 +234,7 @@ export function discardChanges(form: HTMLFormElement): void {
     if (f.type === 'checkbox' || f.type === 'radio') f.checked = want.checked;
     else f.value = want.value;
   }
+  form.dispatchEvent(new CustomEvent('dash:fieldsrewritten', { bubbles: true }));
   form.dispatchEvent(new CustomEvent('dash:discarded', { bubbles: true }));
   refreshState();
 }

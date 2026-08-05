@@ -1,6 +1,7 @@
 import { store as platform } from '../config/store.config.js';
 import { isDemoStore } from './demo-stores.js';
 import { stripTrailingSlashes } from './url-base.js';
+import { outboundFetch } from './outbound-fetch.js';
 
 // IndexNow — the one ACTIVE indexing lever (vs. passively waiting for a crawl).
 // When a store/product page is newly published or its indexability changes, we
@@ -80,7 +81,7 @@ export async function pingIndexNow(paths: string[]): Promise<void> {
     if (!paths.length || !indexNowEnabled(cfg)) return;
     const payload = buildIndexNowPayload(paths, { key: cfg.key!.trim(), siteUrl: cfg.siteUrl });
     if (!payload.urlList.length) return;
-    await fetch(INDEXNOW_ENDPOINT, {
+    await outboundFetch(INDEXNOW_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify(payload),

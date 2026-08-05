@@ -233,11 +233,22 @@ describe('the way back', () => {
   it('tells the widgets that paint from a field to repaint', () => {
     editSettingsFromElsewhere();
     let repainted = 0;
-    setForm().addEventListener('dash:discarded', () => { repainted++; });
+    setForm().addEventListener('dash:fieldsrewritten', () => { repainted++; });
     discardChanges(setForm());
     // Fired AFTER the values are restored — the native `reset` event fires before, and a widget
     // reading the field there would repaint the value it is about to lose.
     expect(repainted).toBe(1);
+  });
+
+  it('says "thrown away on purpose" separately, so a stored draft can be deleted', () => {
+    // Two statements, not one: FormFallbackGuard deletes its recovery draft on `dash:discarded`,
+    // and it must NOT do that when the same rewrite is a draft being restored.
+    editSettingsFromElsewhere();
+    const seen: string[] = [];
+    setForm().addEventListener('dash:fieldsrewritten', () => seen.push('rewritten'));
+    setForm().addEventListener('dash:discarded', () => seen.push('discarded'));
+    discardChanges(setForm());
+    expect(seen).toEqual(['rewritten', 'discarded']);
   });
 });
 

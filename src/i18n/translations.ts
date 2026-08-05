@@ -120,6 +120,20 @@ export const translations = {
       terms: 'תנאי שימוש',
       contact: 'צור קשר',
     },
+    // The two pages a visitor lands on when the request could not be served. Same shape as the
+    // store states above — one line and a way out — and for the same reason: a visitor here can
+    // do exactly one useful thing, and reading an explanation is not it.
+    //
+    // 500 deliberately says "אצלנו", not "שגיאה": the one thing worth telling someone whose
+    // request just failed is that it was not their doing and that trying again may work. It
+    // names no cause, because 500.astro cannot know one — see the note in that file.
+    errorPage: {
+      notFoundTitle: 'הדף לא נמצא',
+      serverErrorTitle: 'משהו השתבש אצלנו',
+      serverErrorBody: 'התקלה נרשמה אצלנו. אפשר לנסות שוב עוד רגע.',
+      retry: 'לנסות שוב',
+      backHome: 'לדף הבית',
+    },
     store: {
       // Owner bar — shown only to the seller who owns this store, on the store page
       // AND on every product page inside it. Says "live store", never "preview": the
@@ -1433,6 +1447,13 @@ export const translations = {
     footer: {
       terms: 'Terms',
       contact: 'Contact',
+    },
+    errorPage: {
+      notFoundTitle: 'Page not found',
+      serverErrorTitle: 'Something went wrong on our side',
+      serverErrorBody: 'The failure was logged. Trying again in a moment may work.',
+      retry: 'Try again',
+      backHome: 'Back to home',
     },
     store: {
       ownerPreview: 'This is your live store — exactly as a shopper sees it',
