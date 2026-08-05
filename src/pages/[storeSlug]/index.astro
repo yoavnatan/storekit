@@ -386,9 +386,17 @@ const bannerPreload = !isDemo && shopStore.bannerImage
 >
   <script is:inline>
     // Anti-flash: if a scroll position is waiting to be restored for this store,
-    // hide the page until the deferred script below has re-applied filters and
-    // scrolled into place — otherwise the page paints at the top first and then
-    // visibly snaps down once the module script catches up.
+    // hide the SCROLLING CONTENT until the deferred script below has re-applied
+    // filters and scrolled into place — otherwise it paints at the top first and
+    // then visibly snaps down once the module script catches up.
+    //
+    // `#main-content`, never `documentElement` (fixed 2026-08-05). Hiding the root
+    // took the fixed header with it, so every return to a store you had scrolled —
+    // home → that store is the everyday case — blanked the whole chrome for up to
+    // half a second and the header appeared to vanish and come back. Nothing in the
+    // header scrolls, so it has nothing to restore and no reason to be hidden.
+    // `visibility` (not `display`) keeps the content's box, so the footer below it
+    // does not jump while the curtain is up.
     (function () {
       try {
         // Slug comes from <body data-store-slug> (server-resolved) — reliable for
@@ -406,8 +414,12 @@ const bannerPreload = !isDemo && shopStore.bannerImage
           if (sessionStorage.getItem('store_scroll_return') === slug && 'scrollRestoration' in history) {
             history.scrollRestoration = 'manual';
           }
-          document.documentElement.style.visibility = 'hidden';
-          setTimeout(function () { document.documentElement.style.visibility = ''; }, 500);
+          // This script is inline in the body, so <main> is already parsed above it.
+          var content = document.getElementById('main-content');
+          if (content) {
+            content.style.visibility = 'hidden';
+            setTimeout(function () { content.style.visibility = ''; }, 500);
+          }
         }
       } catch (e) {}
     })();
@@ -2242,7 +2254,11 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         }
       }
       if (storeSlug) restoreStoreScroll(storeSlug);
-      document.documentElement.style.visibility = '';
+      // Lifts the curtain raised by the inline anti-flash script at the top of this
+      // page. Same element it hid — the content, never the root: the header is fixed
+      // chrome that must stay painted right through the restore.
+      const mainEl = document.getElementById('main-content');
+      if (mainEl) mainEl.style.visibility = '';
     })();
   }
 

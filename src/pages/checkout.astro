@@ -95,7 +95,10 @@ for (const s of await getVisibleStores()) {
     otherStores: t.cart.otherStores,
   })}></script>
 
-  <main id="main-content" class="max-w-[640px] mx-auto px-4 pt-7 pb-16">
+  {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in
+      one, so this nested a second <main> carrying the SAME id, and the skip link then
+      resolves to whichever one comes first rather than to this page content. */}
+  <div class="max-w-[640px] mx-auto px-4 pt-7 pb-16">
 
     <!-- Empty state -->
     <div id="checkout-empty" class="hidden text-center py-16">
@@ -239,7 +242,7 @@ for (const s of await getVisibleStores()) {
       </section>
 
     </div>
-  </main>
+  </div>
 
   <!-- PQV and lightbox dialogs are rendered globally via ProductQuickView in BaseLayout -->
 

@@ -288,7 +288,10 @@ const pmI18n = {
       </a>
     </nav>
 
-    <main id="main-content" class="container pt-2 pb-16">
+    {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in
+      one, so this nested a second <main> carrying the SAME id, and the skip link then
+      resolves to whichever one comes first rather than to this page content. */}
+    <div class="container pt-2 pb-16">
 
       <!-- Product grid -->
       <div class="grid grid-cols-1 md:grid-cols-[minmax(0,440px)_1fr] gap-1.5 md:gap-14">
@@ -720,7 +723,7 @@ const pmI18n = {
           </a>
         </div>
       )}
-    </main>
+    </div>
 
     <!-- Site-wide footer (with the "open a store" link) is rendered once by
          BaseLayout — no separate store footer here. -->

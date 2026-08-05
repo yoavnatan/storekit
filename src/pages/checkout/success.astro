@@ -13,8 +13,17 @@ const isLoggedIn = !!userId;
 const hasStore = userId ? (await getStoresBySellerId(userId)).length > 0 : false;
 ---
 
-<BaseLayout title={c.successTitle} description={c.successDesc} noindex={true} isLoggedIn={isLoggedIn} hasStore={hasStore} hideNav={true} showSearch={true}>
-  <main id="main-content" class="container pt-12 pb-16 text-center">
+{/* storeMode isn't "this is a store" — it is the flag Header.astro uses to pick its ONE row
+    mechanism (the same reuse admin/index.astro documents for sellerMode). Every other page on
+    the site passes it, and the two that did not — this page and the buyer dashboard — were the
+    only two whose header built itself from the old `container between flex` branch and skipped
+    `.site-header--store`, i.e. the only two where the bottom edge and the row's spacing changed
+    on arrival. The header now renders identically to the homepage's here. */}
+<BaseLayout title={c.successTitle} description={c.successDesc} noindex={true} isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={true} hideNav={true} showSearch={true}>
+  {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in one,
+      so the old markup nested two mains and put the same id on both, which sends the skip link
+      to whichever the browser finds first. */}
+  <div class="container pt-12 pb-16 text-center">
 
     <div class="max-w-[480px] mx-auto">
       <!-- Success icon -->
@@ -48,7 +57,7 @@ const hasStore = userId ? (await getStoresBySellerId(userId)).length > 0 : false
       </div>
     </div>
 
-  </main>
+  </div>
 
   <script>
     import { getActiveStoreCarts, getSubtotal } from '../../lib/cart.js';

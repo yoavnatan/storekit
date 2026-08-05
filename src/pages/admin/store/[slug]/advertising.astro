@@ -94,7 +94,10 @@ const adBudgetLabelFor = (c: { durationDays?: number }): string => (c.durationDa
 ---
 
 <BaseLayout title={`פרסום · ${store.name}`} noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
-  <main id="main-content" class="section container dash-section">
+  {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in
+      one, so this nested a second <main> carrying the SAME id, and the skip link then
+      resolves to whichever one comes first rather than to this page content. */}
+  <div class="section container dash-section">
     <div id="dash-main-card" class="card">
       <div class="dash-head">
         <div class="dash-head__top">
@@ -231,7 +234,7 @@ const adBudgetLabelFor = (c: { durationDays?: number }): string => (c.durationDa
         </div>
       </div>
     </div>
-  </main>
+  </div>
   {/* The boost form's category picker reads its tree from here (scripts/dashboard/category-tree-cache.ts
       looks this id up by hand) — the seller dashboard renders the same payload from its Categories tab. */}
   <script type="application/json" id="category-tree-data" set:html={jsonForScript(adCategoryTree)} />

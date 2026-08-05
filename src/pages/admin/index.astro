@@ -378,7 +378,10 @@ const badgeCounts: Record<string, number> = {
     → סשן ב׳). The avatar itself already doesn't render — isLoggedIn stays
     false since there's no buyer/seller session active. */}
 <BaseLayout title="Admin Dashboard" noindex={true} isLoggedIn={false} storeMode={true} sellerMode={true}>
-  <main id="main-content" class="section container dash-section">
+  {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in
+      one, so this nested a second <main> carrying the SAME id, and the skip link then
+      resolves to whichever one comes first rather than to this page content. */}
+  <div class="section container dash-section">
     <div id="dash-main-card" class="card">
       <div class="dash-head">
         <div class="dash-head__top">
@@ -587,7 +590,7 @@ const badgeCounts: Record<string, number> = {
         />
       </div>
     </div>
-  </main>
+  </div>
 </BaseLayout>
 
 <script>

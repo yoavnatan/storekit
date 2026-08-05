@@ -102,11 +102,16 @@ const shipLabel: Record<string, string> = {
 const STORES_NAMED = 2;
 ---
 
+{/* storeMode isn't "this is a store" — it is the flag Header.astro uses to pick its ONE row
+    mechanism. See the note in checkout/success.astro: this page and that one were the only two
+    still building the header from the old `container between flex` branch, so the bar's bottom
+    edge and row spacing changed the moment a buyer arrived here from anywhere else. */}
 <BaseLayout
   title={t.buyerDashboard.pageTitle}
   noindex={true}
   isLoggedIn={true}
   hasStore={hasStore}
+  storeMode={true}
   hideNav={true}
   showSearch={true}
 >
