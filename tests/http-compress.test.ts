@@ -59,3 +59,52 @@ describe('gzipResponse', () => {
     expect(gzipResponse(req('gzip'), redirect)).toBe(redirect);
   });
 });
+
+/**
+ * A source stream that fails halfway must fail the compressed response too.
+ *
+ * This used to be `.pipe()`, which does not forward an error from the source: when Astro's stream
+ * broke mid-render (a component throwing — see `lib/stream-errors.ts`) the gzip stream simply never
+ * ended, and the visitor sat on an open socket until a timeout instead of getting the adapter's
+ * "Internal server error". A hang is the worst of the three possible outcomes — worse than an error
+ * page, and worse than a truncated one — because nothing upstream can tell it apart from a slow
+ * page. `pipeline` destroys the destination with the source's error, which is what makes the
+ * failure a failure again.
+ */
+describe('gzipResponse on a stream that fails', () => {
+  const gzipRequest = new Request('https://example.com/', { headers: { 'accept-encoding': 'gzip' } });
+
+  function failingHtmlResponse(): Response {
+    const encoder = new TextEncoder();
+    let sent = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (!sent) { sent = true; controller.enqueue(encoder.encode('<html><body>')); return; }
+        controller.error(new Error('component threw mid-render'));
+      },
+    });
+    return new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  }
+
+  it('ends the response instead of hanging forever', async () => {
+    const compressed = gzipResponse(gzipRequest, failingHtmlResponse());
+    const reader = compressed.body!.getReader();
+
+    // Read to completion or rejection. Before the fix this loop never returned — the assertion is
+    // that it settles at all, either way; a truncated body and an error are both acceptable
+    // outcomes for a response whose headers already went out, and a hang is not.
+    const settled = (async () => {
+      for (;;) {
+        const { done } = await reader.read();
+        if (done) return 'closed';
+      }
+    })();
+
+    await expect(
+      Promise.race([
+        settled.catch(() => 'errored'),
+        new Promise((resolve) => setTimeout(() => resolve('HUNG'), 2_000)),
+      ]),
+    ).resolves.not.toBe('HUNG');
+  });
+});

@@ -18,7 +18,7 @@
  * GO_LIVE_CHECKLIST §1.
  */
 import { createGzip } from 'node:zlib';
-import { Readable } from 'node:stream';
+import { Readable, pipeline } from 'node:stream';
 import type { ReadableStream as NodeWebReadableStream } from 'node:stream/web';
 
 /** Worth compressing. Images, fonts, video and zip archives are already compressed formats —
@@ -51,7 +51,17 @@ export function gzipResponse(request: Request, response: Response): Response {
   if (!vary) headers.set('vary', 'Accept-Encoding');
   else if (!/accept-encoding/i.test(vary)) headers.set('vary', `${vary}, Accept-Encoding`);
 
-  const gz = Readable.fromWeb(response.body as unknown as NodeWebReadableStream).pipe(createGzip());
+  // `pipeline`, not `.pipe()`. Classic `.pipe()` does not forward an error from the source — if
+  // Astro's stream fails halfway (a component throwing mid-render, see `lib/stream-errors.ts`) the
+  // gzip stream would simply never end, and the visitor would sit on an open socket until a
+  // timeout instead of getting the adapter's "Internal server error". `pipeline` destroys the
+  // destination with the source's error, which is what turns that hang back into a failure.
+  // The callback is required and is the only place the error can be observed here; reporting it is
+  // not this module's job (middleware.ts already wrapped the source for that), so it is swallowed
+  // deliberately rather than left to become an unhandled 'error' event on a detached stream.
+  const source = Readable.fromWeb(response.body as unknown as NodeWebReadableStream);
+  const gz = createGzip();
+  pipeline(source, gz, () => { /* observed via stream-errors.ts, upstream of this pipe */ });
   return new Response(Readable.toWeb(gz) as unknown as ReadableStream, {
     status: response.status,
     statusText: response.statusText,
