@@ -679,9 +679,13 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                   <span id="category-drawer-toggle-label">{selectedCategory ? selectedCategory.name : t.store.filterByCategory}</span>
                 </button>
               )}
+              {/* The chip row is hidden the moment there is nothing to DRILL INTO. Since the
+                  selected category stopped leading its own row (see the chips below), a leaf
+                  leaves this row with no chips at all, and an empty bordered strip under the
+                  breadcrumb is chrome with no content. */}
               {storeCategories.length > 0 && (
                 <div class="category-filters-wrap" id="category-filters-wrap"
-                     hidden={chipLevelCategories.length === 0 && !selectedCategory}>
+                     hidden={chipLevelCategories.length === 0}>
                   <button type="button" class="category-filters-arrow category-filters-arrow--prev" id="category-filters-prev" aria-label={lang === 'he' ? 'הקודם' : 'Previous'} hidden>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style={lang === 'he' ? 'transform:scaleX(-1)' : ''}><polyline points="15 18 9 12 15 6"/></svg>
                   </button>
@@ -694,24 +698,19 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                         intercepts a plain left click and filters in place, so nothing about the
                         interaction changed for a person. `data-category-id` stays because that
                         handler and the drill-down panel both key off it. */}
-                    {/* Exactly one chip in this row is filled, always: the view you are in. With
-                        nothing selected that is "הכל"; with a category selected it is that
-                        category, standing at the head of its own subcategories. It used to be
-                        neither — picking a category swapped the row for its children and left the
-                        selection visible only in the breadcrumb, and picking a LEAF emptied the
-                        row altogether (owner, 2026-08-03: "the category button doesn't get
-                        coloured"). A filter row whose current value is nowhere in it is a filter
-                        row that looks broken. */}
-                    {!selectedCategory ? (
+                    {/* The row shows where you can GO, never where you already are. "הכל" is here
+                        only at the top level, where there is no breadcrumb yet and something has
+                        to mark the current view; from the first category down, the breadcrumb
+                        above states the position and the selected category repeated as a filled
+                        chip beside its own children was saying it a second time (owner, סשן ג׳).
+                        History worth keeping, because this line moved twice: for a while the row
+                        marked nothing at all as current, and the answer then was to put the
+                        selected category at its head (owner, 2026-08-03: "the category button
+                        doesn't get coloured"). What was actually missing was a current-view mark
+                        — the breadcrumb is that mark once you are inside one. */}
+                    {!selectedCategory && (
                       <a href={storeViewHref()} class="category-chip" data-category-id="" aria-current="page">
                         {t.store.filterAll}
-                      </a>
-                    ) : (
-                      <a href={storeViewHref(selectedCategory)} class="category-chip" data-category-id={selectedCategory.id} aria-current="page">
-                        {selectedCategory.name}
-                        {(categoryCounts[selectedCategory.id] ?? 0) > 0 && (
-                          <span class="category-chip__count">{categoryCounts[selectedCategory.id]}</span>
-                        )}
                       </a>
                     )}
                     {chipLevelCategories.map((cat) => {
@@ -1221,6 +1220,10 @@ const bannerPreload = !isDemo && shopStore.bannerImage
           favBtn.dataset.favorited = String(favorited);
           favBtn.setAttribute('aria-pressed', String(favorited));
           setFavStyle(favorited);
+          // The header's avatar menu lists these stores and caches them for the page's lifetime;
+          // announced only after the SERVER answered, so the menu can never show a store whose
+          // save did not actually land. Same shape as `cart:change`/`wishlist:change`.
+          window.dispatchEvent(new CustomEvent('favorite:change'));
         })
         .catch(() => {
           favBtn.dataset.favorited = String(!nowFav);
@@ -1525,13 +1528,14 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     }
 
     if (categoryFilters && categoryFiltersWrap) {
-      categoryFiltersWrap.hidden = children.length === 0 && !selected;
+      categoryFiltersWrap.hidden = children.length === 0;
       categoryFilters.scrollLeft = 0;
       categoryFilters.innerHTML = `
-        ${!selected
-          ? `<a href="${escHtml(categoryHref(null))}" class="category-chip" data-category-id="" aria-current="page">${escHtml(i18n?.filterAll ?? '')}</a>`
-          // The selected category leads its own row, filled — see the server render for why.
-          : `<a href="${escHtml(categoryHref(selected))}" class="category-chip" data-category-id="${escHtml(selected.id)}" aria-current="page">${escHtml(selected.name)}${countBadgeHtml(selected.id)}</a>`}
+        ${selected
+          // Inside a category the breadcrumb states where you are; the row only offers where to
+          // go next — see the server render for the full history of that line.
+          ? ''
+          : `<a href="${escHtml(categoryHref(null))}" class="category-chip" data-category-id="" aria-current="page">${escHtml(i18n?.filterAll ?? '')}</a>`}
         ${children.map((c) => `<a href="${escHtml(categoryHref(c))}" class="category-chip" data-category-id="${escHtml(c.id)}"${c.children.length > 0 ? ' data-has-children="true"' : ''}>${escHtml(c.name)}${countBadgeHtml(c.id)}${c.children.length > 0 ? CHIP_CHEVRON_SVG : ''}</a>`).join('')}
       `;
       updateCategoryArrows();
