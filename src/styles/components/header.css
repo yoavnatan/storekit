@@ -319,6 +319,33 @@ nav a:hover { color: var(--color-text); }
   .site-header .container:has(> .header-search) > .back-to-store-pill {
     display: none;
   }
+  /* Centring is a luxury, and below ~1024px it is paid for by the store's name.
+     The 3-column `1fr auto 1fr` grid above sizes the search FIRST and splits
+     what is left between the two outer tracks, so on a narrow desktop window a
+     store with a long name watched it ellipsis down to a couple of characters —
+     the name is the one thing on that row that says which shop you are standing
+     in, so it cannot be the thing that gives way.
+
+     Under 1024px the row stops centring: the name takes its own width (still
+     capped at 260px by the rule above) and the search becomes the flexible
+     track, with a floor of its own so it never collapses to a slit either. */
+  @media (max-width: 1023px) {
+    .site-header .container:has(> .header-search) {
+      grid-template-columns: minmax(6rem, auto) minmax(7rem, 1fr) auto;
+      gap: 0.75rem;
+    }
+    .site-header .container:has(> .header-search) > .header-search {
+      justify-self: stretch;
+      width: 100%;
+      /* Still capped: without a ceiling the field simply ate every spare pixel —
+         measured 689px on a 1000px window, which is a search bar that looks like
+         a mistake. It stretches only until it reaches the width it has on a wide
+         screen. */
+      max-width: 480px;
+      min-width: 0;
+    }
+  }
+
   .header-search {
     /* Width scales down with the viewport itself (min(480px, 38vw)) instead
        of staying rigid at 480px until the row runs out of room — starts
