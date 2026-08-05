@@ -958,15 +958,30 @@ const bannerPreload = !isDemo && shopStore.bannerImage
               A button fetches; it does not link, so until 2026-08-03 a crawler saw the first 24
               products of a shelf and had no path to the rest — 76 of one showcase store's 100 had
               no in-site link pointing at them at all. These are the same slices the button fetches,
-              addressable and server-rendered. Kept visually quiet and after the button on purpose:
-              a person uses "load more", this is for the crawler and for anyone who wants a URL for
-              page 4. `nofollow` is deliberately NOT set — following these is the entire point. */}
+              addressable and server-rendered. `nofollow` is deliberately NOT set — following these
+              is the entire point, and Google's own pagination guidance is exactly this pairing: a
+              crawler renders JS but never presses a button, so every slice needs its own URL and a
+              real link to it.
+
+              THE TREATMENT IS THE DECISION HERE, and it was wrong until 2026-08-05 (owner: "למה
+              לעזאזל יש עדיין עמודים ממוספרים בחנויות עצמן? אמרנו כבר הרבה פעמים שזה יהיה רק טען
+              עוד"). This comment has always claimed "visually quiet", while the row actually drew
+              bordered chips with the current page filled in `--color-primary` — this site's
+              treatment for a selected CONTROL, and the same weight as the category chips at the top
+              of the same shelf. So the shelf ended in two controls for one job, and they contradict
+              each other: press "load more" four times and a filled chip underneath still says you
+              are on page 1. It read as a numbered pager that had survived a decision to drop it.
+
+              It is not a pager. It is the address of each slice; the shopper's control is the
+              button above it. So: no border, no fill, muted, a step smaller — the weight of a
+              caption. A person's eye passes over it, a crawler follows it exactly as before.
+              Styling only: nothing about what is rendered, linked or indexed changed. */}
           {totalPages > 1 && (
-            <nav class="mt-4 flex flex-wrap items-center justify-center gap-2 text-[0.8rem]" aria-label={lang === 'he' ? 'עמודי מוצרים' : 'Product pages'}>
+            <nav class="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[0.75rem]" aria-label={lang === 'he' ? 'עמודי מוצרים' : 'Product pages'}>
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
                 n === currentPage
-                  ? <span class="px-2.5 py-1 rounded-[var(--radius-sm)] border [border-color:var(--color-primary)] bg-[color:var(--color-primary)] text-white font-medium" aria-current="page">{n}</span>
-                  : <a href={storeViewHref(selectedCategory, n)} class="px-2.5 py-1 rounded-[var(--radius-sm)] border [border-color:var(--color-border)] [color:var(--color-muted)] hover:[border-color:var(--color-primary)] hover:[color:var(--color-text)] transition-colors">{n}</a>
+                  ? <span class="[color:var(--color-text)] font-medium" aria-current="page">{n}</span>
+                  : <a href={storeViewHref(selectedCategory, n)} class="[color:var(--color-muted)] underline-offset-4 transition-colors hover:[color:var(--color-text)] hover:underline">{n}</a>
               ))}
             </nav>
           )}
