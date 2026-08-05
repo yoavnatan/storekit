@@ -639,9 +639,19 @@ nav a:hover { color: var(--color-text); }
    other end of the row are ink-tight SVGs and centre exactly, which is what
    makes the difference legible rather than academic.
    The reference is the ICON ROW, not the header box: the icons are what the eye
-   compares the logo against, and they centre on `.container`. Measured against
-   that row the Latin wordmark sat 3.45px high and the Hebrew store name 4.0px,
-   at a 20.8px font — hence 0.166em and 0.19em rather than one value for both.
+   compares the logo against, and they centre on `.container`.
+
+   The wordmark is 0.166em because "Dezabin" has no descender: its ink IS its cap
+   band, and that band measured 3.45px high at a 20.8px font.
+
+   A store NAME is the harder case and 0.095em is a deliberate compromise, not a
+   measurement. A name with a descender ("MegaMart", or any Hebrew name with
+   ק/ן/ך) has ink that already straddles the centre, so it wants no nudge at all;
+   a name without one wants the full 3.95px. Measured both: at 0.19em "MegaMart"
+   sat 4.17px LOW, and at 0 a descenderless name sits ~4px high. Half the
+   distance leaves either case about 2px out instead of one case perfect and the
+   other twice as wrong. Centring the cap band properly for both needs
+   `text-box-trim`, which is too new to rely on here.
    In `em` so they hold at every size this row is used at, and on the TEXT only:
    the avatar is ink-tight like the icons and is already where it belongs.
 
@@ -651,7 +661,7 @@ nav a:hover { color: var(--color-text); }
    so stores with no logo had their badge pushed 4px down and stores with one did
    not. Two stores, two vertical positions, from a selector that looked harmless. */
 .site-header .dz-logo { transform: translateY(0.166em); }
-.site-header .store-name-text { transform: translateY(0.19em); }
+.site-header .store-name-text { transform: translateY(0.095em); }
 
 /* A store's header wears that store's own colour as a 2px line along its bottom
    edge — the answer to "every store's header looks identical" (CURRENT_TASK,
@@ -676,6 +686,12 @@ nav a:hover { color: var(--color-text); }
      only header on the site with no line. */
   background: var(--store-glow, color-mix(in srgb, var(--color-muted) 70%, #fff));
   pointer-events: none;
+  /* The colour arrives twice on a store with an uploaded logo: the grey fallback
+     paints immediately, then scripts/store-glow.ts reads the logo's pixels on
+     idle and overwrites it. Snapping between two colours mid-scroll is what
+     reads as cheap; a quarter-second is long enough to register as the page
+     settling and short enough that nobody waits for it. */
+  transition: background-color 0.25s ease;
 }
 
 /* Inner text span — ellipsis when name is too long. */
