@@ -72,7 +72,9 @@ describe('deriveBannerRenders', () => {
     await deriveBannerRenders(UPLOAD);
     expect(calls).toHaveLength(BANNER_WIDTHS.length);
     for (const w of BANNER_WIDTHS) {
-      expect(calls.some((c) => c.url.includes(`c_fill,g_auto,f_auto,q_auto,w_${w},h_${Math.round(w / BANNER_RATIO)}/`))).toBe(true);
+      // The chained band transform (cdnBand): a width CEILING, then a crop stated as a ratio.
+      // Warming the old `w_/h_` pair would now warm URLs the page never asks for.
+      expect(calls.some((c) => c.url.includes(`c_limit,w_${w}/ar_${BANNER_RATIO},c_fill,g_auto,f_auto,q_auto/`))).toBe(true);
     }
   });
 

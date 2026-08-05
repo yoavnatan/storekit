@@ -29,7 +29,7 @@
  * import needs its own paced queue; until that exists, bulk-created products
  * keep the old behaviour and the first buyer pays the render once.
  */
-import { cdnSrc, cdnThumb, LIGHTBOX_WIDTHS, BANNER_WIDTHS, BANNER_RATIO } from './cdn.js';
+import { cdnSrc, cdnBand, LIGHTBOX_WIDTHS, BANNER_WIDTHS, BANNER_RATIO } from './cdn.js';
 
 /**
  * A hard ceiling on one call's fan-out. The product form caps a product at 5
@@ -90,10 +90,10 @@ export async function deriveImageRenders(urls: string[]): Promise<void> {
  * Cloudinary to render before a byte moved, and with one banner per store it is a different unlucky
  * visitor for every store in the mall (owner kept measuring it, 2026-08-03).
  *
- * Cropped rungs, not `cdnSrc` ones: these must be the exact URLs `[storeSlug]/index.astro` puts in
- * its `srcset` and its `<head>` preload, or the warm-up renders transforms nobody asks for and the
- * visitor still pays for the ones they do. All three read `BANNER_WIDTHS`/`BANNER_RATIO` from
- * `cdn.ts` so they cannot drift apart.
+ * Cropped rungs (`cdnBand`), not `cdnSrc` ones: these must be the exact URLs
+ * `[storeSlug]/index.astro` puts in its `srcset` and its `<head>` preload, or the warm-up renders
+ * transforms nobody asks for and the visitor still pays for the ones they do. All three read
+ * `BANNER_WIDTHS`/`BANNER_RATIO` from `cdn.ts` so they cannot drift apart.
  */
 export function warmBannerDerivations(url: string | undefined | null): void {
   void deriveBannerRenders(url);
@@ -104,7 +104,7 @@ export async function deriveBannerRenders(url: string | undefined | null): Promi
   try {
     if (!url) return;
     const requests = BANNER_WIDTHS.map((w) => {
-      const delivery = cdnThumb(url, w, Math.round(w / BANNER_RATIO));
+      const delivery = cdnBand(url, w, BANNER_RATIO);
       // Handed back unchanged = nothing Cloudinary will serve (relative path, dev host, no cloud).
       if (delivery === url) return undefined;
       return fetch(delivery, { method: 'HEAD', signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => undefined);
