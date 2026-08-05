@@ -195,7 +195,7 @@ function buildCopyText(e: ErrorLogEntry): string {
                 <button
                   type="button"
                   class="admin-alerts-details-btn"
-                  aria-expanded="false"
+                  aria-expanded={entryRef ? 'true' : 'false'}
                   aria-controls={`admin-alert-details-${e.id}`}
                   title="פרטים נוספים"
                 >
@@ -218,13 +218,23 @@ function buildCopyText(e: ErrorLogEntry): string {
                 </button>
               </td>
             </tr>
-            <tr id={`admin-alert-details-${e.id}`} class="admin-alerts-details-row" hidden>
+            {/* Open already when the mail's link brought us to this one row. Clicking through from
+                an alert and then being asked to click again for the context is the same "here is a
+                code, now go find it" friction the deep link removed one step earlier. Only in that
+                case — the unfiltered list stays collapsed, or it is a wall. */}
+            <tr id={`admin-alert-details-${e.id}`} class="admin-alerts-details-row" hidden={!entryRef}>
               <td colspan="7">
                 <div class="admin-alerts-details-body">
                   <p><strong>הודעה מלאה:</strong> {e.message}</p>
                   <p><strong>קוד סטטוס:</strong> {e.statusCode ?? '—'}</p>
+                  {/* "הקשר", not "הצעת פתרון", and the old label was wrong twice over as of
+                      2026-08-05. The field stopped being only a suggestion the day /api/checkout
+                      started writing the attempted cart into it — "בעגלה: כיסא ×2" is not advice.
+                      And "(טרם נשלחת אוטומטית)" became false the same day: this text is exactly
+                      what the critical-error mail carries under the same word, which is the point —
+                      the row and the mail must not name one field two ways. */}
                   {e.resolutionHint && (
-                    <p class="admin-alerts-hint"><strong>הצעת פתרון (טרם נשלחת אוטומטית):</strong> {e.resolutionHint}</p>
+                    <p class="admin-alerts-hint"><strong>הקשר:</strong> {e.resolutionHint}</p>
                   )}
                   {e.stack ? (
                     <pre class="admin-alerts-stack">{e.stack}</pre>
