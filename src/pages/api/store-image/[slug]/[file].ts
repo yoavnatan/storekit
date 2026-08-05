@@ -1,8 +1,8 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getStoreBySlug } from '../../../../lib/stores.js';
-import { parseStoreImageFile, STORE_RENDER_FORMATS } from '../../../../lib/store-image.js';
-import { renderStoreMarkPng } from '../../../../lib/store-mark-raster.js';
+import { parseStoreImageFile, ROUND_ICON_FORMATS, STORE_RENDER_FORMATS } from '../../../../lib/store-image.js';
+import { renderStoreMarkIconPng, renderStoreMarkPng } from '../../../../lib/store-mark-raster.js';
 import { storeMark } from '../../../../lib/store-mark.js';
 
 /**
@@ -16,9 +16,13 @@ import { storeMark } from '../../../../lib/store-mark.js';
  * store-image.ts for who links here.
  *
  * Unauthenticated by design (so is every consumer), and bounded on both axes:
- * the format must be one of four whitelisted sizes, and the slug must be a real
- * store — an open size parameter would let anyone ask the server to rasterise
- * arbitrarily large images.
+ * the format must be one from the whitelist, and the slug must be a real store —
+ * an open size parameter would let anyone ask the server to rasterise arbitrarily
+ * large images.
+ *
+ * The tab icon comes out ROUND with transparent corners (`ROUND_ICON_FORMATS`);
+ * every other format is the full opaque tile. Why each is what it is, including
+ * why the iOS touch icon is deliberately NOT round, is in store-image.ts.
  *
  * Fully deterministic output for a given slug, hence `immutable`: a slug rename
  * produces a different URL, so a stale cache entry can't show the wrong mark.
@@ -31,7 +35,10 @@ export async function GET({ params }: APIContext): Promise<Response> {
   if (!store) return new Response('Not found', { status: 404 });
 
   const { width, height } = STORE_RENDER_FORMATS[format];
-  const png = renderStoreMarkPng(storeMark(store.slug, store.name), width, height);
+  const mark = storeMark(store.slug, store.name);
+  const png = (ROUND_ICON_FORMATS as readonly string[]).includes(format)
+    ? renderStoreMarkIconPng(mark, width)
+    : renderStoreMarkPng(mark, width, height);
 
   return new Response(new Uint8Array(png), {
     headers: {

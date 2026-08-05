@@ -1,4 +1,4 @@
-import { cdnFill, cdnThumb, store as platform } from '../config/store.config.js';
+import { cdnCircle, cdnFill, cdnThumb, store as platform } from '../config/store.config.js';
 import { stripTrailingSlashes } from './url-base.js';
 
 /**
@@ -51,11 +51,18 @@ export type StoreIconFormat = 'favicon' | 'touch';
 
 export const STORE_ICON_FORMATS: Readonly<Record<StoreIconFormat, { width: number; height: number }>> = {
   /** 64px, not 32: it is the largest slot a browser picks from a single icon
-   *  (tab strips ask for 32 at 2x DPR), and one file is cheaper than three. */
+   *  (tab strips ask for 32 at 2x DPR), and one file is cheaper than three.
+   *  ROUND, with transparent corners — see `storeIconUrl`. */
   favicon: { width: 64, height: 64 },
-  /** 180px — what iOS asks for when a store page is added to the home screen. */
+  /** 180px — what iOS asks for when a store page is added to the home screen.
+   *  SQUARE and opaque, and that is not an inconsistency: iOS masks this one
+   *  itself and composites transparency onto BLACK, so a round source would
+   *  arrive as a circle with black corners inside iOS's own rounded square. */
   touch: { width: 180, height: 180 },
 };
+
+/** The icon slots that are drawn as a circle. */
+export const ROUND_ICON_FORMATS: readonly StoreIconFormat[] = ['favicon'];
 
 /** Everything `/api/store-image` can rasterise, both maps at once. */
 export type StoreRenderFormat = StoreImageFormat | StoreIconFormat;
@@ -128,16 +135,28 @@ export function resolveStoreImage(
  * browser always sends `Accept`, so this uses `cdnThumb`/`f_auto` and keeps
  * whatever transparency the seller uploaded.
  *
+ * THE TAB ICON IS A CIRCLE (2026-08-05, owner: "לדעתי הפאביקון לא יכול להיות
+ * מרובע לגמרי, אפשר עיגול?"). It is the right call and the codebase had already
+ * made it once: StoreAvatar is ALWAYS round, and its header records why — a
+ * rounded square with a border on `--color-surface` is byte for byte the
+ * product-thumbnail recipe, so it reads as a THING rather than a WHO. A square
+ * favicon would have been the single place a store's mark stopped being a face.
+ *
+ * The apple-touch icon stays square, and that is not a compromise: iOS applies
+ * its OWN rounded mask and composites transparency onto black, so a round source
+ * arrives as a circle with black corners inside iOS's square.
+ *
  * Same "never empty" guarantee as the rest of this file, and the same refusal:
  * a URL Cloudinary cannot transform falls back to the generated mark instead of
  * putting a full-size original in a 32px tab.
  */
 export function storeIconUrl(store: StoreImageSource, format: StoreIconFormat): string {
   const { width, height } = STORE_ICON_FORMATS[format];
+  const round = ROUND_ICON_FORMATS.includes(format);
   const upload = store.profileImage?.trim();
   if (upload) {
-    const thumb = cdnThumb(upload, width, height);
-    if (thumb && thumb !== upload) return thumb;
+    const src = round ? cdnCircle(upload, width, height) : cdnThumb(upload, width, height);
+    if (src && src !== upload) return src;
   }
   return storeMarkPath(store.slug, format);
 }
