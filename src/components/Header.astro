@@ -141,6 +141,53 @@ const strEmpty   = t.store.noProductsFound;
           </a>
       }
     </div>
+    {/* Paints the store's colour rule BEFORE first paint, from the memo that
+        scripts/store-glow.ts already keeps in sessionStorage. (Comment ABOVE the
+        expression, never as its first child — see verify.mjs on the Astro 7
+        compile failure that reports nothing at all.)
+
+        Without this the bar's bottom edge is the neutral grey fallback and then
+        transitions to the store's own colour a third of a second later —
+        measured on a build 2026-08-05: settled at 750ms against a first paint at
+        413ms. It was the last thing left in the header that still changed after
+        the page had painted, and on a store already opened this session there is
+        no reason for it: the colour is one synchronous sessionStorage read away.
+        Same reasoning as the cart-badge seed further down, and the same failure
+        mode if the two rules ever drift — there the badge rolls one number to
+        another, here the rule changes colour under you.
+
+        Only when the store HAS an uploaded logo: without one the server already
+        painted the generated mark's hue into the inline style above, which is
+        the whole reason that line never arrives late. */}
+    {storeHeader && storeLogo && (
+      <script is:inline>
+        (function () {
+          var img = document.querySelector('header.site-header img[data-glow]');
+          var host = img && img.closest('[data-glow-host]');
+          if (!host) return;
+          // Private mode and a corrupt entry both throw here, and neither is worth a
+          // frame of anyone's time: answer "no memo" and let the CSS default paint.
+          function readMemo() {
+            try {
+              return JSON.parse(sessionStorage.getItem('sn_store_glow') || 'null');
+            } catch (err) {
+              return null;
+            }
+          }
+          var memo = readMemo();
+          if (!memo || typeof memo !== 'object') return;
+          var hex = memo[img.getAttribute('src')];
+          // MUST stay identical to validCached() in scripts/store-glow.ts —
+          // sessionStorage is writable by anything on this origin and this value
+          // goes straight into a style property. '' is a real answer ("no usable
+          // colour") and correctly sets nothing, leaving the CSS fallback.
+          // Guarded by tests/header-glow-seed.test.ts.
+          if (typeof hex === 'string' && /^#[0-9a-f]{6}$/.test(hex)) {
+            host.style.setProperty('--store-glow', hex);
+          }
+        })();
+      </script>
+    )}
 
     <!-- Back-to-store pill (persistent, subtle) — shown whenever we're not already inside a store's own header, so a buyer detoured away by a notification/toast/checkout always has a way back into the store they were shopping in -->
     {!(storeName && storeSlug) && !isHome && (
