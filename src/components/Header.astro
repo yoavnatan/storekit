@@ -424,47 +424,46 @@ const strEmpty   = t.store.noProductsFound;
               <svg width="11" height="14" viewBox="10.75 8 21.626 28" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M11.25 8 L23.676 8 L31.876 16.2 L31.876 27.8 L23.676 36 L11.25 36 Z M17.410 12.922 L20.726 12.922 L25.716 17.912 L25.716 26.088 L20.726 31.078 L17.410 31.078 Z"/></svg>
               {t.nav.home}
             </a>
-            <a href="/buyer/dashboard" class="user-dropdown__item" role="menuitem">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-              האזור שלי
-            </a>
             {/* Saved stores (CURRENT_TASK → סשן ג׳ 1). The only route to them used to be the
                 homepage's own "liked" tab, so a shopper standing inside a store had no way back
                 to the stores they had saved.
-                A FLYOUT beside the menu, not a disclosure inside it (owner, 2026-08-05). It was
-                built as a disclosure on the assumption that a flyout "has nowhere to go at 375px";
-                measured, that is wrong — the menu hugs the header's edge (in Hebrew, the LEFT one)
-                and leaves ~180px of clear viewport on its inner side, which is a store row with
-                room to spare. What the disclosure did cost was real: it grew the menu downward by
-                its own height, so a saved list could push the logout row off the bottom of a phone.
-                A floating panel is measured against the viewport instead and can never do that.
+                SECOND in the menu, above "האזור שלי" (owner, 2026-08-05): the rows below it are
+                places you go to deal with your own account, and this is the one that keeps a
+                shopper shopping.
+                A FLYOUT beside the menu, not a disclosure inside it. It was built as a disclosure
+                on the assumption that a flyout "has nowhere to go at 375px"; measured, that is
+                wrong — the menu hugs the header's edge (in Hebrew, the LEFT one) and leaves ~180px
+                of clear viewport on its inner side, which is a store row with room to spare. What
+                the disclosure did cost was real: it grew the menu downward by its own height, so a
+                saved list could push the logout row off the bottom of a phone. A floating panel is
+                measured against the viewport instead and can never do that.
                 Filled lazily — see the script below; nothing about it costs an SSR read. */}
             <button
               type="button"
-              class="user-dropdown__item"
+              class="user-dropdown__item aria-expanded:[background:var(--color-bg)]"
               id="saved-stores-toggle"
               role="menuitem"
               aria-expanded="false"
               aria-controls="saved-stores-panel"
               data-str-empty={t.nav.savedStoresEmpty}
               data-str-all={t.nav.savedStoresAll}
+              data-str-empty-cta={t.home.tabEmptyLikedCta}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.7 7.8l1 1 7.8 7.8 7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
-              {/* nowrap: this is the only row carrying BOTH an icon and a trailing chevron, so at
-                  the dropdown's 160px floor it was the one label that wrapped to two lines — and
-                  it did so only while the list was empty, i.e. only when nothing else was
-                  widening the menu. */}
+              {/* The STAR, which is the mark a shopper actually presses to save a store
+                  ([storeSlug]/index.astro's #fav-store-btn). It used to be a heart — and the heart
+                  is this site's PRODUCT-wishlist mark in six other files, one of them the wishlist
+                  button sitting ~40px away in this same header. Same glyph, two meanings, side by
+                  side (owner, 2026-08-05). */}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              {/* nowrap: at the dropdown's 160px floor this was the one label that wrapped to two
+                  lines — and it did so only while the list was empty, i.e. only when nothing else
+                  was widening the menu. */}
               <span class="flex-1 whitespace-nowrap">{t.home.shelfLiked}</span>
-              {/* Points at the side the panel actually opens on, which is resolved at open time
-                  (whichever side of the menu has room) — so the SSR value here is only the
-                  likely one: the menu hugs the inline-end edge of the header, so the panel opens
-                  toward inline-start, which is the LEFT in an English page and the RIGHT in a
-                  Hebrew one. `rotate-180` turns this right-pointing chevron to the left, and the
-                  script re-decides it on every open. */}
-              <svg
-                id="saved-stores-chev"
-                class:list={['transition-transform duration-150', { 'rotate-180': lang !== 'he' }]}
-                width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+              {/* NO chevron. There was one, and there is no side of this row it can sit on: the
+                  row's trailing edge is the LEFT in Hebrew while the panel opens to the RIGHT, so
+                  wherever it pointed it pointed back across its own label (owner, 2026-08-05).
+                  The panel appearing beside the row is the feedback, and the row itself stays lit
+                  while it is open — `aria-expanded:` above, the same tell `.user-btn` uses. */}
             </button>
             {/* A panel of its own now, so it wears the site's dropdown finish (surface, border,
                 --shadow-card, 0.3rem container — AI_INSTRUCTIONS → Dropdown design system) and
@@ -487,6 +486,11 @@ const strEmpty   = t.store.noProductsFound;
               aria-labelledby="saved-stores-toggle"
               hidden
             ></div>
+
+            <a href="/buyer/dashboard" class="user-dropdown__item" role="menuitem">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              האזור שלי
+            </a>
 
             {(Astro.props.hasStore || storeMode || sellerMode) && (
               <a href="/seller/dashboard" class="user-dropdown__item" role="menuitem" id="seller-dashboard-link">
@@ -694,7 +698,6 @@ const strEmpty   = t.store.noProductsFound;
   // itself opens instantly instead of on a spinner.
   const savedToggle = document.getElementById('saved-stores-toggle') as HTMLButtonElement | null;
   const savedPanel  = document.getElementById('saved-stores-panel') as HTMLElement | null;
-  const savedChev   = document.getElementById('saved-stores-chev') as HTMLElement | null;
 
   interface SavedStore { slug: string; name: string; image: string; initial: string; gradient: string }
 
@@ -702,8 +705,22 @@ const strEmpty   = t.store.noProductsFound;
   // data-str-* like every other client-rendered string in this file, so an English page cannot
   // end up with a Hebrew row (see tests/i18n-island-scope.test.ts for why the dictionary island
   // is not available here).
-  const strSavedEmpty = savedToggle?.dataset.strEmpty ?? '';
-  const strSavedAll   = savedToggle?.dataset.strAll ?? '';
+  const strSavedEmpty   = savedToggle?.dataset.strEmpty ?? '';
+  const strSavedAll     = savedToggle?.dataset.strAll ?? '';
+  const strSavedEmptyCta = savedToggle?.dataset.strEmptyCta ?? '';
+
+  /** Nothing saved yet. The site already has an answer for an empty surface — HomeTabEmpty.astro,
+   *  which the homepage's own "liked" tab uses: a muted outline mark at 25%, one line of muted
+   *  text, one button out. Same three parts here, at panel scale, so an empty flyout reads as
+   *  deliberate rather than as a list that failed to load. The mark is the STAR, which is exactly
+   *  what the shopper has to press on a store to fill this. */
+  function savedEmptyHtml(): string {
+    return `<div class="flex flex-col items-center gap-2.5 px-3 py-5 text-center">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" class="opacity-25 text-[color:var(--color-muted)]" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      <p class="m-0 text-[0.78rem] leading-snug text-[color:var(--color-muted)]">${escH(strSavedEmpty)}</p>
+      <a href="/stores" class="btn btn--sm">${escH(strSavedEmptyCta)}</a>
+    </div>`;
+  }
 
   /** One row — the store's real logo when it has one, otherwise the same generated mark it wears
    *  on a store card, resolved server-side (see /api/saved-stores). */
@@ -728,7 +745,7 @@ const strEmpty   = t.store.noProductsFound;
       const data = await res.json() as { total: number; stores: SavedStore[] };
       const list = Array.isArray(data.stores) ? data.stores : [];
       savedPanel.innerHTML = list.length === 0
-        ? `<p class="px-2 py-1.5 text-[0.78rem] text-[color:var(--color-muted)]">${escH(strSavedEmpty)}</p>`
+        ? savedEmptyHtml()
         : list.map(savedStoreRow).join('')
           // Only when the menu is actually hiding some — a link to "all" beside all of them is a
           // row that answers a question nobody asked.
@@ -763,9 +780,10 @@ const strEmpty   = t.store.noProductsFound;
   // The side is DECIDED here rather than fixed in CSS, because the menu is pinned to the header's
   // inline-end edge and the room is all on its other side: measured on a 375px Hebrew page the
   // menu occupies 16→181, leaving ~180px of clear viewport to its right and none to its left. So
-  // the panel opens toward whichever side has more of it, and the chevron is turned to match —
-  // an arrow that names a direction ON SCREEN has to be resolved against the layout, not against
-  // the language (memory: RTL arrow keys, the same trap one level up).
+  // the panel opens toward whichever side has more of it. Nothing on the row points at that side:
+  // the row's own trailing edge is the LEFT in Hebrew while the panel is on the RIGHT, so a
+  // chevron there pointed back across its own label whichever way it faced (owner, 2026-08-05).
+  // The panel showing up beside the row is the feedback, and the row stays lit while it is open.
   //
   // Height is clamped twice on purpose: `max-height` keeps the panel itself inside the screen,
   // and pulling `top` up keeps a SHORT panel from being pushed past the bottom edge by a trigger
@@ -802,7 +820,6 @@ const strEmpty   = t.store.noProductsFound;
     // store sits on the same line as the label), then pulled inside the screen.
     const top = row.top - 5;
     savedPanel.style.top = `${Math.max(SAVED_EDGE, Math.min(top, vh - boxH - SAVED_EDGE))}px`;
-    savedChev?.classList.toggle('rotate-180', !toRight);
   }
 
   function closeSavedPanel(): void {
