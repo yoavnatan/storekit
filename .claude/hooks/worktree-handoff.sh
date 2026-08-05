@@ -108,10 +108,13 @@ echo
 if [ -n "$mine" ]; then
   printf 'YOUR OWN TREE still holds work that main cannot see: %s\n' "$mine"
   cat <<'EOF'
-  → Name the branch and say plainly that it needs merging (or that you are mid-task and it is
-    deliberate). Do not merge it on your own initiative — but do not let the session end with the
-    user unaware that it exists. If the work IS finished and he has said to merge, merge it, push,
-    and then `ExitWorktree remove` so it stops being an entry in this list.
+  → If the work is FINISHED and the full verify is green, close it out yourself, without asking —
+    standing instruction from the owner, 2026-08-05 ("אתה תחליט"), because the judgement of when it
+    is done is mine to make: `git merge main` into the branch, `verify -- --all`, fast-forward main,
+    confirm `git log main..<branch>` is empty, then `ExitWorktree remove`. Do NOT push; local is the
+    approval, publishing is not.
+  → If you are MID-TASK, leave it and say so in one line — mid-task work is supposed to be unmerged.
+    Either way the session must not end with the user unaware the branch exists.
 EOF
 fi
 if [ -n "$finished" ]; then

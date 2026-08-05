@@ -60,8 +60,21 @@ the repo and is invisible on main, which is exactly what he asked to be protecte
 A 🔵 line is NOT that. It is a session working right now, and mid-task work is supposed to be
 unmerged — mention it only if he asks what is running. Never offer to merge one.
 
-Never merge or remove anything here unprompted: that is his call, and on a 🔵 tree it would land on
-top of somebody's unfinished work.
+YOUR OWN worktree — the one this session created — is yours to close out, without asking. The owner
+made that explicit on 2026-08-05 ("אתה תחליט"), because he does not know when it is the right moment
+and I do: when the work is done and the full verify is green, `git merge main` into the branch,
+re-run `verify -- --all`, fast-forward main, then remove it. Confirm `git log main..<branch>` is
+EMPTY before removing — `ExitWorktree remove` counts commits against the branch POINT, not against
+main, so it will warn about discarding dozens that are all already merged.
+
+A ✅ line belonging to some other session is safe to remove too: clean and merged is nothing to lose.
+
+Two things stay off-limits, and they are why this is not "merge whatever you find". Never touch a 🔵
+tree — a session is working in it and a merge lands on top of unfinished work. Never merge a ⚠️
+orphan: its commits are somebody's abandoned mid-task work, the author who knew why is gone, and
+only he can say whether it should live. Report it and leave it.
+
+And never push. Merging locally is the standing approval; publishing the branch is not.
 
 The state can change while you work — another session may merge and remove a worktree mid-turn. Re-run
 `git worktree list` before telling the user a worktree still needs a decision.
