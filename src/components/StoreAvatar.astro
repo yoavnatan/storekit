@@ -16,9 +16,17 @@ interface Props {
    *  uses the result, and the `crossorigin` it requires is not free to hand to
    *  every avatar on the site — see `sampleable` below. */
   sampleColor?: boolean;
+  /** `circle` everywhere a store appears as a person-like identity (cards,
+   *  message rows). `square` is for the one place the picture is read as the
+   *  store's LOGO rather than its avatar — the store header — where a circle
+   *  crops the corners off a mark that was almost certainly drawn square. */
+  shape?: 'circle' | 'square';
 }
 
-const { name, slug, profileImage, size = 40, class: className = '', sampleColor = false } = Astro.props;
+const { name, slug, profileImage, size = 40, class: className = '', sampleColor = false, shape = 'circle' } = Astro.props;
+// radius-sm is the scale step for controls under ~36px (tokens.css) — the store
+// header's logo is 32px, so a square avatar picks that step rather than inventing one.
+const shapeClass = shape === 'square' ? 'rounded-sm' : 'rounded-full';
 // Same identity the PNG endpoint renders for this store: one hue per store, so a
 // store with no uploaded picture is still recognisable from list to list — the
 // old fallback painted every such store the identical grey-blue.
@@ -42,12 +50,12 @@ const sampleable = !!profileImage && sampleColor && cdnIsSampleable(profileImage
     loading="lazy"
     crossorigin={sampleable ? 'anonymous' : undefined}
     data-glow={sampleable ? '' : undefined}
-    class={`rounded-full object-cover flex-shrink-0 ${className}`}
+    class={`${shapeClass} object-cover flex-shrink-0 ${className}`}
     style={`width:${size}px;height:${size}px;border:1px solid var(--color-border)`}
   />
 ) : (
   <span
-    class={`rounded-full flex-shrink-0 flex items-center justify-center font-bold text-white ${className}`}
+    class={`${shapeClass} flex-shrink-0 flex items-center justify-center font-bold text-white ${className}`}
     style={`width:${size}px;height:${size}px;background:${storeMarkGradient(mark)};font-size:${Math.round(size * 0.42)}px;border:1px solid var(--color-border)`}
     aria-hidden="true"
   >{mark.initial}</span>

@@ -78,7 +78,11 @@ function sample(img: HTMLImageElement): string | null {
 }
 
 function apply(img: HTMLImageElement): void {
-  const card = img.closest<HTMLElement>('.store-card');
+  // `[data-glow-scope]` is the general form — the element that wants this
+  // picture's colour, whatever it is (the store header's bottom rule marks
+  // itself that way). `.store-card` stays as the fallback so a card doesn't
+  // have to carry an attribute for the behaviour it has had all along.
+  const card = img.closest<HTMLElement>('[data-glow-scope]') ?? img.closest<HTMLElement>('.store-card');
   const src = img.currentSrc || img.src;
   if (!card || !src) return;
   const cached = readCache()[src];
@@ -88,7 +92,15 @@ function apply(img: HTMLImageElement): void {
   if (hex) card.style.setProperty('--store-glow', hex);
 }
 
+let inited = false;
+
 export function initStoreGlow(): void {
+  // Two independent callers now ask for this on the same page — the store-card
+  // shelf and the store header — and each only knows about itself. The pass
+  // below is document-wide, so the second call would re-walk the same images
+  // for nothing; one module instance per page makes this the whole guard.
+  if (inited) return;
+  inited = true;
   // Every store card is server-rendered, so one pass at load reaches all of them
   // — there is no client-rendered card that would need a subtree argument here.
   const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('img[data-glow]'));

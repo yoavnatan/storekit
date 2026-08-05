@@ -23,9 +23,12 @@
 //    block (fixed 2026-07-16).
 import { store } from '../config/store.config.js';
 import CsrfField from './CsrfField.astro';
+import StoreAvatar from './StoreAvatar.astro';
+import BrandLogo from './BrandLogo.astro';
 import { getLang, getT } from '../i18n/index.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { sellerHasAnyAlert } from '../lib/seller-alerts.js';
+import { storeMark } from '../lib/store-mark.js';
 
 interface Props {
   isLoggedIn?: boolean;
@@ -33,6 +36,10 @@ interface Props {
   storeMode?: boolean;
   storeName?: string;
   storeSlug?: string;
+  /** The store's uploaded logo, when the page is one store's own. Optional on
+   *  purpose: a storeMode page that doesn't have the store record (checkout,
+   *  admin) simply renders the generated mark, never an empty box. */
+  storeLogo?: string;
   sellerMode?: boolean;
   hideNav?: boolean;
   showSearch?: boolean;
@@ -40,7 +47,7 @@ interface Props {
   initialUnreadCount?: number;
 }
 
-const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, isHome = false, storeName, storeSlug, initialUnreadCount = 0 } = Astro.props;
+const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, isHome = false, storeName, storeSlug, storeLogo, initialUnreadCount = 0 } = Astro.props;
 const initialUnreadLabel = initialUnreadCount > 99 ? '99+' : String(initialUnreadCount);
 
 // Same SSR-not-async-fetch fix as the notif badge above, for the other
@@ -51,6 +58,16 @@ const hasStoreForAlert = Astro.props.hasStore || storeMode || sellerMode;
 const sellerIdForAlert = hasStoreForAlert ? getSellerSession(Astro.cookies) : null;
 const initialSellerAlert = sellerIdForAlert ? await sellerHasAnyAlert(sellerIdForAlert) : false;
 const logo = store.logo;
+
+// A store's header wears that store's own colour as a 2px line along its bottom
+// edge (header.css, `.site-header--store::after`) — the same identity the store
+// card's halo already uses, so a shopper meets one colour per store rather than
+// one per surface. Two sources, in the same order as the card: an uploaded logo
+// is sampled from its own pixels on the client (scripts/store-glow.ts overwrites
+// `--store-glow`), and a store with no upload takes its generated mark's hue
+// here, server-side — which is also why the line never appears a frame late.
+const storeHeader = storeMode && !!storeName && !!storeSlug;
+const headerGlow = storeHeader && !storeLogo ? storeMark(storeSlug!, storeName!).hue : undefined;
 
 
 const currentPath = Astro.url.pathname + (Astro.url.search ? Astro.url.search : '');
@@ -84,7 +101,11 @@ const strClear   = lang === 'he' ? 'נקה' : 'Clear';
 const strEmpty   = t.store.noProductsFound;
 ---
 
-<header class={`site-header${storeMode ? ' site-header--store' : ''}`} style="height:3.4rem;box-sizing:border-box">
+<header
+  class={`site-header${storeMode ? ' site-header--store' : ''}`}
+  style={`height:3.4rem;box-sizing:border-box${headerGlow ? `;--store-glow:${headerGlow}` : ''}`}
+  data-glow-scope={storeHeader ? '' : undefined}
+>
   {/* Height is pinned INLINE (not only in header.css) so it is fixed from the very
       first paint — before external CSS/fonts load — and can never grow-then-shrink. */}
   <div class={storeMode ? 'container' : 'container between flex'}>
@@ -93,10 +114,18 @@ const strEmpty   = t.store.noProductsFound;
     <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
       {storeMode && storeName && storeSlug
         ? <a href={`/${storeSlug}`} class="logo store-name-link" aria-label={storeName} data-astro-prefetch>
+            {/* 32px = the row's own fixed height (header.css pins `.container` to 2rem and
+                clips the column), so this is the largest a header logo can be without the
+                header either growing or cropping it. SQUARE, not the circle every other
+                surface uses: here the picture is read as the store's LOGO, and a circle
+                crops the corners off a mark that was almost certainly drawn square. */}
+            <StoreAvatar name={storeName} slug={storeSlug} profileImage={storeLogo} size={32} shape="square" sampleColor={true} class="store-header__logo" />
             <span class="store-name-text">{storeName}</span>
           </a>
         : <a href="/" class="logo" aria-label={store.name} data-astro-prefetch>
-            <span>{logo.text}</span>
+            {/* The wordmark inherits `.logo`'s font-size (1.3rem), so the header
+                row's fixed height still governs — see the layout rules above. */}
+            <BrandLogo />
           </a>
       }
     </div>
@@ -443,6 +472,13 @@ const strEmpty   = t.store.noProductsFound;
   import { cdnThumb } from '../lib/cdn.js';
   // Two historic local names in this file, one implementation.
   import { escapeHtml as escH, escapeHtml as escHtml } from '../lib/html-escape.js';
+  import { initStoreGlow } from '../scripts/store-glow.js';
+
+  // The store header's bottom rule takes the colour of the store's own logo. The
+  // pass is document-wide and self-guarded against a second call, so asking for
+  // it here costs nothing on a page whose store cards already asked — and a
+  // product page, which has no cards at all, is exactly why the header has to ask.
+  initStoreGlow();
 
   // ── The logo, when it points at the page you are already on ──────────
   // A full navigation to the current URL rebuilds the whole document: the header is torn down and
