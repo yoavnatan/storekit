@@ -68,7 +68,7 @@ function page({ path, size, tone, tagline, background }) {
     .word{direction:ltr;display:flex;align-items:baseline;font-family:'Heebo';font-weight:700;
           line-height:1;letter-spacing:-.03em;${textFill}}
     .word svg{height:.71em;width:auto;flex:none;display:block;margin-inline-end:-.015em}
-    .tag{font-family:'Heebo';font-weight:500;font-size:.3933em;line-height:1;direction:rtl;
+    .tag{font-family:'Heebo';font-weight:500;font-size:.39em;line-height:1;direction:rtl;
          color:${tone === 'white' ? '#fff' : BRAND_A}}
   </style>
   <div class="logo">

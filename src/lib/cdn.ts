@@ -178,6 +178,24 @@ export function cdnThumb(url: string, w = 84, h = 84): string {
 }
 
 /**
+ * A round icon cropped to exactly w×h with transparent corners — the browser-tab
+ * icon for a store that uploaded a logo (store-image.ts#storeIconUrl).
+ *
+ * `r_max` is the circle. `f_png` rather than `f_auto` is the part worth keeping:
+ * `f_auto` picks the format from the request's `Accept`, and for a photographic
+ * source it can legitimately pick JPEG — which has no alpha, so the corners the
+ * radius just cut would come back as black. A format that cannot express the
+ * transformation must not be reachable from it.
+ *
+ * Returns '' when the URL can't be transformed, so callers fall back to the
+ * generated mark rather than putting a full-size original in a 32px tab.
+ */
+export function cdnCircle(url: string, w: number, h: number): string {
+  const out = deliver(url, `c_fill,g_auto,r_max,f_png,q_auto,w_${w},h_${h}`, true);
+  return out === url ? '' : out;
+}
+
+/**
  * An image forced to EXACT pixel dimensions for OFF-SITE consumers (ad platforms,
  * social scrapers, structured-data crawlers). `f_jpg` is explicit rather than
  * `f_auto` because many of those fetch without an `Accept` header that `f_auto`
