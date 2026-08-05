@@ -30,6 +30,29 @@
  * instead, and it is the widest single glyph in the word (0.5525em against the
  * b's 0.485), so "low and wide" was a literal description of a 0.04em gap.
  *
+ * THIS IS A DELIBERATE LOGOTYPE OVERRIDE, NOT A METRIC ERROR — DO NOT "FIX" IT.
+ * Cap height IS the typographically correct height for a capital, and the mark
+ * was moved back to 0.71em for exactly one hour on 2026-08-05 to check. Heebo's
+ * own overshoot table, measured off the font, leaves no room to argue the point
+ * on typographic grounds:
+ *
+ *   flat tops    H, E, D    0% above the cap line
+ *   round tops   O, C, S    +1.41%
+ *   pointed      A, V, W    0%
+ *
+ * Only curves overshoot in this font, and this mark's top edge is flat across
+ * 60% of its width against Heebo's own D at 51% — it is FLATTER than the letter
+ * it replaces, so by the font's rules it earns nothing at all. The owner was
+ * shown that and chose the taller mark anyway, which is his call to make: this
+ * is a drawn symbol standing in for a letter, not a letter, and aligning such a
+ * mark to the tallest thing in the word is ordinary logotype practice. The rule
+ * being broken is a rule about TEXT.
+ *
+ * The other repair was tried too and is a dead end: deepening the octagon's cut
+ * to shorten that flat top (10.7 units matches Heebo's D exactly) turns the
+ * counter into a wedge, and the mark reads as a ▶ play triangle instead of a D.
+ * The cut stays at 8.2. Don't re-walk either of these.
+ *
  * The fix is height only. The ink is NOT wider or narrower than before — the
  * width/height ratio drops from 0.78 to 0.74 because the height moved, which is
  * the whole trick: nothing about the letter's mass changed, it simply stopped
