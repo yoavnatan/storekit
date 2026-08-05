@@ -300,12 +300,36 @@ nav a:hover { color: var(--color-text); }
      Margin-auto only centers the search bar within the *leftover gap* next
      to the logo/actions, which visibly disagrees with anything genuinely
      centered on the page (e.g. the homepage hero title) unless the logo and
-     actions cluster happen to be exactly the same width. Both outer tracks
-     are equal `1fr`s regardless of the logo/actions' own content width, so
-     the middle column always lands exactly on the row's true center. */
+     actions cluster happen to be exactly the same width. The two OUTER tracks
+     being the same size is what centres the middle one, so they are written as
+     matching `1fr`s and every other decision here protects that equality.
+
+     Each track's floor is the one thing in it that has no fallback:
+      1  the store name — `min-content`, which a nowrap name resolves to its own
+         width, clamped by the 260px cap on the item below. Short name or the
+         homepage wordmark: the floor is tiny and both tracks stay equal, so the
+         bar is dead centre. Long name on a narrow window: the floor holds the
+         name at its full 260px and CENTRING, not the name, is what gives way —
+         gradually, a few px at a time.
+      3  the icons — see the note on `.header-actions`.
+      2  the search itself, sized HERE rather than by the bar's own `width`
+         (the bar is `width:100%` below and follows). An `auto` track would take
+         that width as a floor as well as a ceiling, which is how a 645px window
+         with a long store name overflowed the row by 36px and hung the icons
+         off the viewport edge. As a range it wants min(480px, 38vw) and comes
+         down to 10rem when the name and the icons both need their own.
+
+     What this replaced (2026-08-05): under 1024px the row used to swap in an
+     asymmetric `minmax(6rem,auto) minmax(7rem,1fr) auto` to buy the name its
+     width — which pushed the bar 136px off the row's true centre on a 1000px
+     window, on EVERY page with a search bar including the homepage, whose logo
+     column is 69px wide and had nothing to protect. It also jumped the bar from
+     389px to 480px crossing 1024px. The floors above buy the same protection
+     without spending the symmetry, so nothing pays unless it has to. */
   .site-header .container:has(> .header-search) {
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: minmax(min-content, 1fr) minmax(10rem, min(480px, 38vw)) minmax(min-content, 1fr);
+    gap: 0.75rem;
     align-items: center;
     min-height: 2rem;
   }
@@ -313,15 +337,32 @@ nav a:hover { color: var(--color-text); }
     grid-column: 1;
     justify-self: start;
     min-width: 0;
+    /* A plain length, deliberately — this 260px is also what track 1's
+       `min-content` floor resolves to for a long name. `min(260px, 100%)` was
+       tried and reverted the same day: a percentage makes the contribution
+       indefinite, the floor collapses to nothing, and the name is back to being
+       the thing that gives way. */
     max-width: 260px;
   }
   .site-header .container:has(> .header-search) > .header-search {
     grid-column: 2;
     justify-self: center;
+    /* Follows its track (sized above) instead of carrying its own width — the
+       `width: min(480px, 38vw)` below still applies wherever this bar is NOT a
+       grid item, i.e. inside the mobile panel. */
+    width: 100%;
+    min-width: 0;
   }
   .site-header .container:has(> .header-search) > .header-actions {
     grid-column: 3;
     justify-self: end;
+    /* The icons are the one thing here with no fallback — there is no ellipsis
+       for a cart button. Chromium reports this cluster's min-content as ~36px
+       LESS than the icons actually occupy (they overflow the box rather than
+       shrink), so without this floor the track happily sizes below them and
+       they slide under the search bar — measured 2026-08-05 at 645px with a
+       long store name. `max-content` is the cluster's real width. */
+    min-width: max-content;
   }
   /* The only page where this pill and a search bar can coexist is /stores
      (a buyer returning from a store they were browsing) — with no 4th grid
@@ -331,32 +372,6 @@ nav a:hover { color: var(--color-text); }
      (checkout, messages, notifications...) never renders a .header-search. */
   .site-header .container:has(> .header-search) > .back-to-store-pill {
     display: none;
-  }
-  /* Centring is a luxury, and below ~1024px it is paid for by the store's name.
-     The 3-column `1fr auto 1fr` grid above sizes the search FIRST and splits
-     what is left between the two outer tracks, so on a narrow desktop window a
-     store with a long name watched it ellipsis down to a couple of characters —
-     the name is the one thing on that row that says which shop you are standing
-     in, so it cannot be the thing that gives way.
-
-     Under 1024px the row stops centring: the name takes its own width (still
-     capped at 260px by the rule above) and the search becomes the flexible
-     track, with a floor of its own so it never collapses to a slit either. */
-  @media (max-width: 1023px) {
-    .site-header .container:has(> .header-search) {
-      grid-template-columns: minmax(6rem, auto) minmax(7rem, 1fr) auto;
-      gap: 0.75rem;
-    }
-    .site-header .container:has(> .header-search) > .header-search {
-      justify-self: stretch;
-      width: 100%;
-      /* Still capped: without a ceiling the field simply ate every spare pixel —
-         measured 689px on a 1000px window, which is a search bar that looks like
-         a mistake. It stretches only until it reaches the width it has on a wide
-         screen. */
-      max-width: 480px;
-      min-width: 0;
-    }
   }
 
   .header-search {
