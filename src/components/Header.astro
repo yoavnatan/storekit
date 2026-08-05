@@ -28,7 +28,6 @@ import BrandLogo from './BrandLogo.astro';
 import { getLang, getT } from '../i18n/index.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { sellerHasAnyAlert } from '../lib/seller-alerts.js';
-import { storeMark } from '../lib/store-mark.js';
 
 interface Props {
   isLoggedIn?: boolean;
@@ -58,24 +57,13 @@ const hasStoreForAlert = Astro.props.hasStore || storeMode || sellerMode;
 const sellerIdForAlert = hasStoreForAlert ? getSellerSession(Astro.cookies) : null;
 const initialSellerAlert = sellerIdForAlert ? await sellerHasAnyAlert(sellerIdForAlert) : false;
 
-// A store's header wears that store's own colour as a 2px line along its bottom
-// edge (header.css, `.site-header--store::after`) — the same identity the store
-// card's halo already uses, so a shopper meets one colour per store rather than
-// one per surface. Two sources, in the same order as the card: an uploaded logo
-// is sampled from its own pixels on the client (scripts/store-glow.ts overwrites
-// `--store-glow`), and a store with no upload takes its generated mark's hue
-// here, server-side — which is also why the line never appears a frame late.
+// "This header is standing in a real store" — it carries that store's name and slug
+// rather than the platform's. It picks the logo/name lockup below; it no longer
+// picks a colour. The store-colour bar this used to feed was removed on 2026-08-05
+// and header.css carries the reasoning — the short version is that the colour is
+// read off the logo on the CLIENT, so the bar could not be right at first paint and
+// changed under the shopper on every store load.
 const storeHeader = storeMode && !!storeName && !!storeSlug;
-// Seeded exactly the way StoreCard seeds the halo, and for the same reason: a
-// store with no uploaded logo has no pixels to read, so its generated mark's hue
-// IS its colour; a store with a logo waits for the client to sample that logo,
-// and if the sampling refuses — greyscale, or unreadable for CORS — the line
-// falls back to the same light grey the halo falls back to (header.css). Giving
-// those stores an invented colour instead was wrong twice over: it claims a
-// colour the store doesn't have, and it disagrees with the halo on the same
-// store's card.
-const headerGlow = storeHeader && !storeLogo ? storeMark(storeSlug!, storeName!).hue : undefined;
-
 
 const currentPath = Astro.url.pathname + (Astro.url.search ? Astro.url.search : '');
 const loginUrl = `/seller/login?next=${encodeURIComponent(currentPath)}`;
@@ -108,10 +96,12 @@ const strClear   = lang === 'he' ? 'נקה' : 'Clear';
 const strEmpty   = t.store.noProductsFound;
 ---
 
+{/* This header hosts no store colour and sets no colour custom property — it carries
+    the shared 1px hairline like every other page. header.css says why, and
+    tests/header-store-line.test.ts fails if either comes back. */}
 <header
   class={`site-header${storeMode ? ' site-header--store' : ''}`}
-  style={`height:3.4rem;box-sizing:border-box${headerGlow ? `;--store-glow:${headerGlow}` : ''}`}
-  data-glow-host={storeHeader ? '' : undefined}
+  style="height:3.4rem;box-sizing:border-box"
 >
   {/* Height is pinned INLINE (not only in header.css) so it is fixed from the very
       first paint — before external CSS/fonts load — and can never grow-then-shrink. */}
@@ -131,7 +121,7 @@ const strEmpty   = t.store.noProductsFound;
                 Round, like every other store avatar on the site; a square plate was
                 tried on the store card the same day and reverted — StoreAvatar.astro
                 carries that reasoning. */}
-            <StoreAvatar name={storeName} slug={storeSlug} profileImage={storeLogo} size={32} sampleColor={true} class="store-header__logo" />
+            <StoreAvatar name={storeName} slug={storeSlug} profileImage={storeLogo} size={32} class="store-header__logo" />
             <span class="store-name-text">{storeName}</span>
           </a>
         : <a href="/" class="logo" aria-label={store.name} data-astro-prefetch>
@@ -141,54 +131,6 @@ const strEmpty   = t.store.noProductsFound;
           </a>
       }
     </div>
-    {/* Paints the store's colour rule BEFORE first paint, from the memo that
-        scripts/store-glow.ts already keeps in sessionStorage. (Comment ABOVE the
-        expression, never as its first child — see verify.mjs on the Astro 7
-        compile failure that reports nothing at all.)
-
-        Without this the bar's bottom edge is the neutral grey fallback and then
-        transitions to the store's own colour a third of a second later —
-        measured on a build 2026-08-05: settled at 750ms against a first paint at
-        413ms. It was the last thing left in the header that still changed after
-        the page had painted, and on a store already opened this session there is
-        no reason for it: the colour is one synchronous sessionStorage read away.
-        Same reasoning as the cart-badge seed further down, and the same failure
-        mode if the two rules ever drift — there the badge rolls one number to
-        another, here the rule changes colour under you.
-
-        Only when the store HAS an uploaded logo: without one the server already
-        painted the generated mark's hue into the inline style above, which is
-        the whole reason that line never arrives late. */}
-    {storeHeader && storeLogo && (
-      <script is:inline>
-        (function () {
-          var img = document.querySelector('header.site-header img[data-glow]');
-          var host = img && img.closest('[data-glow-host]');
-          if (!host) return;
-          // Private mode and a corrupt entry both throw here, and neither is worth a
-          // frame of anyone's time: answer "no memo" and let the CSS default paint.
-          function readMemo() {
-            try {
-              return JSON.parse(sessionStorage.getItem('sn_store_glow') || 'null');
-            } catch (err) {
-              return null;
-            }
-          }
-          var memo = readMemo();
-          if (!memo || typeof memo !== 'object') return;
-          var hex = memo[img.getAttribute('src')];
-          // MUST stay identical to validCached() in scripts/store-glow.ts —
-          // sessionStorage is writable by anything on this origin and this value
-          // goes straight into a style property. '' is a real answer ("no usable
-          // colour") and correctly sets nothing, leaving the CSS fallback.
-          // Guarded by tests/header-glow-seed.test.ts.
-          if (typeof hex === 'string' && /^#[0-9a-f]{6}$/.test(hex)) {
-            host.style.setProperty('--store-glow', hex);
-          }
-        })();
-      </script>
-    )}
-
     <!-- Back-to-store pill (persistent, subtle) — shown whenever we're not already inside a store's own header, so a buyer detoured away by a notification/toast/checkout always has a way back into the store they were shopping in -->
     {!(storeName && storeSlug) && !isHome && (
       <Fragment>
@@ -541,13 +483,13 @@ const strEmpty   = t.store.noProductsFound;
   import { cdnThumb } from '../lib/cdn.js';
   // Two historic local names in this file, one implementation.
   import { escapeHtml as escH, escapeHtml as escHtml } from '../lib/html-escape.js';
-  import { initStoreGlow } from '../scripts/store-glow.js';
-
-  // The store header's bottom rule takes the colour of the store's own logo. The
-  // pass is document-wide and self-guarded against a second call, so asking for
-  // it here costs nothing on a page whose store cards already asked — and a
-  // product page, which has no cards at all, is exactly why the header has to ask.
-  initStoreGlow();
+  // No initStoreGlow() here any more. The header asked for it because its bottom
+  // rule wore the store's colour, and a product page — no store cards, so nobody
+  // else asking — was the case that made the header ask. That rule is gone
+  // (header.css), so the only surface left with a `[data-glow-host]` is the store
+  // card, which asks for itself in StoreCard.astro. Keeping the call here would
+  // ship the sampler, and a document-wide image pass, onto every page on the site
+  // for nothing.
 
   // ── The logo, when it points at the page you are already on ──────────
   // A full navigation to the current URL rebuilds the whole document: the header is torn down and

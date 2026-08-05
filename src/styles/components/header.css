@@ -704,47 +704,37 @@ nav a:hover { color: var(--color-text); }
 .site-header .dz-logo { transform: translateY(0.113em); }
 .site-header .store-name-text { transform: translateY(0.095em); }
 
-/* A store's header wears that store's own colour as a 2px line along its bottom
-   edge — the answer to "every store's header looks identical" (CURRENT_TASK,
-   סשן ב׳). The colour arrives in `--store-glow`, exactly as it does for a store
-   card's halo: sampled from the uploaded logo on the client (scripts/store-glow.ts),
-   or, for a store with no upload, painted server-side from its generated mark.
-   `transparent` when neither has an answer — a black-and-white logo leaves the
-   plain border rather than an invented colour. The attribute that marks this
-   header as the colour's owner is `data-glow-host`, the same one the store card
-   and the spotlight carousel use — one mechanism, three surfaces.
-   bottom:-1px so the line COVERS the header's 1px border instead of stacking on
-   top of it, which would make a store's header 1px taller than the platform's.
+/* THE HEADER HAS ONE BOTTOM LINE — the 1px --color-border above, on every page,
+   store or not. There is no store-colour bar and it should not come back
+   (owner, 2026-08-05: "אם זה מסבך את העניינים אולי שווה לוותר על הפס הצבעוני הזה").
+   Guarded by tests/header-store-line.test.ts.
 
-   `[data-glow-host]` IS THE GATE, and it is not decoration (2026-08-05). The
-   class `.site-header--store` means "lay this header out the store way", and
-   thirteen pages that are not a store ask for that layout: the homepage,
-   /stores, /search, /checkout, 404, the seller's login/register/dashboard and
-   every admin screen. All of them were wearing this bar in its no-colour
-   fallback — a 2px rgb(140,147,161) line where the rest of the site draws a 1px
-   --color-border hairline, which is exactly what "the header's line doesn't
-   match the site's lines" looks like (owner, 2026-08-05). `data-glow-host` is
-   set only when the header actually carries a store's name and slug, so it is
-   the one attribute that already means what this rule needs to ask. */
-.site-header--store[data-glow-host]::after {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  bottom: -1px;
-  height: 2px;
-  /* Same fallback as the halo on a store card (utilities/utils.css): a store
-     whose logo has no usable colour gets the site's neutral, lightened — never
-     an invented hue, and never nothing, which would leave that one store as the
-     only header on the site with no line. */
-  background: var(--store-glow, color-mix(in srgb, var(--color-muted) 70%, #fff));
-  pointer-events: none;
-  /* The colour arrives twice on a store with an uploaded logo: the grey fallback
-     paints immediately, then scripts/store-glow.ts reads the logo's pixels on
-     idle and overwrites it. Snapping between two colours mid-scroll is what
-     reads as cheap; a quarter-second is long enough to register as the page
-     settling and short enough that nobody waits for it. */
-  transition: background-color 0.25s ease;
-}
+   It was a 2px line in the store's own colour, and the whole idea was sound — one
+   colour per store, the same one the store card's halo wears. What sank it is that
+   the colour is not knowable when the page paints. It is read off the uploaded
+   logo's pixels on the CLIENT, so the bar painted a grey stand-in first and became
+   the store's colour a third of a second later. The owner's report is the plain
+   description of that: "תמיד בטעינת חנות הוא שחור בהתחלה ורק אחר כך מתחלף לצבע,
+   זו לא התנהגות טובה." A bar changing colour under you reads as a fault, not as
+   the page settling, and this is the one element on the site that a shopper sees
+   on every single page.
+
+   Three attempts to keep it, each adding a mechanism rather than removing the
+   cause, are why it went instead of getting a fourth: it leaked onto thirteen
+   non-store pages in its grey fallback (the `.site-header--store` layout class is
+   asked for by the homepage, /stores, /search, /checkout, 404, seller
+   login/register/dashboard and every admin screen); a sessionStorage pre-paint
+   seed fixed only the second visit onwards; and a `data-glow-pending` attribute
+   held the line back until the colour was known, which traded a colour change for
+   a line appearing. The store's colour still has a home — the halo on its card
+   (utilities/utils.css), where it is decoration on a surface the shopper is
+   looking AT rather than chrome that follows them around.
+
+   Design-line note, since this is the fourth time this bar has been reasoned
+   about: the header is a BAR, and this project's rule is that a bar earns no
+   decoration a value difference has not already made necessary. Every other line
+   on this site is 1px --color-border. The header being the one exception was the
+   original complaint. */
 
 /* Inner text span — ellipsis when name is too long. */
 .store-name-text {
