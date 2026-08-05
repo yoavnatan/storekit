@@ -154,17 +154,23 @@ describe('the identity lookup, which now happens inside the write', () => {
 describe('the ceiling on the table', () => {
   it('never lets the table exceed MAX_ENTRIES, however many arrive', async () => {
     // This is the decision the move had to make: `slice(-500)` on a file capped the STORAGE, while
-    // a `LIMIT` on the read would cap only what the admin sees. `POST /api/log-client-error` is
-    // unauthenticated and unrated, so the storage is what has to be bounded.
+    // a `LIMIT` on the read would cap only what the admin sees. The storage is what has to be
+    // bounded, because `POST /api/log-client-error` is unauthenticated.
+    //
+    // `server`, not `client`, and the swap is the point rather than a detail: client entries now
+    // also pass a per-minute rate cap (`tests/error-log-client-rate.test.ts`), so writing 525 of
+    // them would be measuring that cap instead of this one. Two layers, deliberately independent —
+    // the rate cap bounds what a stranger can spend, this bounds what the table can ever hold, and
+    // server entries are subject only to the second.
     for (let i = 0; i < MAX_ENTRIES + 25; i++) {
-      await logError({ source: 'client', message: `e${i}` });
+      await logError({ source: 'server', message: `e${i}` });
     }
     expect(await countRows()).toBe(MAX_ENTRIES);
   });
 
   it('drops the OLDEST first, so the newest arrival is always kept', async () => {
     for (let i = 0; i < MAX_ENTRIES + 5; i++) {
-      await logError({ source: 'client', message: `e${i}` });
+      await logError({ source: 'server', message: `e${i}` });
     }
     const entries = await getRecentErrors(MAX_ENTRIES);
     expect(entries[0]!.message).toBe(`e${MAX_ENTRIES + 4}`);

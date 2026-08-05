@@ -48,6 +48,55 @@ export const MAX_ENTRIES = 500;
 const MAX_CONCURRENT_WRITES = 2;
 
 /**
+ * A ceiling on how many CLIENT-sourced entries may be written per minute, per process.
+ *
+ * **Why client entries specifically.** `MAX_CONCURRENT_WRITES` bounds how much of the pool this
+ * module holds at one instant; it does not bound the RATE, so a caller sending reports back-to-back
+ * keeps two connections busy indefinitely and writes forever. For server entries that is the
+ * correct trade — a storm of 500s is exactly what you want recorded, and only our own code can
+ * produce one. `POST /api/log-client-error` is different in kind: it is unauthenticated and
+ * unrated, the one write path in this application that any stranger may call for free, and each
+ * call costs up to three identity lookups plus an insert-and-prune. The reporter in the browser
+ * caps itself at five per page load, which is a real defence against a runaway loop in our own
+ * JavaScript and no defence at all against someone who is not using a browser.
+ *
+ * **Why sixty, and why dropping is not a loss.** `MAX_ENTRIES` is 500, so at this rate a genuine
+ * incident — a deploy that breaks the same script for every visitor — still fills the entire
+ * visible log in under nine minutes. Past that point the 501st report only pushes out the 500th;
+ * it buys no information and costs a write. What it buys an attacker is table churn, so the cap
+ * is what makes the two cases diverge.
+ *
+ * A fixed window, not a rolling one, and per process rather than in Postgres: this exists to keep
+ * cost off the database, so spending a database round trip to decide whether to spend a database
+ * round trip would defeat it. A second instance getting its own budget is the correct behaviour —
+ * it is the pool of that instance being protected.
+ */
+const MAX_CLIENT_WRITES_PER_WINDOW = 60;
+const CLIENT_WINDOW_MS = 60_000;
+
+let clientWindowStart = 0;
+let clientWritesInWindow = 0;
+
+/** Whether a client-sourced entry may be written now. Advances the window as a side effect. */
+function clientBudgetAllows(): boolean {
+  const now = Date.now();
+  if (now - clientWindowStart >= CLIENT_WINDOW_MS) {
+    clientWindowStart = now;
+    clientWritesInWindow = 0;
+  }
+  if (clientWritesInWindow >= MAX_CLIENT_WRITES_PER_WINDOW) return false;
+  clientWritesInWindow++;
+  return true;
+}
+
+/** Test seam — the window is module state, and a test asserting the cap must not inherit the
+ *  counter left behind by the one before it. */
+export function resetClientWriteBudget(): void {
+  clientWindowStart = 0;
+  clientWritesInWindow = 0;
+}
+
+/**
  * Length ceilings, applied here rather than trusted from the call site.
  *
  * `message` had no limit in the code and has none in the column — and in `middleware.ts` it is
@@ -179,6 +228,13 @@ export async function logError(
   if (inFlight >= MAX_CONCURRENT_WRITES) {
     // Dropped, not queued — but not lost: stderr is where an external monitor reads from.
     console.error('[error-log] dropped (busy):', entry.message);
+    return;
+  }
+  // Checked before the identity lookup below, not after: those are the three queries the cap
+  // exists to prevent a stranger from buying, so paying them to decide whether to skip the fourth
+  // would leave most of the cost in place.
+  if (normalizeSource(entry.source) === 'client' && !clientBudgetAllows()) {
+    console.error('[error-log] dropped (client rate cap):', entry.message);
     return;
   }
   inFlight++;
