@@ -98,7 +98,12 @@ describe('saved-stores flyout', () => {
     // open is the row itself staying lit, the same tell `.user-btn[aria-expanded="true"]` uses.
     expect(rowTag, 'the saved-stores row').not.toBe('');
     expect(rowTag, 'a chevron came back').not.toMatch(/polyline/);
-    expect(rowTag).toContain('aria-expanded:');
+    // In header.css, NOT as an `aria-expanded:` utility here — `.user-dropdown__item` sets
+    // `background: none` on the same element from an unlayered sheet, which beats @layer
+    // utilities, so written in the markup the row never actually lit (owner, 2026-08-05; the
+    // class is guarded tree-wide by tests/unlayered-css-beats-utility.test.ts).
+    const css = readFileSync(join(process.cwd(), 'src/styles/components/header.css'), 'utf8');
+    expect(css).toMatch(/\.user-dropdown__item\[aria-expanded="true"\]\s*\{[^}]*background:/);
   });
 
   it('wears the STAR — the heart in this header means the product wishlist', () => {

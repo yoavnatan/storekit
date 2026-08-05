@@ -259,6 +259,17 @@ nav a:hover { color: var(--color-text); }
 
 .user-dropdown__item:hover { background: var(--color-bg); }
 
+/* The saved-stores row stays lit while its flyout is open — that row is the only one in this menu
+   that opens something instead of navigating, and since its chevron was removed (there is no side
+   of the row it can point from: the row's trailing edge is the LEFT in Hebrew while the panel
+   opens to the RIGHT) this is the only thing that says which row the panel belongs to.
+   HAS to live here, not as an `aria-expanded:` utility in the markup, and this is the worked
+   example of the rule: `.user-dropdown__item` above sets `background: none` on the SAME element
+   and header.css is imported UNLAYERED (main.css), so unlayered legacy beats @layer utilities
+   regardless of source order. Written as a utility it silently did nothing at all — the row only
+   ever looked lit because the pointer was still resting on it (owner, 2026-08-05). */
+.user-dropdown__item[aria-expanded="true"] { background: var(--color-bg); }
+
 .user-dropdown form { margin: 0; }
 
 /* The rule above the logout row. Was written as `a + form` adjacency, which is a divider that

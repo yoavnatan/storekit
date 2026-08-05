@@ -33,3 +33,19 @@
   border-color: var(--color-primary);
   outline: none;
 }
+
+/* The category picker's trigger is an `.input` that opens a menu instead of taking typing
+   (PromotionsPanel.astro, BoostFormFields.astro), so its hover and open states are the field
+   family's business and live here.
+   They live here because they CANNOT live in the markup, and this is the second worked example of
+   that rule in one day: the trigger carried `hover:border-[var(--color-muted)]` and
+   `aria-expanded:border-[var(--color-accent)]`, and `.input` above sets the `border` SHORTHAND on
+   the same element from an UNLAYERED file — which beats @layer utilities however specific they
+   are. Measured 2026-08-05: an open picker's border computed to `--color-border`, the resting
+   value, so both utilities had never done anything. main.css's own header records the same trap
+   catching this exact component from the other direction in 2026-07-15.
+   Open takes `--color-primary`, not the accent the dead utility named: the whole point of the
+   note above is that ONE line colour means "this control is live", and a second brand colour for
+   the same job is how the six treatments happened. */
+.category-picker__trigger:hover { border-color: var(--color-muted); }
+.category-picker__trigger[aria-expanded="true"] { border-color: var(--color-primary); }

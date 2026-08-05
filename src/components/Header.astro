@@ -440,7 +440,7 @@ const strEmpty   = t.store.noProductsFound;
                 Filled lazily — see the script below; nothing about it costs an SSR read. */}
             <button
               type="button"
-              class="user-dropdown__item aria-expanded:[background:var(--color-bg)]"
+              class="user-dropdown__item"
               id="saved-stores-toggle"
               role="menuitem"
               aria-expanded="false"
@@ -463,7 +463,9 @@ const strEmpty   = t.store.noProductsFound;
                   row's trailing edge is the LEFT in Hebrew while the panel opens to the RIGHT, so
                   wherever it pointed it pointed back across its own label (owner, 2026-08-05).
                   The panel appearing beside the row is the feedback, and the row itself stays lit
-                  while it is open — `aria-expanded:` above, the same tell `.user-btn` uses. */}
+                  while it is open — `.user-dropdown__item[aria-expanded="true"]` in header.css,
+                  the same tell `.user-btn` uses. It has to live in that file rather than as an
+                  `aria-expanded:` utility here; the rule's own comment says why. */}
             </button>
             {/* A panel of its own now, so it wears the site's dropdown finish (surface, border,
                 --shadow-card, 0.3rem container — AI_INSTRUCTIONS → Dropdown design system) and
