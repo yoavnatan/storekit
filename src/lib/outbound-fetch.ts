@@ -19,6 +19,25 @@
  * the only one who knows whether the request is idempotent (re-POSTing an email send is a second
  * email). No error swallowing: a timeout raises, so a caller that wants "best effort" writes the
  * `catch` and says so, and a caller that does not gets a real failure it can log.
+ *
+ * **The self-healing plan, when retries do arrive** (relocated here from AI_INSTRUCTIONS.md
+ * 2026-08-05 — this is the module a retry policy would be built into, so this is where the thinking
+ * belongs; noted 2026-07-15, still unbuilt).
+ *
+ * The shape: auto-retry with backoff for genuinely transient, idempotent failures, and
+ * auto-resolve the log entries they produce, so the admin Alerts tab surfaces only what needs a
+ * human. That is the same zero-touch principle the rest of the platform is built on.
+ *
+ * The old reason to wait was JSON write collisions, and a real database made that moot. The
+ * trigger now is having a real external call worth retrying against — the split-payment webhook,
+ * Cloudinary, the email provider, Sendit — plus deadlock and dropped-connection retry on Postgres
+ * itself, which is a different mechanism and belongs in `db.ts` beside `connectWithWakeRetry`.
+ *
+ * **The trap, and it is the reason this is written down rather than left to judgement: never retry
+ * a non-idempotent operation blindly.** A checkout retried because the response was slow is a
+ * second charge and a second stock decrement. "The request appeared to fail" and "the request did
+ * not happen" are not the same claim, and only the caller can tell them apart — which is why the
+ * policy cannot live in this function no matter how convenient that would be.
  */
 
 /**

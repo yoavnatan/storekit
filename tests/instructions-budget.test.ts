@@ -37,9 +37,16 @@ import { fileURLToPath } from 'node:url';
  * ads gender/age_group trap → `lib/audience-infer.ts`. It also *added* the one-command testing rule,
  * paid for out of the same pass. 40.8k → 40.5k.
  *
+ * The 2026-08-05 pass paid for the EDIT PERMISSION banner, which had been added without paying and
+ * left this test red on main: the banner tightened to its rule, the "production monitoring — not yet
+ * built" waypoint replaced by the fact that it now is (with pointers), and the self-healing-retry
+ * plan → `lib/outbound-fetch.ts`, which is the module a retry policy would be built into. The trap
+ * in that last one — never retry a non-idempotent operation, a retried checkout is a second charge —
+ * is exactly the kind of thing worth more beside the code than skimmed at session start. 40.8k → 40.2k.
+ *
  * When this fails, lowering CEILING to the new number is the wrong move unless the number went down.
  */
-const CEILING = 40_520;
+const CEILING = 40_221;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
 
