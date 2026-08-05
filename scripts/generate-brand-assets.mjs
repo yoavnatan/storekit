@@ -46,14 +46,14 @@ function readMarkPath() {
 /**
  * One lockup, as HTML. Every number here is the same one the component uses:
  * tracking −0.03em on the name, −0.015em between the D and the e (Heebo's own
- * "De" ink gap), and a tagline solved to land at exactly the name's width —
- * Rubik 600 at 0.3616em with +0.0356em of tracking, minus the trailing letter
- * space CSS adds after the last character — which in a right-to-left line is on
- * the LEFT, so the margin that cancels it is the inline-END one.
+ * "De" ink gap), and a tagline that lands at exactly the name's width because of
+ * its SIZE — Heebo 500 at 0.39em, at the font's own spacing. It used to be Rubik
+ * stretched with tracking to the same width; see BrandLogo.astro for why both
+ * halves of that changed.
  */
 function page({ path, size, tone, tagline, background }) {
   const heeboLatin = b64(`${FONTS}/heebo/files/heebo-latin-700-normal.woff2`);
-  const rubikHebrew = b64(`${FONTS}/rubik/files/rubik-hebrew-600-normal.woff2`);
+  const heeboHebrew = b64(`${FONTS}/heebo/files/heebo-hebrew-500-normal.woff2`);
   const ink = tone === 'white' ? '#fff' : `url(#g)`;
   const textFill =
     tone === 'white'
@@ -61,15 +61,15 @@ function page({ path, size, tone, tagline, background }) {
       : `background-image:linear-gradient(135deg,${BRAND_A},${BRAND_B});-webkit-background-clip:text;background-clip:text;color:transparent`;
   return `<!doctype html><meta charset="utf-8"><style>
     @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboLatin}) format('woff2');font-weight:700;}
-    @font-face{font-family:'Rubik';src:url(data:font/woff2;base64,${rubikHebrew}) format('woff2');font-weight:600;}
+    @font-face{font-family:'Heebo';src:url(data:font/woff2;base64,${heeboHebrew}) format('woff2');font-weight:500;}
     html,body{margin:0;height:100%}
     body{background:${background};display:flex;align-items:center;justify-content:center}
     .logo{display:inline-flex;flex-direction:column;align-items:flex-start;gap:.05em;font-size:${size}px}
     .word{direction:ltr;display:flex;align-items:baseline;font-family:'Heebo';font-weight:700;
           line-height:1;letter-spacing:-.03em;${textFill}}
     .word svg{height:.71em;width:auto;flex:none;display:block;margin-inline-end:-.015em}
-    .tag{font-family:'Rubik';font-weight:600;font-size:.3616em;line-height:1;direction:rtl;
-         letter-spacing:.0356em;margin-inline-end:-.0356em;color:${tone === 'white' ? '#fff' : BRAND_A}}
+    .tag{font-family:'Heebo';font-weight:500;font-size:.3933em;line-height:1;direction:rtl;
+         color:${tone === 'white' ? '#fff' : BRAND_A}}
   </style>
   <div class="logo">
     <div class="word">
@@ -107,7 +107,7 @@ async function shot(html, { width, height, scale = 1, file, transparent = false,
   // `fonts.status` alone is not enough — it reads "loaded" before anything has
   // been asked for. Ask about the two faces by name instead.
   await p.waitForFunction(
-    'document.fonts.check("700 34px Heebo") && document.fonts.check("600 12px Rubik", "ק")',
+    'document.fonts.check("700 34px Heebo") && document.fonts.check("500 12px Heebo", "ק")',
   );
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(

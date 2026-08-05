@@ -3,13 +3,17 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   OG_IMAGE_FORMAT,
+  STORE_ICON_FORMATS,
   STORE_IMAGE_FORMATS,
-  isStoreImageFormat,
+  STORE_RENDER_FORMATS,
+  isStoreRenderFormat,
   parseStoreImageFile,
   resolveStoreImage,
   storeAdCreative,
+  storeIconUrl,
   storeImageUrl,
   storeMarkPath,
+  type StoreIconFormat,
   type StoreImageFormat,
 } from '../src/lib/store-image.js';
 import { MARK_GRID_SIZE, MARK_HUES, channels, shade, storeMark } from '../src/lib/store-mark.js';
@@ -212,11 +216,56 @@ describe('mark URL round-trip', () => {
     expect(parseStoreImageFile('square.svg')).toBeNull();
     expect(parseStoreImageFile('../../etc/passwd')).toBeNull();
     expect(parseStoreImageFile('')).toBeNull();
-    expect(isStoreImageFormat('banner')).toBe(false);
+    expect(isStoreRenderFormat('banner')).toBe(false);
   });
 
   it('uses a ratio social platforms crop cleanly for og:image', () => {
     const { width, height } = STORE_IMAGE_FORMATS[OG_IMAGE_FORMAT];
     expect(width / height).toBeCloseTo(1.91, 1);
+  });
+});
+
+describe('store favicon', () => {
+  it('never hands an ad platform a browser icon', () => {
+    // The whole reason STORE_ICON_FORMATS is a second map: storeAdCreative submits
+    // EVERY entry of STORE_IMAGE_FORMATS as a creative, so a favicon merged in
+    // there would be offered to Google and Meta as an image to advertise with.
+    const creative = storeAdCreative({ slug: 'bella-shop' }, 'https://dezabin.co.il');
+    for (const format of Object.keys(STORE_ICON_FORMATS)) {
+      expect(Object.keys(creative)).not.toContain(format);
+    }
+  });
+
+  it('still renders, and round-trips, through the one mark endpoint', () => {
+    for (const format of Object.keys(STORE_ICON_FORMATS) as StoreIconFormat[]) {
+      const file = storeMarkPath('bella-shop', format).split('/').pop()!;
+      expect(parseStoreImageFile(file)).toBe(format);
+      expect(STORE_RENDER_FORMATS[format]).toEqual(STORE_ICON_FORMATS[format]);
+    }
+  });
+
+  it('is square — a tab strip crops anything else', () => {
+    for (const { width, height } of Object.values(STORE_ICON_FORMATS)) expect(width).toBe(height);
+  });
+
+  it('keeps the seller’s transparency: f_auto, never the ad path’s f_jpg', () => {
+    // A logo uploaded with a transparent background arrives as a black square in
+    // the tab if it is delivered as JPEG, which is exactly what cdnFill forces.
+    const icon = storeIconUrl({ slug: 'bella-shop', profileImage: CLOUDINARY }, 'favicon');
+    expect(icon).toContain('f_auto');
+    expect(icon).not.toContain('f_jpg');
+    expect(icon).toContain('w_64,h_64');
+  });
+
+  it('falls back to the store’s own mark rather than a full-size original', () => {
+    expect(storeIconUrl({ slug: 'bella-shop' }, 'favicon')).toBe('/api/store-image/bella-shop/favicon.png');
+    expect(storeIconUrl({ slug: 'bella-shop', profileImage: '  ' }, 'touch')).toBe(
+      '/api/store-image/bella-shop/touch.png',
+    );
+    // An untransformable source is refused for the same reason the ad path refuses
+    // it: a 2MB original in a 32px tab is a cost with no benefit.
+    const unusable = 'https://example.com/logo.png';
+    const icon = storeIconUrl({ slug: 'bella-shop', profileImage: unusable }, 'favicon');
+    expect(icon === unusable).toBe(false);
   });
 });

@@ -700,8 +700,19 @@ nav a:hover { color: var(--color-text); }
    header as the colour's owner is `data-glow-host`, the same one the store card
    and the spotlight carousel use — one mechanism, three surfaces.
    bottom:-1px so the line COVERS the header's 1px border instead of stacking on
-   top of it, which would make a store's header 1px taller than the platform's. */
-.site-header--store::after {
+   top of it, which would make a store's header 1px taller than the platform's.
+
+   `[data-glow-host]` IS THE GATE, and it is not decoration (2026-08-05). The
+   class `.site-header--store` means "lay this header out the store way", and
+   thirteen pages that are not a store ask for that layout: the homepage,
+   /stores, /search, /checkout, 404, the seller's login/register/dashboard and
+   every admin screen. All of them were wearing this bar in its no-colour
+   fallback — a 2px rgb(140,147,161) line where the rest of the site draws a 1px
+   --color-border hairline, which is exactly what "the header's line doesn't
+   match the site's lines" looks like (owner, 2026-08-05). `data-glow-host` is
+   set only when the header actually carries a store's name and slug, so it is
+   the one attribute that already means what this rule needs to ask. */
+.site-header--store[data-glow-host]::after {
   content: '';
   position: absolute;
   inset-inline: 0;

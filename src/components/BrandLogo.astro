@@ -114,20 +114,36 @@ const toneClass =
     </svg><span class="text-[1em] leading-none" aria-hidden="true">ezabin</span>
   </span>
   {tagline && (
-    /* Solved, not chosen (2026-08-05). Rubik 600 at 0.356em with +0.060em of
-       tracking is the pair that makes this line land at EXACTLY the width of the
-       name above it — the browser was asked for both natural widths and the
-       tracking fell out of the equation. CSS adds a letter-space after the LAST
-       character too, and in a right-to-left line that lands on the left edge —
-       so the margin that removes it is the INLINE-END one. Putting it on the
-       start side instead just shifted the whole line sideways, which is the
-       "the Hebrew doesn't line up with the name" everyone can see. Rubik and not Heebo because
-       the interface font reads as interface here; this one has to read as a
-       logo, and its slightly rounded geometry answers the D's cut corners
-       instead of competing with them. */
+    /* HEEBO, AT ITS NATURAL SPACING — both halves of that are the fix (2026-08-05).
+     *
+     * It was Rubik 600 stretched with +0.0356em of tracking to reach the name's
+     * width. Two problems, one cause. Hebrew is drawn to sit close: tracking it
+     * open does not enlarge it, it loosens it, and a loosened Hebrew word under a
+     * tight Latin wordmark is what reads as amateur (owner: "לא מספיק מקצועי ולא
+     * מספיק מתאים לאתר"). And a second family for one line on one page fails the
+     * first design-line test — is it already in the system — while costing an
+     * eleventh font preload on EVERY page and a second face that `font-display:
+     * optional` can refuse at first paint. Rubik and Heebo are siblings anyway
+     * (Heebo is Rubik's Latin with Hebrew drawn for it), so the family was buying
+     * almost no difference for all of that.
+     *
+     * The width match is kept — it is what makes this a lockup rather than two
+     * stacked lines — but it is now solved with SIZE at zero tracking instead of
+     * with tracking at a fixed size. The font's own metrics put it at 0.39em (the
+     * wordmark's ink is 3.308em wide, Heebo 500's own "מתחם חנויות דיגיטלי" is
+     * 8.481em); rasterising the real page at 4x and scanning ink columns left the
+     * line 1.25px short on the left at a 48px lockup, so the shipped number is
+     * 0.3933em — measured, not derived, exactly like every other number in this
+     * file. At that value the two edges agree to 0.00px on the left and 0.25px on
+     * the right (one device pixel at 4x, i.e. the floor of the measurement) at
+     * 375, 768 and 1440. Weight 500, not 600: this is a size LARGER than before,
+     * so the lighter weight is what keeps it subordinate to the 700 name above.
+     *
+     * No negative margin any more. That existed only to cancel the letter-space
+     * CSS adds after the last character; at zero tracking there is none. */
     <span
       dir="rtl"
-      class="font-[Rubik] font-semibold text-[0.3616em] leading-none tracking-[0.0356em] me-[-0.0356em]"
+      class="dz-logo__tag font-medium text-[0.3933em] leading-none"
       aria-hidden="true"
     >{TAGLINE}</span>
   )}
