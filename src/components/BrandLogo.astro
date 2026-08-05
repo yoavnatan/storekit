@@ -1,0 +1,93 @@
+---
+/**
+ * The platform's wordmark: a drawn `D` followed by "ezabin" in the site's own
+ * font. One component, so the logo can never drift between the header, the auth
+ * pages and whatever comes next.
+ *
+ * WHY THE D IS A DRAWING AND NOT A LETTER (CURRENT_TASK סשן ב׳, 2026-08-05).
+ * It is the right half of an octagon: a straight back, and a bowl made of three
+ * cut edges. Everything about it is matched to Heebo 700 by MEASUREMENT rather
+ * than by eye — the numbers below were read off the font itself by rendering it
+ * to a canvas and scanning pixels, because two earlier attempts at "looks about
+ * right" were both visibly wrong (too light, then too narrow):
+ *
+ *   cap height        28 units in this viewBox
+ *   back (vertical)   5.92  = 0.2113 of cap — Heebo 700's own stem weight
+ *   bowl's right side 5.92  — a straight edge beside a straight edge; a lighter
+ *                             one reads as a mistake rather than as contrast
+ *   diagonals         5.35  — a diagonal looks lighter than its measured width
+ *   horizontals       4.73  = 0.1690 of cap — a horizontal looks heavier
+ *   letter width      21.5  = 0.7676 of cap, exactly Heebo's D
+ *   counter           0.52 wide/tall, exactly Heebo's D
+ *
+ * The `-0.015em` between the D and the `e` is measured the same way: Heebo's own
+ * "De" leaves 0.045em of ink gap, and this SVG carries 0.5 units of padding
+ * inside its viewBox, so ZERO margin is already too wide. A mark spaced like a
+ * symbol instead of like a letter is what made earlier versions read as "an icon
+ * glued next to a word".
+ *
+ * COLOUR. On a light surface the letters carry the site's brand gradient — the
+ * one `.btn` uses, unchanged — as ONE ramp across the whole wordmark rather than
+ * per letter. The D covers the first 16.7% of the wordmark's width, so it gets
+ * exactly that slice (#2a3c40 → #2d4045) and the text continues from there.
+ * Giving the D its own full gradient makes it end light and the `e` restart
+ * dark, which reads as two pieces stuck together.
+ *
+ * Height is `0.71em`, not `1cap`: Heebo's cap ratio is a known, measured
+ * constant here, and hard-coding it means the mark can't shift if the font
+ * fails to load and a fallback with different metrics paints for a frame.
+ */
+interface Props {
+  /** `brand` = the site gradient inside the letters (light surfaces).
+   *  `white` = solid white, for a brand-coloured surface. */
+  tone?: 'brand' | 'white';
+  /** Any CSS length. Everything else is in `em`, so this is the only size knob;
+   *  omit it to inherit (the header sizes the logo through `.logo`). */
+  size?: string;
+  class?: string;
+}
+
+const { tone = 'brand', size, class: className = '' } = Astro.props;
+
+const toneClass =
+  tone === 'white'
+    ? 'text-white'
+    : 'bg-[linear-gradient(135deg,#2a3c40,#3a5260)] bg-clip-text text-transparent';
+---
+
+<span
+  dir="ltr"
+  class:list={[
+    'inline-flex items-baseline font-bold leading-none whitespace-nowrap tracking-[-0.03em]',
+    toneClass,
+    className,
+  ]}
+  style={size ? `font-size:${size}` : undefined}
+>
+  {/* `max-w-none` is not decoration: reset.css sets `svg { max-width:100% }`,
+      which clamps a fixed-size inline SVG inside a narrow box — the same trap
+      that shrank icons in the products table. `shrink-0` does not cover it,
+      because max-width is not flex shrinking. */}
+  <svg
+    class="h-[0.71em] w-auto max-w-none shrink-0 block me-[-0.015em]"
+    viewBox="10.75 8 23 28"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {tone === 'brand' && (
+      <defs>
+        {/* The D's slice of the shared ramp — see the header comment. */}
+        <linearGradient id="dz-d-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#2a3c40" />
+          <stop offset="1" stop-color="#2d4045" />
+        </linearGradient>
+      </defs>
+    )}
+    <path
+      fill={tone === 'white' ? '#fff' : 'url(#dz-d-grad)'}
+      fill-rule="evenodd"
+      d="M11.25 8 L24.55 8 L32.75 16.2 L32.75 27.8 L24.55 36 L11.25 36 Z
+         M17.17 12.73 L21.714 12.73 L26.83 17.846 L26.83 26.154 L21.714 31.27 L17.17 31.27 Z"
+    />
+  </svg><span class="text-[1em] leading-none">ezabin</span>
+</span>

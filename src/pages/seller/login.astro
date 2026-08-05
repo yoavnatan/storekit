@@ -2,9 +2,9 @@
 export const prerender = false;
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import CsrfField from '../../components/CsrfField.astro';
+import BrandLogo from '../../components/BrandLogo.astro';
 import { loginSeller, setSellerSession, getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT } from '../../i18n/index.js';
-import { store } from '../../config/store.config';
 import { safeRedirectPath } from '../../lib/safe-redirect.js';
 import { isGoogleAuthEnabled } from '../../lib/google-oauth.js';
 import { clientIp } from '../../lib/client-ip.js';
@@ -61,7 +61,7 @@ if (Astro.request.method === 'POST') {
   <section class="section container auth-wrap">
     <div class="auth-card">
       <header class="auth-head">
-        <span class="auth-brand">{store.logo.text}</span>
+        <BrandLogo class="mb-[0.9rem]" size="1.45rem" />
         <h1>{t.auth.sellerLogin}</h1>
         <p class="auth-subtitle">{t.auth.loginSubtitle}</p>
       </header>

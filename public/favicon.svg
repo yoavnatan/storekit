@@ -1,5 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#1f6feb"/>
-  <path d="M9 11h14l-1.4 9.2a2 2 0 0 1-2 1.8h-7.2a2 2 0 0 1-2-1.8L9 11Z" fill="#fff"/>
-  <path d="M12 11a4 4 0 0 1 8 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44">
+  <!-- The wordmark's D on a brand tile. The path is byte-identical to the one in
+       BrandLogo.astro, so the tab icon and the header logo are one drawing and
+       cannot drift apart. The tile carries the site's own button gradient; at
+       16px that ramp is a few pixels wide and reads as a solid, which is why the
+       letter is plain white rather than gradient-filled. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a3c40"/>
+      <stop offset="1" stop-color="#3a5260"/>
+    </linearGradient>
+  </defs>
+  <rect width="44" height="44" rx="9" fill="url(#tile)"/>
+  <path fill="#fff" fill-rule="evenodd"
+        d="M11.25 8 L24.55 8 L32.75 16.2 L32.75 27.8 L24.55 36 L11.25 36 Z
+           M17.17 12.73 L21.714 12.73 L26.83 17.846 L26.83 26.154 L21.714 31.27 L17.17 31.27 Z"/>
 </svg>
