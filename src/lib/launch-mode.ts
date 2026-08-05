@@ -17,8 +17,13 @@
  *   < LAUNCH_MODE_MAX_STORES  → the Discover tab is one shelf of real stores
  *                               padded with placeholders (category shelves and
  *                               the spotlight are skipped — too thin to repeat).
- *   < SHELF_INVITE_MAX_STORES → normal site, one placeholder closes the
- *                               discovery shelf and the directory grid.
+ *   < SHELF_INVITE_MAX_STORES → normal site. One placeholder closes the /stores
+ *                               directory GRID, which wraps, so it is on screen.
+ *                               The homepage's own shelves get nothing: they
+ *                               scroll, so a tail card is both unreachable and a
+ *                               seller pitch inside a row the shopper is browsing
+ *                               (removed 2026-08-05). The homepage recruits in
+ *                               this band through its seller CTA section instead.
  *
  * Pure module — no fs, no Astro. Covered by tests/launch-mode.test.ts.
  */

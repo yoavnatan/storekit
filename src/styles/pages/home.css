@@ -209,6 +209,7 @@
   margin-bottom: 1rem;
 }
 
+
 .home-section-title {
   font-size: 1rem;
   font-weight: 700;
@@ -335,6 +336,20 @@
 
 /* ── Per-store section ─────────────────────────────────────────────── */
 
+/* NO inline padding, and the reason is worth keeping: it is what makes this section
+   start and end on the same line as every shelf above and below it.
+   The store-colour avatar halo was extended to this section's header on 2026-08-05
+   and taken back off the same day, because it cannot be had here at any acceptable
+   price. A slide is exactly the width of the track and the track is a scroll
+   container, so a glow drawn at the slide's edge is CUT. Both ways of paying for it
+   failed against something the owner could see: widening the track (padding +
+   negative margin, the trick `.home-shelf` uses for its hover shadows) widens what
+   the track REVEALS, so 16px of the next store's logo, name and button appeared down
+   both edges; and buying the room from the inside moved the products off the page's
+   line, which is the alignment this whole file has been corrected for twice.
+   The halo lives on the store CARD, where a card in a wrapping row has room around
+   it. Here the header still lights its title and its button on hover, and the whole
+   header is a link. Don't re-add the wrap without a third answer to the clipping. */
 .home-store-section {
   padding-block: 1.75rem;
 }
@@ -399,10 +414,10 @@
      reasoning and the same reason it is a ladder and not a computed floor(), as
      `--shelf-fit` in store-card.css; read that comment first. Its own steps
      because a product tile is a smaller card than a store card: they keep the
-     tile between ~165px (mobile, which is what 44vw already gave it) and ~250px,
-     and land on 216px at the full 1128px row — a hair under the 220px it used to
-     be pinned at, and now an exact fifth of the row instead of 5.1 tiles with
-     the last one sliced. */
+     tile between ~165px (mobile, which is what 44vw already gave it) and ~275px,
+     and land on 273px at the full 1128px row — a whole number of tiles spanning
+     the row, so the carousel begins and ends on the same line every other row on
+     the page does, never on a sliced tile. */
   --carousel-fit: 2;
   display: flex;
   gap: 0.75rem;
@@ -463,10 +478,16 @@
 
 /* ── Product card (homepage carousel item) ─────────────────────────── */
 
-/* The carousel's own fit ladder (see `--carousel-fit` on .home-carousel). */
-@media (min-width: 552px)  { .home-carousel { --carousel-fit: 3; } }
-@media (min-width: 812px)  { .home-carousel { --carousel-fit: 4; } }
-@media (min-width: 1072px) { .home-carousel { --carousel-fit: 5; } }
+/* The carousel's own fit ladder (see `--carousel-fit` on .home-carousel).
+   THE TOP STEP WAS 5 UNTIL 2026-08-05 and came off when the store cards were
+   widened to three per row: a 216px product tile directly under a 368px store
+   card read as a different, smaller design rather than as a smaller card in the
+   same one (user). Four takes the tile to ~273px at the full row — still
+   visibly the smaller of the two, which is right, but now in proportion to it.
+   The 1072px breakpoint went with the step: 4 is already the value from 812px
+   up, so a second rule saying 4 again did nothing. */
+@media (min-width: 552px) { .home-carousel { --carousel-fit: 3; } }
+@media (min-width: 812px) { .home-carousel { --carousel-fit: 4; } }
 
 .home-product-card {
   /* `0 0`, not the shelf's `1 0`: a store with fewer products than fit must NOT

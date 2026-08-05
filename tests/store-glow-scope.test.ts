@@ -4,12 +4,12 @@
  * Which element gets the store's colour.
  *
  * `scripts/store-glow.ts` used to answer that with one hard-coded ancestor
- * (`.store-card`). The store header wants the same colour for its bottom rule,
- * so the lookup now prefers `[data-glow-scope]` and keeps the card as the
- * fallback — two consumers, one mechanism. The failure this guards against is
- * silent and ugly: get the ancestor wrong and every card on the homepage takes
- * the colour of whatever image happens to be first, or the header's rule takes a
- * card's colour. Nothing throws; the page is just painted wrong.
+ * (`.store-card`), which made the mechanism card-only. It now walks up to
+ * `[data-glow-host]`, and three surfaces mark themselves that way: the store
+ * card, the spotlight carousel, and the store header's bottom rule. The failure
+ * this guards against is silent and ugly — get the ancestor wrong and a card
+ * takes the header's colour, or the header takes a card's. Nothing throws; the
+ * page is just painted wrong.
  *
  * The colour itself is not exercised here — reading pixels needs a canvas jsdom
  * does not have. The test seeds the module's own sessionStorage memo instead, so
@@ -33,11 +33,11 @@ function seedCache(): void {
 /** A page with both consumers: a store header and a store card. */
 function buildDom(): void {
   document.body.innerHTML = `
-    <header id="hdr" class="site-header site-header--store" data-glow-scope>
+    <header id="hdr" class="site-header site-header--store" data-glow-host>
       <a class="logo"><img id="hdr-img" data-glow src="${HEADER_SRC}" alt=""></a>
     </header>
     <main>
-      <article id="card" class="store-card">
+      <article id="card" class="store-card" data-glow-host>
         <img id="card-img" data-glow src="${CARD_SRC}" alt="">
       </article>
     </main>`;
@@ -77,8 +77,9 @@ describe('store glow scope', () => {
     expect(document.getElementById('hdr')!.style.getPropertyValue('--store-glow')).not.toBe(CARD_HEX);
   });
 
-  it('still works for a card on a page whose header declares no scope', async () => {
-    document.getElementById('hdr')!.removeAttribute('data-glow-scope');
+  it('leaves an avatar with no host alone rather than colouring something else', async () => {
+    // A surface that forgets the attribute gets no colour — never a neighbour's.
+    document.getElementById('hdr')!.removeAttribute('data-glow-host');
     await run();
     expect(document.getElementById('card')!.style.getPropertyValue('--store-glow')).toBe(CARD_HEX);
     expect(document.getElementById('hdr')!.style.getPropertyValue('--store-glow')).toBe('');

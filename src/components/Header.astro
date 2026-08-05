@@ -104,7 +104,7 @@ const strEmpty   = t.store.noProductsFound;
 <header
   class={`site-header${storeMode ? ' site-header--store' : ''}`}
   style={`height:3.4rem;box-sizing:border-box${headerGlow ? `;--store-glow:${headerGlow}` : ''}`}
-  data-glow-scope={storeHeader ? '' : undefined}
+  data-glow-host={storeHeader ? '' : undefined}
 >
   {/* Height is pinned INLINE (not only in header.css) so it is fixed from the very
       first paint — before external CSS/fonts load — and can never grow-then-shrink. */}
@@ -116,10 +116,10 @@ const strEmpty   = t.store.noProductsFound;
         ? <a href={`/${storeSlug}`} class="logo store-name-link" aria-label={storeName} data-astro-prefetch>
             {/* 32px = the row's own fixed height (header.css pins `.container` to 2rem and
                 clips the column), so this is the largest a header logo can be without the
-                header either growing or cropping it. SQUARE, not the circle every other
-                surface uses: here the picture is read as the store's LOGO, and a circle
-                crops the corners off a mark that was almost certainly drawn square. */}
-            <StoreAvatar name={storeName} slug={storeSlug} profileImage={storeLogo} size={32} shape="square" sampleColor={true} class="store-header__logo" />
+                header either growing or cropping it. Round, like every other store avatar
+                on the site — a square plate was tried on the store card the same day and
+                reverted; StoreAvatar.astro carries the reasoning. */}
+            <StoreAvatar name={storeName} slug={storeSlug} profileImage={storeLogo} size={32} sampleColor={true} class="store-header__logo" />
             <span class="store-name-text">{storeName}</span>
           </a>
         : <a href="/" class="logo" aria-label={store.name} data-astro-prefetch>

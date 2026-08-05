@@ -9,7 +9,8 @@ import { getThreadRootsByBuyer, getRepliesForMessages } from '../../lib/messages
 import { getUnreadSellerReplyCount } from '../../lib/notifications.js';
 import { getLang, getT } from '../../i18n/index.js';
 import { cdnThumb } from '../../lib/cdn.js';
-import { filterBuyerOrders, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
+import { filterBuyerPurchases, parseBuyerOrderQuery, BUYER_ORDER_PAGE_SIZE } from '../../lib/buyer-orders-query.js';
+import { groupBuyerPurchases } from '../../lib/buyer-purchases.js';
 import { paginate, parsePage } from '../../lib/pagination.js';
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 
@@ -40,11 +41,14 @@ const [storesOfSeller, orders, messages, unreadMessages] = await Promise.all([
 ]);
 const hasStore = storesOfSeller.length > 0;
 
-const activeOrdersCount = orders.filter((o) => o.shippingStatus !== 'delivered').length;
-const historyOrdersCount = orders.length - activeOrdersCount;
+// One card per PURCHASE, not per store — a two-store basket was one click and one payment, so it
+// is one order here even though checkout writes a row per store (buyer-purchases.ts).
+const purchases = groupBuyerPurchases(orders);
+const activeOrdersCount = purchases.filter((p) => p.awaiting).length;
+const historyOrdersCount = purchases.length - activeOrdersCount;
 
 const buyerOrderQuery = parseBuyerOrderQuery(Astro.url.searchParams);
-const filteredOrders = filterBuyerOrders(orders, buyerOrderQuery);
+const filteredOrders = filterBuyerPurchases(purchases, buyerOrderQuery);
 const ordersPageResult = paginate(filteredOrders, parsePage(Astro.url.searchParams, 'opage'), BUYER_ORDER_PAGE_SIZE);
 const ordersEmptyMessage = buyerOrderQuery.q
   ? t.buyerDashboard.ordersSearchEmpty
@@ -81,13 +85,21 @@ function fmtAgorot(agorot: number) {
   return fmtPrice(agorot / 100);
 }
 
+// Every status the Order type has, `cancelled` included — it was the one missing entry, so a
+// cancelled order printed the raw English word to the buyer (fixed 2026-08-05).
 const shipLabel: Record<string, string> = {
   pending: t.buyerDashboard.shippingPending,
   processing: t.buyerDashboard.shippingProcessing,
   ready: t.buyerDashboard.shippingReady,
   shipped: t.buyerDashboard.shippingShipped,
   delivered: t.buyerDashboard.shippingDelivered,
+  cancelled: t.buyerDashboard.shippingCancelled,
 };
+
+/** How many stores the collapsed card names before it starts counting. Two fits the narrowest
+ *  card at 375px with room for the count, and a third name is what pushed the old version into
+ *  a mid-word CSS ellipsis. Twinned in the client renderer below. */
+const STORES_NAMED = 2;
 ---
 
 <BaseLayout
@@ -452,11 +464,26 @@ const shipLabel: Record<string, string> = {
     .o-card--open .o-card__chevron { transform: rotate(180deg); }
     .o-id   { font-size: 0.8rem; font-weight: 700; font-family: monospace; color: var(--color-text); white-space: nowrap; }
     .o-date { font-size: 0.74rem; color: var(--color-muted); white-space: nowrap; }
-    .o-card__stores { font-size: 0.74rem; line-height: 1.4; margin-bottom: 0.3rem; color: var(--color-muted); }
+    /* One line: this used to name the card's single store and now names the
+       order's, which on a phone would otherwise wrap and make the collapsed
+       cards different heights. The cut is made in the markup (two names, then
+       "ועוד N"), so the ellipsis here is only the backstop for two unusually
+       long names — never the thing that hides the third store. */
+    .o-card__stores { font-size: 0.74rem; line-height: 1.4; margin-bottom: 0.3rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Lighter than the names beside it — it is a count, not another store. */
+    .o-stores-more { color: color-mix(in srgb, var(--color-muted) 75%, transparent); }
     .o-items { font-size: 0.79rem; color: var(--color-muted); margin-bottom: 0.45rem; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .o-foot { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
     .o-badge { font-size: 0.7rem; font-weight: 600; padding: 0.13rem 0.5rem; border-radius: 999px; }
     .o-badge--ship { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
+    /* Cancelled is the one status where "your order" and "nothing is coming"
+       differ, so it does not get to look like the rest of the pipeline. The
+       word still says it — the tint is a second signal, never the only one. */
+    .o-badge--cancelled {
+      background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+      color: var(--color-danger);
+      border-color: color-mix(in srgb, var(--color-danger) 28%, var(--color-border));
+    }
     .o-total { margin-inline-start: auto; font-size: 0.875rem; font-weight: 700; color: var(--color-text); }
 
     .o-card__body {
@@ -464,8 +491,21 @@ const shipLabel: Record<string, string> = {
       padding: 0.875rem 1rem;
       display: flex; flex-direction: column; gap: 0.875rem;
     }
-    .o-store-group { }
-    .o-store-name { font-size: 0.75rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.5rem; display: block; transition: color 0.12s; }
+    /* One store's slice of the order. On a multi-store order there are several
+       of these, and the rule between them is what says where one ends — without
+       it the second store's name reads as a subheading of the first's list. */
+    .o-store-group + .o-store-group {
+      padding-top: 0.875rem;
+      border-top: 1px solid var(--color-border);
+    }
+    /* The store's name and its own fulfilment status on one line: the two facts
+       that are genuinely per-store. Wraps rather than squeezing, since a long
+       store name plus a status has no room on a phone. */
+    .o-store-head {
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+      margin-bottom: 0.5rem;
+    }
+    .o-store-name { font-size: 0.75rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0; display: block; transition: color 0.12s; }
     .o-store-name:hover { color: var(--color-accent); }
     .o-item-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
     .o-item { display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; }
@@ -497,7 +537,17 @@ const shipLabel: Record<string, string> = {
       font-size: 0.8rem; color: var(--color-muted);
     }
     .o-store-sub strong { color: var(--color-text); font-size: 0.875rem; }
-    .o-tracking { font-size: 0.8rem; color: var(--color-muted); margin: 0; padding-top: 0.5rem; border-top: 1px solid var(--color-border); }
+    .o-tracking { font-size: 0.8rem; color: var(--color-muted); margin: 0; padding-top: 0.5rem; }
+    /* What the whole purchase came to — rendered only when there IS more than
+       one store's total above it to add up. Heavier than .o-store-sub on
+       purpose: those are parts, this is the number the card is about. */
+    .o-grand-total {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--color-border);
+      font-size: 0.82rem; color: var(--color-muted);
+    }
+    .o-grand-total strong { font-size: 1rem; color: var(--color-text); }
     .o-section-title { font-size: 0.72rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 0; }
 
     /* ── Orders toolbar: sub-tabs (active/history) + search ── */
@@ -761,18 +811,17 @@ const shipLabel: Record<string, string> = {
           <p class="empty" id="orders-empty" hidden={ordersPageResult.total > 0}>{ordersEmptyMessage}</p>
 
           <div id="orders-list">
-            {ordersPageResult.items.map((o) => {
-            const stores = [...new Set(o.items.map((i) => i.storeSlug))];
-            const storeEntries = stores.map((slug) => ({
-              slug,
-              name: o.items.find((i) => i.storeSlug === slug)!.storeName,
-            }));
+            {ordersPageResult.items.map((p) => {
+            // Flattened across the whole purchase — the collapsed card summarises the ORDER, so
+            // its thumbs and its one-line item list must not stop at the first store's slice.
+            const allItems = p.slices.flatMap((s) => s.order.items);
+            const split = p.slices.length > 1;
             return (
               <div class="o-card">
                 <div class="o-card__hd" role="button" tabindex="0" aria-expanded="false">
-                  {o.items.some((i) => i.image) && (
+                  {allItems.some((i) => i.image) && (
                     <div class="o-thumbs">
-                      {o.items.filter((i) => i.image).slice(0, 3).map((i) => (
+                      {allItems.filter((i) => i.image).slice(0, 3).map((i) => (
                         <span class="o-thumb-wrap" data-skeleton><img src={cdnThumb(i.image!, 104, 104)} alt={i.productName} width="52" height="52" loading="lazy" decoding="async" class="o-thumb" /></span>
                       ))}
                     </div>
@@ -780,22 +829,33 @@ const shipLabel: Record<string, string> = {
                   {/* Sibling of .o-card__hd-main, not a child: it's a grid area
                       of .o-card__hd, so it spans the full card above the thumbs. */}
                   <div class="o-card__hd-top">
-                    <span class="o-id">#{o.checkoutRef ?? o.id.slice(0, 8).toUpperCase()}</span>
-                    <span class="o-date">{fmtDate(o.createdAt)}</span>
+                    <span class="o-id">#{p.ref}</span>
+                    <span class="o-date">{fmtDate(p.createdAt)}</span>
                   </div>
                   <div class="o-card__hd-main">
+                    {/* Two names and a count for the rest — the same "+N" move the store
+                        card's own tag row makes. A CSS ellipsis was doing this before and
+                        cut through the middle of the third store's name, which reads as a
+                        rendering fault rather than as a deliberate summary. */}
                     <div class="o-card__stores">
-                      {storeEntries.map((s, idx) => (
+                      {p.slices.slice(0, STORES_NAMED).map((s, idx) => (
                         <Fragment>
-                          <span>{s.name}</span>
-                          {idx < storeEntries.length - 1 && <span aria-hidden="true">, </span>}
+                          <span>{s.storeName}</span>
+                          {idx < Math.min(p.slices.length, STORES_NAMED) - 1 && <span aria-hidden="true">, </span>}
                         </Fragment>
                       ))}
+                      {p.slices.length > STORES_NAMED && (
+                        <span class="o-stores-more">{' '}{t.buyerDashboard.orderStoresMore.replace('{count}', String(p.slices.length - STORES_NAMED))}</span>
+                      )}
                     </div>
-                    <div class="o-items">{o.items.map((i) => `${i.productName} × ${i.qty}`).join(' · ')}</div>
+                    <div class="o-items">{allItems.map((i) => `${i.productName} × ${i.qty}`).join(' · ')}</div>
                     <div class="o-foot">
-                      <span class="o-badge o-badge--ship">{shipLabel[o.shippingStatus] ?? o.shippingStatus}</span>
-                      <span class="o-total">{fmtAgorot(o.totalAgorot)}</span>
+                      {/* The least-advanced slice's status, because that is what the buyer is
+                          still waiting on (buyer-purchases.ts). The chip beside it is what
+                          keeps that honest when the stores disagree — without it the header
+                          would present one store's progress as the whole order's. */}
+                      <span class={`o-badge o-badge--ship${p.status === 'cancelled' ? ' o-badge--cancelled' : ''}`}>{shipLabel[p.status] ?? p.status}</span>
+                      <span class="o-total">{fmtAgorot(p.totalAgorot)}</span>
                     </div>
                   </div>
                   <svg class="o-card__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
@@ -803,15 +863,20 @@ const shipLabel: Record<string, string> = {
 
                 <div class="o-card__body" hidden>
                   <p class="o-section-title">{t.buyerDashboard.orderItems}</p>
-                  {stores.map((slug) => {
-                    const storeItems = o.items.filter((i) => i.storeSlug === slug);
-                    const storeName  = storeItems[0]!.storeName;
-                    const sub        = o.storeSubtotals[slug];
+                  {p.slices.map((s) => {
+                    const sub = s.order.storeSubtotals[s.storeSlug];
                     return (
                       <div class="o-store-group">
-                        <a href={`/${slug}`} class="o-store-name" style="text-decoration:none;color:inherit;cursor:pointer">{storeName}</a>
+                        {/* Status and tracking live HERE, per store, and not once at the bottom
+                            of the card: they are the facts that genuinely differ between one
+                            order's stores. A single-store order shows only the header badge —
+                            repeating it one line below says nothing. */}
+                        <div class="o-store-head">
+                          <a href={`/${s.storeSlug}`} class="o-store-name" style="text-decoration:none;color:inherit;cursor:pointer">{s.storeName}</a>
+                          {split && <span class={`o-badge o-badge--ship${s.order.shippingStatus === 'cancelled' ? ' o-badge--cancelled' : ''}`}>{shipLabel[s.order.shippingStatus] ?? s.order.shippingStatus}</span>}
+                        </div>
                         <ul class="o-item-list">
-                          {storeItems.map((item) => (
+                          {s.order.items.map((item) => (
                             <li class="o-item">
                               {item.image
                                 ? <span class="o-item__img-wrap"><img src={cdnThumb(item.image, 80, 80)} alt={item.productName} width="40" height="40" loading="lazy" decoding="async" class="o-item__img" /></span>
@@ -830,11 +895,19 @@ const shipLabel: Record<string, string> = {
                             <strong>{fmtAgorot(storeSliceTotalAgorot(sub))}</strong>
                           </div>
                         )}
+                        {s.order.trackingNumber && (
+                          <p class="o-tracking">{t.buyerDashboard.trackingNumber}: <strong>{s.order.trackingNumber}</strong></p>
+                        )}
                       </div>
                     );
                   })}
-                  {o.trackingNumber && (
-                    <p class="o-tracking">{t.buyerDashboard.trackingNumber}: <strong>{o.trackingNumber}</strong></p>
+                  {/* Only when the order HAS several stores — otherwise it restates the single
+                      store's own total immediately above it. */}
+                  {split && (
+                    <div class="o-grand-total">
+                      <span>{t.buyerDashboard.orderTotalAll}</span>
+                      <strong>{fmtAgorot(p.totalAgorot)}</strong>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1095,6 +1168,9 @@ const shipLabel: Record<string, string> = {
   data-ship-ready={t.buyerDashboard.shippingReady}
   data-ship-shipped={t.buyerDashboard.shippingShipped}
   data-ship-delivered={t.buyerDashboard.shippingDelivered}
+  data-ship-cancelled={t.buyerDashboard.shippingCancelled}
+  data-order-stores-more={t.buyerDashboard.orderStoresMore}
+  data-order-total-all={t.buyerDashboard.orderTotalAll}
   data-orders-empty-active={t.buyerDashboard.ordersEmptyActive}
   data-orders-empty-history={t.buyerDashboard.ordersEmptyHistory}
   data-orders-search-empty={t.buyerDashboard.ordersSearchEmpty}
@@ -1145,6 +1221,9 @@ const shipLabel: Record<string, string> = {
     shipReady:       _i18nEl.dataset.shipReady        ?? 'Awaiting pickup',
     shipShipped:     _i18nEl.dataset.shipShipped      ?? 'Shipped',
     shipDelivered:   _i18nEl.dataset.shipDelivered    ?? 'Delivered',
+    shipCancelled:   _i18nEl.dataset.shipCancelled    ?? 'Cancelled',
+    orderStoresMore: _i18nEl.dataset.orderStoresMore  ?? '+{count} more',
+    orderTotalAll:   _i18nEl.dataset.orderTotalAll    ?? 'Order total',
     ordersEmptyActive: _i18nEl.dataset.ordersEmptyActive ?? 'No active orders right now.',
     ordersEmptyHistory:_i18nEl.dataset.ordersEmptyHistory ?? 'No orders in your history yet.',
     ordersSearchEmpty: _i18nEl.dataset.ordersSearchEmpty ?? 'No orders match your search.',
@@ -1930,31 +2009,45 @@ const shipLabel: Record<string, string> = {
   // seller-orders-query.ts). No sort here — this tab only needs
   // search + an active/history split, not a sort menu.
   interface BuyerOrderJson {
-    id: string; checkoutRef?: string; createdAt: string; totalAgorot: number;
+    id: string; createdAt: string; totalAgorot: number;
     shippingStatus: string; trackingNumber?: string;
     items: { storeSlug: string; storeName: string; productName: string; qty: number; priceAgorot: number; image?: string }[];
     storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { appliedAgorot: number } }>;
   }
+  /** The server's BuyerPurchase, as it arrives over the wire (lib/buyer-purchases.ts). */
+  interface BuyerPurchaseJson {
+    ref: string; createdAt: string; totalAgorot: number; status: string;
+    slices: { storeSlug: string; storeName: string; order: BuyerOrderJson }[];
+  }
 
   const shipLabelClient: Record<string, string> = {
     pending: I.shipPending, processing: I.shipProcessing, ready: I.shipReady,
-    shipped: I.shipShipped, delivered: I.shipDelivered,
+    shipped: I.shipShipped, delivered: I.shipDelivered, cancelled: I.shipCancelled,
   };
+  /** Twin of the server's own badge markup — same class, same cancelled variant. */
+  function shipBadge(status: string): string {
+    return `<span class="o-badge o-badge--ship${status === 'cancelled' ? ' o-badge--cancelled' : ''}">${escB(shipLabelClient[status] ?? status)}</span>`;
+  }
 
-  function buildOrderCardHTML(o: BuyerOrderJson): string {
-    const stores = [...new Set(o.items.map((i) => i.storeSlug))];
-    const storeNameBySlug = new Map(o.items.map((i) => [i.storeSlug, i.storeName]));
-    const thumbs = o.items.filter((i) => i.image).slice(0, 3);
+  // Server twin: the `{ordersPageResult.items.map(...)}` block in this file's markup. Any change
+  // to one is a change to both — an AJAX page/search/sub-tab rebuild goes through here.
+  function buildOrderCardHTML(p: BuyerPurchaseJson): string {
+    const allItems = p.slices.flatMap((s) => s.order.items);
+    const split = p.slices.length > 1;
+    const thumbs = allItems.filter((i) => i.image).slice(0, 3);
     const thumbsHtml = thumbs.length ? `<div class="o-thumbs">${thumbs.map((i) =>
       `<span class="o-thumb-wrap" data-skeleton><img src="${escB(cdnThumb(i.image!, 104, 104))}" alt="${escB(i.productName)}" width="52" height="52" loading="lazy" decoding="async" class="o-thumb" /></span>`).join('')}</div>` : '';
-    const storesHtml = stores.map((slug, idx) =>
-      `<span>${escB(storeNameBySlug.get(slug) ?? '')}</span>${idx < stores.length - 1 ? '<span aria-hidden="true">, </span>' : ''}`).join('');
-    const itemsLine = o.items.map((i) => `${escB(i.productName)} × ${i.qty}`).join(' · ');
-    const bodyGroups = stores.map((slug) => {
-      const storeItems = o.items.filter((i) => i.storeSlug === slug);
-      const storeName  = storeNameBySlug.get(slug) ?? '';
-      const sub        = o.storeSubtotals[slug];
-      const itemsHtml = storeItems.map((item) => `
+    // Server twin: STORES_NAMED in this file's frontmatter.
+    const named = p.slices.slice(0, 2);
+    const storesHtml = named.map((s, idx) =>
+      `<span>${escB(s.storeName)}</span>${idx < named.length - 1 ? '<span aria-hidden="true">, </span>' : ''}`).join('')
+      + (p.slices.length > named.length
+        ? ` <span class="o-stores-more">${escB(I.orderStoresMore.replace('{count}', String(p.slices.length - named.length)))}</span>`
+        : '');
+    const itemsLine = allItems.map((i) => `${escB(i.productName)} × ${i.qty}`).join(' · ');
+    const bodyGroups = p.slices.map((s) => {
+      const sub = s.order.storeSubtotals[s.storeSlug];
+      const itemsHtml = s.order.items.map((item) => `
         <li class="o-item">
           ${item.image
             ? `<span class="o-item__img-wrap"><img src="${escB(cdnThumb(item.image, 80, 80))}" alt="${escB(item.productName)}" width="40" height="40" loading="lazy" decoding="async" class="o-item__img" /></span>`
@@ -1969,29 +2062,38 @@ const shipLabel: Record<string, string> = {
           ${sub.discount?.appliedAgorot ? `<span>${escB(I.orderDiscount)}: −${fmtAgorotBuyer(sub.discount.appliedAgorot)}</span>` : ''}
           <strong>${fmtAgorotBuyer(storeSliceTotalAgorot(sub))}</strong>
         </div>` : '';
+      const trackingHtml = s.order.trackingNumber
+        ? `<p class="o-tracking">${escB(I.trackingNumber)}: <strong>${escB(s.order.trackingNumber)}</strong></p>` : '';
       return `
         <div class="o-store-group">
-          <a href="/${encodeURIComponent(slug)}" class="o-store-name" style="text-decoration:none;color:inherit;cursor:pointer">${escB(storeName)}</a>
+          <div class="o-store-head">
+            <a href="/${encodeURIComponent(s.storeSlug)}" class="o-store-name" style="text-decoration:none;color:inherit;cursor:pointer">${escB(s.storeName)}</a>
+            ${split ? shipBadge(s.order.shippingStatus) : ''}
+          </div>
           <ul class="o-item-list">${itemsHtml}</ul>
           ${subHtml}
+          ${trackingHtml}
         </div>`;
     }).join('');
-    const trackingHtml = o.trackingNumber
-      ? `<p class="o-tracking">${escB(I.trackingNumber)}: <strong>${escB(o.trackingNumber)}</strong></p>` : '';
+    const grandTotalHtml = split ? `
+      <div class="o-grand-total">
+        <span>${escB(I.orderTotalAll)}</span>
+        <strong>${fmtAgorotBuyer(p.totalAgorot)}</strong>
+      </div>` : '';
 
     return `<div class="o-card">
       <div class="o-card__hd" role="button" tabindex="0" aria-expanded="false">
         ${thumbsHtml}
         <div class="o-card__hd-top">
-          <span class="o-id">#${escB(o.checkoutRef ?? o.id.slice(0, 8).toUpperCase())}</span>
-          <span class="o-date">${escB(fmtDateBuyer(o.createdAt))}</span>
+          <span class="o-id">#${escB(p.ref)}</span>
+          <span class="o-date">${escB(fmtDateBuyer(p.createdAt))}</span>
         </div>
         <div class="o-card__hd-main">
           <div class="o-card__stores">${storesHtml}</div>
           <div class="o-items">${itemsLine}</div>
           <div class="o-foot">
-            <span class="o-badge o-badge--ship">${escB(shipLabelClient[o.shippingStatus] ?? o.shippingStatus)}</span>
-            <span class="o-total">${fmtAgorotBuyer(o.totalAgorot)}</span>
+            ${shipBadge(p.status)}
+            <span class="o-total">${fmtAgorotBuyer(p.totalAgorot)}</span>
           </div>
         </div>
         <svg class="o-card__chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1999,7 +2101,7 @@ const shipLabel: Record<string, string> = {
       <div class="o-card__body" hidden>
         <p class="o-section-title">${escB(I.orderItems)}</p>
         ${bodyGroups}
-        ${trackingHtml}
+        ${grandTotalHtml}
       </div>
     </div>`;
   }
@@ -2051,7 +2153,7 @@ const shipLabel: Record<string, string> = {
     if (ordersSearchQuery) params.set('oq', ordersSearchQuery);
     params.set('ohist', ordersHistory ? '1' : '0');
 
-    let data: { ok: boolean; items?: BuyerOrderJson[]; page?: number; totalPages?: number; total?: number };
+    let data: { ok: boolean; purchases?: BuyerPurchaseJson[]; page?: number; totalPages?: number; total?: number };
     try {
       const res = await fetch(`/api/buyer/orders?${params.toString()}`);
       data = await res.json() as typeof data;
@@ -2065,7 +2167,7 @@ const shipLabel: Record<string, string> = {
     if (!data.ok) { list.innerHTML = `<p class="empty">${escB(I.ordersLoadError)}</p>`; return; }
 
     ordersCurrentPage = data.page ?? 1;
-    list.innerHTML = (data.items ?? []).map(buildOrderCardHTML).join('');
+    list.innerHTML = (data.purchases ?? []).map(buildOrderCardHTML).join('');
     list.querySelectorAll<HTMLElement>('.o-card').forEach(bindOrderCard);
 
     const total = data.total ?? 0;

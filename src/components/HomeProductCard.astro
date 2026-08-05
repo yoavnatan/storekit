@@ -71,7 +71,11 @@ const WIDTHS = [220, 440];
     <Fragment set:html={saleBadgeHtml(pv)} />
   </div>
   <div class="home-product-card__body">
-    <span class="home-product-card__name" dir="auto">{p.name}</span>
+    <!-- `<bdi>` not `dir="auto"`: dir would also flip the ALIGNMENT, so a Latin
+         product name on a Hebrew page left-aligned itself away from the price
+         and card edge below it, and truncated from the wrong side. Same fix and
+         same reasoning as StoreCard's own name. -->
+    <span class="home-product-card__name"><bdi>{p.name}</bdi></span>
     <span class="home-product-card__price-row"><Fragment set:html={priceHtml(pv, { className: 'home-product-card__price' })} /></span>
   </div>
 </a>

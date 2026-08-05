@@ -75,9 +75,15 @@
   margin-bottom: 1.5rem;
 }
 
+/* 280, not the old 240 — the same "every row agrees" fix as the homepage
+   shelves (store-card.css, 2026-08-05). auto-fill turns this into a column
+   COUNT, so it is a step function, not a nudge: at the site's 1160px it moves
+   the directory from four ~278px cards to three ~376px ones, which is the width
+   a category shelf already gives them. /search renders store results with the
+   same class and follows along. */
 .stores-directory__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
 }
 

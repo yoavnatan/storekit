@@ -118,8 +118,8 @@ const jsonLd = {
                         )}
                     </div>
                     <div class="search-product-card__body">
-                      <span class="search-product-card__name" dir="auto">{p.name}</span>
-                      <span class="search-product-card__store" dir="auto">{p.storeName}</span>
+                      <span class="search-product-card__name"><bdi>{p.name}</bdi></span>
+                      <span class="search-product-card__store"><bdi>{p.storeName}</bdi></span>
                       <span class="search-product-card__price-row block mt-[0.15rem]">
                         <span class={`search-product-card__price price-now${p.basePrice ? ' price-now--sale' : ''}`}>{formatPrice(p.price)}</span>
                         {p.basePrice && <s class="price-was">{formatPrice(p.basePrice)}</s>}

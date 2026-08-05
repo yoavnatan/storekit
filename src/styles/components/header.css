@@ -627,7 +627,9 @@ nav a:hover { color: var(--color-text); }
    card's halo: sampled from the uploaded logo on the client (scripts/store-glow.ts),
    or, for a store with no upload, painted server-side from its generated mark.
    `transparent` when neither has an answer — a black-and-white logo leaves the
-   plain border rather than an invented colour.
+   plain border rather than an invented colour. The attribute that marks this
+   header as the colour's owner is `data-glow-host`, the same one the store card
+   and the spotlight carousel use — one mechanism, three surfaces.
    bottom:-1px so the line COVERS the header's 1px border instead of stacking on
    top of it, which would make a store's header 1px taller than the platform's. */
 .site-header--store::after {

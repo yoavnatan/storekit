@@ -24,10 +24,17 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
   const removeBtn  = document.getElementById(cfg.removeBtnId) as HTMLButtonElement | null;
   if (!frame || !fileInput || !hiddenInput || !uploadBtn) return;
 
+  // `cover` for both widgets, because that is what both of their render targets do
+  // — the banner is a crop by nature, and the avatar is drawn by StoreAvatar the
+  // same way. The one thing this preview must never do is flatter the upload: what
+  // the seller sees after cropping is a promise about their own storefront, and a
+  // preview that disagrees with the site fails silently.
+  const previewStyle = 'width:100%;height:100%;object-fit:cover;border-radius:inherit';
+
   function render() {
     const url = hiddenInput!.value;
     frame!.innerHTML = url
-      ? `<img src="${cdnSrc(url, cfg.previewWidth)}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`
+      ? `<img src="${cdnSrc(url, cfg.previewWidth)}" alt="" loading="lazy" decoding="async" style="${previewStyle}">`
       : '';
     uploadBtn!.textContent = url ? cfg.labels.change : cfg.labels.upload;
     if (removeBtn) removeBtn.hidden = !url;

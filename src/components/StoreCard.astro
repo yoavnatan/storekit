@@ -66,20 +66,36 @@ const markGlow = store.profileImage ? undefined : storeMark(store.slug || store.
   data-store-name={store.name.toLowerCase()}
   data-tagline={(store.tagline || store.description || '').toLowerCase()}
   role={role}
+  data-glow-host
   style={markGlow ? `--store-glow:${markGlow}` : undefined}
 >
   <div class="store-card__head">
-    <span class="store-card__avatar-wrap">
-      <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={40} sampleColor={true} />
+    <span class="store-glow-wrap">
+      <!-- 56px, up from 40 (user, 2026-08-05): this is the one place a shopper
+           meets the store's logo before deciding to open it, and at 40 it read
+           as a hint rather than as a mark. STILL A CIRCLE — a rounded-square
+           plate was tried here first and reverted; StoreAvatar's own header
+           carries why, and it is specific to this card. -->
+      <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={56} sampleColor={true} />
     </span>
     <div class="store-card__title-group">
-      <span class="store-card__name" dir="auto">{store.name}</span>
+      <!-- `<bdi>`, not `dir="auto"` on the span (user, 2026-08-05: an English
+           store name on a Hebrew page drifted away from the logo).
+           `dir` sets DIRECTION AND ALIGNMENT together, and only the first of
+           those belongs to the name: a Latin name resolved the span to `ltr`,
+           so `text-align: start` became LEFT and the name sat at the far edge
+           of a full-width box with a gap where the logo it names was — and the
+           ellipsis truncated from the wrong side too. `<bdi>` isolates the
+           text's own direction while leaving the span in the page's, which is
+           the exact split wanted: the box is placed by the card, the characters
+           inside it by themselves. Same reason it is used on the tagline. -->
+      <span class="store-card__name"><bdi>{store.name}</bdi></span>
       <!-- Always rendered — a store with no tagline/description used to skip
            this line entirely, same misalignment as the tags row below: its
            preview row sat higher than a neighboring card that had one. A
            non-breaking space keeps the line's own height without showing
            visible text. -->
-      <span class="store-card__tagline" dir="auto">{store.tagline || store.description || ' '}</span>
+      <span class="store-card__tagline"><bdi>{store.tagline || store.description || ' '}</bdi></span>
     </div>
   </div>
   <!-- Always rendered (min-height reserves the row even with zero tags) —
@@ -122,8 +138,14 @@ const markGlow = store.profileImage ? undefined : storeMark(store.slug || store.
         the first child right after `{expr => (` (AI_INSTRUCTIONS → Architecture). */}
     {thumbs.map((img, i) => (
       <span class="store-card__preview-img-wrap" data-skeleton={eager && i === 0 ? undefined : ''}>
+        {/* 224, raised from 160 when the cards were widened on 2026-08-05: the
+            standing rule is 2× the CSS size, and a 3-up thumb inside a 368px
+            card is ~108px, so 160 had stopped being that. Known cost — a new
+            transform is a cold Cloudinary render for whoever asks first, per
+            image (memory: cloudinary cold render). One-time, and these thumbs
+            were never among the widths image-derive.ts pre-warms anyway. */}
         <img
-          src={cdnThumb(img, 160, 160)}
+          src={cdnThumb(img, 224, 224)}
           alt=""
           width="80"
           height="80"
