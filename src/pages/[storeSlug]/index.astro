@@ -21,7 +21,7 @@ import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
 import { machineUrl, urlSegment } from '../../lib/url-base.js';
 import { storeCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
 import { OG_IMAGE_FORMAT, resolveStoreImage, storeImageUrl } from '../../lib/store-image.js';
-import { store as platform, cdnSrc, cdnSrcSet, cdnCropSrcSet, cdnThumb } from '../../config/store.config.js';
+import { store as platform, cdnSrc, cdnSrcSet, cdnCropSrcSet, cdnBand } from '../../config/store.config.js';
 import { BANNER_RATIO, BANNER_WIDTHS } from '../../lib/cdn.js';
 import { getSellerSession } from '../../lib/seller-auth.js';
 import { getLang, getT, getDir } from '../../i18n/index.js';
@@ -351,10 +351,12 @@ const pmI18n = {
 // the save-time warm-up (lib/image-derive.ts#warmBannerDerivations), and a width this page requests
 // that nobody pre-rendered is the ~0.8s cold Cloudinary render landing on a visitor.
 const BANNER_SIZES = '(min-width: 1160px) 1128px, calc(100vw - 2rem)';
-/** The `src` rung — matches the `width`/`height` on the <img>. */
+/** The `src` rung. `width`/`height` below are computed from it and describe the FRAME, not the
+ *  delivered pixels: `cdnBand` refuses to upscale, so a seller whose upload is narrower than this
+ *  gets a smaller image at the identical 3/1 ratio — same reserved space, no layout shift. */
 const BANNER_W = 1600;
 const BANNER_H = Math.round(BANNER_W / BANNER_RATIO);
-// `cdnThumb`/`cdnCropSrcSet` are called at BOTH the <img> and the preload rather
+// `cdnBand`/`cdnCropSrcSet` are called at BOTH the <img> and the preload rather
 // than hoisted into a variable — tests/image-optimization.test.ts requires the CDN
 // helper to be visible at the markup, and it is right to: a variable is exactly how
 // a raw URL sneaks into an <img>. They cannot drift because both calls take the same
@@ -362,7 +364,7 @@ const BANNER_H = Math.round(BANNER_W / BANNER_RATIO);
 // the browser downloads the banner twice.
 const bannerPreload = !isDemo && shopStore.bannerImage
   ? {
-      href: cdnThumb(shopStore.bannerImage, BANNER_W, BANNER_H),
+      href: cdnBand(shopStore.bannerImage, BANNER_W, BANNER_RATIO),
       srcset: cdnCropSrcSet(shopStore.bannerImage, [...BANNER_WIDTHS], BANNER_RATIO) || undefined,
       sizes: BANNER_SIZES,
     }
@@ -457,7 +459,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
         <div class="container">
           <div class="store-banner__image-wrap" data-skeleton>
             <img
-              src={cdnThumb(shopStore.bannerImage, BANNER_W, BANNER_H)}
+              src={cdnBand(shopStore.bannerImage, BANNER_W, BANNER_RATIO)}
               srcset={cdnCropSrcSet(shopStore.bannerImage, [...BANNER_WIDTHS], BANNER_RATIO) || undefined}
               sizes={BANNER_SIZES}
               alt=""

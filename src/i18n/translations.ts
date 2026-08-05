@@ -120,6 +120,20 @@ export const translations = {
       terms: 'תנאי שימוש',
       contact: 'צור קשר',
     },
+    // The two pages a visitor lands on when the request could not be served. Same shape as the
+    // store states above — one line and a way out — and for the same reason: a visitor here can
+    // do exactly one useful thing, and reading an explanation is not it.
+    //
+    // 500 deliberately says "אצלנו", not "שגיאה": the one thing worth telling someone whose
+    // request just failed is that it was not their doing and that trying again may work. It
+    // names no cause, because 500.astro cannot know one — see the note in that file.
+    errorPage: {
+      notFoundTitle: 'הדף לא נמצא',
+      serverErrorTitle: 'משהו השתבש אצלנו',
+      serverErrorBody: 'התקלה נרשמה אצלנו. אפשר לנסות שוב עוד רגע.',
+      retry: 'לנסות שוב',
+      backHome: 'לדף הבית',
+    },
     store: {
       // Owner bar — shown only to the seller who owns this store, on the store page
       // AND on every product page inside it. Says "live store", never "preview": the
@@ -354,6 +368,10 @@ export const translations = {
       storeImageChange: 'החלף תמונה',
       // Re-frame the image that is already saved, without picking a new file.
       adjustImage: 'התאם תמונה',
+      // Cut the logo out of its backdrop — the store image only; a banner IS its background.
+      removeBackground: 'הסר רקע',
+      removingBg: 'מסיר רקע',
+      removeBackgroundFailed: 'לא הצלחנו להסיר את הרקע. נסה שוב.',
       // The floating "not saved yet" notice (UnsavedChangesBar). A sentence, not a marker: the
       // seller has never met an editor's unsaved-document convention and a symbol can only puzzle
       // them. {section} is the tab's own label, so no section needs a second name here.
@@ -1432,6 +1450,13 @@ export const translations = {
       terms: 'Terms',
       contact: 'Contact',
     },
+    errorPage: {
+      notFoundTitle: 'Page not found',
+      serverErrorTitle: 'Something went wrong on our side',
+      serverErrorBody: 'The failure was logged. Trying again in a moment may work.',
+      retry: 'Try again',
+      backHome: 'Back to home',
+    },
     store: {
       ownerPreview: 'This is your live store — exactly as a shopper sees it',
       ownerPreviewBack: 'Back to dashboard',
@@ -1630,6 +1655,9 @@ export const translations = {
       storeProfileImageHint: 'Shown next to your store name across the site',
       storeImageChange: 'Change image',
       adjustImage: 'Adjust image',
+      removeBackground: 'Remove background',
+      removingBg: 'Removing background',
+      removeBackgroundFailed: 'We couldn’t remove the background. Please try again.',
       unsavedNotice: 'You have unsaved changes in {section}',
       unsavedNoticeMany: 'You have unsaved changes in more than one place',
       unsavedGo: 'Take me there',

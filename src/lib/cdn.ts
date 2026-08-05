@@ -26,6 +26,15 @@
  * Cost note: fetch delivery bills a transformation per distinct URL, once, and
  * only for NON-Cloudinary origins — i.e. in practice only for the demo dataset.
  * Real seller images are Cloudinary uploads and never touch the fetch path.
+ *
+ * And the corollary rule, which lives here because this is the file anyone
+ * reaches for when they set out to "make the images load better": NEVER
+ * hand-roll lazy-loading — an IntersectionObserver plus `data-lazy-src`. An
+ * `<img>` with no `src` is invisible to the browser's preload scanner, so
+ * nothing downloads until the page's own JS module has run and executed. The
+ * native `loading="lazy"` attribute costs nothing and does not have that
+ * problem; above-the-fold/LCP images take `loading="eager"` +
+ * `fetchpriority="high"` instead.
  */
 
 const CLOUD = import.meta.env.PUBLIC_CLOUDINARY_CLOUD_NAME as string | undefined;
@@ -183,8 +192,45 @@ export function cdnSrcSet(url: string, widths: number[]): string {
  * Returns '' when the URL can't be transformed, so the caller keeps its plain src.
  */
 export function cdnCropSrcSet(url: string, widths: number[], ratio: number): string {
-  if (!widths.length || !ratio || cdnThumb(url, widths[0], 1) === url) return '';
-  return widths.map((w) => `${cdnThumb(url, w, Math.round(w / ratio))} ${w}w`).join(', ');
+  if (!widths.length || !ratio || cdnBand(url, widths[0], ratio) === url) return '';
+  return widths.map((w) => `${cdnBand(url, w, ratio)} ${w}w`).join(', ');
+}
+
+/**
+ * A horizontal BAND of `url` at aspect `ratio`, at most `w` wide and NEVER upscaled — the
+ * delivery every fixed-ratio `object-fit: cover` box wants, and the store banner's own.
+ *
+ * It exists because `cdnThumb` cannot answer this. A `w`/`h` pair is an ORDER: Cloudinary
+ * meets it by inventing pixels when the upload is smaller, so a seller whose banner is
+ * 1200px wide was served the w_1600 and w_2048 rungs as upscales — softer than their own
+ * photo and heavier than it (measured on the `demo` cloud, `sample.jpg` at 864x576 native,
+ * asking for the 3:1 band: `c_fill,…,w_2048,h_683` → 2048x683 / 114KB, blurry). `c_lfill`
+ * was tried and rejected there for a different reason (see `cdnThumb`) — above the source
+ * it stops cropping altogether and hands back the whole uncropped photo.
+ *
+ * The answer is not one transform but TWO, chained, and the order is the whole trick:
+ *
+ *     c_limit,w_<w>            ← a CEILING on the width. At or under the source it resizes
+ *                                exactly as before; above it, it stops. No invention.
+ *     ar_<ratio>,c_fill,g_auto ← crop what came out of that to the ratio, whatever size it is.
+ *
+ * Because the ratio is stated as a ratio and not as a pixel height, the second step never
+ * has a box to fill and therefore never upscales either. Measured on the same source, same
+ * URL otherwise: w_2048 falls from 2048x683 / 114KB to 864x288 / 44KB, and at w_800 — below
+ * the source, where nothing was ever wrong — the two are byte-for-byte the same picture.
+ *
+ * Nothing downstream depends on the returned pixel size, only on the RATIO, which is
+ * identical by construction: the `<img>`'s `width`/`height` still describe the frame, so
+ * a rung that caps out changes no layout and reserves the same space. What the browser
+ * gets is simply the sharpest version that exists.
+ *
+ * A rung above the source still has its own URL and still costs a derivation, so the
+ * `srcset` may hand the browser two rungs with identical bytes. That is deliberate: the
+ * alternative is to stop OFFERING those rungs, which needs each seller's stored upload
+ * dimensions — a column this module does not have and, given the above, does not need.
+ */
+export function cdnBand(url: string, w: number, ratio: number): string {
+  return deliver(url, `c_limit,w_${w}/ar_${ratio},c_fill,g_auto,f_auto,q_auto`);
 }
 
 /** A square-ish thumbnail cropped to fill exactly w×h, with Cloudinary choosing the
@@ -202,8 +248,11 @@ export function cdnThumb(url: string, w = 84, h = 84): string {
   // `lfill` stops filling altogether once the box is bigger than the source, so it hands back the
   // whole uncropped photo — and `cdnCropSrcSet` exists precisely to stop shipping the pixels outside
   // that band (84.5KB → 32.2KB, measured 2026-08-03). It would trade a soft image for a heavier one
-  // and re-introduce client-side cropping. The real fix for an undersized banner is to not OFFER a
-  // rung above the source, which needs the stored dimensions this module does not have.
+  // and re-introduce client-side cropping.
+  // The banner no longer comes through here at all: `cdnBand` below states the ratio as a RATIO
+  // instead of a pixel height, which is what lets a crop decline to upscale. This function keeps
+  // `c_fill` because its own callers — cart rows, order rows, table cells — are boxes of an EXACT
+  // pixel size that want the cell filled.
   return deliver(url, `c_fill,g_auto,f_auto,q_auto,w_${w},h_${h}`);
 }
 

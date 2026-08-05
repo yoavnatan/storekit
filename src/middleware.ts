@@ -10,6 +10,7 @@ import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/st
 import { resolveCustomDomainRewrite, isUnclaimedCustomHost } from './lib/custom-domain.js';
 import { getProductBySlug } from './lib/store-products.js';
 import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
+import { HEALTH_PATH } from './pages/api/health.js';
 import { csrfRejection, csrfRequired, csrfTokenFromRequest, verifyCsrfToken } from './lib/csrf.js';
 import { ensureShutdownHookInstalled, trackRequest } from './lib/shutdown.js';
 import { captureAttribution } from './lib/attribution.js';
@@ -72,6 +73,27 @@ export const onRequest = defineMiddleware(async (context, next) => {
         && !verifyCsrfToken(await csrfTokenFromRequest(context.request), context.cookies)) {
       return csrfRejection();
     }
+
+    // `/api/health` skips the rest, and the reason is the outage it exists to report. Everything
+    // below this line touches the database — the custom-domain lookup first, then the analytics
+    // tap — so with Postgres unreachable the middleware throws and the route never executes. The
+    // endpoint whose entire job is to answer "503, the database is down" would instead be a 500
+    // HTML error page, i.e. broken in exactly and only the situation it was built for. (Found by
+    // pointing DATABASE_URL at a dead host, 2026-08-05; invisible anywhere the database works.)
+    //
+    // **BELOW the CSRF gate, not above it.** The first version of this line was above, which was
+    // wrong on principle even though it was harmless in fact: the route exports only GET, so no
+    // token is ever required for it and nothing changed either way. But "the ONE place this
+    // application checks a token" stops being true the moment any path is allowed around it, and
+    // the next person to add a POST handler here would inherit an exemption nobody chose. The gate
+    // costs a set lookup and an HMAC — no database — so keeping it in front costs this endpoint
+    // nothing that matters when the database is down.
+    //
+    // Nothing else is skipped either: the two ignition calls and `trackRequest()` ran above, so the
+    // probe is still counted by the graceful-shutdown drain. Nothing below is needed — it takes no
+    // cookies, resolves no store, and is not a page view. `HEALTH_PATH` lives in the route file so
+    // the path is declared once, by the thing that owns it.
+    if (pathname === HEALTH_PATH) return next();
 
     // Custom-domain routing (see custom-domain.ts). A seller's own domain (shop.mybrand.co.il),
     // once verified, serves their store from the root. Cloudflare-for-SaaS proxies the request to

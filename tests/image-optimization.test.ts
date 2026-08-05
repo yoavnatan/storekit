@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { cdnSrc, cdnSrcSet, cdnThumb, cdnFill, LIGHTBOX_WIDTHS, BANNER_WIDTHS } from '../src/lib/cdn.js';
+import { cdnSrc, cdnSrcSet, cdnBand, cdnCropSrcSet, cdnThumb, cdnFill, LIGHTBOX_WIDTHS, BANNER_WIDTHS } from '../src/lib/cdn.js';
 
 /**
  * The image-performance guard.
@@ -73,7 +73,7 @@ const SRC_ALLOWED = [
   /^src=("|')?\{?["'`]?\s*["'`]?$/,            // empty src, filled by JS (checked at the assignment)
   /^src="https:\/\/www\.facebook\.com\/tr\?/,  // Meta pixel beacon, not an image
   /^src="\/[^"]*\.(svg|png|webp|avif|jpg)"/,   // static asset shipped in /public
-  /cdnSrc|cdnSrcSet|cdnThumb|cdnFill|thumbUrl/,
+  /cdnSrc|cdnSrcSet|cdnBand|cdnThumb|cdnFill|thumbUrl/,
 ];
 
 describe('cdn delivery', () => {
@@ -98,11 +98,29 @@ describe('cdn delivery', () => {
     // an ad platform rejects a creative at the wrong ratio, and a favicon slot has one size.
     expect(cdnFill(CLOUD, 1200, 628)).toContain('c_fill,');
     expect(cdnFill(CLOUD, 1200, 628)).not.toContain('c_limit');
-    // The banner's cropped rungs stay `c_fill` too — `c_lfill` was measured to abandon the crop
-    // ratio once the box exceeds the source, which costs more bytes than the upscale it avoids
-    // (see cdnThumb's header).
+    // A fixed-size TILE still asks for exactly that size — cart/order/table cells fill a box.
+    // `c_lfill` was measured to abandon the crop ratio once the box exceeds the source, which
+    // costs more bytes than the upscale it avoids (see cdnThumb's header).
     expect(cdnThumb(CLOUD, 2048, 683)).toContain('c_fill,');
     expect(cdnThumb(CLOUD, 2048, 683)).not.toContain('c_lfill');
+  });
+
+  it('the banner band is a width CEILING then a ratio — never an upscale', () => {
+    // The regression this pins (2026-08-05, owner: a banner whose source is narrower than 2048
+    // was still served upscaled). Stating the crop as `ar_` instead of a pixel `h_` is what lets
+    // the second step decline to invent pixels; `c_limit` is what stops the first one.
+    // Measured on the demo cloud, sample.jpg at 864x576, asking for the 3:1 band at w_2048:
+    // `c_fill,…,w_2048,h_683` → 2048x683 / 114KB, the band → 864x288 / 44KB, same picture.
+    for (const w of BANNER_WIDTHS) {
+      const out = cdnBand(CLOUD, w, 3);
+      expect(out).toContain(`c_limit,w_${w}/`);
+      expect(out).toContain('ar_3,c_fill,g_auto,f_auto,q_auto/');
+      // A pixel height anywhere in the transform would be an order, not a ceiling.
+      expect(out).not.toMatch(/[,/]h_\d/);
+    }
+    // The srcset the store page builds must be the same URLs, rung for rung.
+    const set = cdnCropSrcSet(CLOUD, [...BANNER_WIDTHS], 3);
+    for (const w of BANNER_WIDTHS) expect(set).toContain(`${cdnBand(CLOUD, w, 3)} ${w}w`);
   });
 
   it('leaves an already-transformed URL alone rather than stacking transforms', () => {

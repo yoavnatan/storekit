@@ -162,9 +162,13 @@ export function resolveStoreImage(
  * A separate function from `resolveStoreImage` rather than another format passed
  * to it, because the delivery differs where it matters. Off-site consumers get
  * `cdnFill`, which forces `f_jpg` (many scrapers send no `Accept` header that
- * `f_auto` could read) — and a JPEG has no alpha, so a logo uploaded with a
- * transparent background would arrive as a black square in the tab strip. A
- * browser always sends `Accept`, so this uses `cdnThumb`/`f_auto` and keeps
+ * `f_auto` could read) — and a JPEG has no alpha, so the cutout a seller made
+ * with the dashboard's "remove background" arrives FLATTENED. Onto white, not
+ * black (verified 2026-08-05 on Cloudinary's demo cloud: a transparent PNG
+ * through `f_jpg` comes back with white corners, and `b_red` proves the alpha
+ * is real and the white is Cloudinary's default) — which is right for an ad
+ * creative and wrong for a tab, where the cutout is the whole point. A browser
+ * always sends `Accept`, so this uses `cdnCircle`/`cdnThumb` and keeps
  * whatever transparency the seller uploaded.
  *
  * THE TAB ICON IS A CIRCLE (2026-08-05, owner: "לדעתי הפאביקון לא יכול להיות

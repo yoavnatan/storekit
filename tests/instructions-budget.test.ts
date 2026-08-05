@@ -39,7 +39,7 @@ import { fileURLToPath } from 'node:url';
  *
  * When this fails, lowering CEILING to the new number is the wrong move unless the number went down.
  */
-const CEILING = 40_550;
+const CEILING = 40_520;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
 

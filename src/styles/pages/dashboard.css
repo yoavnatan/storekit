@@ -200,6 +200,65 @@ textarea.input { resize: none; }
   }
 }
 
+/* Full desktop — the SAME discipline as the tablet block above, and it is here because
+   its absence was a bug, not a decision (owner, 2026-08-05: "the table goes outside its
+   bounds at a certain width, it happened suddenly").
+   Above 999px the table was left on `table-layout: auto`, which sizes a table to its own
+   CONTENT: its width is the sum of every column's min-content, so the longest product name
+   and the longest category path in the catalogue decide how wide the table is. Measured on
+   the demo catalogue at 2026-08-05: 983px of min-content, against a panel that is only
+   918px at a 1000px viewport and 1078px at 1200px. Between those two the table overflowed
+   its panel and pushed `documentElement.scrollWidth` past the viewport.
+   That is also why it appeared out of nowhere: nothing about the LAYOUT changed — one
+   product whose name is longer than every other one widens the table for the whole store,
+   so the same dashboard overflows today and did not yesterday.
+   `table-layout: fixed` removes the class of bug rather than tuning the numbers: the
+   columns below are shares of whatever width the panel has, so content can no longer vote
+   on width at ANY viewport and the table fits by construction.
+   The breakpoint itself stays, and it is not the bug — it is where the columns' shares
+   change. At the narrow end price and date cannot ellipsize into anything a seller can
+   read, so `name` gives its room up to them (13% there); here there is room and it takes
+   the largest share instead. Fixed-px columns (checkbox, thumbnail, kebab) repeat that
+   block's reasoning too: those cells hold a fixed-size WIDGET, and a percentage that
+   drops below it lets the widget spill into its neighbour. */
+@media (min-width: 1000px) {
+  .products-table { table-layout: fixed; }
+  .products-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The select-all must never be clipped — same exception, same reason, as the tablet block. */
+  .products-table .check-col     { width: 2.4rem; overflow: visible; }
+  /* Sized for a 4-digit row number: the counter runs across pages (page × size + index),
+     so a large catalogue reaches four digits long before it runs out of products. */
+  .products-table .row-num       { width: 3rem; }
+  /* 42px thumbnail + this block's 0.75rem cell padding on both sides. */
+  .products-table .thumb-col     { width: 4.2rem; }
+  /* The shares are set so no column ends up NARROWER than the width `table-layout: auto` was
+     giving it on the demo catalogue — the point is to bound the table, not to squeeze it. The
+     slack that buys `name` its extra room comes from `stock` and `cat`, whose content is a short
+     number and a chip that wraps; `date` and `purchased` keep the width their headings already
+     needed ("נוסף בתאריך" ellipsizes below ~113px). */
+  .products-table .name-col      { width: 22%; }
+  .products-table .sku-col       { width: 6.5%; }
+  .products-table .cat-col       { width: 10.5%; }
+  /* Price and stock are `.num` (nowrap) and start-aligned, so in RTL an overlong value
+     bleeds LEFT over its neighbour instead of wrapping. Both are sized for the widest
+     realistic string ("1,234.50 ₪"), not the demo catalogue's two-digit prices. */
+  .products-table .price-col     { width: 9.5%; }
+  .products-table .stock-col     { width: 9.5%; }
+  .products-table .wishlist-col  { width: 4.5%; }
+  .products-table .purchased-col { width: 7%; }
+  .products-table .date-col      { width: 10.5%; }
+  /* 1.75rem kebab + 0.75rem padding each side. Its hover state paints a full circle of
+     that size, so a narrower column spills the circle over the table's own edge. */
+  .products-table .actions-col   { width: 3.4rem; }
+  /* One line + "…", not a wrap: rows stay a uniform height, and the full name is one click
+     away — the cell is click-to-edit and opens an input carrying the whole string. */
+  .products-table .name-col .product-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 /* ── Mobile-only sort/filter toolbar — on desktop, sort + filter live in the
    table's own header row (.sort-btn per column + a funnel button where
    filtering is relevant), same as the variant-combo table. The header

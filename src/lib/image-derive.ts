@@ -29,7 +29,8 @@
  * import needs its own paced queue; until that exists, bulk-created products
  * keep the old behaviour and the first buyer pays the render once.
  */
-import { cdnSrc, cdnThumb, LIGHTBOX_WIDTHS, BANNER_WIDTHS, BANNER_RATIO } from './cdn.js';
+import { cdnSrc, cdnBand, LIGHTBOX_WIDTHS, BANNER_WIDTHS, BANNER_RATIO } from './cdn.js';
+import { outboundFetch } from './outbound-fetch.js';
 
 /**
  * A hard ceiling on one call's fan-out. The product form caps a product at 5
@@ -38,8 +39,11 @@ import { cdnSrc, cdnThumb, LIGHTBOX_WIDTHS, BANNER_WIDTHS, BANNER_RATIO } from '
  */
 const MAX_IMAGES = 5;
 
-/** Per-request timeout. A derivation that hasn't answered by now is not worth
- *  holding a socket for — the buyer's own request would trigger it anyway. */
+/** Per-request timeout, overriding `outbound-fetch.ts`'s 10s default. Longer than that default
+ *  because nobody is waiting on this one — it runs `void`ed, off the request — and a cold
+ *  Cloudinary render is genuinely slow (~0.8s measured, and that is the warm-ish case). Still a
+ *  ceiling: a derivation that hasn't answered by now is not worth holding a socket for, because
+ *  the buyer's own request would trigger it anyway. */
 const TIMEOUT_MS = 20_000;
 
 /**
@@ -70,7 +74,7 @@ export async function deriveImageRenders(urls: string[]): Promise<void> {
         // there, and firing at the original host would be a pointless hit on it.
         if (delivery === url) continue;
         requests.push(
-          fetch(delivery, { method: 'HEAD', signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => undefined),
+          outboundFetch(delivery, { method: 'HEAD', timeoutMs: TIMEOUT_MS }).catch(() => undefined),
         );
       }
     }
@@ -90,10 +94,10 @@ export async function deriveImageRenders(urls: string[]): Promise<void> {
  * Cloudinary to render before a byte moved, and with one banner per store it is a different unlucky
  * visitor for every store in the mall (owner kept measuring it, 2026-08-03).
  *
- * Cropped rungs, not `cdnSrc` ones: these must be the exact URLs `[storeSlug]/index.astro` puts in
- * its `srcset` and its `<head>` preload, or the warm-up renders transforms nobody asks for and the
- * visitor still pays for the ones they do. All three read `BANNER_WIDTHS`/`BANNER_RATIO` from
- * `cdn.ts` so they cannot drift apart.
+ * Cropped rungs (`cdnBand`), not `cdnSrc` ones: these must be the exact URLs
+ * `[storeSlug]/index.astro` puts in its `srcset` and its `<head>` preload, or the warm-up renders
+ * transforms nobody asks for and the visitor still pays for the ones they do. All three read
+ * `BANNER_WIDTHS`/`BANNER_RATIO` from `cdn.ts` so they cannot drift apart.
  */
 export function warmBannerDerivations(url: string | undefined | null): void {
   void deriveBannerRenders(url);
@@ -104,10 +108,10 @@ export async function deriveBannerRenders(url: string | undefined | null): Promi
   try {
     if (!url) return;
     const requests = BANNER_WIDTHS.map((w) => {
-      const delivery = cdnThumb(url, w, Math.round(w / BANNER_RATIO));
+      const delivery = cdnBand(url, w, BANNER_RATIO);
       // Handed back unchanged = nothing Cloudinary will serve (relative path, dev host, no cloud).
       if (delivery === url) return undefined;
-      return fetch(delivery, { method: 'HEAD', signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => undefined);
+      return outboundFetch(delivery, { method: 'HEAD', timeoutMs: TIMEOUT_MS }).catch(() => undefined);
     }).filter(Boolean);
     await Promise.all(requests);
   } catch {
