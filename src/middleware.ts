@@ -2,6 +2,7 @@ import { defineMiddleware } from 'astro:middleware';
 import type { AstroCookies } from 'astro';
 import { randomUUID } from 'node:crypto';
 import { gzipResponse } from './lib/http-compress.js';
+import { reportStreamErrors } from './lib/stream-errors.js';
 import { logError } from './lib/error-log.js';
 import { recordPageViewTap } from './lib/page-view-tap.js';
 import { isBotRequest } from './lib/bot-detect.js';
@@ -13,6 +14,7 @@ import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
 import { HEALTH_PATH } from './pages/api/health.js';
 import { csrfRejection, csrfRequired, csrfTokenFromRequest, verifyCsrfToken } from './lib/csrf.js';
 import { ensureShutdownHookInstalled, trackRequest } from './lib/shutdown.js';
+import { ensureProcessErrorHandlersInstalled } from './lib/process-errors.js';
 import { captureAttribution } from './lib/attribution.js';
 
 // Stores live at the platform ROOT now — a store home is `/<slug>` and a product page is
@@ -59,6 +61,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // installed. `release()` sits in the outermost `finally` below — a request that leaks its slot
   // makes every future deploy wait out the full drain deadline.
   ensureShutdownHookInstalled();
+  // Third ignition at the same point and for the same reason (lib/process-errors.ts): the net under
+  // every fire-and-forget promise in the process, which by definition has no request to report on.
+  ensureProcessErrorHandlersInstalled();
   const releaseRequest = trackRequest();
   try {
     const isGet = context.request.method === 'GET';
@@ -199,7 +204,27 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
     // Last thing before it leaves the process, so every SSR route is covered by one rule and the
     // analytics tap above still sees the real, uncompressed response headers.
-    return gzipResponse(context.request, response);
+    //
+    // `reportStreamErrors` goes INSIDE the gzip so it reads Astro's own stream: it is the half of
+    // the error surface this `try/catch` cannot reach. `await next()` resolved the moment the
+    // page's frontmatter finished, so everything the template renders after that — including every
+    // component's frontmatter, `BaseLayout` included — throws outside the block below and was
+    // reaching the socket as a bare "Internal server error" with nothing written to the log.
+    return gzipResponse(
+      context.request,
+      reportStreamErrors(response, (err) => {
+        void logError({
+          source: 'server',
+          route: pathname,
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+          // Not 500: the status line went out before this failed, and it was whatever the route
+          // decided. Recording a 500 here would be inventing a status the visitor never received.
+          statusCode: response.status,
+          resolutionHint: 'Thrown while streaming the response — after the headers were sent, so no error page could be shown. Look at a component rendered by this route, not at its frontmatter.',
+        }, { pathname, cookies: context.cookies });
+      }),
+    );
   } catch (err) {
     const pathname = new URL(context.request.url).pathname;
     // Not awaited, and the identity lookup moved INSIDE it: this runs on every 500, so when the
