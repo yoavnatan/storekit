@@ -192,3 +192,151 @@ describe('FormFallbackGuard — keeping the blocked edit', () => {
     expect(JSON.stringify(localStorage)).not.toContain('hunter2');
   });
 });
+
+/**
+ * The accident this actually protects against. A blocked submit is the rare one — a closed tab, a
+ * crashed browser and a machine that lost power are the common ones, and none of them run a line of
+ * our code on the way out. So the draft has to already be on disk before the page goes.
+ */
+describe('FormFallbackGuard — drafting while the seller types', () => {
+  const GUARDED = 'id="settings-form" method="POST" action="/api/store" data-unsaved-guard';
+  const FIELDS = '<input name="name" value="server" /><input type="hidden" name="logo" value="a.jpg" />';
+
+  /** What a keystroke actually is to this script: a value, then a bubbling input event. */
+  function type(form: HTMLFormElement, name: string, value: string): void {
+    const el = form.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function stored(): string[] {
+    return Object.keys(localStorage).filter((k) => k.indexOf('dz-draft:') === 0);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('alert', vi.fn());
+    localStorage.clear();
+  });
+
+  it('keeps typing that was never submitted, and offers it on the next load', () => {
+    const form = reload(FIELDS, GUARDED);
+    type(form, 'name', 'typed, never saved');
+    vi.advanceTimersByTime(1000);   // …and here the machine dies
+
+    const fresh = reload(FIELDS, GUARDED);
+    expect(fresh.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('server');
+    const bar = fresh.querySelector('[role="status"]')!;
+    expect(bar.textContent).toContain(FOUND);
+
+    Array.from(bar.querySelectorAll('button')).find((b) => b.textContent === RESTORE)!.click();
+    expect(fresh.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('typed, never saved');
+  });
+
+  it('debounces — a burst of keystrokes is one write, and nothing is written before it settles', () => {
+    const form = reload(FIELDS, GUARDED);
+    type(form, 'name', 'a');
+    vi.advanceTimersByTime(300);
+    expect(stored()).toEqual([]);          // still typing: nothing on disk yet
+
+    type(form, 'name', 'ab');
+    vi.advanceTimersByTime(300);
+    expect(stored()).toEqual([]);          // the timer restarted, as it should
+
+    vi.advanceTimersByTime(500);
+    expect(stored()).toHaveLength(1);
+    expect(JSON.stringify(localStorage)).toContain('ab');
+  });
+
+  it('flushes what is still pending when the tab is hidden', () => {
+    const form = reload(FIELDS, GUARDED);
+    type(form, 'name', 'half a word');
+    vi.advanceTimersByTime(100);           // well inside the debounce
+
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(JSON.stringify(localStorage)).toContain('half a word');
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+  });
+
+  it('drafts nothing for a form that is not guarded', () => {
+    const form = reload(FIELDS, 'id="filters" method="POST" action="/api/x"');
+    type(form, 'name', 'a search term');
+    vi.advanceTimersByTime(1000);
+    expect(stored()).toEqual([]);
+  });
+
+  it('forgets the draft the moment the save actually lands', () => {
+    const form = reload(FIELDS, GUARDED);
+    type(form, 'name', 'x');
+    vi.advanceTimersByTime(1000);
+    expect(stored()).toHaveLength(1);
+
+    window.dispatchEvent(new CustomEvent('dash:saved', { detail: { form } }));
+    expect(stored()).toEqual([]);
+  });
+
+  it('forgets the draft when the seller discards on purpose', () => {
+    const form = reload(FIELDS, GUARDED);
+    type(form, 'name', 'x');
+    vi.advanceTimersByTime(1000);
+
+    // unsaved-guard.ts fires this only for a confirmed "discard changes" — never for a restore.
+    form.dispatchEvent(new CustomEvent('dash:discarded', { bubbles: true }));
+    expect(stored()).toEqual([]);
+  });
+
+  it('re-protects the values it just restored', () => {
+    const first = reload(FIELDS, GUARDED);
+    type(first, 'name', 'recovered');
+    vi.advanceTimersByTime(1000);
+
+    const fresh = reload(FIELDS, GUARDED);
+    Array.from(fresh.querySelectorAll('button')).find((b) => b.textContent === RESTORE)!.click();
+    vi.advanceTimersByTime(1000);
+    // Restoring is not saving. A second crash must not be the one that finally loses it.
+    expect(JSON.stringify(localStorage)).toContain('recovered');
+  });
+
+  it('puts back only the fields he edited — never the rest of the photograph', () => {
+    // A dashboard form submits every field it owns, so a draft is a picture of ALL of them. He
+    // edits `name` here; meanwhile another tab (or his phone) changes `tagline` and saves.
+    const first = reload('<input name="name" value="server" /><input name="tagline" value="old" />', GUARDED);
+    type(first, 'name', 'his edit');
+    vi.advanceTimersByTime(1000);
+
+    const fresh = reload('<input name="name" value="server" /><input name="tagline" value="from the other tab" />', GUARDED);
+    Array.from(fresh.querySelectorAll('button')).find((b) => b.textContent === RESTORE)!.click();
+
+    expect(fresh.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('his edit');
+    // The lost update this guards: restoring the whole photograph would put `old` back and the next
+    // save would write it, silently undoing the other tab — exactly what lib/record-rev.ts prevents
+    // on the server, arriving through a door its per-field merge cannot see.
+    expect(fresh.querySelector<HTMLInputElement>('[name="tagline"]')!.value).toBe('from the other tab');
+  });
+
+  it('offers nothing when the only difference is a field he never touched', () => {
+    const first = reload('<input name="name" value="server" /><input name="tagline" value="old" />', GUARDED);
+    type(first, 'name', 'x');
+    vi.advanceTimersByTime(1000);
+
+    // He saved `name` from another tab too, so the only thing left differing is `tagline` —
+    // which he never edited. There is nothing here to ask him about.
+    const fresh = reload('<input name="name" value="x" /><input name="tagline" value="changed elsewhere" />', GUARDED);
+    expect(fresh.querySelector('[role="status"]')).toBeNull();
+    expect(stored()).toEqual([]);
+  });
+
+  it('tells the widgets that paint from a hidden field to repaint', () => {
+    const first = reload(FIELDS, GUARDED);
+    type(first, 'logo', 'cropped.jpg');   // the cropper writes its hidden input this way
+    vi.advanceTimersByTime(1000);
+
+    const fresh = reload(FIELDS, GUARDED);
+    let repainted = 0;
+    fresh.addEventListener('dash:fieldsrewritten', () => { repainted++; });
+    Array.from(fresh.querySelectorAll('button')).find((b) => b.textContent === RESTORE)!.click();
+    // Without this the seller sees the old picture above a field holding the new one.
+    expect(repainted).toBe(1);
+  });
+});
