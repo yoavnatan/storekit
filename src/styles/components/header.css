@@ -253,8 +253,14 @@ nav a:hover { color: var(--color-text); }
 .user-dropdown__item:hover { background: var(--color-bg); }
 
 .user-dropdown form { margin: 0; }
-.user-dropdown form + a,
-.user-dropdown a + form { margin-top: 0.2rem; padding-top: 0.5rem; border-top: 1px solid var(--color-border); }
+
+/* The rule above the logout row. Was written as `a + form` adjacency, which is a divider that
+   any new sibling can silently delete: the saved-stores disclosure landed between the links and
+   this form and the border vanished for every buyer who has no store (the seller-dashboard link
+   is the one thing that kept the two adjacent). An explicit class cannot be voided that way.
+   Stays CSS rather than becoming a utility because `.user-dropdown form { margin: 0 }` above is
+   unlayered and would beat a `mt-*` utility (see main.css on layer order). */
+.user-dropdown__sep { margin-top: 0.2rem; padding-top: 0.5rem; border-top: 1px solid var(--color-border); }
 
 .lang-toggle-form { display: flex; }
 

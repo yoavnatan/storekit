@@ -388,6 +388,47 @@ const strEmpty   = t.store.noProductsFound;
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
               האזור שלי
             </a>
+            {/* Saved stores (CURRENT_TASK → סשן ג׳ 1). The only route to them used to be the
+                homepage's own "liked" tab, so a shopper standing inside a store had no way back
+                to the stores they had saved. A disclosure rather than a second floating panel:
+                the avatar menu is anchored to the very edge of the header, and a flyout beside it
+                has nowhere to go at 375px — and the same "there is more inside" gesture is
+                already the store page's category chevron, so this reads as one language.
+                Filled lazily — see the script below; nothing about it costs an SSR read. */}
+            <button
+              type="button"
+              class="user-dropdown__item"
+              id="saved-stores-toggle"
+              role="menuitem"
+              aria-expanded="false"
+              aria-controls="saved-stores-panel"
+              data-str-empty={t.nav.savedStoresEmpty}
+              data-str-all={t.nav.savedStoresAll}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.7 7.8l1 1 7.8 7.8 7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+              {/* nowrap: this is the only row carrying BOTH an icon and a trailing chevron, so at
+                  the dropdown's 160px floor it was the one label that wrapped to two lines — and
+                  it did so only while the list was empty, i.e. only when nothing else was
+                  widening the menu. */}
+              <span class="flex-1 whitespace-nowrap">{t.home.shelfLiked}</span>
+              <svg id="saved-stores-chev" class="transition-transform duration-150" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            {/* `ps-[0.9rem]` is the inset the store page's own nested category group already uses
+                (`.category-drawer-group`) — these rows have to read as being INSIDE the row above
+                them, and the site had an answer for that. The height fits everything the server
+                can send (six rows + the "all saved stores" link — MENU_CAP in /api/saved-stores),
+                so nothing normally scrolls: it was 13rem first, and that is precisely the bug it
+                guards against — the link scrolled out of sight, and a scroller inside a dropdown
+                gives no hint that anything is below it. The overflow rule is the backstop for a
+                larger font or a raised cap. */}
+            <div
+              id="saved-stores-panel"
+              class="mt-0.5 ps-[0.9rem] max-h-[15.5rem] max-w-[15rem] overflow-y-auto"
+              role="group"
+              aria-labelledby="saved-stores-toggle"
+              hidden
+            ></div>
+
             {(Astro.props.hasStore || storeMode || sellerMode) && (
               <a href="/seller/dashboard" class="user-dropdown__item" role="menuitem" id="seller-dashboard-link">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -398,7 +439,7 @@ const strEmpty   = t.store.noProductsFound;
             {/* data-native-submit: a real browser POST, on purpose — logout answers with a
                 redirect, and it must keep working even with every module on the page dead
                 (see dashboard/FormFallbackGuard.astro). */}
-            <form method="POST" action="/seller/logout" data-native-submit>
+            <form method="POST" action="/seller/logout" class="user-dropdown__sep" data-native-submit>
               <CsrfField />
               <input type="hidden" name="_next" value={currentPath} />
               <button class="user-dropdown__item user-dropdown__item--btn" type="submit" role="menuitem">
@@ -555,6 +596,7 @@ const strEmpty   = t.store.noProductsFound;
     userDropdown?.removeAttribute('hidden');
     userToggle?.setAttribute('aria-expanded', 'true');
     (userDropdown?.querySelector<HTMLElement>('[role="menuitem"]'))?.focus();
+    loadSavedStores();
   }
   function closeUserMenu() {
     if (!userDropdown || userDropdown.hasAttribute('hidden')) return;
@@ -572,6 +614,85 @@ const strEmpty   = t.store.noProductsFound;
     if (e.key === 'Escape' && userDropdown && !userDropdown.hasAttribute('hidden')) {
       closeUserMenu(); userToggle?.focus();
     }
+  });
+
+  // ── Saved stores, inside the avatar menu ──────────────────────
+  // Fetched once per page load, the first time the avatar menu is opened at all — not on page
+  // load, and not per disclosure click. The header renders on every page of the site, so this
+  // list must never be part of what a page costs; a deliberate click on the avatar is the
+  // earliest moment anyone can be about to look at it, and doing it then means the disclosure
+  // itself opens instantly instead of on a spinner.
+  const savedToggle = document.getElementById('saved-stores-toggle') as HTMLButtonElement | null;
+  const savedPanel  = document.getElementById('saved-stores-panel') as HTMLElement | null;
+  const savedChev   = document.getElementById('saved-stores-chev') as HTMLElement | null;
+
+  interface SavedStore { slug: string; name: string; image: string; initial: string; gradient: string }
+
+  // Empty string, never a hardcoded Hebrew literal: the strings come from the server through
+  // data-str-* like every other client-rendered string in this file, so an English page cannot
+  // end up with a Hebrew row (see tests/i18n-island-scope.test.ts for why the dictionary island
+  // is not available here).
+  const strSavedEmpty = savedToggle?.dataset.strEmpty ?? '';
+  const strSavedAll   = savedToggle?.dataset.strAll ?? '';
+
+  /** One row — the store's real logo when it has one, otherwise the same generated mark it wears
+   *  on a store card, resolved server-side (see /api/saved-stores). */
+  function savedStoreRow(s: SavedStore): string {
+    const avatar = s.image
+      ? `<img src="${escH(cdnThumb(s.image, 44, 44))}" alt="" width="22" height="22" loading="lazy" decoding="async" class="w-[22px] h-[22px] rounded-full object-cover flex-shrink-0" style="border:1px solid var(--color-border)">`
+      : `<span class="w-[22px] h-[22px] rounded-full flex-shrink-0 flex items-center justify-center font-bold text-white text-[10px]" style="background:${escH(s.gradient)};border:1px solid var(--color-border)" aria-hidden="true">${escH(s.initial)}</span>`;
+    // outline-offset goes NEGATIVE because this panel is a scroll container: the focus ring is
+    // drawn 4px outside the row, which a scroller clips (AI_INSTRUCTIONS → Accessibility).
+    return `<a href="/${escH(s.slug)}" role="menuitem" class="flex items-center gap-2 w-full py-1.5 px-2 rounded-sm text-[0.82rem] text-[color:var(--color-text)] no-underline transition-colors hover:bg-[color:var(--color-bg)] focus-visible:[outline-offset:-2px]">${avatar}<span class="min-w-0 truncate">${escH(s.name)}</span></a>`;
+  }
+
+  let savedStoresLoaded = false;
+  async function loadSavedStores(): Promise<void> {
+    if (savedStoresLoaded || !savedPanel) return;
+    savedStoresLoaded = true;
+    try {
+      const res = await fetch('/api/saved-stores');
+      // Thrown, not returned: a 401 from an expired session has to land on the same path as a
+      // dropped connection, or the panel stays permanently blank with nothing left to retry it.
+      if (!res.ok) throw new Error(`saved-stores ${res.status}`);
+      const data = await res.json() as { total: number; stores: SavedStore[] };
+      const list = Array.isArray(data.stores) ? data.stores : [];
+      savedPanel.innerHTML = list.length === 0
+        ? `<p class="px-2 py-1.5 text-[0.78rem] text-[color:var(--color-muted)]">${escH(strSavedEmpty)}</p>`
+        : list.map(savedStoreRow).join('')
+          // Only when the menu is actually hiding some — a link to "all" beside all of them is a
+          // row that answers a question nobody asked.
+          + (data.total > list.length
+            ? `<a href="/?panel=liked" role="menuitem" class="flex items-center w-full py-1.5 px-2 rounded-sm text-[0.78rem] font-medium text-[color:var(--color-primary)] no-underline transition-colors hover:bg-[color:var(--color-bg)] focus-visible:[outline-offset:-2px]">${escH(strSavedAll)}</a>`
+            : '');
+    } catch {
+      // The disclosure stays empty rather than claiming "you saved nothing", and the flag goes
+      // back so the next open genuinely retries.
+      savedStoresLoaded = false;
+    }
+  }
+
+  // The heart on a store page writes this very list. Without this the menu keeps whatever it read
+  // when it was first opened, so a store saved a moment ago is missing from it — and one just
+  // un-saved is still in it, linking somewhere the shopper deliberately removed.
+  window.addEventListener('favorite:change', () => {
+    savedStoresLoaded = false;
+    if (!savedPanel) return;
+    // Open right now: refill in place, so it never blinks empty. Closed: drop what it holds and
+    // let the next open pay for the read.
+    if (savedPanel.hasAttribute('hidden')) savedPanel.innerHTML = '';
+    else loadSavedStores();
+  });
+
+  savedToggle?.addEventListener('click', (e) => {
+    // The menu closes on any document click (see above); this one is inside it and must not.
+    e.stopPropagation();
+    if (!savedPanel) return;
+    const open = savedPanel.hasAttribute('hidden');
+    savedPanel.toggleAttribute('hidden', !open);
+    savedToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    savedChev?.classList.toggle('rotate-180', open);
+    if (open) loadSavedStores();
   });
 
   // ── Notifications bell ────────────────────────────────────────

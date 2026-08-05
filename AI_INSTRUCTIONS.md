@@ -430,6 +430,7 @@ src/scripts/error-reporter.ts   ← initErrorReporter() (window.onerror/unhandle
 src/pages/api/lang.ts           ← POST language switch (he/en cookie) → 303 back to the referring page, same-origin only (safeRefererPath)
 src/pages/api/user-cart.ts      ← GET/POST the logged-in user's server-side cart + wishlist + recentStores (session-guarded, own id only)
 src/pages/api/favorite-store.ts ← POST favourite-store toggle (session-guarded); tolerates a previous slug, always stores the CURRENT one
+src/pages/api/saved-stores.ts   ← GET the session's saved stores + name/logo/mark for the header's avatar menu (isStoreVisible, capped at 6 + a `total`); client-fetched, never SSR'd into the header
 src/pages/api/messages.ts       ← GET/POST messages
 src/pages/api/notifications.ts  ← GET/POST notifications
 src/pages/api/admin-messages.ts ← seller-facing admin-thread GET/POST (session-guarded, own sellerId only)

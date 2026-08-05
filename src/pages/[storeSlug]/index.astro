@@ -1186,6 +1186,10 @@ const bannerPreload = !isDemo && shopStore.bannerImage
           favBtn.dataset.favorited = String(favorited);
           favBtn.setAttribute('aria-pressed', String(favorited));
           setFavStyle(favorited);
+          // The header's avatar menu lists these stores and caches them for the page's lifetime;
+          // announced only after the SERVER answered, so the menu can never show a store whose
+          // save did not actually land. Same shape as `cart:change`/`wishlist:change`.
+          window.dispatchEvent(new CustomEvent('favorite:change'));
         })
         .catch(() => {
           favBtn.dataset.favorited = String(!nowFav);
