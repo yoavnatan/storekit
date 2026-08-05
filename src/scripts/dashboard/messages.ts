@@ -472,7 +472,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       // The tab dot reflects ALL threads — only drop it once no other row is
       // still unread (with the system thread now being many rows instead of
       // one pinned row, an unconditional remove was wrong).
-      if (!document.querySelector('.msg-table__row--unread')) document.querySelector('#tab-messages span[aria-label]')?.remove();
+      if (!document.querySelector('.msg-table__row--unread')) document.querySelector('#tab-messages [data-tab-alert]')?.remove();
       onAlertsChanged();
       if (!rowMatchesMsgFilters(row)) row.hidden = true;
       fetch(markReadUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -767,12 +767,20 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       fetch('/api/admin-messages?unread=1').then((r) => r.json()) as Promise<{ unreadThreadIds: string[] }>,
     ]).then(([{ unreadIds }, { unreadThreadIds }]) => {
       const tabBtn = document.getElementById('tab-messages');
-      const tabDot = tabBtn?.querySelector<HTMLElement>('span[aria-label]');
+      // Matched on data-tab-alert, not on `span[aria-label]`: that selector named
+      // no particular element and would have claimed any labelled span the tab
+      // grew later. The attribute is the dot's real identity — it is also what
+      // the strip's off-screen beacon reads (tab-alert-edges.ts).
+      const tabDot = tabBtn?.querySelector<HTMLElement>('[data-tab-alert]');
       const hasAnyUnread = unreadIds.length > 0 || unreadThreadIds.length > 0;
       if (hasAnyUnread && !tabDot && tabBtn) {
         const dot = document.createElement('span');
         dot.setAttribute('aria-label', 'הודעות שלא נקראו');
-        dot.style.cssText = 'position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:#ef4444;border-radius:50%';
+        dot.setAttribute('data-tab-alert', 'danger');
+        // Byte-for-byte the SSR dot's style (dashboard.astro, Messages tab). It
+        // had drifted to a raw #ef4444 while the server drew --color-danger, so
+        // the same dot changed shade the moment the poll rebuilt it.
+        dot.style.cssText = 'position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%';
         tabBtn.appendChild(dot);
       } else if (!hasAnyUnread) {
         tabDot?.remove();

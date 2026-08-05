@@ -1541,6 +1541,40 @@ textarea.input { resize: none; }
 .dash-tabs.is-scrollable:not(.at-start) .dash-tab-fade--start,
 .dash-tabs.is-scrollable:not(.at-end) .dash-tab-fade--end { opacity: 1; }
 
+/* ── Off-screen marker beacon ──
+   The fade says "there is more this way"; this dot says "and something over
+   there needs you", in the colour of the marker it stands for (owner,
+   2026-08-05 — a low-stock or unread-messages tab scrolled off a phone screen
+   was invisible). Which severity is showing is decided in
+   scripts/dashboard/tab-alert-edges.ts, which writes data-alert-start/end.
+
+   Drawn as the fade's own ::after on purpose: `opacity` on .dash-tab-fade makes
+   a group, so the beacon can only ever paint while that fade is lit — i.e.
+   while there really is strip left to scroll that way. One element, one rule,
+   no second visibility state to keep in step.
+
+   HIDDEN IS THE DEFAULT, same as the fade itself: the sync runs from
+   syncEdges(), which forces layout before it toggles anything. */
+.dash-tab-fade::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.dash-tab-fade--start::after { inset-inline-start: 0.35rem; }
+.dash-tab-fade--end::after { inset-inline-end: 0.35rem; }
+.dash-tabs[data-alert-start] .dash-tab-fade--start::after,
+.dash-tabs[data-alert-end] .dash-tab-fade--end::after { opacity: 1; }
+.dash-tabs[data-alert-start="danger"] .dash-tab-fade--start::after,
+.dash-tabs[data-alert-end="danger"] .dash-tab-fade--end::after { background: var(--color-danger); }
+.dash-tabs[data-alert-start="warning"] .dash-tab-fade--start::after,
+.dash-tabs[data-alert-end="warning"] .dash-tab-fade--end::after { background: var(--color-warning); }
+
 /* Sticky title bar — used on panels that carry a control (Orders/Messages:
    search+sort+filter; Settings: save button; Performance: the date-range picker;
    Products keeps its own separate .products-header) and on Advertising (its range

@@ -703,7 +703,10 @@ const orderStatusColors: Record<string, string> = {
           style="position:relative"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>{d.tabProducts}
-          <span id="products-stock-badge" class="dash-tab-badge ![background:var(--color-warning)]" data-tooltip={d.stockAlertBadge} aria-label={d.stockAlertBadge} hidden={stockAlertCount === 0}>{stockAlertCount}</span>
+          {/* The severity this marker declares to scripts/dashboard/tab-alert-edges.ts, so the tab
+              strip's edge can flag it while this tab is scrolled off screen. "warning" — a wrong
+              state that can wait; the red ones below are someone waiting on the seller. */}
+          <span id="products-stock-badge" class="dash-tab-badge ![background:var(--color-warning)]" data-tab-alert="warning" data-tooltip={d.stockAlertBadge} aria-label={d.stockAlertBadge} hidden={stockAlertCount === 0}>{stockAlertCount}</span>
         </button>
         <button
           class={`dash-tab${initialPanel === 'promotions' ? ' dash-tab--active' : ''}`}
@@ -724,7 +727,7 @@ const orderStatusColors: Record<string, string> = {
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>{d.tabOrders}
           {newOrdersCount > 0 && (
-            <span class="dash-tab-badge" aria-label={`${newOrdersCount} הזמנות חדשות`}>{newOrdersCount}</span>
+            <span class="dash-tab-badge" data-tab-alert="danger" aria-label={`${newOrdersCount} הזמנות חדשות`}>{newOrdersCount}</span>
           )}
         </button>
         <button
@@ -754,7 +757,7 @@ const orderStatusColors: Record<string, string> = {
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>הודעות
           {unreadMsgRows > 0 && (
-            <span style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMsgRows} הודעות שלא נקראו`}></span>
+            <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMsgRows} הודעות שלא נקראו`}></span>
           )}
         </button>
         <button

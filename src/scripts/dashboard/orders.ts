@@ -67,6 +67,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     } else if (tabBtn) {
       const span = document.createElement('span');
       span.className = 'dash-tab-badge';
+      // Same severity the SSR badge declares — a badge this rebuilds must stay
+      // visible to the strip's off-screen beacon (tab-alert-edges.ts).
+      span.setAttribute('data-tab-alert', 'danger');
       span.setAttribute('aria-label', tt('orderNewCount', remaining));
       span.textContent = String(remaining);
       tabBtn.appendChild(span);

@@ -404,7 +404,11 @@ const badgeCounts: Record<string, number> = {
               tabindex={initialPanel === tab.id ? 0 : -1}
             >
               {tab.label}
-              <span id={`tab-count-${tab.id}`} class="dash-tab__count" style="margin-inline-start:0.25rem" hidden={count === 0}>{count > 0 ? `(${count})` : ''}</span>
+              {/* data-tab-alert: read by scripts/dashboard/tab-alert-edges.ts, which puts a dot of
+                  this colour on the strip's edge while the tab is scrolled out of view. "danger"
+                  for all of them — every count here means "rows you have not seen", which is the
+                  same thing the site already paints red everywhere else. */}
+              <span id={`tab-count-${tab.id}`} class="dash-tab__count" data-tab-alert="danger" style="margin-inline-start:0.25rem" hidden={count === 0}>{count > 0 ? `(${count})` : ''}</span>
             </button>
           );
         })}
