@@ -1151,6 +1151,21 @@ textarea.input { resize: none; }
 }
 .crop-hint.hidden { opacity: 0; }
 
+/* The circle the store avatar is actually rendered in, drawn over the crop viewport so the
+   seller frames to the shape they will get. The dimming is one giant spread shadow rather than
+   a second element: the viewport already clips, so a 9999px spread paints everything outside
+   the circle and nothing else. Preview only — the crop handed back is still the full square
+   (see CropOptions.round). */
+.crop-round {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
+    0 0 0 9999px rgba(0, 0, 0, 0.45);
+}
+
 .crop-img {
   position: absolute;
   display: block;

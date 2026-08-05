@@ -13,6 +13,14 @@ const OUT_SIZE_MAX = 2560; // ceiling only — real output size matches the sour
 export interface CropOptions {
   vpWidth?: number;  // viewport CSS width in px (default 280 — square gallery crop)
   aspect?: number;   // output width/height ratio (default 1 = square)
+  /** Draw a circular mask over the viewport, dimming everything the circle will cut.
+   *  PREVIEW ONLY — the blob handed back is still the full square, because that is what the
+   *  render target actually consumes: StoreAvatar paints a square `object-fit: cover` image and
+   *  lets CSS round it. Cutting real transparent corners here would change nothing on screen and
+   *  would hand the ad feeds a circle on a black square (`cdnFill` is `f_jpg`, no alpha).
+   *  It exists because the seller was framing to a square and the site was showing a circle:
+   *  ~21% of what they lined up was cropped away by a shape they could not see. */
+  round?: boolean;
 }
 
 let cropApplyCallback: ((blob: Blob, isProcessed: boolean) => void) | null = null;
@@ -46,7 +54,8 @@ function updateCropDisplay() {
   cropImgEl.style.top = `${(cropVpH - h) / 2 + cropPanY}px`;
 }
 
-const cropHint = document.getElementById('crop-hint');
+const cropHint  = document.getElementById('crop-hint');
+const cropRound = document.getElementById('crop-round');
 
 export function openCropModal(blob: Blob, isProcessed: boolean, onApply?: (blob: Blob, isProcessed: boolean) => void, options?: CropOptions): void {
   if (!cropModal || !cropImgEl || !cropZoomEl) return;
@@ -65,6 +74,7 @@ export function openCropModal(blob: Blob, isProcessed: boolean, onApply?: (blob:
     updateCropDisplay();
   };
   cropImgEl.src = URL.createObjectURL(blob);
+  if (cropRound) cropRound.hidden = !options?.round;
   cropModal.hidden = false;
   cropHint?.classList.remove('hidden');
 }

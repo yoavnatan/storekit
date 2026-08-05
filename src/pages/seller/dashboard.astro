@@ -2347,10 +2347,12 @@ const orderStatusColors: Record<string, string> = {
             </div>
             <div class="flex gap-2" style="margin-top:1.1rem">
               <button type="button" class="btn btn--sm btn--ghost" id="banner-upload-btn">{store.bannerImage ? d.storeImageChange : d.uploadImage}</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="banner-adjust-btn" hidden={!store.bannerImage}>{d.adjustImage}</button>
               <button type="button" class="btn btn--sm btn--ghost" id="banner-remove-btn" hidden={!store.bannerImage}>{d.removeImage}</button>
             </div>
             <input type="file" accept="image/*" id="banner-file-input" hidden />
             <input type="hidden" name="bannerImage" id="banner-image-input" value={store.bannerImage ?? ''} />
+            <input type="hidden" name="bannerImageSource" id="banner-source-input" value={store.bannerImageSource ?? ''} />
           </div>
 
           <div class="field">
@@ -2377,10 +2379,12 @@ const orderStatusColors: Record<string, string> = {
             </div>
             <div class="flex gap-2" style="margin-top:1.1rem">
               <button type="button" class="btn btn--sm btn--ghost" id="avatar-upload-btn">{store.profileImage ? d.storeImageChange : d.uploadImage}</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="avatar-adjust-btn" hidden={!store.profileImage}>{d.adjustImage}</button>
               <button type="button" class="btn btn--sm btn--ghost" id="avatar-remove-btn" hidden={!store.profileImage}>{d.removeImage}</button>
             </div>
             <input type="file" accept="image/*" id="avatar-file-input" hidden />
             <input type="hidden" name="profileImage" id="avatar-image-input" value={store.profileImage ?? ''} />
+            <input type="hidden" name="profileImageSource" id="avatar-source-input" value={store.profileImageSource ?? ''} />
           </div>
 
           <label class="field">
@@ -2769,6 +2773,9 @@ const orderStatusColors: Record<string, string> = {
     <h3>{d.cropTitle}</h3>
     <div class="crop-viewport" id="crop-viewport">
       <img class="crop-img" id="crop-img" alt="" loading="eager" decoding="async" />
+      <!-- Shown only for a round render target (the store avatar). Decoration for the eye, so it
+           is aria-hidden and never focusable — the crop it previews is the square one. -->
+      <div class="crop-round" id="crop-round" aria-hidden="true" hidden></div>
       <div class="crop-hint" id="crop-hint" aria-hidden="true">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
         {lang === 'he' ? 'גרור למיקום · גלול לזום' : 'Drag to reposition · Scroll to zoom'}
@@ -3189,18 +3196,28 @@ const orderStatusColors: Record<string, string> = {
       const labels = {
         upload: i18n.uploadImage ?? 'Upload image',
         change: i18n.storeImageChange ?? 'Change image',
+        adjust: i18n.adjustImage ?? 'Adjust',
         remove: i18n.removeImage ?? 'Remove',
         uploading: i18n.uploadingImage ?? 'Uploading image…',
+        loading: i18n.loadingImage ?? 'Loading image…',
+        failed: i18n.uploadFailed ?? 'Image upload failed',
+        loadFailed: i18n.imageLoadFailed ?? 'Could not load the image',
       };
       img.initStoreImageWidget({
         frameId: 'banner-frame', fileInputId: 'banner-file-input', hiddenInputId: 'banner-image-input',
-        uploadBtnId: 'banner-upload-btn', removeBtnId: 'banner-remove-btn',
+        sourceInputId: 'banner-source-input', uploadBtnId: 'banner-upload-btn',
+        adjustBtnId: 'banner-adjust-btn', removeBtnId: 'banner-remove-btn',
         aspect: 3, vpWidth: 420, previewWidth: 900, cloud: CLOUD, preset: PRESET, labels,
       });
       img.initStoreImageWidget({
         frameId: 'avatar-frame', fileInputId: 'avatar-file-input', hiddenInputId: 'avatar-image-input',
-        uploadBtnId: 'avatar-upload-btn', removeBtnId: 'avatar-remove-btn',
-        aspect: 1, vpWidth: 220, previewWidth: 200, cloud: CLOUD, preset: PRESET, labels,
+        sourceInputId: 'avatar-source-input', uploadBtnId: 'avatar-upload-btn',
+        adjustBtnId: 'avatar-adjust-btn', removeBtnId: 'avatar-remove-btn',
+        // `round`: the avatar is drawn in a circle everywhere on the site (StoreAvatar), so the
+        // crop tool has to show a circle. Framing to a square and rendering a circle is what made
+        // the picture "not sit right" — a fifth of what the seller lined up was cut by a shape
+        // that was never on screen.
+        aspect: 1, vpWidth: 220, previewWidth: 200, round: true, cloud: CLOUD, preset: PRESET, labels,
       });
       tree.initCategoryTreeEditor();
       domain.initCustomDomain();
