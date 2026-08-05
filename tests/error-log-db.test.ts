@@ -324,3 +324,53 @@ describe('truncateStack', () => {
     expect(truncateStack('a'.repeat(50), 10)).toBe('a'.repeat(10) + '…');
   });
 });
+
+/**
+ * Severity is decided by `lib/error-severity.ts` and STORED (migrations/0013), so the thing worth
+ * asserting here is not the rule — `tests/error-severity.test.ts` owns that — but the wiring: that
+ * the write path calls it, that the column round-trips, and that a caller cannot talk it out of the
+ * answer. The last one is the point. A severity a call site can set is a severity that drifts
+ * between call sites, and the whole value of the column is that one predicate means one thing.
+ */
+describe('severity on the written row', () => {
+  it('stores critical for a failure on the money path', async () => {
+    await logError({ source: 'server', route: '/api/checkout', message: 'charge failed', statusCode: 500 });
+    const [entry] = await getRecentErrors(1);
+    expect(entry!.severity).toBe('critical');
+  });
+
+  it('stores error for any other server failure', async () => {
+    await logError({ source: 'server', route: '/search', message: 'boom', statusCode: 500 });
+    const [entry] = await getRecentErrors(1);
+    expect(entry!.severity).toBe('error');
+  });
+
+  it('stores warning for a browser report', async () => {
+    await logError({ source: 'client', route: '/checkout', message: 'undefined is not a function' });
+    const [entry] = await getRecentErrors(1);
+    expect(entry!.severity).toBe('warning');
+  });
+
+  it('ignores a severity the caller supplies', async () => {
+    // A route cannot promote its own errors — nor demote them, which is the direction that would
+    // actually hide something. Derived from source + route + status, all decided by the server.
+    await logError({ source: 'client', route: '/checkout', message: 'x', severity: 'critical' });
+    const [loud] = await getRecentErrors(1);
+    expect(loud!.severity).toBe('warning');
+
+    await logError({ source: 'server', route: '/api/checkout', message: 'y', statusCode: 500, severity: 'warning' });
+    const [quiet] = await getRecentErrors(1);
+    expect(quiet!.severity).toBe('critical');
+  });
+
+  it('rejects a value outside the three levels', async () => {
+    // The CHECK constraint, asserted directly: the enum lives in the database too, so a future
+    // writer that bypasses logError cannot invent a fourth level the UI has no label for.
+    await expect(
+      query(
+        `INSERT INTO error_log (id, source, message, severity, resolved, created_at)
+         VALUES (gen_random_uuid(), 'server', 'x', 'catastrophic', false, now())`,
+      ),
+    ).rejects.toThrow();
+  });
+});

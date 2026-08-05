@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import { isUuid, query } from './db.js';
+import { deriveSeverity, type ErrorSeverity } from './error-severity.js';
 import { getSellerSession, getSellerById } from './seller-auth.js';
 import { getStoreBySellerId, getStoreBySlug } from './stores.js';
 
@@ -132,6 +133,10 @@ export interface ErrorLogEntry {
   // Manual admin triage — the log itself stays otherwise read-only/automatic
   // (see clearErrorLog), this is the one deliberate human-toggled field.
   resolved?: boolean;
+  // How loud this is (lib/error-severity.ts). Optional on the INPUT to `logError` — callers do not
+  // pass it and must not, because a severity chosen at the call site is a severity that drifts
+  // between call sites; it is derived from the entry here. Always set on what a READ returns.
+  severity?: ErrorSeverity;
 }
 
 /** What `logError` needs in order to work out who this happened to, when the caller does not
@@ -258,11 +263,11 @@ export async function logError(
       `WITH ins AS (
          INSERT INTO error_log (
            id, source, route, message, stack, status_code, store_slug, store_name,
-           actor_role, actor_id, actor_label, resolution_hint, resolved, created_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false, now())
+           actor_role, actor_id, actor_label, resolution_hint, severity, resolved, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, false, now())
        )
        DELETE FROM error_log WHERE seq IN (
-         SELECT seq FROM error_log ORDER BY seq DESC OFFSET $13
+         SELECT seq FROM error_log ORDER BY seq DESC OFFSET $14
        )`,
       [
         crypto.randomUUID(),
@@ -277,6 +282,10 @@ export async function logError(
         clamp(merged.actorId, MAX_LABEL_LEN),
         clamp(merged.actorLabel, MAX_LABEL_LEN),
         clamp(merged.resolutionHint, MAX_HINT_LEN),
+        // Derived here, never taken from the caller — `merged.severity` is deliberately ignored.
+        // One rule, one file, one answer to "is this critical", and it is computed from the fields
+        // the SERVER decided (source, route, status) rather than from anything a request supplied.
+        deriveSeverity({ source: merged.source, route: merged.route, statusCode: merged.statusCode }),
         MAX_ENTRIES - 1,
       ],
     );
@@ -308,6 +317,7 @@ interface ErrorRow {
   actor_label: string | null;
   resolution_hint: string | null;
   resolved: boolean;
+  severity: ErrorSeverity;
   created_at: Date | string;
 }
 
@@ -320,6 +330,9 @@ function toEntry(row: ErrorRow): ErrorLogEntry {
     message: row.message,
     createdAt: new Date(row.created_at).toISOString(),
     resolved: row.resolved,
+    // Always present — the column is NOT NULL (migrations/0013), so unlike the optional fields
+    // below there is no absent case to spread away.
+    severity: row.severity,
     ...(row.route ? { route: row.route } : {}),
     ...(row.stack ? { stack: row.stack } : {}),
     ...(row.status_code !== null ? { statusCode: row.status_code } : {}),
@@ -343,7 +356,7 @@ function toEntry(row: ErrorRow): ErrorLogEntry {
 export async function getRecentErrors(limit = 100): Promise<ErrorLogEntry[]> {
   const { rows } = await query<ErrorRow>(
     `SELECT id, source, route, message, stack, status_code, store_slug, store_name,
-            actor_role, actor_id, actor_label, resolution_hint, resolved, created_at
+            actor_role, actor_id, actor_label, resolution_hint, resolved, severity, created_at
        FROM error_log
       ORDER BY seq DESC
       LIMIT $1`,
@@ -378,15 +391,21 @@ export interface AlertsQuery {
   sortDir: AlertsSortDir;
   source: string[]; // 'server' | 'client'
   storeSlug: string[];
+  severity: string[]; // 'critical' | 'error' | 'warning'
 }
 
 export function filterAndSortErrors(entries: ErrorLogEntry[], query: AlertsQuery): ErrorLogEntry[] {
   const sourceSet = query.source.length ? new Set(query.source) : null;
   const storeSet = query.storeSlug.length ? new Set(query.storeSlug) : null;
+  const severitySet = query.severity.length ? new Set(query.severity) : null;
 
   const filtered = entries.filter((e) => {
     if (sourceSet && !sourceSet.has(e.source)) return false;
     if (storeSet && (!e.storeSlug || !storeSet.has(e.storeSlug))) return false;
+    // `?? 'error'` matches the column default: an entry constructed in a test, or read from a row
+    // written before 0013 ran, is a server failure nobody classified. Treating it as unmatched
+    // instead would make the filter quietly hide entries rather than narrow them.
+    if (severitySet && !severitySet.has(e.severity ?? 'error')) return false;
     return true;
   });
 
