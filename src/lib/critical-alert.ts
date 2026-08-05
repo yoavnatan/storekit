@@ -103,7 +103,7 @@ function withinHourlyBudget(): boolean {
 
 /** Where the alert goes. Absent is the normal state in dev and CI, and it switches the whole
  *  module off rather than failing. */
-export function alertRecipient(): string | undefined {
+function alertRecipient(): string | undefined {
   return serverEnv('ALERT_EMAIL');
 }
 

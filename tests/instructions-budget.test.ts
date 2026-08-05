@@ -44,9 +44,13 @@ import { fileURLToPath } from 'node:url';
  * in that last one — never retry a non-idempotent operation, a retried checkout is a second charge —
  * is exactly the kind of thing worth more beside the code than skimmed at session start. 40.8k → 40.2k.
  *
+ * Later the same day, the monitoring session's own close: the 'production monitoring — future
+ * waypoint' bullet became a built one naming its four capture surfaces, and the six new modules
+ * went into Project structure, which this budget deliberately does not count. 40,221 → 40,153.
+ *
  * When this fails, lowering CEILING to the new number is the wrong move unless the number went down.
  */
-const CEILING = 40_221;
+const CEILING = 40_153;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
 
