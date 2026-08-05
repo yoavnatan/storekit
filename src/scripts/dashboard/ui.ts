@@ -1,6 +1,7 @@
 import { reportClientError } from '../error-reporter.js';
 import { arrowStep, wrapIndex } from '../../lib/arrow-step.js';
 import { markDashboardStale, conflictMessage } from './tab-sync.js';
+import { initTabAlertEdges } from './tab-alert-edges.js';
 
 const checkSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`;
 
@@ -296,7 +297,11 @@ export function initDashTabs(): void {
         if (edge === 'start') strip.prepend(fade); else strip.append(fade);
       }
     }
+    // A marker (low stock, new orders, unread messages, an admin "(N) new")
+    // scrolled out of the strip used to be unknowable — see tab-alert-edges.ts.
+    const syncAlerts = initTabAlertEdges(strip);
     const syncEdges = (): void => {
+      syncAlerts();
       const scrollable = strip.scrollWidth > strip.clientWidth + 1;
       strip.classList.toggle('is-scrollable', scrollable);
       const max = strip.scrollWidth - strip.clientWidth;
