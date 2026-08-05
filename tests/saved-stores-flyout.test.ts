@@ -1,6 +1,7 @@
 /**
- * The saved-stores flyout in the avatar menu — the four properties that make it a flyout rather
- * than the disclosure it used to be, each of which fails SILENTLY if it is undone.
+ * The saved-stores flyout in the avatar menu — the properties that make it a flyout rather than
+ * the disclosure it used to be, plus the two marks it must not go back to wearing. Every one of
+ * them fails SILENTLY if it is undone: nothing throws, the menu just gets worse.
  *
  * It was built as a disclosure inside the menu, on the reasoning (written into the markup) that a
  * flyout "has nowhere to go at 375px". Measured on 2026-08-05 that was wrong — the menu hugs the
@@ -28,6 +29,10 @@ function body(name: string): string {
   return new RegExp(`function ${name}\\(\\)[\\s\\S]*?\\n {2}\\}`).exec(code)?.[0] ?? '';
 }
 const place = body('placeSavedPanel');
+
+/** The saved-stores row itself. The inner `(?!<button)` matters: without it the match starts at
+ *  whatever <button> came earlier in the header and swallows it. */
+const rowTag = /<button(?:(?!<button)[\s\S])*?id="saved-stores-toggle"[\s\S]*?<\/button>/.exec(code)?.[0] ?? '';
 
 describe('saved-stores flyout', () => {
   it('is position:fixed — that is the whole reason it cannot grow the avatar menu', () => {
@@ -69,6 +74,15 @@ describe('saved-stores flyout', () => {
     expect(code).toMatch(/loadSavedStores\(\)\.then\(placeSavedPanel\)/);
   });
 
+  it('sits second in the menu, right under Home', () => {
+    // Owner, 2026-08-05. The rows under it are places you go to deal with your own account; this
+    // is the one that keeps a shopper shopping, so it goes above them.
+    const menu = /<div class="user-dropdown"[\s\S]*?\n {10}<\/div>/.exec(code)?.[0] ?? '';
+    expect(menu, 'the avatar menu').not.toBe('');
+    const order = [...menu.matchAll(/href="\/"|id="saved-stores-toggle"|href="\/buyer\/dashboard"/g)].map((m) => m[0]);
+    expect(order.slice(0, 3)).toEqual(['href="/"', 'id="saved-stores-toggle"', 'href="/buyer/dashboard"']);
+  });
+
   it('is closed by the avatar menu closing', () => {
     // It is a fixed-position child, so the menu's fade carries it along visually and it looks
     // shut — but left flagged open it comes back already open, positioned against where the menu
@@ -78,10 +92,31 @@ describe('saved-stores flyout', () => {
     expect(close).toContain('closeSavedPanel()');
   });
 
-  it('the chevron is decided by the side the panel lands on, not by the language', () => {
-    // An arrow names a direction ON SCREEN. The side is resolved at open time (whichever side of
-    // the menu has room), so the rotation has to come from that same decision — memory
-    // project_rtl_arrow_keys, one level up.
-    expect(place).toMatch(/savedChev\?\.classList\.toggle\('rotate-180',\s*!toRight\)/);
+  it('carries no chevron — there is no side of the row it can point from', () => {
+    // The row's trailing edge is the LEFT in Hebrew and the panel opens to the RIGHT, so wherever
+    // a chevron sat it pointed back across its own label (owner, 2026-08-05). What says the row is
+    // open is the row itself staying lit, the same tell `.user-btn[aria-expanded="true"]` uses.
+    expect(rowTag, 'the saved-stores row').not.toBe('');
+    expect(rowTag, 'a chevron came back').not.toMatch(/polyline/);
+    expect(rowTag).toContain('aria-expanded:');
+  });
+
+  it('wears the STAR — the heart in this header means the product wishlist', () => {
+    // The heart is the wishlist mark in six other files, one of them the wishlist button ~40px
+    // away in this same header; a store is saved with the star on [storeSlug]/index.astro. The
+    // row used the heart, which collided with one and contradicted the other.
+    expect(rowTag, 'not the store-save star').toContain('12 2 15.09 8.26 22 9.27');
+    expect(rowTag, 'the wishlist heart is back on the row').not.toMatch(/5\.5 5\.5 0 0 0-7\.[78]/);
+  });
+
+  it('has an empty state built from the site\'s own, not a bare line of text', () => {
+    // HomeTabEmpty.astro is what the homepage's "liked" tab uses for exactly this: muted outline
+    // mark, one line, one way out. A panel that answers "nothing here" with a grey sentence reads
+    // as a list that failed to load.
+    const empty = body('savedEmptyHtml');
+    expect(empty, 'savedEmptyHtml()').not.toBe('');
+    expect(empty, 'no mark').toContain('polygon');
+    expect(empty, 'no way out of the empty state').toContain('href="/stores"');
+    expect(empty).toContain('strSavedEmpty');
   });
 });

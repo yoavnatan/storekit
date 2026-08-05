@@ -49,10 +49,10 @@
  * only be choosing a slower failure over a faster one. A caller that is genuinely off the critical
  * path (a background job) can raise it explicitly, which also makes the exception visible.
  */
-export const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 export interface OutboundFetchOptions extends RequestInit {
-  /** Overrides `DEFAULT_TIMEOUT_MS`. Pass a bigger number only for a call nobody is waiting on. */
+  /** Overrides the 10s default. Pass a bigger number only for a call nobody is waiting on. */
   timeoutMs?: number;
 }
 
@@ -70,10 +70,4 @@ export function outboundFetch(input: string | URL | Request, options: OutboundFe
     ...init,
     signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
   });
-}
-
-/** True when a rejection from `outboundFetch` is the deadline rather than the network or the peer.
- *  Exported so a call site can log the two differently without string-matching a message. */
-export function isTimeout(err: unknown): boolean {
-  return err instanceof Error && err.name === 'TimeoutError';
 }
