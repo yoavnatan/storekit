@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="9.5 6.5 25.29 31">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="9.5 6.5 24.126 31">
   <!-- The bare D — no tile. The path is byte-identical to the one in
        BrandLogo.astro and the avatar dropdown, so the tab, the menu and the
        header are one drawing and cannot drift apart. The viewBox is cropped to
@@ -15,6 +15,6 @@
     @media (prefers-color-scheme: dark) { path { fill: #ffffff; } }
   </style>
   <path fill-rule="evenodd"
-        d="M11.25 8 L24.84 8 L33.04 16.2 L33.04 27.8 L24.84 36 L11.25 36 Z
-           M17.757 13.199 L21.724 13.199 L26.533 18.009 L26.533 25.991 L21.724 30.801 L17.757 30.801 Z"/>
+        d="M11.25 8 L23.676 8 L31.876 16.2 L31.876 27.8 L23.676 36 L11.25 36 Z
+           M17.410 12.922 L20.726 12.922 L25.716 17.912 L25.716 26.088 L20.726 31.078 L17.410 31.078 Z"/>
 </svg>
