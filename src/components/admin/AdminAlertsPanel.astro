@@ -1,7 +1,8 @@
 ---
 import type { AlertsSortDir, ErrorLogEntry } from '../../lib/error-log.js';
 import { SEVERITY_ORDER, type ErrorSeverity } from '../../lib/error-severity.js';
-import { errorRef, errorMeaning } from '../../lib/error-reference.js';
+import { errorRef, errorMeaning, errorCopyText } from '../../lib/error-reference.js';
+import { MAX_ENTRIES as MAX_ENTRIES_HINT } from '../../lib/error-log.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import AdminPager from './AdminPager.astro';
 import AdminNewBadge from './AdminNewBadge.astro';
@@ -15,6 +16,8 @@ interface Props {
   source: string[];
   storeSlug: string[];
   severity: string[];
+  /** Set when the alert mail's deep link narrowed the list to one entry. */
+  entryRef?: string;
   storeOptions: { slug: string; name: string }[];
   newSince: string;  // ISO — anything logged after this is what the tab's "(N)" counted
   newOnly: boolean;
@@ -23,7 +26,7 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, severity, storeOptions, newSince, newOnly, newCount, page, totalPages, buildUrl } = Astro.props;
+const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, severity, entryRef, storeOptions, newSince, newOnly, newCount, page, totalPages, buildUrl } = Astro.props;
 
 const sourceLabel: Record<string, string> = { server: 'שרת', client: 'דפדפן' };
 // The three levels a person actually triages by (lib/error-severity.ts). The wording answers
@@ -44,22 +47,11 @@ const sortLabels: Record<AlertsSortDir, string> = { desc: 'תאריך: חדש �
 // Plain-text dump for the "העתק" button — everything a developer would want
 // to paste elsewhere for diagnosis. Built server-side (one source of truth)
 // instead of scraped from the rendered row client-side.
+/** The same text the alert mail carries, from the same function (lib/error-reference.ts). No stack
+ *  cap here: on a screen scrolling is free, and the mail's 1200-character cut exists only because a
+ *  phone is not a place to scroll a stack trace. */
 function buildCopyText(e: ErrorLogEntry): string {
-  const actor = e.actorLabel
-    ? `${e.actorLabel}${e.actorRole ? ` (${roleLabel[e.actorRole] ?? e.actorRole})` : ''}`
-    : '—';
-  return [
-    `זמן: ${formatHeDateTime(e.createdAt)}`,
-    `מקור: ${sourceLabel[e.source] ?? e.source}`,
-    `חנות: ${e.storeName ?? '—'}`,
-    `עבור: ${actor}`,
-    `נתיב: ${e.route ?? '—'}`,
-    `קוד סטטוס: ${e.statusCode ?? '—'}`,
-    `הודעת שגיאה (טכנית): ${e.message}`,
-    `הצעת פתרון: ${e.resolutionHint ?? 'אין הצעת פתרון אוטומטית לשגיאה זו'}`,
-    `Stack:`,
-    e.stack ?? 'אין stack trace לשגיאה זו.',
-  ].join('\n');
+  return errorCopyText(e, { when: formatHeDateTime(e.createdAt) });
 }
 ---
 
@@ -119,7 +111,19 @@ function buildCopyText(e: ErrorLogEntry): string {
     {(newCount > 0 || newOnly) && <AdminNewOnlyToggle id="admin-alerts-new-toggle" active={newOnly} count={newCount} label="חדשות בלבד" />}
   </div>
 
-  {totalFiltered === 0 && <p class="admin-empty">לא נמצאו שגיאות תואמות.</p>}
+  {/* Arriving from the mail's link, the list is one row and the reason must be visible — otherwise
+      the tab silently looks like it has lost 499 entries. The way out is a link, not a back button,
+      because the mail was opened in a new tab as often as not. */}
+  {entryRef && (
+    <p class="admin-attention-note flex flex-wrap items-center gap-2">
+      <span>מציג שגיאה אחת מתוך קישור בהתראה: <strong dir="ltr">{entryRef.startsWith('#') ? entryRef : `#${entryRef}`}</strong></span>
+      <a href={buildUrl(1).replace(/([?&])alref=[^&]*&?/, '$1').replace(/[?&]$/, '')}>הצגת כל השגיאות</a>
+    </p>
+  )}
+  {totalFiltered === 0 && entryRef && (
+    <p class="admin-empty">השגיאה הזאת כבר לא ביומן — הוא שומר את {MAX_ENTRIES_HINT} הרשומות האחרונות, והיא נדחקה החוצה.</p>
+  )}
+  {totalFiltered === 0 && !entryRef && <p class="admin-empty">לא נמצאו שגיאות תואמות.</p>}
 
   <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
   <div class="admin-table-wrap">

@@ -191,6 +191,14 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const orderItems: OrderItem[] = [];
   const storeSubtotals: Record<string, StoreSubtotal> = {};
   const decremented: { productId: string; qty: number; selectedVariants?: Record<string, string> }[] = [];
+  // What the buyer was actually trying to buy, in words, kept only so a failure can say so.
+  //
+  // The error entry already names the buyer and the store; without this it cannot name the thing.
+  // "A buyer could not complete a purchase" is where triage starts, and "which item" is very often
+  // where it ENDS — a single product with a bad variant or a bad price is the usual cause, and
+  // recovering it afterwards means reconstructing a cart that no longer exists. Names rather than
+  // ids, because this is read by a person; `decremented` keeps the ids for the restock.
+  const attempted: string[] = [];
   // Deferred until the order actually commits — a downstream failure rolls the
   // reservation back below, and a stray stock alert for a purchase that never
   // went through would be a false positive.
@@ -265,6 +273,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       }, 409);
     }
     decremented.push({ productId: product.id, qty, selectedVariants });
+    attempted.push(`${product.name} ×${qty}${selectedVariants ? ` (${Object.values(selectedVariants).join('/')})` : ''}`);
 
     // Fire once, right as stock crosses a threshold going down — not on every
     // subsequent order while it stays low/empty (that'd spam the seller on every
@@ -521,9 +530,17 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       actorLabel: typeof buyerEmail === 'string' ? buyerEmail : undefined,
       storeSlug: storeSlugs.length ? storeSlugs.join(', ') : undefined,
       storeName: storeSlugs.length ? storeSlugs.map((s) => storeSubtotals[s]!.storeName).join(', ') : undefined,
-      resolutionHint: committed
-        ? 'ההזמנה נוצרה והתשלום עבר; הכשל היה בשלב שאחרי (ניקוי עגלה / מייל אישור). אין לבטל את ההזמנה — יש לבדוק שהמייל נשלח.'
-        : 'כשל בביצוע ההזמנה; המלאי שוחזר אוטומטית. יש לנסות לבצע את ההזמנה שוב — אם התקלה חוזרת, יש לפנות לתמיכה עם מספר האסמכתא.',
+      // The cart rides along on the hint because that is the field a person reads, and because the
+      // alert mail and the dashboard's copy button both already surface it verbatim. Capped: a bulk
+      // cart must not push the useful sentence past the column's 500-character clamp.
+      resolutionHint: [
+        committed
+          ? 'ההזמנה נוצרה והתשלום עבר; הכשל היה בשלב שאחרי (ניקוי עגלה / מייל אישור). אין לבטל את ההזמנה — יש לבדוק שהמייל נשלח.'
+          : 'כשל בביצוע ההזמנה; המלאי שוחזר אוטומטית. יש לנסות לבצע את ההזמנה שוב — אם התקלה חוזרת, יש לפנות לתמיכה עם מספר האסמכתא.',
+        attempted.length
+          ? `בעגלה: ${attempted.slice(0, 8).join(', ')}${attempted.length > 8 ? ` ועוד ${attempted.length - 8}` : ''}.`
+          : '',
+      ].filter(Boolean).join(' '),
     });
     // A post-commit failure still returns the successful response: the buyer paid
     // and the orders exist, so sending them an error would invite exactly the

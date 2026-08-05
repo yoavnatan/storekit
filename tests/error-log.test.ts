@@ -78,6 +78,40 @@ describe('filterAndSortErrors', () => {
     expect(result.map((e) => e.id)).toEqual(['e1']);
   });
 
+  it('narrows to one entry by the code the alert mail printed', () => {
+    // The mail's deep link. Landing on a 500-row list and being asked to find the one you were just
+    // told about is the friction the reference code exists to remove.
+    const entries = [
+      entry({ id: '4f8c2a1e-9b3d-4c7f-8e2a-1d6b9f3c8e4a' }),
+      entry({ id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }),
+    ];
+    const result = filterAndSortErrors(entries, { sortDir: 'desc', source: [], storeSlug: [], severity: [], ref: '4f8c2a1e' });
+    expect(result.map((e) => e.id)).toEqual(['4f8c2a1e-9b3d-4c7f-8e2a-1d6b9f3c8e4a']);
+  });
+
+  it('accepts the code with or without its # and in any case', () => {
+    // A person retyping it from a phone will not reproduce the punctuation, and a `#` in a URL is a
+    // fragment that never reaches the server — so both spellings have to land.
+    const entries = [entry({ id: '4F8C2A1E-9b3d-4c7f-8e2a-1d6b9f3c8e4a' })];
+    for (const ref of ['#4f8c2a1e', '4f8c2a1e', '4F8C2A1E', ' 4f8c2a1e ']) {
+      expect(filterAndSortErrors(entries, { sortDir: 'desc', source: [], storeSlug: [], severity: [], ref }))
+        .toHaveLength(1);
+    }
+  });
+
+  it('returns nothing for a code that has aged out, rather than everything', () => {
+    // The honest answer. Falling back to the full list would look like the link worked.
+    const entries = [entry({ id: '4f8c2a1e-9b3d-4c7f-8e2a-1d6b9f3c8e4a' })];
+    expect(filterAndSortErrors(entries, { sortDir: 'desc', source: [], storeSlug: [], severity: [], ref: '00000000' }))
+      .toEqual([]);
+  });
+
+  it('ignores an empty ref instead of filtering everything out', () => {
+    const entries = [entry({ id: '4f8c2a1e-9b3d-4c7f-8e2a-1d6b9f3c8e4a' })];
+    expect(filterAndSortErrors(entries, { sortDir: 'desc', source: [], storeSlug: [], severity: [], ref: '' }))
+      .toHaveLength(1);
+  });
+
   it('filters by store, excluding entries with no store at all', () => {
     const entries = [
       entry({ id: 'e1', storeSlug: 'store-a' }),

@@ -6,7 +6,7 @@
  * have to name the same failure the same way.
  */
 import { describe, it, expect } from 'vitest';
-import { errorRef, errorMeaning } from '../src/lib/error-reference.js';
+import { errorRef, errorMeaning, errorCopyText } from '../src/lib/error-reference.js';
 
 describe('errorRef', () => {
   it('is short enough to carry from a phone screen to a laptop screen', () => {
@@ -64,5 +64,59 @@ describe('errorMeaning', () => {
     // If this ever fires it means error-severity.ts knows a money path this file does not — a drift
     // between two lists that must not quietly read as "nothing special".
     expect(errorMeaning('/some/unmapped/route', 'critical')).toContain('כסף');
+  });
+});
+
+/**
+ * One description of a failure for every place a person is handed one.
+ *
+ * There were two builders and they had already drifted: the dashboard's copy button produced source
+ * and actor role, the alert mail produced the reference code and the meaning, and neither had the
+ * other's fields. Two blocks describing the same failure differently is worse than either alone —
+ * the mail on the phone, the row on the screen and the text pasted into a conversation have to be
+ * recognisably the same event.
+ */
+describe('errorCopyText', () => {
+  const full = {
+    id: '4f8c2a1e-9b3d-4c7f-8e2a-1d6b9f3c8e4a',
+    severity: 'critical' as const,
+    route: '/api/checkout',
+    message: 'Payment gateway refused',
+    stack: 'Error: Payment gateway refused\n    at chargeCard (payment.ts:42)',
+    source: 'server',
+    storeName: 'חנות הדוגמה',
+    actorLabel: 'buyer@example.com',
+    actorRole: 'buyer',
+    statusCode: 500,
+    resolutionHint: 'המלאי שוחזר אוטומטית. בעגלה: כיסא ×2.',
+  };
+
+  it('leads with the sentence a person can read, not with a stack', () => {
+    const text = errorCopyText(full, { when: '5.8.2026, 22:22' });
+    expect(text.split('\n')[0]).toBe('קונה לא הצליח להשלים רכישה #4f8c2a1e');
+  });
+
+  it('carries everything needed to act without opening anything else', () => {
+    const text = errorCopyText(full, { when: '5.8.2026, 22:22' });
+    for (const expected of [
+      '#4f8c2a1e', '/api/checkout', '500', 'חנות הדוגמה', 'buyer@example.com',
+      'Payment gateway refused', 'בעגלה: כיסא ×2', 'at chargeCard (payment.ts:42)',
+    ]) {
+      expect(text).toContain(expected);
+    }
+  });
+
+  it('says when it cut the stack, and only cuts when asked to', () => {
+    // The mail caps it because a phone is not a place to scroll a trace; the dashboard does not,
+    // because on a screen scrolling is free. A cut the reader cannot see is the bug either way.
+    const long = { ...full, stack: 'x'.repeat(3000) };
+    expect(errorCopyText(long, { maxStack: 1200 })).toContain('נחתך');
+    expect(errorCopyText(long)).not.toContain('נחתך');
+  });
+
+  it('renders every field as a dash rather than "undefined" when it is missing', () => {
+    const text = errorCopyText({ severity: 'error' });
+    expect(text).not.toContain('undefined');
+    expect(text).toContain('stack: —');
   });
 });

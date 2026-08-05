@@ -33,7 +33,7 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   performance: ['storeQ', 'storeSort', 'storeDir', 'storePage'],
   advertising: ['adpreset', 'adfrom', 'adto'],
   messages: ['msort', 'munread', 'mpage'],
-  alerts: ['alsort', 'alsource', 'alsev', 'alstore', 'alpage', 'alnew'],
+  alerts: ['alsort', 'alsource', 'alsev', 'alref', 'alstore', 'alpage', 'alnew'],
   moneylog: ['mtype', 'mlpage', 'mq', 'mfrom', 'mto', 'mev'],
 };
 

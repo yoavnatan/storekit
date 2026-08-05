@@ -247,8 +247,10 @@ const alSortDir = sp.get('alsort') === 'asc' ? 'asc' : 'desc';
 const alSource = (sp.get('alsource') ?? '').split(',').filter(Boolean);
 const alStore = decodeList(sp.get('alstore') ?? '');
 const alSeverity = (sp.get('alsev') ?? '').split(',').filter(Boolean);
+// The alert mail's deep link — one entry's short code, so the mail lands on its row.
+const alRef = sp.get('alref') ?? '';
 const errorsFiltered = keepNewOnly(
-  filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore, severity: alSeverity }),
+  filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore, severity: alSeverity, ref: alRef }),
   newOnly.alerts, newSince.alerts, (e) => e.createdAt,
 );
 const alertsPageResult = paginate(errorsFiltered, parsePage(sp, 'alpage'));
@@ -561,6 +563,7 @@ const badgeCounts: Record<string, number> = {
           source={alSource}
           storeSlug={alStore}
           severity={alSeverity}
+          entryRef={alRef}
           storeOptions={errorStoreOptions}
           newSince={newSince.alerts}
           newOnly={newOnly.alerts}
@@ -571,6 +574,7 @@ const badgeCounts: Record<string, number> = {
             alsort: alSortDir !== 'desc' ? alSortDir : undefined,
             alsource: alSource.length ? alSource.join(',') : undefined,
             alsev: alSeverity.length ? alSeverity.join(',') : undefined,
+            alref: alRef || undefined,
             alstore: alStore.length ? encodeList(alStore) : undefined,
             alnew: newOnly.alerts ? '1' : undefined,
             alpage: p > 1 ? String(p) : undefined,

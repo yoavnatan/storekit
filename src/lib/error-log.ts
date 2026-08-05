@@ -3,6 +3,7 @@ import type { AstroCookies } from 'astro';
 import { isUuid, query } from './db.js';
 import { deriveSeverity, type ErrorSeverity } from './error-severity.js';
 import { alertOnCriticalError } from './critical-alert.js';
+import { errorRef } from './error-reference.js';
 import { getSellerSession, getSellerById } from './seller-auth.js';
 import { getStoreBySellerId, getStoreBySlug } from './stores.js';
 
@@ -411,12 +412,18 @@ export interface AlertsQuery {
   source: string[]; // 'server' | 'client'
   storeSlug: string[];
   severity: string[]; // 'critical' | 'error' | 'warning'
+  /** A single entry's short code (`error-reference.ts`), as the alert mail's deep link supplies it.
+   *  Narrows to that one row so "my phone buzzed about #a1b2c3d4" lands on it directly instead of
+   *  on a list to search. Bare (no `#`) — a `#` in a URL is a fragment and never reaches the
+   *  server, so the link carries it without one and this compares without one. */
+  ref?: string;
 }
 
 export function filterAndSortErrors(entries: ErrorLogEntry[], query: AlertsQuery): ErrorLogEntry[] {
   const sourceSet = query.source.length ? new Set(query.source) : null;
   const storeSet = query.storeSlug.length ? new Set(query.storeSlug) : null;
   const severitySet = query.severity.length ? new Set(query.severity) : null;
+  const ref = query.ref?.trim().replace(/^#/, '').toLowerCase() || null;
 
   const filtered = entries.filter((e) => {
     if (sourceSet && !sourceSet.has(e.source)) return false;
@@ -425,6 +432,15 @@ export function filterAndSortErrors(entries: ErrorLogEntry[], query: AlertsQuery
     // written before 0013 ran, is a server failure nobody classified. Treating it as unmatched
     // instead would make the filter quietly hide entries rather than narrow them.
     if (severitySet && !severitySet.has(e.severity ?? 'error')) return false;
+    // Compared against the code the mail printed, not against the uuid: the mail carries eight
+    // characters precisely because the uuid is unusable to a human, so the link carries the same
+    // eight. An unknown code filters to nothing, which is the honest answer — the entry has aged
+    // out of the 500-row window.
+    //
+    // Both sides lowercased. `crypto.randomUUID()` is lowercase so this never mattered in practice,
+    // which is exactly why it was wrong in the first draft: folding only the query looks correct
+    // and silently stops matching the day an id arrives from anywhere else.
+    if (ref && errorRef(e.id).replace(/^#/, '').toLowerCase() !== ref) return false;
     return true;
   });
 

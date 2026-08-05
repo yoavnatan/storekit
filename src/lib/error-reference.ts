@@ -81,3 +81,67 @@ export function errorMeaning(route: string | null | undefined, severity: ErrorSe
   if (level === 'critical' && !isMoneyPath(route)) return MEANING_BY_SEVERITY.critical;
   return MEANING_BY_SEVERITY[level];
 }
+
+/**
+ * The one description of a failure, for every place a person is handed one.
+ *
+ * There were two of these, and they had already drifted: the admin row's copy button built a block
+ * with the source and the actor's role, and the alert mail built one with the reference code and the
+ * meaning, and neither had the other's fields. Two blocks describing the same failure differently is
+ * worse than either alone — the whole point is that the mail on the phone, the row on the screen and
+ * the text pasted into a conversation are recognisably the same event.
+ *
+ * Plain text, no markup, one selection. It is meant to be pasted whole to somebody who was not
+ * there, which is why it leads with the sentence a person can read and keeps the stack last.
+ */
+export interface CopyTextInput {
+  id?: string;
+  severity?: ErrorSeverity | string;
+  createdAt?: string;
+  route?: string;
+  message?: string;
+  stack?: string;
+  source?: string;
+  storeName?: string;
+  actorLabel?: string;
+  actorRole?: string;
+  statusCode?: number;
+  resolutionHint?: string;
+}
+
+export interface CopyTextOptions {
+  /** Formatted for display — the caller owns the locale, so this module needs no date policy. */
+  when?: string;
+  /** Bounds the stack. The mail cuts it; the dashboard, where scrolling is free, does not. */
+  maxStack?: number;
+}
+
+export function errorCopyText(entry: CopyTextInput, options: CopyTextOptions = {}): string {
+  const severity = (entry.severity as ErrorSeverity) ?? 'error';
+  const actor = entry.actorLabel
+    ? `${entry.actorLabel}${entry.actorRole ? ` (${entry.actorRole === 'seller' ? 'מוכר' : 'קונה'})` : ''}`
+    : '—';
+
+  const lines = [
+    `${errorMeaning(entry.route, severity)}${entry.id ? ` ${errorRef(entry.id)}` : ''}`,
+    `חומרה: ${severity}`,
+    ...(options.when ? [`מתי: ${options.when}`] : []),
+    ...(entry.source ? [`מקור: ${entry.source === 'client' ? 'דפדפן' : 'שרת'}`] : []),
+    `נתיב: ${entry.route ?? '—'}`,
+    `קוד סטטוס: ${entry.statusCode ?? '—'}`,
+    `חנות: ${entry.storeName ?? '—'}`,
+    `עבור: ${actor}`,
+    `הודעה (טכנית): ${entry.message ?? '—'}`,
+    ...(entry.resolutionHint ? [`הקשר: ${entry.resolutionHint}`] : []),
+  ];
+
+  if (entry.stack) {
+    const max = options.maxStack ?? Number.POSITIVE_INFINITY;
+    const cut = entry.stack.length > max;
+    lines.push('', 'stack:', entry.stack.slice(0, max) + (cut ? '\n… (נחתך — המלא בלשונית ההתראות)' : ''));
+  } else {
+    lines.push('', 'stack: —');
+  }
+
+  return lines.join('\n');
+}

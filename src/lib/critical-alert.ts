@@ -27,7 +27,7 @@ import { serverEnv } from './runtime-env.js';
 import { store } from '../config/store.config.js';
 import { BUSINESS_TIMEZONE } from './business-day.js';
 import { stripTrailingSlashes } from './url-base.js';
-import { errorRef, errorMeaning } from './error-reference.js';
+import { errorRef, errorMeaning, errorCopyText } from './error-reference.js';
 
 /**
  * What the alert needs, which is deliberately NOT a full `ErrorLogEntry`.
@@ -159,43 +159,16 @@ function subjectSafe(value: string): string {
  */
 const MAX_STACK_IN_EMAIL = 1200;
 
-/**
- * The block this whole feature is for, in the end.
- *
- * The alert arrives on a phone. The fix happens later, in a conversation with somebody who was not
- * there — and what that person needs is not a table, it is one chunk of text they can be handed
- * whole. Without it the route from "my phone buzzed" to "here is the failure" runs through opening
- * a laptop, finding the admin dashboard, finding the row and expanding it, which is friction paid
- * at the worst possible moment.
- *
- * So: plain text, no markup, one selection. It is the same content as the table above rather than
- * more of it — the table is for reading and this is for pasting, and they must not disagree.
- */
-function copyBlock(entry: CriticalAlertInput, ref: string, meaning: string, when: string): string {
-  const lines = [
-    `שגיאה קריטית ${ref}`,
-    `משמעות: ${meaning}`,
-    `מתי: ${when}`,
-    `נתיב: ${entry.route ?? '—'}`,
-    `סטטוס: ${entry.statusCode ?? '—'}`,
-    `הודעה: ${entry.message ?? '—'}`,
-    ...(entry.storeName ? [`חנות: ${entry.storeName}`] : []),
-    ...(entry.actorLabel ? [`משתמש: ${entry.actorLabel}`] : []),
-    ...(entry.resolutionHint ? [`רמז: ${entry.resolutionHint}`] : []),
-  ];
-  if (entry.stack) {
-    const cut = entry.stack.length > MAX_STACK_IN_EMAIL;
-    lines.push('', 'stack:', entry.stack.slice(0, MAX_STACK_IN_EMAIL) + (cut ? '\n… (נחתך — המלא בלשונית ההתראות)' : ''));
-  }
-  return lines.join('\n');
-}
-
 function renderAlertEmail(entry: CriticalAlertInput): { subject: string; html: string; text: string } {
   const when = new Date(entry.createdAt).toLocaleString('he-IL', { timeZone: BUSINESS_TIMEZONE });
   const route = entry.route ?? '—';
   const ref = entry.id ? errorRef(entry.id) : '';
   const meaning = errorMeaning(entry.route, 'critical');
-  const adminUrl = `${stripTrailingSlashes(store.url)}/admin?panel=alerts`;
+  // Deep link to THIS entry, not to the tab. Landing on a 500-row list and being asked to find the
+  // one you were just told about is the friction the reference code exists to remove; a link that
+  // only reopens the list gives the code back as homework. `#` is stripped because a `#` in a URL
+  // is a fragment and never reaches the server.
+  const adminUrl = `${stripTrailingSlashes(store.url)}/admin?panel=alerts${ref ? `&alref=${encodeURIComponent(ref.replace(/^#/, ''))}` : ''}`;
 
   // Meaning first, then route, then the reference code — in decreasing order of what survives a
   // phone truncating the line. A phone shows the subject and nothing else, and the question it must
@@ -227,7 +200,9 @@ function renderAlertEmail(entry: CriticalAlertInput): { subject: string; html: s
     ...(entry.statusCode ? ([['סטטוס', String(entry.statusCode)]] as [string, string][]) : []),
   ];
 
-  const paste = copyBlock(entry, ref, meaning, when);
+  // The same block the dashboard's copy button produces, from the same function — a mail and a row
+  // describing one failure in two different shapes is the drift this was extracted to end.
+  const paste = errorCopyText({ ...entry, severity: 'critical' }, { when, maxStack: MAX_STACK_IN_EMAIL });
 
   const bodyHtml = `
     <p style="margin:0 0 4px;font-size:16px"><strong>${esc(meaning)}</strong></p>
@@ -241,7 +216,7 @@ function renderAlertEmail(entry: CriticalAlertInput): { subject: string; html: s
     </table>
     <p style="margin:20px 0 6px;font-size:13px;color:#666">להעתקה ולשליחה למי שמתקן — הכל בבלוק אחד:</p>
     <pre dir="ltr" style="margin:0;padding:12px;background:#f6f7f9;border:1px solid #e3e5e9;border-radius:6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;text-align:left">${esc(paste)}</pre>
-    <p style="margin:20px 0 0"><a href="${esc(adminUrl)}">פתיחת לשונית ההתראות</a></p>
+    <p style="margin:20px 0 0"><a href="${esc(adminUrl)}">פתיחת השגיאה הזאת בדשבורד</a></p>
     <p style="margin:16px 0 0;font-size:13px;color:#666">שגיאות נוספות באותו נתיב לא ישלחו מייל
     ב-15 הדקות הקרובות — הרשימה המלאה תמיד בלשונית.</p>`;
 
