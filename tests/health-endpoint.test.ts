@@ -143,4 +143,15 @@ describe('middleware lets /api/health through before any database work', () => {
       expect.soft(at, `${call} runs before the /api/health short-circuit`).toBeGreaterThan(shortCircuit);
     }
   });
+
+  it('does NOT jump the CSRF gate', () => {
+    // The gate is the one place this application checks a token, and an exemption granted here
+    // would be inherited by whatever handler someone adds to the route later. It costs a set lookup
+    // and an HMAC — no database — so it can stay in front without weakening the outage resilience
+    // the short-circuit exists for.
+    const gate = source.indexOf('return csrfRejection();');
+    const shortCircuit = source.indexOf('if (pathname === HEALTH_PATH) return next();');
+    expect(gate).toBeGreaterThan(-1);
+    expect(shortCircuit).toBeGreaterThan(gate);
+  });
 });

@@ -23,11 +23,27 @@ export const prerender = false;
 
 import { getLang, getDir, getT } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
+import { safeRedirectPath } from '../lib/safe-redirect.js';
 import '../styles/main.css';
 
 const lang = getLang(Astro.cookies);
 const dir = getDir(lang);
 const t = getT(lang);
+
+/**
+ * The failed request's own url, and it goes through `safe-redirect.ts` for the reason that module
+ * exists — this is a request-supplied destination landing in an `href`, which is the same class as
+ * `?next=`, only arriving by a route nobody thinks of as user input.
+ *
+ * `Astro.url.pathname` looks like it must be safe because it always starts with `/`. It is not:
+ * a request for `//evil.example` parses to exactly that pathname, and `href="//evil.example"` is
+ * protocol-relative — the browser reads it as a HOST. "לנסות שוב" on our own error page would then
+ * be a one-click trip off the site, with our domain in the address bar the whole way there. Since
+ * a 500 page is reachable by making any request fail, an attacker picks the url.
+ *
+ * Falls back to the homepage, which is where the second button goes anyway.
+ */
+const retryHref = safeRedirectPath(Astro.url.pathname + Astro.url.search);
 
 // Astro sets this itself when it renders the page as an error handler; set explicitly so a direct
 // hit on /500 is also a 500 and never a 200 OK that a crawler could index as a real page.
@@ -47,7 +63,7 @@ Astro.response.status = 500;
       <div class="flex flex-wrap items-center justify-center gap-3 mt-2">
         {/* A plain reload of the current URL — no script, because a page that renders when the
             server is unhealthy should not depend on its JS bundle having loaded either. */}
-        <a href={Astro.url.pathname + Astro.url.search} class="btn">{t.errorPage.retry}</a>
+        <a href={retryHref} class="btn">{t.errorPage.retry}</a>
         <a href="/" class="btn btn--ghost">{t.errorPage.backHome}</a>
       </div>
     </main>
