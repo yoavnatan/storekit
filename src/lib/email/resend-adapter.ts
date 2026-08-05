@@ -4,6 +4,7 @@
 // see index.ts for adapter selection. Docs: https://resend.com/docs/api-reference/emails/send-email
 
 import type { EmailAdapter, EmailMessage, EmailResult } from './adapter.js';
+import { outboundFetch } from '../outbound-fetch.js';
 
 const ENDPOINT = 'https://api.resend.com/emails';
 
@@ -12,7 +13,7 @@ export function createResendAdapter(apiKey: string): EmailAdapter {
     name: 'resend',
     async send(message: EmailMessage, from: string): Promise<EmailResult> {
       try {
-        const res = await fetch(ENDPOINT, {
+        const res = await outboundFetch(ENDPOINT, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,

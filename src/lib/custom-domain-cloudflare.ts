@@ -9,6 +9,7 @@
 
 import type { CustomDomainStatus, CustomDomainVerification, CustomHostnameProvider } from './custom-domain.js';
 import { cnameTarget } from './custom-domain.js';
+import { outboundFetch } from './outbound-fetch.js';
 
 const API = 'https://api.cloudflare.com/client/v4';
 
@@ -24,7 +25,7 @@ export function createCloudflareProvider(token: string, zoneId: string): CustomH
 
   async function findId(hostname: string): Promise<CfHostname | null> {
     try {
-      const res = await fetch(`${API}/zones/${zoneId}/custom_hostnames?hostname=${encodeURIComponent(hostname)}`, { headers });
+      const res = await outboundFetch(`${API}/zones/${zoneId}/custom_hostnames?hostname=${encodeURIComponent(hostname)}`, { headers });
       const data = await res.json() as { result?: CfHostname[] };
       return data.result?.[0] ?? null;
     } catch { return null; }
@@ -36,7 +37,7 @@ export function createCloudflareProvider(token: string, zoneId: string): CustomH
     async register(hostname: string) {
       const verification: CustomDomainVerification = { cnameTarget: cnameTarget() };
       try {
-        const res = await fetch(`${API}/zones/${zoneId}/custom_hostnames`, {
+        const res = await outboundFetch(`${API}/zones/${zoneId}/custom_hostnames`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ hostname, ssl: { method: 'http', type: 'dv' } }),
@@ -64,7 +65,7 @@ export function createCloudflareProvider(token: string, zoneId: string): CustomH
       const hn = await findId(hostname);
       if (!hn?.id) return;
       try {
-        await fetch(`${API}/zones/${zoneId}/custom_hostnames/${hn.id}`, { method: 'DELETE', headers });
+        await outboundFetch(`${API}/zones/${zoneId}/custom_hostnames/${hn.id}`, { method: 'DELETE', headers });
       } catch { /* best-effort — a stale CF record is harmless once the local record is cleared */ }
     },
   };
