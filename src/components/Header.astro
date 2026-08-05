@@ -430,10 +430,14 @@ const strEmpty   = t.store.noProductsFound;
             </a>
             {/* Saved stores (CURRENT_TASK → סשן ג׳ 1). The only route to them used to be the
                 homepage's own "liked" tab, so a shopper standing inside a store had no way back
-                to the stores they had saved. A disclosure rather than a second floating panel:
-                the avatar menu is anchored to the very edge of the header, and a flyout beside it
-                has nowhere to go at 375px — and the same "there is more inside" gesture is
-                already the store page's category chevron, so this reads as one language.
+                to the stores they had saved.
+                A FLYOUT beside the menu, not a disclosure inside it (owner, 2026-08-05). It was
+                built as a disclosure on the assumption that a flyout "has nowhere to go at 375px";
+                measured, that is wrong — the menu hugs the header's edge (in Hebrew, the LEFT one)
+                and leaves ~180px of clear viewport on its inner side, which is a store row with
+                room to spare. What the disclosure did cost was real: it grew the menu downward by
+                its own height, so a saved list could push the logout row off the bottom of a phone.
+                A floating panel is measured against the viewport instead and can never do that.
                 Filled lazily — see the script below; nothing about it costs an SSR read. */}
             <button
               type="button"
@@ -451,19 +455,34 @@ const strEmpty   = t.store.noProductsFound;
                   it did so only while the list was empty, i.e. only when nothing else was
                   widening the menu. */}
               <span class="flex-1 whitespace-nowrap">{t.home.shelfLiked}</span>
-              <svg id="saved-stores-chev" class="transition-transform duration-150" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              {/* Points at the side the panel actually opens on, which is resolved at open time
+                  (whichever side of the menu has room) — so the SSR value here is only the
+                  likely one: the menu hugs the inline-end edge of the header, so the panel opens
+                  toward inline-start, which is the LEFT in an English page and the RIGHT in a
+                  Hebrew one. `rotate-180` turns this right-pointing chevron to the left, and the
+                  script re-decides it on every open. */}
+              <svg
+                id="saved-stores-chev"
+                class:list={['transition-transform duration-150', { 'rotate-180': lang !== 'he' }]}
+                width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
-            {/* `ps-[0.9rem]` is the inset the store page's own nested category group already uses
-                (`.category-drawer-group`) — these rows have to read as being INSIDE the row above
-                them, and the site had an answer for that. The height fits everything the server
-                can send (six rows + the "all saved stores" link — MENU_CAP in /api/saved-stores),
-                so nothing normally scrolls: it was 13rem first, and that is precisely the bug it
-                guards against — the link scrolled out of sight, and a scroller inside a dropdown
-                gives no hint that anything is below it. The overflow rule is the backstop for a
-                larger font or a raised cap. */}
+            {/* A panel of its own now, so it wears the site's dropdown finish (surface, border,
+                --shadow-card, 0.3rem container — AI_INSTRUCTIONS → Dropdown design system) and
+                earns the shadow honestly: it genuinely floats above the page.
+                `position:fixed` is the whole point — out of the menu's flow, so it cannot grow it
+                downward, and measured against the VIEWPORT rather than against its parent. Every
+                geometry value below (left/top/width/max-height) is written by placeSavedPanel()
+                in the script, which is also what keeps it on screen; the class list holds only
+                what does not depend on where it lands.
+                Still `role="group"`, not a nested `role="menu"`: it is a DOM child of the avatar
+                menu and its rows are that menu's own menuitems, and the empty-state paragraph is
+                not a menuitem at all — a nested menu role would be a lie on both counts. */}
             <div
               id="saved-stores-panel"
-              class="mt-0.5 ps-[0.9rem] max-h-[15.5rem] max-w-[15rem] overflow-y-auto"
+              class="fixed z-[70] overflow-y-auto p-[0.3rem] [background:var(--color-surface)]
+                     border [border-color:var(--color-border)] rounded-[var(--radius)]
+                     shadow-[var(--shadow-card)]
+                     animate-[user-dropdown-open_0.13s_cubic-bezier(0.34,1.56,0.64,1)]"
               role="group"
               aria-labelledby="saved-stores-toggle"
               hidden
@@ -648,6 +667,10 @@ const strEmpty   = t.store.noProductsFound;
   function closeUserMenu() {
     if (!userDropdown || userDropdown.hasAttribute('hidden')) return;
     userToggle?.setAttribute('aria-expanded', 'false');
+    // The saved-stores flyout is a fixed-position child, so the menu's fade-out carries it along
+    // visually — but it has to be told, or it comes back already open (and stale-positioned) on
+    // the next opening of a menu that may by then be somewhere else entirely.
+    closeSavedPanel();
     fadeClose(userDropdown, () => { userDropdown!.setAttribute('hidden', ''); });
   }
   userToggle?.addEventListener('click', (e) => {
@@ -728,19 +751,84 @@ const strEmpty   = t.store.noProductsFound;
     // Open right now: refill in place, so it never blinks empty. Closed: drop what it holds and
     // let the next open pay for the read.
     if (savedPanel.hasAttribute('hidden')) savedPanel.innerHTML = '';
-    else loadSavedStores();
+    // A store added or removed changes the panel's height, and it is floating — so re-measure it
+    // against the bottom of the screen rather than letting it grow past it.
+    else void loadSavedStores().then(placeSavedPanel);
   });
+
+  // ── Where the flyout lands ──
+  // Two numbers, and they are the whole rule: never leave the viewport, and never make the avatar
+  // menu taller. `position:fixed` buys the second one outright; this function buys the first.
+  //
+  // The side is DECIDED here rather than fixed in CSS, because the menu is pinned to the header's
+  // inline-end edge and the room is all on its other side: measured on a 375px Hebrew page the
+  // menu occupies 16→181, leaving ~180px of clear viewport to its right and none to its left. So
+  // the panel opens toward whichever side has more of it, and the chevron is turned to match —
+  // an arrow that names a direction ON SCREEN has to be resolved against the layout, not against
+  // the language (memory: RTL arrow keys, the same trap one level up).
+  //
+  // Height is clamped twice on purpose: `max-height` keeps the panel itself inside the screen,
+  // and pulling `top` up keeps a SHORT panel from being pushed past the bottom edge by a trigger
+  // sitting low on a phone. Either alone leaves one of the two cases off-screen.
+  const SAVED_GAP = 6;     // between the menu and its flyout
+  const SAVED_EDGE = 8;    // minimum clearance from any viewport edge
+  const SAVED_WIDTH = 240; // what it takes when there is room (matches the old max-w-[15rem])
+  const SAVED_MIN = 150;   // below this a store row stops being readable; overlap the menu instead
+
+  function placeSavedPanel(): void {
+    if (!savedPanel || !savedToggle || !userDropdown || savedPanel.hasAttribute('hidden')) return;
+    const menu = userDropdown.getBoundingClientRect();
+    const row  = savedToggle.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+
+    const roomEnd   = vw - menu.right - SAVED_GAP - SAVED_EDGE;
+    const roomStart = menu.left - SAVED_GAP - SAVED_EDGE;
+    const toRight = roomEnd >= roomStart;
+    // Width before anything is measured — it is what decides the panel's height.
+    savedPanel.style.width = `${Math.max(SAVED_MIN, Math.min(SAVED_WIDTH, toRight ? roomEnd : roomStart))}px`;
+    savedPanel.style.maxHeight = `${vh - SAVED_EDGE * 2}px`;
+
+    // offsetWidth/Height, NOT getBoundingClientRect: this runs in the same task the panel is
+    // unhidden in, so its open animation (scale(0.96) translateY(-5px)) is on its first frame and
+    // a client rect would report the panel 4% smaller than it is and 5px higher than it sits.
+    // The offset pair measures the layout box and ignores transforms entirely.
+    const boxW = savedPanel.offsetWidth, boxH = savedPanel.offsetHeight;
+    const left = toRight ? menu.right + SAVED_GAP : menu.left - SAVED_GAP - boxW;
+    // The clamp is what SAVED_MIN hands over to: on a screen too narrow for both, the panel slides
+    // over the menu rather than off the side of the phone.
+    savedPanel.style.left = `${Math.max(SAVED_EDGE, Math.min(left, vw - boxW - SAVED_EDGE))}px`;
+    // Aligned with the row that opened it (minus this panel's own 0.3rem of padding, so the first
+    // store sits on the same line as the label), then pulled inside the screen.
+    const top = row.top - 5;
+    savedPanel.style.top = `${Math.max(SAVED_EDGE, Math.min(top, vh - boxH - SAVED_EDGE))}px`;
+    savedChev?.classList.toggle('rotate-180', !toRight);
+  }
+
+  function closeSavedPanel(): void {
+    if (!savedPanel || savedPanel.hasAttribute('hidden')) return;
+    savedPanel.setAttribute('hidden', '');
+    savedToggle?.setAttribute('aria-expanded', 'false');
+  }
 
   savedToggle?.addEventListener('click', (e) => {
     // The menu closes on any document click (see above); this one is inside it and must not.
     e.stopPropagation();
     if (!savedPanel) return;
-    const open = savedPanel.hasAttribute('hidden');
-    savedPanel.toggleAttribute('hidden', !open);
-    savedToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    savedChev?.classList.toggle('rotate-180', open);
-    if (open) loadSavedStores();
+    if (!savedPanel.hasAttribute('hidden')) { closeSavedPanel(); return; }
+    savedPanel.removeAttribute('hidden');
+    savedToggle.setAttribute('aria-expanded', 'true');
+    // Placed in the same task it is unhidden in, so it never paints at its static position first.
+    placeSavedPanel();
+    // And again once the rows land: an empty panel and a six-store one are different heights, and
+    // the second one is what has to be measured against the bottom of the screen.
+    void loadSavedStores().then(placeSavedPanel);
   });
+
+  // A fixed panel does not follow anything, so a viewport change has to say so itself. (Scroll is
+  // not one — the header is position:fixed, so the menu it hangs off never moves.) The other
+  // re-measure is on refill, wired at `favorite:change` above, where the height changes.
+  window.addEventListener('resize', placeSavedPanel, { passive: true });
 
   // ── Notifications bell ────────────────────────────────────────
   const originalTitle = document.title;
