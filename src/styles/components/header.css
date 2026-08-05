@@ -569,6 +569,15 @@ nav a:hover { color: var(--color-text); }
   flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
+  /* A FLEX box, not a block. The link inside is inline-level, so as a block this
+     column laid it out on a text baseline — and an inline-flex box's baseline is
+     its first item's, which put the 32px avatar's BOTTOM on that baseline and
+     lifted the whole lockup 4.3px above centre while the icons on the other side
+     sat exactly on it (measured 2026-08-05: avatar centre 22.09 against the
+     row's 26.39). Centring the link as a flex item removes the baseline from the
+     question entirely. */
+  display: flex;
+  align-items: center;
 }
 
 /* Inner flex row — prevent expansion from escaping the column */
@@ -621,6 +630,29 @@ nav a:hover { color: var(--color-text); }
   flex: none;
 }
 
+/* ── Optical centring of the header's text ────────────────────────────────
+   Measured, not guessed (2026-08-05, 4× screenshot + pixel scan): the ink of
+   both the wordmark and a store name sat 4.0–4.5px ABOVE the header's true
+   centre. Nothing was mis-centred — a text box reserves room under the baseline
+   for descenders, and neither "Dezabin" nor most store names have any, so
+   centring the BOX leaves the visible letters riding high. The icons on the
+   other end of the row are ink-tight SVGs and centre exactly, which is what
+   makes the difference legible rather than academic.
+   The reference is the ICON ROW, not the header box: the icons are what the eye
+   compares the logo against, and they centre on `.container`. Measured against
+   that row the Latin wordmark sat 3.45px high and the Hebrew store name 4.0px,
+   at a 20.8px font — hence 0.166em and 0.19em rather than one value for both.
+   In `em` so they hold at every size this row is used at, and on the TEXT only:
+   the avatar is ink-tight like the icons and is already where it belongs.
+
+   The selectors are exact for a reason. The first version of this rule said
+   `.logo > span`, which also caught the store avatar's FALLBACK — StoreAvatar
+   renders a <span> when the seller uploaded nothing and an <img> when they did,
+   so stores with no logo had their badge pushed 4px down and stores with one did
+   not. Two stores, two vertical positions, from a selector that looked harmless. */
+.site-header .dz-logo { transform: translateY(0.166em); }
+.site-header .store-name-text { transform: translateY(0.19em); }
+
 /* A store's header wears that store's own colour as a 2px line along its bottom
    edge — the answer to "every store's header looks identical" (CURRENT_TASK,
    סשן ב׳). The colour arrives in `--store-glow`, exactly as it does for a store
@@ -638,7 +670,11 @@ nav a:hover { color: var(--color-text); }
   inset-inline: 0;
   bottom: -1px;
   height: 2px;
-  background: var(--store-glow, transparent);
+  /* Same fallback as the halo on a store card (utilities/utils.css): a store
+     whose logo has no usable colour gets the site's neutral, lightened — never
+     an invented hue, and never nothing, which would leave that one store as the
+     only header on the site with no line. */
+  background: var(--store-glow, color-mix(in srgb, var(--color-muted) 70%, #fff));
   pointer-events: none;
 }
 

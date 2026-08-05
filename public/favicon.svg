@@ -1,17 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44">
-  <!-- The wordmark's D on a brand tile. The path is byte-identical to the one in
-       BrandLogo.astro, so the tab icon and the header logo are one drawing and
-       cannot drift apart. The tile carries the site's own button gradient; at
-       16px that ramp is a few pixels wide and reads as a solid, which is why the
-       letter is plain white rather than gradient-filled. -->
-  <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2a3c40"/>
-      <stop offset="1" stop-color="#3a5260"/>
-    </linearGradient>
-  </defs>
-  <rect width="44" height="44" rx="9" fill="url(#tile)"/>
-  <path fill="#fff" fill-rule="evenodd"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="9.5 6.5 26 31">
+  <!-- The bare D — no tile. The path is byte-identical to the one in
+       BrandLogo.astro and the avatar dropdown, so the tab, the menu and the
+       header are one drawing and cannot drift apart. The viewBox is cropped to
+       the letter's own ink plus a hair of breathing room, so at 16px the browser
+       spends every pixel it has on the letter rather than on a plate around it.
+
+       The fill follows the browser's theme rather than being fixed: a dark ink
+       on a dark tab strip is an invisible favicon, which is the one thing a
+       favicon may not be. SVG favicons honour prefers-color-scheme in Firefox
+       and Chromium; a browser that ignores it falls back to the brand colour,
+       which is correct on every light tab strip. -->
+  <style>
+    path { fill: #2a3c40; }
+    @media (prefers-color-scheme: dark) { path { fill: #ffffff; } }
+  </style>
+  <path fill-rule="evenodd"
         d="M11.25 8 L24.55 8 L32.75 16.2 L32.75 27.8 L24.55 36 L11.25 36 Z
            M17.17 12.73 L21.714 12.73 L26.83 17.846 L26.83 26.154 L21.714 31.27 L17.17 31.27 Z"/>
 </svg>

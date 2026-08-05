@@ -147,7 +147,7 @@ export const store: PlatformConfig = {
   },
 
   social: {
-    ogImage: '/og-default.png',
+    ogImage: '/og-default.jpg',
     twitter: '',
     facebook: '',
     instagram: '',

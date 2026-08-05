@@ -36,6 +36,14 @@
  * Height is `0.71em`, not `1cap`: Heebo's cap ratio is a known, measured
  * constant here, and hard-coding it means the mark can't shift if the font
  * fails to load and a fallback with different metrics paints for a frame.
+ *
+ * ACCESSIBILITY. The `D` is a drawing and the rest is text, so the DOM says
+ * "ezabin" — a screen reader, and anything else reading the accessible name,
+ * would announce the brand without its first letter. The whole lockup is
+ * therefore one `role="img"` with the real name on it, and everything inside is
+ * hidden from the tree. The visible text stays real text (it is what gives the
+ * mark the font's own kerning and what keeps it sharp at any zoom); it is simply
+ * not what the name is read from.
  */
 interface Props {
   /** `brand` = the site gradient inside the letters (light surfaces).
@@ -44,10 +52,18 @@ interface Props {
   /** Any CSS length. Everything else is in `em`, so this is the only size knob;
    *  omit it to inherit (the header sizes the logo through `.logo`). */
   size?: string;
+  /** Adds the Hebrew line under the name. Off by default: in a header or a form
+   *  it would be a second voice in a place that has room for one. */
+  tagline?: boolean;
   class?: string;
 }
 
-const { tone = 'brand', size, class: className = '' } = Astro.props;
+const { tone = 'brand', size, tagline = false, class: className = '' } = Astro.props;
+
+/** The accessible name. Not `store.name` from the config: this component draws
+ *  these exact seven letters, so the two must not be able to disagree. */
+const NAME = 'Dezabin';
+const TAGLINE = 'קניון דיגיטלי ישראלי';
 
 const toneClass =
   tone === 'white'
@@ -56,14 +72,20 @@ const toneClass =
 ---
 
 <span
-  dir="ltr"
+  role="img"
+  aria-label={tagline ? `${NAME} — ${TAGLINE}` : NAME}
   class:list={[
-    'inline-flex items-baseline font-bold leading-none whitespace-nowrap tracking-[-0.03em]',
+    // `dz-logo` carries no styling — it is a stable hook, because the rest of
+    // this class list is utilities and a stylesheet cannot address those. The
+    // header needs to nudge THIS element and nothing else near it.
+    'dz-logo',
+    'inline-flex flex-col items-start gap-[0.05em] align-middle',
     toneClass,
     className,
   ]}
   style={size ? `font-size:${size}` : undefined}
 >
+  <span dir="ltr" class="inline-flex items-baseline font-bold leading-none whitespace-nowrap tracking-[-0.03em] text-[1em]">
   {/* `max-w-none` is not decoration: reset.css sets `svg { max-width:100% }`,
       which clamps a fixed-size inline SVG inside a narrow box — the same trap
       that shrank icons in the products table. `shrink-0` does not cover it,
@@ -89,5 +111,24 @@ const toneClass =
       d="M11.25 8 L24.55 8 L32.75 16.2 L32.75 27.8 L24.55 36 L11.25 36 Z
          M17.17 12.73 L21.714 12.73 L26.83 17.846 L26.83 26.154 L21.714 31.27 L17.17 31.27 Z"
     />
-  </svg><span class="text-[1em] leading-none">ezabin</span>
+    </svg><span class="text-[1em] leading-none" aria-hidden="true">ezabin</span>
+  </span>
+  {tagline && (
+    /* Solved, not chosen (2026-08-05). Rubik 600 at 0.356em with +0.060em of
+       tracking is the pair that makes this line land at EXACTLY the width of the
+       name above it — the browser was asked for both natural widths and the
+       tracking fell out of the equation. CSS adds a letter-space after the LAST
+       character too, and in a right-to-left line that lands on the left edge —
+       so the margin that removes it is the INLINE-END one. Putting it on the
+       start side instead just shifted the whole line sideways, which is the
+       "the Hebrew doesn't line up with the name" everyone can see. Rubik and not Heebo because
+       the interface font reads as interface here; this one has to read as a
+       logo, and its slightly rounded geometry answers the D's cut corners
+       instead of competing with them. */
+    <span
+      dir="rtl"
+      class="font-[Rubik] font-semibold text-[0.356em] leading-none tracking-[0.0896em] me-[-0.0896em]"
+      aria-hidden="true"
+    >{TAGLINE}</span>
+  )}
 </span>

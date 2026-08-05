@@ -67,6 +67,14 @@ const logo = store.logo;
 // `--store-glow`), and a store with no upload takes its generated mark's hue
 // here, server-side — which is also why the line never appears a frame late.
 const storeHeader = storeMode && !!storeName && !!storeSlug;
+// Seeded exactly the way StoreCard seeds the halo, and for the same reason: a
+// store with no uploaded logo has no pixels to read, so its generated mark's hue
+// IS its colour; a store with a logo waits for the client to sample that logo,
+// and if the sampling refuses — greyscale, or unreadable for CORS — the line
+// falls back to the same light grey the halo falls back to (header.css). Giving
+// those stores an invented colour instead was wrong twice over: it claims a
+// colour the store doesn't have, and it disagrees with the halo on the same
+// store's card.
 const headerGlow = storeHeader && !storeLogo ? storeMark(storeSlug!, storeName!).hue : undefined;
 
 
@@ -114,11 +122,16 @@ const strEmpty   = t.store.noProductsFound;
     <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
       {storeMode && storeName && storeSlug
         ? <a href={`/${storeSlug}`} class="logo store-name-link" aria-label={storeName} data-astro-prefetch>
-            {/* 32px = the row's own fixed height (header.css pins `.container` to 2rem and
-                clips the column), so this is the largest a header logo can be without the
-                header either growing or cropping it. Round, like every other store avatar
-                on the site — a square plate was tried on the store card the same day and
-                reverted; StoreAvatar.astro carries the reasoning. */}
+            {/* 32px, and that ceiling is structural rather than timid: this row is
+                pinned to 2rem, and on a store page — which renders a search bar — the
+                container becomes a 3-column grid whose row grows to its tallest item.
+                A 40px avatar was tried and measured on 2026-08-05: the grid row went
+                to 48.6px, which pushed the icons 8px down and hung the column below
+                the header's own edge. Anything taller than the row needs the HEADER
+                to get taller, which is a different decision.
+                Round, like every other store avatar on the site; a square plate was
+                tried on the store card the same day and reverted — StoreAvatar.astro
+                carries that reasoning. */}
             <StoreAvatar name={storeName} slug={storeSlug} profileImage={storeLogo} size={32} sampleColor={true} class="store-header__logo" />
             <span class="store-name-text">{storeName}</span>
           </a>
@@ -409,8 +422,11 @@ const strEmpty   = t.store.noProductsFound;
             <span id="seller-alert-avatar-dot" class="absolute top-0 end-0 w-2 h-2 bg-[#ef4444] border border-[color:var(--color-border)] rounded-full" hidden={!initialSellerAlert} aria-hidden="true"></span>
           </button>
           <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
+            {/* The D rather than a house: this row goes to the platform's own home,
+                and the mark says which platform. Same path as BrandLogo.astro and the
+                favicon — one drawing, three surfaces. */}
             <a href="/" class="user-dropdown__item" role="menuitem">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              <svg width="12" height="14" viewBox="10.75 8 23 28" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M11.25 8 L24.55 8 L32.75 16.2 L32.75 27.8 L24.55 36 L11.25 36 Z M17.17 12.73 L21.714 12.73 L26.83 17.846 L26.83 26.154 L21.714 31.27 L17.17 31.27 Z"/></svg>
               {t.nav.home}
             </a>
             <a href="/buyer/dashboard" class="user-dropdown__item" role="menuitem">

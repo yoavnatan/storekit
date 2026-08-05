@@ -47,8 +47,9 @@ function readMarkPath() {
  * One lockup, as HTML. Every number here is the same one the component uses:
  * tracking −0.03em on the name, −0.015em between the D and the e (Heebo's own
  * "De" ink gap), and a tagline solved to land at exactly the name's width —
- * Rubik 600 at 0.356em with +0.060em of tracking, minus the trailing letter
- * space that CSS adds after the last character.
+ * Rubik 600 at 0.356em with +0.0896em of tracking, minus the trailing letter
+ * space CSS adds after the last character — which in a right-to-left line is on
+ * the LEFT, so the margin that cancels it is the inline-END one.
  */
 function page({ path, size, tone, tagline, background }) {
   const heeboLatin = b64(`${FONTS}/heebo/files/heebo-latin-700-normal.woff2`);
@@ -67,8 +68,8 @@ function page({ path, size, tone, tagline, background }) {
     .word{direction:ltr;display:flex;align-items:baseline;font-family:'Heebo';font-weight:700;
           line-height:1;letter-spacing:-.03em;${textFill}}
     .word svg{height:.71em;width:auto;flex:none;display:block;margin-inline-end:-.015em}
-    .tag{font-family:'Rubik';font-weight:600;font-size:.356em;line-height:1;
-         letter-spacing:.06em;margin-inline-start:-.06em;color:${tone === 'white' ? '#fff' : BRAND_A}}
+    .tag{font-family:'Rubik';font-weight:600;font-size:.356em;line-height:1;direction:rtl;
+         letter-spacing:.0896em;margin-inline-end:-.0896em;color:${tone === 'white' ? '#fff' : BRAND_A}}
   </style>
   <div class="logo">
     <div class="word">
@@ -95,7 +96,7 @@ function tilePage({ path, px }) {
 const path = readMarkPath();
 const browser = await chromium.launch();
 
-async function shot(html, { width, height, scale = 1, file, transparent = false }) {
+async function shot(html, { width, height, scale = 1, file, transparent = false, quality }) {
   const p = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: scale });
   await p.setContent(html);
   // Passed as a STRING on purpose: the expression runs in the page, not in Node,
@@ -109,7 +110,13 @@ async function shot(html, { width, height, scale = 1, file, transparent = false 
     'document.fonts.check("700 34px Heebo") && document.fonts.check("600 12px Rubik", "ק")',
   );
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, await p.screenshot({ omitBackground: transparent }));
+  writeFileSync(
+    file,
+    await p.screenshot({
+      omitBackground: transparent,
+      ...(quality ? { type: 'jpeg', quality } : {}),
+    }),
+  );
   await p.close();
   const px = `${width * scale}×${height * scale}`;
   console.log(`  ${file.replace(ROOT + '/', '')}  ${px}`);
@@ -127,10 +134,15 @@ await shot(page({ path, size: 34, tone: 'white', tagline: true, background: BRAN
 
 // Share card. 1200×630 is what Facebook/WhatsApp/X crop to; the lockup sits on
 // the brand gradient so the card is recognisable as this site at thumbnail size.
+//
+// JPEG, not PNG, and the reason is not file hygiene: WhatsApp drops the preview
+// image entirely above roughly 300KB, and a full-bleed gradient is the worst
+// case for PNG — it dithers into a quarter of a megabyte. At q92 this is a fifth
+// of that with no visible artefact on flat colour and white type.
 await shot(page({
     path, size: 96, tone: 'white', tagline: true,
     background: `linear-gradient(135deg,${BRAND_A},${BRAND_B})`,
-  }), { width: 1200, height: 630, file: `${OUT}/og-default.png` });
+  }), { width: 1200, height: 630, quality: 92, file: `${OUT}/og-default.jpg` });
 
 // Home-screen icon. iOS ignores SVG favicons and falls back to a screenshot
 // without this file.

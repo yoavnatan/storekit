@@ -35,6 +35,12 @@ const fullTitle = title ? `${title} | ${store.name}` : `${store.name} — ${stor
 const canonicalPath = stripTrailingSlashes(Astro.url.pathname) || '/';
 const canonical = canonicalOverride ?? new URL(canonicalPath, store.url).href;
 const ogImage = image ? new URL(image, store.url).href : '';
+// Declared only for the platform's own card, whose size this repo controls
+// (scripts/generate-brand-assets.mjs). A scraper that has the dimensions up
+// front lays the card out on its FIRST pass; without them Facebook has been
+// known to show a link with no image until it re-crawls. A store page passes its
+// own image and no dimensions rather than have this guess at them.
+const isDefaultOgImage = image === store.social.ogImage;
 ---
 
 <!-- Primary -->
@@ -51,6 +57,9 @@ const ogImage = image ? new URL(image, store.url).href : '';
 <meta property="og:url" content={canonical} />
 <meta property="og:locale" content={store.locale} />
 {ogImage && <meta property="og:image" content={ogImage} />}
+{ogImage && <meta property="og:image:alt" content={fullTitle} />}
+{ogImage && isDefaultOgImage && <meta property="og:image:width" content="1200" />}
+{ogImage && isDefaultOgImage && <meta property="og:image:height" content="630" />}
 
 <!-- Twitter -->
 <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
@@ -58,6 +67,7 @@ const ogImage = image ? new URL(image, store.url).href : '';
 <meta name="twitter:title" content={fullTitle} />
 <meta name="twitter:description" content={description} />
 {ogImage && <meta name="twitter:image" content={ogImage} />}
+{ogImage && <meta name="twitter:image:alt" content={fullTitle} />}
 
 <!-- Product pricing (Meta/Facebook product catalog) -->
 {productPrice !== undefined && <meta property="product:price:amount" content={String(productPrice)} />}
