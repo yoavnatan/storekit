@@ -89,9 +89,36 @@ describe('the store page keeps its catalog crawlable', () => {
     expect(page).not.toMatch(/<button[^>]*class="category-breadcrumb__crumb"/);
   });
 
-  it('links every page of the grid, so "load more" is not the only way past product 24', () => {
-    expect(page).toContain('storeViewHref(selectedCategory, n)');
-    expect(page).toMatch(/totalPages > 1 && \(/);
+  it('makes "load more" itself the link, so it is not the only way past product 24', () => {
+    // A <button> fetches; it does not link, and a crawler never presses anything — which is how
+    // 76 of one showcase store's 100 products ended up with no in-site link at all. The fix was
+    // briefly a numbered `?page=N` row NEXT TO the button, and that put two controls for one job
+    // at the foot of one shelf, contradicting each other as soon as anyone pressed the button
+    // ("מה המשמעות ליוזר שיש גם טען עוד וגם עמודים? לא ראיתי דבר כזה" — owner, 2026-08-05).
+    // So there is one control and it IS the link: an <a href="?page=N+1"> drawn as a button,
+    // whose click handler cancels the navigation and appends in place. Page 2's own button
+    // links to page 3, so the chain reaches the whole catalog.
+    expect(page).toMatch(/<a\s+id="load-more-btn"/);
+    expect(page).toContain('href={hasMoreProducts ? storeViewHref(selectedCategory, currentPage + 1) : undefined}');
+    expect(page).not.toMatch(/<button[^>]*id="load-more-btn"/);
+  });
+
+  it('drops that href on the last page, so the chain ends instead of looping', () => {
+    // Measured 2026-08-05: with the href always present, page <totalPages+1> redirects to page 1,
+    // whose button points forward again — a crawler follows links, not pixels, so `hidden` on the
+    // wrapper does nothing. The server omits it and the client removes it.
+    expect(page).toContain('hasMoreProducts ? storeViewHref');
+    expect(page).toMatch(/} else \{\s*loadMoreBtn\.removeAttribute\('href'\);/);
+  });
+
+  it('keeps that href pointing at the next page of the view actually on screen', () => {
+    // Filter to a category, press it four times, and the link must still mean this shelf —
+    // otherwise a crawler arriving on that URL walks the unfiltered store instead.
+    expect(page).toMatch(/next\.searchParams\.set\('page',[\s\S]{0,120}loadMoreBtn\.setAttribute\('href'/);
+  });
+
+  it('has no numbered pager under the grid', () => {
+    expect(page).not.toMatch(/aria-label=\{lang === 'he' \? 'עמודי מוצרים'/);
   });
 
   it('gives each view its own canonical and title instead of collapsing them onto the store', () => {

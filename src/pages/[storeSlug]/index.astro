@@ -949,42 +949,49 @@ const bannerPreload = !isDemo && shopStore.bannerImage
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <p>{t.store.noProductsFound}</p>
           </div>
+          {/* ONE control, and it is a real link. There is no numbered pager under this shelf and
+              there must not be one again (owner, 2026-08-05: "מה המשמעות ליוזר שיש גם טען עוד וגם
+              עמודים? לא ראיתי דבר כזה").
+
+              The problem this solves has two halves that used to be solved separately.
+              (a) A <button> fetches; it does not link. Until 2026-08-03 a crawler saw the first 24
+                  products of a shelf and had no path to the rest — 76 of one showcase store's 100
+                  products had no in-site link pointing at them anywhere. Google renders JS but
+                  never presses anything, so "load more" alone orphans three quarters of a catalog.
+              (b) The fix was a numbered `?page=N` row beside the button, which put two controls for
+                  one job at the foot of one shelf — and they contradict each other: press "load
+                  more" four times and the row underneath still says you are on page 1. Restyling
+                  it quieter (tried, same day) does not make a second control not a second control.
+
+              So the button IS the link: `<a href="?page=N+1">` drawn as a button, with the click
+              handler cancelling the navigation and appending in place. A shopper sees one button
+              and never leaves the page. A crawler follows a real href to page 2, whose own button
+              links to page 3, and walks the whole catalog that way. `nofollow` is deliberately NOT
+              set — following it is the entire point.
+
+              Two consequences worth knowing before changing this. The crawl path is now a CHAIN
+              rather than a fan, so page N sits N clicks deep instead of one; that is fine for
+              shelves of this size (24 a page) and every product is in the sitemap besides, but a
+              store with hundreds of pages would want a different shape. And the href must be kept
+              current as the grid grows — updateResultsState() owns that, so a filtered view's
+              button points at the next page OF THAT VIEW. */}
           <div id="load-more-wrap" class="load-more-wrap" hidden={!hasMoreProducts}>
-            <button type="button" id="load-more-btn" class="load-more-btn" data-offset={String(pageStart + products.length)}>
+            {/* NO href on the last page — and `hidden` on the wrapper is not a substitute for
+                that. A crawler reads the markup, not the pixels, so a link that survives past
+                the end walks into `?page=<totalPages+1>`, which redirects to page 1, whose own
+                button points at page 2 again: an endless loop, measured 2026-08-05 on the very
+                first run of this change. An <a> with no href is not a link and is not followed.
+                The element itself stays in the DOM because a client-side filter can reveal more
+                results later; updateResultsState() puts the href back when it does. */}
+            <a
+              id="load-more-btn"
+              class="load-more-btn"
+              href={hasMoreProducts ? storeViewHref(selectedCategory, currentPage + 1) : undefined}
+              data-offset={String(pageStart + products.length)}
+            >
               <span id="load-more-label">{t.store.loadMore}</span>
-            </button>
+            </a>
           </div>
-          {/* The crawlable half of "load more".
-              A button fetches; it does not link, so until 2026-08-03 a crawler saw the first 24
-              products of a shelf and had no path to the rest — 76 of one showcase store's 100 had
-              no in-site link pointing at them at all. These are the same slices the button fetches,
-              addressable and server-rendered. `nofollow` is deliberately NOT set — following these
-              is the entire point, and Google's own pagination guidance is exactly this pairing: a
-              crawler renders JS but never presses a button, so every slice needs its own URL and a
-              real link to it.
-
-              THE TREATMENT IS THE DECISION HERE, and it was wrong until 2026-08-05 (owner: "למה
-              לעזאזל יש עדיין עמודים ממוספרים בחנויות עצמן? אמרנו כבר הרבה פעמים שזה יהיה רק טען
-              עוד"). This comment has always claimed "visually quiet", while the row actually drew
-              bordered chips with the current page filled in `--color-primary` — this site's
-              treatment for a selected CONTROL, and the same weight as the category chips at the top
-              of the same shelf. So the shelf ended in two controls for one job, and they contradict
-              each other: press "load more" four times and a filled chip underneath still says you
-              are on page 1. It read as a numbered pager that had survived a decision to drop it.
-
-              It is not a pager. It is the address of each slice; the shopper's control is the
-              button above it. So: no border, no fill, muted, a step smaller — the weight of a
-              caption. A person's eye passes over it, a crawler follows it exactly as before.
-              Styling only: nothing about what is rendered, linked or indexed changed. */}
-          {totalPages > 1 && (
-            <nav class="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[0.75rem]" aria-label={lang === 'he' ? 'עמודי מוצרים' : 'Product pages'}>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-                n === currentPage
-                  ? <span class="[color:var(--color-text)] font-medium" aria-current="page">{n}</span>
-                  : <a href={storeViewHref(selectedCategory, n)} class="[color:var(--color-muted)] underline-offset-4 transition-colors hover:[color:var(--color-text)] hover:underline">{n}</a>
-              ))}
-            </nav>
-          )}
         </Fragment>
       )}
     </section>
@@ -1335,7 +1342,9 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   const productGrid = document.querySelector<HTMLElement>('.product-grid');
   const noResults   = document.getElementById('no-results');
   const loadMoreWrap = document.getElementById('load-more-wrap') as HTMLElement | null;
-  const loadMoreBtn  = document.getElementById('load-more-btn')  as HTMLButtonElement | null;
+  // An anchor, not a button — it carries the `?page=N+1` href that is this catalog's
+  // only crawl path past product 24. See its markup for why.
+  const loadMoreBtn  = document.getElementById('load-more-btn')  as HTMLAnchorElement | null;
   const loadMoreLabel = document.getElementById('load-more-label') as HTMLElement | null;
   const searchHeading = document.getElementById('search-results-heading') as HTMLElement | null;
   const searchHeadingText = document.getElementById('search-results-heading-text') as HTMLElement | null;
@@ -1962,7 +1971,24 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     // already showing a "no results for X" message naming the actual query.
     if (noResults) noResults.hidden = hasAny || hasQuery;
     if (loadMoreWrap) loadMoreWrap.hidden = !hasMore;
-    if (loadMoreBtn) loadMoreBtn.dataset.offset = String(loadedCount);
+    if (loadMoreBtn) {
+      loadMoreBtn.dataset.offset = String(loadedCount);
+      // The button is a real `<a href>` — that is the whole crawl path (see its markup).
+      // It has to keep naming the next page OF THE VIEW ON SCREEN, so a shopper who filtered
+      // to one category and pressed it four times still has a link that means something, and
+      // so a crawler landing on this URL walks THIS shelf rather than the unfiltered one.
+      // Built from the address bar, which syncUrl() has already brought in line with the view.
+      // And REMOVED when there is no next page: an href that outlives the last slice points at a
+      // URL that redirects to page 1, whose button points forward again — a loop for anything
+      // that follows links rather than looking at the screen.
+      if (hasMore) {
+        const next = new URL(window.location.href);
+        next.searchParams.set('page', String(Math.floor(loadedCount / PRODUCTS_PAGE_SIZE) + 1));
+        loadMoreBtn.setAttribute('href', next.pathname + next.search);
+      } else {
+        loadMoreBtn.removeAttribute('href');
+      }
+    }
     updateSearchHeading();
   }
 
@@ -2062,9 +2088,23 @@ const bannerPreload = !isDemo && shopStore.bannerImage
 
   }
 
-  loadMoreBtn?.addEventListener('click', async () => {
+  loadMoreBtn?.addEventListener('click', async (event) => {
+    // It is an `<a href="?page=N">` so a crawler has a path past product 24; for a person with
+    // JS it must append in place instead of navigating. Cancelling in the BUBBLE phase is what
+    // keeps nav-progress.ts quiet too — it reads `defaultPrevented` on document, precisely so a
+    // link that never becomes a navigation does not raise the "next page is coming" bar.
+    // A modified click (new tab, download, middle button) is left alone deliberately: opening
+    // page 2 in a new tab is a reasonable thing to want from something that IS a link.
+    if (event.defaultPrevented || (event as MouseEvent).button !== 0) return;
+    const e = event as MouseEvent;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    event.preventDefault();
+    // `aria-disabled`, not `disabled`: an anchor has no disabled state, and the guard has to be
+    // real rather than cosmetic — a second click while the fetch is in flight would append the
+    // same slice twice.
+    if (loadMoreBtn.getAttribute('aria-disabled') === 'true') return;
     const offset = Number(loadMoreBtn.dataset.offset ?? loadedCount);
-    loadMoreBtn.disabled = true;
+    loadMoreBtn.setAttribute('aria-disabled', 'true');
     const originalLabel = loadMoreLabel?.textContent ?? '';
     if (loadMoreLabel) {
       loadMoreLabel.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${escHtml(getPMI18n().loadingMore ?? '')}<span class="dot-pulse" role="status"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
@@ -2072,7 +2112,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     const { products: page, hasMore } = await fetchProductsPage(offset);
     appendProductCards(page, true);
     updateResultsState(hasMore);
-    loadMoreBtn.disabled = false;
+    loadMoreBtn.removeAttribute('aria-disabled');
     if (loadMoreLabel) loadMoreLabel.textContent = originalLabel;
   });
 
