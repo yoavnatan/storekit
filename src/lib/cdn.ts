@@ -73,10 +73,28 @@ function deliver(url: string, transform: string, replaceExisting = false): strin
   return `https://res.cloudinary.com/${CLOUD}/image/fetch/${transform}/${encodeURIComponent(url)}`;
 }
 
-/** The default: an image scaled to `w` CSS pixels, auto format + auto quality.
- *  Pair with `cdnSrcSet` + a `sizes` attribute whenever the tile is responsive. */
+/**
+ * The default: an image scaled to `w` CSS pixels, auto format + auto quality.
+ * Pair with `cdnSrcSet` + a `sizes` attribute whenever the tile is responsive.
+ *
+ * **`c_limit`, not a bare `w_`, and this is a correctness fix rather than a tuning knob
+ * (2026-08-05).** A bare `w_` means `c_scale`, which happily invents pixels that were never in the
+ * upload — so every width in `LIGHTBOX_WIDTHS`/`BANNER_WIDTHS` above the seller's own resolution was
+ * being served as an upscale: softer than the source AND heavier than it. Measured on Cloudinary's
+ * public `demo` cloud against `sample.jpg` (864x576 native), same URL otherwise:
+ *
+ *     f_jpg,q_auto,w_2048           → 2048x1365, 202KB   ← invented, blurry
+ *     c_limit,f_jpg,q_auto,w_2048   →  864x576,   97KB   ← the actual picture, half the bytes
+ *
+ * `c_limit` is a CEILING: at or below the source it behaves exactly as before, above it it stops.
+ * Nothing in the layout depends on the returned pixel size — every consumer draws into a CSS box
+ * with `object-fit` — so a rung that caps out simply hands the browser the sharpest image that
+ * exists. `image-derive.ts` warms its rungs through this same function, so the pre-rendered
+ * transform stays byte-identical to what the markup asks for (the pairing `LIGHTBOX_WIDTHS`
+ * describes below); that is why the ceiling belongs here and not at the call sites.
+ */
 export function cdnSrc(url: string, w = 400): string {
-  return deliver(url, `f_auto,q_auto,w_${w}`);
+  return deliver(url, `c_limit,f_auto,q_auto,w_${w}`);
 }
 
 /**
@@ -174,6 +192,18 @@ export function cdnCropSrcSet(url: string, widths: number[], ratio: number): str
  *  This is the right call for every fixed-size tile: cart rows, order rows,
  *  dashboard tables, search results. */
 export function cdnThumb(url: string, w = 84, h = 84): string {
+  // **`c_fill` STAYS, and `c_lfill` was tried and rejected here on 2026-08-05 — write this down so
+  // it isn't "fixed" again.** `cdnSrc` gained `c_limit` that day to stop the CDN inventing pixels
+  // above the source, and the same reasoning appears to apply to the banner's rungs, which reach
+  // w_2048 through this function. It does not. Measured on the `demo` cloud, `sample.jpg` (864x576),
+  // asking for a 3:1 band at 2048 wide:
+  //     c_fill,g_auto,…,w_2048,h_683  → 2048x683, 112KB  ← upscaled, but cropped to the band
+  //     c_lfill,g_auto,…,w_2048,h_683 →  864x576,  97KB  ← NOT cropped: the ratio is abandoned
+  // `lfill` stops filling altogether once the box is bigger than the source, so it hands back the
+  // whole uncropped photo — and `cdnCropSrcSet` exists precisely to stop shipping the pixels outside
+  // that band (84.5KB → 32.2KB, measured 2026-08-03). It would trade a soft image for a heavier one
+  // and re-introduce client-side cropping. The real fix for an undersized banner is to not OFFER a
+  // rung above the source, which needs the stored dimensions this module does not have.
   return deliver(url, `c_fill,g_auto,f_auto,q_auto,w_${w},h_${h}`);
 }
 

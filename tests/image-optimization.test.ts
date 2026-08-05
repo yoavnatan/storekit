@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { cdnSrc, cdnSrcSet, cdnThumb, cdnFill } from '../src/lib/cdn.js';
+import { cdnSrc, cdnSrcSet, cdnThumb, cdnFill, LIGHTBOX_WIDTHS, BANNER_WIDTHS } from '../src/lib/cdn.js';
 
 /**
  * The image-performance guard.
@@ -82,8 +82,27 @@ describe('cdn delivery', () => {
 
   it('injects a transform into a Cloudinary upload URL', () => {
     expect(cdnSrc(CLOUD, 300)).toBe(
-      'https://res.cloudinary.com/demo/image/upload/f_auto,q_auto,w_300/v1/photo.jpg',
+      'https://res.cloudinary.com/demo/image/upload/c_limit,f_auto,q_auto,w_300/v1/photo.jpg',
     );
+  });
+
+  it('asks for a CEILING, never an upscale — `w_` alone invents pixels', () => {
+    // The regression this pins (2026-08-05): a bare `w_` is `c_scale`, so every rung above the
+    // seller's own resolution was delivered as an invented, softer, HEAVIER image. Measured on
+    // Cloudinary's demo cloud, sample.jpg at 864x576: w_2048 → 2048x1365 / 202KB, c_limit → the
+    // real 864x576 / 97KB. `c_limit` is the only crop mode here that is a cap rather than a target.
+    for (const w of [...LIGHTBOX_WIDTHS, ...BANNER_WIDTHS, 400]) {
+      expect(cdnSrc(CLOUD, w)).toContain('c_limit,');
+    }
+    // …and it must NOT leak into the two that promise an exact size to something outside the site:
+    // an ad platform rejects a creative at the wrong ratio, and a favicon slot has one size.
+    expect(cdnFill(CLOUD, 1200, 628)).toContain('c_fill,');
+    expect(cdnFill(CLOUD, 1200, 628)).not.toContain('c_limit');
+    // The banner's cropped rungs stay `c_fill` too — `c_lfill` was measured to abandon the crop
+    // ratio once the box exceeds the source, which costs more bytes than the upscale it avoids
+    // (see cdnThumb's header).
+    expect(cdnThumb(CLOUD, 2048, 683)).toContain('c_fill,');
+    expect(cdnThumb(CLOUD, 2048, 683)).not.toContain('c_lfill');
   });
 
   it('leaves an already-transformed URL alone rather than stacking transforms', () => {
