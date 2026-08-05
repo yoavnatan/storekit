@@ -81,6 +81,38 @@ export function isStoreRenderFormat(value: string): value is StoreRenderFormat {
   return Object.prototype.hasOwnProperty.call(STORE_RENDER_FORMATS, value);
 }
 
+/**
+ * Which uncropped original belongs with the image a settings save just decided on
+ * (migration 0012, `*_image_source`).
+ *
+ * It exists because the settings form is merged FIELD BY FIELD against whatever a second tab
+ * saved meanwhile (record-rev.ts), and a source is not a field in that sense — it is the photo
+ * its crop was cut from. Merged independently, two tabs that both changed the picture could leave
+ * tab A's crop stored beside tab B's original, and the next "adjust" would then re-frame a
+ * different photo than the one on screen: the seller nudges the avatar and a completely different
+ * image appears. So the merge settles the visible image and this follows it.
+ *
+ * `chosen` empty means the seller removed the image; the original it came from is then dead weight
+ * that nothing can ever reach, so it goes too.
+ *
+ * The UNCHANGED case is checked before the submitted one, and that ordering is the whole safety of
+ * this function: a save that leaves the picture alone must keep the stored original whatever the
+ * request happens to carry. Otherwise a POST without the field — a tab still running the previous
+ * deploy, a script, a form built by hand — silently strips a source it never knew existed, and the
+ * loss only shows up much later as an "adjust" that has nothing to re-frame.
+ */
+export function pairedImageSource(image: {
+  chosen: string | undefined;
+  submitted: string | undefined;
+  submittedSource: string | undefined;
+  stored: string | undefined;
+  storedSource: string | undefined;
+}): string | undefined {
+  if (!image.chosen) return undefined;
+  if (image.chosen === image.stored) return image.storedSource;
+  return image.chosen === image.submitted ? image.submittedSource : image.storedSource;
+}
+
 /** Wide formats lead with the banner (shot wide), square ones with the avatar. */
 function preferredSources(store: StoreImageSource, format: StoreImageFormat): string[] {
   const wide = format === 'landscape' || format === 'portrait';

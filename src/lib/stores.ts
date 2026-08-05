@@ -60,6 +60,13 @@ export interface Store {
   shipping?: StoreShipping;
   bannerImage?: string;
   profileImage?: string;
+  /** The uncropped uploads the two images above were cut from — written and read by the
+   *  dashboard's image widget alone, so a seller can re-frame from the full photo instead of
+   *  from their own previous crop (migration 0012). Absent for anything uploaded before that,
+   *  and whenever the source upload failed; the widget falls back to the cropped image. Never
+   *  rendered anywhere: every public surface reads `bannerImage`/`profileImage`. */
+  bannerImageSource?: string;
+  profileImageSource?: string;
   /** Store-wide sale: the seller's own headline/copy for a running sale, plus an optional
    *  percent that automatically applies to every product WITHOUT its own discount (a
    *  product's own discount always wins — see discounts.ts). Announcement and price live in
@@ -163,7 +170,8 @@ export function byPromoWeight(a: Store, b: Store): number {
  * round-trip instead of an N+1 per store on a list page.
  */
 const COLUMNS = `s.id, s.seller_id, s.slug, s.name, s.tagline, s.description, s.colors,
-    s.categories, s.shipping, s.banner_image, s.profile_image, s.sale, s.address,
+    s.categories, s.shipping, s.banner_image, s.profile_image,
+    s.banner_image_source, s.profile_image_source, s.sale, s.address,
     s.address_visible, s.hours, s.hours_visible, s.blocked, s.demo, s.promo_weight, s.bg_colors,
     s.feed_sync, s.feed_export_token, s.custom_domain_hostname, s.custom_domain_status,
     s.custom_domain_added_at, s.paused_at, s.close_pending_at, s.closed_at, s.created_at,
@@ -200,6 +208,8 @@ interface StoreRow {
   shipping: StoreShipping | null;
   banner_image: string | null;
   profile_image: string | null;
+  banner_image_source: string | null;
+  profile_image_source: string | null;
   sale: StoreSale | null;
   address: string | null;
   address_visible: boolean;
@@ -254,6 +264,8 @@ function toStore(row: StoreRow): Store {
   };
   if (row.banner_image) store.bannerImage = row.banner_image;
   if (row.profile_image) store.profileImage = row.profile_image;
+  if (row.banner_image_source) store.bannerImageSource = row.banner_image_source;
+  if (row.profile_image_source) store.profileImageSource = row.profile_image_source;
   if (row.sale) store.sale = row.sale;
   if (row.address) store.address = row.address;
   if (row.address_visible) store.addressVisible = true;
@@ -731,6 +743,8 @@ const UPDATABLE: Record<string, { sql: string; value: (v: unknown) => unknown }>
   shipping:       { sql: 'shipping = $::jsonb', value: (v) => JSON.stringify(v ?? {}) },
   bannerImage:    { sql: 'banner_image = $', value: (v) => v ?? null },
   profileImage:   { sql: 'profile_image = $', value: (v) => v ?? null },
+  bannerImageSource:  { sql: 'banner_image_source = $', value: (v) => v ?? null },
+  profileImageSource: { sql: 'profile_image_source = $', value: (v) => v ?? null },
   sale:           { sql: 'sale = $::jsonb', value: (v) => (v == null ? null : JSON.stringify(v)) },
   address:        { sql: 'address = $', value: (v) => v ?? null },
   addressVisible: { sql: 'address_visible = $', value: (v) => Boolean(v) },
