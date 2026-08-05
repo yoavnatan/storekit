@@ -313,7 +313,9 @@ export const translations = {
       saveUnavailable: 'השמירה לא זמינה כרגע. שמרנו את מה שהקלדת — רענן את הדף ונציע לך לשחזר.',
       draftFound: 'יש שינויים שלא הספקת לשמור מהפעם הקודמת.',
       draftRestore: 'שחזר אותם',
-      draftDiscard: 'התעלם',
+      // Not "התעלם"/"סגור": pressing this DELETES the recovered copy, and there is no undo. A label
+      // that reads as "close this notice" makes an irreversible button look like a dismissal.
+      draftDiscard: 'מחק אותם',
       storeOverview: 'סקירת חנות',
       products: 'מוצרים',
       inStock: 'במלאי',
@@ -1606,7 +1608,7 @@ export const translations = {
       saveUnavailable: 'Saving is unavailable right now. We kept what you typed — reload the page and we will offer it back.',
       draftFound: 'You have changes from last time that were never saved.',
       draftRestore: 'Restore them',
-      draftDiscard: 'Dismiss',
+      draftDiscard: 'Delete them',
       storeOverview: 'Store overview',
       products: 'Products',
       inStock: 'In stock',
