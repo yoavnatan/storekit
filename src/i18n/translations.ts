@@ -352,6 +352,10 @@ export const translations = {
       storeImageChange: 'החלף תמונה',
       // Re-frame the image that is already saved, without picking a new file.
       adjustImage: 'התאם תמונה',
+      // Cut the logo out of its backdrop — the store image only; a banner IS its background.
+      removeBackground: 'הסר רקע',
+      removingBg: 'מסיר רקע',
+      removeBackgroundFailed: 'לא הצלחנו להסיר את הרקע. נסה שוב.',
       // The floating "not saved yet" notice (UnsavedChangesBar). A sentence, not a marker: the
       // seller has never met an editor's unsaved-document convention and a symbol can only puzzle
       // them. {section} is the tab's own label, so no section needs a second name here.
@@ -1628,6 +1632,9 @@ export const translations = {
       storeProfileImageHint: 'Shown next to your store name across the site',
       storeImageChange: 'Change image',
       adjustImage: 'Adjust image',
+      removeBackground: 'Remove background',
+      removingBg: 'Removing background',
+      removeBackgroundFailed: 'We couldn’t remove the background. Please try again.',
       unsavedNotice: 'You have unsaved changes in {section}',
       unsavedNoticeMany: 'You have unsaved changes in more than one place',
       unsavedGo: 'Take me there',

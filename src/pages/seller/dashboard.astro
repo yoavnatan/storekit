@@ -2355,7 +2355,7 @@ const orderStatusColors: Record<string, string> = {
               style="aspect-ratio:3/1"
             >
               {store.bannerImage && (
-                <img src={cdnSrc(store.bannerImage, 900)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
+                <img src={cdnSrc(store.bannerImage, 900)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--color-surface)" />
               )}
             </div>
             <div class="flex gap-2" style="margin-top:1.1rem">
@@ -2387,12 +2387,19 @@ const orderStatusColors: Record<string, string> = {
               style={`background:${storeMarkGradient(storeMark(store.slug, store.name))}`}
             >
               {store.profileImage && (
-                <img src={cdnSrc(store.profileImage, 200)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
+                <img src={cdnSrc(store.profileImage, 200)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--color-surface)" />
               )}
             </div>
-            <div class="flex gap-2" style="margin-top:1.1rem">
+            {/* Wraps, unlike the banner's row above it: this one carries four buttons since
+                "remove background" was added, and four ghost buttons do not fit a 375px column. */}
+            <div class="flex flex-wrap gap-2" style="margin-top:1.1rem">
               <button type="button" class="btn btn--sm btn--ghost" id="avatar-upload-btn">{store.profileImage ? d.storeImageChange : d.uploadImage}</button>
               <button type="button" class="btn btn--sm btn--ghost" id="avatar-adjust-btn" hidden={!store.profileImage}>{d.adjustImage}</button>
+              {/* Logo only. The products tab has offered this since the gallery was built, and the
+                  logo is where it matters most: this image is drawn on a white card, inside a
+                  circle and in a browser tab, so a photo's own backdrop shows up as a grey plate
+                  around the mark. The banner deliberately has no such button — it IS a background. */}
+              <button type="button" class="btn btn--sm btn--ghost" id="avatar-bg-btn" hidden={!store.profileImage}>{d.removeBackground}</button>
               <button type="button" class="btn btn--sm btn--ghost" id="avatar-remove-btn" hidden={!store.profileImage}>{d.removeImage}</button>
             </div>
             <input type="file" accept="image/*" id="avatar-file-input" hidden />
@@ -3215,6 +3222,8 @@ const orderStatusColors: Record<string, string> = {
         loading: i18n.loadingImage ?? 'Loading image…',
         failed: i18n.uploadFailed ?? 'Image upload failed',
         loadFailed: i18n.imageLoadFailed ?? 'Could not load the image',
+        removingBg: i18n.removingBg ?? 'Removing background…',
+        bgFailed: i18n.removeBackgroundFailed ?? 'Could not remove the background',
       };
       img.initStoreImageWidget({
         frameId: 'banner-frame', fileInputId: 'banner-file-input', hiddenInputId: 'banner-image-input',
@@ -3225,7 +3234,7 @@ const orderStatusColors: Record<string, string> = {
       img.initStoreImageWidget({
         frameId: 'avatar-frame', fileInputId: 'avatar-file-input', hiddenInputId: 'avatar-image-input',
         sourceInputId: 'avatar-source-input', uploadBtnId: 'avatar-upload-btn',
-        adjustBtnId: 'avatar-adjust-btn', removeBtnId: 'avatar-remove-btn',
+        adjustBtnId: 'avatar-adjust-btn', removeBgBtnId: 'avatar-bg-btn', removeBtnId: 'avatar-remove-btn',
         // `round`: the avatar is drawn in a circle everywhere on the site (StoreAvatar), so the
         // crop tool has to show a circle. Framing to a square and rendering a circle is what made
         // the picture "not sit right" — a fifth of what the seller lined up was cut by a shape
