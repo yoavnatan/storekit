@@ -18,6 +18,7 @@ function wireAlertsToolbar(): void {
   const state = root.dataset;
   let sortDir = (state.sortDir as SortDir) || 'desc';
   const sourceSet = new Set((state.source ?? '').split(',').filter(Boolean));
+  const severitySet = new Set((state.severity ?? '').split(',').filter(Boolean));
   const storeSet = new Set(decodeList(state.store ?? ''));
   const storeOptions: { slug: string; name: string }[] = JSON.parse(state.storeOptions ?? '[]');
   let newOnly = state.newOnly === '1';
@@ -26,6 +27,7 @@ function wireAlertsToolbar(): void {
     const url = buildAdminUrl('alerts', {
       alsort: sortDir !== 'desc' ? sortDir : undefined,
       alsource: sourceSet.size ? [...sourceSet].join(',') : undefined,
+      alsev: severitySet.size ? [...severitySet].join(',') : undefined,
       alstore: storeSet.size ? encodeList([...storeSet]) : undefined,
       alnew: newOnly ? '1' : undefined,
     });
@@ -58,6 +60,16 @@ function wireAlertsToolbar(): void {
     chip.addEventListener('click', () => {
       const v = chip.dataset.sourceValue!;
       if (sourceSet.has(v)) sourceSet.delete(v); else sourceSet.add(v);
+      navigate();
+    });
+  });
+
+  // Same toggle shape as the source chips above — a chip is its own filter, and an empty set means
+  // "no severity filter" rather than "none of them", which is what makes the default show everything.
+  root.querySelectorAll<HTMLButtonElement>('.admin-alerts-severity-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const v = chip.dataset.severityValue!;
+      if (severitySet.has(v)) severitySet.delete(v); else severitySet.add(v);
       navigate();
     });
   });

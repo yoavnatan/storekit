@@ -246,8 +246,9 @@ const errorsAll = await getRecentErrors(MAX_ERROR_ENTRIES);
 const alSortDir = sp.get('alsort') === 'asc' ? 'asc' : 'desc';
 const alSource = (sp.get('alsource') ?? '').split(',').filter(Boolean);
 const alStore = decodeList(sp.get('alstore') ?? '');
+const alSeverity = (sp.get('alsev') ?? '').split(',').filter(Boolean);
 const errorsFiltered = keepNewOnly(
-  filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore }),
+  filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore, severity: alSeverity }),
   newOnly.alerts, newSince.alerts, (e) => e.createdAt,
 );
 const alertsPageResult = paginate(errorsFiltered, parsePage(sp, 'alpage'));
@@ -555,6 +556,7 @@ const badgeCounts: Record<string, number> = {
           sortDir={alSortDir}
           source={alSource}
           storeSlug={alStore}
+          severity={alSeverity}
           storeOptions={errorStoreOptions}
           newSince={newSince.alerts}
           newOnly={newOnly.alerts}
@@ -564,6 +566,7 @@ const badgeCounts: Record<string, number> = {
           buildUrl={(p) => tabUrl('alerts', {
             alsort: alSortDir !== 'desc' ? alSortDir : undefined,
             alsource: alSource.length ? alSource.join(',') : undefined,
+            alsev: alSeverity.length ? alSeverity.join(',') : undefined,
             alstore: alStore.length ? encodeList(alStore) : undefined,
             alnew: newOnly.alerts ? '1' : undefined,
             alpage: p > 1 ? String(p) : undefined,

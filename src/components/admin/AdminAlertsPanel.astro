@@ -1,5 +1,6 @@
 ---
 import type { AlertsSortDir, ErrorLogEntry } from '../../lib/error-log.js';
+import { SEVERITY_ORDER, type ErrorSeverity } from '../../lib/error-severity.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import AdminPager from './AdminPager.astro';
 import AdminNewBadge from './AdminNewBadge.astro';
@@ -12,6 +13,7 @@ interface Props {
   sortDir: AlertsSortDir;
   source: string[];
   storeSlug: string[];
+  severity: string[];
   storeOptions: { slug: string; name: string }[];
   newSince: string;  // ISO — anything logged after this is what the tab's "(N)" counted
   newOnly: boolean;
@@ -20,9 +22,21 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, storeOptions, newSince, newOnly, newCount, page, totalPages, buildUrl } = Astro.props;
+const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, severity, storeOptions, newSince, newOnly, newCount, page, totalPages, buildUrl } = Astro.props;
 
 const sourceLabel: Record<string, string> = { server: 'שרת', client: 'דפדפן' };
+// The three levels a person actually triages by (lib/error-severity.ts). The wording answers
+// "do I stop what I am doing", not "how technical is this" — which is the only question the
+// column is there to settle.
+const severityLabel: Record<ErrorSeverity, string> = { critical: 'קריטי', error: 'שגיאה', warning: 'אזהרה' };
+// Reuses the badge variants admin.css already defines rather than adding a fourth palette: danger
+// for the level that pages someone, warning for a real failure nobody has to wake up for, muted for
+// a single browser. The colour is the scan signal and the label is what makes it accessible without
+// it — never colour alone.
+const severityBadge: Record<ErrorSeverity, string> = { critical: 'admin-badge--failed', error: 'admin-badge--warning', warning: 'admin-badge--muted' };
+/** Rows written before migration 0013, and any entry built without one, are server failures nobody
+ *  classified — the same fallback the column default and the filter use. */
+const severityOf = (e: ErrorLogEntry): ErrorSeverity => e.severity ?? 'error';
 const roleLabel: Record<string, string> = { buyer: 'קונה', seller: 'מוכר' };
 const sortLabels: Record<AlertsSortDir, string> = { desc: 'תאריך: חדש — ישן', asc: 'תאריך: ישן — חדש' };
 
@@ -63,6 +77,7 @@ function buildCopyText(e: ErrorLogEntry): string {
     data-sort-dir={sortDir}
     data-source={source.join(',')}
     data-store={storeSlug.join(',')}
+    data-severity={severity.join(',')}
     data-new-only={newOnly ? '1' : ''}
     data-store-options={JSON.stringify(storeOptions)}
   >
@@ -79,6 +94,18 @@ function buildCopyText(e: ErrorLogEntry): string {
         style={source.includes(s) ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
         aria-pressed={source.includes(s)}
       >{sourceLabel[s]}</button>
+    ))}
+    {/* Severity before source in the toolbar too, matching the column order — and rendered from
+        SEVERITY_ORDER so the row of chips can never disagree with the rest of the app about which
+        level is loudest. */}
+    {SEVERITY_ORDER.map((sev) => (
+      <button
+        type="button"
+        class="admin-alerts-severity-chip table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] border"
+        data-severity-value={sev}
+        style={severity.includes(sev) ? 'background:var(--color-primary);border-color:var(--color-primary);color:#fff' : 'color:var(--color-text);background:var(--color-surface);border-color:var(--color-border)'}
+        aria-pressed={severity.includes(sev)}
+      >{severityLabel[sev]}</button>
     ))}
     {storeOptions.length > 0 && (
       <button type="button" id="admin-alerts-store-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="true" aria-expanded="false">
@@ -101,7 +128,7 @@ function buildCopyText(e: ErrorLogEntry): string {
         <col style="width:15%" /><col style="width:12%" /><col style="width:23%" /><col style="width:15%" />
       </colgroup>
       <thead>
-        <tr><th>זמן</th><th class="admin-alerts-th-source">מקור</th><th>חנות</th><th>עבור</th><th>נתיב</th><th>הודעה</th><th class="admin-alerts-th-details"><span class="sr-only">פרטים נוספים</span></th></tr>
+        <tr><th>זמן</th><th class="admin-alerts-th-source">חומרה</th><th>חנות</th><th>עבור</th><th>נתיב</th><th>הודעה</th><th class="admin-alerts-th-details"><span class="sr-only">פרטים נוספים</span></th></tr>
       </thead>
       <tbody>
         {errors.map((e) => {
@@ -118,7 +145,14 @@ function buildCopyText(e: ErrorLogEntry): string {
                 {formatHeDateTime(e.createdAt)}
                 {e.createdAt > newSince && <AdminNewBadge label="חדשה" block />}
               </td>
-              <td class="admin-alerts-source"><span class="admin-badge admin-badge--failed">{sourceLabel[e.source] ?? e.source}</span></td>
+              {/* Severity leads and source follows it: when the list is long the first thing worth
+                  knowing is whether to stop, and the second is where to look. Stacked in the one
+                  cell rather than given a column of their own — the table is already seven wide,
+                  and the time cell beside it stacks its "חדשה" mark the same way. */}
+              <td class="admin-alerts-source">
+                <span class={`admin-badge ${severityBadge[severityOf(e)]}`}>{severityLabel[severityOf(e)]}</span>
+                <span class="admin-badge admin-badge--muted mt-1 block w-fit mx-auto">{sourceLabel[e.source] ?? e.source}</span>
+              </td>
               <td class="admin-nowrap admin-alerts-store" title={e.storeName ?? undefined}>
                 <span class="admin-alerts-field-label">חנות: </span>{e.storeName ?? '—'}
               </td>
