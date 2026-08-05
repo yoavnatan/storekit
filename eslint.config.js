@@ -16,6 +16,15 @@
 // rest became local disables that name why. `super-linear-regex` is a warning, not an error,
 // because only 2 of its 19 findings were real. The baseline is now 62 errors across 25 files
 // and may only ever shrink.
+//
+// The two commands that are not `npm run lint` (moved here 2026-08-05 for the same reason as the
+// paragraph above — the always-read budget): `npm run lint:all` is the WHOLE picture, backlog and
+// warnings included, for a dedicated cleanup session rather than a normal one; after clearing
+// some, `npm run lint:prune` drops the suppressions that no longer match anything. Warnings never
+// gate anything by design.
+//
+// And if a rule becomes noise, turn it off HERE with the reason written next to it. The
+// alternative — learning to skim past it — is how a gate stops working while still passing.
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
