@@ -47,7 +47,7 @@ function readMarkPath() {
  * One lockup, as HTML. Every number here is the same one the component uses:
  * tracking −0.03em on the name, −0.015em between the D and the e (Heebo's own
  * "De" ink gap), and a tagline solved to land at exactly the name's width —
- * Rubik 600 at 0.40em with +0.0506em of tracking, minus the trailing letter
+ * Rubik 600 at 0.3616em with +0.0356em of tracking, minus the trailing letter
  * space CSS adds after the last character — which in a right-to-left line is on
  * the LEFT, so the margin that cancels it is the inline-END one.
  */
@@ -68,8 +68,8 @@ function page({ path, size, tone, tagline, background }) {
     .word{direction:ltr;display:flex;align-items:baseline;font-family:'Heebo';font-weight:700;
           line-height:1;letter-spacing:-.03em;${textFill}}
     .word svg{height:.71em;width:auto;flex:none;display:block;margin-inline-end:-.015em}
-    .tag{font-family:'Rubik';font-weight:600;font-size:.40em;line-height:1;direction:rtl;
-         letter-spacing:.0506em;margin-inline-end:-.0506em;color:${tone === 'white' ? '#fff' : BRAND_A}}
+    .tag{font-family:'Rubik';font-weight:600;font-size:.3616em;line-height:1;direction:rtl;
+         letter-spacing:.0356em;margin-inline-end:-.0356em;color:${tone === 'white' ? '#fff' : BRAND_A}}
   </style>
   <div class="logo">
     <div class="word">

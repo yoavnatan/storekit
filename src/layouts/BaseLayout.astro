@@ -26,6 +26,13 @@ import heebo500LatinUrl from '@fontsource/heebo/files/heebo-latin-500-normal.wof
 import heebo600LatinUrl from '@fontsource/heebo/files/heebo-latin-600-normal.woff2?url';
 import heebo700LatinUrl from '@fontsource/heebo/files/heebo-latin-700-normal.woff2?url';
 import heebo800LatinUrl from '@fontsource/heebo/files/heebo-latin-800-normal.woff2?url';
+// The logo's Hebrew line (BrandLogo.astro). It MUST be preloaded like the rest:
+// main.css gives every face `font-display: optional`, and an optional face that
+// is not already available at first paint is not used AT ALL for that page view.
+// Without this the lockup silently fell back to Heebo — a different face with
+// different metrics, so the line both looked wrong and stopped lining up with
+// the name above it, which is exactly what it was solved to do.
+import rubik600HebrewUrl from '@fontsource/rubik/files/rubik-hebrew-600-normal.woff2?url';
 
 import '../styles/main.css';
 
@@ -162,7 +169,8 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
        the full matrix removes the race everywhere instead of chasing it
        page-by-page; each file is ~5-12KB. */}
     {[heebo400HebrewUrl, heebo500HebrewUrl, heebo600HebrewUrl, heebo700HebrewUrl, heebo800HebrewUrl,
-      heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl].map((href) => (
+      heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl,
+      rubik600HebrewUrl].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} />
