@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   OG_IMAGE_FORMAT,
+  ROUND_ICON_FORMATS,
   STORE_ICON_FORMATS,
   STORE_IMAGE_FORMATS,
   STORE_RENDER_FORMATS,
@@ -18,7 +19,7 @@ import {
   type StoreImageFormat,
 } from '../src/lib/store-image.js';
 import { MARK_GRID_SIZE, MARK_HUES, channels, shade, storeMark } from '../src/lib/store-mark.js';
-import { renderStoreMarkPixels, renderStoreMarkPng } from '../src/lib/store-mark-raster.js';
+import { renderStoreMarkIconPng, renderStoreMarkPixels, renderStoreMarkPng } from '../src/lib/store-mark-raster.js';
 import { encodePng } from '../src/lib/png.js';
 import { cdnFill } from '../src/config/store.config.js';
 
@@ -249,13 +250,47 @@ describe('store favicon', () => {
     for (const { width, height } of Object.values(STORE_ICON_FORMATS)) expect(width).toBe(height);
   });
 
-  it('keeps the seller’s transparency: f_auto, never the ad path’s f_jpg', () => {
-    // A logo uploaded with a transparent background arrives as a black square in
-    // the tab if it is delivered as JPEG, which is exactly what cdnFill forces.
+  it('is a CIRCLE in the tab and deliberately not on the iOS home screen', () => {
+    // Round, because a store's identity is round everywhere else here (StoreAvatar).
+    expect(ROUND_ICON_FORMATS).toContain('favicon');
+    // NOT round, because iOS masks this one itself and composites transparency
+    // onto black — a round source arrives with black corners.
+    expect(ROUND_ICON_FORMATS).not.toContain('touch');
+  });
+
+  it('cuts the circle out of an upload in a format that HAS alpha', () => {
     const icon = storeIconUrl({ slug: 'bella-shop', profileImage: CLOUDINARY }, 'favicon');
-    expect(icon).toContain('f_auto');
-    expect(icon).not.toContain('f_jpg');
-    expect(icon).toContain('w_64,h_64');
+    expect(icon).toContain('r_max');
+    // f_auto could pick JPEG for a photo, and JPEG has no alpha — the corners the
+    // radius just cut would come back black.
+    expect(icon).toContain('f_png');
+    expect(icon).not.toContain('f_auto');
+    expect(storeIconUrl({ slug: 'bella-shop', profileImage: CLOUDINARY }, 'touch')).not.toContain('r_max');
+  });
+
+  it('renders the generated mark round, with genuinely transparent corners', () => {
+    const size = STORE_ICON_FORMATS.favicon.width;
+    const png = renderStoreMarkIconPng(storeMark('bella-shop', 'Bella'), size);
+    expect(png.readUInt32BE(16)).toBe(size);
+    expect(png.subarray(24, 25)[0]).toBe(8);   // bit depth
+    expect(png.subarray(25, 26)[0]).toBe(6);   // colour type 6 = truecolour + alpha
+    expect(() => renderStoreMarkIconPng(storeMark('bella-shop'), 4)).toThrow();
+  });
+
+  it('leaves the opaque encoder opaque', () => {
+    const png = renderStoreMarkPng(storeMark('bella-shop'), 64, 64);
+    expect(png.subarray(25, 26)[0]).toBe(2);   // colour type 2 = truecolour, no alpha
+  });
+
+  it('never takes the ad path’s f_jpg — a JPEG icon has no transparency at all', () => {
+    // cdnFill forces f_jpg for scrapers that send no usable Accept header. Reuse it
+    // here and a logo uploaded on a transparent background becomes a black square.
+    for (const f of Object.keys(STORE_ICON_FORMATS) as StoreIconFormat[]) {
+      const icon = storeIconUrl({ slug: 'bella-shop', profileImage: CLOUDINARY }, f);
+      expect(icon).not.toContain('f_jpg');
+      const { width, height } = STORE_ICON_FORMATS[f];
+      expect(icon).toContain(`w_${width},h_${height}`);
+    }
   });
 
   it('falls back to the store’s own mark rather than a full-size original', () => {

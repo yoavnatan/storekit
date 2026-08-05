@@ -129,21 +129,34 @@ const toneClass =
      *
      * The width match is kept — it is what makes this a lockup rather than two
      * stacked lines — but it is now solved with SIZE at zero tracking instead of
-     * with tracking at a fixed size. The font's own metrics put it at 0.39em (the
-     * wordmark's ink is 3.308em wide, Heebo 500's own "מתחם חנויות דיגיטלי" is
-     * 8.481em); rasterising the real page at 4x and scanning ink columns left the
-     * line 1.25px short on the left at a 48px lockup, so the shipped number is
-     * 0.3933em — measured, not derived, exactly like every other number in this
-     * file. At that value the two edges agree to 0.00px on the left and 0.25px on
-     * the right (one device pixel at 4x, i.e. the floor of the measurement) at
-     * 375, 768 and 1440. Weight 500, not 600: this is a size LARGER than before,
-     * so the lighter weight is what keeps it subordinate to the 700 name above.
+     * with tracking at a fixed size. The font's own metrics put it at 0.39em: the
+     * wordmark's ink is 3.308em wide and Heebo 500's own "מתחם חנויות דיגיטלי" is
+     * 8.481em.
+     *
+     * IT IS 0.390 AND NOT THE 0.3933 THAT A SINGLE MEASUREMENT SUGGESTED, and the
+     * difference is the whole point (2026-08-05). 0.3933 makes the two ink widths
+     * agree to a fraction of a pixel at one viewport — and a fraction of a pixel
+     * is exactly what device-pixel rounding then resolves in whichever direction
+     * it likes. The owner found it by dropping a straight line from the D onto a
+     * screenshot: at 700px/DPR 2 the final yod of דיגיטלי crossed it by a full
+     * pixel. A lockup's edge must not be a coin flip, so the target is not "equal"
+     * but "never outside": swept 22 viewports from 320 to 1600 at DPR 1, 2 and 3,
+     * 0.39em leaves the yod 1.00px INSIDE the D everywhere, with the מ flush or
+     * inside on the right. 0.3913em is the largest value that never crosses at
+     * all, and it only just doesn't — hence the extra pixel of headroom.
+     *
+     * Trailing zeros are not decorative here: Tailwind emits no rule at all for
+     * `text-[0.390em]`, so the class silently does nothing and the line renders at
+     * the inherited size. Write `0.39em`.
+     *
+     * Weight 500, not 600: this is a size LARGER than before, so the lighter
+     * weight is what keeps it subordinate to the 700 name above.
      *
      * No negative margin any more. That existed only to cancel the letter-space
      * CSS adds after the last character; at zero tracking there is none. */
     <span
       dir="rtl"
-      class="dz-logo__tag font-medium text-[0.3933em] leading-none"
+      class="font-medium text-[0.39em] leading-none"
       aria-hidden="true"
     >{TAGLINE}</span>
   )}

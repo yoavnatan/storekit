@@ -950,11 +950,16 @@ body:has(.site-header.is-stuck) .store-banner {
   border: 1px solid var(--color-border);
   border-radius: 9999px;
   cursor: pointer;
+  /* It is an <a href="?page=N"> drawn as a button — the catalog's crawl path lives on this
+     one element (see [storeSlug]/index.astro). So it has to shed the link underline. */
+  text-decoration: none;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
 }
 .load-more-btn:hover { border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border)); box-shadow: var(--shadow-xs); }
 .load-more-btn:active { transform: scale(0.97); }
-.load-more-btn:disabled { cursor: default; opacity: 0.7; }
+/* `[aria-disabled]`, not `:disabled` — this control is an `<a href="?page=N">` (it is the
+   catalog's crawl path, see [storeSlug]/index.astro) and an anchor has no disabled state. */
+.load-more-btn[aria-disabled="true"] { cursor: default; opacity: 0.7; }
 
 /* Flat at rest — a card in a grid sits in the page, it does not float over it
    (elevation rule, base/tokens.css); the 1px border on --color-surface is the

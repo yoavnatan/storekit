@@ -1,4 +1,4 @@
-import { encodePng } from './png.js';
+import { encodePng, encodePngRgba } from './png.js';
 import { MARK_GRID_SIZE, channels, type StoreMark } from './store-mark.js';
 
 /**
@@ -102,4 +102,53 @@ function mixToWhite(channel: number, cover: number): number {
 
 export function renderStoreMarkPng(mark: StoreMark, width: number, height: number): Buffer {
   return encodePng(width, height, renderStoreMarkPixels(mark, width, height));
+}
+
+/**
+ * The same mark, clipped to a CIRCLE with transparent corners — the browser-tab
+ * icon (`STORE_ICON_FORMATS.favicon`).
+ *
+ * A circle because that is what a store's identity already is everywhere else on
+ * this site: StoreAvatar is always round, and its own header records why — a
+ * rounded square with a border on `--color-surface` is byte for byte the
+ * product-thumbnail recipe, so it reads as a THING rather than a WHO. A square
+ * favicon would have been the one place the store's mark stopped being a face.
+ *
+ * Square only, and it throws otherwise: a circle inscribed in a rectangle is an
+ * ellipse, and there is no icon slot that wants one.
+ *
+ * The edge is antialiased by the same subsample grid the blocks use, so it holds
+ * up at 16px where a hard-clipped circle visibly staircases. Alpha is the ONLY
+ * thing the mask writes — the colour underneath is left exactly as the opaque
+ * renderer produced it, so a tab and an ad creative can never disagree on a
+ * store's colour.
+ */
+export function renderStoreMarkIconPng(mark: StoreMark, size: number): Buffer {
+  if (!Number.isInteger(size) || size < 8) throw new Error(`renderStoreMarkIconPng: bad size ${size}`);
+  const rgb = renderStoreMarkPixels(mark, size, size);
+  const rgba = new Uint8Array(size * size * 4);
+  const c = (size - 1) / 2;
+  const radius = size / 2;
+  const step = 1 / SUBSAMPLES;
+  const samples = SUBSAMPLES * SUBSAMPLES;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let hits = 0;
+      for (let sy = 0; sy < SUBSAMPLES; sy++) {
+        for (let sx = 0; sx < SUBSAMPLES; sx++) {
+          const px = x + (sx + 0.5) * step - 0.5 - c;
+          const py = y + (sy + 0.5) * step - 0.5 - c;
+          if (px * px + py * py <= radius * radius) hits++;
+        }
+      }
+      const s = (y * size + x) * 3;
+      const d = (y * size + x) * 4;
+      rgba[d] = rgb[s]!;
+      rgba[d + 1] = rgb[s + 1]!;
+      rgba[d + 2] = rgb[s + 2]!;
+      rgba[d + 3] = Math.round((hits / samples) * 255);
+    }
+  }
+  return encodePngRgba(size, size, rgba);
 }

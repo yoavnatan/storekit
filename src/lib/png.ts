@@ -1,7 +1,7 @@
 import { deflateSync } from 'node:zlib';
 
 /**
- * Minimal PNG encoder (8-bit truecolour, no alpha).
+ * Minimal PNG encoder (8-bit truecolour, with or without alpha).
  *
  * Deliberately dependency-free: the only image pipeline this repo has is
  * Cloudinary (remote, for images somebody uploaded) and `astro:assets` (build
@@ -55,16 +55,33 @@ function chunk(type: string, data: Buffer): Buffer {
  * deflate. Filter 0 (none) would work identically but compress ~10x worse.
  */
 export function encodePng(width: number, height: number, rgb: Uint8Array): Buffer {
-  const stride = width * BYTES_PER_PIXEL;
-  if (rgb.length !== stride * height) {
-    throw new Error(`encodePng: expected ${stride * height} bytes, got ${rgb.length}`);
+  return encode(width, height, rgb, BYTES_PER_PIXEL);
+}
+
+/**
+ * As `encodePng`, for a `width * height * 4` RGBA buffer — used by the round
+ * favicon, whose corners have to be genuinely transparent rather than white
+ * (store-mark-raster.ts#renderStoreMarkIconPixels).
+ *
+ * Kept as a second entry point rather than a flag on the first: everything that
+ * leaves this platform for an ad network or a social scraper is opaque by
+ * contract, and a caller should have to say the word "rgba" to get alpha.
+ */
+export function encodePngRgba(width: number, height: number, rgba: Uint8Array): Buffer {
+  return encode(width, height, rgba, 4);
+}
+
+function encode(width: number, height: number, pixels: Uint8Array, bpp: 3 | 4): Buffer {
+  const stride = width * bpp;
+  if (pixels.length !== stride * height) {
+    throw new Error(`encodePng: expected ${stride * height} bytes, got ${pixels.length}`);
   }
 
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8; // bit depth
-  ihdr[9] = 2; // colour type: truecolour (RGB)
+  ihdr[9] = bpp === 4 ? 6 : 2; // colour type: truecolour + alpha, or truecolour
   // bytes 10-12 stay 0: deflate compression, adaptive filtering, no interlace.
 
   const raw = Buffer.alloc((stride + 1) * height);
@@ -73,8 +90,8 @@ export function encodePng(width: number, height: number, rgb: Uint8Array): Buffe
     const dst = y * (stride + 1);
     raw[dst] = 1; // Sub
     for (let x = 0; x < stride; x++) {
-      const left = x >= BYTES_PER_PIXEL ? rgb[src + x - BYTES_PER_PIXEL]! : 0;
-      raw[dst + 1 + x] = (rgb[src + x]! - left) & 0xff;
+      const left = x >= bpp ? pixels[src + x - bpp]! : 0;
+      raw[dst + 1 + x] = (pixels[src + x]! - left) & 0xff;
     }
   }
 

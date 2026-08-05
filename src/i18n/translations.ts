@@ -168,7 +168,12 @@ export const translations = {
       emptyStore: 'החנות מתארגנת. בקר שוב בקרוב.',
       noProductsFound: 'לא נמצאו מוצרים התואמים לחיפוש.',
       loadMore: 'טען עוד מוצרים',
-      loadingMore: 'טוען...',
+      // No ellipsis, and that is the site-wide rule for a busy label (owner, 2026-08-05:
+      // "יש שם כבר שלוש נקודות של הloader אז אין צורך בשלוש נקודות"). Every one of these
+      // strings is rendered NEXT TO a `.dot-pulse` — three animated dots — so a literal "..."
+      // puts six dots on one control. `savingShort` already got this right; this one and
+      // `working` below did not. The dot-pulse IS the ellipsis.
+      loadingMore: 'טוען',
       filterAll: 'הכל',
       filterByCategory: 'סנן לפי קטגוריה',
       filterSearchPlaceholder: 'חיפוש בקטגוריה זו...',
@@ -224,7 +229,7 @@ export const translations = {
       defaultMsg: 'לא ניתן לבטל פעולה זו.',
       confirm: 'אשר',
       cancel: 'ביטול',
-      working: 'מבצע…',
+      working: 'מבצע',
     },
     auth: {
       sellerLogin: 'כניסה',
@@ -1441,7 +1446,7 @@ export const translations = {
       emptyStore: 'This store is setting up. Check back soon.',
       noProductsFound: 'No products match your search.',
       loadMore: 'Load more products',
-      loadingMore: 'Loading...',
+      loadingMore: 'Loading',
       filterAll: 'All',
       filterByCategory: 'Filter by category',
       filterSearchPlaceholder: 'Search in this category...',
@@ -1494,7 +1499,7 @@ export const translations = {
       defaultMsg: 'This action cannot be undone.',
       confirm: 'Confirm',
       cancel: 'Cancel',
-      working: 'Working…',
+      working: 'Working',
     },
     auth: {
       sellerLogin: 'Log in',
