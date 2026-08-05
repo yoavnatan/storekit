@@ -445,13 +445,20 @@ const strEmpty   = t.store.noProductsFound;
         </Fragment>
       )}
 
-      {/* User avatar dropdown — all logged-in users. `-ms-1` (-4px): the flex
-         gap to its neighbor is numerically identical to every other
-         icon-to-icon gap, but reads wider since the avatar's circular border
-         is drawn flush to its own box edge while the bare cart/heart/bell
-         glyphs carry built-in empty space inside their viewBox before the ink
-         starts — pulled in a few px so the *visual* rhythm matches the
-         *geometric* one. `flex items-center` (not the div default block) so
+      {/* User avatar dropdown — all logged-in users.
+
+         THE -4px PULL THAT USED TO BE HERE IS GONE (2026-08-05, owner: the cart
+         is always too tight to the avatar — and he was right). Its comment had
+         the observation correct and the conclusion inverted: the avatar's circle
+         IS drawn flush to its own box while the cart/heart/bell glyphs carry
+         empty space inside their viewBox, and that makes the avatar's gap the
+         SMALLEST one optically, not the widest. Pulling it in made the only
+         already-tight gap tighter. Measured ink-edge to ink-edge on the built
+         page at 8x, with the pull in place: avatar→cart 10.00px, cart→heart
+         14.38px, heart→bell 15.00px. Without it all three are 13.6–15.0, which
+         is the rhythm the pull was trying to produce.
+
+         `flex items-center` (not the div default block) so
          the button below is sized off its own intrinsic box — otherwise it's
          an inline-level child sized by the *inherited* line-height instead,
          which was quietly adding ~1.4px of phantom height on top of the
@@ -459,7 +466,7 @@ const strEmpty   = t.store.noProductsFound;
          must stay (no CSS left on it) — queried via `.user-menu` in this
          component's own script below. */}
       {isLoggedIn && (
-        <div class="user-menu relative flex items-center -ms-1" data-has-store={(Astro.props.hasStore || storeMode || sellerMode) ? '1' : ''}>
+        <div class="user-menu relative flex items-center" data-has-store={(Astro.props.hasStore || storeMode || sellerMode) ? '1' : ''}>
           <button class="user-btn" id="user-menu-toggle" aria-label={t.nav.userMenu} aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
             {/* Absolute against .user-btn's own padding box (position:relative
