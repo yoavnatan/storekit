@@ -1,4 +1,4 @@
-import { cdnFill, store as platform } from '../config/store.config.js';
+import { cdnFill, cdnThumb, store as platform } from '../config/store.config.js';
 import { stripTrailingSlashes } from './url-base.js';
 
 /**
@@ -40,14 +40,38 @@ export const STORE_IMAGE_FORMATS: Readonly<Record<StoreImageFormat, { width: num
 /** The format `og:image` uses: 1.91:1 is what Facebook/WhatsApp/iMessage crop to. */
 export const OG_IMAGE_FORMAT: StoreImageFormat = 'landscape';
 
+/** The browser's own icon slots — a store page's tab and its iOS home screen.
+ *
+ *  DELIBERATELY NOT IN `STORE_IMAGE_FORMATS`, and this is the reason: that map is
+ *  not a list of available sizes, it is the COMPLETE set of ratios an ad asset
+ *  group requires, and `storeAdCreative` submits every entry of it. A favicon
+ *  added there would be offered to Google and Meta as ad creative. Same renderer,
+ *  same route, different question — so, a different map. */
+export type StoreIconFormat = 'favicon' | 'touch';
+
+export const STORE_ICON_FORMATS: Readonly<Record<StoreIconFormat, { width: number; height: number }>> = {
+  /** 64px, not 32: it is the largest slot a browser picks from a single icon
+   *  (tab strips ask for 32 at 2x DPR), and one file is cheaper than three. */
+  favicon: { width: 64, height: 64 },
+  /** 180px — what iOS asks for when a store page is added to the home screen. */
+  touch: { width: 180, height: 180 },
+};
+
+/** Everything `/api/store-image` can rasterise, both maps at once. */
+export type StoreRenderFormat = StoreImageFormat | StoreIconFormat;
+export const STORE_RENDER_FORMATS: Readonly<Record<StoreRenderFormat, { width: number; height: number }>> = {
+  ...STORE_IMAGE_FORMATS,
+  ...STORE_ICON_FORMATS,
+};
+
 export interface StoreImageSource {
   slug: string;
   profileImage?: string;
   bannerImage?: string;
 }
 
-export function isStoreImageFormat(value: string): value is StoreImageFormat {
-  return Object.prototype.hasOwnProperty.call(STORE_IMAGE_FORMATS, value);
+export function isStoreRenderFormat(value: string): value is StoreRenderFormat {
+  return Object.prototype.hasOwnProperty.call(STORE_RENDER_FORMATS, value);
 }
 
 /** Wide formats lead with the banner (shot wide), square ones with the avatar. */
@@ -64,14 +88,14 @@ function preferredSources(store: StoreImageSource, format: StoreImageFormat): st
  *  (url-base.ts#toSlug), so any in-filename separator could also occur inside the slug itself.
  *  Those letters may be Hebrew since 2026-08-02, which is what `encodeURIComponent` is for —
  *  the route's `[slug]` param is decoded back by Astro before it reaches getStoreBySlug. */
-export function storeMarkPath(slug: string, format: StoreImageFormat): string {
+export function storeMarkPath(slug: string, format: StoreRenderFormat): string {
   return `/api/store-image/${encodeURIComponent(slug)}/${format}.png`;
 }
 
 /** The format in a `<format>.png` filename, or null if it isn't one of ours. */
-export function parseStoreImageFile(file: string): StoreImageFormat | null {
+export function parseStoreImageFile(file: string): StoreRenderFormat | null {
   const m = file.match(/^([a-z]+)\.png$/);
-  return m && m[1] && isStoreImageFormat(m[1]) ? m[1] : null;
+  return m && m[1] && isStoreRenderFormat(m[1]) ? m[1] : null;
 }
 
 /**
@@ -91,6 +115,31 @@ export function resolveStoreImage(
     if (filled) return { src: filled, hasUpload: true };
   }
   return { src: storeMarkPath(store.slug, format), hasUpload: false };
+}
+
+/**
+ * The store's icon for a BROWSER slot — the tab and the iOS home screen.
+ *
+ * A separate function from `resolveStoreImage` rather than another format passed
+ * to it, because the delivery differs where it matters. Off-site consumers get
+ * `cdnFill`, which forces `f_jpg` (many scrapers send no `Accept` header that
+ * `f_auto` could read) — and a JPEG has no alpha, so a logo uploaded with a
+ * transparent background would arrive as a black square in the tab strip. A
+ * browser always sends `Accept`, so this uses `cdnThumb`/`f_auto` and keeps
+ * whatever transparency the seller uploaded.
+ *
+ * Same "never empty" guarantee as the rest of this file, and the same refusal:
+ * a URL Cloudinary cannot transform falls back to the generated mark instead of
+ * putting a full-size original in a 32px tab.
+ */
+export function storeIconUrl(store: StoreImageSource, format: StoreIconFormat): string {
+  const { width, height } = STORE_ICON_FORMATS[format];
+  const upload = store.profileImage?.trim();
+  if (upload) {
+    const thumb = cdnThumb(upload, width, height);
+    if (thumb && thumb !== upload) return thumb;
+  }
+  return storeMarkPath(store.slug, format);
 }
 
 /** As `resolveStoreImage`, absolute — what every off-site consumer needs. */

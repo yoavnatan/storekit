@@ -1,13 +1,14 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
 import { getStoreBySlug } from '../../../../lib/stores.js';
-import { parseStoreImageFile, STORE_IMAGE_FORMATS } from '../../../../lib/store-image.js';
+import { parseStoreImageFile, STORE_RENDER_FORMATS } from '../../../../lib/store-image.js';
 import { renderStoreMarkPng } from '../../../../lib/store-mark-raster.js';
 import { storeMark } from '../../../../lib/store-mark.js';
 
 /**
  * `/api/store-image/<slug>/<format>.png` — the generated store mark, rendered at
- * one of the fixed sizes in `STORE_IMAGE_FORMATS`.
+ * one of the fixed sizes in `STORE_RENDER_FORMATS`: the four ad/share ratios, plus
+ * the two browser icon slots a store page's own favicon uses.
  *
  * This is what makes "a store always has an image" true rather than aspirational:
  * a seller who never uploads anything still resolves to a real, correctly-sized
@@ -29,7 +30,7 @@ export async function GET({ params }: APIContext): Promise<Response> {
   const store = await getStoreBySlug(params.slug ?? '');
   if (!store) return new Response('Not found', { status: 404 });
 
-  const { width, height } = STORE_IMAGE_FORMATS[format];
+  const { width, height } = STORE_RENDER_FORMATS[format];
   const png = renderStoreMarkPng(storeMark(store.slug, store.name), width, height);
 
   return new Response(new Uint8Array(png), {
