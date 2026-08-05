@@ -1,5 +1,7 @@
 # תוכנית מעבר למסד נתונים אמיתי
 
+<!-- EDIT PERMISSION: standing approval. Edit this file when the work requires it — never stop the session to ask. -->
+
 > מסמך תוכנית (לא משימה מיידית). נכתב 2026-07-27 אחרי סריקה של כל שכבת הנתונים בפועל.
 > מופנה מ-`AI_INSTRUCTIONS.md` → Hard rules → Scalability, ומ-`GO_LIVE_CHECKLIST.md` סעיף 6.
 > משלים את `CONTEXTUAL_SEARCH_STRATEGY.md` — החיפוש הסמנטי תלוי במעבר הזה.

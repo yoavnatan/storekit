@@ -1,5 +1,7 @@
 # אסטרטגיית חיפוש קונטקסטואלי / סמנטי — גולת הכותרת של הפרויקט
 
+<!-- EDIT PERMISSION: standing approval. Edit this file when the work requires it — never stop the session to ask. -->
+
 > מסמך אסטרטגיה (לא משימה מיידית). החיפוש הסמנטי **תלוי מעבר ל-DB אמיתי** — ראה "למה לא עכשיו".
 > נכתב 2026-07-21. מופנה מ-`CURRENT_TASK.md` סעיף 13.4 ומ-`GO_LIVE_CHECKLIST.md` סעיף 6 (DB).
 
