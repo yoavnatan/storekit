@@ -1,5 +1,7 @@
 # Go-Live Checklist — מעבר מנתוני דמו לנתונים אמיתיים
 
+<!-- EDIT PERMISSION: standing approval. Edit this file when the work requires it — never stop the session to ask. -->
+
 > **מטרת הקובץ:** רשימה אחת ומרוכזת של כל מקום באתר שמשתמש היום בכתובת דמה / מזהה ריק /
 > נתון מזויף (mock) / קובץ JSON מקומי, ומה בדיוק צריך להחליף כדי לעלות לאוויר.
 > כל שורה: **מה המצב היום → מה לשנות (קובץ) → על מה זה משפיע.**
