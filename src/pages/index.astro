@@ -292,11 +292,12 @@ const jsonLd = {
           <h1>: the component carries the accessible name, so the page's heading is
           still "Dezabin — קניון דיגיטלי ישראלי" to a crawler and a screen reader. */}
       {/* The floor is 2.5rem and not 1.9rem because the Hebrew line under the name
-          is a fixed fraction of it (0.390em, BrandLogo.astro): at 1.9rem it landed
-          at 11.9px, which is below anything readable and is what "the Hebrew gets
-          very small on mobile" was (owner, 2026-08-05). 2.5rem puts it at 15.6px.
-          There was never a width reason for the old floor — the lockup is 3.308em
-          wide, so even at 2.5rem it is 132px inside a 343px container at 375px. */}
+          is a fixed fraction of it (0.3886em, BrandLogo.astro): at 1.9rem it would
+          land at 11.8px, which is below anything readable and is what "the Hebrew
+          gets very small on mobile" was (owner, 2026-08-05). 2.5rem puts it at
+          15.5px. There was never a width reason for the old floor — the lockup is
+          3.2925em wide, so even at 2.5rem it is 132px inside a 343px container at
+          375px. */}
       <h1 class="m-0 leading-none"><BrandLogo size="clamp(2.5rem,6.5vw,3rem)" tagline={true} /></h1>
       {/* No separate tagline line here: the lockup above carries the slogan, and
           printing it twice under itself is the clearest possible way to say the
