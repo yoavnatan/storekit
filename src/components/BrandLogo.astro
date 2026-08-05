@@ -6,25 +6,48 @@
  *
  * WHY THE D IS A DRAWING AND NOT A LETTER (CURRENT_TASK סשן ב׳, 2026-08-05).
  * It is the right half of an octagon: a straight back, and a bowl made of three
- * cut edges. Everything about it is matched to Heebo 700 by MEASUREMENT rather
- * than by eye — the numbers below were read off the font itself by rendering it
- * to a canvas and scanning pixels, because two earlier attempts at "looks about
- * right" were both visibly wrong (too light, then too narrow):
+ * cut edges. Everything about it is matched to the wordmark's own font by
+ * MEASUREMENT rather than by eye — the numbers below were read off the font by
+ * rendering it to a canvas and scanning pixels, because two earlier attempts at
+ * "looks about right" were both visibly wrong (too light, then too narrow).
  *
- *   cap height        28 units in this viewBox
- *   back (vertical)   5.92  = 0.2113 of cap — Heebo 700's own stem weight
- *   bowl's right side 5.92  — a straight edge beside a straight edge; a lighter
+ * THE DENSITY IS THE POINT — 800 AT -0.04em (owner, סשן ג׳, 2026-08-05).
+ * Heavy weight plus negative tracking is what closes the seven letters into ONE
+ * SOLID SHAPE, and that shape is the logo. This is worth stating because the
+ * opposite was tried first, the same day: the wordmark went to 600 at zero
+ * tracking on the theory that 700 read as "bold UI text", it shipped, and the
+ * owner's verdict was that it had become *cheaper* — "לפחות קודם זה היה גוש
+ * אחיד". It was reverted within the hour. Opening a wordmark up reads as thin,
+ * and thin reads as cheap. **Do not lighten or open this again.** What moved
+ * instead is the axis he actually asked about: one weight heavier and one step
+ * tighter, so the block is denser than it was.
+ *
+ * EVERY NUMBER IN THE DRAWING FOLLOWS THE WEIGHT, because they are all Heebo's
+ * own, re-measured at 800 (the same scan reproduces the previous figures exactly
+ * at 700, which is what says it is the method that produced them):
+ *
+ *   cap height        28 units in this viewBox   (0.71em — a weight can't move it)
+ *   back (vertical)   6.507 = 0.2324 of cap — Heebo 800's stem  (700: 0.2113)
+ *   bowl's right side 6.507 — a straight edge beside a straight edge; a lighter
  *                             one reads as a mistake rather than as contrast
- *   diagonals         5.35  — a diagonal looks lighter than its measured width
- *   horizontals       4.73  = 0.1690 of cap — a horizontal looks heavier
- *   letter width      21.5  = 0.7676 of cap, exactly Heebo's D
- *   counter           0.52 wide/tall, exactly Heebo's D
+ *   diagonals         5.880 = 0.9037 of the stem — a diagonal looks lighter than
+ *                             its measured width
+ *   horizontals       5.199 = 0.799 of the stem — a horizontal looks heavier
+ *   letter width      21.79 = 0.7782 of cap, exactly Heebo 800's D  (700: 0.7676)
  *
- * The `-0.015em` between the D and the `e` is measured the same way: Heebo's own
- * "De" leaves 0.045em of ink gap, and this SVG carries 0.5 units of padding
- * inside its viewBox, so ZERO margin is already too wide. A mark spaced like a
- * symbol instead of like a letter is what made earlier versions read as "an icon
- * glued next to a word".
+ * The two optical ratios (0.799 and 0.9037) are deliberately CARRIED OVER from
+ * the 700 drawing rather than re-measured: they correct for how an eye reads a
+ * horizontal and a diagonal, which is not a fact about a weight. The stem and
+ * the width are the only measured inputs.
+ *
+ * THE `-0.0156em` BETWEEN THE D AND THE `e` is derived, not chosen:
+ *   margin = the font's own D right-side-bearing + the tracking - the SVG's padding
+ *          = 0.03711 + (-0.04) - 0.01268
+ * The bearing is Heebo 800's; the tracking is there because every OTHER pair in
+ * the word gets it, so a mark that skipped it would sit looser than the letters
+ * around it; the padding is the 0.5 units this viewBox carries outside the ink.
+ * A mark spaced like a symbol instead of like a letter is what made early
+ * versions read as "an icon glued next to a word".
  *
  * COLOUR. On a light surface the letters carry the site's brand gradient — the
  * one `.btn` uses, unchanged — as ONE ramp across the whole wordmark rather than
@@ -85,14 +108,14 @@ const toneClass =
   ]}
   style={size ? `font-size:${size}` : undefined}
 >
-  <span dir="ltr" class="inline-flex items-baseline font-bold leading-none whitespace-nowrap tracking-[-0.03em] text-[1em]">
+  <span dir="ltr" class="inline-flex items-baseline font-extrabold leading-none whitespace-nowrap tracking-[-0.04em] text-[1em]">
   {/* `max-w-none` is not decoration: reset.css sets `svg { max-width:100% }`,
       which clamps a fixed-size inline SVG inside a narrow box — the same trap
       that shrank icons in the products table. `shrink-0` does not cover it,
       because max-width is not flex shrinking. */}
   <svg
-    class="h-[0.71em] w-auto max-w-none shrink-0 block me-[-0.015em]"
-    viewBox="10.75 8 23 28"
+    class="h-[0.71em] w-auto max-w-none shrink-0 block me-[-0.0156em]"
+    viewBox="10.75 8 22.79 28"
     aria-hidden="true"
     focusable="false"
   >
@@ -108,8 +131,8 @@ const toneClass =
     <path
       fill={tone === 'white' ? '#fff' : 'url(#dz-d-grad)'}
       fill-rule="evenodd"
-      d="M11.25 8 L24.55 8 L32.75 16.2 L32.75 27.8 L24.55 36 L11.25 36 Z
-         M17.17 12.73 L21.714 12.73 L26.83 17.846 L26.83 26.154 L21.714 31.27 L17.17 31.27 Z"
+      d="M11.25 8 L24.84 8 L33.04 16.2 L33.04 27.8 L24.84 36 L11.25 36 Z
+         M17.757 13.199 L21.724 13.199 L26.533 18.009 L26.533 25.991 L21.724 30.801 L17.757 30.801 Z"
     />
     </svg><span class="text-[1em] leading-none" aria-hidden="true">ezabin</span>
   </span>
@@ -128,35 +151,56 @@ const toneClass =
      * almost no difference for all of that.
      *
      * The width match is kept — it is what makes this a lockup rather than two
-     * stacked lines — but it is now solved with SIZE at zero tracking instead of
-     * with tracking at a fixed size. The font's own metrics put it at 0.39em: the
-     * wordmark's ink is 3.308em wide and Heebo 500's own "מתחם חנויות דיגיטלי" is
-     * 8.481em.
+     * stacked lines — and it is solved with SIZE at the font's own spacing.
      *
-     * IT IS 0.390 AND NOT THE 0.3933 THAT A SINGLE MEASUREMENT SUGGESTED, and the
-     * difference is the whole point (2026-08-05). 0.3933 makes the two ink widths
-     * agree to a fraction of a pixel at one viewport — and a fraction of a pixel
-     * is exactly what device-pixel rounding then resolves in whichever direction
-     * it likes. The owner found it by dropping a straight line from the D onto a
-     * screenshot: at 700px/DPR 2 the final yod of דיגיטלי crossed it by a full
-     * pixel. A lockup's edge must not be a coin flip, so the target is not "equal"
-     * but "never outside": swept 22 viewports from 320 to 1600 at DPR 1, 2 and 3,
-     * 0.39em leaves the yod 1.00px INSIDE the D everywhere, with the מ flush or
-     * inside on the right. 0.3913em is the largest value that never crosses at
-     * all, and it only just doesn't — hence the extra pixel of headroom.
+     * FLUSH ON BOTH ENDS, INK TO INK, AND THAT NEEDS THE MARGIN BELOW (owner,
+     * סשן ג׳, 2026-08-05: "חשוב שהטקסט בעברית — כולל הצ׳ופצ׳יק של הי׳ — ישב בול
+     * על הרוחב"). Matching the two ink WIDTHS is only half the job, and it is the
+     * half that was done before. The other half is that a line box is not its
+     * ink: Heebo 500 leaves 0.0725em of side bearing to the right of the מ, while
+     * the wordmark leaves only 0.0075em to the right of the n. Align the boxes —
+     * which is what a flex column with `items-start` does on its own — and the
+     * Hebrew therefore starts a visible pixel INSIDE the English at the hero's
+     * size, every time, no matter how exact the width ratio is. Both numbers were
+     * read by rendering each line and scanning the pixels; the margin cancels the
+     * difference:
+     *
+     *   margin-inline-start = (the wordmark's 0.0075 - 0.0725 x 0.3886) / 0.3886
+     *
+     * The division is because `em` in this span resolves against the span's OWN
+     * font-size. In the lockup's em it is only -0.0206em, so the line hangs that
+     * far past the lockup's right edge on purpose — that overhang IS the fix.
+     *
+     * 0.3886em is the SIZE, and it is the arithmetic ratio plus a correction that
+     * only a real build could give. The ratio first: the wordmark's ink is
+     * 3.2925em (the D's 0.5525 + a 0.0303 gap + "ezabin" at 2.71 with the
+     * tracking already in it) and Heebo 500's own "מתחם חנויות דיגיטלי" is
+     * 8.4825em, so 3.2925/8.4825 = 0.3882. Shipped at 0.3882 the Hebrew still
+     * ended a pixel INSIDE the D on every desktop viewport — sub-pixel rounding
+     * of a 19-glyph run, which no amount of arithmetic predicts. So the last step
+     * was a bisection against the built site, scanning the rendered pixels of the
+     * hero at 11 viewports x DPR 1/2/3: 0.3899 crossed OUTSIDE by a pixel, 0.3882
+     * sat one inside, 0.3886 is the crossover.
+     *
+     * WHAT IT ACHIEVES, measured, and this is the bar to beat if anyone changes
+     * it: the right edge is EXACTLY flush in all 33 combinations, and the left is
+     * 0 on desktop at DPR 1 and never more than one device pixel anywhere. That
+     * is the floor — `text-align:justify` on a fixed width was built and measured
+     * as an alternative and did not beat it, at the cost of a fixed width that
+     * would overflow if the Hebrew face ever fell back.
+     *
+     * RE-SOLVE ALL THREE (size, margin, and the D) if the name's weight, its
+     * tracking, or the slogan's text ever change — they are one calculation.
      *
      * Trailing zeros are not decorative here: Tailwind emits no rule at all for
      * `text-[0.390em]`, so the class silently does nothing and the line renders at
-     * the inherited size. Write `0.39em`.
+     * the inherited size. Never end one of these values in a zero.
      *
-     * Weight 500, not 600: this is a size LARGER than before, so the lighter
-     * weight is what keeps it subordinate to the 700 name above.
-     *
-     * No negative margin any more. That existed only to cancel the letter-space
-     * CSS adds after the last character; at zero tracking there is none. */
+     * Weight 500 under an 800: the two-step gap is what keeps this a subtitle
+     * rather than a second name. */
     <span
       dir="rtl"
-      class="font-medium text-[0.39em] leading-none"
+      class="font-medium text-[0.3886em] leading-none ms-[-0.0532em]"
       aria-hidden="true"
     >{TAGLINE}</span>
   )}
