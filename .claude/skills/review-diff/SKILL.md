@@ -110,7 +110,7 @@ Then mark the row here, in the same session, with the date and the test that now
 
 | # | Area | Audited |
 |---|---|---|
-| 1 | Feed + advertising — the Merchant/Catalog contract | ✅ 2026-08-06 · `feed-spec-conformance.test.ts` (Google AND Meta; they are not one list) |
+| 1 | Feed + advertising — the Merchant/Catalog contract | ✅ 2026-08-06 · `feed-spec-conformance.test.ts` (Google AND Meta; they are not one list). Same day, the campaign side of it: a boost read "פעיל" while advertising nothing — now a third self-healing pause reason, held by `resumeBlockCode`'s guard test across both routes and both locales |
 | 2 | Money: orders, commissions, balances | partial · `reconcile.ts` + `reporting-invariants` + `reporting-fuzz` |
 | 3 | Inventory + checkout | partial · atomic decrement proved under 50 concurrent buyers |
 | 4 | **Authorization — who may READ and who may WRITE what** | ☐ **do this one first.** It is the only row whose bug cannot be repaired after the fact: leaked seller data stays leaked |
