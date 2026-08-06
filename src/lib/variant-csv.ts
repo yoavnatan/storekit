@@ -1,4 +1,4 @@
-import { comboKey, exceedsComboLimit, type VariantSelection } from './variant-combo.js';
+import { comboKey, type VariantSelection } from './variant-combo.js';
 import type { BulkRowResult } from './csv-bulk.js';
 import type { ProductVariant } from './store-products.js';
 
@@ -151,17 +151,10 @@ function finalizeGroup(rows: BulkRowResult[]): MergedRowResult {
     comboLabelByKey[key] = opts.map((o) => o.value).join(' / ');
   }
 
+  if (errors.length) return { lines, action: 'error', errors };
+
   // Dimensions keep the first row's slot order; each keeps its first-seen option order.
   const variants: ProductVariant[] = dimNames.map((name) => ({ name, options: options[name]! }));
-
-  // A file describes one ROW per combination, so it is easy to read this group as self-limiting —
-  // and it is not. The dimensions are the union of every row's options, so 90 rows that introduce
-  // 30 values across 3 dimensions declare a 27,000-combo product from 90 lines. The storefront,
-  // the dashboard and the feed all expand what is stored, so the bound belongs here, next to the
-  // form's (variant-combo.ts#MAX_VARIANT_COMBOS).
-  if (exceedsComboLimit(variants)) push('variant-too-many-combos');
-
-  if (errors.length) return { lines, action: 'error', errors };
 
   // Shared product fields come from the group's first row.
   //

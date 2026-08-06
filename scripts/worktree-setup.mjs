@@ -26,8 +26,7 @@
 // neither. Without the first, the `db migrations` check and every seed script lose DATABASE_URL;
 // without the second, the new session re-asks for permissions this machine already granted.
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, renameSync, rmSync, symlinkSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { copyFileSync, existsSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 // `stdio: 'inherit'` makes execFileSync return null rather than a string — the callers that stream
@@ -103,43 +102,6 @@ for (const rel of ['.env', '.claude/settings.local.json']) {
   if (!existsSync(from) || existsSync(to)) continue;
   copyFileSync(from, to);
   steps.push(`${rel}: copied`);
-}
-
-// ── memory, for THIS worktree's path ──
-//
-// **The damage this prevents (2026-08-06).** The harness derives a project's memory directory from
-// the absolute path, dashing every non-alphanumeric character — so a worktree, being a different
-// path, gets a DIFFERENT slug and therefore a different memory directory. `setup-claude-memory.sh`
-// only ever links the main checkout's slug, so in a worktree the harness wrote memory into a plain
-// directory that belonged to no repository. What happened next is the part that cost real work: the
-// memory sync went looking for its checkout, `.claude-memory` does not exist in a worktree either,
-// and git walked UP from there and found the PROJECT repo — so it committed a tree of memory files,
-// with no `src/` at all, straight onto the session's own branch. Two such commits landed on a code
-// branch before anyone noticed.
-//
-// A symlink to the main checkout's `.claude-memory` closes both halves at once: memory written from
-// a worktree lands in the memory repo, and the sync finds a real checkout instead of walking up into
-// this one. Skipped when the main checkout has no memory repo (a machine that never ran the setup
-// script) — there is nothing to point at, and inventing one is how a wrong path becomes permanent.
-{
-  const memRepo = resolve(MAIN, '.claude-memory');
-  const slug = ROOT.replace(/[^A-Za-z0-9]/gu, '-');
-  const linkDir = resolve(homedir(), '.claude', 'projects', slug);
-  const link = resolve(linkDir, 'memory');
-  if (!existsSync(memRepo)) {
-    steps.push('memory: skipped — no .claude-memory in the main checkout (run scripts/setup-claude-memory.sh)');
-  } else if (existsSync(link) && !lstatSync(link).isSymbolicLink()) {
-    // A real directory here holds memory the harness already wrote outside the repo. Replacing it
-    // would delete it, so it is moved aside and named rather than merged: which of those files are
-    // worth keeping is a judgement, and a setup script has no business making it.
-    renameSync(link, `${link}.local-backup`);
-    symlinkSync(memRepo, link);
-    steps.push('memory: linked (a real directory was moved to memory.local-backup — check it)');
-  } else if (!existsSync(link)) {
-    mkdirSync(linkDir, { recursive: true });
-    symlinkSync(memRepo, link);
-    steps.push('memory: linked to the main checkout\'s .claude-memory');
-  }
 }
 
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD');

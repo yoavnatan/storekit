@@ -1,5 +1,5 @@
 import type { ProductVariant } from './store-products.js';
-import { comboKey, generateCombos, exceedsComboLimit, MAX_VARIANT_COMBOS } from './variant-combo.js';
+import { comboKey, generateCombos } from './variant-combo.js';
 import { sanitizeImageUrl, sanitizeImageUrls } from './image-url.js';
 import { normalizeProductDiscount } from './discount-input.js';
 import type { ProductDiscount } from './discounts.js';
@@ -70,10 +70,6 @@ export interface VariantsPayload {
   variants: ProductVariant[];
   variantStock: Record<string, number>;
   variantImages: Record<string, string>;
-  /** Set when the submission must be REJECTED rather than stored — today only the combo limit.
-   *  A caller that ignores it stores a bounded-but-different variant set, which is why
-   *  `tests/variant-combo-limit.test.ts` checks the API route reads it. */
-  error?: string;
 }
 
 /** Parses the single `variants_json` field the dashboard serializes before submit — replaces
@@ -102,13 +98,6 @@ export function parseVariantsPayload(form: FormData): VariantsPayload {
         })
         .filter((v): v is ProductVariant => v !== null)
     : [];
-
-  // BEFORE the first expansion, not after: `generateCombos` below is exponential in the number of
-  // dimensions while this payload is linear in it, so the check has to happen while the cartesian
-  // product is still a multiplication (variant-combo.ts#MAX_VARIANT_COMBOS).
-  if (exceedsComboLimit(variants)) {
-    return { ...empty, error: `יותר מדי צירופי וריאציות (מקסימום ${MAX_VARIANT_COMBOS}). צמצמו מספר אפשרויות או מימדים.` };
-  }
 
   // Only keep stock entries for combos that actually exist for the final variant set —
   // guards against stale/tampered keys once options are renamed or removed client-side.

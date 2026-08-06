@@ -9,9 +9,7 @@ import { getAllStores, getStoresWithFeedUrl } from '../src/lib/stores.js';
 import { JOBS } from '../src/lib/jobs/registry.js';
 import { getAllSellers, getSubscriptionAccrual } from '../src/lib/seller-auth.js';
 import { getProductCountsByStore, getProductsByStoreIds, isProductVisible } from '../src/lib/store-products.js';
-import { getCampaignsInRange, getCampaignTotals, campaignTotalsOf, getCampaignsByStoreId } from '../src/lib/ad-campaigns.js';
-import { campaignHealth } from '../src/lib/ad-campaign-health.js';
-import { getCategoriesByStoreId } from '../src/lib/store-categories.js';
+import { getCampaignsInRange, getCampaignTotals, campaignTotalsOf } from '../src/lib/ad-campaigns.js';
 import { countOpenOrdersByStore } from '../src/lib/store-lifecycle.js';
 import { buildSellerFunnel, getSellerFunnel } from '../src/lib/seller-funnel.js';
 import { reconcileOrders, reconcilePlatform } from '../src/lib/reconcile.js';
@@ -861,28 +859,6 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     // forward-looking number, which is exactly why it stopped being counted off a narrowed list.
     const wide = await getCampaignsInRange('2000-01-01', '2100-01-01');
     expect(await getCampaignTotals()).toEqual(campaignTotalsOf(wide));
-  });
-
-  it('campaign health: every count is a subset of the one above it, on real data', async () => {
-    // Four numbers the seller reads off one card, and each is a narrowing of the last:
-    // named ≥ on the storefront ≥ carriable by the feed, and ≥ buyable. A count that escaped its
-    // ceiling would read as "4 of 3 products" — the shape reporting-fuzz.test.ts exists to catch
-    // and the reason a new seller-visible number gets an invariant here rather than a comment.
-    // `advertisable` and `buyable` narrow `live` independently (no photo vs no stock), so neither
-    // bounds the other and only their shared ceiling is asserted.
-    const stores = await getAllStores();
-    const products = await getProductsByStoreIds(stores.map((s) => s.id));
-    for (const store of stores) {
-      const categories = await getCategoriesByStoreId(store.id);
-      for (const campaign of await getCampaignsByStoreId(store.id)) {
-        const h = campaignHealth(campaign, products.get(store.id) ?? [], categories);
-        const where = `${store.slug}/${campaign.id}`;
-        expect(h.live, `${where} live ≤ total`).toBeLessThanOrEqual(h.total);
-        expect(h.advertisable, `${where} advertisable ≤ live`).toBeLessThanOrEqual(h.live);
-        expect(h.buyable, `${where} buyable ≤ live`).toBeLessThanOrEqual(h.live);
-        for (const [name, n] of Object.entries(h)) expect(n, `${where} ${name} ≥ 0`).toBeGreaterThanOrEqual(0);
-      }
-    }
   });
 
   it('subscription accrual: the GROUP BY bills what the per-seller arithmetic billed', async () => {

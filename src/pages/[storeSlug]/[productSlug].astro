@@ -5,9 +5,8 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice } from '../../lib/stores.js';
 import { OG_IMAGE_FORMAT, storeImageUrl } from '../../lib/store-image.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
-import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl, isPlatformAdLanding, adLandingUrl, hasActiveCustomDomain } from '../../lib/custom-domain.js';
+import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl, isPlatformAdLanding, adLandingUrl , hasActiveCustomDomain } from '../../lib/custom-domain.js';
 import { platformBoundaryData } from '../../lib/cross-origin-handoff.js';
-import { parseVariantLanding } from '../../lib/variant-landing.js';
 import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../lib/store-products.js';
 import { store as platform, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
 import { resolvePrice, priceValidUntil } from '../../lib/discounts.js';
@@ -110,26 +109,10 @@ const images = product.images ?? [];
 // is actually pre-selected for the buyer; see "no default pre-selection" below.
 const defaultVariantSelection: Record<string, string> =
   Object.fromEntries((product.variants ?? []).map((v) => [v.name, v.options[0] ?? '']));
-// The ONE exception to "no default pre-selection": a combo named by the URL. Every variant feed
-// row lands here carrying its own combination (variant-landing.ts), so an ad click arrives on the
-// red/42 the ad showed instead of on an unselected page. Rendered server-side rather than applied
-// by the client, so the swatch, the stock line and the add-to-cart ceiling are right in the first
-// paint — a shopper who arrived from a paid click is the last one who should watch the page
-// change under them. An unparseable/unknown value yields {}, i.e. exactly the old behaviour.
-// A dimension with a single option is pre-selected regardless (it has no choice to make), which is
-// what `renderedSelection` folds in — the client's own init below builds the same map.
-const landedVariants = parseVariantLanding(Astro.url, product.variants);
-const renderedSelection: Record<string, string> = {
-  ...Object.fromEntries((product.variants ?? []).filter((v) => v.options.length === 1).map((v) => [v.name, v.options[0]!])),
-  ...landedVariants,
-};
-// The stock line reflects whatever is selected in this first paint — the combo's own bucket when
-// the URL named a complete one, the product's shared pool otherwise (which is what the client's
-// unselected-state fallback also shows, so nothing jumps once JS hydrates).
-const renderedComboComplete = (product.variants ?? []).every((v) => renderedSelection[v.name]);
-const initialComboStock = renderedComboComplete && (product.variants?.length ?? 0) > 0
-  ? (product.variantStock?.[comboKey(renderedSelection)] ?? product.stock)
-  : product.stock;
+// Nothing is selected yet on load, so the note reflects the product's overall
+// stock (matches the client's own unselected-state fallback — no flash of a
+// different number once JS hydrates).
+const initialComboStock = product.stock;
 const LOW_STOCK_DISPLAY_THRESHOLD = 5;
 const initialStockState: 'out' | 'low' | 'in' =
   initialComboStock <= 0 ? 'out' : initialComboStock <= LOW_STOCK_DISPLAY_THRESHOLD ? 'low' : 'in';
@@ -225,18 +208,9 @@ const jsonLd = {
     // no end date — see discounts.ts#priceValidUntil for the inclusive/exclusive off-by-one.
     ...(saleEndsAfter ? { priceValidUntil: saleEndsAfter } : {}),
     itemCondition: 'https://schema.org/NewCondition',
-    // When the URL named a complete combo this offer describes THAT combo, not the product.
-    // Otherwise "is anything on this page buyable" — the shopper has chosen nothing, so the
-    // product-wide answer is the honest one (isProductInStock: the shared pool is not the answer
-    // for a product whose combos carry their own buckets).
-    // The distinction is a Merchant Center one, not a nicety: a feed row that says `out_of_stock`
-    // landing on a page whose structured data says `InStock` is the availability mismatch Google
-    // checks a landing page for, and every variant row lands here carrying its combo.
-    availability: renderedComboComplete && (product.variants?.length ?? 0) > 0
-      ? (initialComboStock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock')
-      : (isProductInStock(product.stock, product.variants, product.variantStock)
-        ? 'https://schema.org/InStock'
-        : 'https://schema.org/OutOfStock'),
+    availability: isProductInStock(product.stock, product.variants, product.variantStock)
+      ? 'https://schema.org/InStock'
+      : 'https://schema.org/OutOfStock',
     url: productUrl,
     seller: { '@type': 'Organization', name: shopStore.name },
     // Platform-set, identical for every store (shipping.ts) — a merchant listing has to say
@@ -310,9 +284,7 @@ const pmI18n = {
        data-lang={lang}
        data-variants={product.variants?.length ? JSON.stringify(product.variants) : undefined}
        data-variant-stock={product.variantStock ? JSON.stringify(product.variantStock) : undefined}
-       data-variant-images={product.variantImages ? JSON.stringify(product.variantImages) : undefined}
-       data-selected-variants={Object.keys(renderedSelection).length ? JSON.stringify(renderedSelection) : undefined}
-       data-ad-landing={adLanding ? '1' : undefined}>
+       data-variant-images={product.variantImages ? JSON.stringify(product.variantImages) : undefined}>
 
     <!-- Back link + checkout link -->
     <nav class="container pt-4 pb-2 flex items-center justify-between" aria-label="breadcrumb">
@@ -444,8 +416,6 @@ const pmI18n = {
                 // A dimension with a single option needs no real choice — treat
                 // it as already selected instead of making the buyer tap it.
                 const isSingleOption = v.options.length === 1;
-                // …and so is whatever the landing URL named (renderedSelection folds both in).
-                const rendered = renderedSelection[v.name];
                 return (
                   <div class="flex flex-col gap-2 variant-group" data-variant-group={v.name}>
                     <p style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-muted);margin:0">
@@ -454,17 +424,14 @@ const pmI18n = {
                     <div class="flex flex-wrap gap-2" role="group" aria-label={v.name}>
                       {v.options.map((opt) => {
                         const { display, hex } = resolveVariantColor(opt);
-                        const isActive = isSingleOption || rendered === opt;
+                        const isActive = isSingleOption;
                         const activeBorder = hex ?? 'var(--color-primary)';
                         const activeBg = hex ? hex + '18' : 'transparent';
                         // Availability for this option combined with the default selection of
                         // every other dimension — client JS recomputes this per-click as the
                         // buyer changes other dimensions (e.g. picking a Size changes which
-                        // Colors are in stock). What the URL selected outranks the default here,
-                        // for the same reason: an option's availability depends on the OTHER
-                        // dimensions, so a landing that fixed them must be what this is measured
-                        // against or the first paint strikes through options that are in stock.
-                        const optionCombo = { ...defaultVariantSelection, ...renderedSelection, [v.name]: opt };
+                        // Colors are in stock).
+                        const optionCombo = { ...defaultVariantSelection, [v.name]: opt };
                         const optionStock = (product.variants?.length && product.variantStock)
                           ? (product.variantStock[comboKey(optionCombo)] ?? product.stock)
                           : product.stock;
@@ -829,7 +796,7 @@ const pmI18n = {
   import { setLightboxImage, resetLightboxImage, lightboxWidth, warmLightboxImage, neighbourIndexes } from '../../lib/lightbox-image.js';
   import { spawnHeartBurst } from '../../lib/burst.js';
   import { recordStoreVisit } from '../../lib/recent-stores.js';
-  import { initCustomDomainLinks, initAdLandingLinks, readPlatformBoundary } from '../../lib/custom-domain-links.js';
+  import { initCustomDomainLinks, readPlatformBoundary } from '../../lib/custom-domain-links.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
@@ -839,9 +806,6 @@ const pmI18n = {
   // half — every PLATFORM-owned link (cart, checkout, login, buyer area) sent to the platform
   // origin, carrying the basket and the visitor's identity with it (custom-domain-links.ts).
   initCustomDomainLinks(storeSlug, page?.dataset.customHost ?? '', readPlatformBoundary(page));
-  // The crossing that goes the other way: an ad landing is on the platform, and the 301 off it
-  // carries no handoff, so the click after the landing would drop the ad attribution.
-  initAdLandingLinks(storeSlug, page?.dataset.adLanding === '1');
 
   if (storeSlug) {
     saveLastStore({ slug: storeSlug, name: storeName, url: location.pathname + location.search });
@@ -851,15 +815,6 @@ const pmI18n = {
   const pageVariants: Array<{ name: string; options: string[] }> = JSON.parse(page?.dataset.variants ?? '[]');
   const pageVariantStock: Record<string, number> = JSON.parse(page?.dataset.variantStock ?? '{}');
   const pageVariantImages: Record<string, string> = JSON.parse(page?.dataset.variantImages ?? '{}');
-
-  // What is selected in this first paint — see the "Variant selector" section below, which owns
-  // the rule; parsed here because ViewContent fires before it and has to name the same item.
-  const selectedVariants: Record<string, string> = JSON.parse(page?.dataset.selectedVariants ?? '{}');
-  // A selection covering EVERY dimension is one feed row; anything less is a row that does not
-  // exist, so it is reported as no combo at all rather than as an id nothing can join on.
-  const landedSelection = pageVariants.length && pageVariants.every((v) => selectedVariants[v.name])
-    ? selectedVariants
-    : undefined;
 
   // Raw stock for a given variant selection — falls back to the product's overall
   // stock when there are no variants, or the seller hasn't set per-combination
@@ -891,12 +846,8 @@ const pmI18n = {
     if (addBtnEl?.dataset.slug) {
       trackViewContent({
         // The catalog id, never the slug: a slug is unique per store, not platform-wide, and the
-        // Merchant feed keys on this uuid (lib/ad-item-id.ts). Usually no combo is chosen on load,
-        // and then this is the bare product id — but a variant feed row lands here naming its own
-        // combo (variant-landing.ts), and that row is what the shopper actually saw advertised.
-        // Reporting the parent id for it would put the view on an item that has NO feed row, which
-        // is the same join failure ad-item-id.ts exists to prevent, arrived at from this side.
-        id: adItemId(addBtnEl.dataset.productId ?? '', landedSelection),
+        // Merchant feed keys on this uuid (lib/ad-item-id.ts). No combo is chosen on load.
+        id: adItemId(addBtnEl.dataset.productId ?? ''),
         name: addBtnEl.dataset.name ?? '',
         price: Number(addBtnEl.dataset.price ?? 0),
         category: addBtnEl.dataset.category,
@@ -916,12 +867,10 @@ const pmI18n = {
   // ── Variant selector ───────────────────────────────────────────
   // No dimension is pre-selected — the buyer must actively tap a size/color/etc.
   // before add-to-cart will proceed (see flagMissingVariants below) — except a
-  // dimension with only one option, which has no real choice to make, and whatever
-  // an ad landing named in its URL. Both are already the server-rendered active
-  // swatch: `selectedVariants` (parsed at the top of this module, because ViewContent
-  // fires before this point and has to name the same item) reads the selection the
-  // SERVER computed rather than recomputing it, so the two can't drift into a page
-  // whose highlight and whose add-to-cart disagree about what is selected.
+  // dimension with only one option, which has no real choice to make and is
+  // pre-selected (matches the server-rendered active swatch above).
+  const selectedVariants: Record<string, string> = {};
+  pageVariants.forEach((v) => { if (v.options.length === 1) selectedVariants[v.name] = v.options[0]; });
 
   // Plain scrollIntoView doesn't know the mobile sticky add-to-cart bar (or the
   // fixed site header) visually covers part of the viewport — an element can
@@ -1042,21 +991,11 @@ const pmI18n = {
 
   // Hoisted `function` so the color-variant handler above can call it before
   // its definition here — scrolls the carousel to a linked image.
-  function switchMainImage(idx: number, instant = false): void {
+  function switchMainImage(idx: number): void {
     if (!mainSlides) return;
     activeIndex = idx;
-    mainSlides.scrollTo({ left: (slidesRtl ? -1 : 1) * idx * getMainSlideW(), behavior: instant ? 'auto' : 'smooth' });
+    mainSlides.scrollTo({ left: (slidesRtl ? -1 : 1) * idx * getMainSlideW(), behavior: 'smooth' });
     setThumbActive(idx);
-  }
-
-  // A landing that named a colour opens on that colour's photo. `instant`, not the click path's
-  // smooth scroll: this is the page's initial state, and animating into it would read as the
-  // carousel moving on its own the moment the page loaded.
-  {
-    const landedColor = pageVariants.map((v) => v.name).find((n) => isColorVariant(n) && selectedVariants[n]);
-    const landedUrl = landedColor ? pageVariantImages[selectedVariants[landedColor]!] : undefined;
-    const idx = landedUrl ? images.indexOf(landedUrl) : -1;
-    if (idx > 0) switchMainImage(idx, true);
   }
 
   if (mainSlides) {

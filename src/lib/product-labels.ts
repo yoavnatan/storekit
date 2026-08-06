@@ -73,27 +73,11 @@ function priceTier(price: number): string {
   return 'premium';
 }
 
-/** Slot 2's value on its own. Exported because a variant product's rows each have their OWN stock,
- *  and every row would otherwise inherit the product-level answer — see AVAILABILITY_SLOT. */
-export function availabilityTier(stock: number, lowStock: number = DEFAULT_LABEL_THRESHOLDS.lowStock): string {
+function availabilityTier(stock: number, lowStock: number): string {
   if (stock <= 0) return 'out_of_stock';
   if (stock <= lowStock) return 'low_stock';
   return 'in_stock';
 }
-
-/**
- * Where `availabilityTier`'s answer sits in LABEL_SLOTS — the one slot that is not a property of
- * the product as a whole.
- *
- * **The bug this names (found 2026-08-06).** `buildFeedItems` derives the five labels ONCE and
- * spreads them onto every combo row, which is right for four of them (price, performance, audience,
- * store type describe the product) and wrong for this one: a combo's stock is its own bucket, and
- * `custom_label_2` was reporting the shared pool on every row. So a red/42 row could say
- * `availability: in_stock` in the attribute Google *serves* on and `out_of_stock` in the label a
- * campaign *filters* on — and "clear low stock" then bid on rows that had never been low. Silent
- * in both directions, since each field was internally consistent.
- */
-export const AVAILABILITY_SLOT = LABEL_SLOTS.indexOf('availability');
 
 /** The performance tier for a product from its lifetime units sold + age. Exported so the
  *  storefront default ranking shares the exact same tiering as the ad-label feed. */

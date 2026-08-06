@@ -34,11 +34,6 @@
 //      const breaks the redirect.
 //   2. "Unreachable code" on a `<script is:inline>` nested inside a conditionally-rendered branch.
 //      It is real and it runs; `is:inline` is injected raw.
-// A real TS narrowing trap that astro check DOES catch, and whose fix is not obvious (moved here
-// from AI_INSTRUCTIONS 2026-08-06, same reason as the block below): a `let` reassigned inside a
-// `.forEach`, then read via `if (x)` / `x?.` right after the loop, narrows to `never` — the checker
-// cannot see that the callback ran. Rewrite as `filter().map().filter(guard)` rather than casting.
-//
 // And when a `.astro` compile error gives no file/line — not in the dev overlay, not in astro check —
 // run `npx astro build`: its [CompilerError] output carries a `Location:` with the exact file:line.
 // (That one burned a whole session. Do not hand-write an AST differ to binary-search it.)
