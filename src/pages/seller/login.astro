@@ -27,6 +27,7 @@ const safeNext = safeRedirectPath(Astro.url.searchParams.get('next'), '/', ['/se
 const oauthError = Astro.url.searchParams.get('error');
 const oauthErrorMsg =
   oauthError === 'oauth_denied' ? t.auth.oauthDenied :
+  oauthError === 'oauth_unverified_email' ? t.auth.oauthUnverifiedEmail :
   oauthError ? t.auth.oauthFailed : '';
 
 let error = oauthErrorMsg;
@@ -49,7 +50,11 @@ if (Astro.request.method === 'POST') {
       // A correct password wipes the slate, so yesterday's typos can never add up to a lockout.
       await clearAuthRate(rules);
       setSellerSession(Astro.cookies, seller.id);
-      return Astro.redirect(String(form.get('_next') || safeNext));
+      // Through safe-redirect like every other request-supplied destination. `safeNext` covers
+      // the QUERY string, but the hidden `_next` field is just as attacker-controlled — a form on
+      // someone else's page can post here carrying `_next=https://evil.example`, and this line
+      // used to put it straight into a Location (lib/safe-redirect.ts).
+      return Astro.redirect(safeRedirectPath(String(form.get('_next') ?? ''), safeNext, ['/seller/login']));
     }
     await countAuthAttempt(rules);
     error = t.auth.wrongCredentials;

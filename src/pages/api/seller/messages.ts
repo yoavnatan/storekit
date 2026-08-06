@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
+import { ownedStore } from '../../../lib/store-ownership.js';
 import { getThreadRootsBySeller, getRepliesForMessages } from '../../../lib/messages.js';
 import { getAdminThreadsForSeller } from '../../../lib/admin-messages.js';
 import { buildSellerMessageRows, buildSystemMessageRows, filterAndSortSellerMessages, parseSellerMessageQuery } from '../../../lib/seller-messages-query.js';
@@ -23,7 +23,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
 
   const storeId = url.searchParams.get('storeId') ?? '';
-  const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+  const store = await ownedStore(sellerId, storeId);
   if (!store) return json({ ok: false, error: 'Not authorized' }, 403);
 
   // Roots narrowed in SQL, then every root's replies in ONE more statement. This used to read the

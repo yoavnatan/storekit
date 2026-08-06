@@ -87,6 +87,15 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
     if (!googleUser.id || !googleUser.email) {
       return redirect('/seller/login?error=oauth_user_failed');
     }
+    // **The address must be one Google itself verified, and this check was missing (2026-08-06).**
+    // The field was already being fetched and then ignored. Below, an address that matches an
+    // existing account LINKS this Google identity into it — so an unverified address is a
+    // complete account takeover: register a Google account claiming a seller's email, sign in
+    // here, and the platform hands over their stores, orders and money figures. `!== true` and
+    // not `=== false`: an answer that omits the field has not verified anything either.
+    if (googleUser.verified_email !== true) {
+      return redirect('/seller/login?error=oauth_unverified_email');
+    }
   } catch {
     return redirect('/seller/login?error=oauth_user_failed');
   }
