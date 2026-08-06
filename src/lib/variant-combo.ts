@@ -94,6 +94,52 @@ export function sumComboOverrides(variantStock: Record<string, number> | undefin
   return Object.values(variantStock ?? {}).reduce((sum, n) => sum + Math.max(0, Number(n) || 0), 0);
 }
 
+/**
+ * How many combos `dimensions` describes — WITHOUT building them.
+ *
+ * The whole point is that it is a multiplication rather than an expansion, because every caller
+ * that needs this number is deciding whether expanding is safe (see MAX_VARIANT_COMBOS). Uses the
+ * same "a dimension with no name or no options is not a dimension" rule as `generateCombos`, so the
+ * count is the length that call would return and not an estimate of it.
+ */
+export function comboCount(dimensions: VariantDimension[]): number {
+  let n = 1;
+  for (const dim of dimensions) {
+    if (!dim.name || !dim.options.length) continue;
+    n *= dim.options.length;
+    // A seller cannot type enough options to overflow a float, but a hand-posted payload can, and
+    // `Infinity > MAX` is the answer this exists to give — bail rather than keep multiplying.
+    if (!Number.isFinite(n) || n > Number.MAX_SAFE_INTEGER) return Infinity;
+  }
+  return n;
+}
+
+/**
+ * The most combos one product may define — the bound on every expansion in this file.
+ *
+ * **This is a size limit that behaves like a security one (found 2026-08-06).** The cartesian
+ * product is exponential in the number of dimensions while the payload that describes it is
+ * linear: three dimensions of fifty options is a few kilobytes of JSON and 125,000 combos, and
+ * `parseVariantsPayload` used to expand exactly that on the request thread — allocating an object
+ * AND a sorted `comboKey` string per combo — before any validation had a chance to reject it. A
+ * product form is authenticated, so this is not an anonymous DoS, but one seller (or one stolen
+ * session) could stall SSR for everybody, and the same shape reaches the CSV importer, where a few
+ * dozen rows can imply tens of thousands of combos.
+ *
+ * 200 because it is far above any real catalogue (5 colours × 8 sizes × 4 materials = 160, and the
+ * dashboard renders a stock input per combo, which is already unusable long before this) and far
+ * below the point where expanding one costs anything. Enforced at the INPUT gates — the product
+ * form and the CSV importer — so stored data is bounded by construction and every reader
+ * downstream (storefront, feed, dashboard) can expand without checking. `tests/variant-combo-limit.test.ts`
+ * pins that both gates check it.
+ */
+export const MAX_VARIANT_COMBOS = 200;
+
+/** True when this dimension set is over the limit — the question an input gate asks BEFORE expanding. */
+export function exceedsComboLimit(dimensions: VariantDimension[]): boolean {
+  return comboCount(dimensions) > MAX_VARIANT_COMBOS;
+}
+
 export function generateCombos(dimensions: VariantDimension[]): VariantSelection[] {
   return dimensions.reduce<VariantSelection[]>(
     (combos, dim) => {

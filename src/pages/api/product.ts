@@ -103,8 +103,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const specs = parseSpecs(form);
     const sellerNote = parseSellerNote(form);
     const discount = parseProductDiscount(form, price);
-    const { variants, variantStock, variantImages } = parseVariantsPayload(form);
+    const { variants, variantStock, variantImages, error: variantsError } = parseVariantsPayload(form);
 
+    if (variantsError) return json({ ok: false, error: variantsError }, 400);
     if (!name) return json({ ok: false, error: 'Product name is required.' }, 400);
     if (isNaN(price) || price < 0) return json({ ok: false, error: 'Enter a valid price.' }, 400);
     if (sku && await isSkuTaken(storeId, sku)) return json({ ok: false, error: 'This SKU is already used by another product.' }, 400);
@@ -151,6 +152,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     const submittedPrice = parseFloat(String(form.get('price') || '0'));
     const submittedStock = parseInt(String(form.get('stock') || '0'), 10);
+    // Destructured rather than spread: a rejection is not a FIELD of the product, and spreading it
+    // into `submitted` would hand `mergeByFieldRev` a key that has no stored counterpart. Rejected
+    // before the merge, so an over-limit payload never reaches the conflict machinery either.
+    const { variants: submittedVariants, variantStock: submittedVariantStock, variantImages: submittedVariantImages, error: variantsError } = parseVariantsPayload(form);
+    if (variantsError) return json({ ok: false, error: variantsError }, 400);
     // Shaped exactly like the stored record (empty → absent), because these values are
     // compared field-by-field against it below — a difference in shape alone would read
     // as an edit the seller never made.
@@ -168,7 +174,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       specs: parseSpecs(form),
       discount: parseProductDiscount(form, submittedPrice),
       sellerNote: parseSellerNote(form) || undefined,
-      ...parseVariantsPayload(form),
+      variants: submittedVariants,
+      variantStock: submittedVariantStock,
+      variantImages: submittedVariantImages,
     };
 
     // The form submits every field, so a stale tab would revert whatever a second tab
