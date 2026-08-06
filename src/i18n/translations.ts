@@ -273,6 +273,7 @@ export const translations = {
       orDivider: 'או',
       oauthDenied: 'ההתחברות עם Google בוטלה.',
       oauthFailed: 'שגיאה בהתחברות עם Google. נסה שנית.',
+      oauthUnverifiedEmail: 'כתובת המייל בחשבון Google הזה לא אומתה על ידי Google. יש לאמת אותה שם, או להתחבר עם סיסמה.',
       loginSubtitle: 'התחבר לחשבון שלך כדי להמשיך.',
       benefitMall: 'כוח של קניון — התנועה של כל החנויות',
       benefitBuiltIn: 'פרסום, SEO ומשלוחים מובנים',
@@ -305,6 +306,9 @@ export const translations = {
       storeNameRequired: 'שם החנות הוא שדה חובה.',
       priceInvalid: 'יש להזין מחיר תקין.',
       productNameRequired: 'שם המוצר הוא שדה חובה.',
+      // Shown when a submitted storeId/productId is not this account's. Deliberately says
+      // "not found" rather than "not yours": the answer must not confirm that the id exists.
+      notYours: 'הפריט לא נמצא בחשבון שלך.',
       storeSettings: 'הגדרות חנות',
       storeName: 'שם החנות',
       description: 'תיאור',
@@ -1568,6 +1572,7 @@ export const translations = {
       orDivider: 'or',
       oauthDenied: 'Google sign-in was cancelled.',
       oauthFailed: 'Google sign-in failed. Please try again.',
+      oauthUnverifiedEmail: 'The email address on this Google account has not been verified by Google. Verify it there, or sign in with a password.',
       loginSubtitle: 'Log in to your account to continue.',
       benefitMall: 'The pull of a mall — the traffic of every store',
       benefitBuiltIn: 'Ads, SEO and shipping built in',
@@ -1600,6 +1605,7 @@ export const translations = {
       storeNameRequired: 'Store name is required.',
       priceInvalid: 'Enter a valid price.',
       productNameRequired: 'Product name is required.',
+      notYours: 'That item was not found in your account.',
       storeSettings: 'Store settings',
       storeName: 'Store name',
       description: 'Description',

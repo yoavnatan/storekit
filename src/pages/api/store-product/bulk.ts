@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
+import { ownedStore } from '../../../lib/store-ownership.js';
 import { getProductsByStoreId } from '../../../lib/store-products.js';
 import { getCategoriesByStoreId } from '../../../lib/store-categories.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
@@ -14,7 +14,7 @@ function json(data: unknown, status = 200) {
 }
 
 async function authorizeStore(sellerId: string, storeId: string): Promise<boolean> {
-  return !!(await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+  return !!(await ownedStore(sellerId, storeId));
 }
 
 export const GET: APIRoute = async ({ url, cookies }) => {

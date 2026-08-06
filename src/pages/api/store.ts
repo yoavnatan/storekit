@@ -2,7 +2,8 @@ export const prerender = false;
 import crypto from 'node:crypto';
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, updateStore, addStoreBgColor, isCustomDomainTaken, rememberPreviousCustomDomain, claimCustomDomainHostname, renameStoreSlug, isSlugTaken, isReservedSlug, normalizeSlug } from '../../lib/stores.js';
+import { updateStore, addStoreBgColor, isCustomDomainTaken, rememberPreviousCustomDomain, claimCustomDomainHostname, renameStoreSlug, isSlugTaken, isReservedSlug, normalizeSlug } from '../../lib/stores.js';
+import { ownedStore } from '../../lib/store-ownership.js';
 import { renameStoreSlugInUserData } from '../../lib/user-carts.js';
 import { renameStoreSlugInOrders } from '../../lib/orders.js';
 import { getCustomDomainProvider, normalizeHostname } from '../../lib/custom-domain.js';
@@ -35,8 +36,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'save-settings') {
     const storeId = String(form.get('storeId') || '');
-    const stores = await getStoresBySellerId(sellerId);
-    const target = stores.find((s) => s.id === storeId) ?? stores[0];
+    // The seller's OWN store with this id, and nothing else (lib/store-ownership.ts). The
+    // `?? stores[0]` this replaces meant an unrecognised id fell through to whichever shop
+    // happened to be first — so a stale tab, or a form that lost its hidden `storeId`, silently
+    // overwrote a DIFFERENT store's settings with this one's fields and reported success.
+    const target = await ownedStore(sellerId, storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
 
     // The picker in the dashboard is convenience; THIS is the rule. Normalizes,
@@ -142,7 +146,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // same spam/keyword-stuffing gate as product text before they can reach a storefront.
   if (action === 'save-store-sale') {
     const storeId = String(form.get('storeId') || '');
-    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+    const target = await ownedStore(sellerId, storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
 
     // Scope resolved + ownership-checked server-side; a blank/foreign category or product id
@@ -187,7 +191,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // pinning it to a product list here would silently NARROW it.
   if (action === 'add-to-store-sale') {
     const storeId = String(form.get('storeId') || '');
-    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+    const target = await ownedStore(sellerId, storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
     const sale = target.sale;
     if (!sale?.active) return json({ ok: false, error: 'no-active-sale' }, 400);
@@ -205,7 +209,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'save-feed-config') {
     const storeId = String(form.get('storeId') || '');
-    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+    const target = await ownedStore(sellerId, storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
 
     // Empty = clear the saved URL. A non-empty value must at least be an http(s) URL — the deep
@@ -231,7 +235,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'gen-export-token' || action === 'clear-export-token') {
     const storeId = String(form.get('storeId') || '');
-    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+    const target = await ownedStore(sellerId, storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
     // 192-bit random — the token is the only credential guarding the outbound feed, so it must be
     // long enough to be unguessable. Regenerating (gen on an existing token) rotates it, instantly
@@ -246,7 +250,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const color = String(form.get('color') || '').trim().toLowerCase();
     // Only a 6-digit hex is ever stored — never trust the client-sent value.
     if (!/^#[0-9a-f]{6}$/.test(color)) return json({ ok: false, error: 'Invalid color.' }, 400);
-    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+    const target = await ownedStore(sellerId, storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
     const colors = await addStoreBgColor(target.id, color);
     return json({ ok: true, colors });
@@ -256,7 +260,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   //    own domain. The local /<slug> path is unaffected throughout: it stays live + canonical. ──
   if (action === 'set-custom-domain' || action === 'check-custom-domain' || action === 'remove-custom-domain') {
     const storeId = String(form.get('storeId') || '');
-    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+    const target = await ownedStore(sellerId, storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
     const provider = getCustomDomainProvider();
 
@@ -306,7 +310,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   //    one (see stores.ts renameStoreSlug + the store/product routes), and slug-keyed data is migrated. ──
   if (action === 'change-store-url') {
     const storeId = String(form.get('storeId') || '');
-    const target = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+    const target = await ownedStore(sellerId, storeId);
     if (!target) return json({ ok: false, error: 'Store not found.' }, 404);
 
     const newSlug = normalizeSlug(String(form.get('slug') || ''));

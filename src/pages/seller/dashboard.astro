@@ -24,6 +24,8 @@ import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
 import { getSellerById, getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
+// Every no-JS fallback POST below settles ownership through this, never through the form's ids.
+import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
 import { openOrderCount } from '../../lib/store-lifecycle.js';
 import { cnameTarget, storeHomeHref } from '../../lib/custom-domain.js';
 import { DEFAULT_STORE_HOURS } from '../../lib/store-hours.js';
@@ -170,9 +172,13 @@ if (Astro.request.method === 'POST') {
     if (!name) {
       error = d.storeNameRequired;
     } else {
-      const stores = await getStoresBySellerId(sellerId);
-      const target = stores.find((s) => s.id === storeId) ?? stores[0];
-      if (target) {
+      // Resolved against the seller's OWN stores (lib/store-ownership.ts). The `?? stores[0]`
+      // fallback this replaces meant an unrecognised id silently overwrote a different shop of
+      // theirs instead of failing — a form that lost its storeId must say so, not guess.
+      const target = await ownedStore(sellerId, storeId);
+      if (!target) {
+        error = d.notYours;
+      } else {
         await updateStore(target.id, { name, tagline, description, colors: target.colors });
         return Astro.redirect(machineUrl(`/seller/dashboard?store=${target.id}&saved=1`));
       }
@@ -203,13 +209,19 @@ if (Astro.request.method === 'POST') {
     const price = parseFloat(String(form.get('price') || '0'));
     const stock = parseInt(String(form.get('stock') || '0'), 10);
 
+    // The store is resolved from the SESSION's own list before a row is written — the form's
+    // `storeId` is attacker-controlled, and this handler used to hand it straight to
+    // createProduct, which files a product into whatever store the id names.
+    const ownerStore = await ownedStore(sellerId, storeId);
     if (!name) {
       error = d.productNameRequired;
     } else if (isNaN(price) || price < 0) {
       error = d.priceInvalid;
+    } else if (!ownerStore) {
+      error = d.notYours;
     } else {
-      await createProduct(storeId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
-      return Astro.redirect(machineUrl(`/seller/dashboard?store=${storeId}&added=1`));
+      await createProduct(ownerStore.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
+      return Astro.redirect(machineUrl(`/seller/dashboard?store=${ownerStore.id}&added=1`));
     }
   } else if (action === 'edit-product') {
     const productId = String(form.get('productId') || '');
@@ -218,20 +230,31 @@ if (Astro.request.method === 'POST') {
     const price = parseFloat(String(form.get('price') || '0'));
     const stock = parseInt(String(form.get('stock') || '0'), 10);
 
+    // Same binding the /api/product twin has always had: a product id is not a permission, so it
+    // is checked against the seller's stores before price or stock — the two fields that decide
+    // what a shopper is charged and how many units exist — can be written.
+    const claim = await ownedProduct(sellerId, productId);
     if (!name) {
       error = d.productNameRequired;
     } else if (isNaN(price) || price < 0) {
       error = d.priceInvalid;
+    } else if (!claim.ok) {
+      error = d.notYours;
     } else {
-      await updateProduct(productId, { name, description, price, stock: isNaN(stock) ? 0 : stock });
+      await updateProduct(claim.product.id, { name, description, price, stock: isNaN(stock) ? 0 : stock });
       const sid = Astro.url.searchParams.get('store') ?? '';
       return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
     }
   } else if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
     const sid = String(form.get('storeId') || '');
-    await deleteProduct(productId);
-    return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
+    const claim = await ownedProduct(sellerId, productId);
+    if (!claim.ok) {
+      error = d.notYours;
+    } else {
+      await deleteProduct(claim.product.id);
+      return Astro.redirect(sid ? machineUrl(`/seller/dashboard?store=${sid}`) : '/seller/dashboard');
+    }
   }
 }
 

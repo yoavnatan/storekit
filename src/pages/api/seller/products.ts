@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
+import { ownedStore } from '../../../lib/store-ownership.js';
 import { getProductsByStoreId, countStockAlerts } from '../../../lib/store-products.js';
 import { LOW_STOCK_THRESHOLD } from '../../../lib/variant-combo.js';
 import { getCategoriesByStoreId, categoryPath } from '../../../lib/store-categories.js';
@@ -27,7 +27,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   if (!sellerId) return json({ ok: false, error: 'Not authenticated' }, 401);
 
   const storeId = url.searchParams.get('storeId') ?? '';
-  const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+  const store = await ownedStore(sellerId, storeId);
   if (!store) return json({ ok: false, error: 'Not authorized' }, 403);
 
   const sp = url.searchParams;
