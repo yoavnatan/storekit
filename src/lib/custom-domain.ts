@@ -158,9 +158,10 @@ export function productCanonicalUrl(store: Pick<Store, 'slug' | 'customDomain'>,
  */
 export const AD_LANDING_PARAM = 'ad';
 
-/** True when this URL carries the marker. Pure, so the rule is testable on its own — but a page
- *  wants `isPlatformAdLanding`, which is this plus the two conditions that make it MEAN anything. */
-export function isAdLanding(url: URL): boolean {
+/** True when this URL carries the marker — and NOT exported, because the marker alone is not a
+ *  question anyone should be asking: `isPlatformAdLanding` below is this plus the two conditions
+ *  that make it mean anything, and it is what every caller and every test uses. */
+function isAdLanding(url: URL): boolean {
   return url.searchParams.get(AD_LANDING_PARAM) === '1';
 }
 
