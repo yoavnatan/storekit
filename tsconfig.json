@@ -5,6 +5,14 @@
     "**/*"
   ],
   "exclude": [
-    "dist"
+    "dist",
+    // Specifying "exclude" REPLACES TypeScript's default (node_modules, ...), so once this key
+    // exists every one of these has to be listed by hand or it lands in the project.
+    "node_modules",
+    // Each worktree under here is a full checkout of this same repo, with its own node_modules.
+    // Left in, the language server type-checks every copy of every file: duplicate declarations
+    // and stale errors from branches nobody is editing, all of it attributed to .claude/ in the
+    // editor. ESLint already ignores this path (eslint.config.js); tsc has to be told separately.
+    ".claude"
   ]
 }

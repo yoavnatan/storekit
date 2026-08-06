@@ -30,7 +30,7 @@ import { isDemoStore } from './demo-stores.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds, type StoreCategory } from './store-categories.js';
 import { getCampaignsByStoreId, getArchivedByStoreId, updateCampaigns, archiveCampaigns, type AdCampaign, type CampaignUpdate } from './ad-campaigns.js';
 import { isCampaignEnded } from './ad-metrics.js';
-import { isProductAdvertisable } from './product-feed.js';
+import { adExclusionReason } from './product-feed.js';
 import { store as platform } from '../config/store.config.js';
 import { stripTrailingSlashes } from './url-base.js';
 
@@ -53,6 +53,16 @@ export interface CampaignHealth {
    * is a decision about the seller's money and not one to take in passing.
    */
   advertisable: number;
+  /**
+   * Of `live`, how many the ad networks' own prohibited-content policy blocks (`ad-policy.ts`).
+   *
+   * A subset of the non-`advertisable` ones, split out because it is a different kind of problem
+   * and needs a different answer. A missing photo costs this seller reach; prohibited content
+   * suspends the ACCOUNT — and this platform advertises every seller through one, so it costs
+   * every store at once. That is also why it is never self-healing: the term does not stop being
+   * prohibited, and the seller has to change or remove the listing.
+   */
+  policyBlocked: number;
   /** How many of those a shopper could actually buy right now — `live` minus the sold-out ones.
    *  Always <= live, and the two differ only while stock is out. */
   buyable: number;
@@ -82,13 +92,21 @@ export function campaignHealth(campaign: AdCampaign, products: StoreProduct[], c
     ? (campaign.productIds ?? (campaign.productId ? [campaign.productId] : [])).length
     : covered.length;
   const onShelf = covered.filter(isProductVisible);
+  // One pass over the feed's own rule, so `advertisable` and `policyBlocked` can never disagree
+  // about the same product (product-feed.ts#adExclusionReason).
+  const reasons = onShelf.map((p) => adExclusionReason(p, stripTrailingSlashes(platform.url)));
   return {
     total: named,
     live: onShelf.length,
     // The SAME base the feed endpoint resolves images against (api/feed/products.xml.ts), spelled
     // the same way — this count is a claim about what that endpoint will emit, so a second spelling
     // of its own origin is a second answer waiting to disagree.
-    advertisable: onShelf.filter((p) => isProductAdvertisable(p, stripTrailingSlashes(platform.url))).length,
+    advertisable: reasons.filter((r) => r === null).length,
+    // Counted apart from the rest of `advertisable` because it is a different KIND of problem: a
+    // missing photo is his to fix in a minute, while prohibited content is the ad networks' own
+    // list and is what suspends the shared account (ad-policy.ts). The card has to name it, and
+    // the pause it causes is not one a sweep may undo.
+    policyBlocked: reasons.filter((r) => r === 'policy').length,
     buyable: onShelf.filter((p) => p.stock > 0).length,
   };
 }
@@ -167,6 +185,11 @@ export function resumeBlockCode(reason: CampaignBlockReason): string {
  */
 function campaignBlockReason(health: CampaignHealth): CampaignPauseReason | null {
   if (isCampaignStarved(health)) return 'unavailable';
+  // Prohibited content outranks every mechanical reason and is stamped 'unavailable' — the
+  // permanent kind, which only a human undoes. Deliberately NOT self-healing: a term does not stop
+  // being prohibited on its own, so a sweep that resumed the campaign would put the shared ad
+  // account back at risk without anyone deciding to (ad-policy.ts).
+  if (health.live > 0 && health.policyBlocked === health.live) return 'unavailable';
   if (isCampaignUnadvertisable(health)) return 'no-image';
   if (isCampaignSoldOut(health)) return 'out-of-stock';
   return null;

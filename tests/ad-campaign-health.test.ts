@@ -38,14 +38,14 @@ describe('campaignHealth — named products', () => {
 
   it('counts only what a shopper can still reach', () => {
     const products = [product('p1'), product('p2', { hidden: true }), product('p3', { blocked: true })];
-    expect(campaignHealth(c, products, CATEGORIES)).toEqual({ total: 3, live: 1, advertisable: 1, buyable: 1 });
+    expect(campaignHealth(c, products, CATEGORIES)).toEqual({ total: 3, live: 1, advertisable: 1, policyBlocked: 0, buyable: 1 });
   });
 
   it('counts a DELETED product as gone, not as one fewer target', () => {
     // The stored id list is what the seller chose, so a product that no longer exists has to
     // read as "1 of 3 lost" — measuring `total` off the surviving rows would report 2 of 2 and
     // the card would say nothing is wrong.
-    expect(campaignHealth(c, [product('p1'), product('p2')], CATEGORIES)).toEqual({ total: 3, live: 2, advertisable: 2, buyable: 2 });
+    expect(campaignHealth(c, [product('p1'), product('p2')], CATEGORIES)).toEqual({ total: 3, live: 2, advertisable: 2, policyBlocked: 0, buyable: 2 });
   });
 
   it('starves only when nothing is left', () => {
@@ -56,14 +56,14 @@ describe('campaignHealth — named products', () => {
 
   it('reads a legacy single-product row through its flat productId', () => {
     const legacy = campaign({ scope: 'product', productId: 'p9', productName: 'old' });
-    expect(campaignHealth(legacy, [product('p9', { blocked: true })], CATEGORIES)).toEqual({ total: 1, live: 0, advertisable: 0, buyable: 0 });
+    expect(campaignHealth(legacy, [product('p9', { blocked: true })], CATEGORIES)).toEqual({ total: 1, live: 0, advertisable: 0, policyBlocked: 0, buyable: 0 });
   });
 
   // `live` is about the listing, `buyable` about the shelf — a sold-out product is still ON the
   // storefront, which is what keeps the two pauses (permanent vs temporary) apart.
   it('counts a sold-out product as live but not buyable', () => {
     const health = campaignHealth(c, [product('p1', { stock: 0 }), product('p2'), product('p3')], CATEGORIES);
-    expect(health).toEqual({ total: 3, live: 3, advertisable: 3, buyable: 2 });
+    expect(health).toEqual({ total: 3, live: 3, advertisable: 3, policyBlocked: 0, buyable: 2 });
   });
 
   // A product with no photo is on the shelf and NOT in Merchant Center — `image_link` is a required
@@ -71,7 +71,7 @@ describe('campaignHealth — named products', () => {
   // advertised, so a campaign reported more coverage than it had.
   it('counts a product with no photo as live but not advertisable', () => {
     const health = campaignHealth(c, [product('p1', { images: [] }), product('p2'), product('p3')], CATEGORIES);
-    expect(health).toEqual({ total: 3, live: 3, advertisable: 2, buyable: 3 });
+    expect(health).toEqual({ total: 3, live: 3, advertisable: 2, policyBlocked: 0, buyable: 3 });
   });
 
   it('counts a zero-priced product as live but not advertisable', () => {
@@ -91,7 +91,7 @@ describe('campaignHealth — categories and whole store', () => {
   it('covers a picked category AND everything beneath it', () => {
     const c = campaign({ scope: 'categories', categoryIds: ['c-shoes'], categoryNames: ['נעליים'] });
     const products = [product('p1', { categoryId: 'c-shoes' }), product('p2', { categoryId: 'c-sport' }), product('p3', { categoryId: 'c-bags' })];
-    expect(campaignHealth(c, products, CATEGORIES)).toEqual({ total: 2, live: 2, advertisable: 2, buyable: 2 });
+    expect(campaignHealth(c, products, CATEGORIES)).toEqual({ total: 2, live: 2, advertisable: 2, policyBlocked: 0, buyable: 2 });
   });
 
   it('starves a category campaign once its products leave the storefront', () => {
@@ -115,6 +115,7 @@ describe('campaignHealthNote', () => {
     adHealthPartialStock: '{gone} מתוך {total} אזלו מהמלאי',
     adHealthNoImage: '{gone} מתוך {total} בלי תמונה',
     adHealthNoImageStopped: 'הושהה זמנית — אין תמונה לאף מוצר',
+    adHealthPolicyBlocked: '{gone} מוצרים אסורים לפרסום',
   };
 
   it('says the platform stopped it, when the platform stopped it', () => {
@@ -162,6 +163,23 @@ describe('campaignHealthNote', () => {
     // rather than telling him to upload a photo he already uploaded.
     expect(campaignHealthNote({ total: 1, live: 1, advertisable: 1, buyable: 0 }, 'no-image', L))
       .toBe('הושהה זמנית — הכל אזל');
+  });
+
+  // The only line on this card that is about the shared ad ACCOUNT rather than this campaign's
+  // reach, so it outranks every mechanical one — he needs to know WHICH listing endangers everyone.
+  it('names a policy-blocked product above a missing photo and above a sell-out', () => {
+    expect(campaignHealthNote({ total: 4, live: 4, advertisable: 2, policyBlocked: 1, buyable: 2 }, undefined, L))
+      .toBe('1 מוצרים אסורים לפרסום');
+  });
+
+  it('says so on a campaign the platform stopped entirely for it', () => {
+    expect(campaignHealthNote({ total: 1, live: 1, advertisable: 0, policyBlocked: 1, buyable: 1 }, 'unavailable', L))
+      .toBe('1 מוצרים אסורים לפרסום');
+  });
+
+  it('still leads with the off-shelf count, which explains why the campaign shrank', () => {
+    expect(campaignHealthNote({ total: 4, live: 2, advertisable: 1, policyBlocked: 1, buyable: 2 }, undefined, L))
+      .toBe('2 מתוך 4 ירדו מהמדף');
   });
 
   it('reports products the ad platforms cannot carry, on a campaign still running', () => {
@@ -363,7 +381,7 @@ describe('getCampaignsForStore — the automatic pause', () => {
     const before = await stamps();
     const [row] = await load();
     expect(row?.status).toBe('active');
-    expect(row?.health).toEqual({ total: 2, live: 1, advertisable: 1, buyable: 1 });
+    expect(row?.health).toEqual({ total: 2, live: 1, advertisable: 1, policyBlocked: 0, buyable: 1 });
     expect(await stamps()).toEqual(before);
   });
 
@@ -456,7 +474,7 @@ describe('getCampaignsForStore — sold out', () => {
     await stock('p2', { stock: 4 });
     const [row] = await load();
     expect(row?.status).toBe('active');
-    expect(row?.health).toEqual({ total: 2, live: 2, advertisable: 2, buyable: 1 });
+    expect(row?.health).toEqual({ total: 2, live: 2, advertisable: 2, policyBlocked: 0, buyable: 1 });
   });
 
   // 'out-of-stock' is a promise the card makes ("it comes back by itself"). Once the product
@@ -522,7 +540,7 @@ describe('getCampaignsForStore — no photo', () => {
     await stock('p2');
     const [row] = await load();
     expect(row?.status).toBe('active');
-    expect(row?.health).toEqual({ total: 2, live: 2, advertisable: 1, buyable: 2 });
+    expect(row?.health).toEqual({ total: 2, live: 2, advertisable: 1, policyBlocked: 0, buyable: 2 });
   });
 
   // The reason this needed a value of its own rather than reusing the stock one.
@@ -598,7 +616,7 @@ describe('getCampaignsForStore — a showcase store advertises nothing', () => {
     // 'unavailable', not a self-healing reason: a showcase store is a standing platform decision,
     // so there is nothing for a sweep to undo by itself.
     expect(row?.pausedReason).toBe('unavailable');
-    expect(row?.health).toEqual({ total: 0, live: 0, advertisable: 0, buyable: 0 });
+    expect(row?.health).toEqual({ total: 0, live: 0, advertisable: 0, policyBlocked: 0, buyable: 0 });
   });
 
   it('refuses a manual resume on one', async () => {
@@ -721,7 +739,7 @@ describe('history: cancelled and finished campaigns', () => {
     const [row] = await load();
     expect(row?.status).toBe('paused');
     expect(row?.pausedReason).toBe('unavailable');
-    expect(row?.health).toEqual({ total: 1, live: 0, advertisable: 0, buyable: 0 });
+    expect(row?.health).toEqual({ total: 1, live: 0, advertisable: 0, policyBlocked: 0, buyable: 0 });
   });
 
   it('lets them run again once the block is lifted — but only when a human says so', async () => {

@@ -2,6 +2,7 @@ import type { StoreProduct } from './store-products.js';
 import { inferAudienceGender, inferAgeGroup } from './audience-infer.js';
 import { deriveProductLabels, availabilityTier, AVAILABILITY_SLOT } from './product-labels.js';
 import { variantLandingUrl } from './variant-landing.js';
+import { adPolicyViolation } from './ad-policy.js';
 import { generateCombos, comboKey, canonicalDimName } from './variant-combo.js';
 import { adItemId, adComboItemId } from './ad-item-id.js';
 import { isColorVariant } from './color-variants.js';
@@ -237,8 +238,31 @@ export interface FeedBuildContext extends FeedContext {
  * a rejection report — which is precisely the blind spot the two of them cover between them.
  */
 export function isProductAdvertisable(product: StoreProduct, baseUrl: string): boolean {
-  if (product.price <= 0) return false;
-  return (product.images ?? []).some((img) => toAbsoluteImageUrl(img, baseUrl) !== null);
+  return adExclusionReason(product, baseUrl) === null;
+}
+
+/**
+ * WHY a product will not be sent, or null when it will — the same rule as `isProductAdvertisable`,
+ * with the answer kept rather than collapsed to a boolean.
+ *
+ * The reason is what lets the seller be TOLD. An exclusion he cannot see the cause of is the
+ * silent-rejection failure this whole area exists to end: the product sits on his storefront
+ * looking perfectly fine and no ad ever runs behind it.
+ *
+ * The three are not the same kind of problem, which is why they stay apart:
+ *  · `no-image` / `no-price` — mechanical, his to fix in a minute, and self-healing.
+ *  · `policy` — the ad networks' own prohibited-content list (`ad-policy.ts`). NOT self-healing and
+ *    not merely this product's problem: both networks suspend the ACCOUNT, and this platform
+ *    advertises every seller through one. Excluding the row is the whole protection.
+ */
+export type AdExclusionReason = 'no-price' | 'no-image' | 'policy';
+
+export function adExclusionReason(product: StoreProduct, baseUrl: string): AdExclusionReason | null {
+  if (product.price <= 0) return 'no-price';
+  if (!(product.images ?? []).some((img) => toAbsoluteImageUrl(img, baseUrl) !== null)) return 'no-image';
+  // Last, because it is the most expensive question and the other two already exclude the row.
+  if (adPolicyViolation(product)) return 'policy';
+  return null;
 }
 
 /** Expand one product into its feed rows (variant combos → item_group_id rows).
@@ -256,7 +280,12 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
     .map((img) => toAbsoluteImageUrl(img, ctx.baseUrl))
     .filter((url): url is string => url !== null);
   const imageLink = images[0];
-  if (!imageLink || product.price <= 0) return [];
+  // Through the shared rule, not a second copy of it: `isProductAdvertisable` is what
+  // `ad-campaign-health.ts` counts with, and a feed that excluded a different set from the one the
+  // seller's card reports would be the same join failure this file keeps being bitten by. It also
+  // carries the prohibited-content check, which is the one exclusion here that protects the shared
+  // ad ACCOUNT rather than this row (ad-policy.ts).
+  if (!imageLink || !isProductAdvertisable(product, ctx.baseUrl)) return [];
   const additionalImageLinks = images.slice(1, 11); // Google caps additional images at 10
   // Colour option value → that colour's own photo, absolutized the same way the gallery was.
   // Membership in `images` is required rather than assumed: the product form only lets the seller

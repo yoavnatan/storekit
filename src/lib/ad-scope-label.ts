@@ -23,12 +23,12 @@ export type AdScopeLabels = Partial<Record<
   | 'adGenderWomen' | 'adGenderMen' | 'adAgeInfant' | 'adAgeKids' | 'adAgeAdult'
   | 'adDuration7' | 'adDuration14' | 'adDuration30' | 'adDurationOngoing'
   | 'adHealthStarved' | 'adHealthPartial' | 'adHealthSoldOut' | 'adHealthPartialStock'
-  | 'adHealthNoImage' | 'adHealthNoImageStopped',
+  | 'adHealthNoImage' | 'adHealthNoImageStopped' | 'adHealthPolicyBlocked',
   string>>;
 
 /** How much of what a campaign advertises is still on the storefront, how much of THAT the ad
  *  platforms will carry, and how much a shopper can actually buy right now (ad-campaign-health.ts). */
-export interface CampaignHealthView { total: number; live: number; advertisable?: number; buyable?: number }
+export interface CampaignHealthView { total: number; live: number; advertisable?: number; policyBlocked?: number; buyable?: number }
 
 /** The one line that tells a seller his campaign stopped, or is running on less than he chose.
  *  '' when everything it names is still live — a card with nothing wrong says nothing.
@@ -49,6 +49,11 @@ export function campaignHealthNote(
   // campaign whose stored reason says "nothing on the storefront". Believe the live counts for
   // the wording (the resume guard reads them too), and keep the stored reason for the case they
   // agree on. Otherwise the card tells him to do something he already did.
+  // Defined before the first branch that needs it: the policy line carries a COUNT even on a
+  // stopped campaign, and returning its template unsubstituted put a literal "{gone}" on the card
+  // (caught by its own test).
+  const fill = (template: string, missing: number): string =>
+    template.replace('{gone}', String(missing)).replace('{total}', String(health?.total ?? 0));
   const starved = !health || health.live === 0;
   if (pausedReason === 'unavailable' && starved) return l.adHealthStarved ?? '';
   // LIVE counts first, in the same order the sweep picks a reason in
@@ -56,6 +61,9 @@ export function campaignHealthNote(
   // all, while a sold-out one is, and uploading a photo is the action he can take. Both are
   // self-healing, so both lines end with "and it comes back by itself".
   if (pausedReason && health && health.live > 0) {
+    // Ahead of everything mechanical: this is the only line on the card that is about the shared
+    // ad account rather than about this campaign's reach (ad-policy.ts).
+    if (health.policyBlocked === health.live) return fill(l.adHealthPolicyBlocked ?? '', health.policyBlocked);
     if (health.advertisable === 0) return l.adHealthNoImageStopped ?? '';
     if (health.buyable === 0) return l.adHealthSoldOut ?? '';
   }
@@ -66,9 +74,13 @@ export function campaignHealthNote(
   if (pausedReason === 'no-image') return l.adHealthNoImageStopped ?? '';
   if (pausedReason === 'out-of-stock') return l.adHealthSoldOut ?? '';
   if (!health) return '';
-  const fill = (template: string, missing: number): string =>
-    template.replace('{gone}', String(missing)).replace('{total}', String(health.total));
   if (health.live < health.total) return fill(l.adHealthPartial ?? '', health.total - health.live);
+  // Above even the off-shelf count would be wrong (that one is why the campaign shrank), but this
+  // sits above every remaining line: a partly-blocked campaign still runs, and the seller needs to
+  // know WHICH listing is the one endangering the shared account, not merely that reach is down.
+  if (health.policyBlocked !== undefined && health.policyBlocked > 0) {
+    return fill(l.adHealthPolicyBlocked ?? '', health.policyBlocked);
+  }
   // Ahead of the stock line because it outranks it on "what can he do about it": a product with no
   // photo is not in Merchant Center at all, and uploading one is entirely in his hands, where a
   // stock-out resolves itself. Silent until now — the campaign counted the product and the feed

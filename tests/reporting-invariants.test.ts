@@ -879,6 +879,9 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
         const where = `${store.slug}/${campaign.id}`;
         expect(h.live, `${where} live ≤ total`).toBeLessThanOrEqual(h.total);
         expect(h.advertisable, `${where} advertisable ≤ live`).toBeLessThanOrEqual(h.live);
+        // policyBlocked is a SUBSET of the products `advertisable` excludes, so it can never
+        // exceed the gap between them — a count that did would be double-reporting a product.
+        expect(h.policyBlocked, `${where} policyBlocked ≤ live - advertisable`).toBeLessThanOrEqual(h.live - h.advertisable);
         expect(h.buyable, `${where} buyable ≤ live`).toBeLessThanOrEqual(h.live);
         for (const [name, n] of Object.entries(h)) expect(n, `${where} ${name} ≥ 0`).toBeGreaterThanOrEqual(0);
       }
