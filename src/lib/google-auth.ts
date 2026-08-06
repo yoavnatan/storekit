@@ -22,7 +22,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 /** Read-only is enough: the job reads product statuses and writes nothing back to Merchant Center.
  *  A token that cannot mutate our catalogue is a token whose leak costs a report, not the account. */
-export const CONTENT_SCOPE = 'https://www.googleapis.com/auth/content';
+const CONTENT_SCOPE = 'https://www.googleapis.com/auth/content';
 
 /** The assertion's own lifetime. Google caps it at an hour; shorter is fine and it is discarded
  *  immediately after the exchange either way. */
@@ -65,11 +65,14 @@ function base64url(input: Buffer | string): string {
 }
 
 /**
- * The signed assertion. Exported for the test, which verifies it with the public half of a generated
- * key pair — the only way to assert "this is really RS256 over exactly these bytes" without a real
- * Google account, and the property that decides whether any of this works on connection day.
+ * The signed assertion.
+ *
+ * Not exported: the test verifies it by capturing what `getGoogleAccessToken` actually POSTs and
+ * checking that signature against the public half of a generated key pair. That is the stronger
+ * assertion anyway — it proves the bytes Google receives are correctly signed, not merely that a
+ * helper can build a correct string and something else might send a different one.
  */
-export function buildAssertion(key: ServiceAccountKey, scope: string, nowSec: number): string {
+function buildAssertion(key: ServiceAccountKey, scope: string, nowSec: number): string {
   const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const claims = base64url(JSON.stringify({
     iss: key.client_email,

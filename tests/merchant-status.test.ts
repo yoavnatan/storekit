@@ -20,16 +20,17 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 import crypto from 'node:crypto';
 import { query } from '../src/lib/db.js';
 import { adItemId, adComboItemId, productIdFromAdItemId } from '../src/lib/ad-item-id.js';
-import { buildAssertion, parseServiceAccountKey } from '../src/lib/google-auth.js';
+import { parseServiceAccountKey } from '../src/lib/google-auth.js';
 import { offerIdFromGoogleProductId } from '../src/lib/merchant-status-google.js';
-import { rejectionCeiling, shouldWarnUnconfigured } from '../src/lib/merchant-status-check.js';
+import { rejectionCeiling } from '../src/lib/merchant-status-check.js';
 import type { MerchantStatusProvider, MerchantStatusReport } from '../src/lib/merchant-status.js';
 
-const net = vi.hoisted(() => ({ responses: [] as { ok: boolean; body: unknown }[], calls: 0 }));
+const net = vi.hoisted(() => ({ responses: [] as { ok: boolean; body: unknown }[], calls: 0, bodies: [] as unknown[] }));
 
 vi.mock('../src/lib/outbound-fetch.js', () => ({
-  outboundFetch: async () => {
+  outboundFetch: async (_url: unknown, options?: { body?: unknown }) => {
     net.calls += 1;
+    net.bodies.push(options?.body);
     const next = net.responses.shift() ?? { ok: true, body: {} };
     return { ok: next.ok, status: next.ok ? 200 : 500, json: async () => next.body } as Response;
   },
@@ -45,11 +46,12 @@ vi.mock('../src/lib/merchant-status.js', async (importOriginal) => ({
 const { createGoogleMerchantProvider } = await import('../src/lib/merchant-status-google.js');
 const { createMetaCatalogProvider } = await import('../src/lib/merchant-status-meta.js');
 const { runMerchantStatusCheck } = await import('../src/lib/merchant-status-check.js');
-const { resetGoogleTokenCache } = await import('../src/lib/google-auth.js');
+const { resetGoogleTokenCache, getGoogleAccessToken } = await import('../src/lib/google-auth.js');
 
 beforeEach(() => {
   net.responses = [];
   net.calls = 0;
+  net.bodies = [];
   providers.list = [];
   resetGoogleTokenCache();
 });
@@ -172,16 +174,23 @@ describe('a provider that cannot reach an answer', () => {
 // The Google assertion is really RS256 over really those bytes
 
 describe('the service-account assertion', () => {
-  it('verifies against the public half of the key that signed it', () => {
+  it('signs what it actually SENDS, verifiably, with the account key', async () => {
     const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
-    const key = { client_email: 'svc@example.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() };
+    const email = 'svc@example.iam.gserviceaccount.com';
+    const key = { client_email: email, private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() };
 
-    const assertion = buildAssertion(key, 'https://www.googleapis.com/auth/content', 1_700_000_000);
-    const [header, claims, signature] = assertion.split('.');
+    net.responses = [{ ok: true, body: { access_token: 'tok', expires_in: 3600 } }];
+    expect(await getGoogleAccessToken(key)).toBe('tok');
+
+    // Taken off the wire rather than from a helper: what has to be right is the bytes Google
+    // receives. A correct builder that something else fails to send is still a broken integration.
+    const sent = new URLSearchParams(String(net.bodies[0]));
+    expect(sent.get('grant_type')).toBe('urn:ietf:params:oauth:grant-type:jwt-bearer');
+    const [header, claims, signature] = String(sent.get('assertion')).split('.');
 
     expect(JSON.parse(Buffer.from(header!, 'base64url').toString())).toEqual({ alg: 'RS256', typ: 'JWT' });
     const parsed = JSON.parse(Buffer.from(claims!, 'base64url').toString());
-    expect(parsed).toMatchObject({ iss: key.client_email, aud: 'https://oauth2.googleapis.com/token', iat: 1_700_000_000 });
+    expect(parsed).toMatchObject({ iss: email, aud: 'https://oauth2.googleapis.com/token', scope: 'https://www.googleapis.com/auth/content' });
     expect(parsed.exp).toBeGreaterThan(parsed.iat);
 
     const verified = crypto.createVerify('RSA-SHA256')
@@ -245,12 +254,6 @@ describe('the check pass', () => {
     expect(await alertsFor('job:merchant-status:unconfigured')).toBe(0);
   });
 
-  it('but a LIVE site with nothing configured is a gap, and says so', () => {
-    // The reminder nobody has to remember. §2 makes advertising launch-blocking, so a production
-    // build running this job at all is the day it should already have been connected.
-    expect(shouldWarnUnconfigured(true)).toBe(true);
-    expect(shouldWarnUnconfigured(false)).toBe(false);
-  });
 
   it('tells the seller once, and stays quiet on the next run while it is still broken', async () => {
     const { sellerId, productIds } = await storeWithProducts(1);

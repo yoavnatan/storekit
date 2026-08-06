@@ -113,20 +113,6 @@ interface NetworkOutcome {
   line: string;
 }
 
-/**
- * Whether an unconfigured platform should say so.
- *
- * Only from a production build. The job is inert without credentials everywhere, but "inert" is the
- * correct and permanent state in dev and CI, and a reminder that fires there is a reminder nobody
- * reads by the time it matters. A production build running this job at all means the site is up —
- * which is precisely the day GO_LIVE §2 says advertising must already be connected.
- *
- * Exported for the test, which cannot flip `import.meta.env.PROD`.
- */
-export function shouldWarnUnconfigured(isProd: boolean): boolean {
-  return isProd;
-}
-
 export async function runMerchantStatusCheck(): Promise<string> {
   const providers = getMerchantStatusProviders();
   if (!providers.length) {
@@ -135,7 +121,11 @@ export async function runMerchantStatusCheck(): Promise<string> {
     // מחובר" — so a live site with these four variables unset is a real gap, not a preference.
     // Every other route to noticing it depends on somebody recalling it on the one day it counts,
     // which is exactly the kind of promise this whole job exists to stop relying on.
-    if (shouldWarnUnconfigured(import.meta.env.PROD)) {
+    //
+    // PROD only, and the condition is inline because a named predicate here could only ever be
+    // tested against itself. The behaviour that matters — dev and CI stay silent, where "inert" is
+    // the correct and permanent state — is asserted through the public function instead.
+    if (import.meta.env.PROD) {
       await alertOnceIn(
         UNCONFIGURED_WINDOW_HOURS,
         'job:merchant-status:unconfigured',
