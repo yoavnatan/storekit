@@ -1,6 +1,6 @@
 import { defineMiddleware } from 'astro:middleware';
 import type { AstroCookies } from 'astro';
-import { randomUUID } from 'node:crypto';
+import { VISITOR_COOKIE, resolveVisitorId, visitorCookieOptions } from './lib/visitor.js';
 import { gzipResponse } from './lib/http-compress.js';
 import { reportStreamErrors } from './lib/stream-errors.js';
 import { logError } from './lib/error-log.js';
@@ -16,7 +16,9 @@ import { HEALTH_PATH } from './pages/api/health.js';
 import { csrfRejection, csrfRequired, csrfTokenFromRequest, verifyCsrfToken } from './lib/csrf.js';
 import { ensureShutdownHookInstalled, trackRequest } from './lib/shutdown.js';
 import { ensureProcessErrorHandlersInstalled } from './lib/process-errors.js';
-import { captureAttribution } from './lib/attribution.js';
+import { captureAttribution, decodeAttribution, encodeAttribution, ATTRIBUTION_COOKIE, ATTRIBUTION_WINDOW_DAYS } from './lib/attribution.js';
+import { HANDOFF_PARAM, readHandoff, platformPageUrl } from './lib/cross-origin-handoff.js';
+import { isPlatformOwnedPath } from './lib/platform-routes.js';
 
 // Stores live at the platform ROOT now — a store home is `/<slug>` and a product page is
 // `/<slug>/<product>` (no `/store/` prefix). So we can't tell a store path from a real platform
@@ -25,19 +27,6 @@ import { captureAttribution } from './lib/attribution.js';
 // seller dashboard's visitor + per-product view counts in one place.
 const STORE_PATH_RE = /^\/([^/]+)(?:\/([^/]+))?\/?$/;
 
-// Stable first-party visitor id — analytics only, httpOnly so it never reaches
-// client JS or a third party. Lets store performance tell unique visitors apart
-// from raw visit count (repeat loads by the same browser reuse this id). Set
-// lazily on the first store-page GET; a ~13-month TTL means a returning visitor
-// still de-dupes across a long gap.
-const VISITOR_COOKIE = 'sn_vid';
-function resolveVisitorId(cookies: AstroCookies): string {
-  const existing = cookies.get(VISITOR_COOKIE)?.value;
-  if (existing) return existing;
-  const id = randomUUID().replace(/-/g, '').slice(0, 20);
-  cookies.set(VISITOR_COOKIE, id, { path: '/', maxAge: 60 * 60 * 24 * 400, httpOnly: true, sameSite: 'lax' });
-  return id;
-}
 
 // Pure observability tap — logs unexpected server errors so the admin
 // Alerts tab has something to show, but never changes what the caller
@@ -50,6 +39,43 @@ function resolveVisitorId(cookies: AstroCookies): string {
 // wants its own caught error visible in the Alerts tab should call
 // logError() directly, the same way checkout.ts does, so the log entry
 // carries a real message/stack instead of a content-free "unhandled 500".
+/**
+ * Adopt the identity a shopper carried over from a seller's own domain (`cross-origin-handoff.ts`).
+ *
+ * Only ever FILLS IN. A cookie already on this origin is the more recent truth — the shopper was
+ * here before — and `attribution.ts` is explicit that a click record is replaced whole by a genuine
+ * landing and never merged, so a token minted minutes ago must not overwrite a fresher click. That
+ * also makes it idempotent: replayed inside its ten minutes it changes nothing the second time.
+ *
+ * The parameter is left in the URL for the page to strip client-side. A redirect would have been
+ * the obvious way to clean it and is the wrong tool here: the handed-over cart rides in the URL
+ * FRAGMENT, and spending a round trip on cosmetics is charged to the one navigation that has to
+ * feel instant. Nothing indexes it either way — the canonical is query-stripped and /checkout is
+ * `noindex`.
+ */
+function consumeHandoff(url: URL, cookies: AstroCookies): void {
+  const payload = readHandoff(url.searchParams.get(HANDOFF_PARAM));
+  if (!payload) return;
+  if (payload.vid && !cookies.get(VISITOR_COOKIE)?.value) {
+    cookies.set(VISITOR_COOKIE, payload.vid, visitorCookieOptions());
+  }
+  if (payload.attr && !cookies.get(ATTRIBUTION_COOKIE)?.value) {
+    // Re-validated, never trusted: a signature proves we minted the string, not that the record
+    // inside it is well-formed or still inside its window ("everything here is untrusted input, on
+    // both ends" — attribution.ts). Re-encoding what came back out is what guarantees this origin
+    // ends up holding a cookie `readAttribution` will accept at checkout.
+    const record = decodeAttribution(payload.attr);
+    if (record) {
+      cookies.set(ATTRIBUTION_COOKIE, encodeAttribution(record), {
+        path: '/',
+        maxAge: ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60,
+        httpOnly: true,
+        sameSite: 'lax',
+      });
+    }
+  }
+}
+
 /**
  * Where a request on an external hostname that NO store claims today should be sent — or null,
  * meaning nobody here has ever answered to this name and it gets a 404.
@@ -149,6 +175,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
       if (host && !isPlatformHost(host)) {
         const cdStore = await getStoreByCustomDomain(host);
         if (cdStore) {
+          // **The transaction belongs to the platform** (`platform-routes.ts` carries the decision
+          // and the reasoning). Checkout, the cart, login and the buyer area are the platform's to
+          // serve, and on this host they would run in a DIFFERENT ORIGIN: a separate cookie jar and
+          // a separate `localStorage`, so the shopper would arrive logged out with an empty cart and
+          // no ad attribution. The page rewrites these links before a click happens
+          // (`custom-domain-links.ts`), so a shopper normally never reaches this line — it is the
+          // floor under a middle-click, a bookmark, a typed URL and a page whose script did not run.
+          // 302, not 301: the URL is the seller's and this answer is about where the SESSION lives,
+          // not a permanent move, and a cached 301 would outlive the store's domain.
+          if (isPlatformOwnedPath(pathname)) {
+            return context.redirect(platformPageUrl(pathname, reqUrl.search), 302);
+          }
           const target = resolveCustomDomainRewrite(cdStore.slug, pathname);
           if (target) return context.rewrite(target + reqUrl.search);
         } else if (isUnclaimedCustomHost(host, false)) {
@@ -177,6 +215,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
       && !pathname.startsWith('/api/')
       && !pathname.startsWith('/admin')
       && !/\.[a-z0-9]+$/i.test(pathname);
+    // **Arriving FROM a seller's own domain (lib/cross-origin-handoff.ts).** A custom domain is a
+    // different browser origin, so `sn_vid` and `sn_attr` — both host-scoped by design — do not
+    // cross it, and the shopper would land here as a brand-new visitor with no ad click. The
+    // crossing carries a signed token instead, and it is consumed HERE, before the two lines below
+    // read those cookies: seeding after `resolveVisitorId` had already minted a fresh id would
+    // leave the store's conversion rate counting one shopper twice.
+    if (isPageCandidate) consumeHandoff(reqUrl, context.cookies);
+
     const vid = isPageCandidate ? resolveVisitorId(context.cookies) : '';
 
     // First-party ad attribution (lib/attribution.ts, GO_LIVE_CHECKLIST.md §2.5 layer 5). If THIS
