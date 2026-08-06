@@ -53,6 +53,10 @@ const ALERT_WINDOW_HOURS = 12;
  *  edit the product and wait for a re-review, so anything shorter is nagging about work in flight. */
 const SELLER_WINDOW_HOURS = 24;
 
+/** How long the "the site is live and this is still not connected" reminder speaks for. A week: it
+ *  is a standing condition, not an incident, and it stops by itself the day the variables are set. */
+const UNCONFIGURED_WINDOW_HOURS = 7 * 24;
+
 /** Below this many rows, ratios mean nothing — three rejected out of four is a small catalogue
  *  having a bad day, not a platform incident. */
 const MIN_SAMPLE = 20;
@@ -90,7 +94,14 @@ function hoursAgo(hours: number): string {
  * the spend stops with the serving. It costs marketing, and marketing does not wake anyone at 2am.
  */
 async function alertOnce(route: string, message: string, resolutionHint: string): Promise<boolean> {
-  if (await hasRecentErrorForRoute(route, hoursAgo(ALERT_WINDOW_HOURS)).catch(() => false)) return false;
+  return alertOnceIn(ALERT_WINDOW_HOURS, route, message, resolutionHint);
+}
+
+/** The same, for a condition whose natural repeat is not the incident window — see
+ *  {@link UNCONFIGURED_WINDOW_HOURS}. Kept as one implementation so the "ask before writing" rule
+ *  has a single definition and only the period varies. */
+async function alertOnceIn(windowHours: number, route: string, message: string, resolutionHint: string): Promise<boolean> {
+  if (await hasRecentErrorForRoute(route, hoursAgo(windowHours)).catch(() => false)) return false;
   await logError({ source: 'server', route, message, resolutionHint })
     .catch(() => { /* the job's own line still reports it */ });
   return true;
@@ -102,9 +113,38 @@ interface NetworkOutcome {
   line: string;
 }
 
+/**
+ * Whether an unconfigured platform should say so.
+ *
+ * Only from a production build. The job is inert without credentials everywhere, but "inert" is the
+ * correct and permanent state in dev and CI, and a reminder that fires there is a reminder nobody
+ * reads by the time it matters. A production build running this job at all means the site is up —
+ * which is precisely the day GO_LIVE §2 says advertising must already be connected.
+ *
+ * Exported for the test, which cannot flip `import.meta.env.PROD`.
+ */
+export function shouldWarnUnconfigured(isProd: boolean): boolean {
+  return isProd;
+}
+
 export async function runMerchantStatusCheck(): Promise<string> {
   const providers = getMerchantStatusProviders();
-  if (!providers.length) return 'not configured — no ad network credentials set';
+  if (!providers.length) {
+    // The reminder nobody has to remember. Advertising is launch-blocking by the owner's own
+    // decision (GO_LIVE §2, 2026-08-04) — "אני לא מתכוון לעלות לאוויר עם נתוני דמו או כשזה לא
+    // מחובר" — so a live site with these four variables unset is a real gap, not a preference.
+    // Every other route to noticing it depends on somebody recalling it on the one day it counts,
+    // which is exactly the kind of promise this whole job exists to stop relying on.
+    if (shouldWarnUnconfigured(import.meta.env.PROD)) {
+      await alertOnceIn(
+        UNCONFIGURED_WINDOW_HOURS,
+        'job:merchant-status:unconfigured',
+        'The site is live and nothing is checking what Google and Meta do with the product feed',
+        'Set GOOGLE_MERCHANT_ID + GOOGLE_SERVICE_ACCOUNT_JSON and META_CATALOG_ID + META_ACCESS_TOKEN (see .env.example, GO_LIVE §2.5 layer 1). Until then a rejected product is invisible: it keeps looking fine on the storefront and no ad runs behind it. This notice stops by itself once they are set.',
+      );
+    }
+    return 'not configured — no ad network credentials set';
+  }
 
   // The two networks are independent: Meta being unreachable must not cost us Google's answer, and
   // they are asked concurrently because each is a slow outbound call to somebody else's API.
