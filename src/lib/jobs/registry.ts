@@ -24,6 +24,7 @@ import { reverifyCustomDomains } from '../custom-domain-verify.js';
 import { syncStoreFeed, syncedRowCount } from '../store-feed-sync.js';
 import { getStoreIdsWithLiveCampaigns } from '../ad-campaigns.js';
 import { getCampaignsForStore } from '../ad-campaign-health.js';
+import { runMerchantStatusCheck } from '../merchant-status-check.js';
 
 export interface Job {
   /** Primary key in `job_runs`. Never rename one — the row is the schedule's memory, and a renamed
@@ -201,6 +202,38 @@ const customDomainCheck: Job = {
   },
 };
 
+/**
+ * Ask Google and Meta what they actually did with our feed.
+ *
+ * *What it fixes:* both networks reject a row **without telling anyone** — the product stays on the
+ * storefront looking fine and no ad ever runs behind it. Nothing inside the application can see it,
+ * because nothing inside the application is wrong. GO_LIVE §2.5 layer 1 had this as a one-time
+ * reading of the approval report by hand on connection day, which is a single look at a state that
+ * changes every time any seller edits any product. Opening the account is a one-time human act;
+ * watching it is this.
+ *
+ * *Idempotent:* it reads two APIs and derives everything from their current answer, exactly like
+ * `custom-domain-check`. The only writes are an alert and a seller notification, and both are
+ * guarded by "has this already been said" windows rather than by having run once
+ * (`merchant-status-check.ts`), so a double run says nothing twice.
+ *
+ * *Inert until configured:* with no credentials `getMerchantStatusProviders()` is empty and the run
+ * reports that and touches nothing — the dev and CI state, and the state until the accounts exist.
+ *
+ * *Every four hours:* the input changes when a seller edits a product and the networks re-review on
+ * their own schedule anyway, which is hours, not minutes. Faster would mostly re-read an unchanged
+ * answer over somebody else's rate limit. The lease is generous because the pass walks the whole
+ * catalogue a page at a time across two APIs.
+ */
+const merchantStatus: Job = {
+  name: 'merchant-status',
+  intervalSec: 4 * HOUR,
+  leaseSec: 30 * MINUTE,
+  async run() {
+    return runMerchantStatusCheck();
+  },
+};
+
 /** The registry. The jobs are independent and the scheduler starts them concurrently, so this order
  *  is only what the log reads like — no job can delay another past its own interval. */
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck];
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus];
