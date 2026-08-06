@@ -55,6 +55,37 @@ export function adComboItemId(productId: string, key: string): string {
 }
 
 /**
+ * The product an advertising id belongs to — the only supported way to read one back.
+ *
+ * **Why a reverse map exists at all:** the ad networks answer in their own vocabulary. Merchant
+ * Center's approval report and Meta's catalog diagnostics both name the offending row by the `id`
+ * WE gave it, so the monitoring job (`merchant-status-check.ts`) cannot tell a seller their product
+ * was rejected without turning that id back into a product. Doing it by hand at that call site would
+ * be a second, drifting copy of this file's format — the exact mistake that made the feed and the
+ * events disagree in the first place.
+ *
+ * **Only the product half is recoverable, and that is by design.** Both spellings above put the
+ * product id first and everything else after a `-`, and a uuid's length is fixed, so the product is
+ * always the leading 36 characters. The combo is NOT recovered: the hashed form is one-way, so a
+ * caller that tried would work for short Hebrew combos and silently fail for long ones. Anything
+ * needing the combo must ask the product for its combos and re-derive their ids forwards.
+ *
+ * Returns null for anything that is not one of our ids — an id the networks hold from an older feed,
+ * or a row we never emitted. A null must be reported as "unrecognised", never skipped quietly.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function productIdFromAdItemId(itemId: string): string | null {
+  if (!itemId) return null;
+  const head = itemId.slice(0, 36);
+  if (!UUID_RE.test(head)) return null;
+  // Length 36 is the bare product; anything longer must be the combo form, i.e. `-` then a non-empty
+  // key. `<uuid>x…` is not one of ours and must not be read as the product it happens to start with.
+  if (itemId.length === 36) return head;
+  return itemId[36] === '-' && itemId.length > 37 ? head : null;
+}
+
+/**
  * Google's hard cap on the `id` attribute: **50 characters** (Merchant Center product data spec,
  * checked against the published spec on 2026-08-04 — Meta's own limit is looser, so this is the
  * binding one). Over it the row is REJECTED, and rejected the way this whole file exists to prevent:
