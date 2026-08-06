@@ -70,7 +70,16 @@ export function cnameTarget(): string {
 
 /** Lowercase + strip scheme/path/port, then validate. Returns the clean hostname or null if it
  *  isn't a usable public host. SECURITY: a seller can never claim the platform's own domain (or a
- *  subdomain of it) — that would let a custom-domain record hijack the platform's routing. */
+ *  subdomain of it) — that would let a custom-domain record hijack the platform's routing.
+ *
+ *  **`isPlatformHost` is consulted too, and that is the same rule rather than a second one.** The
+ *  configured domain is not the only hostname that is ours: `PLATFORM_HOSTS` declares the others
+ *  (staging, the Cloudflare fallback origin, health-check names — GO_LIVE §1), and the routing side
+ *  already refuses to treat any of them as a store. Only the claiming side did not, so the two
+ *  disagreed: a seller could register one, the record would say "connected" forever, and the
+ *  dashboard would keep telling them to wait for a verification that can never come. Worse before
+ *  the middleware short-circuit existed, when claiming the fallback origin really did capture it.
+ *  One question — "is this hostname ours?" — asked in one place. */
 export function normalizeHostname(input: string): string | null {
   let h = input.trim().toLowerCase();
   if (!h) return null;
@@ -78,6 +87,7 @@ export function normalizeHostname(input: string): string | null {
   if (!HOSTNAME_RE.test(h)) return null;
   const platformHost = new URL(platform.url).hostname.replace(/^www\./, '');
   if (h === platformHost || h === `www.${platformHost}` || h.endsWith(`.${platformHost}`)) return null;
+  if (isPlatformHost(h)) return null;
   return h;
 }
 
@@ -261,6 +271,28 @@ export function isPlatformHost(hostname: string): boolean {
   const extra = (serverEnv('PLATFORM_HOSTS') ?? '')
     .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
   return extra.includes(h);
+}
+
+/**
+ * The other spelling of the same domain — `www.` added, or removed. Null when there isn't one.
+ *
+ * A custom domain is stored and matched as ONE exact hostname, which is correct for routing and
+ * wrong for the way people own domains: a seller who connects `mybrand.co.il` almost always has
+ * `www.mybrand.co.il` pointed at the same place (their registrar's default, or habit), and the
+ * reverse is just as common. That twin matches no store, so it fell to `isUnclaimedCustomHost` and
+ * answered **404 on the seller's own domain** — a dead site, on the half of their brand that older
+ * links, printed material and word of mouth are most likely to use. The middleware 301s it to the
+ * claimed spelling instead, which is also what makes the two stop competing as duplicate content.
+ *
+ * `www.example` → null on purpose: stripping `www.` from a two-label host leaves a single label,
+ * which is not a public domain and must never be looked up as one.
+ */
+export function hostnameAlias(hostname: string): string | null {
+  const h = normalizeRequestHost(hostname);
+  if (!h || !h.includes('.')) return null;
+  if (!h.startsWith('www.')) return `www.${h}`;
+  const bare = h.slice(4);
+  return bare.includes('.') ? bare : null;
 }
 
 /** True when a request's Host is a real external domain pointed at us but NOT claimed by any active

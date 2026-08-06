@@ -8,7 +8,8 @@ import { recordPageViewTap } from './lib/page-view-tap.js';
 import { isBotRequest } from './lib/bot-detect.js';
 import { getSellerSession } from './lib/seller-auth.js';
 import { getStoreBySlug, getStoreByCustomDomain, getStoreByPreviousCustomDomain, isReservedSlug } from './lib/stores.js';
-import { resolveCustomDomainRewrite, isUnclaimedCustomHost, previousDomainRedirectUrl } from './lib/custom-domain.js';
+import { resolveCustomDomainRewrite, isUnclaimedCustomHost, previousDomainRedirectUrl, isPlatformHost, hostnameAlias } from './lib/custom-domain.js';
+import { machineUrl } from './lib/url-base.js';
 import { getProductBySlug } from './lib/store-products.js';
 import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
 import { HEALTH_PATH } from './pages/api/health.js';
@@ -49,6 +50,36 @@ function resolveVisitorId(cookies: AstroCookies): string {
 // wants its own caught error visible in the Alerts tab should call
 // logError() directly, the same way checkout.ts does, so the log entry
 // carries a real message/stack instead of a content-free "unhandled 500".
+/**
+ * Where a request on an external hostname that NO store claims today should be sent — or null,
+ * meaning nobody here has ever answered to this name and it gets a 404.
+ *
+ * Two ways a live hostname stops matching a store, and both used to end the same way:
+ *  1. **It moved.** The seller removed their domain or swapped it for another. Every link, bookmark
+ *     and indexed page earned on it 404s — the worst outcome for the store that built the most
+ *     audience, since the 301 onto that domain had deliberately consolidated its whole ranking
+ *     there. Migration 0015 remembers the old hostname; this is what reads it.
+ *  2. **It is the other spelling.** `www.` present when the store registered it absent, or the
+ *     reverse — see `custom-domain.ts#hostnameAlias`. The seller pointed both at us because that is
+ *     how domains are owned; only one is in our record.
+ *
+ * Ordered claimed-first: an active domain must never be shadowed by a stale row, and a store that
+ * moved away answers about ITS OWN old host before we start guessing at spellings.
+ */
+async function unclaimedHostRedirect(host: string, pathname: string, search: string): Promise<string | null> {
+  const previousOwner = await getStoreByPreviousCustomDomain(host);
+  if (previousOwner) return previousDomainRedirectUrl(previousOwner, pathname, search);
+
+  const alias = hostnameAlias(host);
+  if (!alias) return null;
+  const twin = await getStoreByCustomDomain(alias);
+  // The store sits at the ROOT of both spellings, so the path carries over untouched. `machineUrl`
+  // for the reason every redirect in this application uses it: a product slug is Hebrew here, and a
+  // raw one in a Location header throws a 500 instead of redirecting (url-base.ts).
+  if (twin) return machineUrl(`https://${alias}${pathname === '/' ? '' : pathname}${search}`);
+  return null;
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
   // The background scheduler's ignition (lib/jobs/scheduler.ts, DB_MIGRATION_PLAN.md §8 stage 4a).
   // Astro's node adapter exposes no "server started" hook, so the first request this process
@@ -110,25 +141,27 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // so this block is a no-op for all normal platform traffic.
     if (!/\.[a-z0-9]+$/i.test(pathname)) {
       const host = context.request.headers.get('host') ?? reqUrl.host;
-      const cdStore = host ? await getStoreByCustomDomain(host) : null;
-      if (cdStore) {
-        const target = resolveCustomDomainRewrite(cdStore.slug, pathname);
-        if (target) return context.rewrite(target + reqUrl.search);
-      } else if (host && isUnclaimedCustomHost(host, false)) {
-        // Nobody claims this host TODAY — but a store may have been served from it until recently.
-        // A seller who removes their domain (or swaps it for another) would otherwise 404 every link
-        // and every indexed page they earned on it, which is the opposite of what moving to a custom
-        // domain was for: the 301 onto that domain deliberately consolidated the store's whole
-        // ranking there. Same answer the slug rename already gives — remember the old address and
-        // 301 it — see migration 0015 and stores.ts#getStoreByPreviousCustomDomain.
-        const previousOwner = await getStoreByPreviousCustomDomain(host);
-        if (previousOwner) {
-          return context.redirect(previousDomainRedirectUrl(previousOwner, pathname, reqUrl.search), 301);
+      // **The platform's own host skips all of it, and that is not just an optimisation.** A seller
+      // can never claim the platform hostname (`normalizeHostname` refuses it), so for the host that
+      // serves virtually every request this block was guaranteed to look up nothing and find
+      // nothing — one indexed SELECT in front of every page load, before a single thing the page
+      // actually needs. No-op in effect, a round trip in cost.
+      if (host && !isPlatformHost(host)) {
+        const cdStore = await getStoreByCustomDomain(host);
+        if (cdStore) {
+          const target = resolveCustomDomainRewrite(cdStore.slug, pathname);
+          if (target) return context.rewrite(target + reqUrl.search);
+        } else if (isUnclaimedCustomHost(host, false)) {
+          // Nobody claims this host TODAY — but it may be a hostname a store moved off, or the
+          // www/apex twin of one it still uses. Both are the seller's own address in a visitor's
+          // hands, and both used to answer 404. See `unclaimedHostRedirect`.
+          const moved = await unclaimedHostRedirect(host, pathname, reqUrl.search);
+          if (moved) return context.redirect(moved, 301);
+          // A real external domain is pointed at us but no store claims it and none ever did (DNS
+          // set up before the store connected, or a stranger's misconfiguration). Answer 404 rather
+          // than serve the platform homepage on a stranger's domain.
+          return new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
         }
-        // A real external domain is pointed at us but no store claims it and none ever did (DNS set
-        // up before the store connected, or a stranger's misconfiguration). Answer 404 rather than
-        // serve the platform homepage on a stranger's domain.
-        return new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
       }
     }
     // A navigable page — the only kind we count in the first-party funnel and

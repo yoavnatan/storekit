@@ -1,0 +1,92 @@
+export const prerender = false;
+import type { APIContext } from 'astro';
+import { store as platform } from '../config/store.config.js';
+import { getStoreByCustomDomain } from '../lib/stores.js';
+import { isPlatformHost } from '../lib/custom-domain.js';
+import { stripTrailingSlashes } from '../lib/url-base.js';
+
+// robots.txt — SSR, because it is HOST-DEPENDENT and used not to be.
+//
+// This was a static `public/robots.txt`, and a static file answers every hostname with the same
+// bytes. That is wrong the moment a seller's own domain serves their store: `shop.mybrand.co.il`
+// was handing crawlers a file whose only two `Sitemap:` lines point at `dezabin.co.il`. A sitemap
+// reference across hosts is ignored by every engine (neither host has proven it owns the other), so
+// the seller's domain declared NO sitemap at all — while `sitemap-content.xml` was already serving
+// that domain's own correct sitemap, with nothing anywhere pointing to it. The one file whose whole
+// job is to tell a crawler where to look was the one file that could not tell it apart.
+//
+// Deleting the public file is what makes this route reachable: a file in `public/` outranks a route.
+
+/** The crawl rules, identical on every host — they describe paths, and every platform path exists on
+ *  a custom host too (the middleware passes reserved routes through untouched, so `/checkout` and
+ *  `/admin` really do resolve there). `feedAllowed` is the one difference: Merchant Center and the
+ *  Meta catalog fetch the feed from the PLATFORM domain and only from there (custom-domain.ts →
+ *  AD_LANDING_PARAM), so re-inviting a crawler into `/api/feed/` on a seller's domain would publish
+ *  the whole mall's catalogue under their hostname for no gain. */
+function rules(feedAllowed: boolean): string {
+  const feed = feedAllowed
+    ? '# Block the API surface, but the product feed under it MUST stay fetchable —\n'
+      + '# Google Merchant Center / Meta Catalog crawl it and honour robots.txt. Google\n'
+      + '# resolves the longest matching rule, so this Allow wins for the feed path only.\n'
+      + 'Allow: /api/feed/\n'
+    : '';
+  return `Allow: /\nDisallow: /admin\nDisallow: /checkout\n${feed}Disallow: /api\n`;
+}
+
+/** The AI answer engines we explicitly welcome (AIO): our stores and products may be surfaced and
+ *  cited in AI shopping answers. A named group REPLACES the '*' rules for that bot, so the same
+ *  protections have to be repeated inside it. Google-Extended / Applebot-Extended are grounding
+ *  opt-ins — listing them Allow is a deliberate "yes, use our catalog" (see /llms.txt). */
+export const AI_AGENTS = [
+  'GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'PerplexityBot', 'Perplexity-User',
+  'ClaudeBot', 'anthropic-ai', 'Claude-Web', 'Google-Extended', 'Applebot-Extended',
+  'Amazonbot', 'Meta-ExternalAgent', 'CCBot',
+];
+
+function body(sitemaps: readonly string[], feedAllowed: boolean): string {
+  const block = rules(feedAllowed);
+  return [
+    `User-agent: *\n${block}`,
+    `${AI_AGENTS.map((a) => `User-agent: ${a}`).join('\n')}\n${block}`,
+    sitemaps.map((s) => `Sitemap: ${s}`).join('\n') + '\n',
+  ].join('\n');
+}
+
+export async function GET(ctx: APIContext): Promise<Response> {
+  const host = (ctx.request.headers.get('host') ?? '').toLowerCase().replace(/:\d+$/, '').trim();
+
+  // A seller's own verified domain: its sitemap is the one `sitemap-content.xml` builds for THAT
+  // host, and it is the only sitemap that may be named here. The platform's two are not this
+  // domain's to declare, and the static file was declaring them anyway.
+  if (host && !isPlatformHost(host)) {
+    // **This lookup may not be allowed to fail the response, and that is not ordinary defensiveness.**
+    // A 5xx on robots.txt is read by Google as "disallow everything" and pauses crawling of the
+    // whole site for hours — so an unreachable database would turn a partial outage into an SEO
+    // outage that outlives it, on the one file that has no content worth failing over. Same reason
+    // `/api/health` is exempted from this middleware: what reports the outage must survive it.
+    const store = await getStoreByCustomDomain(host).catch(() => null);
+    if (store) {
+      return txt(body([`https://${store.customDomain!.hostname}/sitemap-content.xml`], false));
+    }
+    // An unrecognised host (an old domain still 301-ing, DNS pointed here before the store
+    // connected) — or the database was the thing that could not answer. Fall through to the
+    // platform rules, which are never wrong to state and never block a crawler.
+  }
+
+  const base = stripTrailingSlashes(platform.url);
+  // Two sitemaps, and Google merges multiple `Sitemap:` directives: the static one for build-time
+  // public routes, and the dynamic one enumerating every store + product page (SSR — absent from
+  // the static sitemap).
+  return txt(body([`${base}/sitemap-index.xml`, `${base}/sitemap-content.xml`], true));
+}
+
+function txt(content: string): Response {
+  return new Response(content, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      // Short, because the answer changes the day a seller's domain verifies.
+      'Cache-Control': 'public, max-age=300',
+    },
+  });
+}
