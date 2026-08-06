@@ -15,6 +15,20 @@
  * each call site — `tests/outbound-fetch-guard.test.ts` fails the build on a bare `fetch()` to an
  * absolute URL in server code, the same way `lib/request-body.ts` and `lib/cdn.ts` are enforced.
  *
+ * **It is not server-only, and the guard test cannot see the browser case.** This module imports
+ * nothing, so it runs in a bundle as happily as in Node — and the deadline matters there too, just
+ * for a different reason. `tests/outbound-fetch-guard.test.ts` flags a bare `fetch()` handed a
+ * literal or a known endpoint constant, which is how every SERVER call site is written; a browser
+ * call site is usually `fetch(url)` where `url` came out of an input's value, and that shape is
+ * indistinguishable from the same-origin `fetch(url)` calls the rule deliberately allows. So it is
+ * a rule rather than a check: **a browser fetch of a third-party URL takes a deadline too.** Both
+ * current cases are the dashboard re-fetching a stored image from Cloudinary behind a loading state
+ * (`scripts/dashboard/store-image.ts`, `scripts/dashboard/gallery.ts`), where a CDN that accepted
+ * the connection and then went quiet left a seller's button spinning with no error and no way out
+ * but a reload. They pass 30s, not the default: those download a full-resolution ORIGINAL, whose
+ * honest duration is a real megabyte count over a real phone connection. The one browser exemption
+ * stays the upload POST in `scripts/dashboard/cloudinary.ts`, and the guard test's header argues it.
+ *
  * **What it deliberately does not do.** No retries — a retry policy belongs to the caller, who is
  * the only one who knows whether the request is idempotent (re-POSTing an email send is a second
  * email). No error swallowing: a timeout raises, so a caller that wants "best effort" writes the

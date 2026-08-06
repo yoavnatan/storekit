@@ -35,6 +35,7 @@ const showcase = demoStores.find((s) => (demoProducts.get(s.id) ?? []).length > 
 const oauthError = Astro.url.searchParams.get('error');
 const oauthErrorMsg =
   oauthError === 'oauth_denied' ? t.auth.oauthDenied :
+  oauthError === 'oauth_unverified_email' ? t.auth.oauthUnverifiedEmail :
   oauthError ? t.auth.oauthFailed : '';
 
 let error = oauthErrorMsg;
@@ -44,7 +45,9 @@ if (Astro.request.method === 'POST') {
   const name     = String(form.get('name')     || '').trim();
   const email    = String(form.get('email')    || '').trim();
   const password = String(form.get('password') || '');
-  const next     = String(form.get('_next')    || safeNext);
+  // The hidden field is as attacker-controlled as `?next=` — a form on someone else's page posts
+  // here with whatever it likes — so it goes through the same rule (lib/safe-redirect.ts).
+  const next     = safeRedirectPath(String(form.get('_next') ?? ''), safeNext, ['/seller/register']);
 
   if (!name || !email || !password) {
     error = t.auth.allRequired;

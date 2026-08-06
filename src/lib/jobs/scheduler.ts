@@ -76,11 +76,50 @@ export function schedulerEnabled(): boolean {
 }
 
 /**
+ * Every run is bounded by its own lease, and a run that passes it is ABANDONED.
+ *
+ * **The failure this closes is a job that hangs rather than throws.** A throw is handled — it is
+ * caught, logged and the lease released. A promise that never settles is not: `inFlight` keeps that
+ * job's name for the life of the process, so it never runs again here; `finishJob` is never called,
+ * so its row keeps whatever `last_status` the PREVIOUS run left, very possibly `'ok'`. The result is
+ * a job that stopped weeks ago while the table says it is fine — the exact silent-failure shape
+ * every scheduled job in this registry exists to prevent, happening to the scheduler itself. Nothing
+ * blocks a request either way (the timer is `unref`'d and rides no request), which is precisely why
+ * nobody would notice.
+ *
+ * **Why the lease is the right number and not a new one to choose.** `leaseSec` already means "past
+ * this point another instance may run this job", so a run still going at its lease is one the system
+ * has ALREADY decided may be overlapped. Timing out there risks nothing that was not permitted a
+ * millisecond earlier, and it needs no judgement call: raising a job's lease raises its deadline
+ * with it, in the one place a lease is declared.
+ *
+ * **The abandoned work keeps running — we cannot kill a promise.** That is safe here for the reason
+ * `registry.ts` states as a hard requirement of every entry: each job is idempotent, so a zombie
+ * finishing its writes after a fresh run has started leaves the same state either way. The
+ * bookkeeping recovers immediately: the row is marked failed, the lease is released, and the next
+ * interval runs the job for real.
+ */
+function withLeaseDeadline(job: Job, run: Promise<string>): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`did not finish inside its ${job.leaseSec}s lease and was abandoned`)),
+      job.leaseSec * 1000,
+    );
+    // Never a reason for the process to stay alive, same rule as the tick timers.
+    timer.unref?.();
+    // Handlers are attached to the ORIGINAL promise, so a zombie that eventually rejects is handled
+    // and cannot surface as an unhandled rejection long after the run was written off.
+    run.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+
+/**
  * Run one job if it is due and unclaimed. Returns what was recorded, or `null` if this instance did
  * not get it (another instance holds it, or it is simply not due yet).
  *
- * The `finally` is the important part: a job that throws still releases its lease, so its next run
- * is at its next interval rather than whenever the lease happens to expire.
+ * The `finally` is the important part: a job that throws — or is abandoned at its lease, see above —
+ * still releases its lease, so its next run is at its next interval rather than whenever the lease
+ * happens to expire.
  */
 export async function runJobIfDue(job: Job): Promise<string | null> {
   if (inFlight.has(job.name)) return null;
@@ -91,7 +130,7 @@ export async function runJobIfDue(job: Job): Promise<string | null> {
   let ok = false;
   let detail = '';
   try {
-    detail = await job.run();
+    detail = await withLeaseDeadline(job, job.run());
     ok = true;
   } catch (err) {
     detail = err instanceof Error ? err.message : String(err);

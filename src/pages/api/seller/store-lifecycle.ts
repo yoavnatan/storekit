@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
+import { ownedStore } from '../../../lib/store-ownership.js';
 import { pauseStore, resumeStore, requestStoreClosure, openOrderCount } from '../../../lib/store-lifecycle.js';
 import { pingStoreChange } from '../../../lib/indexnow.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
@@ -31,7 +31,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   // Ownership from the session's own store list, never from the request — the id is
   // attacker-controlled, and this is a state change on a whole storefront.
-  const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === String(body?.storeId ?? ''));
+  const store = await ownedStore(sellerId, String(body?.storeId ?? ''));
   if (!store) return json({ ok: false, error: 'החנות לא נמצאה.' }, 404);
 
   const result = action === 'pause' ? await pauseStore(store.id)

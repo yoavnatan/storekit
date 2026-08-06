@@ -1,8 +1,10 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../lib/stores.js';
-import { createProduct, updateProduct, deleteProduct, getProductById, getProductsByStoreId, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
+// One definition of "is this store / this product this seller's" — shared with the dashboard's
+// no-JS fallback handlers, which is where it was missing entirely (lib/store-ownership.ts).
+import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
+import { createProduct, updateProduct, deleteProduct, getProductsByStoreId, isSkuTaken, countStockAlerts, type StoreProduct } from '../../lib/store-products.js';
 import { LOW_STOCK_THRESHOLD, generateCombos, comboKey, comboStockRows, isFullyPerCombo, sumComboOverrides } from '../../lib/variant-combo.js';
 import { parseImages, parseCategoryId, parseSku, parseBrand, parseWeight, parseTags, parseSpecs, parseSellerNote, parseVariantsPayload, parseProductDiscount } from '../../lib/product-form.js';
 import { normalizeProductDiscount } from '../../lib/discount-input.js';
@@ -87,8 +89,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'add-product') {
     const storeId = String(form.get('storeId') || '');
-    const stores = await getStoresBySellerId(sellerId);
-    const ownerStore = stores.find((s) => s.id === storeId);
+    const ownerStore = await ownedStore(sellerId, storeId);
     if (!ownerStore) return json({ ok: false, error: 'Not authorized' }, 403);
 
     const name = String(form.get('name') || '').trim();
@@ -145,10 +146,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'edit-product') {
     const productId = String(form.get('productId') || '');
-    const product = await getProductById(productId);
-    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const ownedStores = await getStoresBySellerId(sellerId);
-    if (!ownedStores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const claim = await ownedProduct(sellerId, productId);
+    if (!claim.ok) return claim.reason === 'not-found'
+      ? json({ ok: false, error: 'Product not found.' }, 404)
+      : json({ ok: false, error: 'Not authorized.' }, 403);
+    const { product, store: productStore } = claim;
 
     const submittedPrice = parseFloat(String(form.get('price') || '0'));
     const submittedStock = parseInt(String(form.get('stock') || '0'), 10);
@@ -269,7 +271,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // product update pinged: the feed and sitemap self-refresh (built per request), but nothing
     // TOLD anyone, so an edit waited for an organic crawl. The slug is `updated`'s, not the
     // stored one — a rename moves the page.
-    pingProductChange(ownedStores.find((s) => s.id === product.storeId)!, updated.slug);
+    pingProductChange(productStore, updated.slug);
     const categoryPathStr = updated.categoryId ? categoryPath(await getCategoriesByStoreId(product.storeId), updated.categoryId) : '';
     // The edit row stays in the DOM after a save, so it gets the revision it now
     // holds — otherwise a second save from the same open row would report a conflict
@@ -279,10 +281,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'patch-product-fields') {
     const productId = String(form.get('productId') || '');
-    const product = await getProductById(productId);
-    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = await getStoresBySellerId(sellerId);
-    if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const claim = await ownedProduct(sellerId, productId);
+    if (!claim.ok) return claim.reason === 'not-found'
+      ? json({ ok: false, error: 'Product not found.' }, 404)
+      : json({ ok: false, error: 'Not authorized.' }, 403);
+    const { product, store: productStore } = claim;
 
     const patch: Partial<Omit<StoreProduct, 'id' | 'storeId' | 'createdAt'>> = {};
     if (form.has('name')) {
@@ -337,7 +340,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if ('stock' in patch) await deleteNotificationsByRelatedIds([productId], sellerId);
     // An inline cell edit changes name/price — both of which the product page and the feed
     // publish, so it is as public a change as the full form's.
-    pingProductChange(stores.find((s) => s.id === product.storeId)!, updated.slug);
+    pingProductChange(productStore, updated.slug);
     // The partial-save actions return the new revision so the open edit row — which the
     // client patches field-by-field to match — stays in step and doesn't report the
     // seller's own inline edit as a conflict.
@@ -351,10 +354,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // being a partial map has always meant (variant-combo.ts#comboStockRows).
   if (action === 'patch-variant-stock') {
     const productId = String(form.get('productId') || '');
-    const product = await getProductById(productId);
-    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = await getStoresBySellerId(sellerId);
-    if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const claim = await ownedProduct(sellerId, productId);
+    if (!claim.ok) return claim.reason === 'not-found'
+      ? json({ ok: false, error: 'Product not found.' }, 404)
+      : json({ ok: false, error: 'Not authorized.' }, 403);
+    const { product } = claim;
     if (!product.variants?.length) return json({ ok: false, error: 'Product has no variants.' }, 400);
 
     const key = String(form.get('comboKey') || '');
@@ -405,24 +409,25 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const productId = String(form.get('productId') || '');
     const images = parseImages(form);
     if (!productId) return json({ ok: false, error: 'Missing productId.' }, 400);
-    const product = await getProductById(productId);
-    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = await getStoresBySellerId(sellerId);
-    if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const claim = await ownedProduct(sellerId, productId);
+    if (!claim.ok) return claim.reason === 'not-found'
+      ? json({ ok: false, error: 'Product not found.' }, 404)
+      : json({ ok: false, error: 'Not authorized.' }, 403);
+    const { product, store: productStore } = claim;
     const updated = await updateProduct(productId, { images });
     warmImageDerivations(images.filter((u) => !(product.images ?? []).includes(u)));
     // The gallery IS the listing to a shopping surface — image_link is what the feed leads with.
-    if (updated) pingProductChange(stores.find((s) => s.id === product.storeId)!, updated.slug);
+    if (updated) pingProductChange(productStore, updated.slug);
     return json({ ok: true, rev: updated ? productEditRev(updated) : undefined, images: updated?.images ?? [] });
   }
 
   if (action === 'set-product-visibility') {
     const productId = String(form.get('productId') || '');
-    const product = await getProductById(productId);
-    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = await getStoresBySellerId(sellerId);
-    const visStore = stores.find((s) => s.id === product.storeId);
-    if (!visStore) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const claim = await ownedProduct(sellerId, productId);
+    if (!claim.ok) return claim.reason === 'not-found'
+      ? json({ ok: false, error: 'Product not found.' }, 404)
+      : json({ ok: false, error: 'Not authorized.' }, 403);
+    const { product, store: visStore } = claim;
     // A seller can only flip their own take-down flag; an admin `blocked` product
     // stays hidden regardless (isProductVisible gates on both).
     const hidden = String(form.get('hidden') || '') === '1';
@@ -443,7 +448,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // batch; a blank/zero value clears instead of storing an inert discount.
   if (action === 'bulk-discount') {
     const storeId = String(form.get('storeId') || '');
-    const ownerStore = (await getStoresBySellerId(sellerId)).find((s) => s.id === storeId);
+    const ownerStore = await ownedStore(sellerId, storeId);
     if (!ownerStore) return json({ ok: false, error: 'Not authorized' }, 403);
 
     const ids = String(form.get('productIds') || '').split(',').map((v) => v.trim()).filter(Boolean);
@@ -476,16 +481,17 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   if (action === 'delete-product') {
     const productId = String(form.get('productId') || '');
-    const product = await getProductById(productId);
-    if (!product) return json({ ok: false, error: 'Product not found.' }, 404);
-    const stores = await getStoresBySellerId(sellerId);
-    if (!stores.find((s) => s.id === product.storeId)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const claim = await ownedProduct(sellerId, productId);
+    if (!claim.ok) return claim.reason === 'not-found'
+      ? json({ ok: false, error: 'Product not found.' }, 404)
+      : json({ ok: false, error: 'Not authorized.' }, 403);
+    const { product, store: productStore } = claim;
     await deleteProduct(productId);
     // Submitting a URL that is now GONE is correct IndexNow usage, not a mistake: the point is to
     // get it recrawled, and what the crawler finds is a 404 — which is how it leaves the index.
     // Without this a deleted product goes on being offered in results, and in AI shopping answers,
     // until an organic crawl happens to trip over it. Read the slug BEFORE the row is gone.
-    pingProductChange(stores.find((s) => s.id === product.storeId)!, product.slug);
+    pingProductChange(productStore, product.slug);
     return json({ ok: true, stockAlerts: await countStockAlerts(product.storeId, LOW_STOCK_THRESHOLD) });
   }
 

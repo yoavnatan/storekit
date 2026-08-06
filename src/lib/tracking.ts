@@ -1,4 +1,5 @@
 import { sumMoney } from './money.js';
+import { reportClientError } from '../scripts/error-reporter.js';
 
 export interface TrackItem {
   /** **The CATALOG id — what Google and Meta look this item up by.** Always built by
@@ -34,22 +35,62 @@ export interface TrackLine extends TrackItem {
  */
 const reportable = (item: TrackItem): boolean => !!item.id;
 
+/**
+ * **Nothing in this module may throw into its caller.** Every third-party call below goes through
+ * here, and this is a load-bearing guard rather than defensive habit.
+ *
+ * `window.dataLayer.push` is NOT `Array.prototype.push` once GTM has loaded — the container
+ * replaces it with its own function that synchronously evaluates every matching trigger, variable
+ * and custom template. A broken tag in a container edited in the GTM UI, by someone who never
+ * touches this repository, therefore throws straight back out of `push`. `window.fbq` behaves the
+ * same way once `fbevents.js` swaps the queueing stub for `callMethod`. And `?.` guards only a
+ * MISSING `dataLayer`, not one an extension or another script has replaced with a non-array, where
+ * `.push` is `undefined` and the call is a `TypeError`.
+ *
+ * What that cost before this existed: all four add-to-cart handlers are written as
+ * `addItem(…); trackAddToCart(…); …reveal "לתשלום"…`, so a throw here left the item genuinely in
+ * the cart while the button that leads to checkout was never shown and the button that was just
+ * pressed never changed. The buyer sees a click that did nothing, on the one control the whole
+ * catalogue exists to serve — because of an analytics tag. Reordering the four call sites would fix
+ * those four; this fixes the fifth one somebody adds next, which is the same argument `reportable`
+ * above makes for living here instead of at the call sites.
+ *
+ * Reported ONCE per page, never per event: the failure is a property of the container, so a
+ * per-event report would spend the whole per-session budget in `error-reporter.ts` (5) on repeats
+ * of one fact and hide the real errors behind it. Once is enough to make a broken container visible
+ * in the Alerts tab, which is the alternative to it being invisible forever.
+ */
+let trackingFailureReported = false;
+
+function tap(channel: 'dataLayer' | 'fbq' | 'funnel', send: () => void): void {
+  try {
+    send();
+  } catch (err) {
+    if (trackingFailureReported) return;
+    trackingFailureReported = true;
+    reportClientError(
+      `tracking: ${channel} threw — ${err instanceof Error ? err.message : String(err)}`,
+      err instanceof Error ? err.stack : undefined,
+    );
+  }
+}
+
 export function trackViewContent(item: TrackItem): void {
   if (!reportable(item)) return;
-  window.dataLayer?.push({
+  tap('dataLayer', () => window.dataLayer?.push({
     event: 'view_item',
     ecommerce: {
       currency: 'ILS',
       items: [{ item_id: item.id, item_name: item.name, price: item.price, item_category: item.category ?? '' }],
     },
-  });
-  window.fbq?.('track', 'ViewContent', {
+  }));
+  tap('fbq', () => window.fbq?.('track', 'ViewContent', {
     content_ids: [item.id],
     content_type: 'product',
     value: item.price,
     currency: 'ILS',
     content_name: item.name,
-  });
+  }));
 }
 
 export function trackAddToCart(item: TrackItem, qty: number): void {
@@ -64,33 +105,41 @@ export function trackAddToCart(item: TrackItem, qty: number): void {
   // wiring gap on one surface and must not cost the internal funnel its event; a missing uuid must
   // not cost Google and Meta theirs.
   if (reportable(item)) {
-    window.dataLayer?.push({
+    tap('dataLayer', () => window.dataLayer?.push({
       event: 'add_to_cart',
       ecommerce: {
         currency: 'ILS',
         items: [{ item_id: item.id, item_name: item.name, price: item.price, item_category: item.category ?? '', quantity: qty }],
       },
-    });
-    window.fbq?.('track', 'AddToCart', {
+    }));
+    tap('fbq', () => window.fbq?.('track', 'AddToCart', {
       content_ids: [item.id],
       content_type: 'product',
       value: item.price * qty,
       currency: 'ILS',
       content_name: item.name,
-    });
+    }));
   }
   // First-party funnel capture (separate from the third-party dataLayer/fbq above, which store
   // nothing we can query). One central call here covers every add-to-cart surface — product page,
   // store card, quick-view modal. The session id is read server-side from the httpOnly sn_vid
   // cookie, never sent from here.
-  void fetch('/api/analytics/event', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    // The raw uuid, never `item.id` — see the field docs. Omitted rather than blanked when absent:
-    // the route records the stage regardless and only the product attribution is lost.
-    body: JSON.stringify({ type: 'add_to_cart', ...(item.productId ? { productId: item.productId } : {}) }),
-    keepalive: true,
-  }).catch(() => undefined);
+  //
+  // Inside `tap` like the two above, even though this half is ours and the `.catch` already covers
+  // the request failing. What the `.catch` cannot cover is `fetch` throwing SYNCHRONOUSLY — which is
+  // what a browser extension that has monkey-patched `window.fetch` does, and those are common on
+  // exactly the machines that also run an ad blocker. The rejection path and the throw path are
+  // different paths, and only one of them was handled.
+  tap('funnel', () => {
+    void fetch('/api/analytics/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // The raw uuid, never `item.id` — see the field docs. Omitted rather than blanked when absent:
+      // the route records the stage regardless and only the product attribution is lost.
+      body: JSON.stringify({ type: 'add_to_cart', ...(item.productId ? { productId: item.productId } : {}) }),
+      keepalive: true,
+    }).catch(() => undefined);
+  });
 }
 
 /**
@@ -120,7 +169,7 @@ export function trackInitiateCheckout(input: readonly TrackLine[]): void {
   // (lib/money.ts) rather than by a second one that drifts from it.
   const value = sumMoney(lines.map((l) => l.price * l.qty));
   const numItems = lines.reduce((sum, l) => sum + l.qty, 0);
-  window.dataLayer?.push({
+  tap('dataLayer', () => window.dataLayer?.push({
     event: 'begin_checkout',
     ecommerce: {
       currency: 'ILS',
@@ -129,8 +178,8 @@ export function trackInitiateCheckout(input: readonly TrackLine[]): void {
         item_id: l.id, item_name: l.name, price: l.price, item_category: l.category ?? '', quantity: l.qty,
       })),
     },
-  });
-  window.fbq?.('track', 'InitiateCheckout', {
+  }));
+  tap('fbq', () => window.fbq?.('track', 'InitiateCheckout', {
     content_ids: lines.map((l) => l.id),
     // `contents` carries the quantities that `content_ids` cannot. Meta accepts either; sending
     // both is what lets its value-optimisation see a cart of five as different from a cart of one.
@@ -139,5 +188,5 @@ export function trackInitiateCheckout(input: readonly TrackLine[]): void {
     value,
     currency: 'ILS',
     num_items: numItems,
-  });
+  }));
 }

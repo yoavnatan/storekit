@@ -35,6 +35,27 @@
  * native `loading="lazy"` attribute costs nothing and does not have that
  * problem; above-the-fold/LCP images take `loading="eager"` +
  * `fetchpriority="high"` instead.
+ *
+ * ── WHAT HAPPENS WHEN CLOUDINARY IS DOWN (audited 2026-08-06) ────────────────
+ *
+ * **The product page still loads, and every function here is why.** They are pure string
+ * manipulation: regex, template, return. Nothing in this file opens a socket, nothing here is
+ * `async`, and no page ever waits on the CDN to decide what to render. A Cloudinary outage means
+ * broken `<img>`s on a page whose prices, stock, variants, cart and pay button all work — the
+ * shopper can still complete the purchase, which is the property that matters and the reason this
+ * paragraph is here rather than in a document nobody opens.
+ *
+ * That is not luck, and it is one small edit away from being untrue. The tempting "improvement" is a
+ * probe: check whether a derivation exists, fall back to the original if not, warm it before
+ * rendering. Any of those makes the CDN a dependency of the HTML, and then a Cloudinary incident is
+ * a mall-wide outage instead of a bad-looking afternoon. `tests/cdn-degradation.test.ts` fails on it.
+ *
+ * The three places that DO talk to Cloudinary are outside this file and each is deliberately off
+ * the buyer's path: `lib/image-derive.ts` warms renders at SAVE time and is `void`ed, never awaited
+ * (and is banned from buyer pages by `tests/secondary-service-isolation.test.ts`);
+ * `scripts/store-glow.ts` samples a logo in the browser and applies nothing if the image never
+ * loads; `lib/img-skeleton.ts` clears its shimmer on `error` as well as on `load`, so a dead image
+ * leaves an empty box and never a permanent placeholder covering content.
  */
 
 const CLOUD = import.meta.env.PUBLIC_CLOUDINARY_CLOUD_NAME as string | undefined;

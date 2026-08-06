@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../../lib/stores.js';
+import { ownedStore } from '../../../lib/store-ownership.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { syncStoreFeed } from '../../../lib/store-feed-sync.js';
 
@@ -24,7 +24,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const read = await readJsonBody<{ storeId?: string; commit?: boolean }>(request, BODY_LIMIT.control);
   if (!read.ok) return json({ ok: false, error: 'Invalid body' }, read.status);
   const body = read.value;
-  const store = (await getStoresBySellerId(sellerId)).find((s) => s.id === (body.storeId ?? ''));
+  const store = await ownedStore(sellerId, body.storeId ?? '');
   if (!store) return json({ ok: false, error: 'Not authorized' }, 403);
 
   const { status, body: resBody } = await syncStoreFeed(store, !!body.commit);

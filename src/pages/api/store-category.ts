@@ -1,7 +1,7 @@
 export const prerender = false;
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId } from '../../lib/stores.js';
+import { ownedStore } from '../../lib/store-ownership.js';
 import { createCategory, renameCategory, deleteCategory, moveCategory, getCategoryById, buildCategoryTree, getCategoriesByStoreId } from '../../lib/store-categories.js';
 import { findSpamKeyword, spamRejectionMessage, findKeywordStuffing, stuffingRejectionMessage } from '../../lib/spam-filter.js';
 import { refreshStoreSaleScope } from '../../lib/store-sale-scope.js';
@@ -14,7 +14,7 @@ function json(data: unknown, status = 200) {
 }
 
 async function ownsStore(sellerId: string, storeId: string): Promise<boolean> {
-  return (await getStoresBySellerId(sellerId)).some((s) => s.id === storeId);
+  return !!(await ownedStore(sellerId, storeId));
 }
 
 async function ownsCategory(sellerId: string, categoryId: string): Promise<boolean> {

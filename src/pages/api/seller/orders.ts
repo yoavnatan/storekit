@@ -314,7 +314,22 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     // Source-agnostic status pipeline: whoever moved the status (seller today,
     // carrier webhook later), the buyer gets told. No-op if no buyer account —
     // see order-notify.ts.
-    await notifyOrderStatusChanged(updated, prevStatus, { storeName: store.name, storeSlug: store.slug });
+    //
+    // **Caught, because of what sits AFTER it.** The status is already persisted and the stock is
+    // already back by this line, so telling the buyer is the least load-bearing thing in the block —
+    // but it is in the middle of it. A throw here would 500 a status change that had in fact
+    // succeeded, and, worse, would skip `settleStoreClosure` below: a seller who asked to close
+    // their store and was waiting on this last open order would have the closure silently not
+    // happen, with nothing to retry because the status change will never fire again. Both halves
+    // inside `notifyOrderStatusChanged` already swallow their own failures, so this is the outer
+    // net for the parts that are not I/O — and the ordering, not the odds, is the reason it is here.
+    //
+    // `try`/`catch` and not `.catch()`: this covers a SYNCHRONOUS throw as well as a rejection, and
+    // the two are different paths — the first version chained `.catch` and blew up on a stub that
+    // returns nothing, which is a fair warning about assuming the shape of what comes back.
+    try {
+      await notifyOrderStatusChanged(updated, prevStatus, { storeName: store.name, storeSlug: store.slug });
+    } catch { /* the status change and the restock both stand */ }
     // A seller who asked to close the store while orders were still open gets that closure
     // completed HERE, the moment the last one stops being an open obligation — rather than
     // having to come back and press the button a second time (store-lifecycle.ts). No-op unless
