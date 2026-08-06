@@ -62,9 +62,18 @@ describe('what the networks prohibit is caught', () => {
 describe('ordinary marketplace products are NOT caught — the half that keeps this honest', () => {
   it.each([
     ['a kitchen knife — Google prohibits weapons, not cutlery', { name: 'סכין שף 20 ס״מ' }],
+    // The owner stress-tested the list with these two on 2026-08-07. They pass because the bare
+    // "אקדח" and the bare "רובה" are deliberately absent — only phrases that cannot be a tool are
+    // listed. Pinned here so nobody "tightens" the list by adding the bare word.
+    ['a staple gun', { name: 'אקדח סיכות חשמלי' }],
+    ['a nail gun', { name: 'אקדח מסמרים' }],
+    ['a nail gun, the other Hebrew name', { name: 'רובה מסמרים' }],
     ['a glue gun — "אקדח" is why the bare word is not on the list', { name: 'אקדח דבק חם' }],
     ['a heat gun', { name: 'אקדח חום תעשייתי' }],
     ['a water pistol', { name: 'אקדח מים לילדים' }],
+    ['a caulking gun', { name: 'אקדח סיליקון' }],
+    ['a paint sprayer', { name: 'אקדח צבע' }],
+    ['a grease gun', { name: 'אקדח שמנון' }],
     ['a pocket knife', { name: 'אולר רב-שימושי' }],
     ['a grinder for coffee', { name: 'מטחנת קפה' }],
     ['a coffee grinder, English', { name: 'Burr coffee grinder' }],

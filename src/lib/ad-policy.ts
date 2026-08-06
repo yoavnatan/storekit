@@ -51,8 +51,11 @@ const AD_PROHIBITED_TERMS: readonly string[] = [
   'cannabis', 'marijuana', 'cbd oil', 'bong', 'grinder for weed',
 
   // ── Weapons, ammunition, explosives (Google: Prohibited; Meta: Prohibited) ───
-  // NOT the bare "אקדח" (glue gun, heat gun, water gun) and NOT "סכין" (kitchen knives are the
-  // marketplace's ordinary business) — only what cannot be anything else.
+  // NOT the bare "אקדח" and NOT the bare "רובה": in Hebrew both are ordinary hardware — אקדח
+  // סיכות (staple gun), אקדח מסמרים / רובה מסמרים (nail gun), אקדח דבק, אקדח חום, אקדח סיליקון,
+  // אקדח צבע, אקדח שמנון, אקדח מים. The owner found the first two by inspection on 2026-08-07;
+  // all of them are pinned as MUST-NOT-match in tests/ad-policy.test.ts. Nor "סכין" — kitchen
+  // knives are the marketplace's ordinary business. Only what cannot be anything else.
   'תת מקלע', 'תת-מקלע', 'רובה ציד', 'תחמושת', 'כדורי רובה', 'אגרופן', 'אלת הלם',
   'firearm', 'firearms', 'ammunition', 'silencer', 'brass knuckles', 'stun gun', 'pepper spray',
   'זיקוקים', 'חומר נפץ', 'explosives',
