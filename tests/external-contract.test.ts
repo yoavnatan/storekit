@@ -409,6 +409,33 @@ describe('every internal link the site renders itself resolves to a route', () =
   });
 });
 
+// ── 4c. The file that tells crawlers where to look must be able to see the host ──
+
+/**
+ * A file in `public/` outranks a route of the same name, silently.
+ *
+ * `robots.txt` is host-dependent: on a seller's verified domain it must name THAT domain's sitemap
+ * and no other, because a `Sitemap:` line pointing across hosts is ignored by every engine. A static
+ * file cannot do that — it answered every hostname with the platform's two sitemap URLs, leaving the
+ * seller's domain declaring none while `sitemap-content.xml` was already serving it a correct one.
+ * It is now `src/pages/robots.txt.ts` (tests/robots-txt.test.ts covers what it says).
+ *
+ * The failure mode this guards is not the bug returning by edit — it is the bug returning by
+ * ADDITION: dropping a `robots.txt` back into `public/` restores the old behaviour in full, with the
+ * route still sitting there looking correct and never being reached.
+ */
+describe('robots.txt is a route, not a static file', () => {
+  it('no public/ file shadows it', () => {
+    const shadowed = readdirSync(join(process.cwd(), 'public'))
+      .filter((name) => name.toLowerCase() === 'robots.txt');
+    expect(shadowed, 'public/robots.txt outranks src/pages/robots.txt.ts and cannot vary by host').toEqual([]);
+  });
+
+  it('the route exists', () => {
+    expect(readdirSync(join(SRC, 'pages'))).toContain('robots.txt.ts');
+  });
+});
+
 // ── 5. One product, one public URL and one catalog id ────────────────────────
 
 describe('two surfaces describing one product describe it identically', () => {

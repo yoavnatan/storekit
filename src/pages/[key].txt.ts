@@ -8,9 +8,10 @@ import { store as platform } from '../config/store.config.js';
 // dynamically from config so it exists the moment a key is set — no repo file
 // to add, and the filename tracks the key automatically.
 //
-// This is a broad dynamic route (`/<anything>.txt`), but static routes
-// (/llms.txt) and public files (/robots.txt) take precedence in Astro, so it
-// only ever catches an actual key request; anything else 404s.
+// This is a broad dynamic route (`/<anything>.txt`), but a static route always takes precedence
+// over a dynamic one in Astro — /llms.txt and /robots.txt are both real routes (robots.txt stopped
+// being a `public/` file when it had to vary by Host) — so this only ever catches an actual key
+// request; anything else 404s.
 export async function GET({ params }: APIContext): Promise<Response> {
   const key = platform.seo?.indexNowKey?.trim();
   if (!key || params.key !== key) return new Response('Not found', { status: 404 });

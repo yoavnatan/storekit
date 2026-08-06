@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { isBotUserAgent, isBotRequest } from '../src/lib/bot-detect.js';
-import fs from 'node:fs';
-import path from 'node:path';
+import { AI_AGENTS } from '../src/pages/robots.txt.js';
 
 const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
@@ -21,12 +20,11 @@ describe('isBotUserAgent', () => {
   });
 
   it('catches every crawler robots.txt invites', () => {
-    const robots = fs.readFileSync(path.join(process.cwd(), 'public/robots.txt'), 'utf8');
-    const agents = [...robots.matchAll(/^User-agent:\s*(.+)$/gim)]
-      .map((m) => m[1].trim())
-      .filter((a) => a !== '*');
-    expect(agents.length).toBeGreaterThan(5); // the list is real, not an empty pass
-    for (const agent of agents) {
+    // The list itself, not a regex over the rendered file: robots.txt became an SSR route (it is
+    // host-dependent — see tests/robots-txt.test.ts), and the invitation is now a declared array.
+    // Importing it makes this a real contract between the two modules instead of a text scrape.
+    expect(AI_AGENTS.length).toBeGreaterThan(5); // the list is real, not an empty pass
+    for (const agent of AI_AGENTS) {
       expect(isBotUserAgent(`${agent}/1.0 (+https://example.com/bot.html)`), agent).toBe(true);
     }
   });
