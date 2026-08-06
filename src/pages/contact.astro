@@ -1,0 +1,92 @@
+---
+/** Contact — one of the two pages the site-wide footer has always linked to and neither of which
+ *  existed until 2026-08-06. Both 404'd on every page of the platform.
+ *
+ *  **It is not only a broken link, and that is why it is a page and not a `mailto:`.** Google
+ *  Merchant Center suspends an ACCOUNT (not an item) for "misrepresentation" when a shop does not
+ *  publish who is behind it and how to reach them, and Meta's commerce eligibility asks for the
+ *  same. One suspended account here is every seller's ads at once — the single-account model that
+ *  lets a seller advertise without registering anywhere is also what makes that failure shared.
+ *  A page a crawler can read is what both platforms look for.
+ *
+ *  Deliberately thin on promises: it names the one channel that really exists (email — there is no
+ *  phone line and no ticketing system yet, see GO_LIVE §4) and does not invent a response time.
+ *  A published SLA nobody is rostered to meet is the same misrepresentation in the other direction.
+ *
+ *  Hebrew copy, both languages: this is Israel-facing, and a machine-translated support page reads
+ *  as a shell. The English UI gets the same text with an English lede.
+ */
+export const prerender = false;
+
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoresBySellerId } from '../lib/stores.js';
+import { getLang } from '../i18n/index.js';
+import { store as platform } from '../config/store.config.js';
+
+const lang = getLang(Astro.cookies);
+const dir = lang === 'he' ? 'rtl' : 'ltr';
+
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
+
+const email = platform.business.email;
+const title = lang === 'he' ? 'יצירת קשר' : 'Contact';
+const description = lang === 'he'
+  ? `איך יוצרים קשר עם ${platform.name} — קונים, מוכרים ופניות בנושא חנות.`
+  : `How to reach ${platform.name} — buyers, sellers, and store enquiries.`;
+---
+
+<BaseLayout
+  title={`${title} — ${platform.name}`}
+  description={description}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  <section class="section container" dir={dir}>
+    <h1 class="!text-[1.6rem] !font-semibold">{title}</h1>
+
+    <p style="margin-top:1rem;max-width:60ch">
+      {lang === 'he'
+        ? `${platform.name} היא זירת מסחר: כל חנות מנוהלת בידי עסק עצמאי, ו${platform.name} מפעילה את הפלטפורמה שבתוכה החנויות פועלות.`
+        : `${platform.name} is a marketplace: each store is run by an independent business, and ${platform.name} operates the platform they sell on.`}
+    </p>
+
+    <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">
+      {lang === 'he' ? 'שאלה על הזמנה שביצעת' : 'A question about an order you placed'}
+    </h2>
+    <p style="max-width:60ch">
+      {lang === 'he'
+        ? 'המוכר הוא הכתובת הראשונה — הוא זה שאורז ושולח. בעמוד כל חנות יש כפתור "צור קשר עם החנות", וההתכתבות נשמרת גם באזור האישי שלך.'
+        : 'The seller is the first address — they are the one packing and shipping. Every store page has a "contact the store" button, and the thread is kept in your account area.'}
+    </p>
+
+    <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">
+      {lang === 'he' ? 'פנייה לפלטפורמה' : 'Reaching the platform'}
+    </h2>
+    <p style="max-width:60ch">
+      {lang === 'he'
+        ? 'לכל דבר אחר — פתיחת חנות, תקלה באתר, דיווח על תוכן, או פנייה שהמוכר לא נענה לה:'
+        : 'For anything else — opening a store, a fault on the site, reporting content, or an enquiry a seller has not answered:'}
+    </p>
+    <p style="margin-top:0.5rem;font-weight:600">
+      <a href={`mailto:${email}`}>{email}</a>
+    </p>
+
+    <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">
+      {lang === 'he' ? 'פרטי המפעיל' : 'Operator'}
+    </h2>
+    <p style="max-width:60ch">
+      {platform.business.legalName}
+      {platform.business.phone ? ` · ${platform.business.phone}` : ''}
+      {platform.business.address ? ` · ${platform.business.address}` : ''}
+    </p>
+
+    <p style="margin-top:2rem">
+      <a href="/terms" class="muted">{lang === 'he' ? 'תנאי שימוש' : 'Terms of use'}</a>
+    </p>
+  </section>
+</BaseLayout>

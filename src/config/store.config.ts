@@ -98,8 +98,12 @@ export const store: PlatformConfig = {
   business: {
     legalName: 'Dezabin',
     email: 'hello@dezabin.co.il',
-    phone: '',
-    address: '',
+    // Owner-supplied 2026-08-06. These are not decoration: `/contact` publishes them, and the
+    // first thing Merchant Center and Meta look for before approving a commerce account is who
+    // stands behind the site and how to reach them (the "misrepresentation" suspension class).
+    // The page skips either one silently while it is blank, which is exactly how they stayed blank.
+    phone: '054-6918991',
+    address: 'רחוב ברקת 85, שער שומרון, מיקוד 4481000, ישראל',
     currency: 'ILS',
     currencySymbol: '₪',
   },

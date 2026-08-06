@@ -1,0 +1,127 @@
+---
+/** Terms of use — the second page the footer has always linked to and that never existed.
+ *
+ *  See `contact.astro` for why a 404 here is an ACCOUNT-level risk and not a broken link: Merchant
+ *  Center's "misrepresentation" suspension is written around a shop that does not publish who it is
+ *  and on what terms it sells, and one suspension takes every seller's ads down together.
+ *
+ *  **What this page may say.** Only what the code and the owner's recorded decisions already
+ *  establish: that this is a marketplace of independent businesses, how an order is formed, who
+ *  ships, how a seller is billed, and how to reach a human. It states no returns window and no
+ *  refund term — that decision is open (CURRENT_TASK §ג item 11), and inventing one here would
+ *  publish a promise to every buyer that the product's own structured data deliberately refuses to
+ *  guess. When the owner sets it, this page and `hasMerchantReturnPolicy` take the SAME number.
+ *
+ *  ⚠️ NOT a substitute for legal review before launch. It is accurate, not lawyered.
+ *
+ *  Hebrew, in both UI languages, with the Hebrew stated as binding — the standard for an Israeli
+ *  consumer site, and more honest than a machine translation that would then contradict it.
+ */
+export const prerender = false;
+
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSellerSession } from '../lib/seller-auth.js';
+import { getStoresBySellerId } from '../lib/stores.js';
+import { getLang } from '../i18n/index.js';
+import { store as platform } from '../config/store.config.js';
+
+const lang = getLang(Astro.cookies);
+const sellerId = getSellerSession(Astro.cookies);
+const isLoggedIn = !!sellerId;
+const hasStore = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
+
+const title = lang === 'he' ? 'תנאי שימוש' : 'Terms of use';
+const email = platform.business.email;
+
+/** Every clause, in the one language that binds. Kept as data so the markup stays one loop and a
+ *  new clause is one entry — the shape a page nobody visits often still has to stay editable in. */
+const clauses: { h: string; p: string[] }[] = [
+  {
+    h: 'מה זו הפלטפורמה',
+    p: [
+      `${platform.name} היא זירת מסחר מקוונת. כל חנות באתר מנוהלת בידי עסק עצמאי, שהוא המוכר בפועל ואחראי למוצריו, לתיאוריהם, למחיריהם, לאספקתם ולשירות הלקוחות שלהם. ${platform.name} מפעילה את הפלטפורמה, את הסליקה ואת תשתית המשלוחים, ואינה צד לעסקה שבין הקונה למוכר.`,
+    ],
+  },
+  {
+    h: 'הזמנה ותשלום',
+    p: [
+      'ההזמנה נוצרת עם השלמת התשלום בעמוד הצ׳ק-אאוט. המחיר הקובע הוא המחיר המוצג בעמוד המוצר במועד ההזמנה, כולל מבצע שפעיל אז, ובשקלים חדשים.',
+      'סל אחד יכול לכלול מוצרים מכמה חנויות. במקרה כזה נוצרת הזמנה נפרדת מול כל מוכר, וכל אחת מהן נשלחת ומטופלת בנפרד.',
+      'זמינות נבדקת מול המלאי בעת התשלום. אם פריט אזל בין הוספתו לסל לבין התשלום, ההזמנה לא תושלם עליו והתשלום עבורו לא ייגבה.',
+    ],
+  },
+  {
+    h: 'משלוחים',
+    p: [
+      'דמי המשלוח נקבעים בידי הפלטפורמה ומוצגים בצ׳ק-אאוט לפני התשלום. מוכר יכול להציע איסוף עצמי כחלופה. מועד האספקה תלוי במוכר ובחברת השילוח.',
+    ],
+  },
+  {
+    h: 'ביטול והחזרות',
+    p: [
+      'זכות הביטול הקבועה בחוק הגנת הצרכן ובתקנותיו חלה על רכישה באתר, ואינה ניתנת להתניה. פנייה בעניין ביטול או החזרה מופנית תחילה למוכר, דרך כפתור יצירת הקשר בעמוד החנות.',
+    ],
+  },
+  {
+    h: 'פתיחת חנות',
+    p: [
+      'פתיחת חנות פתוחה לעסק פעיל. המוכר אחראי לכך שהמוצרים שהוא מפרסם מותרים למכירה, שהתכנים והתמונות שהעלה הם שלו או שיש לו רשות להשתמש בהם, ושהפרטים שמסר נכונים.',
+      'התשלום לפלטפורמה הוא לפי המסלול שהמוכר בחר — דמי מנוי חודשיים ועמלה מכל מכירה, כפי שהם מוצגים בעמוד המסלולים בעת ההצטרפות ובאזור האישי.',
+      'מוכר יכול להשהות או לסגור את חנותו בכל עת. סגירה נכנסת לתוקף לאחר טיפול בהזמנות הפתוחות.',
+    ],
+  },
+  {
+    h: 'פרסום',
+    p: [
+      `קידום מוצר או חנות ("בוסט") רץ בחשבונות הפרסום של ${platform.name} בגוגל ובמטא. התקציב שהמוכר מגדיר הוא תקרה, והחיוב הוא לפי ההוצאה בפועל בלבד.`,
+    ],
+  },
+  {
+    h: 'תוכן ושימוש לרעה',
+    p: [
+      `${platform.name} רשאית להסיר מוצר או להשעות חנות שמפרים דין, זכויות של צד שלישי או את התנאים האלה. חשד לתוכן מפר אפשר לדווח לכתובת שבעמוד יצירת הקשר.`,
+    ],
+  },
+  {
+    h: 'פרטיות',
+    p: [
+      'הפרטים שנמסרים בהרשמה ובהזמנה משמשים להפעלת האתר, לביצוע ההזמנה ולשירות הלקוחות. פרטי הקונה הדרושים לאספקה נמסרים למוכר שאצלו בוצעה ההזמנה. פרטי אמצעי התשלום מעובדים אצל חברת הסליקה ואינם נשמרים באתר.',
+    ],
+  },
+  {
+    h: 'שינוי התנאים ויצירת קשר',
+    p: [
+      `התנאים עשויים להתעדכן; הנוסח המחייב הוא זה המפורסם בעמוד זה. לכל שאלה: ${email}.`,
+    ],
+  },
+];
+---
+
+<BaseLayout
+  title={`${title} — ${platform.name}`}
+  description={lang === 'he'
+    ? `תנאי השימוש של ${platform.name} — זירת מסחר של עסקים עצמאיים.`
+    : `${platform.name} terms of use — a marketplace of independent businesses.`}
+  isLoggedIn={isLoggedIn}
+  hasStore={hasStore}
+  storeMode={true}
+  showSearch={true}
+>
+  <section class="section container" dir="rtl" style="max-width:70ch">
+    <h1 class="!text-[1.6rem] !font-semibold">תנאי שימוש</h1>
+    {lang !== 'he' && (
+      <p class="muted" style="margin-top:0.75rem">These terms are published in Hebrew, which is the binding version.</p>
+    )}
+
+    {clauses.map((c) => (
+      <>
+        <h2 class="!text-[1.05rem] !font-semibold" style="margin-top:1.75rem">{c.h}</h2>
+        {c.p.map((line) => <p style="margin-top:0.5rem">{line}</p>)}
+      </>
+    ))}
+
+    <p style="margin-top:2rem">
+      <a href="/contact" class="muted">יצירת קשר</a>
+    </p>
+  </section>
+</BaseLayout>
