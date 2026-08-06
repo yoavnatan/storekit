@@ -14,8 +14,9 @@ import { randomUUID } from 'node:crypto';
  *  loads by the same browser reuse this id). */
 export const VISITOR_COOKIE = 'sn_vid';
 
-/** ~13 months, so a returning visitor still de-dupes across a long gap. */
-export const VISITOR_TTL_SEC = 60 * 60 * 24 * 400;
+/** ~13 months, so a returning visitor still de-dupes across a long gap. Not exported: every writer
+ *  goes through `visitorCookieOptions` below, which is the point of it existing. */
+const VISITOR_TTL_SEC = 60 * 60 * 24 * 400;
 
 /** 20 lowercase hex characters. Pinned as a constant because the handoff re-validates against it on
  *  the far side of an origin boundary — a shape asserted in one file and checked in another is the
