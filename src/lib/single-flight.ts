@@ -70,8 +70,9 @@ export function singleFlight<T>(key: string, build: () => Promise<T>): Promise<T
   return shared;
 }
 
-/** How many builds are running right now. For tests and for a future health readout — nothing in a
- *  request path reads it. */
+/** How many builds are running right now. Exported for the tests, which assert that a failed, a
+ *  rejected and a synchronously-throwing build all leave the map empty — a key that leaks would
+ *  wedge its route permanently, and nothing else can observe that. No request path reads it. */
 export function inFlightBuilds(): number {
   return inFlight.size;
 }

@@ -41,9 +41,12 @@ import { store as platform } from '../config/store.config.js';
 import { machineUrl, stripTrailingSlashes } from './url-base.js';
 import { HANDOFF_PARAM } from './platform-routes.js';
 
-/** Re-exported so a server caller has one import for the whole mechanism. It is DECLARED in
- *  `platform-routes.ts` because the browser needs the name too and cannot hold this module. */
-export { HANDOFF_PARAM } from './platform-routes.js';
+// `HANDOFF_PARAM` used to be re-exported here, "so a server caller has one import for the whole
+// mechanism". Its only server caller was `middleware.ts`, and once `adoptHandoff` moved into this
+// module the middleware stopped needing the parameter NAME at all — it hands over the URL and this
+// file reads the parameter itself. The re-export became a second address for a constant that is
+// declared in `platform-routes.ts` (where it has to live: the browser needs the name too and cannot
+// hold this module). Import it from there.
 
 /** How long a minted token stays valid. */
 export const HANDOFF_TTL_MS = 10 * 60 * 1000;
