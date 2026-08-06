@@ -449,7 +449,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   </script>
   <script is:inline type="application/json" id="pm-i18n" set:html={jsonForScript(pmI18n)} />
 
-  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-owner-store={isOwner ? shopStore.slug : undefined} data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''} data-platform-boundary={platformBoundary ? JSON.stringify(platformBoundary) : undefined}>
+  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-owner-store={isOwner ? shopStore.slug : undefined} data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''} data-platform-boundary={platformBoundary ? JSON.stringify(platformBoundary) : undefined} data-ad-landing={adLanding ? '1' : undefined}>
 
     {/* Owner bar. Sits above .store-banner-pin in normal flow, so it simply
         scrolls away and the curtain-scroll geometry below is untouched. */}
@@ -1063,7 +1063,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   import type { StoreProduct as StoreProductDTO } from '../../lib/store-products.js';
   import { PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
   import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
-  import { initCustomDomainLinks, readPlatformBoundary } from '../../lib/custom-domain-links.js';
+  import { initCustomDomainLinks, initAdLandingLinks, readPlatformBoundary } from '../../lib/custom-domain-links.js';
   import { initImageSkeletons } from '../../lib/img-skeleton.js';
   import { initChipScroller } from '../../lib/chip-scroller.js';
   import { initStickyBar } from '../../lib/sticky-bar.js';
@@ -1092,6 +1092,9 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   // and send every PLATFORM-owned link (cart, checkout, login, buyer area) to the platform origin,
   // carrying the basket and the visitor's identity across the boundary (custom-domain-links.ts).
   initCustomDomainLinks(storeSlug, storePage?.dataset.customHost ?? '', readPlatformBoundary(storePage));
+  // A brand campaign lands on THIS page, and the 301 off the platform carries no handoff — so the
+  // first click into any product would drop the ad attribution that paid for the visit.
+  initAdLandingLinks(storeSlug, storePage?.dataset.adLanding === '1');
 
   // Tracks the store's own filter/sort/search query string (kept in sync by
   // syncUrl() below) — read at pagehide time instead of location.search,

@@ -80,6 +80,65 @@ function platformHref(path: string, boundary: PlatformBoundary, storeSlug: strin
   return url.href;
 }
 
+/**
+ * The crossing that goes the OTHER way: an ad landing, which is on the platform and must stay there.
+ *
+ * **What is left after the boundary work (found 2026-08-06).** A custom-domain store is advertised
+ * on the platform domain, because that is the only domain the Merchant/Business account can claim,
+ * and the store pages stand their 301 down when they see `?ad=1`
+ * (`custom-domain.ts#AD_LANDING_PARAM`). That exemption is per-REQUEST, so it covers the landing and
+ * nothing after it: every in-store link is `/<slug>/…` with no marker, and the first click 301s the
+ * shopper onto the seller's domain. `cross-origin-handoff.ts` now carries the cart and the identity
+ * from THERE back to the platform — but nothing carries them platform → seller, so `sn_attr` is
+ * dropped at that hop and the campaign that paid for the click gets no credit for the sale. Which
+ * is exactly the case `platform-routes.ts` records as safe: "paid traffic already lands on the
+ * platform, so the common case is safe" — true of the landing, not of the click after it.
+ *
+ * **Why not put a handoff on the 301 instead.** That redirect is a 301, cached permanently by
+ * browsers and shared caches; a per-visitor signed token inside one would eventually be served to a
+ * different visitor. Downgrading it to a 302 to avoid that would give up the ranking consolidation
+ * the redirect exists for. Not crossing at all costs nothing and needs no token.
+ *
+ * It does not fight the browsing/transaction split either: the ad landing is already a deliberate
+ * exception where browsing happens on the platform, and this only makes that exception hold for the
+ * whole session instead of for one page. The seller loses no SEO — these URLs are `noindex` by the
+ * same rule the landing is, and an ad click never contributed to their ranking.
+ *
+ * Separate from `initCustomDomainLinks` because the two are mutually exclusive by construction: an
+ * ad landing is a PLATFORM-host condition, and that function is a no-op off the custom host.
+ */
+export function initAdLandingLinks(slug: string, isAdLanding: boolean): void {
+  if (!slug || !isAdLanding) return;
+  const prefix = `/${slug}`;
+  const mark = (a: Element): void => {
+    const href = a.getAttribute('href');
+    if (!href) return;
+    const [path, hash = ''] = href.split('#', 2);
+    // In-store links only, and matched on the PATH — `/acme?category=shoes` is the store page's own
+    // category link and the most-clicked link on a brand-campaign landing, but it is neither equal
+    // to `/acme` nor prefixed by `/acme/`, so comparing the whole href silently skipped exactly the
+    // links that matter most. Platform-owned paths (`/checkout`, `/cart`) and anything absolute stay
+    // untouched: they are already on this origin, and a marker their target ignores would only
+    // pollute the URL.
+    const [pathname, query = ''] = path!.split('?', 2);
+    if (pathname !== prefix && !pathname!.startsWith(prefix + '/')) return;
+    if (/(^|&)ad=1(&|$)/.test(query)) return;
+    a.setAttribute('href', `${path}${query ? '&' : '?'}ad=1${hash ? `#${hash}` : ''}`);
+  };
+  const scan = (root: ParentNode): void => root.querySelectorAll('a[href]').forEach(mark);
+  scan(document);
+  new MutationObserver((muts) => {
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        const el = n as Element;
+        if (el.matches?.('a[href]')) mark(el);
+        scan(el);
+      }
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true });
+}
+
 /** Strips the redundant '/<slug>' prefix from every in-store <a href> when on the custom domain, so
  *  the URL bar shows clean root-relative paths, and sends every PLATFORM-owned link to the platform
  *  origin. Also stamps window.__customStoreHost so the shared product modal can build its pushState
