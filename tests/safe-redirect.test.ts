@@ -127,6 +127,19 @@ describe('no route hand-rolls the redirect check', () => {
     expect(offenders).toEqual([]);
   });
 
+  // The gap this closes (2026-08-06): `?next=` was sanitised on every flow, and the hidden `_next`
+  // field the same forms carry was not — login and register both put it straight into a Location.
+  // A hidden input is exactly as attacker-controlled as a query parameter: a form on someone
+  // else's page posts here with whatever it likes, and the victim's own browser follows it.
+  it('sanitises the hidden _next form field, not just the ?next= query', () => {
+    const offenders = walk('src/pages')
+      .filter((f) => /\.(ts|astro)$/.test(f))
+      .filter((f) => readFileSync(f, 'utf8')
+        .split('\n')
+        .some((line) => /get\(['"]_next['"]\)/.test(line) && !line.includes('safeRedirectPath')));
+    expect(offenders).toEqual([]);
+  });
+
   it('never sends a Referer header straight into a Location', () => {
     const offenders = walk('src/pages')
       .filter((f) => /\.(ts|astro)$/.test(f))
