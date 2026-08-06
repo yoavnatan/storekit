@@ -19,7 +19,8 @@
  */
 import { purgeExpiredCheckouts } from '../checkout-idempotency.js';
 import { purgeExpiredAuthAttempts } from '../rate-limit.js';
-import { getStoresWithFeedUrl, canStoreSell } from '../stores.js';
+import { getStoresWithFeedUrl, getStoresWithCustomDomain, canStoreSell } from '../stores.js';
+import { reverifyCustomDomains } from '../custom-domain-verify.js';
 import { syncStoreFeed, syncedRowCount } from '../store-feed-sync.js';
 import { getStoreIdsWithLiveCampaigns } from '../ad-campaigns.js';
 import { getCampaignsForStore } from '../ad-campaign-health.js';
@@ -165,6 +166,41 @@ const purgeAuthAttempts: Job = {
   },
 };
 
+/**
+ * Re-ask the edge provider whether each seller's custom domain still verifies.
+ *
+ * *What it fixes:* the status was written only when a human pressed "check" in the dashboard, and
+ * the application treats it as live fact — an 'active' domain is the store's canonical, what every
+ * platform surface links to, and where the platform path 301s. A seller who unpointed their CNAME
+ * took their own store offline permanently, and nothing was ever going to notice. The reverse case
+ * is just as silent: a domain that finished verifying an hour after the seller closed the tab stayed
+ * 'pending' forever. See `custom-domain-verify.ts` for both, and for why a mass demotion is refused
+ * rather than applied.
+ *
+ * *Idempotent:* it is a function of the provider's current answer, not of a transition. A second
+ * pass asks the same question, gets the same answer and writes the same row. Only a CHANGED status
+ * notifies the seller, so a double run cannot double a notification either.
+ *
+ * *Hourly, 50 at a time:* verification is not urgent to the minute in either direction, and the
+ * batch is one outbound request per hostname — the shape that outgrows its lease. `checkedAt`
+ * (migration 0014) makes the cap a rotation, so a platform with more domains than the cap simply
+ * takes more hours to come round, and the longest-unchecked is always first.
+ */
+const CUSTOM_DOMAIN_BATCH = 50;
+
+const customDomainCheck: Job = {
+  name: 'custom-domain-check',
+  intervalSec: 1 * HOUR,
+  leaseSec: 15 * MINUTE,
+  async run() {
+    const stores = await getStoresWithCustomDomain(CUSTOM_DOMAIN_BATCH);
+    if (!stores.length) return 'no custom domains';
+    const line = await reverifyCustomDomains(stores);
+    const capped = stores.length === CUSTOM_DOMAIN_BATCH ? ` · capped at ${CUSTOM_DOMAIN_BATCH}, the rest go first next run` : '';
+    return `${line}${capped}`;
+  },
+};
+
 /** The registry. The jobs are independent and the scheduler starts them concurrently, so this order
  *  is only what the log reads like — no job can delay another past its own interval. */
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync];
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck];

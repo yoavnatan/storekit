@@ -1,11 +1,13 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getIndexableStores } from '../lib/stores.js';
-import { getVisibleProductRefsByStoreIds } from '../lib/store-products.js';
+import { getIndexableStores, getStoreByCustomDomain, isStoreDiscoverable, type Store } from '../lib/stores.js';
+import { isDemoStore } from '../lib/demo-stores.js';
+import { isPlatformHost } from '../lib/custom-domain.js';
+import { getVisibleProductRefsByStoreIds, type ProductRef } from '../lib/store-products.js';
 import { store as platform } from '../config/store.config.js';
 import { buildUrlSetXml, toSitemapDate, type SitemapEntry } from '../lib/sitemap.js';
 import { isStoreReady } from '../lib/store-readiness.js';
-import { getCategoriesByStoreIds, countProductsPerCategory, categoryUrlParam } from '../lib/store-categories.js';
+import { getCategoriesByStoreIds, countProductsPerCategory, categoryUrlParam, type StoreCategory } from '../lib/store-categories.js';
 import { stripTrailingSlashes, urlSegment } from '../lib/url-base.js';
 
 // Dynamic content sitemap for the SEO pages that @astrojs/sitemap CANNOT see:
@@ -27,7 +29,101 @@ import { stripTrailingSlashes, urlSegment } from '../lib/url-base.js';
 // the 1h cache below; at DB-migration time this becomes a cached/generated
 // artifact with the same output shape.
 
-export async function GET(_ctx: APIContext): Promise<Response> {
+/**
+ * One store's URLs, rooted wherever the store is being served from.
+ *
+ * `origin` + `prefix` are the whole difference between the platform's copy of this sitemap and the
+ * one a seller's own domain serves: on the platform a store lives at `/<slug>/…`, and on its own
+ * domain it lives at the root (`resolveCustomDomainRewrite`). Same entries, same priorities, and
+ * one place that decides what a store's crawlable surface IS — the alternative was two lists that
+ * agree until someone adds a page type to one of them.
+ */
+function storeEntries(
+  s: Pick<Store, 'slug' | 'createdAt'>,
+  products: readonly ProductRef[],
+  categories: StoreCategory[],
+  origin: string,
+  prefix: string,
+): SitemapEntry[] {
+  const entries: SitemapEntry[] = [];
+  // Percent-encoded per segment: product slugs carry Hebrew, and the sitemap protocol requires
+  // <loc> to be an escaped URL — an unencoded one is a validation error, not a rendering nicety.
+  entries.push({
+    loc: `${origin}${prefix || '/'}`,
+    lastmod: toSitemapDate(s.createdAt),
+    changefreq: 'daily',
+    priority: '0.8',
+  });
+  for (const p of products) {
+    entries.push({
+      loc: `${origin}${prefix}/${urlSegment(p.slug)}`,
+      lastmod: toSitemapDate(p.createdAt),
+      changefreq: 'weekly',
+      priority: '0.7',
+    });
+  }
+
+  // Category pages. They became real URLs on 2026-08-03 — before that the filter was a <button>,
+  // so a category was a piece of client state with nothing to list. Each one is a genuine page a
+  // person searches for ("נעליים" inside a named store) and it sits between the store and its
+  // products in the tree, which is what the priority below says.
+  //
+  // Only categories that HOLD something. An empty category is a shelf with nothing on it, and
+  // advertising one earns the domain a thin page for no gain — the same call `isStoreReady` makes
+  // one level up.
+  if (categories.length) {
+    const counts = countProductsPerCategory(categories, products.map((p) => p.categoryId));
+    for (const c of categories) {
+      if ((counts[c.id] ?? 0) === 0) continue;
+      entries.push({
+        loc: `${origin}${prefix || '/'}?category=${urlSegment(categoryUrlParam(c))}`,
+        lastmod: toSitemapDate(s.createdAt),
+        changefreq: 'weekly',
+        priority: '0.75',
+      });
+    }
+  }
+  return entries;
+}
+
+/**
+ * A store on its OWN domain gets its own sitemap, served from that domain.
+ *
+ * It is excluded from the platform's copy below (its platform URLs 301 away, and a sitemap of
+ * redirects is a sitemap of nothing) — which used to leave it with no sitemap anywhere. A sitemap
+ * may only list URLs on the host that serves it, so the seller's domain cannot appear in ours and
+ * ours cannot appear in theirs: the only correct answer is this one, and the same `/sitemap-content.xml`
+ * path already resolves on a custom host (a path with a dot passes the rewrite through untouched).
+ *
+ * This is also what makes a domain switch invisible to a crawler in BOTH directions: whichever
+ * domain the store is on today is the domain whose sitemap lists it, without anything to migrate.
+ */
+async function customHostSitemap(host: string): Promise<Response | null> {
+  const store = await getStoreByCustomDomain(host.toLowerCase().replace(/:\d+$/, '').trim());
+  // The same gates the platform copy applies — a store that is paused, closed, blocked, fabricated
+  // or empty must not be advertised from its own domain either. `isStoreDiscoverable`, not a hand-
+  // rolled flag read: the lifecycle rules are one table (`store-status.ts`) and a second reading of
+  // them is what `tests/store-lifecycle-guard.test.ts` exists to refuse — it caught this exact line.
+  if (!store || !isStoreDiscoverable(store) || isDemoStore(store)) return null;
+  const [productsByStore, categoriesByStore] = await Promise.all([
+    getVisibleProductRefsByStoreIds([store.id]),
+    getCategoriesByStoreIds([store.id]),
+  ]);
+  const products = productsByStore.get(store.id) ?? [];
+  if (!isStoreReady({ visibleProductCount: products.length })) return null;
+  const entries = storeEntries(store, products, categoriesByStore.get(store.id) ?? [], `https://${store.customDomain!.hostname}`, '');
+  return xmlResponse(entries);
+}
+
+export async function GET(ctx: APIContext): Promise<Response> {
+  const host = ctx.request.headers.get('host') ?? '';
+  if (host && !isPlatformHost(host)) {
+    const own = await customHostSitemap(host);
+    // A host we do not recognise falls through to the platform sitemap rather than 404-ing: the
+    // request reached us somehow, and answering it with the platform's own URLs is never wrong.
+    if (own) return own;
+  }
+
   const baseUrl = stripTrailingSlashes(platform.url);
   const entries: SitemapEntry[] = [];
 
@@ -56,46 +152,13 @@ export async function GET(_ctx: APIContext): Promise<Response> {
     // platform domain a thin/soft-404 page for no gain (see lib/store-readiness.ts).
     const visibleProducts = productsByStore.get(s.id) ?? [];
     if (!isStoreReady({ visibleProductCount: visibleProducts.length })) continue;
-    // Percent-encoded per segment: product slugs carry Hebrew, and the sitemap protocol requires
-    // <loc> to be an escaped URL — an unencoded one is a validation error, not a rendering nicety.
-    entries.push({
-      loc: `${baseUrl}/${urlSegment(s.slug)}`,
-      lastmod: toSitemapDate(s.createdAt),
-      changefreq: 'daily',
-      priority: '0.8',
-    });
-    for (const p of visibleProducts) {
-      entries.push({
-        loc: `${baseUrl}/${urlSegment(s.slug)}/${urlSegment(p.slug)}`,
-        lastmod: toSitemapDate(p.createdAt),
-        changefreq: 'weekly',
-        priority: '0.7',
-      });
-    }
-
-    // Category pages. They became real URLs on 2026-08-03 — before that the filter was a <button>,
-    // so a category was a piece of client state with nothing to list. Each one is a genuine page a
-    // person searches for ("נעליים" inside a named store) and it sits between the store and its
-    // products in the tree, which is what the priority below says.
-    //
-    // Only categories that HOLD something. An empty category is a shelf with nothing on it, and
-    // advertising one earns the shared platform domain a thin page for no gain — the same call
-    // `isStoreReady` makes one level up.
-    const categories = categoriesByStore.get(s.id) ?? [];
-    if (categories.length) {
-      const counts = countProductsPerCategory(categories, visibleProducts.map((p) => p.categoryId));
-      for (const c of categories) {
-        if ((counts[c.id] ?? 0) === 0) continue;
-        entries.push({
-          loc: `${baseUrl}/${urlSegment(s.slug)}?category=${urlSegment(categoryUrlParam(c))}`,
-          lastmod: toSitemapDate(s.createdAt),
-          changefreq: 'weekly',
-          priority: '0.75',
-        });
-      }
-    }
+    entries.push(...storeEntries(s, visibleProducts, categoriesByStore.get(s.id) ?? [], baseUrl, `/${urlSegment(s.slug)}`));
   }
 
+  return xmlResponse(entries);
+}
+
+function xmlResponse(entries: SitemapEntry[]): Response {
   return new Response(buildUrlSetXml(entries), {
     status: 200,
     headers: {

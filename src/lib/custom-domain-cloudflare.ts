@@ -7,7 +7,7 @@
 // Kept as its own file so custom-domain.ts (the contract + stub + resolver) carries no provider
 // specifics — swapping Cloudflare for another edge SSL provider means writing one sibling file.
 
-import type { CustomDomainStatus, CustomDomainVerification, CustomHostnameProvider } from './custom-domain.js';
+import type { CustomDomainCheck, CustomDomainVerification, CustomHostnameProvider } from './custom-domain.js';
 import { cnameTarget } from './custom-domain.js';
 import { outboundFetch } from './outbound-fetch.js';
 
@@ -23,12 +23,23 @@ interface CfHostname {
 export function createCloudflareProvider(token: string, zoneId: string): CustomHostnameProvider {
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
-  async function findId(hostname: string): Promise<CfHostname | null> {
+  /**
+   * The stored record for a hostname.
+   *
+   * `reached: false` is NOT the same answer as `hostname: null`, and collapsing the two is the bug
+   * `CustomDomainCheck['unknown']` exists to prevent: the first says "we could not ask Cloudflare",
+   * the second says "Cloudflare has no such hostname". Callers that only want a best-effort id
+   * (register, remove) may treat them alike; `checkStatus` may not, because it is what the periodic
+   * job writes to the database. An HTTP error is a failure to reach an ANSWER even though the
+   * request itself completed, so a non-2xx counts as unreached too.
+   */
+  async function findId(hostname: string): Promise<{ reached: boolean; hostname: CfHostname | null }> {
     try {
       const res = await outboundFetch(`${API}/zones/${zoneId}/custom_hostnames?hostname=${encodeURIComponent(hostname)}`, { headers });
+      if (!res.ok) return { reached: false, hostname: null };
       const data = await res.json() as { result?: CfHostname[] };
-      return data.result?.[0] ?? null;
-    } catch { return null; }
+      return { reached: true, hostname: data.result?.[0] ?? null };
+    } catch { return { reached: false, hostname: null }; }
   }
 
   return {
@@ -54,15 +65,18 @@ export function createCloudflareProvider(token: string, zoneId: string): CustomH
       }
     },
 
-    async checkStatus(hostname: string): Promise<{ status: CustomDomainStatus }> {
-      const hn = await findId(hostname);
+    async checkStatus(hostname: string): Promise<{ status: CustomDomainCheck }> {
+      const { reached, hostname: hn } = await findId(hostname);
+      // Unreachable ⇒ no opinion. Reporting 'pending' here would let one Cloudflare outage demote
+      // every verified domain on the platform at once (custom-domain.ts#CustomDomainCheck).
+      if (!reached) return { status: 'unknown' };
       // Active only when Cloudflare reports both the hostname verified AND the certificate issued.
       const verified = hn?.status === 'active' && hn?.ssl?.status === 'active';
       return { status: verified ? 'active' : 'pending' };
     },
 
     async remove(hostname: string) {
-      const hn = await findId(hostname);
+      const { hostname: hn } = await findId(hostname);
       if (!hn?.id) return;
       try {
         await outboundFetch(`${API}/zones/${zoneId}/custom_hostnames/${hn.id}`, { method: 'DELETE', headers });

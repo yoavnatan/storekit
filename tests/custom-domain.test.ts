@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeHostname, resolveCustomDomainRewrite, storeCanonicalUrl, productCanonicalUrl, storeHomeHref, isPlatformHost, isUnclaimedCustomHost, customDomainRedirectUrl } from '../src/lib/custom-domain.js';
+import { normalizeHostname, resolveCustomDomainRewrite, storeCanonicalUrl, productCanonicalUrl, storeHomeHref, previousDomainRedirectUrl, isPlatformHost, isUnclaimedCustomHost, customDomainRedirectUrl } from '../src/lib/custom-domain.js';
 
 // Platform host is store.config.ts → 'https://dezabin.co.il'.
 describe('normalizeHostname', () => {
@@ -87,6 +87,35 @@ describe('canonical URLs (SEO credit follows an active custom domain)', () => {
     // No active domain → never redirect.
     expect(customDomainRedirectUrl(noDomain, 'dezabin.co.il', '')).toBeNull();
     expect(customDomainRedirectUrl(pending, 'dezabin.co.il', '')).toBeNull();
+  });
+});
+
+describe('an old domain the store has left', () => {
+  // The case the seller actually hits: they connected shop.acme.co.il, Google consolidated the
+  // store's whole ranking onto it (that is what the 301 above is FOR), and then they removed it or
+  // swapped it for another. Every link, bookmark and indexed page on the old host used to 404.
+  const backOnPlatform = { slug: 'acme' };
+  const movedAgain = { slug: 'acme', customDomain: { hostname: 'new.acme.co.il', status: 'active' as const, addedAt: '' } };
+
+  it('sends the root of the old domain to the store home, wherever that is now', () => {
+    expect(previousDomainRedirectUrl(backOnPlatform, '/')).toBe('https://dezabin.co.il/acme');
+    expect(previousDomainRedirectUrl(movedAgain, '/')).toBe('https://new.acme.co.il');
+  });
+
+  it('carries the path over — the store was at the ROOT of the old domain', () => {
+    expect(previousDomainRedirectUrl(backOnPlatform, '/blue-widget')).toBe('https://dezabin.co.il/acme/blue-widget');
+    expect(previousDomainRedirectUrl(movedAgain, '/blue-widget')).toBe('https://new.acme.co.il/blue-widget');
+  });
+
+  it('keeps the query string', () => {
+    expect(previousDomainRedirectUrl(backOnPlatform, '/', '?category=נעליים'))
+      .toBe('https://dezabin.co.il/acme?category=%D7%A0%D7%A2%D7%9C%D7%99%D7%99%D7%9D');
+  });
+
+  it('emits a destination that can actually be a Location header', () => {
+    // A Hebrew product slug raw in a header THROWS a 500 instead of redirecting (url-base.ts).
+    const target = previousDomainRedirectUrl(backOnPlatform, '/נעל-ריצה');
+    expect(() => new Response(null, { status: 301, headers: { Location: target } })).not.toThrow();
   });
 });
 

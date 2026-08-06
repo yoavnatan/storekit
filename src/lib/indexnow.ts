@@ -2,6 +2,8 @@ import { store as platform } from '../config/store.config.js';
 import { isDemoStore } from './demo-stores.js';
 import { stripTrailingSlashes } from './url-base.js';
 import { outboundFetch } from './outbound-fetch.js';
+import { hasActiveCustomDomain } from './custom-domain.js';
+import type { Store } from './stores.js';
 
 // IndexNow — the one ACTIVE indexing lever (vs. passively waiting for a crawl).
 // When a store/product page is newly published or its indexability changes, we
@@ -73,11 +75,23 @@ export function buildIndexNowPayload(paths: string[], cfg: { key: string; siteUr
   return { host, key: cfg.key, keyLocation: `${base}/${cfg.key}.txt`, urlList: abs };
 }
 
-/** Fire-and-forget submit. No-op when disabled (dev / placeholder domain / no
- *  key); swallows every error — indexing must never break or slow a mutation. */
-export async function pingIndexNow(paths: string[]): Promise<void> {
+/**
+ * Fire-and-forget submit. No-op when disabled (dev / placeholder domain / no key); swallows every
+ * error — indexing must never break or slow a mutation.
+ *
+ * `siteUrl` is the host these URLs live on, and it is a parameter because a store on its own domain
+ * publishes URLs on THAT host: IndexNow verifies one submission against one host, so the `host` and
+ * the `keyLocation` in the payload have to be the store's, not ours, or the batch is rejected whole.
+ * The key file answers there too — `/<key>.txt` carries an extension, so the custom-domain rewrite
+ * passes it straight through to the same route that serves it on the platform.
+ *
+ * Submitting the platform URL instead would not have failed loudly; it would have handed Bing a 301
+ * per product and let the store's real URLs be found second-hand. Bing is the index ChatGPT and
+ * Copilot retrieve from, which is the whole reason this file exists.
+ */
+export async function pingIndexNow(paths: string[], siteUrl: string = platform.url): Promise<void> {
   try {
-    const cfg: IndexNowConfig = { key: platform.seo?.indexNowKey, siteUrl: platform.url };
+    const cfg: IndexNowConfig = { key: platform.seo?.indexNowKey, siteUrl };
     if (!paths.length || !indexNowEnabled(cfg)) return;
     const payload = buildIndexNowPayload(paths, { key: cfg.key!.trim(), siteUrl: cfg.siteUrl });
     if (!payload.urlList.length) return;
@@ -95,7 +109,20 @@ export async function pingIndexNow(paths: string[]): Promise<void> {
  *  demo check below can't be forgotten at a call site — pushing a showcase store
  *  (lib/demo-stores.ts) to Bing would put fabricated catalog straight into the
  *  index that feeds ChatGPT/Copilot, which is the exact opposite of the point. */
-export type PingTarget = { slug: string; demo?: boolean };
+export type PingTarget = Pick<Store, 'slug' | 'customDomain'> & { demo?: boolean };
+
+/**
+ * Where this store's URLs actually live, and what to prefix a path with there.
+ *
+ * On its own verified domain the store IS the site root, so its product is `/<product>`; on the
+ * platform it is `/<slug>/<product>`. Same split the sitemap makes, from the same one helper, so
+ * the two surfaces cannot drift into naming a store's pages differently.
+ */
+function pingBase(store: PingTarget): { siteUrl: string; prefix: string } {
+  return hasActiveCustomDomain(store)
+    ? { siteUrl: `https://${store.customDomain!.hostname}`, prefix: '' }
+    : { siteUrl: platform.url, prefix: `/${store.slug}` };
+}
 
 /** Convenience: notify of a changed product page (and its store page, whose
  *  listing the change also affects). No-op for a showcase store. */
@@ -107,7 +134,8 @@ export function pingProductChange(store: PingTarget | undefined, productSlug: st
   // sites moves, a successful delete answers 500. This file's contract is that indexing never
   // breaks a mutation; that has to hold for the synchronous half too.
   if (!store || isDemoStore(store)) return;
-  void pingIndexNow([`/${store.slug}/${productSlug}`, `/${store.slug}`]);
+  const { siteUrl, prefix } = pingBase(store);
+  void pingIndexNow([`${prefix}/${productSlug}`, prefix || '/'], siteUrl);
 }
 
 /**
@@ -121,12 +149,14 @@ export function pingProductChange(store: PingTarget | undefined, productSlug: st
  */
 export function pingProductsChanged(store: PingTarget | undefined, productSlugs: readonly string[]): void {
   if (!store || isDemoStore(store) || !productSlugs.length) return;
-  const paths = productSlugs.map((slug) => `/${store.slug}/${slug}`);
-  void pingIndexNow([...paths, `/${store.slug}`]);
+  const { siteUrl, prefix } = pingBase(store);
+  const paths = productSlugs.map((slug) => `${prefix}/${slug}`);
+  void pingIndexNow([...paths, prefix || '/'], siteUrl);
 }
 
 /** Convenience: notify of a changed store page. No-op for a showcase store. */
 export function pingStoreChange(store: PingTarget): void {
   if (isDemoStore(store)) return;
-  void pingIndexNow([`/${store.slug}`]);
+  const { siteUrl, prefix } = pingBase(store);
+  void pingIndexNow([prefix || '/'], siteUrl);
 }

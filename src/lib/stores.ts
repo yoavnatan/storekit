@@ -126,6 +126,11 @@ export interface Store {
     hostname: string;               // normalized, lowercase, no scheme/path/port (e.g. "shop.example.com")
     status: 'pending' | 'active';
     addedAt: string;
+    /** Last time the edge provider was asked whether this hostname still verifies (migration 0014).
+     *  Absent = never re-checked since the column existed, which sorts FIRST in the job's rotation.
+     *  `status` is only ever as true as this timestamp: a domain the seller has since unpointed
+     *  stays 'active' until something asks again (jobs/registry.ts → custom-domain-check). */
+    checkedAt?: string;
   };
   /** Slugs this store used before the seller renamed its URL. The store page 301-redirects any of
    *  these to the current slug so old links + Google's index transfer instead of 404-ing — that's
@@ -174,7 +179,8 @@ const COLUMNS = `s.id, s.seller_id, s.slug, s.name, s.tagline, s.description, s.
     s.banner_image_source, s.profile_image_source, s.sale, s.address,
     s.address_visible, s.hours, s.hours_visible, s.blocked, s.demo, s.promo_weight, s.bg_colors,
     s.feed_sync, s.feed_export_token, s.custom_domain_hostname, s.custom_domain_status,
-    s.custom_domain_added_at, s.paused_at, s.close_pending_at, s.closed_at, s.created_at,
+    s.custom_domain_added_at, s.custom_domain_checked_at,
+    s.paused_at, s.close_pending_at, s.closed_at, s.created_at,
     (SELECT array_agg(p.slug::text ORDER BY p.replaced_at, p.slug)
        FROM store_previous_slugs p WHERE p.store_id = s.id) AS previous_slugs`;
 
@@ -224,6 +230,7 @@ interface StoreRow {
   custom_domain_hostname: string | null;
   custom_domain_status: 'pending' | 'active' | null;
   custom_domain_added_at: Date | string | null;
+  custom_domain_checked_at: Date | string | null;
   paused_at: Date | string | null;
   close_pending_at: Date | string | null;
   closed_at: Date | string | null;
@@ -282,6 +289,8 @@ function toStore(row: StoreRow): Store {
       status: row.custom_domain_status,
       addedAt: iso(row.custom_domain_added_at) ?? '',
     };
+    const checkedAt = iso(row.custom_domain_checked_at);
+    if (checkedAt) store.customDomain.checkedAt = checkedAt;
   }
   const pausedAt = iso(row.paused_at);
   if (pausedAt) store.pausedAt = pausedAt;
@@ -322,6 +331,12 @@ export const RESERVED_SLUGS = new Set<string>([
   'admin', 'api', 'seller', 'buyer', '404', 'index',
   'sitemap-content', 'llms', 'robots', 'favicon', '_astro', '_image', '_actions',
   'store-unavailable', 'store-gone',
+  // The two footer routes. They were linked from every page on the site while being neither pages
+  // nor reserved words — so `/terms` fell through to the store router, and a seller who registered
+  // the slug `terms` would have had the whole platform linking "תנאי שימוש" to their storefront.
+  // A reserved word and a real page are two halves of one fix: reserving alone leaves the 404 that
+  // Merchant Center reads as a shop with no published terms (contact.astro).
+  'terms', 'contact',
 ]);
 
 const LONGEST_RESERVED_SLUG = Math.max(...[...RESERVED_SLUGS].map((s) => s.length));
@@ -540,6 +555,28 @@ export async function getStoresBySlugs(slugs: readonly string[]): Promise<Store[
   return wanted.map((slug) => bySlug.get(slug.toLowerCase())).filter((s): s is Store => !!s);
 }
 
+/**
+ * Every store that has registered a custom domain, longest-unchecked first, capped.
+ *
+ * Feeds the re-check job (jobs/registry.ts → custom-domain-check). Both statuses are returned, and
+ * that is deliberate in both directions: an 'active' domain must be caught when it STOPS verifying
+ * (the seller's store would otherwise 301 into a dead host forever), and a 'pending' one must be
+ * caught when it STARTS (the seller pointed their DNS, walked away, and nothing was ever going to
+ * tell them it worked — the dashboard's button only helps someone still sitting in front of it).
+ *
+ * No `canStoreSell` filter, unlike the feed job: a paused or blocked store still owns its hostname
+ * and still needs it kept honest, or it comes back from a pause to a domain that quietly died while
+ * nobody was looking. Deleted stores are excluded — their hostname is released with them.
+ */
+export async function getStoresWithCustomDomain(limit = 200): Promise<Store[]> {
+  return (await rows<StoreRow>(
+    `SELECT ${COLUMNS} ${FROM_LIVE} AND s.custom_domain_hostname IS NOT NULL
+      ORDER BY s.custom_domain_checked_at ASC NULLS FIRST, s.id
+      LIMIT $1`,
+    [limit],
+  )).map(toStore);
+}
+
 /** Resolves an inbound request Host to the store that owns it as an ACTIVE custom domain — the
  *  routing counterpart the middleware calls on every custom-host request. Only a verified
  *  (status 'active') hostname is served; a 'pending' one is ignored so an unverified domain can
@@ -548,6 +585,66 @@ export async function getStoreByCustomDomain(hostname: string): Promise<Store | 
   const h = hostname.toLowerCase().replace(/:\d+$/, '').trim();
   if (!h) return null;
   return selectStore(`s.custom_domain_status = 'active' AND s.custom_domain_hostname = $1`, [h]);
+}
+
+/** How many old hostnames to remember per store. Same shape and same reason as MAX_PREVIOUS_SLUGS:
+ *  the oldest 301 source falls off rather than the list growing without bound. */
+export const MAX_PREVIOUS_DOMAINS = 5;
+
+/**
+ * Remember the hostname a store is moving OFF, so its old links keep working (migration 0015).
+ *
+ * Called before the record is cleared or overwritten — after that the hostname is gone and there is
+ * nothing left to redirect from. Idempotent by primary key: re-remembering the same host just
+ * refreshes its timestamp rather than failing the operation that called it.
+ */
+export async function rememberPreviousCustomDomain(storeId: string, hostname: string): Promise<void> {
+  const h = hostname.toLowerCase().trim();
+  if (!isUuid(storeId) || !h) return;
+  await query(
+    `INSERT INTO store_previous_domains (hostname, store_id, replaced_at) VALUES ($1, $2::uuid, now())
+       ON CONFLICT (hostname) DO UPDATE SET store_id = EXCLUDED.store_id, replaced_at = now()`,
+    [h, storeId],
+  );
+  // Trim to the newest N for this store. A `NOT IN (SELECT … LIMIT)` rather than a second round
+  // trip, so the cap costs nothing on the ordinary path where there is nothing to trim.
+  await query(
+    `DELETE FROM store_previous_domains
+      WHERE store_id = $1::uuid
+        AND hostname NOT IN (
+          SELECT hostname FROM store_previous_domains WHERE store_id = $1::uuid
+           ORDER BY replaced_at DESC LIMIT $2)`,
+    [storeId, MAX_PREVIOUS_DOMAINS],
+  );
+}
+
+/**
+ * A hostname is becoming somebody's ACTIVE domain — drop any memory of a previous owner.
+ *
+ * Without this, a store that once used `shop.example` would keep 301-ing it away from the store
+ * that owns it today: the redirect below looks up previous owners only when no active store claims
+ * the host, but a lapsed domain and a re-registered one are the same string. One statement, run at
+ * registration, and the ambiguity cannot exist.
+ */
+export async function claimCustomDomainHostname(hostname: string): Promise<void> {
+  const h = hostname.toLowerCase().trim();
+  if (!h) return;
+  await query(`DELETE FROM store_previous_domains WHERE hostname = $1`, [h]);
+}
+
+/**
+ * The store that USED to be served from this hostname, if any — the 301 source for an old link.
+ *
+ * Consulted only after `getStoreByCustomDomain` finds no active owner, so an active domain can
+ * never be shadowed by a stale row.
+ */
+export async function getStoreByPreviousCustomDomain(hostname: string): Promise<Store | null> {
+  const h = hostname.toLowerCase().replace(/:\d+$/, '').trim();
+  if (!h) return null;
+  return selectStore(
+    `s.id = (SELECT store_id FROM store_previous_domains WHERE hostname = $1)`,
+    [h],
+  );
 }
 
 /** True if ANY store other than `exceptStoreId` has already registered this hostname (pending OR
@@ -790,14 +887,18 @@ export async function updateStore(storeId: string, updates: StoreUpdate): Promis
     sets.push(spec.sql.replace('$', `$${params.length}`));
   }
 
-  // customDomain is three columns, so it cannot sit in the table above — and it is all-or-nothing:
+  // customDomain is four columns, so it cannot sit in the table above — and it is all-or-nothing:
   // clearing it must clear the status too, or a hostname-less 'active' row would be left behind.
+  // Written WHOLE, which is why every caller that changes one field spreads the existing record
+  // (`{ ...store.customDomain, status }`) — an object rebuilt from parts would silently drop
+  // `checkedAt` and hand the re-check job a domain that looks like it has never been verified.
   if ('customDomain' in updates) {
     const cd = updates.customDomain;
-    params.push(cd?.hostname ?? null, cd?.status ?? null, cd?.addedAt ?? null);
-    sets.push(`custom_domain_hostname = $${params.length - 2}`);
-    sets.push(`custom_domain_status = $${params.length - 1}`);
-    sets.push(`custom_domain_added_at = $${params.length}::timestamptz`);
+    params.push(cd?.hostname ?? null, cd?.status ?? null, cd?.addedAt ?? null, cd?.checkedAt ?? null);
+    sets.push(`custom_domain_hostname = $${params.length - 3}`);
+    sets.push(`custom_domain_status = $${params.length - 2}`);
+    sets.push(`custom_domain_added_at = $${params.length - 1}::timestamptz`);
+    sets.push(`custom_domain_checked_at = $${params.length}::timestamptz`);
   }
 
   if (!sets.length) return getStoreById(storeId);

@@ -17,6 +17,22 @@ import { serverEnv } from './runtime-env.js';
 
 export type CustomDomainStatus = 'pending' | 'active';
 
+/**
+ * What a verification check can answer — and `'unknown'` is the load-bearing member.
+ *
+ * A check has two failure modes that look identical from outside and must never be treated alike:
+ * the provider says "this hostname is not verified", and the provider could not be reached. Every
+ * method of the Cloudflare adapter swallows its errors by contract (a hiccup must not break the
+ * seller's dashboard), so an unreachable API used to surface as plain `'pending'`. That is harmless
+ * for a seller pressing a button — and catastrophic for the periodic re-check job behind it, which
+ * would read one expired API token as "every seller unpointed their DNS at the same moment" and
+ * take every custom-domain store off its own domain.
+ *
+ * `'unknown'` is therefore never written to a store: it means *ask again later*, and the caller
+ * leaves the record exactly as it found it.
+ */
+export type CustomDomainCheck = CustomDomainStatus | 'unknown';
+
 /** The DNS records the seller must add at their own registrar for verification + SSL issuance. */
 export interface CustomDomainVerification {
   /** CNAME record value — the seller points their host's CNAME here. */
@@ -30,8 +46,10 @@ export interface CustomHostnameProvider {
   readonly name: string;
   /** Register a hostname for edge routing + SSL. Returns the DNS records the seller must set. */
   register(hostname: string): Promise<{ ok: boolean; verification: CustomDomainVerification; error?: string }>;
-  /** Poll current verification: 'active' once DNS has propagated AND the certificate is issued. */
-  checkStatus(hostname: string): Promise<{ status: CustomDomainStatus }>;
+  /** Poll current verification: 'active' once DNS has propagated AND the certificate is issued,
+   *  'pending' when the provider positively says it is not, and 'unknown' when the provider could
+   *  not be asked at all (see CustomDomainCheck — the distinction is not cosmetic). */
+  checkStatus(hostname: string): Promise<{ status: CustomDomainCheck }>;
   /** De-register a hostname (seller removed it). Best-effort — never throws. */
   remove(hostname: string): Promise<void>;
 }
@@ -109,6 +127,67 @@ export function productCanonicalUrl(store: Pick<Store, 'slug' | 'customDomain'>,
   return `${platform.url}/${urlSegment(store.slug)}/${urlSegment(productSlug)}`;
 }
 
+/**
+ * The query marker that says "this landing was published by the platform's OWN ads".
+ *
+ * **Why a marker exists at all (decided 2026-08-06).** The platform advertises every seller from ONE
+ * Merchant Center, ONE Catalog and ONE Pixel — that single-account model is the reason a seller can
+ * be advertised without registering anywhere, and it is not negotiable. But both networks tie an ad
+ * to a domain the ACCOUNT has proven it owns: Merchant Center serves items only for a claimed
+ * website, and Meta needs the link's domain verified in its Business account. We can claim
+ * `dezabin.co.il`. We cannot claim a thousand sellers' domains, and neither can they — the
+ * verification is done from the advertiser's account, not the site's.
+ *
+ * So an ad landing must be a URL on the platform domain that does NOT bounce off it. Both halves
+ * matter, and the second is where this used to break: the platform product URL 301s to the seller's
+ * domain (see `customDomainRedirectUrl`), so a feed pointing at it handed Google a cross-domain
+ * redirect — the same disapproval, one step later. `adLandingUrl` publishes the platform URL with
+ * this marker, and the two store pages skip their redirect when they see it. The redirect is
+ * untouched for every other visitor, so the seller's domain keeps the whole of the store's SEO —
+ * which is what the 301 was built for and what an ad click was never contributing to anyway.
+ */
+export const AD_LANDING_PARAM = 'ad';
+
+/** True when this URL carries the marker. Pure, so the rule is testable on its own — but a page
+ *  wants `isPlatformAdLanding`, which is this plus the two conditions that make it MEAN anything. */
+export function isAdLanding(url: URL): boolean {
+  return url.searchParams.get(AD_LANDING_PARAM) === '1';
+}
+
+/**
+ * The question a store page actually asks: *is this request the ad landing I published?*
+ *
+ * Three conditions, and each excludes a way the bare parameter would misfire:
+ *  - the marker is present;
+ *  - the store HAS a custom domain — on any other store the platform URL never redirects and the
+ *    feed link carries no parameter, so a hand-typed `?ad=1` must change nothing;
+ *  - the request is on a PLATFORM host — the same string arriving on the seller's own domain would
+ *    otherwise make that page `noindex` and point its canonical at another domain, which is the
+ *    opposite of what the marker is for.
+ */
+export function isPlatformAdLanding(
+  store: Pick<Store, 'customDomain'>,
+  url: URL,
+  requestHost: string | null,
+): boolean {
+  return isAdLanding(url) && hasActiveCustomDomain(store) && isPlatformHost(requestHost ?? '');
+}
+
+/**
+ * The URL the platform's Google/Meta feed publishes for a store home (no `productSlug`) or a
+ * product — **always on the platform domain**, per AD_LANDING_PARAM.
+ *
+ * The marker is appended ONLY for a store that has an active custom domain, because that is the only
+ * store whose platform URL would otherwise redirect. Every other store's ad link is byte-identical
+ * to its canonical, which is the property that keeps the common case free of a tracking parameter
+ * Google would have to be told to ignore.
+ */
+export function adLandingUrl(store: Pick<Store, 'slug' | 'customDomain'>, productSlug?: string): string {
+  const path = productSlug ? `/${urlSegment(store.slug)}/${urlSegment(productSlug)}` : `/${urlSegment(store.slug)}`;
+  const url = `${platform.url}${path}`;
+  return hasActiveCustomDomain(store) ? `${url}?${AD_LANDING_PARAM}=1` : url;
+}
+
 /** When a store has an active custom domain and the current request is NOT already on it, returns the
  *  absolute custom-domain URL to 301-redirect to — so every hit on the platform path
  *  (dezabin.co.il/<slug>, incl. the store's old default URL) permanently moves to the seller's domain
@@ -130,6 +209,26 @@ export function customDomainRedirectUrl(
   // is decoded, so on this Hebrew-slug catalogue the raw value cannot go into a Location header at
   // all — it throws (url-base.ts#machineUrl). One place, so a third caller inherits the answer.
   return machineUrl(`https://${cd.hostname}${pathOnCustom}`);
+}
+
+/**
+ * Where a request on a hostname the store USED to be served from should go (migration 0015).
+ *
+ * The store sat at the ROOT of that old domain, and `storeCanonicalUrl` returns the store's base
+ * wherever it lives now — its new custom domain's root, or `…/<slug>` on the platform. So the path
+ * carries over untouched and lands correctly in both cases: `/blue-widget` becomes
+ * `https://new-domain/blue-widget` or `https://dezabin.co.il/acme/blue-widget`.
+ *
+ * `machineUrl` for the same reason every other redirect in this file uses it: a product slug is
+ * Hebrew here, and a raw one in a `Location` header throws a 500 instead of redirecting.
+ */
+export function previousDomainRedirectUrl(
+  store: Pick<Store, 'slug' | 'customDomain'>,
+  pathname: string,
+  search = '',
+): string {
+  const rest = pathname === '/' ? '' : pathname;
+  return machineUrl(`${storeCanonicalUrl(store)}${rest}${search}`);
 }
 
 /** The href a platform surface (store card, cart/wishlist group, discovery shelf) should use to link
@@ -190,9 +289,11 @@ export function getCustomDomainProvider(): CustomHostnameProvider {
 }
 
 /** Dev/CI stub — no external account. register() just echoes the CNAME instruction; checkStatus()
- *  reports 'pending' (nothing is really verifiable without live DNS), UNLESS CUSTOM_DOMAIN_DEV_AUTOVERIFY
- *  is set, which flips it to 'active' so the full flow (incl. middleware serving) can be exercised
- *  locally. Never touches the network; never throws. */
+ *  reports 'unknown' (with no live DNS and no account there is nothing it could truthfully verify),
+ *  UNLESS CUSTOM_DOMAIN_DEV_AUTOVERIFY is set, which flips it to 'active' so the full flow (incl.
+ *  middleware serving) can be exercised locally. 'unknown' is also what keeps the re-check job inert
+ *  wherever no provider is configured: with nothing able to confirm a domain, nothing may un-confirm
+ *  one either. Never touches the network; never throws. */
 export function createStubProvider(): CustomHostnameProvider {
   const autoVerify = serverEnv('CUSTOM_DOMAIN_DEV_AUTOVERIFY') === '1';
   return {
@@ -200,8 +301,8 @@ export function createStubProvider(): CustomHostnameProvider {
     async register() {
       return { ok: true, verification: { cnameTarget: cnameTarget() } };
     },
-    async checkStatus() {
-      return { status: autoVerify ? 'active' : 'pending' };
+    async checkStatus(): Promise<{ status: CustomDomainCheck }> {
+      return { status: autoVerify ? 'active' : 'unknown' };
     },
     async remove() { /* no-op */ },
   };

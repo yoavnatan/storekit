@@ -941,6 +941,8 @@ const strEmpty   = t.store.noProductsFound;
           ? '/seller/dashboard?panel=orders'
           : type === 'low_stock' || type === 'out_of_stock'
           ? '/seller/dashboard?panel=products'
+          : type === 'domain_status'
+          ? '/seller/dashboard?panel=settings'
           : '/buyer/dashboard?tab=messages';
         window.location.href = href;
       });

@@ -205,10 +205,12 @@ describe('the registry itself', () => {
 
   it('wires exactly the registered jobs and nothing else', () => {
     // The three stage-4a consumers, plus `purge-auth-attempts` (added 2026-08-04 with the
-    // sign-in rate limiter). The list is asserted whole so a job added without a written
-    // idempotency argument above fails here rather than shipping quietly.
+    // sign-in rate limiter) and `custom-domain-check` (2026-08-06 — a verified domain whose DNS
+    // lapsed stayed 'active' forever, so the store 301'd into a dead host and nothing re-read it).
+    // The list is asserted whole so a job added without a written idempotency argument above fails
+    // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'feed-sync', 'purge-auth-attempts', 'purge-checkouts'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-sync', 'purge-auth-attempts', 'purge-checkouts'],
     );
   });
 });

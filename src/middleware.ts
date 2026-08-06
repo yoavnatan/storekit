@@ -7,8 +7,8 @@ import { logError } from './lib/error-log.js';
 import { recordPageViewTap } from './lib/page-view-tap.js';
 import { isBotRequest } from './lib/bot-detect.js';
 import { getSellerSession } from './lib/seller-auth.js';
-import { getStoreBySlug, getStoreByCustomDomain, isReservedSlug } from './lib/stores.js';
-import { resolveCustomDomainRewrite, isUnclaimedCustomHost } from './lib/custom-domain.js';
+import { getStoreBySlug, getStoreByCustomDomain, getStoreByPreviousCustomDomain, isReservedSlug } from './lib/stores.js';
+import { resolveCustomDomainRewrite, isUnclaimedCustomHost, previousDomainRedirectUrl } from './lib/custom-domain.js';
 import { getProductBySlug } from './lib/store-products.js';
 import { ensureSchedulerStarted } from './lib/jobs/scheduler.js';
 import { HEALTH_PATH } from './pages/api/health.js';
@@ -115,9 +115,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
         const target = resolveCustomDomainRewrite(cdStore.slug, pathname);
         if (target) return context.rewrite(target + reqUrl.search);
       } else if (host && isUnclaimedCustomHost(host, false)) {
-        // A real external domain is pointed at us but no active store claims it (removed, or DNS set
-        // up before the store connected). Answer 404 rather than serve the platform homepage on a
-        // stranger's domain — a random domain must never render as if it were ours.
+        // Nobody claims this host TODAY — but a store may have been served from it until recently.
+        // A seller who removes their domain (or swaps it for another) would otherwise 404 every link
+        // and every indexed page they earned on it, which is the opposite of what moving to a custom
+        // domain was for: the 301 onto that domain deliberately consolidated the store's whole
+        // ranking there. Same answer the slug rename already gives — remember the old address and
+        // 301 it — see migration 0015 and stores.ts#getStoreByPreviousCustomDomain.
+        const previousOwner = await getStoreByPreviousCustomDomain(host);
+        if (previousOwner) {
+          return context.redirect(previousDomainRedirectUrl(previousOwner, pathname, reqUrl.search), 301);
+        }
+        // A real external domain is pointed at us but no store claims it and none ever did (DNS set
+        // up before the store connected, or a stranger's misconfiguration). Answer 404 rather than
+        // serve the platform homepage on a stranger's domain.
         return new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
       }
     }

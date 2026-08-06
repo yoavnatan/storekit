@@ -2,10 +2,11 @@ export const prerender = false;
 import crypto from 'node:crypto';
 import type { APIRoute } from 'astro';
 import { getSellerSession } from '../../lib/seller-auth.js';
-import { getStoresBySellerId, updateStore, addStoreBgColor, isCustomDomainTaken, renameStoreSlug, isSlugTaken, isReservedSlug, normalizeSlug } from '../../lib/stores.js';
+import { getStoresBySellerId, updateStore, addStoreBgColor, isCustomDomainTaken, rememberPreviousCustomDomain, claimCustomDomainHostname, renameStoreSlug, isSlugTaken, isReservedSlug, normalizeSlug } from '../../lib/stores.js';
 import { renameStoreSlugInUserData } from '../../lib/user-carts.js';
 import { renameStoreSlugInOrders } from '../../lib/orders.js';
 import { getCustomDomainProvider, normalizeHostname } from '../../lib/custom-domain.js';
+import { reverifyCustomDomain } from '../../lib/custom-domain-verify.js';
 import { pingStoreChange } from '../../lib/indexnow.js';
 import { sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
 import { parseStoreHoursForm } from '../../lib/store-hours.js';
@@ -260,18 +261,25 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     const provider = getCustomDomainProvider();
 
     if (action === 'remove-custom-domain') {
-      if (target.customDomain) await provider.remove(target.customDomain.hostname);
+      if (target.customDomain) {
+        // Remembered BEFORE the record is cleared — after this line the hostname is gone and there
+        // is nothing left to 301 from. This is what stops every link, bookmark and indexed page the
+        // store earned on that domain from becoming a 404 (migration 0015).
+        await rememberPreviousCustomDomain(target.id, target.customDomain.hostname);
+        await provider.remove(target.customDomain.hostname);
+      }
       await updateStore(target.id, { customDomain: undefined });
       return json({ ok: true });
     }
 
     if (action === 'check-custom-domain') {
       if (!target.customDomain) return json({ ok: false, error: 'no-domain' }, 400);
-      const { status } = await provider.checkStatus(target.customDomain.hostname);
-      if (status !== target.customDomain.status) {
-        await updateStore(target.id, { customDomain: { ...target.customDomain, status } });
-      }
-      return json({ ok: true, status });
+      // The same step the hourly job runs (custom-domain-verify.ts) — one definition of "is this
+      // domain still live", so a button press and a timer can never reach different conclusions or
+      // leave different records. `stored` and not the raw answer: an inconclusive check must show
+      // the seller the status that is actually in force, not the word 'unknown'.
+      const { stored } = await reverifyCustomDomain(target);
+      return json({ ok: true, status: stored });
     }
 
     // set-custom-domain — normalize + validate (rejects the platform's own domain), then register
@@ -283,6 +291,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (await isCustomDomainTaken(hostname, target.id)) return json({ ok: false, error: 'domain-taken' }, 409);
     const { ok, verification, error } = await provider.register(hostname);
     if (!ok) return json({ ok: false, error: error || 'register-failed' }, 502);
+    // Swapping domain A for domain B is a move off A, so A is remembered exactly as a removal would
+    // remember it — otherwise the store's links live on whichever domain it happened to stop on.
+    if (target.customDomain && target.customDomain.hostname !== hostname) {
+      await rememberPreviousCustomDomain(target.id, target.customDomain.hostname);
+    }
+    // …and the hostname now being claimed must stop redirecting away for whoever used it before.
+    await claimCustomDomainHostname(hostname);
     await updateStore(target.id, { customDomain: { hostname, status: 'pending', addedAt: new Date().toISOString() } });
     return json({ ok: true, hostname, verification });
   }
