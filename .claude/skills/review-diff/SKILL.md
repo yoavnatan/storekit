@@ -88,6 +88,44 @@ list is the accumulated cost of past sessions.
 - **New dashboard forms needing a real browser POST must carry `data-native-submit`**, or
   `FormFallbackGuard` blocks them.
 
+## Area audit — one row per session (user's decision 2026-08-06, in force from the session after it)
+
+Everything above reviews a **diff**. That is a net for code being written now, and it has never once
+looked at code nobody has touched since it shipped — which is where the 2026-08-06 feed bugs lived:
+the feed worked, its own tests passed, and four attributes had been wrong on **every variant row**
+from the day it was written. No diff ever contained them, so no review could have.
+
+So each session also does the row for the area it worked in. **Side-work, not the main task** — if a
+row turns out to be a project, say so in the summary and leave it unmarked rather than half-doing it.
+
+**What "audited" requires**, all three:
+1. Read the area's modules **end to end** — not the diff.
+2. Check them against what the **outside world** demands: a published spec, a permission rule, a
+   browser constraint, a payment-provider contract. The failure shape here is always the same — each
+   side internally consistent, only the JOIN wrong — so testing what we *meant* cannot find it.
+3. Leave a **guard test that scans the whole tree**, so the class cannot return. The pattern:
+   `money-guards`, `image-optimization`, `safe-redirect`, `secret-compare`, `feed-spec-conformance`.
+
+Then mark the row here, in the same session, with the date and the test that now holds it.
+
+| # | Area | Audited |
+|---|---|---|
+| 1 | Feed + advertising — the Merchant/Catalog contract | ✅ 2026-08-06 · `feed-spec-conformance.test.ts` (Google AND Meta; they are not one list) |
+| 2 | Money: orders, commissions, balances | partial · `reconcile.ts` + `reporting-invariants` + `reporting-fuzz` |
+| 3 | Inventory + checkout | partial · atomic decrement proved under 50 concurrent buyers |
+| 4 | **Authorization — who may READ and who may WRITE what** | ☐ **do this one first.** It is the only row whose bug cannot be repaired after the fact: leaked seller data stays leaked |
+| 5 | Domains + the origin boundary | partial · `cross-origin-boundary.test.ts`; ad-landing crossing closed 2026-08-06 |
+| 6 | SEO surfaces: sitemap, canonical, robots, structured data | ☐ per-file tests exist; never audited AS one surface |
+| 7 | Dashboard: forms, parallel tabs, draft recovery | ☐ |
+| 8 | Graceful degradation — no secondary service in a critical path | ☐ |
+| 9 | Behaviour under load | ☐ |
+| 10 | RTL + i18n | ☐ |
+
+**A ☐ does not mean untested.** The repo has 209 test files and ~2,690 tests, and every area above is
+covered by some of them. It means nobody has read that area *as a whole against its outside
+contract* — which is the specific gap this table closes, and the one the feed's own passing tests
+did not.
+
 ## What this cannot do
 
 It reads a checklist; it does not read intent the way a person does, and it will miss a class nobody
