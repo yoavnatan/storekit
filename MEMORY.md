@@ -1,0 +1,161 @@
+# Memory Index
+
+- [Memory backup](reference_memory_backup.md) — private storekit-memory repo; new machine → scripts/setup-claude-memory.sh
+- [Demo data script](reference_demo_data_script.md) — scripts/seed-demo-data.mjs; --clean removes only demo
+- [Pre-launch: it's all seeded data](project_all_data_is_demo.md) — showcase stores are launch PRODUCT, not scratch
+- [Go-live checklist](reference_go_live_checklist.md) — GO_LIVE_CHECKLIST.md: every demo/mock to swap before launch
+- [Owner pre-launch items](feedback_owner_prelaunch_items.md) — say it in chat when touched, write it to the ⚠️ index same session; an alert is not a substitute
+- [Ads verification plan](project_ads_verification_plan.md) — GO_LIVE §2.5 five-layer verify; attribution BUILT
+- [Ad item id — one id, two systems](project_ad_item_id.md) — lib/ad-item-id.ts; one identifier doing two jobs
+- [Ads BLOCK launch](project_ads_block_launch.md) — reversed 2026-08-04: verify on his own 100-200₪ before any seller pays
+- [Feed silent-rejection class](project_feed_silent_rejection_class.md) — one bad char kills the WHOLE feed; guards in product-feed.ts
+- [Hebrew product slugs](project_hebrew_product_slugs.md) — slugs keep Hebrew; machine-read URLs via url-base.ts#urlSegment
+- [Env vars at runtime](project_runtime_env_reading.md) — server vars only via lib/runtime-env.ts; import.meta.env is build-time
+- [DB migration](project_db_migration_indexes.md) — §3 + 4a COMPLETE; only 4b (pgvector) left, owner-blocked
+- [Background jobs / scheduler](project_scheduler.md) — local timer + durable claim in job_runs; a job must INFER NOTHING
+- [Sequential awaits = round trips](project_sequential_await_latency.md) — independent reads in one Promise.all (pool, not Client)
+- [Seeders write to the DB](project_seeders_db.md) — seed:showcase / seed:demo; a seeder NAMES a purge scope, never a WHERE
+
+- [Read instructions on start](feedback_read_instructions.md) — always AI_INSTRUCTIONS.md + CURRENT_TASK.md first
+- [Language](feedback_language.md) — chat in Hebrew, all project files in English
+- [Concise summaries](feedback_concise_summaries.md) — 1-2 terse Hebrew lines; his action → ⚠️ דורש אותך on top
+- [Seller-facing copy: the point only](feedback_seller_copy_brevity.md) — tooltip = 2-3 clauses; no digits by Latin names in RTL
+- [Plain language](feedback_plain_language.md) — dev terms fine; gloss a specialist term once, never write down to him
+- [Commit granularity](feedback_commit_granularity.md) — per-topic commits, never one giant one
+- [Workflow: steps only](feedback_workflow.md) — only what's in CURRENT_TASK.md, no extras
+- [CURRENT_TASK: fully user-owned](feedback_current_task.md) — I write nothing to it; verify "reverted" via git diff
+- [Dashboard form guard](project_dashboard_form_guard.md) — a form needing a real POST MUST carry data-native-submit
+- [AJAX forms — no page reloads](feedback_ajax_forms.md) — mutations via fetch to /api/, DOM updated in place
+- [Save-model clarity](feedback_save_model_clarity.md) — don't mix a save form with live-saving widgets; badge them
+- [Never ask before editing files](feedback_edit_without_asking.md) — standing approval
+- [Never ask before writing memory](feedback_memory_write_no_asking.md) — standing approval; mention it in the summary
+- [Prompts on memory writes](project_permission_prompt_on_memory_writes.md) — memory can't grant permissions; PreToolUse allow hook does
+- [Worktree merge/remove = my call](feedback_worktree_merge_authority.md) — done + green → merge and remove unasked; never push, never a live/orphan tree
+- [Session close trigger](feedback_session_close.md) — "סגור את הסשן" = audit own diff for dead code, then the workflow
+- [Admin dashboard render cost](project_admin_dashboard_render_cost.md) — 700→80ms (Intl in a loop); measure first
+- [Session speed](project_session_speed.md) — verify skips unchanged inputs; never run astro check/tsc/vitest by hand
+- [Testing strategy](feedback_testing_strategy.md) — tsc + logs each step; Playwright only for complex UI flows
+- [Mobile-first](feedback_mobile_first.md) — design for 375px up, everywhere
+- [SEO is #1 priority](project_seo_priority.md) — ranking is the core goal; every decision supports discoverability
+- [Domain switch reminder](project_domain_switch.md) — dezabin.co.il; a rename is NOT config-only
+- [Ad-platform ACCOUNT risk](project_ad_platform_account_risk.md) — one MC/Catalog: a policy failure is every seller at once; 2 guarded rules
+- [Custom-domain re-check job](project_custom_domain_recheck.md) — 'unknown' never demotes; a mass demotion is refused as OUR failure
+- [Feed-approval monitor](project_merchant_status_monitor.md) — merchant-status job; an unrecognised answer is LOUD, never a clean report
+- [Old custom domains 301](project_previous_custom_domains.md) — store_previous_domains (0015); same shape as previous_slugs
+- [Custom-domain host surfaces](project_custom_domain_host_surfaces.md) — robots.txt is SSR/per-host; www twin 301s; public/ outranks a route
+- [Custom domain = 2nd origin](project_custom_domain_origin_split.md) — DECIDED+BUILT: browsing is the store's, checkout/login are ours
+- [External seam contract](project_external_seam_contract.md) — each side right, only the JOIN wrong; tests/external-contract.test.ts
+- [Store catalog crawlable](project_store_catalog_crawlable.md) — ?category=<slug>; "טען עוד" IS ?page=N+1, no numbered pager; chips stay <a href>
+- [Platform shelves deferred](project_platform_shelves_deferred.md) — re-deferred 2026-08-04; blocker is catalog depth — don't re-propose
+- [Seller SEO guidance](project_seller_seo_guidance.md) — the product form advises, never gates; returns/delivery owner-blocked
+- [Migration written ≠ applied](project_migration_not_applied_class.md) — tests build their own DB; gated in verify
+- [Cloudinary cold render = LCP](project_cloudinary_cold_render_lcp.md) — 0.80s cold vs 0.19s warm; measure on a BUILD, warm at save
+- [CDN crop that won't upscale](project_cdn_no_upscale.md) — cdnBand: `c_limit,w_N/ar_R,c_fill`; no stored dimensions needed
+- [SEO site-level coverage](feedback_seo_site_level_coverage.md) — check built sitemap output, not only per-page tags
+- [Images self-optimize — standing rule](feedback_image_optimization.md) — every URL via lib/cdn.ts; guard test enforces
+- [Tailwind + Image component rules](feedback_tailwind_image.md) — Tailwind v4 only, Astro Image, no new CSS files
+- [Modular architecture — permanent](feedback_architecture.md) — black box, layer separation, SRP, no globals
+- [Scalability — hard rule](feedback_scalability.md) — stateless routes, no shared write state; breaks at 1000 sellers?
+- [Framework-native first](feedback_framework_native_first.md) — check Astro built-ins AND src/lib before a parallel mechanism
+- [Auth + cart persistence](project_cart_auth_session.md) — ?next= everywhere; server-side cart via /api/user-cart
+- [Cart store sovereignty](project_cart_store_sovereignty.md) — current store on top + "מחנויות אחרות"; lists rejected treatments
+- [Request body caps](project_request_body_cap.md) — every route via lib/request-body.ts; guard blocks request.json()
+- [Safe redirects](project_safe_redirect.md) — every request-supplied destination via lib/safe-redirect.ts
+- [Fix it, don't report it — ALL bugs](feedback_fix_dont_report.md) — fixed + tested same session; 3 exceptions only
+- [Fix security, don't report it](feedback_fix_security_dont_report.md) — also audit the whole class + add a guard test
+- [/code-review is user-triggered only](feedback_code_review_not_invocable.md) — I cannot launch it; never imply it ran
+- [Automatic review gate](project_review_gate.md) — Stop hook blocks the turn until review-diff ran on a risky diff
+- [Auth rate limiting](project_auth_rate_limit.md) — Postgres-backed, 2 buckets, before bcrypt; TRUST_PROXY_IP at launch
+- [Graceful shutdown](project_graceful_shutdown.md) — SIGTERM drain from middleware; can't close the listener
+- [Outbound fetch](project_outbound_fetch.md) — every third-party call via lib/outbound-fetch.ts; undici waits 300s
+- [Error pages + /api/health](project_error_pages_and_health.md) — 500.astro imports nothing that can fail; health short-circuits middleware
+- [External monitoring](project_external_monitoring_decision.md) — ⚠️ uptime pinger = his 5-min signup; Sentry deferred
+- [Error capture surface](project_error_capture_surface.md) — 4 surfaces, 4 owners; the try/catch only covers page frontmatter
+- [Error severity](project_error_severity.md) — critical/error/warning, derived server-side; client reports are always warning
+- [Critical-error email](project_critical_alert_email.md) — ⚠️ ALERT_EMAIL at launch; the limits are the feature
+- [Push gate](project_push_gate.md) — pre-push BLOCKS on red verify; branch protection needs GitHub Pro
+- [New state → sweep every consumer](feedback_new_state_sweep_consumers.md) — grep every reader; duplicated rules are the next bug
+- [Dashboard HTML weight](project_dashboard_html_weight.md) — 865KB/page, 73% invisible; lazy panels DECIDED, not started
+- [Tab-strip alert beacon](project_tab_strip_alert_beacon.md) — off-screen marker → dot on the edge fade; every marker declares data-tab-alert
+- [RTL arrow keys](project_rtl_arrow_keys.md) — ArrowRight goes BACKWARD; every handler via lib/arrow-step.ts
+- [Focus ring clipped by a scroller](project_focus_ring_clipped_by_scroller.md) — negative outline-offset, or padding + negative margin
+- [svg height:auto trap](project_svg_height_auto_trap.md) — reset.css beats the height attribute; pin it inline
+- [Metric integrity audit — DONE](project_metric_integrity_audit.md) — the bugs found + the permanent defences built
+- [Brand/boost twin drift](project_brand_boost_twin_drift.md) — two campaign kinds, separate modules; fix one → check the other
+- [Max bug defences on money](feedback_bug_defence_layers.md) — build EVERY layer, don't offer a menu; standing 8-layer list
+- [Security is top priority](feedback_security_priority.md) — server-side validation, re-validate prices, never trust the client
+- [Discounts & sales](project_discounts_sales.md) — two levers, better-price-wins; a scoped sale names its scope
+- [Stock running out mid-checkout](project_stock_shortage_ux.md) — oversell CLOSED; a REFUSAL must re-read the count
+- [Checkout UI architecture](project_checkout_ui.md) — patchQty (no re-render on +/−), PQV modal, stock enforced everywhere
+- [Dashboard bulk actions](project_dashboard_bulk.md) — bulk edit/upload/delete; thumb skeleton with img.decode()
+- [Messaging — email stub](project_messaging_email.md) — no SMTP; seller sees buyer email; wire SendGrid/Brevo later
+- [Header layout — position:fixed](project_header_layout.md) — fixed + body padding-top, never sticky; every site line is 1px
+- [Platform name: Dezabin](project_platform_name.md) — from חד גדיא; .com + .co.il owned; set in store.config.ts
+- [Brand logo](project_brand_logo.md) — wordmark-only, D from half an octagon; ⚠️ the DENSITY is load-bearing, don't lighten/open it
+- [Store image originals](project_store_image_source.md) — *_image_source (0012) keeps the uncropped upload; c_crop-in-URL rejected
+- [Store favicon](project_store_favicon.md) — store's own tab icon; icon sizes are a SECOND map or they become ad creative
+- [Session close — keep lean](feedback_session_close_lean.md) — the ~200 lines are the ALWAYS-READ part only; no implementation detail
+- [Clean design line](feedback_clean_design_line.md) — take the treatment from the site's language; say "weak ROI" by round 4
+- [Design philosophy](feedback_design_philosophy.md) — 2026-relevant, mature, modular; fits all store types
+- [No overthinking](feedback_no_overthinking.md) — simplify when stuck; flag context loss → suggest a new session
+- [Token efficiency](feedback_token_efficiency.md) — grep before read, no full-file dumps, no unneeded subagents
+- [AI_INSTRUCTIONS: don't split](feedback_ai_instructions_no_split.md) — one file; manage growth by compression
+- [Subtle scroll](feedback_subtle_scroll.md) — scrollIntoView block:'nearest', not center/start
+- [SEO/marketing anxiety](project_seo_marketing_anxiety.md) — don't overclaim on traffic; recommend real-world testing
+- [Business model pricing — BUILT](project_business_model_pricing.md) — lib/pricing.ts (99/125/179/199₪ · 12/11/10.25/10%)
+- [Payment provider](project_payment_provider.md) — Takbull OUT; PayMe leads, SUMIT second; choice deferred, GO_LIVE §3
+- [PayMe API — verified](project_payme_api_verified.md) — read the Apiary Blueprint, not the SPA; market_fee IS our 12%; NO multi-seller split
+- [Multi-store checkout plan](project_multistore_checkout_plan.md) — ONE store at a time, never a queue of N; wallets make it painless
+- [Launch = 3 conditions](project_launch_three_conditions.md) — payments+ads+shipping all working; the "bargaining power" deferral was never his
+- [Store readiness gate](project_store_readiness_gate.md) — no visible product = noindex + out of sitemap, never 404
+- [Dev server — don't kill/restart](feedback_dev_server.md) — never pkill; it serves STALE bundles → verify against build + dist
+- [No ambient looping motion](feedback_no_ambient_looping_motion.md) — never `infinite`; pin it and let the scroll be the motion
+- [No stacked hover effects](feedback_no_stacked_hover_effects.md) — one signal, not a darken overlay plus the shadow
+- [Hover = white + shadow, not tint](feedback_hover_light_not_tint.md) — tinted hover reads as "dirt"
+- [Transparent image backgrounds](project_transparent_image_bg.md) — image containers use --color-surface, never --color-bg
+- [Injected overlay flash](project_injected_overlay_flash.md) — a JS-created overlay must default HIDDEN
+- [Skeleton must not gate visibility](project_skeleton_js_visibility_gate.md) — shimmer goes UNDER the image
+- [Category icons — scope](project_category_icons_scope.md) — icons ONLY for the 20-seed vocabulary
+- [Elevation rule (was tactile depth)](project_tactile_depth_expansion.md) — shadow only if it floats; in-flow = border, depth on hover
+- [Wishlist heart: no glass](feedback_wishlist_heart_no_glass.md) — glassmorphism rejected; keep the opaque white circle
+- [Store pause/close](project_store_lifecycle.md) — seller owns pause+close, admin owns block; closure DEFERS to open orders
+- [Zero-touch self-service](project_zero_touch_selfservice.md) — every flow defaults to automated, never admin-gated
+- [200-line limit is a guideline](feedback_line_limit_guideline.md) — skip a split that hurts flow more than it helps
+- [Existential doubt — resolved](project_existential_doubt_resolved.md) — the risk is distribution, not the idea; keep building
+- [Parallel sessions to save tokens](feedback_parallel_sessions.md) — state the split at session start; a worktree can't isolate a migration NUMBER
+- [CSS migration pacing](feedback_css_migration_pace.md) — 3-4 sections a round, no byte-counting, terse checkpoints
+- [reset.css layer bug](project_reset_css_layer_bug.md) — unlayered button{} beat Tailwind; fixed via layer(base) import
+- [Unlayered CSS beats a state utility](project_unlayered_css_beats_utility.md) — hover:/aria-expanded: dies silently; rule goes in the sheet that owns the element
+- [hidden loses to flex](project_tailwind_hidden_vs_flex.md) — toggle('hidden') is a no-op on a flex element; use '!hidden'
+- [CSS class-name collision](project_css_class_name_collision.md) — grep a class before defining it
+- [Table shrink traps](project_table_shrink_traps.md) — td max-width ignored in auto layout; collapse via @container
+- [flex-wrap kills a scroller](project_flex_wrap_kills_scroller.md) — wrap on a column parent sizes children to max-content
+- [Homepage rows end on the line](project_home_row_alignment.md) — card width = share of a whole-number fit, never a peek
+- [Sticky + scrollIntoView trap](project_sticky_scrollintoview_trap.md) — it jumps to the unstuck position; scroll the strip
+- [Global smooth-scroll trap](project_global_smooth_scroll_trap.md) — root smooth breaks rAF; use animateScrollTo
+- [New-session prompt per round](feedback_new_session_per_round.md) — proactively suggest a new chat each checkpoint
+- [ROI check before grinding](feedback_roi_check_before_grinding.md) — measure result vs goal; weak ROI → lighter mode
+- [Don't imply unverified diligence](feedback_dont_imply_unverified_diligence.md) — "נתקלתי" vs "בדקתי"; run the cheap check
+- [Verify before recommending](feedback_verify_before_recommending.md) — check the framework's real default first
+- [Verify against official docs](feedback_verify_against_official_docs.md) — Google/Meta/provider claims: fetch the vendor page and quote it, never an SEO blog
+- [View Transitions — CLOSED](project_view_transitions_font_blocker.md) — rejected 2026-08-05; don't re-propose either route
+- [Header stability](project_header_stability.md) — 3 ordinary bugs, fixed; never hide documentElement
+- [Automations in code, not Make](project_automations_in_code.md) — native code, never Make/Zapier; not built yet
+- [Boost billing model](project_boost_billing_model.md) — budget is a CEILING, never prepaid; unspent never charged
+- [Live visual debugging](feedback_live_visual_debugging.md) — re-measure before he looks again; don't ship a partial state
+- [No-op interactions must be invisible](feedback_noop_interactions_invisible.md) — a click changing no state moves nothing
+- [Contextual search strategy](project_contextual_search_strategy.md) — ⏸ DEFERRED; blocked on who computes the embeddings
+- [AI tagging deferred](project_ai_tagging_deferred.md) — per-product AI tags rejected; the engine is semantic search
+- [Order automation](project_order_automation.md) — status→buyer-notify + cancel/restock; carriers → Sendit
+- [AI onboarding assistant (future)](project_ai_onboarding_assistant.md) — Claude+RAG at store setup; after core flows
+- [Order card layout](project_order_card_layout.md) — price aligned by the fixed-width status cluster; 3 renderers must match
+- [Client renderer i18n drift](project_client_renderer_i18n_drift.md) — one tt() accessor + guard test
+- [Pre-paint seed drift](project_prepaint_seed_drift.md) — inline seed vs lib rule; drift rolls the badge every load
+- [Attribute-escaping XSS class](project_attribute_escaping_xss.md) — escapers that skip `"` inside attr="…"
+- [JSON-in-script XSS class](project_json_script_xss.md) — set:html={JSON.stringify(x)} in <script> is a sink
+- [ReDoS regex class](project_redos_regex_class.md) — request input into a quadratic regex stalls SSR; MEASURE
+- [An id is not a permission](project_checkout_idempotency_ownership.md) — a session proves which STORES you own, never which ORDERS
+- [Shipping = platform-only](project_shipping_model.md) — prices in lib/shipping.ts; the seller's only lever is self-pickup
+- [Hidden-input writes are silent](project_hidden_input_silent_writes.md) — `.value =` fires no event; every programmatic write via announceValueChange
+- [Multi-tab dashboard](project_multitab_concurrency.md) — record-rev.ts per-FIELD merge + tab-sync BroadcastChannel
+- [Dashboard draft recovery](project_dashboard_draft_recovery.md) — local-only draft; a restore puts back EDITED fields only

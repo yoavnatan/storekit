@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
-  <rect width="400" height="400" fill="#f0eeff"/>
-  <rect x="100" y="90" width="200" height="220" rx="20" fill="#1a1523"/>
-  <text x="200" y="160" font-family="Arial" font-size="44" fill="#fff" text-anchor="middle">🏆</text>
-  <text x="200" y="210" font-family="Arial" font-weight="bold" font-size="22" fill="#fff" text-anchor="middle">Business</text>
-  <text x="200" y="245" font-family="Arial" font-size="32" font-weight="bold" fill="#fff" text-anchor="middle">$49</text>
-  <text x="200" y="275" font-family="Arial" font-size="14" fill="#8b8099" text-anchor="middle">per month</text>
-</svg>
