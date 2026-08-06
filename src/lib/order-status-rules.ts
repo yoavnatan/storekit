@@ -3,6 +3,10 @@ import type { Order } from './orders.js';
 /**
  * What every order status MEANS, as one table.
  *
+ * **One row per status, one column per consequence — a new status FILLS A ROW, never adds a new
+ * `if` at a call site.** (Stated here from 2026-08-06; it was a line in AI_INSTRUCTIONS, which is
+ * not where you are standing when you add a status.)
+ *
  * The bug this exists to prevent has already happened here twice, in the same
  * shape: a status was added or reinterpreted, and only some of the code that cares
  * got updated. 'cancelled' was counted as revenue for seven sessions because

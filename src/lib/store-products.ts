@@ -799,6 +799,24 @@ export async function getProductById(id: string): Promise<StoreProduct | null> {
   return selectProduct('p.id = $1', [id]);
 }
 
+/**
+ * Several products in ONE round trip — the shape a batch job needs.
+ *
+ * `merchant-status-check.ts` gets back a page of rejected item ids from an ad network and has to
+ * name the product and the seller behind each one. Looping `getProductById` over them would be one
+ * query per rejection, on a job whose bad day is precisely the day there are hundreds
+ * (memory `project_sequential_await_latency`, and `getStoresByIds` exists for the same reason).
+ *
+ * Non-uuid input is dropped rather than sent to Postgres, matching `getProductById`: the ids come
+ * from a third party's report, so they are not ours to trust. Missing ids are simply absent from
+ * the result — a caller must not assume the array lines up with what it asked for.
+ */
+export async function getProductsByIds(ids: readonly string[]): Promise<StoreProduct[]> {
+  const wanted = [...new Set(ids.filter(isUuid))];
+  if (!wanted.length) return [];
+  return selectProducts('p.id = ANY($1::uuid[])', [wanted]);
+}
+
 /** Case-sensitive on the slug's text, exactly as `getStoreBySlug` is: the column is `citext` so
  *  that one store cannot hold `Shirt` and `shirt` as two products, but serving the page at every
  *  capitalisation would put the same product on a dozen URLs pointing at one canonical. */

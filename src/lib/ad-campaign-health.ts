@@ -29,12 +29,29 @@ import { getStoreById, canStoreSell } from './stores.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds, type StoreCategory } from './store-categories.js';
 import { getCampaignsByStoreId, getArchivedByStoreId, updateCampaigns, archiveCampaigns, type AdCampaign, type CampaignUpdate } from './ad-campaigns.js';
 import { isCampaignEnded } from './ad-metrics.js';
+import { isProductAdvertisable } from './product-feed.js';
+import { store as platform } from '../config/store.config.js';
+import { stripTrailingSlashes } from './url-base.js';
 
 export interface CampaignHealth {
   /** Products the campaign covers — named ones for a product scope, matched ones otherwise. */
   total: number;
   /** How many of them are still ON the storefront (not blocked, hidden or deleted). */
   live: number;
+  /**
+   * How many of `live` the ad platforms can actually carry — the feed's own rule
+   * (product-feed.ts#isProductAdvertisable), which today means a usable photo and a real price.
+   *
+   * **Separate from `live` on purpose (2026-08-06).** `image_link` is a required attribute, so a
+   * product the seller never photographed sits happily on the shelf and is absent from Merchant
+   * Center — and the card was counting it, reporting a campaign as bigger than it was. Folding that
+   * into `live` was tried and is wrong: `live === 0` is the STARVED state, which pauses a campaign
+   * as 'unavailable' and then waits for a human, and a missing photo is a mechanical, temporary
+   * gap of exactly the kind this module refuses to make a person clear by hand. So it informs the
+   * seller and pauses nothing. Wiring it to a pause of its own needs a third stored reason, which
+   * is a decision about the seller's money and not one to take in passing.
+   */
+  advertisable: number;
   /** How many of those a shopper could actually buy right now — `live` minus the sold-out ones.
    *  Always <= live, and the two differ only while stock is out. */
   buyable: number;
@@ -64,7 +81,15 @@ export function campaignHealth(campaign: AdCampaign, products: StoreProduct[], c
     ? (campaign.productIds ?? (campaign.productId ? [campaign.productId] : [])).length
     : covered.length;
   const onShelf = covered.filter(isProductVisible);
-  return { total: named, live: onShelf.length, buyable: onShelf.filter((p) => p.stock > 0).length };
+  return {
+    total: named,
+    live: onShelf.length,
+    // The SAME base the feed endpoint resolves images against (api/feed/products.xml.ts), spelled
+    // the same way — this count is a claim about what that endpoint will emit, so a second spelling
+    // of its own origin is a second answer waiting to disagree.
+    advertisable: onShelf.filter((p) => isProductAdvertisable(p, stripTrailingSlashes(platform.url))).length,
+    buyable: onShelf.filter((p) => p.stock > 0).length,
+  };
 }
 
 /** Nothing left on the storefront at all — a human took it down, so only a human puts it back. */

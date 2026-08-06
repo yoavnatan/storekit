@@ -20,7 +20,7 @@ import { isUuid, query, rows, type Queryable } from './db.js';
  * entry it does not recognise is worse than one that shows it plainly.
  */
 
-export type NotificationType = 'new_message' | 'seller_reply' | 'new_order' | 'order_update' | 'low_stock' | 'out_of_stock' | 'admin_message' | 'domain_status';
+export type NotificationType = 'new_message' | 'seller_reply' | 'new_order' | 'order_update' | 'low_stock' | 'out_of_stock' | 'admin_message' | 'domain_status' | 'feed_status';
 export type NotificationRole = 'buyer' | 'seller';
 
 export interface Notification {
@@ -228,6 +228,34 @@ export async function deleteNotificationsByRelatedIds(
     'DELETE FROM notifications WHERE user_id = $1 AND related_id = ANY($2::text[])',
     [userId, relatedIds],
   );
+}
+
+/**
+ * Which of these `relatedId`s already carry a notification created since `sinceIso` — the "have I
+ * already said this" check, in one query.
+ *
+ * A repeating job needs it. `merchant-status-check.ts` re-reads the same rejected products from
+ * Google every hour until the seller fixes them, and re-announcing each one hourly is how a
+ * notification bell becomes something people stop looking at. Rather than remembering what it sent
+ * (a table, a migration, and a second source of truth), it asks what is already on the seller's
+ * feed — the notification IS the record.
+ *
+ * Deliberately not scoped to one user: the caller has rejections spread across many sellers and
+ * would otherwise pay a query per seller. `relatedId` is built by the caller to be unique per
+ * (thing, reason), so a key cannot collide across users by construction.
+ */
+export async function existingNotificationRelatedIds(
+  relatedIds: readonly string[],
+  sinceIso: string,
+): Promise<Set<string>> {
+  const wanted = [...new Set(relatedIds)];
+  if (!wanted.length) return new Set();
+  const { rows } = await query<{ related_id: string }>(
+    `SELECT DISTINCT related_id FROM notifications
+      WHERE related_id = ANY($1::text[]) AND created_at >= $2`,
+    [wanted, sinceIso],
+  );
+  return new Set(rows.map((row) => row.related_id));
 }
 
 export async function deleteNotification(id: string, userId: string): Promise<boolean> {

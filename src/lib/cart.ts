@@ -1,6 +1,7 @@
 import { comboKey } from './variant-combo.js';
 import { roundMoney } from './money.js';
 import { blockOwnStorePurchase } from './own-store-guard.js';
+import type { HandoffCart } from './cart-handoff.js';
 
 export interface CartItem {
   cartKey: string;
@@ -186,6 +187,54 @@ export function applyStockLimit(storeSlug: string, key: string, stock: number): 
   if (available > 0) item.qty = Math.min(item.qty, available);
   writeStoreCart(cart);
   return available;
+}
+
+/**
+ * One store's cart, in the shape that crosses the custom-domain boundary (`cart-handoff.ts`).
+ *
+ * Reads only — the seller's origin keeps its copy. A shopper who crosses to pay and then presses
+ * back must find the store exactly as they left it, and the merge on the other side is additive,
+ * so nothing is lost by not clearing here.
+ */
+export function readStoreCartForHandoff(storeSlug: string): HandoffCart | null {
+  const cart = readStoreCart(storeSlug);
+  const items = Object.values(cart?.items ?? {});
+  if (!cart || !items.length) return null;
+  return { storeSlug: cart.storeSlug, storeName: cart.storeName, items };
+}
+
+/**
+ * Fold a handed-over cart into this origin's, and say whether anything moved.
+ *
+ * **Additive, and quantities ADD.** The shopper crossed with a full basket; if they already had
+ * lines from the same store here — they browsed it on the platform first, then followed a link onto
+ * its own domain and kept shopping — both halves are theirs and neither may silently win. `stock`
+ * still clamps, because the number of units that exist is not a matter of opinion, and the server
+ * re-checks it at `/api/checkout` regardless (`project_stock_shortage_ux`).
+ *
+ * **Idempotent on the second read, by the caller.** The fragment is stripped from the URL the
+ * moment this returns, so a refresh cannot double the basket; this function deliberately does not
+ * try to detect a repeat itself, because "the same cart twice" and "the shopper really did add two
+ * more" are indistinguishable from in here.
+ */
+export function mergeStoreCart(incoming: HandoffCart): boolean {
+  if (!incoming.items.length) return false;
+  if (blockOwnStorePurchase(incoming.storeSlug)) return false;
+  const cart = readStoreCart(incoming.storeSlug)
+    ?? { storeName: incoming.storeName, storeSlug: incoming.storeSlug, items: {} };
+  cart.storeName = incoming.storeName || cart.storeName;
+  for (const item of incoming.items) {
+    const prev = cart.items[item.cartKey];
+    const qty = (prev?.qty ?? 0) + item.qty;
+    const stock = item.stock ?? prev?.stock;
+    cart.items[item.cartKey] = {
+      ...prev,
+      ...item,
+      qty: stock != null ? Math.min(qty, Math.max(0, stock)) : qty,
+    };
+  }
+  writeStoreCart(cart);
+  return true;
 }
 
 export function getActiveStoreCarts(): ActiveStoreCart[] {

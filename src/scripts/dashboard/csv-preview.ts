@@ -1,5 +1,6 @@
 import { esc } from '../../lib/gallery-widget.js';
 import type { MergedRowResult } from '../../lib/variant-csv.js';
+import { MAX_VARIANT_COMBOS } from '../../lib/variant-combo.js';
 
 export function csvErrorMessage(i: Record<string, string>, error?: string): string {
   if (error === 'missing-columns') return i.csvMissingColumns ?? 'Missing required columns.';
@@ -23,6 +24,7 @@ function rowErrorLabel(i: Record<string, string>, code: string): string {
     case 'variant-inconsistent-dimensions': return i.csvErrVariantInconsistent ?? 'Rows in the group declare different variant dimensions';
     case 'variant-duplicate-combo': return i.csvErrVariantDuplicateCombo ?? 'Two rows in the group have the same option combination';
     case 'variant-group-mixed-id': return i.csvErrVariantMixedId ?? 'Rows in the group point at different products (id)';
+    case 'variant-too-many-combos': return `${i.csvErrVariantTooManyCombos ?? 'The option values in this group describe too many combinations — reduce the number of options or dimensions. Maximum:'} ${MAX_VARIANT_COMBOS}`;
     case 'variant-stock-needs-combos': return i.csvErrVariantStockNeedsCombos ?? 'This product\'s stock is held per variant, and a single stock number cannot update it: fill in the option columns (one row per combination), or edit the stock under "Variants & inventory" in the product itself';
     case 'variant-stock-dashboard-only': return i.csvErrVariantStockDashboardOnly ?? 'This product has more than 3 variant dimensions, which a file cannot express — edit its stock in the dashboard only, under "Variants & inventory" in the product itself';
     default: return code;

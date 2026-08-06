@@ -247,7 +247,9 @@ for (const s of await getVisibleStores()) {
   <!-- PQV and lightbox dialogs are rendered globally via ProductQuickView in BaseLayout -->
 
   <script>
-    import { getActiveStoreCarts, setQty, removeItem, itemSaving, makeCartKey, applyStockLimit } from '../lib/cart.js';
+    import { getActiveStoreCarts, setQty, removeItem, itemSaving, makeCartKey, applyStockLimit, mergeStoreCart } from '../lib/cart.js';
+    import { CART_FRAGMENT_KEY, decodeHandoffCart } from '../lib/cart-handoff.js';
+    import { HANDOFF_PARAM } from '../lib/platform-routes.js';
     import { sortCurrentStoreFirst } from '../lib/cart-sovereignty.js';
     import { refreshCartPrices, watchCartPrices, hasIncrease, stockCorrections } from '../lib/cart-prices.js';
     import { splitDemoCarts } from '../lib/demo-stores.js';
@@ -285,7 +287,33 @@ for (const s of await getVisibleStores()) {
     // nothing selected contributes no items, no shipping, and hides its shipping card entirely
     // (see the totals loop). Filtering them away never protected the total; it only hid a cart the
     // header was still counting.
-    const intentSlug = new URLSearchParams(window.location.search).get('store') ?? '';
+    // **A cart arriving from a seller's own domain** (`cart-handoff.ts`). A custom domain is a
+    // different browser origin, so the basket the shopper filled there cannot be read from here —
+    // it travelled in the URL fragment and this is where it lands. FIRST, before anything reads
+    // `getActiveStoreCarts()`, or the page renders the cart the shopper did not bring and then
+    // changes under them.
+    //
+    // The URL is cleaned in the same breath, and both halves have to go: the fragment, so a refresh
+    // cannot merge the same basket twice, and `?h=` (the signed identity carry-over, already
+    // consumed by the middleware before this script existed) so it is not left sitting in an address
+    // bar to be copied into a chat. `replaceState`, not a redirect — the server has everything it
+    // needs and a round trip here is charged to the slowest moment in the funnel.
+    const handedOver = decodeHandoffCart(
+      new URLSearchParams(location.hash.replace(/^#/, '')).get(CART_FRAGMENT_KEY),
+    );
+    if (handedOver) mergeStoreCart(handedOver);
+    if (handedOver || new URLSearchParams(location.search).has(HANDOFF_PARAM)) {
+      const clean = new URL(location.href);
+      clean.hash = '';
+      clean.searchParams.delete(HANDOFF_PARAM);
+      history.replaceState(history.state, '', clean.pathname + clean.search);
+    }
+
+    const intentSlug = new URLSearchParams(window.location.search).get('store')
+      // No `?store=` but a cart just crossed the boundary: that store IS the intent — the shopper
+      // pressed "לתשלום" inside it one navigation ago. Same meaning the parameter carries, arrived
+      // by a different road.
+      ?? handedOver?.storeSlug ?? '';
     function getOrderedCarts() {
       return sortCurrentStoreFirst(getActiveStoreCarts(), intentSlug);
     }

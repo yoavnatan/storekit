@@ -22,12 +22,13 @@ export type AdScopeLabels = Partial<Record<
   | 'adScopeStore' | 'adScopeAndMore' | 'adAutoPerProduct' | 'adAudienceAll'
   | 'adGenderWomen' | 'adGenderMen' | 'adAgeInfant' | 'adAgeKids' | 'adAgeAdult'
   | 'adDuration7' | 'adDuration14' | 'adDuration30' | 'adDurationOngoing'
-  | 'adHealthStarved' | 'adHealthPartial' | 'adHealthSoldOut' | 'adHealthPartialStock',
+  | 'adHealthStarved' | 'adHealthPartial' | 'adHealthSoldOut' | 'adHealthPartialStock'
+  | 'adHealthNoImage',
   string>>;
 
-/** How much of what a campaign advertises is still on the storefront, and how much of THAT a
- *  shopper can actually buy right now (ad-campaign-health.ts). */
-export interface CampaignHealthView { total: number; live: number; buyable?: number }
+/** How much of what a campaign advertises is still on the storefront, how much of THAT the ad
+ *  platforms will carry, and how much a shopper can actually buy right now (ad-campaign-health.ts). */
+export interface CampaignHealthView { total: number; live: number; advertisable?: number; buyable?: number }
 
 /** The one line that tells a seller his campaign stopped, or is running on less than he chose.
  *  '' when everything it names is still live — a card with nothing wrong says nothing.
@@ -56,6 +57,13 @@ export function campaignHealthNote(
   const fill = (template: string, missing: number): string =>
     template.replace('{gone}', String(missing)).replace('{total}', String(health.total));
   if (health.live < health.total) return fill(l.adHealthPartial ?? '', health.total - health.live);
+  // Ahead of the stock line because it outranks it on "what can he do about it": a product with no
+  // photo is not in Merchant Center at all, and uploading one is entirely in his hands, where a
+  // stock-out resolves itself. Silent until now — the campaign counted the product and the feed
+  // dropped it (product-feed.ts#isProductAdvertisable).
+  if (health.advertisable !== undefined && health.advertisable < health.live) {
+    return fill(l.adHealthNoImage ?? '', health.live - health.advertisable);
+  }
   if (health.buyable !== undefined && health.buyable < health.live) {
     return fill(l.adHealthPartialStock ?? '', health.live - health.buyable);
   }

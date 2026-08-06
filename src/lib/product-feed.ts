@@ -1,6 +1,7 @@
 import type { StoreProduct } from './store-products.js';
 import { inferAudienceGender, inferAgeGroup } from './audience-infer.js';
-import { deriveProductLabels } from './product-labels.js';
+import { deriveProductLabels, availabilityTier, AVAILABILITY_SLOT } from './product-labels.js';
+import { variantLandingUrl } from './variant-landing.js';
 import { generateCombos, comboKey, canonicalDimName } from './variant-combo.js';
 import { adItemId, adComboItemId } from './ad-item-id.js';
 import { isColorVariant } from './color-variants.js';
@@ -211,9 +212,39 @@ export interface FeedBuildContext extends FeedContext {
   baseUrl: string; // origin, no trailing slash — e.g. https://shop.example; used to absolutize images
 }
 
+/**
+ * Can this product be ADVERTISED at all — i.e. will `buildFeedItems` emit anything for it?
+ *
+ * `image_link` and `price` are required attributes, so a product missing either is not a lesser
+ * listing, it is no listing: the row would be rejected, and the platforms reject silently. That is
+ * the whole of the feed's exclusion rule, stated once here because a second consumer needs it.
+ *
+ * **That second consumer is why this is exported (found 2026-08-06).** `ad-campaign-health.ts`
+ * counts a campaign's products as `live` when they are visible on the STOREFRONT, which is a
+ * different question — a product with no photo sits happily on the shelf and cannot be advertised.
+ * So a campaign could report three live, buyable products while Merchant Center had rows for two,
+ * and the seller paid for a campaign that was quietly smaller than its own card said. Both modules
+ * were internally right; only the join was wrong, which is this project's recurring shape (see
+ * `ad-item-id.ts` and `custom-domain.ts#AD_LANDING_PARAM`).
+ *
+ * Deliberately NOT a check on stock: a sold-out product still belongs in the catalogue, marked
+ * `out_of_stock`. Availability is a state the feed reports, not a reason to withhold the item.
+ *
+ * **Not the same question `merchant-status.ts` asks, and the two must not be merged.** That module
+ * asks the NETWORKS what they did with a row we sent — external truth, and only once the accounts
+ * exist. This one is what we will not send in the first place: knowable offline, today, with no
+ * account. A product excluded here never reaches Merchant Center at all, so it can never appear in
+ * a rejection report — which is precisely the blind spot the two of them cover between them.
+ */
+export function isProductAdvertisable(product: StoreProduct, baseUrl: string): boolean {
+  if (product.price <= 0) return false;
+  return (product.images ?? []).some((img) => toAbsoluteImageUrl(img, baseUrl) !== null);
+}
+
 /** Expand one product into its feed rows (variant combos → item_group_id rows).
  *  Returns [] when a required field is missing (no usable image, or price ≤ 0) so the
- *  caller simply skips it rather than emitting a row the platforms would reject. */
+ *  caller simply skips it rather than emitting a row the platforms would reject —
+ *  `isProductAdvertisable` is that same rule, asked ahead of time. */
 export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): FeedItem[] {
   const base = buildProductFeedAttributes(product, ctx);
   // Every image the platforms are handed must be an ABSOLUTE url, and one bad entry
@@ -227,6 +258,17 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
   const imageLink = images[0];
   if (!imageLink || product.price <= 0) return [];
   const additionalImageLinks = images.slice(1, 11); // Google caps additional images at 10
+  // Colour option value → that colour's own photo, absolutized the same way the gallery was.
+  // Membership in `images` is required rather than assumed: the product form only lets the seller
+  // link a photo the product already has, but an image DELETED afterwards leaves the link behind,
+  // and publishing a URL the product no longer shows is a landing-page mismatch. An entry that
+  // fails either step is simply absent, and the row falls back to the gallery's first image.
+  const galleryUrls = new Set(images);
+  const variantImageByOption = new Map<string, string>();
+  for (const [option, raw] of Object.entries(product.variantImages ?? {})) {
+    const abs = toAbsoluteImageUrl(raw, ctx.baseUrl);
+    if (abs && galleryUrls.has(abs)) variantImageByOption.set(option, abs);
+  }
   // The page's own canonical, built by the page's own function — see FeedBuildContext.productLink.
   // (It percent-encodes per segment: slugs carry Hebrew and Merchant Center validates this as a
   // URL, not as display text.)
@@ -245,16 +287,33 @@ export function buildFeedItems(product: StoreProduct, ctx: FeedBuildContext): Fe
     // A per-combo SKU is this variant's own mpn — more specific than the product-level one, and it
     // makes identifierExists true (brand + mpn) even when the product itself carries no top sku.
     const comboMpn = product.variantSku?.[key];
+    const colorValue = colorDim ? combo[colorDim.name] : undefined;
+    // **This row's own photo.** `variantImages` is keyed by the raw colour option value (not a
+    // comboKey — a colour implies the photo regardless of size), and the seller can only point it
+    // at one of this product's own images, so it is already trusted. Before this, every row of a
+    // variant product shipped `images[0]`: a row declaring `color: אדום` carried the blue photo,
+    // which for a colour variant is the one mismatch Merchant Center checks a variant row FOR, and
+    // is a wrong-product ad even when it is not disapproved. Falls back to the gallery's first
+    // image whenever the seller has linked no photo to this colour, or the linked one does not
+    // resolve — the row keeps the image it had rather than losing its listing over a nicety.
+    const comboImage = (colorValue ? variantImageByOption.get(colorValue) : undefined) ?? imageLink;
     return {
       ...base,
       id: adComboItemId(product.id, key),
       itemGroupId: product.id,
       availability: stock > 0 ? 'in_stock' : 'out_of_stock',
-      link,
-      imageLink,
-      additionalImageLinks,
+      // Slot 2 recomputed from THIS combo's stock — the other four describe the product and are
+      // correct as inherited (product-labels.ts#AVAILABILITY_SLOT).
+      customLabels: base.customLabels.map((l, i) => (i === AVAILABILITY_SLOT ? availabilityTier(stock) : l)),
+      // The landing carries the combo, so an ad click arrives on the variant it advertised rather
+      // than on an unselected page (variant-landing.ts).
+      link: variantLandingUrl(link, combo),
+      imageLink: comboImage,
+      // Never repeat the main image in the additional list — Google reads a duplicate as a second
+      // picture and shows the same photo twice in the gallery.
+      additionalImageLinks: images.filter((u) => u !== comboImage).slice(0, 10),
       ...(comboMpn && comboMpn.length <= MPN_MAX ? { mpn: comboMpn, identifierExists: Boolean(base.brand) } : {}),
-      ...(colorDim && combo[colorDim.name] ? { color: clampText(combo[colorDim.name]!, COLOR_MAX) } : {}),
+      ...(colorValue ? { color: clampText(colorValue, COLOR_MAX) } : {}),
       ...(sizeDim && combo[sizeDim.name] ? { size: clampText(combo[sizeDim.name]!, SIZE_MAX) } : {}),
     } as FeedItem;
   });
