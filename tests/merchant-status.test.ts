@@ -22,7 +22,7 @@ import { query } from '../src/lib/db.js';
 import { adItemId, adComboItemId, productIdFromAdItemId } from '../src/lib/ad-item-id.js';
 import { buildAssertion, parseServiceAccountKey } from '../src/lib/google-auth.js';
 import { offerIdFromGoogleProductId } from '../src/lib/merchant-status-google.js';
-import { rejectionCeiling } from '../src/lib/merchant-status-check.js';
+import { rejectionCeiling, shouldWarnUnconfigured } from '../src/lib/merchant-status-check.js';
 import type { MerchantStatusProvider, MerchantStatusReport } from '../src/lib/merchant-status.js';
 
 const net = vi.hoisted(() => ({ responses: [] as { ok: boolean; body: unknown }[], calls: 0 }));
@@ -240,6 +240,16 @@ function filler(from: number, to: number) {
 describe('the check pass', () => {
   it('says nothing at all when no network is configured', async () => {
     expect(await runMerchantStatusCheck()).toContain('not configured');
+    // Not in dev or CI: inert is the correct and permanent state here, and a reminder that fires
+    // where it does not apply is one nobody reads on the day it does.
+    expect(await alertsFor('job:merchant-status:unconfigured')).toBe(0);
+  });
+
+  it('but a LIVE site with nothing configured is a gap, and says so', () => {
+    // The reminder nobody has to remember. §2 makes advertising launch-blocking, so a production
+    // build running this job at all is the day it should already have been connected.
+    expect(shouldWarnUnconfigured(true)).toBe(true);
+    expect(shouldWarnUnconfigured(false)).toBe(false);
   });
 
   it('tells the seller once, and stays quiet on the next run while it is still broken', async () => {
