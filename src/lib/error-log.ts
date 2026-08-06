@@ -385,6 +385,28 @@ export async function getRecentErrors(limit = 100): Promise<ErrorLogEntry[]> {
   return rows.map(toEntry);
 }
 
+/**
+ * Has this exact route already reported since `sinceIso` — the "do not say it again" check for a
+ * condition that persists.
+ *
+ * A page failing twice is two events worth seeing. A scheduled job finding the same broken thing on
+ * every tick is ONE event, and writing it hourly turns the Alerts tab into a wall of the same line —
+ * after which nobody reads it, and the next genuine entry is not read either (`error-severity.ts`
+ * makes the same argument for why client errors never page). So repeating callers pass a stable
+ * `route` key, e.g. `job:merchant-status:google:feed`, and ask here first.
+ *
+ * **Matches regardless of `resolved`.** Resolving means "seen, I am on it" — re-alerting the moment
+ * an admin ticks the box would punish triage. The window expiring is what makes a still-broken
+ * condition speak up again.
+ */
+export async function hasRecentErrorForRoute(route: string, sinceIso: string): Promise<boolean> {
+  const { rows } = await query<{ one: number }>(
+    'SELECT 1 AS one FROM error_log WHERE route = $1 AND created_at >= $2 LIMIT 1',
+    [route, sinceIso],
+  );
+  return rows.length > 0;
+}
+
 export async function clearErrorLog(): Promise<void> {
   await query('DELETE FROM error_log');
 }
