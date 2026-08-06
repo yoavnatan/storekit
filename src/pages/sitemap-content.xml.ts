@@ -9,6 +9,7 @@ import { buildUrlSetXml, toSitemapDate, type SitemapEntry } from '../lib/sitemap
 import { isStoreReady } from '../lib/store-readiness.js';
 import { getCategoriesByStoreIds, countProductsPerCategory, categoryUrlParam, type StoreCategory } from '../lib/store-categories.js';
 import { stripTrailingSlashes, urlSegment } from '../lib/url-base.js';
+import { singleFlight } from '../lib/single-flight.js';
 
 // Dynamic content sitemap for the SEO pages that @astrojs/sitemap CANNOT see:
 // every store page (/[slug]) and product page (/[slug]/[product]) is
@@ -112,7 +113,7 @@ async function customHostSitemap(host: string): Promise<Response | null> {
   const products = productsByStore.get(store.id) ?? [];
   if (!isStoreReady({ visibleProductCount: products.length })) return null;
   const entries = storeEntries(store, products, categoriesByStore.get(store.id) ?? [], `https://${store.customDomain!.hostname}`, '');
-  return xmlResponse(entries);
+  return xmlResponse(buildUrlSetXml(entries));
 }
 
 export async function GET(ctx: APIContext): Promise<Response> {
@@ -124,6 +125,20 @@ export async function GET(ctx: APIContext): Promise<Response> {
     if (own) return own;
   }
 
+  // **Concurrent crawls share one build (`lib/single-flight.ts`).** Same reasoning, same class and
+  // the same measurement as `api/feed/products.xml`: public, unauthenticated, and it walks the WHOLE
+  // mall into one string on a single event loop, so while it runs every other request in the process
+  // — a shopper at checkout included — is waiting behind it. Googlebot, Bingbot and a `curl` loop are
+  // three simultaneous full-mall builds without this and one with it. Only the platform-wide branch
+  // is guarded; the custom-host branch above is one store's shelf and costs nothing worth sharing.
+  return xmlResponse(await singleFlight(PLATFORM_SITEMAP_KEY, buildPlatformSitemapXml));
+}
+
+/** Names the WORK. Constant because the platform sitemap has no variants — the per-host answers
+ *  returned above never reach here. */
+const PLATFORM_SITEMAP_KEY = 'sitemap:platform';
+
+async function buildPlatformSitemapXml(): Promise<string> {
   const baseUrl = stripTrailingSlashes(platform.url);
   const entries: SitemapEntry[] = [];
 
@@ -155,11 +170,13 @@ export async function GET(ctx: APIContext): Promise<Response> {
     entries.push(...storeEntries(s, visibleProducts, categoriesByStore.get(s.id) ?? [], baseUrl, `/${urlSegment(s.slug)}`));
   }
 
-  return xmlResponse(entries);
+  return buildUrlSetXml(entries);
 }
 
-function xmlResponse(entries: SitemapEntry[]): Response {
-  return new Response(buildUrlSetXml(entries), {
+/** Takes the finished document rather than the entries: the platform branch builds its XML inside
+ *  `singleFlight` (so the string, not the entry array, is what concurrent callers share). */
+function xmlResponse(xml: string): Response {
+  return new Response(xml, {
     status: 200,
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
