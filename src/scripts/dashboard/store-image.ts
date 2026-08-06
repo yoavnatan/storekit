@@ -4,6 +4,11 @@ import { cdnSrc } from '../../config/store.config.js';
 import { showErrorToast } from '../../lib/toast.js';
 import { announceValueChange } from './unsaved-guard.js';
 import { removeBackgroundInWorker, warmBgWorker } from './bg-worker.js';
+import { outboundFetch } from '../../lib/outbound-fetch.js';
+
+/** How long a re-fetch of a stored ORIGINAL may take before it counts as a failure. See the call
+ *  site for why it is generous and why it exists at all. */
+const SOURCE_FETCH_TIMEOUT_MS = 30_000;
 
 export interface StoreImageWidgetConfig {
   frameId: string;
@@ -165,7 +170,14 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
     const url = sourceInput?.value || hiddenInput!.value;
     const done = busy(btn, cfg.labels.loading);
     try {
-      const resp = await fetch(url);
+      // **`outboundFetch`, for the deadline.** This is a GET to Cloudinary, and a bare `fetch` here
+      // had no way to end: the CDN accepting the connection and then not answering left this button
+      // spinning `cfg.labels.loading` with no error and no way out but a reload — the seller cannot
+      // tell that from "it is working on it". The rule the wrapper exists for holds in a browser
+      // too; only the number differs. Thirty seconds because this downloads a full-resolution
+      // ORIGINAL, whose honest duration is a real megabyte count over the seller's real connection —
+      // long enough never to abort a slow phone, short enough to be a failure a person recognises.
+      const resp = await outboundFetch(url, { timeoutMs: SOURCE_FETCH_TIMEOUT_MS });
       if (!resp.ok) throw new Error(String(resp.status));
       const blob = await resp.blob();
       sourceBlob = blob;

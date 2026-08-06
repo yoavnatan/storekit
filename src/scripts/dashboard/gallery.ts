@@ -4,6 +4,20 @@ import { cloudinaryUpload } from './cloudinary.js';
 import { openCropModal } from './crop-modal.js';
 import { openCleanupModal } from './cleanup-modal.js';
 import { announceValueChange } from './unsaved-guard.js';
+import { outboundFetch } from '../../lib/outbound-fetch.js';
+
+/**
+ * How long a re-fetch of a stored image may take before it counts as a failure.
+ *
+ * All three fetches below are GETs to Cloudinary for a photo the seller uploaded earlier, and each
+ * runs behind a loading state. A bare `fetch` had no way to end: the CDN accepting the connection
+ * and then not answering left the panel stuck on "Loading image…" with no error and no way out but
+ * a reload, which a seller cannot tell apart from "it is still working". Thirty seconds because
+ * these download full-resolution ORIGINALS — long enough never to abort a slow phone, short enough
+ * to be a failure a person recognises. Every catch here already restores the panel, so a deadline
+ * turns a hang into the failure the code was always written for.
+ */
+const IMAGE_FETCH_TIMEOUT_MS = 30_000;
 
 export { galleryWidgetHtml };
 
@@ -242,7 +256,7 @@ export function initGalleryWidget(gallery: Element): void {
     const url = slot.querySelector<HTMLInputElement>('.gallery-slot__url')?.value;
     if (!url) return null;
     try {
-      const resp = await fetch(url);
+      const resp = await outboundFetch(url, { timeoutMs: IMAGE_FETCH_TIMEOUT_MS });
       if (!resp.ok) return null;
       const blob = await resp.blob();
       st.original = blob; st.pristineOriginal = blob;
@@ -379,7 +393,7 @@ export function initGalleryWidget(gallery: Element): void {
       if (!url) return;
       setLoading(true);
       try {
-        const resp = await fetch(url);
+        const resp = await outboundFetch(url, { timeoutMs: IMAGE_FETCH_TIMEOUT_MS });
         if (!resp.ok) throw new Error('fetch failed');
         st.original = await resp.blob();
         st.pristineOriginal = st.original;
@@ -475,7 +489,7 @@ export function initGalleryWidget(gallery: Element): void {
       // setLoading defaults its label to the bg-removal message, so pass the right one.
       setLoading(true, getGalleryI18n().loadingImage ?? 'Loading image…');
       try {
-        const resp = await fetch(url);
+        const resp = await outboundFetch(url, { timeoutMs: IMAGE_FETCH_TIMEOUT_MS });
         if (!resp.ok) throw new Error('fetch failed');
         st.original = await resp.blob();
         st.pristineOriginal = st.original;
