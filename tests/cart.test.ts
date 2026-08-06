@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addItem, applyServerPrices, applyStockLimit, getCartQty, getCount, getGrandTotal, getStoreItems, getSubtotal, hasBuyableItems, itemSaving, makeCartKey, removeItem, setQty } from '../src/lib/cart.js';
+import { addItem, applyServerPrices, applyStockLimit, getCartQty, getCount, getGrandTotal, getStoreItems, getSubtotal, hasBuyableItems, itemSaving, makeCartKey, mergeStoreCart, readStoreCartForHandoff, removeItem, setQty } from '../src/lib/cart.js';
 
 const STORE = 'test-store';
 const PRODUCT = { slug: 'widget', name: 'Widget', price: 50, image: 'w.png' };
@@ -120,6 +120,67 @@ describe('applyStockLimit — a line that ran out under the buyer', () => {
   it('is a no-op for a line that is no longer in the cart', () => {
     expect(applyStockLimit(STORE, 'ghost', 5)).toBe(0);
     expect(getStoreItems(STORE)).toHaveLength(0);
+  });
+});
+
+/**
+ * A basket arriving from a seller's own domain (`cart-handoff.ts`, `platform-routes.ts`).
+ *
+ * `localStorage` is per-origin, so this is the only way a cart filled on `shop.acme.co.il` can
+ * reach the checkout on `dezabin.co.il`. The merge is where the shopper either keeps what they had
+ * or silently loses half of it, and neither half is visible in a diff.
+ */
+describe('mergeStoreCart — a cart that crossed the origin boundary', () => {
+  const handoff = (over: Partial<{ qty: number; stock: number; slug: string }> = {}) => ({
+    storeSlug: STORE,
+    storeName: 'Store',
+    items: [{
+      cartKey: over.slug ?? PRODUCT.slug, slug: over.slug ?? PRODUCT.slug,
+      name: PRODUCT.name, price: PRODUCT.price, image: PRODUCT.image,
+      qty: over.qty ?? 1, ...(over.stock != null ? { stock: over.stock } : {}),
+    }],
+  });
+
+  it('lands a basket into an origin that had none', () => {
+    expect(mergeStoreCart(handoff({ qty: 3 }))).toBe(true);
+    expect(getCartQty(STORE, PRODUCT.slug)).toBe(3);
+  });
+
+  it('ADDS to what was already here — both halves are the same shopper', () => {
+    // Browsed the store on the platform, followed a link onto its own domain, kept shopping. One
+    // basket won and the other vanished if this were a replace.
+    addItem(STORE, 'Store', PRODUCT, 2);
+    mergeStoreCart(handoff({ qty: 3 }));
+    expect(getCartQty(STORE, PRODUCT.slug)).toBe(5);
+  });
+
+  it('leaves lines from other stores alone', () => {
+    addItem('other-store', 'Other', PRODUCT, 1);
+    mergeStoreCart(handoff({ qty: 1 }));
+    expect(getCartQty('other-store', PRODUCT.slug)).toBe(1);
+    expect(getCartQty(STORE, PRODUCT.slug)).toBe(1);
+  });
+
+  it('still clamps to stock — how many units exist is not a matter of opinion', () => {
+    addItem(STORE, 'Store', { ...PRODUCT, stock: 4 }, 3);
+    mergeStoreCart(handoff({ qty: 3, stock: 4 }));
+    expect(getCartQty(STORE, PRODUCT.slug)).toBe(4);
+  });
+
+  it('is a no-op for an empty handover', () => {
+    expect(mergeStoreCart({ storeSlug: STORE, storeName: 'Store', items: [] })).toBe(false);
+    expect(getStoreItems(STORE)).toHaveLength(0);
+  });
+
+  it('reads back out in exactly the shape that crosses', () => {
+    expect(readStoreCartForHandoff(STORE)).toBeNull();   // nothing to hand over
+    addItem(STORE, 'Store', PRODUCT, 2);
+    const out = readStoreCartForHandoff(STORE);
+    expect(out).toMatchObject({ storeSlug: STORE, storeName: 'Store' });
+    expect(out!.items).toHaveLength(1);
+    // The seller's origin KEEPS its copy: a shopper who crosses to pay and presses back must find
+    // the store as they left it, and the merge on the far side is additive so nothing is lost.
+    expect(getCartQty(STORE, PRODUCT.slug)).toBe(2);
   });
 });
 
