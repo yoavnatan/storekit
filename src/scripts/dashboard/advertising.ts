@@ -57,6 +57,7 @@ function errorText(code: string | undefined, i18n: Record<string, string>): stri
   const known: Record<string, string | undefined> = {
     CAMPAIGN_UNAVAILABLE: i18n.adResumeUnavailable,
     CAMPAIGN_OUT_OF_STOCK: i18n.adResumeOutOfStock,
+    CAMPAIGN_NO_IMAGE: i18n.adResumeNoImage,
     CAMPAIGN_ENDED: i18n.adResumeEnded,
     PRODUCT_NOT_ADVERTISABLE: i18n.adProductNotAdvertisable,
   };

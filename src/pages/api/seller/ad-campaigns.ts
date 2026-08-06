@@ -4,7 +4,7 @@ import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
 import { getSellerSession } from '../../../lib/seller-auth.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { createCampaign, updateCampaign, archiveCampaign, type CampaignUpdate } from '../../../lib/ad-campaigns.js';
-import { getCampaignsForStore, getCampaignHistory, resumeBlockReason } from '../../../lib/ad-campaign-health.js';
+import { getCampaignsForStore, getCampaignHistory, resumeBlockReason, resumeBlockCode } from '../../../lib/ad-campaign-health.js';
 import { buildCampaignInput, isValidCampaignBudget } from '../../../lib/ad-campaign-input.js';
 import { withCampaignStats } from '../../../lib/ad-metrics.js';
 import { resolveAdRange } from '../../../lib/date-range.js';
@@ -89,10 +89,7 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   if (status === 'active') {
     const blocked = await resumeBlockReason(store.id, id);
     if (blocked) {
-      const code = blocked === 'out-of-stock' ? 'CAMPAIGN_OUT_OF_STOCK'
-        : blocked === 'ended' ? 'CAMPAIGN_ENDED'
-        : 'CAMPAIGN_UNAVAILABLE';
-      return json({ error: code }, 409);
+      return json({ error: resumeBlockCode(blocked) }, 409);
     }
   }
   if (Object.keys(updates).length === 0) return json({ error: 'No valid fields to update' }, 400);

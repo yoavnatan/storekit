@@ -23,7 +23,7 @@ export type AdScopeLabels = Partial<Record<
   | 'adGenderWomen' | 'adGenderMen' | 'adAgeInfant' | 'adAgeKids' | 'adAgeAdult'
   | 'adDuration7' | 'adDuration14' | 'adDuration30' | 'adDurationOngoing'
   | 'adHealthStarved' | 'adHealthPartial' | 'adHealthSoldOut' | 'adHealthPartialStock'
-  | 'adHealthNoImage',
+  | 'adHealthNoImage' | 'adHealthNoImageStopped',
   string>>;
 
 /** How much of what a campaign advertises is still on the storefront, how much of THAT the ad
@@ -51,7 +51,19 @@ export function campaignHealthNote(
   // agree on. Otherwise the card tells him to do something he already did.
   const starved = !health || health.live === 0;
   if (pausedReason === 'unavailable' && starved) return l.adHealthStarved ?? '';
-  if (pausedReason && health && health.buyable === 0) return l.adHealthSoldOut ?? '';
+  // LIVE counts first, in the same order the sweep picks a reason in
+  // (ad-campaign-health.ts#campaignBlockReason): a product with no photo is not in the catalogue at
+  // all, while a sold-out one is, and uploading a photo is the action he can take. Both are
+  // self-healing, so both lines end with "and it comes back by itself".
+  if (pausedReason && health && health.live > 0) {
+    if (health.advertisable === 0) return l.adHealthNoImageStopped ?? '';
+    if (health.buyable === 0) return l.adHealthSoldOut ?? '';
+  }
+  // Only with no counts to read does the STORED reason speak for itself. Putting these first was a
+  // real bug, caught by its own test: a campaign paused for a missing photo, photo since uploaded
+  // and now sold out, went on telling the seller to upload a photo he had already uploaded — the
+  // exact failure the "believe the live counts" rule above exists to prevent.
+  if (pausedReason === 'no-image') return l.adHealthNoImageStopped ?? '';
   if (pausedReason === 'out-of-stock') return l.adHealthSoldOut ?? '';
   if (!health) return '';
   const fill = (template: string, missing: number): string =>

@@ -300,10 +300,16 @@ describe('campaign-sweep is idempotent, and does on a timer what only a page vie
       [sellerId, `${storeId}@example.test`]);
     await query(`INSERT INTO stores (id, seller_id, slug, name) VALUES ($1, $2, $3, 'Sweep test')`,
       [storeId, sellerId, `sweep-${suffix}`]);
+    const productId = crypto.randomUUID();
     await query(
       `INSERT INTO store_products (id, store_id, slug, name, price_agorot, stock) VALUES ($1, $2, $3, 'P', 1000, $4)`,
-      [crypto.randomUUID(), storeId, `p-${suffix}`, stock],
+      [productId, storeId, `p-${suffix}`, stock],
     );
+    // With a photo, so the sweep's reason here is the STOCK one these cases are about. Without it
+    // the product is not in the Merchant/Catalog feed at all and the campaign pauses as 'no-image'
+    // first (ad-campaign-health.ts) — a correct answer to a different question.
+    await query(`INSERT INTO product_images (product_id, position, url) VALUES ($1, 0, $2)`,
+      [productId, 'https://cdn.example/p.jpg']);
     await createCampaign({
       storeId, storeSlug: `sweep-${suffix}`, scope: 'store', platform: 'both', monthlyBudgetAgorot: 50_000,
     });

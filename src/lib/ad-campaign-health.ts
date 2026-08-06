@@ -102,52 +102,108 @@ function isCampaignSoldOut(health: CampaignHealth): boolean {
   return health.live > 0 && health.buyable === 0;
 }
 
-/** Why the platform stopped a running campaign — the two states that get STORED on the row. */
-export type CampaignPauseReason = 'unavailable' | 'out-of-stock';
+/** Still listed, but the ad platforms will not carry ANY of it — today that means no photo, which
+ *  `image_link` makes a hard requirement (product-feed.ts#isProductAdvertisable). */
+function isCampaignUnadvertisable(health: CampaignHealth): boolean {
+  return health.live > 0 && health.advertisable === 0;
+}
+
+/** Why the platform stopped a running campaign — the states that get STORED on the row
+ *  (migration 0016 widened the column's CHECK for the third). */
+export type CampaignPauseReason = 'unavailable' | 'out-of-stock' | 'no-image';
+
+/**
+ * The reasons the platform undoes BY ITSELF once the cause clears.
+ *
+ * This is the axis the whole file turns on, and it is about WHO decided, not about severity: a
+ * human took a product off the shelf, so a human restarts it ('unavailable'); a stock-out and a
+ * missing photo are mechanical states nobody chose, and making the seller hunt for a "resume"
+ * button after fixing one would be a penalty for fixing it.
+ */
+const SELF_HEALING_REASONS = ['out-of-stock', 'no-image'] as const;
+type SelfHealingReason = typeof SELF_HEALING_REASONS[number];
+
+function isSelfHealing(reason: string | undefined): reason is SelfHealingReason {
+  return SELF_HEALING_REASONS.includes(reason as SelfHealingReason);
+}
 
 /** Why a campaign may not be switched on. Wider than the stored reasons: a finished campaign was
  *  never paused, it simply ran its course, so 'ended' blocks a resume without ever being written
  *  anywhere (ad-metrics.ts#isCampaignEnded derives it). */
 export type CampaignBlockReason = CampaignPauseReason | 'ended';
 
+/**
+ * The refusal code a blocked resume travels to the browser as — one mapping, not one per route.
+ *
+ * The wording stays on the client because that is where the seller's language is known
+ * (`scripts/dashboard/advertising.ts#errorText`); only the CODE crosses. The seller route and the
+ * admin route each had their own copy of this chain, which is the shape this repo's review
+ * checklist names as "the next bug" — and it was: adding the third reason meant editing both, and
+ * a route left un-edited would have answered `CAMPAIGN_UNAVAILABLE` for a missing photo, telling
+ * the seller a human must intervene on something that fixes itself.
+ *
+ * `Record`-typed rather than a chain, so a new `CampaignBlockReason` fails to compile until it has
+ * a code — the compiler is what makes this exhaustive, not the reader.
+ */
+const RESUME_BLOCK_CODES: Record<CampaignBlockReason, string> = {
+  unavailable: 'CAMPAIGN_UNAVAILABLE',
+  'out-of-stock': 'CAMPAIGN_OUT_OF_STOCK',
+  'no-image': 'CAMPAIGN_NO_IMAGE',
+  ended: 'CAMPAIGN_ENDED',
+};
+
+export function resumeBlockCode(reason: CampaignBlockReason): string {
+  return RESUME_BLOCK_CODES[reason];
+}
+
+/**
+ * The single blocker to report, most fundamental first.
+ *
+ * 'no-image' outranks 'out-of-stock' on both counts that matter: a product with no photo is not in
+ * the catalogue AT ALL (a sold-out one is, marked `out_of_stock`, and still collects the demand),
+ * and uploading a photo is entirely in the seller's hands where restocking may not be. When both
+ * are true he is told the one he can act on.
+ */
 function campaignBlockReason(health: CampaignHealth): CampaignPauseReason | null {
   if (isCampaignStarved(health)) return 'unavailable';
+  if (isCampaignUnadvertisable(health)) return 'no-image';
   if (isCampaignSoldOut(health)) return 'out-of-stock';
   return null;
 }
 
 export type CampaignWithHealth = AdCampaign & { health: CampaignHealth };
 
-/** What the read-time sweep may do to a campaign. Four fixed shapes, so a store's whole sweep is
- *  at most four statements however many campaigns it runs — see `getCampaignsForStore`. */
-type SweepAction = 'pause-unavailable' | 'pause-out-of-stock' | 'restamp-unavailable' | 'resume';
+/** What the read-time sweep may do to a campaign. A FIXED set of shapes, so a store's whole sweep
+ *  is at most that many statements however many campaigns it runs — see `getCampaignsForStore`. */
+type SweepAction = `pause-${CampaignPauseReason}` | `restamp-${CampaignPauseReason}` | 'resume';
 
 const SWEEP_UPDATES: Record<SweepAction, CampaignUpdate> = {
   // Pausing is what freezes the accrued metrics at this moment rather than erasing them
   // (ad-metrics.ts#runPeriod) — `updateCampaigns` stamps `pausedAt` on the transition itself.
   'pause-unavailable': { status: 'paused', pausedReason: 'unavailable' },
   'pause-out-of-stock': { status: 'paused', pausedReason: 'out-of-stock' },
-  // A temporary stop that turned permanent: it was sold out, and then the product left the
-  // storefront too. Re-stamped rather than left alone, because 'out-of-stock' is a PROMISE — the
-  // card says "it comes back by itself" and `resume` below would honour that. Never the other
-  // way: a stop a human caused does not become a self-healing one because the symptom is milder.
+  'pause-no-image': { status: 'paused', pausedReason: 'no-image' },
+  // Re-stamping keeps the STORED reason equal to the live one, because that reason is a promise the
+  // card makes about who has to act. A sold-out campaign whose products then left the storefront
+  // must stop saying "it comes back by itself"; a photo-less one that also sells out should name
+  // the blocker the seller would actually hit next. Only ever between reasons the sweep may set —
+  // and a stop a HUMAN caused never becomes self-healing because the symptom got milder, which is
+  // what `isSelfHealing` below gates.
   'restamp-unavailable': { pausedReason: 'unavailable' },
-  // The self-undoing half: ONLY a stock pause resumes on its own, and only back into the state
-  // the seller left it in. A campaign he paused himself, or one the platform stopped because the
-  // products left the storefront, stays paused until a human says otherwise — restarting spend
-  // without one is not a call this may make.
+  'restamp-out-of-stock': { pausedReason: 'out-of-stock' },
+  'restamp-no-image': { pausedReason: 'no-image' },
+  // The self-undoing half, and only back into the state the seller left it in. A campaign he paused
+  // himself, or one the platform stopped because the products left the storefront, stays paused
+  // until a human says otherwise — restarting spend without one is not a call this may make.
   resume: { status: 'active' },
 };
 
 function sweepAction(campaign: AdCampaign, blocked: CampaignPauseReason | null): SweepAction | null {
-  if (campaign.status === 'active' && blocked) {
-    return blocked === 'unavailable' ? 'pause-unavailable' : 'pause-out-of-stock';
-  }
-  if (campaign.status === 'paused' && campaign.pausedReason === 'out-of-stock') {
-    if (blocked === 'unavailable') return 'restamp-unavailable';
-    if (!blocked) return 'resume';
-  }
-  return null;
+  if (campaign.status === 'active') return blocked ? `pause-${blocked}` : null;
+  // Only a self-healing pause is the sweep's to touch at all.
+  if (campaign.status !== 'paused' || !isSelfHealing(campaign.pausedReason)) return null;
+  if (!blocked) return 'resume';
+  return blocked === campaign.pausedReason ? null : `restamp-${blocked}`;
 }
 
 /** The store's products as a SHOPPER can BUY them. A store that cannot sell — admin-blocked

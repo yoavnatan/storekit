@@ -66,14 +66,19 @@ export interface AdCampaign {
   // it to bound the run period. Cleared on resume. Absent on legacy rows (they
   // fall back to updatedAt).
   pausedAt?: string;
-  /** Set when the PLATFORM paused it rather than the seller (ad-campaign-health.ts):
+  /** Set when the PLATFORM paused it rather than the seller (ad-campaign-health.ts). The values
+   *  split on WHO may undo the pause, not on severity:
    *   'unavailable'  = nothing it advertises is on the storefront any more — a human took it
    *                    down, so only a human puts it back.
-   *   'out-of-stock' = everything in it is sold out — temporary, and the same sweep resumes the
+   *   'out-of-stock' = everything in it is sold out — mechanical, so the same sweep resumes the
    *                    campaign by itself once stock returns.
+   *   'no-image'     = nothing in it has a photo, and `image_link` is a required Merchant/Catalog
+   *                    attribute, so none of it is in the catalogue at all. Self-healing like the
+   *                    stock one (uploading a photo clears it); a separate value because labelling
+   *                    it "sold out" would tell the seller something false about his own shop.
    *  Cleared on resume, so a campaign only ever carries the reason for the pause it is currently
    *  in, and the distinction is what tells the resume guard which pauses a click may undo. */
-  pausedReason?: 'unavailable' | 'out-of-stock';
+  pausedReason?: 'unavailable' | 'out-of-stock' | 'no-image';
   /** When the seller (or the admin) cancelled it. A cancelled campaign is NOT deleted: it stops,
    *  leaves the live list and moves to the history block — because the money it already spent is
    *  a fact. Erasing the row erased that fact, and since every reported figure is derived from
@@ -100,7 +105,7 @@ export type CreateCampaignInput = Pick<AdCampaign, 'storeId' | 'storeSlug' | 'sc
 export interface CampaignUpdate {
   monthlyBudgetAgorot?: number;
   status?: 'active' | 'paused';
-  pausedReason?: 'unavailable' | 'out-of-stock';
+  pausedReason?: 'unavailable' | 'out-of-stock' | 'no-image';
 }
 
 /** Coerce untrusted request input to a valid duration, or undefined (= ongoing). */

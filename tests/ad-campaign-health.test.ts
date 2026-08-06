@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import crypto from 'node:crypto';
 import { query } from '../src/lib/db.js';
+import { readFileSync } from 'node:fs';
 import {
   CAMPAIGN_HISTORY_LIMIT, campaignHealth, getCampaignHistory, getCampaignsForStore,
-  isCampaignStarved, resumeBlockReason,
+  isCampaignStarved, resumeBlockReason, resumeBlockCode,
 } from '../src/lib/ad-campaign-health.js';
 import { campaignHealthNote } from '../src/lib/ad-scope-label.js';
+import { translations } from '../src/i18n/translations.js';
 import type { AdCampaign } from '../src/lib/ad-campaigns.js';
 import type { StoreProduct } from '../src/lib/store-products.js';
 import type { StoreCategory } from '../src/lib/store-categories.js';
@@ -112,6 +114,7 @@ describe('campaignHealthNote', () => {
     adHealthPartial: '{gone} מתוך {total} ירדו מהמדף',
     adHealthPartialStock: '{gone} מתוך {total} אזלו מהמלאי',
     adHealthNoImage: '{gone} מתוך {total} בלי תמונה',
+    adHealthNoImageStopped: 'הושהה זמנית — אין תמונה לאף מוצר',
   };
 
   it('says the platform stopped it, when the platform stopped it', () => {
@@ -140,6 +143,25 @@ describe('campaignHealthNote', () => {
   // what he just did.
   it('believes the live counts over a stale stored reason', () => {
     expect(campaignHealthNote({ total: 1, live: 1, buyable: 0 }, 'unavailable', L)).toBe('הושהה זמנית — הכל אזל');
+  });
+
+  // A STOPPED photo-less campaign gets its own line, not the sold-out one — the whole reason the
+  // third stored reason exists.
+  it('names the photo when the platform stopped it for that', () => {
+    expect(campaignHealthNote({ total: 1, live: 1, advertisable: 0, buyable: 1 }, 'no-image', L))
+      .toBe('הושהה זמנית — אין תמונה לאף מוצר');
+  });
+
+  it('never calls a photo stop a stock stop, even when it is also sold out', () => {
+    expect(campaignHealthNote({ total: 1, live: 1, advertisable: 0, buyable: 0 }, 'no-image', L))
+      .toBe('הושהה זמנית — אין תמונה לאף מוצר');
+  });
+
+  it('still believes the live counts over a stale stored reason', () => {
+    // Paused for no photo, photo since uploaded, now sold out: the card must move to the stock line
+    // rather than telling him to upload a photo he already uploaded.
+    expect(campaignHealthNote({ total: 1, live: 1, advertisable: 1, buyable: 0 }, 'no-image', L))
+      .toBe('הושהה זמנית — הכל אזל');
   });
 
   it('reports products the ad platforms cannot carry, on a campaign still running', () => {
@@ -463,6 +485,133 @@ describe('getCampaignsForStore — sold out', () => {
     await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'] }));
     await stock('p1', { stock: 0, hidden: true });
     expect((await load())[0]?.pausedReason).toBe('unavailable');
+  });
+});
+
+/**
+ * The third reason (owner's decision 2026-08-06, migration 0016). `image_link` is a REQUIRED
+ * Merchant/Catalog attribute, so a product with no photo is not in the catalogue at all — the
+ * campaign was reading "פעיל" while advertising literally nothing.
+ *
+ * It is SELF-HEALING like a stock-out, because uploading a photo clears it and making the seller
+ * then hunt for a resume button would be a penalty for fixing it. But it could not BE 'out-of-stock'
+ * — that would print "אזל מהמלאי" on a card about a photo, which is a false statement to the seller
+ * about his own shop in the one place he goes to find out why his ad stopped.
+ */
+describe('getCampaignsForStore — no photo', () => {
+  it('pauses a campaign none of whose products the ad platforms can carry', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'] }));
+    await stock('p1', { noImage: true });
+    const [row] = await load();
+    expect(row?.status).toBe('paused');
+    expect(row?.pausedReason).toBe('no-image');
+  });
+
+  it('starts it again BY ITSELF once a photo exists', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'], status: 'paused', pausedReason: 'no-image' }));
+    await stock('p1');
+    const [row] = await load();
+    expect(row?.status).toBe('active');
+    expect(row?.pausedReason).toBeUndefined();
+    expect(row?.pausedAt).toBeUndefined();
+  });
+
+  it('keeps a partly photo-less campaign running on what is left', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1', 'p2'] }));
+    await stock('p1', { noImage: true });
+    await stock('p2');
+    const [row] = await load();
+    expect(row?.status).toBe('active');
+    expect(row?.health).toEqual({ total: 2, live: 2, advertisable: 1, buyable: 2 });
+  });
+
+  // The reason this needed a value of its own rather than reusing the stock one.
+  it('never labels a photo problem as a stock problem', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'] }));
+    await stock('p1', { noImage: true, stock: 9 });
+    expect((await load())[0]?.pausedReason).toBe('no-image');
+  });
+
+  it('reports the photo, not the stock, when it is both — it is the one he can act on', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'] }));
+    await stock('p1', { noImage: true, stock: 0 });
+    expect((await load())[0]?.pausedReason).toBe('no-image');
+  });
+
+  it('still reports being off the shelf above either — that one only a human undoes', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'] }));
+    await stock('p1', { noImage: true, hidden: true });
+    expect((await load())[0]?.pausedReason).toBe('unavailable');
+  });
+
+  // Both stored reasons are self-healing, so the sweep may move BETWEEN them — the stored reason is
+  // the promise the card makes, and it has to name the blocker that is true now.
+  it('re-stamps a photo pause as a stock pause once the photo arrives and stock has gone', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'], status: 'paused', pausedReason: 'no-image', pausedAt: '2026-07-01T00:00:00.000Z' }));
+    await stock('p1', { stock: 0 });
+    const [row] = await load();
+    expect(row?.pausedReason).toBe('out-of-stock');
+    expect(row?.status).toBe('paused');
+    // The campaign stopped when it stopped; re-stamping the moment would move the boundary its
+    // frozen metrics are measured to.
+    expect(row?.pausedAt).toBe('2026-07-01T00:00:00.000Z');
+  });
+
+  it('upgrades a photo pause to a permanent one when the product leaves the shelf', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'], status: 'paused', pausedReason: 'no-image' }));
+    await stock('p1', { noImage: true, hidden: true });
+    expect((await load())[0]?.pausedReason).toBe('unavailable');
+  });
+
+  it('never downgrades a human pause into it', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'], status: 'paused', pausedReason: 'unavailable' }));
+    await stock('p1', { noImage: true });
+    const [row] = await load();
+    expect(row?.pausedReason).toBe('unavailable');
+    expect(row?.status).toBe('paused');
+  });
+
+  it('refuses a manual resume while it still has no photo, and says which kind', async () => {
+    await seed(campaign({ id: 'c1', scope: 'products', productIds: ['p1'], status: 'paused', pausedReason: 'no-image' }));
+    await stock('p1', { noImage: true });
+    expect(await blockedFor('c1')).toBe('no-image');
+  });
+});
+
+/**
+ * The refusal code, and the reason it is ONE mapping.
+ *
+ * The seller route and the admin route each carried their own copy of the reason→code chain, so
+ * adding this third reason meant editing both — and a route left un-edited would have answered
+ * `CAMPAIGN_UNAVAILABLE` for a missing photo, i.e. told the seller a human must intervene on
+ * something that fixes itself. `resumeBlockCode` is now the single definition; these two tests are
+ * what stops the next reason from being added without a code or without the client wording.
+ */
+describe('resumeBlockCode', () => {
+  const REASONS = ['unavailable', 'out-of-stock', 'no-image', 'ended'] as const;
+
+  it('gives every block reason a distinct code', () => {
+    const codes = REASONS.map(resumeBlockCode);
+    expect(codes.every(Boolean)).toBe(true);
+    expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it('every code the API can answer with has seller-facing wording on the client', () => {
+    // The server sends a CODE and the dashboard turns it into the seller's language
+    // (scripts/dashboard/advertising.ts#errorText). A code with no entry there renders the raw
+    // token — an English constant in a Hebrew dashboard, on the one screen that explains why his
+    // ad stopped. Read from the source rather than mirrored, so this cannot pass on a stale copy.
+    const client = readFileSync(new URL('../src/scripts/dashboard/advertising.ts', import.meta.url), 'utf8');
+    const he = translations.he.dashboard as unknown as Record<string, string>;
+    const en = translations.en.dashboard as unknown as Record<string, string>;
+    for (const reason of REASONS) {
+      const code = resumeBlockCode(reason);
+      const mapped = new RegExp(`${code}:\\s*i18n\\.(\\w+)`).exec(client);
+      expect(mapped, `${code} has no entry in errorText`).not.toBeNull();
+      const key = mapped![1]!;
+      expect(he[key], `${key} missing from the Hebrew dashboard strings`).toBeTruthy();
+      expect(en[key], `${key} missing from the English dashboard strings`).toBeTruthy();
+    }
   });
 });
 
