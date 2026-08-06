@@ -750,6 +750,11 @@ Google Ads / Meta Ads Manager ונמצאו זהים.
   `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`,
   `CUSTOM_DOMAIN_TARGET`, `PLATFORM_HOSTS`. `PUBLIC_*` נשארים build-time בכוונה — הם נכנסים לחבילת
   הדפדפן.)
+- [ ] **ארבעה משתנים ליום שנפתחים חשבונות הפרסום** — `GOOGLE_MERCHANT_ID`,
+  `GOOGLE_SERVICE_ACCOUNT_JSON`, `META_CATALOG_ID`, `META_ACCESS_TOKEN`. הם מדליקים את ג'וב
+  `merchant-status` (§2.5 שכבה 1) שבודק לבד מה גוגל ומטא עשו עם הפיד. בלעדיהם הוא מדווח
+  "not configured" ולא נוגע בכלום. **ההסבר המלא — מאיפה משיגים כל אחד — יושב ב-`.env.example`
+  ליד השורות עצמן**, כי זה הקובץ שפתוח מולך כשמגדירים שרת.
 - [ ] **הפקודה להרצה בפרודקשן היא `npm start`** (`node --env-file-if-exists=.env dist/server/entry.mjs`,
   אחרי `npm run build`). **תוקן 2026-07-30:** `start` היה alias ל-`astro dev` — וזו הפקודה שכל
   פלטפורמת אירוח מריצה כברירת מחדל, כלומר deploy היה מגיש את שרת הפיתוח, ששם `import.meta.env.PROD`
