@@ -35,8 +35,8 @@ import crypto from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import { requiredSecret } from './runtime-env.js';
 import { secretsEqual } from './secret-compare.js';
-import { VISITOR_COOKIE, VISITOR_ID_RE } from './visitor.js';
-import { ATTRIBUTION_COOKIE } from './attribution.js';
+import { VISITOR_COOKIE, VISITOR_ID_RE, visitorCookieOptions } from './visitor.js';
+import { ATTRIBUTION_COOKIE, ATTRIBUTION_WINDOW_DAYS, decodeAttribution, encodeAttribution } from './attribution.js';
 import { store as platform } from '../config/store.config.js';
 import { machineUrl, stripTrailingSlashes } from './url-base.js';
 import { HANDOFF_PARAM } from './platform-routes.js';
@@ -125,6 +125,58 @@ export function readHandoff(token: string | null | undefined, now: number = Date
     : undefined;
   if (!vid && !attr) return null;
   return { ...(vid ? { vid } : {}), ...(attr ? { attr } : {}), exp: rec.exp };
+}
+
+/**
+ * Adopt the identity a shopper carried over from a seller's own domain. Called by `middleware.ts`
+ * on every page candidate, before anything reads either cookie.
+ *
+ * **Only ever FILLS IN.** A cookie already on this origin is the more recent truth — the shopper was
+ * here before — and `attribution.ts` is explicit that a click record is replaced whole by a genuine
+ * landing and never merged, so a token minted minutes ago must not overwrite a fresher click. That
+ * also makes it idempotent: replayed inside its ten minutes it changes nothing the second time.
+ *
+ * **It cannot throw, and that is not decoration.** This is a secondary service — carrying an
+ * analytics id and an ad click — sitting in the middleware, i.e. in front of every page on the site.
+ * The middleware re-throws what it catches, so anything raised here is a 500 on a storefront that is
+ * otherwise perfectly healthy. There is a concrete way to raise one: `sign()` goes through
+ * `requiredSecret('AUTH_SECRET', …)`, which THROWS rather than falling back in a production build.
+ * A production deploy missing that variable still serves every GET page, because the CSRF gate only
+ * consults it on writes — every page except one carrying `?h=`, which would have been the pages
+ * arriving from sellers' own domains, i.e. exactly the traffic this mechanism exists to keep. The
+ * shopper loses their carried-over visitor id and their ad click, which costs the seller's
+ * conversion figures some accuracy and costs the shopper nothing. That is the correct trade, and it
+ * is the safe default this whole boundary is built on: an unreadable token means "we know nothing
+ * about you", never "you are somebody" and never a page that will not load.
+ *
+ * Lives here rather than in `middleware.ts` because minting, verifying and adopting are one
+ * mechanism, and the one that is hardest to reason about was the one with no test.
+ */
+export function adoptHandoff(url: URL, cookies: AstroCookies): void {
+  try {
+    const payload = readHandoff(url.searchParams.get(HANDOFF_PARAM));
+    if (!payload) return;
+    if (payload.vid && !cookies.get(VISITOR_COOKIE)?.value) {
+      cookies.set(VISITOR_COOKIE, payload.vid, visitorCookieOptions());
+    }
+    if (payload.attr && !cookies.get(ATTRIBUTION_COOKIE)?.value) {
+      // Re-validated, never trusted: a signature proves we minted the string, not that the record
+      // inside it is well-formed or still inside its window ("everything here is untrusted input, on
+      // both ends" — attribution.ts). Re-encoding what came back out is what guarantees this origin
+      // ends up holding a cookie `readAttribution` will accept at checkout.
+      const record = decodeAttribution(payload.attr);
+      if (record) {
+        cookies.set(ATTRIBUTION_COOKIE, encodeAttribution(record), {
+          path: '/',
+          maxAge: ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60,
+          httpOnly: true,
+          sameSite: 'lax',
+        });
+      }
+    }
+  } catch {
+    // See above. A shopper with no carried-over identity is a working page; a throw here is not.
+  }
 }
 
 /** What a store page served on a seller's own domain stamps into its markup for the client-side

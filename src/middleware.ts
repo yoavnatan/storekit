@@ -1,6 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
-import type { AstroCookies } from 'astro';
-import { VISITOR_COOKIE, resolveVisitorId, visitorCookieOptions } from './lib/visitor.js';
+import { resolveVisitorId } from './lib/visitor.js';
 import { gzipResponse } from './lib/http-compress.js';
 import { reportStreamErrors } from './lib/stream-errors.js';
 import { logError } from './lib/error-log.js';
@@ -16,8 +15,8 @@ import { HEALTH_PATH } from './pages/api/health.js';
 import { csrfRejection, csrfRequired, csrfTokenFromRequest, verifyCsrfToken } from './lib/csrf.js';
 import { ensureShutdownHookInstalled, trackRequest } from './lib/shutdown.js';
 import { ensureProcessErrorHandlersInstalled } from './lib/process-errors.js';
-import { captureAttribution, decodeAttribution, encodeAttribution, ATTRIBUTION_COOKIE, ATTRIBUTION_WINDOW_DAYS } from './lib/attribution.js';
-import { HANDOFF_PARAM, readHandoff, platformPageUrl } from './lib/cross-origin-handoff.js';
+import { captureAttribution } from './lib/attribution.js';
+import { adoptHandoff, platformPageUrl } from './lib/cross-origin-handoff.js';
 import { isPlatformOwnedPath } from './lib/platform-routes.js';
 
 // Stores live at the platform ROOT now — a store home is `/<slug>` and a product page is
@@ -26,43 +25,6 @@ import { isPlatformOwnedPath } from './lib/platform-routes.js';
 // registry (getStoreBySlug), and reserved routes are skipped up front. This single tap keeps the
 // seller dashboard's visitor + per-product view counts in one place.
 const STORE_PATH_RE = /^\/([^/]+)(?:\/([^/]+))?\/?$/;
-
-/**
- * Adopt the identity a shopper carried over from a seller's own domain (`cross-origin-handoff.ts`).
- *
- * Only ever FILLS IN. A cookie already on this origin is the more recent truth — the shopper was
- * here before — and `attribution.ts` is explicit that a click record is replaced whole by a genuine
- * landing and never merged, so a token minted minutes ago must not overwrite a fresher click. That
- * also makes it idempotent: replayed inside its ten minutes it changes nothing the second time.
- *
- * The parameter is left in the URL for the page to strip client-side. A redirect would have been
- * the obvious way to clean it and is the wrong tool here: the handed-over cart rides in the URL
- * FRAGMENT, and spending a round trip on cosmetics is charged to the one navigation that has to
- * feel instant. Nothing indexes it either way — the canonical is query-stripped and /checkout is
- * `noindex`.
- */
-function consumeHandoff(url: URL, cookies: AstroCookies): void {
-  const payload = readHandoff(url.searchParams.get(HANDOFF_PARAM));
-  if (!payload) return;
-  if (payload.vid && !cookies.get(VISITOR_COOKIE)?.value) {
-    cookies.set(VISITOR_COOKIE, payload.vid, visitorCookieOptions());
-  }
-  if (payload.attr && !cookies.get(ATTRIBUTION_COOKIE)?.value) {
-    // Re-validated, never trusted: a signature proves we minted the string, not that the record
-    // inside it is well-formed or still inside its window ("everything here is untrusted input, on
-    // both ends" — attribution.ts). Re-encoding what came back out is what guarantees this origin
-    // ends up holding a cookie `readAttribution` will accept at checkout.
-    const record = decodeAttribution(payload.attr);
-    if (record) {
-      cookies.set(ATTRIBUTION_COOKIE, encodeAttribution(record), {
-        path: '/',
-        maxAge: ATTRIBUTION_WINDOW_DAYS * 24 * 60 * 60,
-        httpOnly: true,
-        sameSite: 'lax',
-      });
-    }
-  }
-}
 
 /**
  * Where a request on an external hostname that NO store claims today should be sent — or null,
@@ -220,7 +182,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // crossing carries a signed token instead, and it is consumed HERE, before the two lines below
     // read those cookies: seeding after `resolveVisitorId` had already minted a fresh id would
     // leave the store's conversion rate counting one shopper twice.
-    if (isPageCandidate) consumeHandoff(reqUrl, context.cookies);
+    //
+    // The parameter is left in the URL for the page to strip client-side. A redirect would have been
+    // the obvious way to clean it and is the wrong tool here: the handed-over cart rides in the URL
+    // FRAGMENT, and spending a round trip on cosmetics is charged to the one navigation that has to
+    // feel instant. Nothing indexes it either way — the canonical is query-stripped and /checkout is
+    // `noindex`.
+    if (isPageCandidate) adoptHandoff(reqUrl, context.cookies);
 
     const vid = isPageCandidate ? resolveVisitorId(context.cookies) : '';
 
