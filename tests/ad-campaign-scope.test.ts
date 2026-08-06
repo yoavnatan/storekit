@@ -275,3 +275,58 @@ describe('campaign budget bounds', () => {
     }
   });
 });
+
+/**
+ * A showcase store is never advertised (owner, 2026-08-06, emphatically).
+ *
+ * Its catalogue is fabricated, and submitting fabricated products to Merchant Center is a policy
+ * violation against the ONE ad account every seller on the platform is advertised through — the
+ * blast radius is every store at once. The feed has always excluded them (`getIndexableStores`);
+ * the gap was that nothing stopped a campaign being created on one, and the health check asked only
+ * `canStoreSell`, which a showcase store passes, so such a campaign read perfectly healthy while
+ * advertising nothing.
+ */
+describe('buildCampaignInput — a showcase store may not be advertised', () => {
+  const DEMO = { id: 's1', slug: 'my-store', demo: true };
+
+  it('refuses a campaign on a showcase store, whatever the scope', async () => {
+    for (const scope of [
+      { scope: 'store' },
+      { scope: 'products', productIds: ['p1'] },
+      { scope: 'categories', categoryIds: ['c1'] },
+    ]) {
+      const built = await buildCampaignInput({ ...base, ...scope }, DEMO);
+      expect(built.ok, JSON.stringify(scope)).toBe(false);
+      if (built.ok) return;
+      expect(built.error).toBe('CAMPAIGN_DEMO_STORE');
+      expect(built.status).toBe(400);
+    }
+  });
+
+  it('refuses BEFORE anything else, so the reason is never masked by another complaint', async () => {
+    // A demo store with an invalid budget must still be told the real reason: fixing the budget
+    // would not make the campaign legal, and reporting the budget first sends him to fix the wrong
+    // thing.
+    const built = await buildCampaignInput({ platform: 'both', monthlyBudget: -5, scope: 'store' }, DEMO);
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.error).toBe('CAMPAIGN_DEMO_STORE');
+  });
+
+  it('leaves a real store alone', async () => {
+    expect((await buildCampaignInput({ ...base, scope: 'store' }, STORE)).ok).toBe(true);
+    expect((await buildCampaignInput({ ...base, scope: 'store' }, { ...STORE, demo: false })).ok).toBe(true);
+  });
+
+  // Both routes hand their store straight to buildCampaignInput, which is the only reason one check
+  // covers the admin path too — and the admin path is exactly how a showcase store's campaign would
+  // be created, since it reaches ANY store by slug.
+  it('is reached by both routes rather than re-typed in either', async () => {
+    const fs = await import('node:fs');
+    for (const route of ['src/pages/api/seller/ad-campaigns.ts', 'src/pages/api/admin/ad-campaigns.ts']) {
+      const src = fs.readFileSync(route, 'utf8');
+      expect(src, `${route} must build its input through the shared gate`).toContain('buildCampaignInput(body, store)');
+      expect(src, `${route} must not re-type the demo-store rule`).not.toMatch(/isDemoStore|\.demo\s*===?/);
+    }
+  });
+});

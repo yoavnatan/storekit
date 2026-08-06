@@ -28,7 +28,7 @@ export { MIN_CAMPAIGN_BUDGET, MAX_CAMPAIGN_BUDGET, AD_BUDGET_PRESETS, isValidCam
 
 /** Only the two store fields this module needs — the seller route resolves its store from the
  *  session, the admin route by slug, and neither should have to hand over the whole record. */
-interface StoreRef { id: string; slug: string }
+interface StoreRef { id: string; slug: string; demo?: boolean }
 
 export type CampaignInputResult =
   | { ok: true; input: CreateCampaignInput }
@@ -122,6 +122,20 @@ async function resolveScope(body: CampaignBody, store: StoreRef): Promise<ScopeR
 
 export async function buildCampaignInput(body: CampaignBody, store: StoreRef): Promise<CampaignInputResult> {
   const { platform, monthlyBudget } = body;
+  // **A showcase store may not be advertised, at all (owner, 2026-08-06 — emphatically).** Its
+  // catalogue is fabricated, and submitting fabricated products to Merchant Center is a policy
+  // violation against the ONE account every seller on the platform is advertised through
+  // (api/feed/products.xml.ts) — the blast radius is every store at once, not this one.
+  //
+  // The feed has always excluded them. The gap was on this side: nothing stopped a campaign being
+  // CREATED on one, and `ad-campaign-health.ts` (which asked only `canStoreSell`, a demo store
+  // passes) then reported it as perfectly healthy while it advertised nothing. Refused here rather
+  // than only pausing later, because a campaign that cannot legitimately exist should not exist:
+  // the health sweep is the floor under a store that BECOMES a showcase, not the gate.
+  //
+  // In `buildCampaignInput` and not in either route, because the admin route reaches ANY store by
+  // slug — which is exactly how a showcase store's campaign would be created.
+  if (store.demo) return { ok: false, error: 'CAMPAIGN_DEMO_STORE', status: 400 };
   if (platform !== 'google' && platform !== 'meta' && platform !== 'both') return { ok: false, error: 'Invalid platform', status: 400 };
   if (!isValidCampaignBudget(monthlyBudget)) {
     return {

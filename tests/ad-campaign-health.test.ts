@@ -579,6 +579,43 @@ describe('getCampaignsForStore — no photo', () => {
 });
 
 /**
+ * The floor under a store that BECOMES a showcase store.
+ *
+ * `buildCampaignInput` refuses to CREATE one (tests/ad-campaign-scope.test.ts) — this is the other
+ * end: a campaign that already exists when the flag is set must stop, not go on reading healthy.
+ * The bug was that this file asked only `canStoreSell`, which a showcase store passes (they are
+ * deliberately browsable), while the feed's own filter is `getIndexableStores` = visible AND NOT a
+ * demo store. Same shape as everything else in this area: both predicates correct on their own,
+ * only the JOIN between them wrong.
+ */
+describe('getCampaignsForStore — a showcase store advertises nothing', () => {
+  it('starves a campaign on a store flagged as a showcase, however healthy its products are', async () => {
+    await seed(campaign({ id: 'c1', scope: 'store' }));
+    await stock('p1');
+    await query('UPDATE stores SET demo = true WHERE id = $1', [STORE.id]);
+    const [row] = await load();
+    expect(row?.status).toBe('paused');
+    // 'unavailable', not a self-healing reason: a showcase store is a standing platform decision,
+    // so there is nothing for a sweep to undo by itself.
+    expect(row?.pausedReason).toBe('unavailable');
+    expect(row?.health).toEqual({ total: 0, live: 0, advertisable: 0, buyable: 0 });
+  });
+
+  it('refuses a manual resume on one', async () => {
+    await seed(campaign({ id: 'c1', scope: 'store', status: 'paused', pausedReason: 'unavailable' }));
+    await stock('p1');
+    await query('UPDATE stores SET demo = true WHERE id = $1', [STORE.id]);
+    expect(await blockedFor('c1')).toBe('unavailable');
+  });
+
+  it('leaves an ordinary store running', async () => {
+    await seed(campaign({ id: 'c1', scope: 'store' }));
+    await stock('p1');
+    expect((await load())[0]?.status).toBe('active');
+  });
+});
+
+/**
  * The refusal code, and the reason it is ONE mapping.
  *
  * The seller route and the admin route each carried their own copy of the reason→code chain, so

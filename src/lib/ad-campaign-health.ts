@@ -26,6 +26,7 @@
  */
 import { getProductsByStoreId, isProductVisible, type StoreProduct } from './store-products.js';
 import { getStoreById, canStoreSell } from './stores.js';
+import { isDemoStore } from './demo-stores.js';
 import { getCategoriesByStoreId, resolveCategoryFilterIds, type StoreCategory } from './store-categories.js';
 import { getCampaignsByStoreId, getArchivedByStoreId, updateCampaigns, archiveCampaigns, type AdCampaign, type CampaignUpdate } from './ad-campaigns.js';
 import { isCampaignEnded } from './ad-metrics.js';
@@ -216,7 +217,20 @@ function sweepAction(campaign: AdCampaign, blocked: CampaignPauseReason | null):
  *  store-lifecycle.ts having to know about each other. */
 async function reachableProducts(storeId: string): Promise<StoreProduct[]> {
   const store = await getStoreById(storeId);
-  if (store && !canStoreSell(store)) return [];
+  if (!store) return getProductsByStoreId(storeId);
+  // **A showcase store is excluded from the feed, so a campaign on one advertises nothing
+  // (found 2026-08-06, the same join asked from the store side).** The feed's store filter is
+  // `getIndexableStores` = visible AND NOT a demo store; this file only ever asked `canStoreSell`,
+  // which a showcase store passes — they are deliberately browsable. So its products are in no
+  // feed and its campaign read perfectly healthy. Submitting fabricated catalogue to Merchant
+  // Center is a policy violation against the whole shared account (api/feed/products.xml.ts), so
+  // the exclusion is not going away and the campaign is the side that has to know.
+  //
+  // Modelled as "no reachable products", like the cannot-sell case above and for the same reason:
+  // it flows through the existing starve → pause 'unavailable' → refuse-to-resume path unchanged.
+  // 'unavailable' is also the honest half of that path here — a demo store is a standing platform
+  // decision, not a passing state, so there is nothing for a sweep to undo by itself.
+  if (!canStoreSell(store) || isDemoStore(store)) return [];
   return getProductsByStoreId(storeId);
 }
 
