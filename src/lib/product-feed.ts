@@ -188,8 +188,9 @@ export interface FeedItem extends FeedAttributes {
 
 export interface FeedBuildContext extends FeedContext {
   /**
-   * One product slug → the product page's PUBLIC url. Must be `custom-domain.ts#productCanonicalUrl`
-   * bound to this store, which is the same function the page's own `<link rel="canonical">` calls.
+   * One product slug → the URL this feed publishes for it. Must be `custom-domain.ts#adLandingUrl`
+   * bound to this store, which is also the URL that page serves and declares canonical when it is
+   * reached this way.
    *
    * A closure rather than a slug + base, because the two must be one value and not two that agree.
    * They stopped agreeing the moment custom domains shipped: the feed built
@@ -198,6 +199,13 @@ export interface FeedBuildContext extends FeedContext {
    * `<link>`, lands on a redirect to a domain the account has not claimed, and disapproves the item
    * — for the sellers who did the most to look professional. Nothing was wrong on either side alone:
    * the feed's URL resolved, the page's canonical was correct, and only the join was broken.
+   *
+   * **Publishing the seller's domain instead was the wrong half to move (corrected 2026-08-06).**
+   * It made the two sides agree on a domain the advertising account cannot claim, which is the same
+   * disapproval reached from the other direction — and unclaimable at any scale, since verification
+   * is performed from the advertiser's account. The join is closed on the PLATFORM domain instead:
+   * see `custom-domain.ts#AD_LANDING_PARAM` for why one marker settles link, redirect and canonical
+   * together, and why the seller loses no SEO by it.
    */
   productLink: (productSlug: string) => string;
   baseUrl: string; // origin, no trailing slash — e.g. https://shop.example; used to absolutize images

@@ -129,7 +129,11 @@ describe('the store page keeps its catalog crawlable', () => {
 
   it('keeps a visitor-composed view (search / re-sort) out of the index, and only that', () => {
     expect(page).toContain('const isComposedView = Boolean(initQ || initSort)');
-    expect(page).toContain('noindex={!storeReady || isDemo || isComposedView}');
+    // `adLanding` joined the list on 2026-08-06 and is the one addition that is NOT a view of this
+    // store: it is the platform's own ad landing, which must stay out of the index so it never
+    // competes with the seller's domain (custom-domain.ts#AD_LANDING_PARAM). Every other shelf —
+    // each category, each page — stays indexable, which is what this assertion is really pinning.
+    expect(page).toContain('noindex={!storeReady || isDemo || isComposedView || adLanding}');
   });
 
   it('redirects past the last page rather than serving an empty shelf', () => {

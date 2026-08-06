@@ -20,6 +20,9 @@
  *   2. Merchant/Catalog attribute limits        → Google's product data spec (checked 2026-08-04)
  *   3. a URL given to a parser is percent-encoded → the sitemap protocol, Merchant, IndexNow
  *   4. one product has ONE public URL and ONE catalog id, whoever is asking
+ *   5. a URL published to an ad network is on a domain that network's ACCOUNT can claim, and it
+ *      neither redirects nor canonicals away from it → Merchant Center website claiming, Meta
+ *      Business domain verification (§5 below states the rule and why two fixes got it wrong)
  *
  * When a limit here and one in `product-feed.ts` disagree, THIS file is the copy of the external
  * spec and the lib is the code that has to meet it — fix the lib, and only change a number here
@@ -30,11 +33,13 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { buildFeedItems, toMerchantXml } from '../src/lib/product-feed.js';
 import { adItemId, adComboItemId } from '../src/lib/ad-item-id.js';
-import { productCanonicalUrl, storeCanonicalUrl } from '../src/lib/custom-domain.js';
+import { productCanonicalUrl, storeCanonicalUrl, adLandingUrl, isPlatformAdLanding } from '../src/lib/custom-domain.js';
+import { store as platform } from '../src/config/store.config.js';
 import { buildUrlSetXml } from '../src/lib/sitemap.js';
 import { buildIndexNowPayload } from '../src/lib/indexnow.js';
 import { machineUrl, urlSegment } from '../src/lib/url-base.js';
 import { safeRedirectPath } from '../src/lib/safe-redirect.js';
+import { isReservedSlug } from '../src/lib/stores.js';
 import type { StoreProduct } from '../src/lib/store-products.js';
 import type { Store } from '../src/lib/stores.js';
 
@@ -346,6 +351,64 @@ describe('no machine-readable surface publishes an unencoded URL', () => {
   });
 });
 
+// ── 4b. A link we render ourselves goes somewhere ────────────────────────────
+
+/**
+ * **The class, and it is the same one as everything else in this file: nothing reports it.**
+ * `/terms` and `/contact` were linked from the footer of every page on the site, in a `store.config`
+ * the layout renders unconditionally, and neither route existed. Nobody clicks a marketplace's own
+ * terms link, so the 404 survived — while being read by the one audience that always looks:
+ * Merchant Center suspends an ACCOUNT for "misrepresentation" over a shop that publishes no terms
+ * and no way to reach it, and one account here is every seller's advertising at once.
+ *
+ * Worse than a 404, in fact. Neither word was in `RESERVED_SLUGS`, so `/terms` fell through to the
+ * store router: a seller registering the slug `terms` would have put their own storefront behind
+ * the platform's "תנאי שימוש" link on every page.
+ *
+ * So the rule is both halves — the page exists, and the word cannot be taken — and it is enforced
+ * over every literal internal link in the tree, not over a list of the two we happen to know about.
+ */
+describe('every internal link the site renders itself resolves to a route', () => {
+  const PAGES = join(SRC, 'pages');
+
+  /** Top-level path segments that are real routes: a file or a directory under src/pages. A
+   *  bracketed name is a dynamic route and matches anything, so it is deliberately NOT counted —
+   *  "it resolves because the store router catches it" is the bug, not the answer. */
+  const routes = new Set(
+    readdirSync(PAGES)
+      .filter((name) => !name.startsWith('['))
+      .map((name) => name.replace(/\.(astro|ts)$/, '').replace(/\.[a-z]+$/, '')),
+  );
+
+  // Literal hrefs only: `href="/…"` with no interpolation. A `/${store.slug}` link is a store URL
+  // by construction and has its own guards; a literal is someone typing a route from memory.
+  const linked = new Map<string, string>();
+  for (const file of walk(SRC)) {
+    if (!/\.(astro|ts)$/.test(file)) continue;
+    // Both spellings: markup (`href="/x"`) and config data (`href: '/x'`) — store.config.ts declares
+    // the footer's links as data, and that is where these two came from in the first place.
+    for (const m of readFileSync(file, 'utf8').matchAll(/href[=:]\s*["'](\/[a-z0-9-]*)(?=["'/?#])/gi)) {
+      const seg = m[1]!.slice(1);
+      if (seg) linked.set(seg, relative(process.cwd(), file));
+    }
+  }
+
+  it('is actually finding links, so a markup change cannot make it a no-op', () => {
+    expect(linked.size).toBeGreaterThanOrEqual(5);
+  });
+
+  it('every literal top-level link is a page that exists', () => {
+    const dead = [...linked].filter(([seg]) => !routes.has(seg)).map(([seg, file]) => `${seg} (${file})`);
+    expect(dead, 'a link the site renders on every page must not 404').toEqual([]);
+  });
+
+  it('and no seller can register the slug that link points at', () => {
+    // Reserving is what stops the store router from answering for it — see RESERVED_SLUGS.
+    const takeable = [...linked.keys()].filter((seg) => !isReservedSlug(seg));
+    expect(takeable, 'add these to RESERVED_SLUGS in stores.ts').toEqual([]);
+  });
+});
+
 // ── 5. One product, one public URL and one catalog id ────────────────────────
 
 describe('two surfaces describing one product describe it identically', () => {
@@ -353,24 +416,74 @@ describe('two surfaces describing one product describe it identically', () => {
     customDomain: { hostname: 'shoes.example', status: 'active', addedAt: '2026-01-01T00:00:00.000Z' },
   } as Partial<Store>);
 
-  it('the feed <link> IS the page canonical, custom domain included', () => {
-    // The feed used to build `${platform.url}/${store}/${product}` itself. A store on a verified
-    // domain 301s that URL away, and Merchant Center disapproves an item whose landing page
-    // redirects off the claimed domain — so the sellers who looked most professional were the ones
-    // whose ads stopped. Both sides now call one function; this asserts the endpoint still does.
-    const rows = buildFeedItems(adversarialProduct(), {
-      ...FEED_CTX,
-      productLink: (slug) => productCanonicalUrl(CUSTOM, slug),
-    });
-    for (const row of rows) {
-      expect(row.link).toBe(productCanonicalUrl(CUSTOM, 'מוצר-קיצון'));
-      expect(row.link.startsWith('https://shoes.example/')).toBe(true);
+  /**
+   * **The rule, and it took two wrong answers to state it.** A URL we publish to an advertising
+   * network has to satisfy two conditions at once, and each fix that honoured only one broke the
+   * other:
+   *
+   *   1. it must be on a domain the ADVERTISING ACCOUNT has claimed — we can claim `dezabin.co.il`
+   *      and nothing else, because verification is performed from the advertiser's account and a
+   *      thousand sellers' domains cannot be claimed from ours at any price;
+   *   2. it must not redirect off that domain, and it must not name another one as its canonical —
+   *      both are read by Merchant Center as "the real landing page is elsewhere", which is the
+   *      same disapproval as failing (1).
+   *
+   * The feed first published the platform URL, which 301s to the seller's domain → broke (2). It
+   * was then changed to publish the seller's domain → satisfied (2), broke (1), and looked *more*
+   * correct because both sides finally agreed. Only the platform URL WITH the ad marker satisfies
+   * both, because the marker is what stands the redirect down (custom-domain.ts#AD_LANDING_PARAM).
+   *
+   * A store with no custom domain has no redirect to stand down and gets the plain URL.
+   */
+  it('every feed <link> is on the platform domain — the only one the ad account can claim', () => {
+    for (const store of [CUSTOM, storeFixture()]) {
+      const rows = buildFeedItems(adversarialProduct(), {
+        ...FEED_CTX,
+        productLink: (slug) => adLandingUrl(store, slug),
+      });
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(new URL(row.link).origin, row.link).toBe(new URL(platform.url).origin);
+      }
     }
   });
 
-  it('the feed endpoint takes that URL from the canonical helper, not from a template', () => {
+  it('the URL it publishes does not then redirect off that domain', () => {
+    const link = adLandingUrl(CUSTOM, 'מוצר-קיצון');
+    const host = new URL(platform.url).hostname;
+    // What the page asks itself before deciding to 301 (both store pages). True here ⇒ the crawler
+    // that follows this link is served the product, not a Location header pointing at shoes.example.
+    expect(isPlatformAdLanding(CUSTOM, new URL(link), host)).toBe(true);
+    // And the marker is inert everywhere it would otherwise cause harm: on a store with no custom
+    // domain (nothing to skip), and on the seller's own domain (where it would `noindex` their page
+    // and point its canonical at ours).
+    expect(isPlatformAdLanding(storeFixture(), new URL(`${platform.url}/my-store/x?ad=1`), host)).toBe(false);
+    expect(isPlatformAdLanding(CUSTOM, new URL(link), 'shoes.example')).toBe(false);
+  });
+
+  it('a store with no custom domain gets a link with nothing extra on it', () => {
+    // The parameter exists to disarm a redirect. Where there is no redirect it would be a tracking
+    // parameter on every row of the catalogue, for nothing.
+    expect(adLandingUrl(storeFixture(), 'x')).toBe(productCanonicalUrl(storeFixture(), 'x'));
+  });
+
+  it('the feed endpoint takes that URL from the helper, not from a template', () => {
     const source = readFileSync(join(SRC, 'pages/api/feed/products.xml.ts'), 'utf8');
-    expect(source, 'the feed link must be the page canonical').toContain('productCanonicalUrl');
+    expect(source, 'the feed link must come from adLandingUrl').toContain('adLandingUrl');
+    expect(source, 'the seller-domain canonical is not a feed link — see the rule above')
+      .not.toContain('productCanonicalUrl');
+  });
+
+  it('both store pages stand their redirect down for it, and neither indexes it', () => {
+    // Grep, because the failure is a page that forgot: the redirect runs in page frontmatter, and a
+    // future edit that reinstates an unconditional 301 puts every custom-domain seller's items back
+    // on an unclaimed domain — silently, one disapproval at a time.
+    for (const page of ['pages/[storeSlug]/index.astro', 'pages/[storeSlug]/[productSlug].astro']) {
+      const source = readFileSync(join(SRC, page), 'utf8');
+      expect(source, `${page} must decide the redirect through isPlatformAdLanding`).toContain('isPlatformAdLanding');
+      expect(source, `${page} must not 301 an ad landing`).toMatch(/adLanding\s*\n?\s*\?\s*null/);
+      expect(source, `${page} must keep the ad landing out of the index`).toMatch(/noindex=\{[^}]*adLanding/);
+    }
   });
 
   it('llms.txt publishes the same store URL every other machine surface does', () => {

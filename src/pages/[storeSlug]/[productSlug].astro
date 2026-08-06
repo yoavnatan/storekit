@@ -5,7 +5,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice } from '../../lib/stores.js';
 import { OG_IMAGE_FORMAT, storeImageUrl } from '../../lib/store-image.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
-import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl } from '../../lib/custom-domain.js';
+import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl, isPlatformAdLanding, adLandingUrl } from '../../lib/custom-domain.js';
 import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../lib/store-products.js';
 import { store as platform, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
 import { resolvePrice, priceValidUntil } from '../../lib/discounts.js';
@@ -66,9 +66,15 @@ const product = await getProductBySlug(shopStore.id, productSlug);
 if (!product) return Astro.redirect(machineUrl(`/${storeSlug}`));
 if (!isProductVisible(product)) return Astro.redirect('/404');
 
+// A landing published by the platform's own ads stays on the platform domain — the one domain the
+// Merchant Center / Meta account can claim, and a redirect off it is a disapproval
+// (custom-domain.ts#AD_LANDING_PARAM).
+const adLanding = isPlatformAdLanding(shopStore, Astro.url, Astro.request.headers.get('host'));
 // SEO: verified custom domain is the store's home — 301 the platform product URL to it (see the
 // store page for the rationale). No-op when already served on the custom domain.
-const cdRedirect = customDomainRedirectUrl(shopStore, Astro.request.headers.get('host'), `/${productSlug}${Astro.url.search}`);
+const cdRedirect = adLanding
+  ? null
+  : customDomainRedirectUrl(shopStore, Astro.request.headers.get('host'), `/${productSlug}${Astro.url.search}`);
 if (cdRedirect) return Astro.redirect(cdRedirect, 301);
 
 const userId = getSellerSession(Astro.cookies);
@@ -110,7 +116,11 @@ const initialStatusText =
   : t.store.inStockLabel;
 // Canonical product/store URLs — the seller's own domain when active, else the platform path
 // (custom-domain.ts). Drives <link rel=canonical>, og:url and the JSON-LD so all SEO signals agree.
-const productUrl = productCanonicalUrl(shopStore, productSlug);
+// On an ad landing the canonical is the landing itself: Merchant Center reads the page's canonical
+// and treats a cross-domain one as the real destination, which would put the item back on an
+// unclaimed domain — the exact thing the marker exists to prevent. That URL is `noindex` below, so
+// it never competes with the seller's domain for the organic result.
+const productUrl = adLanding ? adLandingUrl(shopStore, productSlug) : productCanonicalUrl(shopStore, productSlug);
 const storeCanonical = storeCanonicalUrl(shopStore);
 // Resolved against the store's OWN origin — on a verified custom domain that is the seller's
 // domain, and a picture served from a domain the page does not claim is a mismatch a validator
@@ -236,7 +246,7 @@ const pmI18n = {
   type="product"
   jsonLd={jsonLd}
   canonical={productUrl}
-  noindex={isDemo}
+  noindex={isDemo || adLanding}
   isLoggedIn={isLoggedIn}
   storeMode={true}
   storeName={shopStore.name}
