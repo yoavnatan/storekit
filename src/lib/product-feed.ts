@@ -229,6 +229,12 @@ export interface FeedBuildContext extends FeedContext {
  *
  * Deliberately NOT a check on stock: a sold-out product still belongs in the catalogue, marked
  * `out_of_stock`. Availability is a state the feed reports, not a reason to withhold the item.
+ *
+ * **Not the same question `merchant-status.ts` asks, and the two must not be merged.** That module
+ * asks the NETWORKS what they did with a row we sent — external truth, and only once the accounts
+ * exist. This one is what we will not send in the first place: knowable offline, today, with no
+ * account. A product excluded here never reaches Merchant Center at all, so it can never appear in
+ * a rejection report — which is precisely the blind spot the two of them cover between them.
  */
 export function isProductAdvertisable(product: StoreProduct, baseUrl: string): boolean {
   if (product.price <= 0) return false;
