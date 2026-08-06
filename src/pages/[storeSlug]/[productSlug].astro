@@ -5,7 +5,8 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice } from '../../lib/stores.js';
 import { OG_IMAGE_FORMAT, storeImageUrl } from '../../lib/store-image.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
-import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl, isPlatformAdLanding, adLandingUrl } from '../../lib/custom-domain.js';
+import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl, isPlatformAdLanding, adLandingUrl , hasActiveCustomDomain } from '../../lib/custom-domain.js';
+import { platformBoundaryData } from '../../lib/cross-origin-handoff.js';
 import { getProductBySlug, getVisibleProductsByStoreId, isProductVisible } from '../../lib/store-products.js';
 import { store as platform, cdnSrc, cdnSrcSet } from '../../config/store.config.js';
 import { resolvePrice, priceValidUntil } from '../../lib/discounts.js';
@@ -76,6 +77,15 @@ const cdRedirect = adLanding
   ? null
   : customDomainRedirectUrl(shopStore, Astro.request.headers.get('host'), `/${productSlug}${Astro.url.search}`);
 if (cdRedirect) return Astro.redirect(cdRedirect, 301);
+
+// The origin boundary, computed HERE and not in the markup: `platformBoundaryData` sets a
+// `Cache-Control` header, and Astro streams the body — a header written from a template expression
+// is written after the status line has already left. Frontmatter is the last place it still counts.
+// Only a store on its own domain has a boundary to cross; on the platform this is null and the
+// attribute is never emitted.
+const platformBoundary = hasActiveCustomDomain(shopStore)
+  ? platformBoundaryData(Astro.cookies, Astro.response.headers)
+  : null;
 
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
@@ -268,6 +278,7 @@ const pmI18n = {
        data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined}
        data-store-slug={shopStore.slug}
        data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}
+       data-platform-boundary={platformBoundary ? JSON.stringify(platformBoundary) : undefined}
        data-store-name={shopStore.name}
        data-images={JSON.stringify(images)}
        data-lang={lang}
@@ -785,14 +796,16 @@ const pmI18n = {
   import { setLightboxImage, resetLightboxImage, lightboxWidth, warmLightboxImage, neighbourIndexes } from '../../lib/lightbox-image.js';
   import { spawnHeartBurst } from '../../lib/burst.js';
   import { recordStoreVisit } from '../../lib/recent-stores.js';
-  import { initCustomDomainLinks } from '../../lib/custom-domain-links.js';
+  import { initCustomDomainLinks, readPlatformBoundary } from '../../lib/custom-domain-links.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
   const storeName = page?.dataset.storeName ?? '';
 
-  // Clean in-store URLs when served on the store's own verified domain (see custom-domain-links.ts).
-  initCustomDomainLinks(storeSlug, page?.dataset.customHost ?? '');
+  // Clean in-store URLs when served on the store's own verified domain, and — the load-bearing
+  // half — every PLATFORM-owned link (cart, checkout, login, buyer area) sent to the platform
+  // origin, carrying the basket and the visitor's identity with it (custom-domain-links.ts).
+  initCustomDomainLinks(storeSlug, page?.dataset.customHost ?? '', readPlatformBoundary(page));
 
   if (storeSlug) {
     saveLastStore({ slug: storeSlug, name: storeName, url: location.pathname + location.search });

@@ -19,7 +19,8 @@ import { getCategoriesByStoreId, buildCategoryTree, getAncestorChain, resolveCat
 import { saleScopeCategoryLabel } from '../../lib/store-sale-scope.js';
 import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
 import { machineUrl, urlSegment } from '../../lib/url-base.js';
-import { storeCanonicalUrl, customDomainRedirectUrl, isPlatformAdLanding, adLandingUrl } from '../../lib/custom-domain.js';
+import { storeCanonicalUrl, customDomainRedirectUrl, isPlatformAdLanding, adLandingUrl , hasActiveCustomDomain } from '../../lib/custom-domain.js';
+import { platformBoundaryData } from '../../lib/cross-origin-handoff.js';
 import { OG_IMAGE_FORMAT, resolveStoreImage, storeImageUrl } from '../../lib/store-image.js';
 import { store as platform, cdnSrc, cdnSrcSet, cdnCropSrcSet, cdnBand } from '../../config/store.config.js';
 import { BANNER_RATIO, BANNER_WIDTHS } from '../../lib/cdn.js';
@@ -76,6 +77,15 @@ const cdRedirect = adLanding
   ? null
   : customDomainRedirectUrl(shopStore, Astro.request.headers.get('host'), Astro.url.search);
 if (cdRedirect) return Astro.redirect(cdRedirect, 301);
+
+// The origin boundary, computed HERE and not in the markup: `platformBoundaryData` sets a
+// `Cache-Control` header, and Astro streams the body — a header written from a template expression
+// is written after the status line has already left. Frontmatter is the last place it still counts.
+// Only a store on its own domain has a boundary to cross; on the platform this is null and the
+// attribute is never emitted.
+const platformBoundary = hasActiveCustomDomain(shopStore)
+  ? platformBoundaryData(Astro.cookies, Astro.response.headers)
+  : null;
 
 const userId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!userId;
@@ -439,7 +449,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   </script>
   <script is:inline type="application/json" id="pm-i18n" set:html={jsonForScript(pmI18n)} />
 
-  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-owner-store={isOwner ? shopStore.slug : undefined} data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''}>
+  <div class="store-page" data-demo={isDemo ? '1' : undefined} data-demo-label={isDemo ? t.demo.productBadge : undefined} data-owner-store={isOwner ? shopStore.slug : undefined} data-owner-cannot-buy={isOwner ? t.store.ownerCannotBuy : undefined} data-store-slug={shopStore.slug} data-store-name={shopStore.name} data-lang={lang} data-custom-host={shopStore.customDomain?.status === 'active' ? shopStore.customDomain.hostname : ''} data-platform-boundary={platformBoundary ? JSON.stringify(platformBoundary) : undefined}>
 
     {/* Owner bar. Sits above .store-banner-pin in normal flow, so it simply
         scrolls away and the curtain-scroll geometry below is untouched. */}
@@ -1053,7 +1063,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   import type { StoreProduct as StoreProductDTO } from '../../lib/store-products.js';
   import { PRODUCTS_PAGE_SIZE } from '../../lib/product-listing.js';
   import { BLANK_PIXEL } from '../../lib/blank-pixel.js';
-  import { initCustomDomainLinks } from '../../lib/custom-domain-links.js';
+  import { initCustomDomainLinks, readPlatformBoundary } from '../../lib/custom-domain-links.js';
   import { initImageSkeletons } from '../../lib/img-skeleton.js';
   import { initChipScroller } from '../../lib/chip-scroller.js';
   import { initStickyBar } from '../../lib/sticky-bar.js';
@@ -1078,8 +1088,10 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   const storeName = storePage?.dataset.storeName ?? '';
 
   // On the store's own verified domain, strip the redundant "/<slug>" prefix from in-store links so
-  // the URL bar reads clean (also stamps window.__customStoreHost for the shared product modal).
-  initCustomDomainLinks(storeSlug, storePage?.dataset.customHost ?? '');
+  // the URL bar reads clean (also stamps window.__customStoreHost for the shared product modal) —
+  // and send every PLATFORM-owned link (cart, checkout, login, buyer area) to the platform origin,
+  // carrying the basket and the visitor's identity across the boundary (custom-domain-links.ts).
+  initCustomDomainLinks(storeSlug, storePage?.dataset.customHost ?? '', readPlatformBoundary(storePage));
 
   // Tracks the store's own filter/sort/search query string (kept in sync by
   // syncUrl() below) — read at pagehide time instead of location.search,
