@@ -82,6 +82,31 @@ describe('the English label never becomes an identity', () => {
     ).toBe(false);
   });
 
+  /**
+   * The one that actually got through. The two scans above check the LIBRARIES, and both
+   * passed while `index.astro` handed the translated title to `CategoryIcon` — so in
+   * English every homepage shelf drew the fallback glyph, because the icon map is keyed
+   * by the Hebrew value. Grouping was right, the icon module was right; the wiring
+   * between them was not, which is where this class lives.
+   */
+  it('keys the homepage shelf icon off the stored value, not the heading', () => {
+    const source = read('pages/index.astro');
+    // Anchored on the categoryShelves loop — every other HomeShelf on the page is a
+    // fixed tab (liked, buy-again, new) whose title is a translation string and which
+    // draws no category icon at all.
+    const shelf = source.slice(source.indexOf('categoryShelves.map'));
+    const line = shelf.slice(0, shelf.indexOf('/>'));
+    expect(line).toContain('<HomeShelf');
+    expect(
+      /categoryLabel=\{s\.title\}/.test(line),
+      'CategoryIcon looks its glyph up by the stored Hebrew value. `s.title` is the reader-facing\n' +
+        'label, so passing it here gives every category shelf the fallback icon in English only.\n' +
+        'Pass `s.value` — the two live side by side on the shelf object precisely so they cannot\n' +
+        'be confused.',
+    ).toBe(false);
+    expect(line).toMatch(/categoryLabel=\{s\.value\}/);
+  });
+
   it('never writes an English label into the store record or a URL', () => {
     // The one writer. It must put the seller's label in `category_translations` and nowhere near
     // `stores.categories`, which is what `?category=` and the grouping both read.

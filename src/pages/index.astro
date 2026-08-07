@@ -136,7 +136,16 @@ const recentStores: FeedStore[] = recentSlugs
 // `c.category` is the stored Hebrew value the shelf was grouped by; the heading is
 // its reader-facing label (store-taxonomy.ts#categoryLabel).
 const categoryTranslations = await getCategoryTranslations();
-const categoryShelves = feed.categories.map((c, i) => ({ id: `cat-${i}`, title: resolveCategoryLabel(c.category, lang, categoryTranslations), stores: c.stores }));
+// `value` and `title` are deliberately both here and are NOT interchangeable: the
+// stored Hebrew value is what CategoryIcon keys its lookup off, and the title is what
+// a reader sees. Passing the title to the icon gives every shelf the fallback glyph in
+// English only — which is what this line did for one commit.
+const categoryShelves = feed.categories.map((c, i) => ({
+  id: `cat-${i}`,
+  value: c.category,
+  title: resolveCategoryLabel(c.category, lang, categoryTranslations),
+  stores: c.stores,
+}));
 const discoveryShelf = { id: 'discovery', title: t.home.shelfDiscovery, stores: feed.discovery.filter((fs) => !recentSlugs.includes(fs.store.slug)) };
 const discoverHasContent = recentStores.length > 0 || categoryShelves.some((s) => s.stores.length > 0)
   || feed.spotlight.length > 0 || discoveryShelf.stores.length > 0;
@@ -505,7 +514,7 @@ const jsonLd = {
                 <!-- ── Category shelves — above the spotlight. "גלה עוד" now renders
                      BELOW the spotlight instead (see after the carousel block). ── -->
                 {categoryShelves.map((s, i) => (
-                  <HomeShelf categoryLabels={categoryTranslations} id={s.id} title={s.title} stores={s.stores} categoryLabel={s.title} dotIndex={i + 1 + bgOffset} eagerFirst={activeTab === 'discover' && recentStores.length === 0 && s.id === firstEagerShelfId} />
+                  <HomeShelf categoryLabels={categoryTranslations} id={s.id} title={s.title} stores={s.stores} categoryLabel={s.value} dotIndex={i + 1 + bgOffset} eagerFirst={activeTab === 'discover' && recentStores.length === 0 && s.id === firstEagerShelfId} />
                 ))}
               </>
             )}
