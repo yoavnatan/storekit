@@ -58,9 +58,24 @@ export function openRangePicker(portal: FloatingPortal, trigger: HTMLElement, op
       <input type="date" data-range-${key} value="${value}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
     </label>`;
 
+  // Which preset the current window IS, worked out by comparing it to what each preset resolves
+  // to today — not remembered in a URL parameter (owner, 2026-08-07: "I have no indication which
+  // one is selected"). Deriving it beats storing it: a window can also arrive from the two date
+  // inputs, from a permalink, or from a URL typed by hand, and a stored `?preset=today` would go
+  // on claiming "היום" the next morning, when those same dates are yesterday. Comparing the actual
+  // bounds is right in every one of those cases, and cannot go stale.
+  const selected = QUICK_RANGE_PRESETS.find((p) => {
+    const r = quickRange(p.id);
+    return r.from === from && r.to === to;
+  })?.id ?? null;
+
   const chips = QUICK_RANGE_PRESETS.map((p) => `
-    <button type="button" data-range-preset="${p.id}"
-      class="text-[.76rem] px-2.5 py-[.25rem] rounded-full border [border-color:var(--color-border)] [color:var(--color-text)] bg-[color:var(--color-surface)] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)]"
+    <button type="button" data-range-preset="${p.id}"${p.id === selected ? ' aria-pressed="true"' : ''}
+      class="text-[.76rem] px-2.5 py-[.25rem] rounded-full border cursor-pointer transition-colors duration-[120ms] ${
+        p.id === selected
+          ? 'border-[color:var(--color-primary)] bg-[color:var(--color-primary)] text-white font-semibold'
+          : '[border-color:var(--color-border)] [color:var(--color-text)] bg-[color:var(--color-surface)] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)]'
+      }"
     >${p.label}</button>`).join('');
 
   portal.open(trigger, '19rem', () => `

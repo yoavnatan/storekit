@@ -442,6 +442,11 @@ th.admin-alerts-th-source, .admin-alerts-source { text-align: center; }
 .admin-alerts-copy-btn.admin-alerts-copy-btn--done { color: var(--color-success); }
 .admin-alerts-resolve-btn[aria-pressed="true"] { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 12%, transparent); }
 .admin-alerts-resolve-btn[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--color-success) 20%, transparent); }
+/* The row whose details are open, tinted the same grey as hover. Not a NEW colour: the grey
+   already means "this row" here, and a second meaning for a second shade is how a table stops
+   being scannable. Without it an open panel of text sat under a list of identical rows with
+   nothing joining the two — and hover, the only tie, vanished as soon as the pointer moved. */
+tr[data-alert-row][data-open] td { background: var(--color-bg); }
 /* Manual triage state — dims the whole entry + strikes the message so a
    handled row reads as "done" at a glance without disappearing outright
    (still view-only elsewhere in this log, see error-log.ts). */
@@ -494,6 +499,10 @@ tr[data-alert-row].admin-alerts-row--resolved .admin-alerts-message { text-decor
     border-top: 1px solid var(--color-border);
   }
   .admin-alerts-actions__row { justify-content: flex-start; }
+  /* Same "this is the open one" mark in the card layout. It needs its own rule because the cards
+     set their background on the ROW (the card is the row here) rather than on the cells, and the
+     desktop rule above targets td — which is display:block and carries no background at all here. */
+  #admin-alerts-table tr[data-alert-row][data-open] { background: var(--color-bg); }
   #admin-alerts-table tr.admin-alerts-details-row {
     display: block; max-width: 720px;
     border: 1px solid var(--color-border); border-top: none;
@@ -574,4 +583,35 @@ button.admin-store-row__count { padding: 0; text-align: start; }
 
 @media (max-width: 640px) {
   .admin-seller-card__nums { gap: 0.6rem 1rem; }
+}
+
+/* ── Panel busy state (admin-nav.ts#swapPanel) ──
+   Every filter, sort, chip and pager arrow on this dashboard re-renders its panel over the
+   network, and until 2026-08-07 nothing on screen said so — a click simply did nothing for about
+   a second (owner). The old rows stay put and stay readable: they are still the correct answer to
+   the PREVIOUS question, and blanking them makes a short wait look like lost data. So this is a
+   bar plus a slight dim, never a spinner in place of the content.
+   `pointer-events: none` because a second click during a swap would queue a second full render —
+   which is the one thing guaranteed to make it slower. */
+[data-busy] { position: relative; }
+[data-busy] > * { opacity: 0.55; pointer-events: none; transition: opacity 0.12s ease-out; }
+[data-busy]::before {
+  content: ''; position: absolute; inset-inline: 0; top: 0; height: 2px; z-index: 2;
+  border-radius: 2px; background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+[data-busy]::after {
+  content: ''; position: absolute; inset-inline-start: 0; top: 0; height: 2px; width: 35%; z-index: 3;
+  border-radius: 2px; background: var(--color-primary);
+  animation: admin-busy-slide 0.9s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+/* The one place an `infinite` animation is right, and it is the documented exception: it runs only
+   while a request is genuinely in flight and stops the moment the panel swaps, so it is reporting
+   a state rather than decorating an idle page. */
+@keyframes admin-busy-slide {
+  0%   { inset-inline-start: -35%; }
+  100% { inset-inline-start: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No travelling bar; the dim alone still says "working", and it says it without motion. */
+  [data-busy]::after { animation: none; inset-inline-start: 0; width: 100%; opacity: 0.5; }
 }

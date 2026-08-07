@@ -79,7 +79,37 @@ export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: numb
 // panel's innerHTML, and updates the address bar via pushState so the URL
 // still reflects real navigation state. Falls back to a real navigation on
 // any fetch/parse failure so the feature never silently does nothing.
+/**
+ * The "something is happening" signal for every panel swap (owner, 2026-08-07: "add a loader so I
+ * can feel the site moving").
+ *
+ * One indicator here rather than one per tab, because every filter, sort, chip and pager arrow on
+ * this dashboard already funnels through `swapPanel` — a per-tab spinner would be nine copies of
+ * one idea, and the tab that got missed would be the one that felt broken.
+ *
+ * It is a bar at the top of the panel plus a dimmed, non-interactive panel, NOT a spinner replacing
+ * the content: the old rows are still the right answer to the previous question, and blanking them
+ * makes a 1-second wait feel like a page that lost its data. The rule this follows is the project's
+ * own — a shimmer goes UNDER the content it is loading, never over the top of it.
+ *
+ * **Nothing is shown for the first 180ms.** A swap that returns quickly should look instant; a
+ * spinner that appears and vanishes inside a fifth of a second reads as a flicker, which is worse
+ * than no feedback at all. Past that threshold the wait is real and saying so is the honest thing.
+ */
+const BUSY_DELAY_MS = 180;
+
+function showBusy(panelId: string): () => void {
+  const panel = document.getElementById(panelId);
+  if (!panel) return () => { /* nothing to undo */ };
+  const timer = setTimeout(() => panel.setAttribute('data-busy', ''), BUSY_DELAY_MS);
+  return () => {
+    clearTimeout(timer);
+    panel.removeAttribute('data-busy');
+  };
+}
+
 export async function swapPanel(url: string, panelId: string, reinit: () => void): Promise<void> {
+  const doneBusy = showBusy(panelId);
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error('bad response');
@@ -96,8 +126,11 @@ export async function swapPanel(url: string, panelId: string, reinit: () => void
     // content swap still happens either way: the panel is simply ready and correct
     // for their return.
     if (!current.hidden) history.pushState({}, '', url);
+    doneBusy();
     reinit();
   } catch {
+    // Not cleared before the assignment: a full navigation is about to replace the document, and
+    // removing the busy state first would flash the old panel back to normal on the way out.
     window.location.href = url;
   }
 }

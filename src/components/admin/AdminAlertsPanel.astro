@@ -181,7 +181,11 @@ function buildCopyText(e: ErrorLogEntry): string {
             : '—';
           return (
           <>
-            <tr data-alert-row class={e.resolved ? 'admin-alerts-row--resolved' : ''}>
+            {/* `data-open` mirrors the details row's `hidden` below — set here for the deep-linked
+                case (the mail's link opens the row server-side) and toggled by alerts.ts for a
+                click. The head row has to carry it, not the details row, because it is the head
+                row that is being marked. */}
+            <tr data-alert-row data-open={entryRef ? '' : undefined} class={e.resolved ? 'admin-alerts-row--resolved' : ''}>
               {/* Chip on its own line inside the (nowrap, ~11%-wide) time cell —
                   the table has no spare column, and the time is the one field
                   the "חדשה" mark is actually about. */}
@@ -280,6 +284,12 @@ function buildCopyText(e: ErrorLogEntry): string {
             <tr id={`admin-alert-details-${e.id}`} class="admin-alerts-details-row" hidden={!entryRef}>
               <td colspan="7">
                 <div class="admin-alerts-details-body">
+                  {/* The plain sentence, repeated here in full (owner, 2026-08-07). It leads the
+                      row above, but that cell is one nowrap line and truncates — and this panel
+                      was the only other place it could have appeared and did not, so a headline
+                      longer than the column was unreadable ANYWHERE. It is the line that says
+                      whether a customer was hurt, which makes it the worst one to lose. */}
+                  <p><strong>מה קרה:</strong> {errorMeaning(e.route, severityOf(e))}</p>
                   <p><strong>הודעה מלאה:</strong> {e.message}</p>
                   <p><strong>קוד סטטוס:</strong> {e.statusCode ?? '—'}</p>
                   {/* "הקשר", not "הצעת פתרון", and the old label was wrong twice over as of

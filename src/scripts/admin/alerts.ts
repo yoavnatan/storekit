@@ -166,6 +166,13 @@ export function initAdminAlertsPanel(): void {
       const isOpen = detailsBtn.getAttribute('aria-expanded') === 'true';
       detailsBtn.setAttribute('aria-expanded', String(!isOpen));
       detailsRow.hidden = isOpen;
+      // Tint the HEAD row while its details are showing (owner, 2026-08-07). The details row sits
+      // directly below its own head row and is the only thing on screen that changes, so with a
+      // long list open there was nothing tying the panel of text to the line it belongs to — and
+      // the moment the pointer moved away even the hover tint was gone. Same grey as hover, so it
+      // reads as "this is the one" rather than as a new colour with a new meaning.
+      const headRow = detailsRow.previousElementSibling as HTMLElement | null;
+      if (headRow?.hasAttribute('data-alert-row')) headRow.toggleAttribute('data-open', !isOpen);
       return;
     }
 
