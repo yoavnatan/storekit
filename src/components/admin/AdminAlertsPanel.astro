@@ -128,9 +128,14 @@ function buildCopyText(e: ErrorLogEntry): string {
   <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
   <div class="admin-table-wrap">
     <table class="admin-table" id="admin-alerts-table">
+      {/* The action column is sized in PIXELS, not in a share of the table: it holds three
+          icon buttons of a known width, and a percentage made it 180px wide on a desktop
+          (the cluster floated with a gap on either side) and 60px wide on a narrow laptop
+          (the buttons spilled). The message column carries no width at all so it absorbs
+          whatever is left over — it is the one column that always has more to say. */}
       <colgroup>
         <col style="width:11%" /><col style="width:12%" /><col style="width:12%" />
-        <col style="width:15%" /><col style="width:12%" /><col style="width:23%" /><col style="width:15%" />
+        <col style="width:15%" /><col style="width:12%" /><col /><col style="width:108px" />
       </colgroup>
       <thead>
         <tr><th>זמן</th><th class="admin-alerts-th-source">חומרה</th><th>חנות</th><th>עבור</th><th>נתיב</th><th>הודעה</th><th class="admin-alerts-th-details"><span class="sr-only">פרטים נוספים</span></th></tr>
@@ -168,54 +173,70 @@ function buildCopyText(e: ErrorLogEntry): string {
               <td class="admin-nowrap admin-alerts-actor" title={actor}>
                 <span class="admin-alerts-field-label">עבור: </span>{actor}
               </td>
+              {/* <bdi>, because a route is LTR text living in an RTL cell and its LEADING SLASH is
+                  a bidi-neutral character: without isolation the paragraph direction pulls it to
+                  the other end and "/api/checkout" is displayed as "api/checkout/" — a path that
+                  does not exist, printed on the screen someone reads to find out which one broke. */}
               <td class="admin-nowrap admin-alerts-route" title={e.route ?? undefined}>
-                <span class="admin-alerts-field-label">נתיב: </span>{e.route ?? '—'}
+                <span class="admin-alerts-field-label">נתיב: </span><bdi>{e.route ?? '—'}</bdi>
               </td>
               {/* The plain sentence above the raw message, because "/api/checkout" and "500" say
                   everything except the one thing that decides what happens next: whether a customer
                   was hurt. Same wording the alert mail leads with, from the same function — a row
                   and its mail describing the same failure differently is worse than either alone. */}
+              {/* `dir="auto"` on the raw message and nowhere else in this cell. The line above it is
+                  our own Hebrew sentence; this one is whatever threw — usually an English driver
+                  message, occasionally Hebrew. Left to inherit the page's RTL, an English message
+                  is truncated from its FRONT, so the row showed "…iolates unique constraint" and
+                  the words that say what broke were the ones thrown away. `auto` reads the first
+                  strong character and truncates each language at its own end. */}
               <td class="admin-alerts-message" title={e.message}>
                 <span class="block font-semibold">{errorMeaning(e.route, severityOf(e))}</span>
-                <span class="block text-[.8rem] [color:var(--color-muted)] mt-[.15rem]">{e.message}</span>
+                <span class="block text-[.8rem] [color:var(--color-muted)] mt-[.15rem]" dir="auto">{e.message}</span>
               </td>
+              {/* The flex row is a DIV inside the cell, never the <td> itself. A `display:flex`
+                  on a `td` stops it being a table-cell at all: the browser wraps it in an
+                  anonymous cell that the <colgroup> width and the row's shared border-bottom
+                  never reach, and the row visibly breaks apart mid-way across (2026-08-07). */}
               <td class="admin-nowrap admin-alerts-actions">
-                <button
-                  type="button"
-                  class="admin-alerts-resolve-btn"
-                  data-id={e.id}
-                  aria-pressed={e.resolved ? 'true' : 'false'}
-                  aria-label={e.resolved ? 'בטל סימון כטופל' : 'סמן כטופל'}
-                  title={e.resolved ? 'בטל סימון כטופל' : 'סמן כטופל'}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M20 6L9 17l-5-5" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  class="admin-alerts-details-btn"
-                  aria-expanded={entryRef ? 'true' : 'false'}
-                  aria-controls={`admin-alert-details-${e.id}`}
-                  title="פרטים נוספים"
-                >
-                  <span class="admin-alerts-details-btn__label">פרטים נוספים</span>
-                  <svg class="admin-alerts-details-btn__chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                    <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  class="admin-alerts-copy-btn"
-                  data-copy-text={buildCopyText(e)}
-                  aria-label="העתק פרטי שגיאה ללוח"
-                  title="העתק פרטי שגיאה ללוח"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <rect x="9" y="9" width="13" height="13" rx="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                </button>
+                <div class="admin-alerts-actions__row">
+                  <button
+                    type="button"
+                    class="admin-alerts-resolve-btn"
+                    data-id={e.id}
+                    aria-pressed={e.resolved ? 'true' : 'false'}
+                    aria-label={e.resolved ? 'בטל סימון כטופל' : 'סמן כטופל'}
+                    title={e.resolved ? 'בטל סימון כטופל' : 'סמן כטופל'}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="admin-alerts-details-btn"
+                    aria-expanded={entryRef ? 'true' : 'false'}
+                    aria-controls={`admin-alert-details-${e.id}`}
+                    title="פרטים נוספים"
+                  >
+                    <span class="admin-alerts-details-btn__label">פרטים נוספים</span>
+                    <svg class="admin-alerts-details-btn__chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="admin-alerts-copy-btn"
+                    data-copy-text={buildCopyText(e)}
+                    aria-label="העתק פרטי שגיאה ללוח"
+                    title="העתק פרטי שגיאה ללוח"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <rect x="9" y="9" width="13" height="13" rx="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  </button>
+                </div>
               </td>
             </tr>
             {/* Open already when the mail's link brought us to this one row. Clicking through from

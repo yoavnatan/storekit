@@ -406,15 +406,26 @@ code { background: var(--color-surface); padding: 0.1rem 0.35rem; border-radius:
    the full value) rather than wrapping and making rows uneven height. */
 #admin-alerts-table { table-layout: fixed; }
 .admin-nowrap { white-space: nowrap; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; }
-.admin-alerts-message { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The ellipsis has to sit on the SPANS, not only on the cell. This cell stacks two block lines,
+   and `text-overflow` truncates the box that actually overflows — which is the inner block, never
+   its parent. With the rule only on the <td>, each line ran past the cell and was chopped by the
+   `overflow:hidden` with no ellipsis at all, mid-word, so a cut-off message was indistinguishable
+   from one that genuinely ended there. */
+.admin-alerts-message { overflow: hidden; }
+.admin-alerts-message > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-alerts-field-label { display: none; }
 /* A status pill is much wider than its short "מקור" header label — right-
    aligning both (like every other column) still leaves the pill's extra
    width bulging toward the next column, reading as drift even though the
    two edges are technically flush. Centering both reads correctly instead. */
 th.admin-alerts-th-source, .admin-alerts-source { text-align: center; }
-.admin-alerts-th-details { width: 1%; }
-.admin-alerts-actions { display: flex; align-items: center; gap: 0.2rem; }
+.admin-alerts-th-details { width: 108px; }
+/* The flex lives on the inner DIV and must NOT be moved onto the <td>: a table-cell given
+   `display:flex` stops being a table-cell, gets wrapped in an anonymous one, and drops out of
+   both the <colgroup> sizing and the row's shared border — which is precisely how this row
+   came apart mid-way across (2026-08-07). Pushed to the end so the cluster sits flush with the
+   table's outer edge instead of floating in the middle of its own column. */
+.admin-alerts-actions__row { display: flex; align-items: center; justify-content: flex-end; gap: 0.2rem; }
 .admin-alerts-details-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem;
   background: none; border: none; padding: 0.3rem; border-radius: var(--radius-sm);
@@ -479,9 +490,10 @@ tr[data-alert-row].admin-alerts-row--resolved .admin-alerts-message { text-decor
   .admin-alerts-details-btn__label { display: inline; }
   .admin-alerts-details-btn { padding: 0.2rem 0.4rem; }
   .admin-alerts-actions {
-    justify-content: flex-start; margin-top: 0.3rem; padding-top: 0.6rem;
+    margin-top: 0.3rem; padding-top: 0.6rem;
     border-top: 1px solid var(--color-border);
   }
+  .admin-alerts-actions__row { justify-content: flex-start; }
   #admin-alerts-table tr.admin-alerts-details-row {
     display: block; max-width: 720px;
     border: 1px solid var(--color-border); border-top: none;
