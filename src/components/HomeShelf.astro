@@ -5,6 +5,9 @@ import CategoryIcon from './CategoryIcon.astro';
 import type { FeedStore } from '../lib/home-feed.js';
 
 interface Props {
+  /** Passed straight to every StoreCard below — the page fetches the map once
+   *  (see lib/category-translations.ts) and the shelf only forwards it. */
+  categoryLabels?: ReadonlyMap<string, string>;
   id: string;
   title: string;
   stores: FeedStore[];
@@ -117,6 +120,7 @@ const arriveClass = eagerFirst
            style={`--shelf-count:${cardCount};--shelf-card-max:${cardMax}`}>
         {stores.map(({ store, previewImages }, i) => (
           <StoreCard
+            categoryLabels={Astro.props.categoryLabels}
             store={store}
             previewImages={previewImages}
             eager={eagerFirst && i === 0}

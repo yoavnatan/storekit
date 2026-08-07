@@ -85,3 +85,12 @@ export async function saveCategoryTranslation(category: string, nameEn: string |
 
 /** Same ceiling the Hebrew label has (`MAX_CATEGORY_LENGTH`) — a sentence is a description. */
 export const MAX_TRANSLATION_LENGTH = 24;
+
+/**
+ * Form-field prefix carrying a seller's English label: `categoryEn:<the Hebrew value>`.
+ *
+ * Declared here rather than typed into both the picker and `api/store.ts` — a name agreed in two
+ * files is the shape that silently stops matching, and the failure would be invisible: the save
+ * succeeds, the label is simply never stored, and the chip stays Hebrew.
+ */
+export const CATEGORY_EN_FIELD_PREFIX = 'categoryEn:';

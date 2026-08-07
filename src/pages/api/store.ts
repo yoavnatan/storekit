@@ -10,6 +10,7 @@ import { getCustomDomainProvider, normalizeHostname } from '../../lib/custom-dom
 import { reverifyCustomDomain } from '../../lib/custom-domain-verify.js';
 import { pingStoreChange } from '../../lib/indexnow.js';
 import { sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
+import { CATEGORY_EN_FIELD_PREFIX, saveCategoryTranslation } from '../../lib/category-translations.js';
 import { parseStoreHoursForm } from '../../lib/store-hours.js';
 import { sanitizeImageUrl } from '../../lib/image-url.js';
 import { CSV_FIELDS } from '../../lib/csv-bulk.js';
@@ -132,6 +133,20 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // renders that already exist is a pointless burst at the CDN.
     const newBanner = merged.bannerImage as string | undefined;
     if (newBanner && newBanner !== target.bannerImage) warmBannerDerivations(newBanner);
+
+    // Optional English labels for the categories this seller INVENTED. Deliberately after the
+    // save and deliberately unable to fail it: an empty field is the NORMAL case (owner,
+    // 2026-08-07 — "צריך לצאת מנקודת הנחה שהרבה מוכרים לא יודעים אנגלית"), so a missing
+    // translation is never an error and never blocks a Hebrew-speaking seller's save.
+    // Scoped to `categories` — the list the merge just settled on — so a hand-crafted POST
+    // cannot name a shelf this store does not sit on. A seed category is refused inside
+    // saveCategoryTranslation: those labels are the platform's copy, not a seller's.
+    for (const [key, value] of form.entries()) {
+      if (!key.startsWith(CATEGORY_EN_FIELD_PREFIX)) continue;
+      const hebrew = key.slice(CATEGORY_EN_FIELD_PREFIX.length);
+      if (!categories.includes(hebrew)) continue;
+      await saveCategoryTranslation(hebrew, String(value));
+    }
 
     // Store page content changed — notify the index (fire-and-forget, no-op in dev).
     pingStoreChange(target);

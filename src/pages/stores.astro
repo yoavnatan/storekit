@@ -255,6 +255,7 @@ const jsonLd = {
         <div class="stores-directory__grid" role="list">
           {gridStores.map(({ store, previewImages }, i) => (
             <StoreCard
+              categoryLabels={categoryTranslations}
               store={store}
               previewImages={previewImages}
               eager={i === 0}

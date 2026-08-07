@@ -446,7 +446,7 @@ const jsonLd = {
 
       <div id="dash-panel-liked" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-liked" hidden={activeTab !== 'liked'}>
         {feed.liked.length > 0
-          ? <HomeShelf id="liked" title={t.home.shelfLiked} stores={feed.liked} dotIndex={bgOffset} eagerFirst={activeTab === 'liked'} hideHeading fillMobile />
+          ? <HomeShelf categoryLabels={categoryTranslations} id="liked" title={t.home.shelfLiked} stores={feed.liked} dotIndex={bgOffset} eagerFirst={activeTab === 'liked'} hideHeading fillMobile />
           : <HomeTabEmpty
               message={isLoggedIn ? t.home.tabEmptyLiked : t.home.tabEmptyLikedGuest}
               ctaLabel={isLoggedIn ? t.home.tabEmptyLikedCta : t.home.tabEmptyLikedGuestCta}
@@ -457,7 +457,7 @@ const jsonLd = {
 
       <div id="dash-panel-buy-again" class="dash-panel !px-0 !pt-2" role="tabpanel" aria-labelledby="tab-buy-again" hidden={activeTab !== 'buy-again'}>
         {feed.buyAgain.length > 0
-          ? <HomeShelf id="buy-again" title={t.home.shelfBuyAgain} stores={feed.buyAgain} dotIndex={bgOffset} eagerFirst={activeTab === 'buy-again'} hideHeading fillMobile />
+          ? <HomeShelf categoryLabels={categoryTranslations} id="buy-again" title={t.home.shelfBuyAgain} stores={feed.buyAgain} dotIndex={bgOffset} eagerFirst={activeTab === 'buy-again'} hideHeading fillMobile />
           : <HomeTabEmpty message={t.home.tabEmptyBuyAgain} ctaLabel={t.home.tabEmptyLikedCta} ctaHref="/stores" />
         }
       </div>
@@ -471,7 +471,7 @@ const jsonLd = {
              here. (Comment sits ABOVE the expression on purpose: a comment between
              the condition and `?` makes the route fail to build, silently in dev.) -->
         {feed.newStores.length > 0 || newTabInvites > 0
-          ? <HomeShelf id="new" title={t.home.shelfNew} stores={feed.newStores} invites={newTabInvites}
+          ? <HomeShelf categoryLabels={categoryTranslations} id="new" title={t.home.shelfNew} stores={feed.newStores} invites={newTabInvites}
                        dotIndex={bgOffset} eagerFirst={activeTab === 'new'} hideHeading fillMobile />
           : <HomeTabEmpty message={t.home.tabEmptyNew} ctaLabel={t.home.tabEmptyCtaAll} ctaHref="/stores" />
         }
@@ -488,7 +488,7 @@ const jsonLd = {
                  spotlight carousel below is NOT skipped: it's the page's one
                  moving element, and one real store is enough to run it. -->
             {launchMode ? (
-              <HomeShelf id="launch" title={t.home.discoverStores} stores={launchShelf.stores}
+              <HomeShelf categoryLabels={categoryTranslations} id="launch" title={t.home.discoverStores} stores={launchShelf.stores}
                          invites={launchShelf.invites}
                          eagerFirst={activeTab === 'discover'} hideHeading grid />
             ) : (
@@ -499,13 +499,13 @@ const jsonLd = {
                      the very top of the tab, where "עוד לגלות" used to be; only
                      renders when there's history (HomeShelf hides itself on an
                      empty list). ── -->
-                <HomeShelf id="recent" title={t.home.recentlyViewed} stores={recentStores} dotIndex={bgOffset}
+                <HomeShelf categoryLabels={categoryTranslations} id="recent" title={t.home.recentlyViewed} stores={recentStores} dotIndex={bgOffset}
                            eagerFirst={activeTab === 'discover' && recentStores.length > 0} />
 
                 <!-- ── Category shelves — above the spotlight. "גלה עוד" now renders
                      BELOW the spotlight instead (see after the carousel block). ── -->
                 {categoryShelves.map((s, i) => (
-                  <HomeShelf id={s.id} title={s.title} stores={s.stores} categoryLabel={s.title} dotIndex={i + 1 + bgOffset} eagerFirst={activeTab === 'discover' && recentStores.length === 0 && s.id === firstEagerShelfId} />
+                  <HomeShelf categoryLabels={categoryTranslations} id={s.id} title={s.title} stores={s.stores} categoryLabel={s.title} dotIndex={i + 1 + bgOffset} eagerFirst={activeTab === 'discover' && recentStores.length === 0 && s.id === firstEagerShelfId} />
                 ))}
               </>
             )}
@@ -723,7 +723,7 @@ const jsonLd = {
                  cards the launch shelf above already shows, a visible duplicate
                  rather than more to explore. ── -->
             {!launchMode && (
-              <HomeShelf id={discoveryShelf.id} title={discoveryShelf.title} stores={discoveryShelf.stores}
+              <HomeShelf categoryLabels={categoryTranslations} id={discoveryShelf.id} title={discoveryShelf.title} stores={discoveryShelf.stores}
                          dotIndex={categoryShelves.length + 1 + bgOffset} />
             )}
 
