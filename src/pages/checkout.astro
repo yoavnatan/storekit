@@ -93,6 +93,12 @@ for (const s of await getVisibleStores()) {
     // Borrowed from the cart drawer's namespace on purpose: it is the SAME heading over the same
     // grouping, and a second string for it is how the two would end up worded differently.
     otherStores: t.cart.otherStores,
+    // Same reason, and the same three labels the cart drawer puts on the identical −/+ control.
+    // They were spelled out in Hebrew inside the renderer below, so an English visitor's screen
+    // reader announced the quantity buttons in Hebrew on this page alone.
+    quantity: t.cart.quantity,
+    qtyDecrease: t.cart.qtyDecrease,
+    qtyIncrease: t.cart.qtyIncrease,
   })}></script>
 
   {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in
@@ -514,10 +520,10 @@ for (const s of await getVisibleStores()) {
                   // "how many" of a view-only item is a control that does nothing.
                   // The sentence takes its place, so the row keeps its height.
                   ? `<span class="text-[.775rem] font-medium [color:var(--color-accent)] me-0.5">${esc(i18n['demoExcluded'] ?? '')}</span>`
-                  : `<div class="cart-line__qty shrink-0" dir="ltr" role="group" aria-label="כמות">
-                  <button class="co-qty__btn" data-action="dec" aria-label="הפחת כמות" type="button" ${item.qty <= 1 ? 'disabled' : ''}>−</button>
+                  : `<div class="cart-line__qty shrink-0" dir="ltr" role="group" aria-label="${esc(i18n['quantity'] ?? 'כמות')}">
+                  <button class="co-qty__btn" data-action="dec" aria-label="${esc(i18n['qtyDecrease'] ?? 'הפחת כמות')}" type="button" ${item.qty <= 1 ? 'disabled' : ''}>−</button>
                   <span class="co-qty__num w-7" aria-live="polite">${item.qty}</span>
-                  <button class="co-qty__btn" data-action="inc" aria-label="הגדל כמות" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>
+                  <button class="co-qty__btn" data-action="inc" aria-label="${esc(i18n['qtyIncrease'] ?? 'הוסף כמות')}" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>
                 </div>`}
                 <button class="w-[26px] h-[26px] shrink-0 bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] cursor-pointer [color:var(--color-muted)] flex items-center justify-center transition-[color,background,border-color] duration-[130ms] hover:[color:var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)] hover:[border-color:color-mix(in_srgb,var(--color-danger)_30%,var(--color-border))]" data-action="remove" aria-label="${esc(i18n['removeItem'] ?? 'הסר')}" type="button">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>

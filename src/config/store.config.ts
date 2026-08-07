@@ -85,12 +85,15 @@ export const store: PlatformConfig = {
   // Dezabin is. So it follows the positioning rule rather than the convenient phrasing: this used
   // to read "open a store and start selling in minutes — no code, no complexity", which is the
   // store-builder script the owner ruled out on 2026-07-28 (AI_INSTRUCTIONS → Business model) —
-  // it invites a comparison with Shopify that a mall does not win. Leads with the mall instead.
+  // it invites a comparison with Shopify that a place does not win. Leads with the place instead.
   // Owner's own wording (2026-08-05), and in HEBREW on purpose: the market is Israel and the site
   // is Hebrew-first, so this is the language the engines should quote back to an Israeli asking
   // what Dezabin is. It is NOT the homepage's meta description — that page passes its own
   // (`t.home.browseDesc`), which is what keeps this one free to name the seller-side plumbing.
-  description: 'קניון דיגיטלי ישראלי: חנות משלך עם הכוח של קניון — קונה שנכנס לחנות אחת נחשף לכולן, ולעסק שכבר יש לו חנות זה ערוץ מכירה נוסף בלי מאמץ. סליקה, משלוחים, SEO ופרסום מובנים, וסל אחד לכל החנויות או לכל אחת בנפרד.',
+  // The noun is "מתחם", never "קניון" — see translations.ts `startSelling` for why the word was
+  // retired. This string is the reason that rule needs a guard: it lives outside translations.ts,
+  // so a wording pass over the UI cannot see it, and it is the copy the engines quote.
+  description: 'מתחם חנויות דיגיטלי, כוח של קבוצה: חנות משלך — קונה שנכנס לחנות אחת נחשף לכולן, ולעסק שכבר יש לו חנות זה ערוץ מכירה נוסף בלי מאמץ. סליקה, משלוחים, SEO ופרסום מובנים, וסל אחד לכל החנויות או לכל אחת בנפרד.',
   language: 'he',
   direction: 'rtl',
   locale: 'he_IL',

@@ -1,4 +1,4 @@
-// Recently-visited STORES — the list behind the homepage "ביקרת לאחרונה" shelf.
+// Recently-visited STORES — the list behind the homepage "בוקרו לאחרונה" shelf.
 // A *store* visit counts (opening /[slug] or any product page inside it),
 // so the shelf fills from ordinary browsing instead of demanding a product open
 // — the earlier product-level version left it empty too easily. Stored in a
