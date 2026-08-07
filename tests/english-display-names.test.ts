@@ -5,8 +5,15 @@
  * `stores.categories` value, the `?category=` parameter, the key the homepage shelves group on, and
  * the key `category-icons.ts` looks its icon up with. Substituting the English anywhere in that
  * list forks the catalogue by language: a store an English visitor can reach and a Hebrew visitor
- * cannot, or the same store on two shelves. It also hands Google Merchant Center two names for one
- * thing, on the single account the whole platform shares (`project_ad_platform_account_risk`).
+ * cannot, or the same store on two shelves.
+ *
+ * It would also reach the ad feed, where the store's own categories ride in `custom_label_4` and
+ * its name becomes `brand` when a product has none — and Merchant Center matches listings across
+ * the market on brand. **Checked 2026-08-07 against Google's published spec rather than assumed,
+ * because an earlier note here overstated it:** a brand mismatch between feed and landing page is
+ * NOT a listed disapproval or suspension reason (only price and availability are), but conflicting
+ * brand values are documented as causing "limited performance". So the cost of getting this wrong
+ * is degraded reach, not a dead account — worth holding the line for, not worth panic.
  *
  * Nothing about that is enforced by types — both sides are `string` — so it is enforced here.
  *
