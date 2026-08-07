@@ -164,7 +164,10 @@ const jsonLd = {
       />
       <datalist id="stores-directory-empty-list"></datalist>
       {category && <input type="hidden" name="category" value={category} />}
-      <button type="submit" class="stores-directory__search-btn" aria-label={t.home.directorySearchPlaceholder}>
+      {/* The button's name is the ACTION, not the field's placeholder (owner, 2026-08-07):
+          it used to repeat "חיפוש לפי שם חנות...", which reads as a second label for the
+          input it sits beside rather than as what pressing it does. */}
+      <button type="submit" class="stores-directory__search-btn" aria-label={t.search.submit} title={t.search.submit}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>

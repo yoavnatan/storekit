@@ -123,6 +123,11 @@ export const translations = {
       sectionProducts: 'מוצרים',
       back: 'חזרה',
       viewAllResults: 'לכל התוצאות',
+      // The verb on every "run this search" control (the in-field button in the header,
+      // the store-directory submit). Deliberately NOT the field's placeholder: the button
+      // does one thing and the placeholder already says what is being searched, so
+      // repeating it on the control reads as a label for the field, not for the press.
+      submit: 'חפש',
     },
     footer: {
       terms: 'תנאי שימוש',
@@ -1469,6 +1474,7 @@ export const translations = {
       sectionProducts: 'Products',
       back: 'Back',
       viewAllResults: 'All results',
+      submit: 'Search',
     },
     footer: {
       terms: 'Terms',

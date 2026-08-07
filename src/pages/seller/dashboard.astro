@@ -1513,7 +1513,12 @@ const orderStatusColors: Record<string, string> = {
                         <input type="hidden" name="_action" value="edit-product" />
                         <input type="hidden" name="productId" value={p.id} />
                         <div class="edit-row-header">
-                          {p.images?.[0] && <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" style="width:36px;height:36px;object-fit:cover;border-radius:var(--radius-sm);flex-shrink:0">}
+                          {/* Twin of the string in products.ts's buildEditRow — keep both in step. */}
+                          {p.images?.[0] && (
+                            <span class="dash-img-skel block w-9 h-9 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[color:var(--color-surface)]" data-skeleton>
+                              <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="block w-full h-full object-cover" />
+                            </span>
+                          )}
                           <span class="edit-row-title">{p.name}</span>
                           <div class="flex gap-2 mt-2" style="margin-inline-start:auto;margin-top:0">
                             <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
@@ -1866,7 +1871,16 @@ const orderStatusColors: Record<string, string> = {
                       <ul class="order-card__items list-none p-0 flex flex-col gap-2">
                         {storeItems.map((item) => (
                           <li class="flex items-center gap-2.5 text-sm">
-                            {item.image && <img src={cdnThumb(item.image, 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
+                            {/* The wrap exists for the shimmer (dashboard.css → .dash-img-skel) and
+                                carries what the bare <img> used to: the size, the border and the
+                                surface a cut-out photo needs behind it. Its two other renderers —
+                                buildOrderCard and the post-save patch, both in orders.ts — must
+                                stay identical to this markup. */}
+                            {item.image && (
+                              <span class="dash-img-skel block w-9 h-9 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" data-skeleton>
+                                <img src={cdnThumb(item.image, 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="block w-full h-full object-cover" />
+                              </span>
+                            )}
                             <span class="flex-1 text-[color:var(--color-text)]">{item.productName}</span>
                             <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
                             <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatAgorot(item.priceAgorot * item.qty)}</span>
@@ -2377,8 +2391,9 @@ const orderStatusColors: Record<string, string> = {
             <p class="muted" style="margin:0.15rem 0 0.6rem;font-size:0.8rem">{d.storeBannerHint}</p>
             <div
               id="banner-frame"
-              class="w-full max-w-[420px] overflow-hidden rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+              class="dash-img-skel w-full max-w-[420px] overflow-hidden rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)]"
               style="aspect-ratio:3/1"
+              data-skeleton={store.bannerImage ? '' : undefined}
             >
               {store.bannerImage && (
                 <img src={cdnSrc(store.bannerImage, 900)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--color-surface)" />
@@ -2409,8 +2424,9 @@ const orderStatusColors: Record<string, string> = {
                  2026-08-05, reverted with the render it was mirroring. -->
             <div
               id="avatar-frame"
-              class="h-20 w-20 overflow-hidden rounded-full border border-[var(--color-border)]"
+              class="dash-img-skel h-20 w-20 overflow-hidden rounded-full border border-[var(--color-border)]"
               style={`background:${storeMarkGradient(storeMark(store.slug, store.name))}`}
+              data-skeleton={store.profileImage ? '' : undefined}
             >
               {store.profileImage && (
                 <img src={cdnSrc(store.profileImage, 200)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--color-surface)" />
@@ -2738,10 +2754,18 @@ const orderStatusColors: Record<string, string> = {
   .eom-item:last-child { border-bottom: none; }
   .eom-item--deleted { opacity: 0.4; }
   .eom-item--deleted .eom-item__name { text-decoration: line-through; }
-  .eom-item__img {
-    width: 34px; height: 34px; object-fit: cover;
-    border-radius: var(--radius-sm); flex-shrink: 0;
+  /* The border/radius/size moved off the <img> and onto the wrap the shimmer needs
+     (dashboard.css → .dash-img-skel), so a still-loading item is a box in the row rather
+     than nothing at all. The surface is on the wrap for the usual reason: a cut-out photo
+     has no background of its own. */
+  .eom-item__img-wrap {
+    width: 34px; height: 34px; flex-shrink: 0; display: block; overflow: hidden;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .eom-item__img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
   }
   .eom-item__img-ph {
     width: 34px; height: 34px; border-radius: var(--radius-sm); flex-shrink: 0;
