@@ -34,7 +34,7 @@ export type CategoryIconKey =
   | 'accessories' | 'home' | 'kitchen' | 'furniture' | 'sports' | 'food'
   | 'toys' | 'baby' | 'pets' | 'books' | 'tools' | 'car' | 'gift' | 'store'
   | 'plants' | 'garden' | 'judaica' | 'computers' | 'kids' | 'music'
-  | 'nature' | 'cleaning' | 'disposables'
+  | 'nature' | 'cleaning' | 'disposables' | 'phone' | 'flowers'
   | 'all' | 'default';
 
 /** Seed label → icon. Keyed by the normalized label so a lookup can't be defeated
@@ -48,12 +48,16 @@ const SEED_ICONS: Readonly<Record<string, CategoryIconKey>> = {
   'תכשיטים': 'jewelry',
   'טיפוח': 'beauty',
   'אלקטרוניקה': 'electronics',
+  'מחשבים': 'computers',
+  'סלולר': 'phone',
   'אביזרים': 'accessories',
   'לבית': 'home',
   'מטבח': 'kitchen',
   'ריהוט': 'furniture',
   'ספורט': 'sports',
   'מזון': 'food',
+  'פרחים': 'flowers',
+  'צמחים': 'plants',
   'צעצועים': 'toys',
   'לתינוק': 'baby',
   'חיות מחמד': 'pets',
@@ -79,7 +83,6 @@ const SEED_ICONS: Readonly<Record<string, CategoryIconKey>> = {
  * same way "חשמל ואלקטרוניקה" reaches אלקטרוניקה's.
  */
 const ALIAS_ICONS: Readonly<Record<string, CategoryIconKey>> = {
-  'צמחים': 'plants',
   'לגינה': 'garden',
   'גינה': 'garden',
   'יודאיקה': 'judaica',
