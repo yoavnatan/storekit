@@ -231,6 +231,9 @@ export const translations = {
       otherStores: 'מחנויות אחרות',
       qtyDecrease: 'הפחת כמות',
       qtyIncrease: 'הגדל כמות',
+      qtyGroup: 'כמות',
+      /** Unit price under a line whose quantity is >1: "₪49.90 ליח׳". */
+      perUnit: 'ליח׳',
       closeCart: 'סגור עגלה',
       // A sale started or ended behind a cart that was left sitting. Said out loud rather than
       // swapping the number silently — and the good direction is worth its own sentence.
@@ -1332,6 +1335,9 @@ export const translations = {
       send: 'שלח הודעה',
       sending: 'שולח...',
       sent: 'ההודעה נשלחה!',
+      /** The button's own success state, next to `sent` on the status line. */
+      sentShort: '✓ נשלח',
+      close: 'סגור',
       loginRequired: 'יש להתחבר כדי לשלוח הודעה',
       errorSending: 'שגיאה בשליחה. נסה שוב.',
       productContext: 'בנוגע למוצר',
@@ -1544,6 +1550,8 @@ export const translations = {
       otherStores: 'From other stores',
       qtyDecrease: 'Decrease quantity',
       qtyIncrease: 'Increase quantity',
+      qtyGroup: 'Quantity',
+      perUnit: 'each',
       closeCart: 'Close cart',
       pricesUpdated: 'Cart prices updated',
       pricesDropped: 'Prices in your cart went down',
@@ -2581,6 +2589,8 @@ export const translations = {
       send: 'Send message',
       sending: 'Sending...',
       sent: 'Message sent!',
+      sentShort: '✓ Sent',
+      close: 'Close',
       loginRequired: 'Please log in to send a message',
       errorSending: 'Error sending. Please try again.',
       productContext: 'About product',

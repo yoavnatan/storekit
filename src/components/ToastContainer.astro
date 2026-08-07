@@ -1,6 +1,11 @@
 ---
 // ToastContainer — listens to `toast:show` CustomEvent
 // Event detail: { title: string, body: string, duration?: number }
+//
+// The close button's label rides on the container as data-str-close: the toast
+// itself is built by innerHTML in the script below, which has no getT().
+import { getLang, getT } from '../i18n/index.js';
+const t = getT(getLang(Astro.cookies));
 ---
 
 <div
@@ -8,6 +13,7 @@
   class="toast-container"
   aria-live="polite"
   aria-atomic="false"
+  data-str-close={t.messages.close}
 ></div>
 
 <script>
@@ -48,7 +54,7 @@
         <div class="toast-card__title">${esc(title)}</div>
         ${body ? `<div class="toast-card__body">${esc(body)}</div>` : ''}
       </div>
-      <button class="toast-close" aria-label="סגור">
+      <button class="toast-close" aria-label="${esc(container.dataset.strClose ?? 'סגור')}">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>`;
 

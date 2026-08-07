@@ -402,13 +402,13 @@ const i18n = {
           </p>
           <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.6rem">
             <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
-              <button type="button" class="pm-qty-dec" disabled aria-label="הפחת"
+              <button type="button" class="pm-qty-dec" disabled aria-label={t.cart.qtyDecrease}
                       style="width:2rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted);transition:background 0.1s">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
               <span class="pm-qty-val" aria-live="polite"
                     style="min-width:2rem;text-align:center;font-weight:600;font-size:0.875rem;color:var(--color-text)">1</span>
-              <button type="button" class="pm-qty-inc" aria-label="הוסף"
+              <button type="button" class="pm-qty-inc" aria-label={t.cart.qtyIncrease}
                       style="width:2rem;height:2.25rem;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--color-muted);transition:background 0.1s">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
