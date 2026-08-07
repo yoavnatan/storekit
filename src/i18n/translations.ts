@@ -358,8 +358,9 @@ export const translations = {
       // The floating notice for an offer sitting in a tab he is not looking at. {section} is the
       // tab's own label, read at runtime — never a second name for the panel that could drift.
       draftNotice: 'יש שינויים שלא הספקת לשמור ב{section}',
-      // Its buttons are `draftRestore` / `draftDiscard` above — the same two, because it is the
-      // same decision. See FormFallbackGuard.astro's `acceptOffer`.
+      // Said only when the form is in a tab he is NOT in — there the notice leads him over
+      // (`unsavedGo`) instead of answering. In his own tab it is `draftFound` + `draftRestore` /
+      // `draftDiscard`, word for word the bar inside the form. FormFallbackGuard's `refreshNotice`.
       storeOverview: 'סקירת חנות',
       products: 'מוצרים',
       inStock: 'במלאי',

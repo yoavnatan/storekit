@@ -33,9 +33,10 @@
  *     usually sits in a panel the seller is not looking at. Panels are hidden, not destroyed, so an
  *     offer in Settings was announced to nobody while he stood in Products. It is now backed by a
  *     FLOATING notice (`#dash-draft-bar` below), which appears exactly when the bar inside the form
- *     is NOT in front of him and is otherwise the same bar: the same sentence, the same two buttons,
- *     the same two functions behind them. The only thing it adds is WHERE, which is the one thing
- *     the in-form bar never has to say.
+ *     is NOT in front of him. **What it then offers depends on where that form is, not on which bar
+ *     is showing** — `refreshNotice` states the rule and the owner's reasoning for it. Same tab: it
+ *     IS that bar, word for word, buttons and all. Another tab: it names the section and leads him
+ *     there, and the bar he can now see does the asking.
  *
  *  b. *"לערוך משהו ואז השחזור ימחק את מה שהיוזר עשה"* — the offer's payload was frozen at load, so
  *     typing into an offered field and then pressing restore wrote the older value over the newer
@@ -74,12 +75,13 @@ interface Props {
   draftFound: string;
   draftRestore: string;
   draftDiscard: string;
-  /** The floating notice for an offer he cannot see: the same sentence as `draftFound`, plus the
-   *  one thing that bar never has to say — WHERE. `{section}` is the tab's own label. It reuses
-   *  `draftRestore` / `draftDiscard` above, because it is the same two buttons. */
+  /** The floating notice, when the offer is in a tab he is NOT in: it names the section
+   *  (`{section}` is the tab's own label) and leads him there instead of answering for him. */
   draftNotice: string;
+  /** That button. `unsavedGo` — "קח אותי לשם", the words the site already owns for the act. */
+  goLabel: string;
 }
-const { message, draftFound, draftRestore, draftDiscard, draftNotice } = Astro.props;
+const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } = Astro.props;
 ---
 
 {/* The offer he would otherwise miss. Server-rendered and hidden rather than injected by the
@@ -111,8 +113,12 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice } = Astro.p
     <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>
   </svg>
   <span id="dash-draft-msg"></span>
-  <button type="button" id="dash-draft-restore" class="btn btn--sm shrink-0">{draftRestore}</button>
-  <button type="button" id="dash-draft-discard" class="btn btn--ghost btn--sm shrink-0">{draftDiscard}</button>
+  {/* Which of these is out depends on WHERE the offer is, not on which bar is showing — see
+      `refreshNotice`. All three carry `!hidden` rather than the `hidden` attribute for the usual
+      reason: `.btn` is display:inline-flex and beats the attribute's display:none. */}
+  <button type="button" id="dash-draft-go" class="!hidden btn btn--sm shrink-0">{goLabel}</button>
+  <button type="button" id="dash-draft-restore" class="!hidden btn btn--sm shrink-0">{draftRestore}</button>
+  <button type="button" id="dash-draft-discard" class="!hidden btn btn--ghost btn--sm shrink-0">{draftDiscard}</button>
 </div>
 
 <script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard, draftNotice }}>
@@ -343,7 +349,6 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice } = Astro.p
       bar.appendChild(no);
       form.insertBefore(bar, form.firstChild);
       offers[key] = { form: form, bar: bar, values: values };
-      return bar;
     }
 
     /**
@@ -369,11 +374,17 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice } = Astro.p
       var o = offers[key];
       if (!o) return;
       var form = o.form;
+      // Was the bar he just pressed in front of him? If it was, everything this changes is already
+      // on screen and the page must not move — a press that changes nothing you cannot see moves
+      // nothing (AI_INSTRUCTIONS → no-op interactions must be invisible). If it was not — he
+      // pressed the floating notice from further down the same tab — the fields he just recovered
+      // are somewhere he is not, so put them in front of him.
+      var seen = onScreen(o.bar);
       var pending = restorable(key);
       closeOffer(key);
       drop(form);
       if (pending) apply(form, pending);
-      reveal(form);
+      if (!seen) reveal(form);
     }
 
     function rejectOffer(key) {
@@ -383,17 +394,12 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice } = Astro.p
       drop(o.form);
     }
 
-    /** Put the form in front of him — opening its tab first if it is in a closed one. Does nothing
-     *  when he is already looking at it (`__dashScrollTo` is the no-op-when-visible helper). */
+    /** Put the form in front of him. The house helper when the module graph is alive — it accounts
+     *  for the pinned chrome and does nothing when the target is already fully visible. The fallback
+     *  is for the load this whole component exists for, where none of the bundle arrived; it says
+     *  'center' rather than 'start' deliberately, since 'start' parks the target's top edge at
+     *  viewport y:0, which on this site is BEHIND the fixed header (tests/scroll-below-header). */
     function reveal(form) {
-      var panel = form.closest ? form.closest('.dash-panel') : null;
-      var id = panel && panel.getAttribute('aria-labelledby');
-      var tab = id ? document.getElementById(id) : null;
-      if (tab && panel.hidden) tab.click();   // DashTabsBoot owns panel switching, and it is inline too
-      // The house helper when the module graph is alive — it accounts for the pinned chrome. The
-      // fallback is for the load this whole component exists for, where none of the bundle arrived,
-      // and it says 'center' rather than 'start' deliberately: 'start' parks the target's top edge
-      // at viewport y:0, which on this site is BEHIND the fixed header (tests/scroll-below-header).
       if (window.__dashScrollTo) window.__dashScrollTo(form);
       else form.scrollIntoView({ block: 'center' });
     }
@@ -403,12 +409,21 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice } = Astro.p
     /** Which offer the notice is currently pointing at, and therefore where its button goes. */
     var noticeTarget = null;
 
-    /** The section holding an offer, named by ITS OWN TAB — no panel needs a second name in
+    function panelOf(form) {
+      return form.closest ? form.closest('.dash-panel') : null;
+    }
+
+    /** The tab button owning a form's panel — the mapping already exists for accessibility. */
+    function tabOf(form) {
+      var panel = panelOf(form);
+      var id = panel && panel.getAttribute('aria-labelledby');
+      return id ? document.getElementById(id) : null;
+    }
+
+    /** The section's name is the TAB'S OWN LABEL, read at runtime — no panel needs a second name in
      *  translations.ts that could drift from the tab it describes (unsaved-guard.ts, same trick). */
     function sectionOf(form) {
-      var panel = form.closest ? form.closest('.dash-panel') : null;
-      var id = panel && panel.getAttribute('aria-labelledby');
-      var tab = id ? document.getElementById(id) : null;
+      var tab = tabOf(form);
       return tab ? (tab.textContent || '').trim() : '';
     }
 
@@ -445,13 +460,28 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice } = Astro.p
       // bar whose buttons had no unambiguous subject. Answer this one and the next takes its place.
       noticeTarget = null;
       for (var key in offers) if (!onScreen(offers[key].bar)) { noticeTarget = offers[key]; break; }
-      var section = noticeTarget ? sectionOf(noticeTarget.form) : '';
-      // The same sentence the bar inside the form uses, plus the one thing that bar never has to
-      // say: WHERE. That is the entire difference between them.
+      /*
+       * What the notice says and offers is decided by WHERE the form is — not by which of the two
+       * bars is on screen. The owner's rule, and it is the one that keeps this simple (2026-08-07):
+       *
+       *  - **Same tab, he has just scrolled past the bar.** The form is right there. So the notice
+       *    is that bar, word for word: same sentence, same שחזר / מחק, same two functions behind
+       *    them. Naming the section here would name where he already is.
+       *  - **Another tab.** Nothing here answers for him — restoring into a panel he cannot see is
+       *    a change with nothing on screen to show for it. It names the section and LEADS him
+       *    there; the bar inside that form does the asking, once he can see what it is asking about.
+       */
+      var away = !!(noticeTarget && (function (p) { return p && p.hidden; })(panelOf(noticeTarget.form)));
+      var section = away ? sectionOf(noticeTarget.form) : '';
+      // A form outside the tab shell has no section to name; the plain sentence still says the one
+      // thing that matters, which is that something is waiting.
       var message = !noticeTarget ? ''
         : section ? draftNotice.replace('{section}', section) : draftFound;
       if (msgEl.textContent !== message) msgEl.textContent = message;
       bar.classList.toggle('!hidden', !message);
+      toggleBtn('dash-draft-go', !!message && away);
+      toggleBtn('dash-draft-restore', !!message && !away);
+      toggleBtn('dash-draft-discard', !!message && !away);
 
       // The bottom slot is this bar's home; it only steps clear when one of the mid-task bars is
       // actually out. One step over BOTH of them rather than arithmetic per bar — the gap when only
@@ -476,11 +506,36 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice } = Astro.p
       noticeFrame = requestAnimationFrame(function () { noticeFrame = 0; refreshNotice(); });
     }
 
-    /** The notice's two buttons ARE the offer's two buttons — `acceptOffer` / `rejectOffer`, the
-     *  same functions the bar inside the form calls. Nothing here decides anything the other bar
-     *  would decide differently; this one only exists because that one is out of sight. */
+    function toggleBtn(id, show) {
+      var el = document.getElementById(id);
+      if (el) el.classList.toggle('!hidden', !show);
+    }
+
+    /** Open the offer's tab and put its bar in front of him, focused — and stop. This is the whole
+     *  of what the notice does when the form is somewhere else: the decision belongs on the bar he
+     *  can now see, which is the one that already carries it. */
+    function leadToOffer(key) {
+      var o = offers[key];
+      if (!o) return;
+      var tab = tabOf(o.form);
+      if (tab) tab.click();   // DashTabsBoot owns panel switching, and it is inline like this one
+      if (window.__dashScrollTo) window.__dashScrollTo(o.bar);
+      else o.bar.scrollIntoView({ block: 'center' });
+      // `preventScroll` so the focus does not fight the animation already carrying him there.
+      var first = o.bar.querySelector('button');
+      if (first) first.focus({ preventScroll: true });
+      scheduleNotice();
+    }
+
+    /** The notice's buttons are the offer's own — `acceptOffer` / `rejectOffer` are literally the
+     *  functions the bar inside the form calls — plus `leadToOffer` for the case where that bar is
+     *  in another tab and answering here would change something he cannot see. */
     function wireNoticeButtons() {
-      var pairs = [['dash-draft-restore', acceptOffer], ['dash-draft-discard', rejectOffer]];
+      var pairs = [
+        ['dash-draft-go', leadToOffer],
+        ['dash-draft-restore', acceptOffer],
+        ['dash-draft-discard', rejectOffer],
+      ];
       for (var i = 0; i < pairs.length; i++) {
         var btn = document.getElementById(pairs[i][0]);
         if (!btn || btn.hasAttribute('data-wired')) continue;

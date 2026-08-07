@@ -35,6 +35,11 @@ function installGuard(): void {
 }
 installGuard();
 
+/** Which of the notice's three buttons are currently offered. */
+const noticeButtons = (): string[] =>
+  ['dash-draft-go', 'dash-draft-restore', 'dash-draft-discard']
+    .filter((id) => !document.getElementById(id)!.classList.contains('!hidden'));
+
 // jsdom ships no layout, so it implements neither of these. Every browser does, and the guard's
 // restore path ends by putting the form in front of the seller — so without them the tests would be
 // asserting against a script that cannot finish.
@@ -44,8 +49,9 @@ Element.prototype.scrollIntoView = vi.fn();
  *  Its two buttons are the same two the in-form bar carries, and they call the same functions. */
 const NOTICE_BAR =
   `<div id="dash-draft-bar" class="!hidden bottom-6"><span id="dash-draft-msg"></span>` +
-  `<button type="button" id="dash-draft-restore">${RESTORE}</button>` +
-  `<button type="button" id="dash-draft-discard">${DISCARD}</button></div>` +
+  `<button type="button" id="dash-draft-go" class="!hidden">go</button>` +
+  `<button type="button" id="dash-draft-restore" class="!hidden">${RESTORE}</button>` +
+  `<button type="button" id="dash-draft-discard" class="!hidden">${DISCARD}</button></div>` +
   // The two mid-task bars it has to stay clear of, in their resting (hidden) state.
   `<div id="dash-unsaved-bar" class="!hidden"></div><div id="dash-stale-bar" class="!hidden"></div>`;
 
@@ -452,7 +458,7 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     vi.advanceTimersByTime(1000);
   }
 
-  it('names the section holding the work, using the tab’s own label', () => {
+  it('names the other tab and LEADS him there — it never answers for a form he cannot see', () => {
     leaveDraft();
     renderPanels([
       { tab: 'tab-products', label: 'Products', open: true, form: '' },
@@ -463,6 +469,17 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
 
     expect(noticeShown()).toBe(true);
     expect(noticeText()).toBe('unsaved work in Store settings');
+    // Restoring into a closed panel would be a change with nothing on screen to show for it.
+    expect(noticeButtons()).toEqual(['dash-draft-go']);
+
+    let opened = '';
+    document.getElementById('tab-settings')!.addEventListener('click', () => { opened = 'tab-settings'; });
+    document.getElementById('dash-draft-go')!.click();
+
+    expect(opened).toBe('tab-settings');
+    // It carried him and stopped. The bar he can now see is the one that asks, and it is focused.
+    expect(document.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('server');
+    expect(document.activeElement?.textContent).toBe(RESTORE);
   });
 
   it('says nothing at all on the ordinary load, where there is no draft', () => {
@@ -490,29 +507,27 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     renderPanels([products, settings]);
     document.dispatchEvent(new Event('DOMContentLoaded'));
 
-    // Never "in several places": the buttons would have no unambiguous subject.
+    // Never "in several places": the notice acts on ONE offer, so it needs one subject.
     expect(noticeText()).toBe('unsaved work in Products');
-    document.getElementById('dash-draft-discard')!.click();
+
+    // He goes to Products and says no there, on that form's own bar. The remaining offer moves up.
+    const productsBar = document.querySelector('.dash-panel[aria-labelledby="tab-products"] form [role="status"]')!;
+    Array.from(productsBar.querySelectorAll('button')).find((b) => b.textContent === DISCARD)!.click();
     expect(noticeText()).toBe('unsaved work in Store settings');
   });
 
-  it('restores from the bottom bar itself, and ends with the form in front of him', () => {
+  it('restores from the bottom bar itself when the form is in the tab he is in', () => {
     leaveDraft();
-    renderPanels([
-      { tab: 'tab-products', label: 'Products', open: true, form: '' },
-      { tab: 'tab-settings', label: 'Store settings', open: false,
-        form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` },
-    ]);
+    // Same tab, scrolled past the bar: nothing to lead him to, so it IS the bar — same words, same
+    // buttons, and pressing one performs the act rather than travelling to it.
+    renderPanels([{ tab: 'tab-settings', label: 'Store settings', open: true,
+      form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` }]);
     document.dispatchEvent(new Event('DOMContentLoaded'));
 
-    let opened = '';
-    document.getElementById('tab-settings')!.addEventListener('click', () => { opened = 'tab-settings'; });
+    expect(noticeButtons()).toEqual(['dash-draft-restore', 'dash-draft-discard']);
     document.getElementById('dash-draft-restore')!.click();
 
-    // The same act the bar inside the form performs — and then the form, because a restore is not a
-    // save: those values sit there until he presses the form's own save button.
     expect(document.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('never saved');
-    expect(opened).toBe('tab-settings');
     expect(noticeShown()).toBe(false);
   });
 
@@ -540,11 +555,8 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
 
   it('leaves the values alone when he says no from the bottom bar', () => {
     leaveDraft();
-    renderPanels([
-      { tab: 'tab-products', label: 'Products', open: true, form: '' },
-      { tab: 'tab-settings', label: 'Store settings', open: false,
-        form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` },
-    ]);
+    renderPanels([{ tab: 'tab-settings', label: 'Store settings', open: true,
+      form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` }]);
     document.dispatchEvent(new Event('DOMContentLoaded'));
     document.getElementById('dash-draft-discard')!.click();
 
@@ -553,6 +565,40 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     // Gone for good, and not offered again on the next load — the same statement the in-form
     // "delete them" makes, because it is the same function.
     expect(Object.keys(localStorage).filter((k) => k.startsWith('dz-draft:'))).toEqual([]);
+  });
+
+  it('drops the section name when the offer is in the tab he is already standing in', () => {
+    leaveDraft();
+    // Open tab, but scrolled past the bar (jsdom reports no boxes, i.e. not on screen) — so the
+    // notice is up. Telling him it is "in Store settings" would name where he already is.
+    renderPanels([{ tab: 'tab-settings', label: 'Store settings', open: true,
+      form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` }]);
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+
+    expect(noticeShown()).toBe(true);
+    expect(noticeText()).toBe(FOUND);   // word for word what the bar inside the form says
+  });
+
+  it('does not move the page when he answers the bar he is looking at', () => {
+    leaveDraft();
+    renderPanels([{ tab: 'tab-settings', label: 'Store settings', open: true,
+      form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` }]);
+    const rect = { top: 300, bottom: 340, left: 0, right: 100, width: 100, height: 40, x: 0, y: 300 };
+    Element.prototype.getClientRects = function () { return [rect] as unknown as DOMRectList; };
+    Element.prototype.getBoundingClientRect = function () { return rect as DOMRect; };
+    const scrolled = vi.fn();
+    window.__dashScrollTo = scrolled;
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+
+    // He pressed the in-form bar, which he was reading. Everything it changed is already in front
+    // of him, so nothing may move (AI_INSTRUCTIONS → no-op interactions must be invisible).
+    document.querySelector<HTMLButtonElement>(`form [role="status"] button`)!.click();
+    expect(document.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('never saved');
+    expect(scrolled).not.toHaveBeenCalled();
+
+    delete window.__dashScrollTo;
+    delete (Element.prototype as Partial<Element>).getClientRects;
+    delete (Element.prototype as Partial<Element>).getBoundingClientRect;
   });
 
   it('keeps quiet about an offer that is already in front of him', () => {
