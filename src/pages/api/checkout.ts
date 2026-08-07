@@ -533,10 +533,19 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       // The cart rides along on the hint because that is the field a person reads, and because the
       // alert mail and the dashboard's copy button both already surface it verbatim. Capped: a bulk
       // cart must not push the useful sentence past the column's 500-character clamp.
+      // Addressed to WHOEVER READS IT, and that is only ever the operator: `resolutionHint`
+      // surfaces in exactly two places — the admin Alerts tab and the ALERT_EMAIL critical mail
+      // (lib/critical-alert.ts). The buyer never sees it (they get the generic 500 body below) and
+      // the seller never sees it (a failed checkout creates no order, so nothing reaches their
+      // dashboard and no notification fires). Until 2026-08-07 the un-committed branch read "try
+      // the order again — if it repeats, contact support with the reference number", which is
+      // advice for a customer, printed on a screen no customer can open. What the operator needs
+      // instead is what is now owed: nobody else knows this happened, and the charge runs BEFORE
+      // the order rows, so a real gateway can be holding money with no order behind it.
       resolutionHint: [
         committed
           ? 'ההזמנה נוצרה והתשלום עבר; הכשל היה בשלב שאחרי (ניקוי עגלה / מייל אישור). אין לבטל את ההזמנה — יש לבדוק שהמייל נשלח.'
-          : 'כשל בביצוע ההזמנה; המלאי שוחזר אוטומטית. יש לנסות לבצע את ההזמנה שוב — אם התקלה חוזרת, יש לפנות לתמיכה עם מספר האסמכתא.',
+          : 'לא נוצרה הזמנה; המלאי שוחזר אוטומטית. הקונה ראה שגיאה כללית ולא יקבל שום עדכון נוסף, והמוכר אינו מיודע — כל פנייה אליהם היא ידנית. החיוב מתבצע לפני יצירת ההזמנה, לכן יש לוודא מול ספק הסליקה שלא נתפס חיוב שאין מולו הזמנה.',
         attempted.length
           ? `בעגלה: ${attempted.slice(0, 8).join(', ')}${attempted.length > 8 ? ` ועוד ${attempted.length - 8}` : ''}.`
           : '',
