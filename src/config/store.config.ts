@@ -115,7 +115,7 @@ export const store: PlatformConfig = {
     hero: {
       enabled: true,
       title: 'Open your store today.',
-      subtitle: 'Join our marketplace — set up your store, add products, and start selling. Free to start, no code needed.',
+      subtitle: 'Open a store of your own, alongside every other store here. Set it up, add products, start selling.',
       ctaText: 'Open your store',
       ctaHref: '/seller/register',
     },
@@ -129,7 +129,7 @@ export const store: PlatformConfig = {
   ],
 
   footer: {
-    note: 'Dezabin — the online marketplace for independent sellers.',
+    note: 'Dezabin — a home for independent stores.',
     links: [
       { label: 'Terms', href: '/terms' },
       { label: 'Contact', href: '/contact' },

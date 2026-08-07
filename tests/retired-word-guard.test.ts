@@ -37,6 +37,34 @@ const RETIRED: Array<{ word: string; use: string; why: string }> = [
     use: 'מתחם / מתחם חנויות דיגיטלי',
     why: 'a mall is a comparison the platform loses; "מתחם" names the place without the metaphor (translations.ts → startSelling)',
   },
+  // The English half of the same decision, added 2026-08-07 after `auth.createFree`
+  // was found still saying "a digital shopping complex" while seventeen other English
+  // strings said "marketplace". Retiring קניון in Hebrew and then writing "mall" in
+  // English puts the metaphor straight back, in the language where it is strongest —
+  // an American reader hears a building with a car park. Phrases, not the bare word
+  // "mall": that appears as an identifier (`auth.benefitMall`, whose VALUES are
+  // already "כוח של קבוצה" / "Strength in numbers"), and a guard that fires on a key
+  // name is a guard someone deletes.
+  {
+    word: 'shopping complex',
+    use: 'a home for independent stores',
+    why: 'reads as a literal translation of "מתחם חנויות" and means a physical retail park in English (translations.ts:62 holds the decision)',
+  },
+  {
+    word: 'digital mall',
+    use: 'a home for independent stores',
+    why: 'the English "קניון". It is the POSITIONING word in AI_INSTRUCTIONS — how the platform is explained internally — never the copy a shopper reads',
+  },
+  {
+    word: 'shopping centre',
+    use: 'a home for independent stores',
+    why: 'same metaphor as "mall", one synonym over',
+  },
+  {
+    word: 'shopping center',
+    use: 'a home for independent stores',
+    why: 'same metaphor as "mall", one synonym over',
+  },
 ];
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

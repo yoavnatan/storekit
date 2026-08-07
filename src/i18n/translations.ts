@@ -65,13 +65,30 @@ export const translations = {
       // cheaper options. What they can't get there is other people's foot
       // traffic, so that's what leads (user, 2026-07-28).
       //
-      // The word for that place is "מתחם" / "marketplace". "קניון" was retired
-      // from every string on 2026-08-07 (owner) and survives in exactly one
-      // place, deliberately: the site description in store.config.ts, which is
-      // written for what a person types into Google rather than for how the
-      // product describes itself. Its twin in `auth.benefitMall` and the
-      // `invites` label below say "כוח של קבוצה" — "מתחם" carries no metaphor
-      // of pull, so that bullet keeps one and the noun does not.
+      // The word for that place is "מתחם" / "a home for independent stores".
+      // "קניון" was retired from every string on 2026-08-07 (owner) and survives
+      // in exactly one place, deliberately: the site description in
+      // store.config.ts, which is written for what a person types into Google
+      // rather than for how the product describes itself. Its twin in
+      // `auth.benefitMall` and the `invites` label below say "כוח של קבוצה" —
+      // "מתחם" carries no metaphor of pull, so that bullet keeps one and the
+      // noun does not.
+      //
+      // The English was "a digital marketplace" for half a day, and the owner
+      // stopped it (2026-08-07): a marketplace is one catalogue with everybody's
+      // products poured into it, where the seller is a line item — and the whole
+      // proposition here is the opposite, a STORE of your own standing next to
+      // other stores. "Platform" was considered and rejected in the same breath:
+      // that is Shopify's word for software you build a shop with, which is the
+      // comparison the paragraph above exists to stay out of.
+      //
+      // It is a NAME for the place, not a synonym slotting into any sentence.
+      // Where a string says "במתחם" mid-sentence the English says "alongside the
+      // others" — same meaning, and it does not need the noun twice.
+      //
+      // `/terms` keeps "marketplace" and is not an exception: its Hebrew is
+      // "זירת מסחר", a different word doing a legal job, and "marketplace" is
+      // its correct twin.
       startSelling: 'מתחם חנויות דיגיטלי',
       startSellingDesc: 'חנות עצמאית משלך, לצד כל שאר החנויות בפלטפורמה. פרסום, SEO ומשלוחים מובנים — הכל במקום אחד.',
       builtInAds: 'פרסום מובנה',
@@ -1448,7 +1465,7 @@ export const translations = {
       browseDesc: "Browse local stores and find products you'll love.",
       searchPlaceholder: 'Search stores...',
       noStores: 'No stores yet. Open one yourself.',
-      openStoreFree: 'Open a store in the marketplace',
+      openStoreFree: 'Open a store alongside the others',
       visitStore: 'Visit store',
       noResults: 'No stores match your search.',
       searchSectionStores: 'Stores',
@@ -1470,7 +1487,7 @@ export const translations = {
       tabEmptyNew: 'No new stores to show right now',
       tabEmptyGeneric: 'Nothing to show here yet',
       tabEmptyCtaAll: 'All stores',
-      heroSellerCta: 'Own a business? Open a store in the marketplace',
+      heroSellerCta: 'Own a business? Open a store alongside the others',
       directoryTitle: 'All stores',
       directorySearchPlaceholder: 'Search by store name...',
       directoryAllCategories: 'All categories',
@@ -1481,7 +1498,7 @@ export const translations = {
       pageOf: 'Page {current} of {total}',
       cartItems: 'items',
       cartOpenBtn: 'Open cart',
-      startSelling: 'A digital marketplace',
+      startSelling: 'A home for independent stores',
       startSellingDesc: 'A store of your own, alongside every other store on the platform. Ads, SEO and shipping built in — all in one place.',
       builtInAds: 'Built-in ads',
       builtInSeo: 'Built-in SEO',
@@ -1489,7 +1506,7 @@ export const translations = {
     },
     launch: {
       invites: [
-        { label: 'A digital marketplace', hint: 'Everything under one roof' },
+        { label: 'A home for independent stores', hint: 'Everything under one roof' },
         { label: 'A store of your own', hint: 'Your name, products and customers' },
         { label: 'Strength in numbers', hint: 'One store, the traffic of them all' },
         { label: 'Ads and SEO built in', hint: 'Active from day one' },
@@ -1631,7 +1648,7 @@ export const translations = {
       wrongCredentials: 'Incorrect email or password.',
       tooManyAttempts: 'Too many sign-in attempts. Try again in {n} minutes.',
       openStore: 'Join',
-      createFree: 'Your own store, inside a digital shopping complex.',
+      createFree: 'Your own store, in a home for independent stores.',
       yourName: 'Your name',
       namePlaceholder: 'e.g. Sarah Cohen',
       storeName: 'Store name',
@@ -1934,8 +1951,8 @@ export const translations = {
       lcStateClosing: 'Closing once the open orders are done',
       lcStateClosed: 'Store is closed',
       lcStateBlocked: 'Store is blocked by the team',
-      lcActiveNote: 'Everything is live: the store appears in the marketplace, in search and on Google, and can be bought from.',
-      lcPausedNote: 'The store takes no orders and is out of the marketplace, search and the ad feed. Its page shows a notice to shoppers instead of the catalog. Running campaigns stop by themselves — their accrued figures are kept.',
+      lcActiveNote: 'Everything is live: the store is listed with the others, in search and on Google, and can be bought from.',
+      lcPausedNote: 'The store takes no orders and is out of the listing, search and the ad feed. Its page shows a notice to shoppers instead of the catalog. Running campaigns stop by themselves — their accrued figures are kept.',
       lcClosingNote: 'Sales have already stopped. The moment the last open order is delivered or cancelled, the store closes by itself — no need to come back here.',
       lcClosedNote: 'The store is off the site. All of its historical data was kept.',
       lcPause: 'Pause the store',
@@ -1944,9 +1961,9 @@ export const translations = {
       lcClose: 'Close the store',
       lcOpenOrders: 'Open orders: {n}',
       lcPauseConfirmTitle: 'Pause the store?',
-      lcPauseConfirmBody: 'The store stops taking orders immediately and leaves the marketplace and search. You can reopen it at any time.',
+      lcPauseConfirmBody: 'The store stops taking orders immediately and leaves the listing and search. You can reopen it at any time.',
       lcResumeConfirmTitle: 'Reopen the store?',
-      lcResumeConfirmBody: 'The store starts selling again and returns to the marketplace and search. Note: campaigns that were stopped do not resume on their own — restart them in the Advertising tab.',
+      lcResumeConfirmBody: 'The store starts selling again and returns to the listing and search. Note: campaigns that were stopped do not resume on their own — restart them in the Advertising tab.',
       lcCancelCloseConfirmTitle: 'Cancel the closure?',
       lcCancelCloseConfirmBody: 'The closure is called off and the store returns to full activity.',
       lcCloseConfirmTitle: 'Close the store?',
