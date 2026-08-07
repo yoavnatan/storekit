@@ -81,4 +81,35 @@ describe('nobody re-introduces a local HTML escaper', () => {
     }
     expect(offenders, "import { escapeHtml } from 'lib/html-escape.js' instead of writing another copy").toEqual([]);
   });
+
+  /**
+   * The one above keys on the AMPERSAND, so it can only see an escaper that at least
+   * tried to be complete — and the hole is the opposite shape. Found 2026-08-07 in the
+   * header's search dropdown: `data-q="${r.replace(/"/g,'&quot;')}"`, where `r` is the
+   * shopper's own typed query read back from localStorage. It escaped the quote for the
+   * attribute and dropped the same string into the button's text raw, and it never
+   * touched `&`, so the guard above looked straight past it — twice, in two copies of
+   * that dropdown.
+   *
+   * A partial escaper is worse than none: it reads as handled. There is no case for one
+   * here, because `escapeHtml` is correct in a text node and in a quoted attribute both.
+   */
+  it('nobody escapes a single character by hand and calls it escaped', () => {
+    const offenders: string[] = [];
+    // `"` → &quot;/&#34;, or `'` → &#39;/&apos;, written inline at a call site.
+    const PARTIAL = /replace\(\/(\\?["'])\/g,\s*'&(quot|#34|#39|apos);'\)/;
+    for (const file of walk(SRC_DIR, ['.ts', '.astro'])) {
+      const rel = file.slice(SRC_DIR.length);
+      if (ALLOWED.includes(rel)) continue;
+      readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+        if (PARTIAL.test(line)) offenders.push(`${rel}:${i + 1}  ${line.trim().slice(0, 100)}`);
+      });
+    }
+    expect(
+      offenders,
+      'A quote-only escape covers the attribute and leaves the text node open — and the\n' +
+        'same value is usually written to both. Use escapeHtml(), which is correct in either.\n' +
+        `\n${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
 });

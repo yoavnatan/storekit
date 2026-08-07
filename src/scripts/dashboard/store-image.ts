@@ -5,6 +5,7 @@ import { showErrorToast } from '../../lib/toast.js';
 import { announceValueChange } from './unsaved-guard.js';
 import { removeBackgroundInWorker, warmBgWorker } from './bg-worker.js';
 import { outboundFetch } from '../../lib/outbound-fetch.js';
+import { initImageSkeletons, SKELETON_ATTR } from '../../lib/img-skeleton.js';
 
 /** How long a re-fetch of a stored ORIGINAL may take before it counts as a failure. See the call
  *  site for why it is generous and why it exists at all. */
@@ -92,7 +93,19 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
     // identical URL — a blink on a tab the seller merely opened, with nothing changed behind it.
     const want = url ? cdnSrc(url, cfg.previewWidth) : '';
     const shown = frame!.querySelector('img')?.getAttribute('src') ?? '';
-    if (want !== shown) frame!.replaceChildren(...(url ? [previewImg(url)] : []));
+    if (want !== shown) {
+      frame!.replaceChildren(...(url ? [previewImg(url)] : []));
+      // A fresh <img> means a fresh fetch — hand the frame back to the skeleton module, which
+      // consumes the marker each time it takes a box. It matters most right here: a just-cropped
+      // upload is a COLD Cloudinary render (~0.8s measured, memory project_cloudinary_cold_render_lcp),
+      // i.e. the one preview on this page that is reliably slow enough to look broken.
+      // The parent, not the frame: initImageSkeletons() querySelectorAll's its root and so never
+      // matches the root itself (the same trap products.ts hit with initThumbs).
+      frame!.classList.remove('is-loading');
+      if (url) frame!.setAttribute(SKELETON_ATTR, '');
+      else frame!.removeAttribute(SKELETON_ATTR);
+      initImageSkeletons('.dash-img-skel', frame!.parentElement ?? document);
+    }
     uploadBtn!.textContent = url ? cfg.labels.change : cfg.labels.upload;
     if (adjustBtn) adjustBtn.hidden = !url;
     if (removeBgBtn) removeBgBtn.hidden = !url;
@@ -272,4 +285,9 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
   });
 
   render();
+  // The preview the SERVER rendered: `render()` above deliberately does nothing when the URL
+  // has not changed (rebuilding that <img> would re-decode an identical photo), so the first
+  // sweep has to happen here or the saved banner/logo is the one image on this page that
+  // loads with nothing in its place.
+  initImageSkeletons('.dash-img-skel', frame.parentElement ?? document);
 }

@@ -68,6 +68,14 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     msgSortOptUnreadFirst: msgDashI18nDict.msgSortOptUnreadFirst ?? 'לא נקראו קודם',
     msgSortOptProductAsc: msgDashI18nDict.msgSortOptProductAsc ?? 'מוצר: א — ת',
     msgSortOptProductDesc: msgDashI18nDict.msgSortOptProductDesc ?? 'מוצר: ת — א',
+    // The row's OWN labels. buildMessageRow() below mirrors SellerMessageRow.astro
+    // markup for AJAX-fetched pages, and both copies had these inline in Hebrew —
+    // the keys were in t.dashboard the whole time.
+    deleteConv: msgDashI18nDict.deleteConv ?? 'מחק שיחה',
+    replyPlaceholder: msgDashI18nDict.msgReplyPlaceholder ?? 'כתוב תשובה...',
+    replySend: msgDashI18nDict.msgReplySend ?? 'שלח',
+    replyClose: msgDashI18nDict.msgReplyClose ?? 'סגור שיחה',
+    you: msgDashI18nDict.msgYou ?? 'אתה',
   };
 
   const MSG_SORT_OPTIONS: { col: 'date' | 'unread' | 'product'; dir: 'asc' | 'desc'; label: () => string }[] = [
@@ -413,15 +421,15 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     // A system thread is the platform's own record — the seller reads and
     // replies to it, but can't delete it (a buyer thread they can).
     const deleteBtn = data.kind === 'buyer'
-      ? `<button class="seller-msg-delete" data-delete-msg-id="${escMsg(data.id)}" type="button" aria-label="מחק שיחה" title="מחק שיחה">
+      ? `<button class="seller-msg-delete" data-delete-msg-id="${escMsg(data.id)}" type="button" aria-label="${escMsg(msgI18n.deleteConv)}" title="${escMsg(msgI18n.deleteConv)}">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
         </button>`
       : '';
     row.innerHTML = `
       <td class="msg-table__td msg-table__td--status"></td>
-      <td class="msg-table__td msg-table__td--from">${data.hasUnread ? '<span class="visually-hidden msg-unread-sr">לא נקרא · </span>' : ''}${escMsg(data.fromName)}</td>
+      <td class="msg-table__td msg-table__td--from">${data.hasUnread ? `<span class="visually-hidden msg-unread-sr">${escMsg(msgI18n.filterValUnread)} · </span>` : ''}${escMsg(data.fromName)}</td>
       <td class="msg-table__td msg-table__td--subject">${escMsg(data.subject)}</td>
-      <td class="msg-table__td msg-table__td--preview">${escMsg(data.lastContent)}${data.lastFromSelf ? '<span class="msg-table__preview-you"> (אתה)</span>' : ''}</td>
+      <td class="msg-table__td msg-table__td--preview">${escMsg(data.lastContent)}${data.lastFromSelf ? `<span class="msg-table__preview-you"> (${escMsg(msgI18n.you)})</span>` : ''}</td>
       <td class="msg-table__td msg-table__td--product">${productTd}</td>
       <td class="msg-table__td msg-table__td--date">${escMsg(fmtDateJs(data.lastCreatedAt))}</td>
       <td class="msg-table__td msg-table__td--actions">${deleteBtn}</td>`;
@@ -434,10 +442,10 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       <td colspan="7">
         <div class="msg-thread msg-thread--seller-pov" id="replies-${data.id}">${data.entries.map(entryBubbleHtml).join('')}</div>
         <div class="seller-msg-reply-form" data-reply-for="${escMsg(data.id)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-          <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
+          <textarea class="seller-msg-reply-textarea" placeholder="${escMsg(msgI18n.replyPlaceholder)}" rows="3"></textarea>
           <div style="display:flex;justify-content:flex-end;gap:0.5rem">
-            <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-            <button class="seller-msg-reply-send" type="button">שלח</button>
+            <button class="seller-msg-reply-close" type="button">${escMsg(msgI18n.replyClose)}</button>
+            <button class="seller-msg-reply-send" type="button">${escMsg(msgI18n.replySend)}</button>
           </div>
         </div>
       </td>`;
@@ -495,7 +503,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
           if (!repliesEl || !messages) return;
           repliesEl.innerHTML = messages.map((m) => {
             const fromSelf = m.fromRole === 'seller';
-            return entryBubbleHtml({ who: fromSelf ? 'אתה' : SYSTEM_SENDER_LABEL, fromSelf, content: m.content, createdAt: m.createdAt, unread: !fromSelf && !m.readBySeller });
+            return entryBubbleHtml({ who: fromSelf ? msgI18n.you : SYSTEM_SENDER_LABEL, fromSelf, content: m.content, createdAt: m.createdAt, unread: !fromSelf && !m.readBySeller });
           }).join('');
           const last = messages[messages.length - 1];
           if (last) applyLastMessage(last.content, last.createdAt, last.fromRole === 'seller');
@@ -519,7 +527,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
             const isSelf = r.fromUserId === currentSellerId;
             const div = document.createElement('div');
             div.className = `msg-thread-entry ${isSelf ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`;
-            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escMsg(isSelf ? 'אתה' : r.fromName)}</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(r.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(r.content)}</div>`;
+            div.innerHTML = `<div class="msg-thread-entry__header"><span class="msg-thread-entry__who">${escMsg(isSelf ? msgI18n.you : r.fromName)}</span><span class="msg-thread-entry__date">${escMsg(fmtDateJs(r.createdAt))}</span></div><div class="msg-thread-entry__body">${escMsg(r.content)}</div>`;
             repliesEl.appendChild(div);
           });
           if (replies.length > 0) {
@@ -586,7 +594,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
           const data = await res.json() as { ok?: boolean; message?: { content: string; createdAt: string } };
           if (res.ok && data.ok && data.message && repliesEl) {
             repliesEl.insertAdjacentHTML('beforeend', entryBubbleHtml({
-              who: 'אתה', fromSelf: true, content: data.message.content, createdAt: data.message.createdAt, unread: false,
+              who: msgI18n.you, fromSelf: true, content: data.message.content, createdAt: data.message.createdAt, unread: false,
             }));
             applyLastMessage(data.message.content, data.message.createdAt, true);
             textarea.value = '';
@@ -705,7 +713,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
         message: subject
           ? `"${subject}" תימחק לצמיתות, ללא אפשרות שחזור.`
           : 'השיחה תימחק לצמיתות, ללא אפשרות שחזור.',
-        okLabel: 'מחק שיחה',
+        okLabel: msgI18n.deleteConv,
         workingLabel: 'מוחק…',
         onConfirm: async () => {
           try {

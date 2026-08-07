@@ -82,6 +82,12 @@ const i18nJson = jsonForScript({
   confirm: t.confirm,
   gallery: t.gallery,
   wishlist: t.wishlist,
+  // Gated on `isLoggedIn`, not on a path: the notification bell Header draws is
+  // itself gated on exactly that, so the strings travel with the markup that
+  // reads them and an anonymous shopper — the SEO surface — pays nothing. This
+  // is the one place a prop decides an island slice; it is safe here only
+  // because `isLoggedIn` already drives the whole header on every route.
+  ...(isLoggedIn ? { notifications: t.notifications } : {}),
   ...(needsDashboardStrings ? { dashboard: t.dashboard } : {}),
 });
 

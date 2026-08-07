@@ -639,10 +639,10 @@ const orderStatusColors: Record<string, string> = {
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
                 {hasAnyNonCurrentAlert && (
-                  <span class="store-switcher__alert-dot" aria-label="יש התראות בחנויות אחרות"></span>
+                  <span class="store-switcher__alert-dot" aria-label={t.dashboard.alertsDotOtherStores}></span>
                 )}
               </button>
-              <ul class="absolute top-[calc(100%+0.5rem)] start-0 min-w-[200px] bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.1)] z-20 list-none m-0 p-[.35rem] [&:not([hidden])]:animate-[user-dropdown-open_130ms_cubic-bezier(0.34,1.56,0.64,1)]" id="store-switcher-menu" role="listbox" hidden>
+              <ul class="absolute top-[calc(100%+0.5rem)] start-0 min-w-[200px] bg-[color:var(--color-surface)] border border-[color:var(--color-border)] rounded-[var(--radius)] shadow-[0_4px_20px_rgba(0,0,0,0.1)] z-20 list-none m-0 p-[.35rem] [&:not([hidden])]:animate-[user-dropdown-open_130ms_cubic-bezier(0.34,1.56,0.64,1)]" id="store-switcher-menu" role="listbox" data-str-alert-dot={t.dashboard.alertsDot} data-str-alert-dot-other={t.dashboard.alertsDotOtherStores} hidden>
                 {allStores.map((s) => (
                   <li>
                     <a
@@ -657,7 +657,7 @@ const orderStatusColors: Record<string, string> = {
                       <span>{s.name}</span>
                       <span class="store-switcher__item-actions" style="display:flex;align-items:center;gap:0.35rem;flex-shrink:0">
                         {storeAlerts[s.id] && (
-                          <span class="store-switcher__item-dot" aria-label="יש התראות"></span>
+                          <span class="store-switcher__item-dot" aria-label={t.dashboard.alertsDot}></span>
                         )}
                         {s.id === store.id && (
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
@@ -750,7 +750,7 @@ const orderStatusColors: Record<string, string> = {
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>{d.tabOrders}
           {newOrdersCount > 0 && (
-            <span class="dash-tab-badge" data-tab-alert="danger" aria-label={`${newOrdersCount} הזמנות חדשות`}>{newOrdersCount}</span>
+            <span class="dash-tab-badge" data-tab-alert="danger" aria-label={t.dashboard.orderNewCount.replace('{n}', String(newOrdersCount))}>{newOrdersCount}</span>
           )}
         </button>
         <button
@@ -778,9 +778,9 @@ const orderStatusColors: Record<string, string> = {
           tabindex={initialPanel === 'messages' ? 0 : -1}
           style="position:relative"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>הודעות
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{t.dashboard.tabMessages}
           {unreadMsgRows > 0 && (
-            <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={`${unreadMsgRows} הודעות שלא נקראו`}></span>
+            <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
           )}
         </button>
         <button
@@ -1513,7 +1513,12 @@ const orderStatusColors: Record<string, string> = {
                         <input type="hidden" name="_action" value="edit-product" />
                         <input type="hidden" name="productId" value={p.id} />
                         <div class="edit-row-header">
-                          {p.images?.[0] && <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" style="width:36px;height:36px;object-fit:cover;border-radius:var(--radius-sm);flex-shrink:0">}
+                          {/* Twin of the string in products.ts's buildEditRow — keep both in step. */}
+                          {p.images?.[0] && (
+                            <span class="dash-img-skel block w-9 h-9 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[color:var(--color-surface)]" data-skeleton>
+                              <img src={thumbUrl(p.images[0], 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="block w-full h-full object-cover" />
+                            </span>
+                          )}
                           <span class="edit-row-title">{p.name}</span>
                           <div class="flex gap-2 mt-2" style="margin-inline-start:auto;margin-top:0">
                             <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">{d.save}</button>
@@ -1866,7 +1871,16 @@ const orderStatusColors: Record<string, string> = {
                       <ul class="order-card__items list-none p-0 flex flex-col gap-2">
                         {storeItems.map((item) => (
                           <li class="flex items-center gap-2.5 text-sm">
-                            {item.image && <img src={cdnThumb(item.image, 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
+                            {/* The wrap exists for the shimmer (dashboard.css → .dash-img-skel) and
+                                carries what the bare <img> used to: the size, the border and the
+                                surface a cut-out photo needs behind it. Its two other renderers —
+                                buildOrderCard and the post-save patch, both in orders.ts — must
+                                stay identical to this markup. */}
+                            {item.image && (
+                              <span class="dash-img-skel block w-9 h-9 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" data-skeleton>
+                                <img src={cdnThumb(item.image, 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="block w-full h-full object-cover" />
+                              </span>
+                            )}
                             <span class="flex-1 text-[color:var(--color-text)]">{item.productName}</span>
                             <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
                             <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatAgorot(item.priceAgorot * item.qty)}</span>
@@ -2267,7 +2281,7 @@ const orderStatusColors: Record<string, string> = {
             (CURRENT_TASK 2 — Messages previously had neither a sticky head nor
             a one-row toolbar on mobile). */}
         <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)] flex flex-col items-start gap-[0.6rem]">
-          <h2 class="m-0 text-base font-semibold">הודעות</h2>
+          <h2 class="m-0 text-base font-semibold">{t.dashboard.tabMessages}</h2>
           <div class="dash-toolbar w-full">
             <div class="relative flex-1 min-w-[110px] max-w-[280px]">
               <svg class="absolute top-1/2 -translate-y-1/2 start-[0.7rem] pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-muted)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2308,14 +2322,14 @@ const orderStatusColors: Record<string, string> = {
                   </th>
                   <th class="msg-table__th msg-table__th--from">
                     <div style="display:flex;align-items:center;gap:0.25rem">
-                      שולח
+                      {d.filterColFrom ?? 'שולח'}
                       <button type="button" class="combo-filter-btn" data-filter-funnel-col="from" aria-expanded="false" aria-haspopup="true" aria-label={`${d.filterByLabel ?? 'סנן לפי'} ${d.filterColFrom ?? 'שולח'}`} style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:none;border:none;cursor:pointer;color:var(--color-muted);padding:0">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                       </button>
                     </div>
                   </th>
-                  <th class="msg-table__th msg-table__th--subject">נושא</th>
-                  <th class="msg-table__th">תוכן</th>
+                  <th class="msg-table__th msg-table__th--subject">{t.dashboard.msgColSubject}</th>
+                  <th class="msg-table__th">{t.dashboard.msgColContent}</th>
                   <th class="msg-table__th msg-table__th--product">
                     <div style="display:flex;align-items:center;gap:0.25rem">
                       <button type="button" class="sort-btn" data-sort-col="product" aria-label={`${d.sortByLabel} ${d.filterColProduct ?? 'מוצר'}`}>{d.filterColProduct ?? 'מוצר'}<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg></button>
@@ -2336,7 +2350,7 @@ const orderStatusColors: Record<string, string> = {
             </table>
           </div>
           <p class="seller-msg-empty" id="msg-filter-empty" hidden={messagesPage.total > 0}>{messageRows.length === 0 ? d.messagesNoneYet : d.messagesFilterEmpty}</p>
-          <nav id="msg-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label="הודעות" data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
+          <nav id="msg-pagination" class="flex items-center justify-center gap-4 pt-4 pb-1" aria-label={t.dashboard.tabMessages} data-page={messagesPage.page} data-total-pages={messagesPage.totalPages} hidden></nav>
       </div>
 
       {/* The running sale, for the client-side row renderer: a rebuilt row must show the same
@@ -2377,8 +2391,9 @@ const orderStatusColors: Record<string, string> = {
             <p class="muted" style="margin:0.15rem 0 0.6rem;font-size:0.8rem">{d.storeBannerHint}</p>
             <div
               id="banner-frame"
-              class="w-full max-w-[420px] overflow-hidden rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+              class="dash-img-skel w-full max-w-[420px] overflow-hidden rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)]"
               style="aspect-ratio:3/1"
+              data-skeleton={store.bannerImage ? '' : undefined}
             >
               {store.bannerImage && (
                 <img src={cdnSrc(store.bannerImage, 900)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--color-surface)" />
@@ -2409,8 +2424,9 @@ const orderStatusColors: Record<string, string> = {
                  2026-08-05, reverted with the render it was mirroring. -->
             <div
               id="avatar-frame"
-              class="h-20 w-20 overflow-hidden rounded-full border border-[var(--color-border)]"
+              class="dash-img-skel h-20 w-20 overflow-hidden rounded-full border border-[var(--color-border)]"
               style={`background:${storeMarkGradient(storeMark(store.slug, store.name))}`}
+              data-skeleton={store.profileImage ? '' : undefined}
             >
               {store.profileImage && (
                 <img src={cdnSrc(store.profileImage, 200)} alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--color-surface)" />
@@ -2738,10 +2754,18 @@ const orderStatusColors: Record<string, string> = {
   .eom-item:last-child { border-bottom: none; }
   .eom-item--deleted { opacity: 0.4; }
   .eom-item--deleted .eom-item__name { text-decoration: line-through; }
-  .eom-item__img {
-    width: 34px; height: 34px; object-fit: cover;
-    border-radius: var(--radius-sm); flex-shrink: 0;
+  /* The border/radius/size moved off the <img> and onto the wrap the shimmer needs
+     (dashboard.css → .dash-img-skel), so a still-loading item is a box in the row rather
+     than nothing at all. The surface is on the wrap for the usual reason: a cut-out photo
+     has no background of its own. */
+  .eom-item__img-wrap {
+    width: 34px; height: 34px; flex-shrink: 0; display: block; overflow: hidden;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .eom-item__img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
   }
   .eom-item__img-ph {
     width: 34px; height: 34px; border-radius: var(--radius-sm); flex-shrink: 0;
@@ -2916,8 +2940,8 @@ const orderStatusColors: Record<string, string> = {
 <!-- ── Edit Order Details Modal ── -->
 <dialog id="edit-order-modal" aria-labelledby="eom-title" style="border:none;border-radius:var(--radius-lg);padding:0;width:min(520px,96vw);box-shadow:var(--shadow-overlay);background:var(--color-surface);margin:auto">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--color-border);flex-shrink:0">
-    <h2 id="eom-title" style="font-size:0.95rem;font-weight:700;margin:0">ערוך פרטי הזמנה</h2>
-    <button id="edit-order-modal-close" type="button" aria-label="סגור" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);border:none;background:none;color:var(--color-muted);cursor:pointer;transition:background 0.1s">
+    <h2 id="eom-title" style="font-size:0.95rem;font-weight:700;margin:0">{t.dashboard.eomTitle}</h2>
+    <button id="edit-order-modal-close" type="button" aria-label={t.dashboard.eomClose} style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);border:none;background:none;color:var(--color-muted);cursor:pointer;transition:background 0.1s">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -2926,63 +2950,63 @@ const orderStatusColors: Record<string, string> = {
     <input type="hidden" id="edit-order-store-slug" value="" />
 
     <!-- Buyer details -->
-    <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0">פרטי לקוח</p>
+    <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0">{t.dashboard.eomBuyerDetails}</p>
     <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
       <label class="field" style="flex:1">
-        <span>שם מלא</span>
-        <input class="input" id="eob-name" name="buyerName" required placeholder="שם מלא" />
+        <span>{t.dashboard.eomFullName}</span>
+        <input class="input" id="eob-name" name="buyerName" required placeholder={t.dashboard.eomFullName} />
       </label>
       <label class="field" style="flex:1">
-        <span>טלפון</span>
-        <input class="input" id="eob-phone" name="buyerPhone" placeholder="טלפון" />
+        <span>{t.dashboard.orderPhone}</span>
+        <input class="input" id="eob-phone" name="buyerPhone" placeholder={t.dashboard.orderPhone} />
       </label>
     </div>
     <label class="field">
-      <span>אימייל</span>
-      <input class="input" id="eob-email" name="buyerEmail" type="email" placeholder="אימייל" />
+      <span>{t.dashboard.eomEmail}</span>
+      <input class="input" id="eob-email" name="buyerEmail" type="email" placeholder={t.dashboard.eomEmail} />
     </label>
     <div class="grid grid-cols-[2fr_1fr_1fr] gap-4">
       <label class="field" style="flex:2">
-        <span>רחוב ומספר</span>
-        <input class="input" id="eob-street" name="buyerStreet" placeholder="רחוב ומספר" />
+        <span>{t.dashboard.eomStreet}</span>
+        <input class="input" id="eob-street" name="buyerStreet" placeholder={t.dashboard.eomStreet} />
       </label>
       <label class="field" style="flex:1">
-        <span>עיר</span>
-        <input class="input" id="eob-city" name="buyerCity" placeholder="עיר" />
+        <span>{t.dashboard.eomCity}</span>
+        <input class="input" id="eob-city" name="buyerCity" placeholder={t.dashboard.eomCity} />
       </label>
       <label class="field" style="flex:1">
-        <span>מיקוד</span>
-        <input class="input" id="eob-zip" name="buyerZip" placeholder="מיקוד" />
+        <span>{t.dashboard.eomZip}</span>
+        <input class="input" id="eob-zip" name="buyerZip" placeholder={t.dashboard.eomZip} />
       </label>
     </div>
 
     <!-- Items (delete only) -->
     <div style="border-top:1px solid var(--color-border);padding-top:0.75rem;margin-top:0.1rem">
-      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">פריטים</p>
+      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">{t.dashboard.orderItems}</p>
       <div id="eom-items-list"></div>
     </div>
 
     <!-- Shipping method (placeholder — wired later) -->
     <div style="border-top:1px solid var(--color-border);padding-top:0.75rem">
-      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">שיטת משלוח</p>
+      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">{t.dashboard.eomShippingMethod}</p>
       <div style="display:flex;align-items:center;justify-content:space-between;background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.6rem 0.85rem;gap:0.75rem">
         <div style="display:flex;align-items:center;gap:0.55rem">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-muted);flex-shrink:0" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-          <span id="eom-shipping-label" style="font-size:0.85rem;font-weight:500;color:var(--color-text)">משלוח רגיל</span>
+          <span id="eom-shipping-label" style="font-size:0.85rem;font-weight:500;color:var(--color-text)">{t.dashboard.eomShippingStandard}</span>
           <span id="eom-shipping-amount" style="font-size:0.82rem;color:var(--color-muted)"></span>
         </div>
         <button
           type="button"
           disabled
-          title="בקרוב"
+          title={t.dashboard.eomComingSoon}
           style="font-size:0.75rem;font-weight:500;color:var(--color-muted);background:none;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:0.25rem 0.6rem;cursor:default;font-family:inherit;opacity:0.6;flex-shrink:0"
-        >שנה שיטת משלוח</button>
+        >{t.dashboard.eomChangeShipping}</button>
       </div>
     </div>
 
     <!-- Discount -->
     <div style="border-top:1px solid var(--color-border);padding-top:0.75rem">
-      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">הנחה</p>
+      <p style="font-size:0.75rem;font-weight:700;color:var(--color-muted);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">{t.dashboard.orderEditDiscount}</p>
       <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <div style="display:flex;border:1px solid var(--color-border);border-radius:var(--radius);overflow:hidden;flex-shrink:0">
           <button type="button" id="eom-dtype-pct" class="eom-dtype-btn eom-dtype-btn--active" style="padding:0.3rem 0.65rem;font-size:0.82rem;font-weight:600;border:none;cursor:pointer;font-family:inherit;transition:background 0.1s,color 0.1s">%</button>
@@ -2994,10 +3018,10 @@ const orderStatusColors: Record<string, string> = {
     </div>
 
     <p id="edit-order-error" style="font-size:0.8rem;color:#dc2626;margin:0;display:none"></p>
-    <p id="edit-order-success" style="font-size:0.8rem;color:#16a34a;margin:0;text-align:center;display:none">ההזמנה עודכנה בהצלחה ✓</p>
+    <p id="edit-order-success" style="font-size:0.8rem;color:#16a34a;margin:0;text-align:center;display:none">{t.dashboard.eomSaved}</p>
     <div style="display:flex;gap:0.5rem;justify-content:flex-end;padding-top:0.25rem;border-top:1px solid var(--color-border)">
-      <button class="btn btn--ghost btn--sm" type="button" id="edit-order-cancel">ביטול</button>
-      <button class="btn btn--accent btn--sm" type="submit" id="edit-order-save">שמור שינויים</button>
+      <button class="btn btn--ghost btn--sm" type="button" id="edit-order-cancel">{t.dashboard.orderNoteCancel}</button>
+      <button class="btn btn--accent btn--sm" type="submit" id="edit-order-save">{t.dashboard.saveChanges}</button>
     </div>
   </form>
 </dialog>
@@ -3106,7 +3130,9 @@ const orderStatusColors: Record<string, string> = {
       if (currentHasAlert && !dot && dotHost) {
         const newDot = document.createElement('span');
         newDot.className = 'store-switcher__item-dot';
-        newDot.setAttribute('aria-label', 'יש התראות');
+        // t.dashboard.alertsDot — off the menu's own data attribute, so this
+        // rebuild and the server-rendered dot above it can never disagree.
+        newDot.setAttribute('aria-label', menu.dataset.strAlertDot ?? 'יש התראות');
         dotHost.prepend(newDot);
       } else if (!currentHasAlert && dot) {
         dot.remove();
@@ -3122,7 +3148,7 @@ const orderStatusColors: Record<string, string> = {
     if (anyOtherAlert && !btnDot) {
       btnDot = document.createElement('span');
       btnDot.className = 'store-switcher__alert-dot';
-      btnDot.setAttribute('aria-label', 'יש התראות בחנויות אחרות');
+      btnDot.setAttribute('aria-label', menu.dataset.strAlertDotOther ?? 'יש התראות בחנויות אחרות');
       switcherBtn.querySelector('.store-switcher__chevron')?.after(btnDot);
     } else if (!anyOtherAlert && btnDot) {
       btnDot.remove();

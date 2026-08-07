@@ -1603,7 +1603,7 @@ export function buildRows(p: ProductData, storeSlug = '', storeName = ''): [HTML
         <input type="hidden" name="_action" value="edit-product">
         <input type="hidden" name="productId" value="${p.id}">
         <div class="edit-row-header">
-          ${p.images?.[0] ? `<img src="${esc(thumbUrl(p.images[0], 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" style="width:36px;height:36px;object-fit:cover;border-radius:var(--radius-sm);flex-shrink:0">` : ''}
+          ${p.images?.[0] ? `<span class="dash-img-skel block w-9 h-9 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-[color:var(--color-surface)]" data-skeleton><img src="${esc(thumbUrl(p.images[0], 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" class="block w-full h-full object-cover"></span>` : ''}
           <span class="edit-row-title">${esc(p.name)}</span>
           <div class="flex gap-2 mt-2" style="margin-inline-start:auto;margin-top:0">
             <button class="btn btn--sm" type="submit" style="min-width:5rem;text-align:center">${i.save ?? 'Save'}</button>
@@ -2192,6 +2192,10 @@ function thumbSrcOf(wrap: HTMLElement): string {
  *  Re-arm a wrap with `armThumbSkeleton()` before calling this again for it. */
 export function initThumbs(root: ParentNode = document): void {
   initImageSkeletons('.thumb-wrap', root);
+  // The rest of this panel's image boxes wear the shared marker instead of a class of their own
+  // (dashboard.css → .dash-img-skel): today the open edit row's header thumb, and the gallery
+  // slots when a rebuilt row brings its own. Same sweep, so a new one is covered by existing.
+  initImageSkeletons('.dash-img-skel', root);
 }
 
 /** Hand a thumbnail back to the skeleton module after its `src` changed (an inline edit, a

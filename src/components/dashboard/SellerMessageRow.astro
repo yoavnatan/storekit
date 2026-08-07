@@ -1,14 +1,19 @@
 ---
 import type { SellerThreadRow } from '../../lib/seller-messages-query.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
+import { getLang, getT } from '../../i18n/index.js';
 
 // One thread in the seller dashboard's Messages tab = a main <tr> + its
 // collapsible thread <tr>. Buyer threads and admin "system" threads render
 // through this same component (row.kind only decides the delete button and
 // the reply placeholder) — the client mirrors this exact markup in
 // buildMessageRow() for AJAX-fetched pages.
+// Every label here is a `t.dashboard` key that already existed in both languages —
+// the SSR row and its client twin (scripts/dashboard/messages.ts#buildMessageRow)
+// both wrote them inline instead, so an English dashboard rendered Hebrew rows.
 interface Props { row: SellerThreadRow }
 const { row } = Astro.props;
+const d = getT(getLang(Astro.cookies)).dashboard;
 ---
 <tr
   class={`msg-table__row${row.hasUnread ? ' msg-table__row--unread' : ''}`}
@@ -24,13 +29,13 @@ const { row } = Astro.props;
 >
   <td class="msg-table__td msg-table__td--status"></td>
   <td class="msg-table__td msg-table__td--from">
-    {row.hasUnread && <span class="visually-hidden msg-unread-sr">לא נקרא · </span>}
+    {row.hasUnread && <span class="visually-hidden msg-unread-sr">{d.filterValUnread} · </span>}
     {row.fromName}
   </td>
   <td class="msg-table__td msg-table__td--subject">{row.subject}</td>
   <td class="msg-table__td msg-table__td--preview">
     {row.lastContent}
-    {row.lastFromSelf && <span class="msg-table__preview-you"> (אתה)</span>}
+    {row.lastFromSelf && <span class="msg-table__preview-you"> ({d.msgYou})</span>}
   </td>
   <td class="msg-table__td msg-table__td--product">
     {row.productHref
@@ -41,7 +46,7 @@ const { row } = Astro.props;
   <td class="msg-table__td msg-table__td--date">{formatHeDateTime(row.lastCreatedAt)}</td>
   <td class="msg-table__td msg-table__td--actions">
     {row.kind === 'buyer' && (
-      <button class="seller-msg-delete" data-delete-msg-id={row.id} type="button" aria-label="מחק שיחה" title="מחק שיחה">
+      <button class="seller-msg-delete" data-delete-msg-id={row.id} type="button" aria-label={d.deleteConv} title={d.deleteConv}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
       </button>
     )}
@@ -54,7 +59,7 @@ const { row } = Astro.props;
         <div class={`msg-thread-entry ${entry.fromSelf ? 'msg-thread-entry--seller' : 'msg-thread-entry--buyer'}`}>
           <div class="msg-thread-entry__header">
             <span class="msg-thread-entry__who">{entry.who}</span>
-            {entry.unread && <span class="msg-thread-unread-dot" aria-label="לא נקרא"></span>}
+            {entry.unread && <span class="msg-thread-unread-dot" aria-label={d.filterValUnread}></span>}
             <span class="msg-thread-entry__date">{formatHeDateTime(entry.createdAt)}</span>
           </div>
           <div class="msg-thread-entry__body">{entry.content}</div>
@@ -62,10 +67,10 @@ const { row } = Astro.props;
       ))}
     </div>
     <div class="seller-msg-reply-form" data-reply-for={row.id} style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-      <textarea class="seller-msg-reply-textarea" placeholder="כתוב תשובה..." rows="3"></textarea>
+      <textarea class="seller-msg-reply-textarea" placeholder={d.msgReplyPlaceholder} rows="3"></textarea>
       <div style="display:flex;justify-content:flex-end;gap:0.5rem">
-        <button class="seller-msg-reply-close" type="button">סגור שיחה</button>
-        <button class="seller-msg-reply-send" type="button">שלח</button>
+        <button class="seller-msg-reply-close" type="button">{d.msgReplyClose}</button>
+        <button class="seller-msg-reply-send" type="button">{d.msgReplySend}</button>
       </div>
     </div>
   </td>

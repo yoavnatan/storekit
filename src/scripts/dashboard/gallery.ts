@@ -5,6 +5,7 @@ import { openCropModal } from './crop-modal.js';
 import { openCleanupModal } from './cleanup-modal.js';
 import { announceValueChange } from './unsaved-guard.js';
 import { outboundFetch } from '../../lib/outbound-fetch.js';
+import { initImageSkeletons } from '../../lib/img-skeleton.js';
 
 /**
  * How long a re-fetch of a stored image may take before it counts as a failure.
@@ -36,6 +37,12 @@ const wState = new WeakMap<Element, WidgetState>();
 export function initGalleryWidget(gallery: Element): void {
   if ((gallery as HTMLElement).dataset.galleryInit) return;
   (gallery as HTMLElement).dataset.galleryInit = '1';
+
+  // The saved photos this widget rendered (gallery-widget.ts marks a filled slot `data-skeleton`)
+  // — a shimmer while they arrive from Cloudinary, which is what an opened edit row waits on.
+  // Only the SSR ones: every later `src` this file sets is a local blob or a URL already fetched
+  // once, so the module would find the image complete and skip it anyway.
+  initImageSkeletons('.gallery-slot__filled', gallery);
 
   const panel          = gallery.querySelector<HTMLElement>('.gallery-panel');
   const panelImg       = gallery.querySelector<HTMLImageElement>('.gallery-panel__img');

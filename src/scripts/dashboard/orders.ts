@@ -8,6 +8,7 @@ import { ORDER_ACTIVE_STATUSES, ORDER_FILTER_STATUSES } from '../../lib/seller-o
 import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { cdnThumb } from '../../lib/cdn.js';
+import { initImageSkeletons } from '../../lib/img-skeleton.js';
 // Both historic local names, one implementation (lib/html-escape.ts).
 import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.js';
 
@@ -16,6 +17,22 @@ import { escapeHtml as esc, escapeHtml as escEom } from '../../lib/html-escape.j
 // details modal. Extracted verbatim from seller/dashboard.astro's inline
 // <script>. `onAlertsChanged` = the dashboard's updateSwitcherAlertDot (shared
 // with the messages tab), re-run whenever an order's handled state changes.
+/**
+ * One order-card item thumbnail — ONE definition, because this row has three renderers (the
+ * SSR one in seller/dashboard.astro, buildOrderCard below, and the post-save patch that
+ * rewrites the list after the edit modal saves) and they must stay identical.
+ *
+ * They had already drifted, which is why this is a function now: the post-save patch carried
+ * neither the border nor the surface, so saving an order flattened every background-removed
+ * photo in the card onto the row it sits on — until a reload rendered the same list correctly.
+ *
+ * `data-skeleton` + `.dash-img-skel` hand it to lib/img-skeleton.ts: a shimmer UNDER the photo,
+ * and only while the fetch is genuinely in flight (dashboard.css carries the rest).
+ */
+function orderItemThumbHtml(image: string): string {
+  return `<span class="dash-img-skel block w-9 h-9 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" data-skeleton><img src="${esc(cdnThumb(image, 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" class="block w-full h-full object-cover"></span>`;
+}
+
 export function initOrdersTab(onAlertsChanged: () => void): void {
   // i18n for the whole tab — FIRST, above every function that reads it. The
   // file already learned this once: a declaration further down put bindOrderCard
@@ -511,7 +528,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
     const itemsHtml = storeItems.map(item => `
       <li class="flex items-center gap-2.5 text-sm">
-        ${item.image ? `<img src="${esc(cdnThumb(item.image, 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />` : ''}
+        ${item.image ? orderItemThumbHtml(item.image) : ''}
         <span class="flex-1 text-[color:var(--color-text)]">${esc(item.productName)}</span>
         <span class="text-[color:var(--color-muted)] text-[0.8rem]">×${item.qty}</span>
         <span class="font-bold text-[color:var(--color-text)] ms-auto">${fmtAgorot(item.priceAgorot * item.qty)}</span>
@@ -832,6 +849,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     ordersCurrentPage = data.page ?? 1;
     list.innerHTML = (data.items ?? []).map(buildOrderCard).join('');
     list.querySelectorAll<HTMLElement>('.order-card').forEach(bindOrderCard);
+    initImageSkeletons('.dash-img-skel', list);
 
     const total = data.total ?? 0;
     const emptyEl = document.getElementById('orders-filter-empty');
@@ -873,6 +891,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // (tab-sync.ts) — the same re-fetch its own toolbar uses, so the seller's page,
   // search, sort and filters survive a cross-tab refresh exactly as they do here.
   registerPanelRefresh('dash-panel-orders', applyOrdersPagination);
+
+  // The cards the SERVER rendered. The panel is `hidden` until its tab is opened, so nothing in
+  // it has fetched an image yet — which is exactly when a shimmer is worth arming.
+  initImageSkeletons('.dash-img-skel', document.getElementById('orders-list') ?? document);
 
   const ordersSearchInput = document.getElementById('orders-search-input') as HTMLInputElement | null;
   ordersSearchInput?.addEventListener('input', debounce(() => {
@@ -916,6 +938,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
             if (card) {
               ordersList.insertBefore(card, ordersList.firstChild);
               bindOrderCard(card);
+              initImageSkeletons('.dash-img-skel', card);
               if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
             }
           }
@@ -966,7 +989,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     list.innerHTML = items.map((item) => `
       <div class="eom-item" data-pid="${escEom(item.productId)}" data-price-agorot="${escEom(String(item.priceAgorot))}" data-qty="${escEom(String(item.qty))}">
         ${item.image
-          ? `<img class="eom-item__img" src="${escEom(cdnThumb(item.image, 68, 68))}" alt="" width="34" height="34" loading="lazy" decoding="async">`
+          ? `<span class="eom-item__img-wrap dash-img-skel" data-skeleton><img class="eom-item__img" src="${escEom(cdnThumb(item.image, 68, 68))}" alt="" width="34" height="34" loading="lazy" decoding="async"></span>`
           : `<div class="eom-item__img-ph" aria-hidden="true"></div>`}
         <span class="eom-item__name" title="${escEom(item.productName)}">${escEom(item.productName)}</span>
         <span class="eom-item__meta">${fmtAgorot(item.priceAgorot)} × ${item.qty}</span>
@@ -974,6 +997,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>`).join('');
+
+    initImageSkeletons('.dash-img-skel', list);
 
     list.querySelectorAll<HTMLButtonElement>('.eom-item__del').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1188,11 +1213,12 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           const storeItems = savedOrder.items.filter((i) => i.storeSlug === storeSlug);
           cardItemsEl.innerHTML = storeItems.map((item) => `
             <li class="flex items-center gap-2.5 text-sm">
-              ${item.image ? `<img src="${escEom(cdnThumb(item.image, 72, 72))}" alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0">` : ''}
+              ${item.image ? orderItemThumbHtml(item.image) : ''}
               <span class="flex-1 text-[color:var(--color-text)]">${escEom(item.productName)}</span>
               <span class="text-[color:var(--color-muted)] text-[0.8rem]">×${item.qty}</span>
               <span class="font-bold text-[color:var(--color-text)] ms-auto">${fmtAgorot(item.priceAgorot * item.qty)}</span>
             </li>`).join('');
+          initImageSkeletons('.dash-img-skel', cardItemsEl);
         }
         // Update subtotal display
         const storeSub = savedOrder.storeSubtotals?.[storeSlug] as { subtotalAgorot: number; shippingAgorot: number; discount?: { type: string; value: number; appliedAgorot: number } } | undefined;
