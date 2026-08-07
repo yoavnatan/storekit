@@ -1393,8 +1393,21 @@ body:has(.site-header.is-stuck) .store-banner {
 }
 
 .lightbox__arrow:hover { background: rgba(255, 255, 255, 0.2); }
-.lightbox__arrow--prev { left: 1.25rem; }
-.lightbox__arrow--next { right: 1.25rem; }
+
+/* Logical, not `left`/`right` — and the chevron mirrors with them.
+   `lib/arrow-step.ts` makes ArrowLeft move the gallery FORWARD in RTL, because an
+   arrow names a direction on screen and a Hebrew row runs right→left. These two
+   buttons were the last horizontal pair on the site still pinned to physical
+   sides (`--prev: left`), so in Hebrew they sat on the opposite sides from the
+   keys — and from every other carousel here, all of which are already logical:
+   `.category-filters-arrow`, `.home-tabs-arrow`, `.home-carousel-btn`.
+   Nothing about either side was wrong on its own; only the pairing was.
+   The flip is CSS rather than an inline `lang === 'he'` style like those three
+   use, because two files draw this lightbox (product page + StoreProductModal)
+   and `dir` is already on <html> — one rule beats two copies of a ternary. */
+.lightbox__arrow--prev { inset-inline-start: 1.25rem; }
+.lightbox__arrow--next { inset-inline-end: 1.25rem; }
+[dir='rtl'] .lightbox__arrow svg { transform: scaleX(-1); }
 
 .lightbox__counter {
   position: absolute;
@@ -1411,8 +1424,8 @@ body:has(.site-header.is-stuck) .store-banner {
 @media (max-width: 600px) {
   .product-grid { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
   .lightbox__panel { padding: 3.5rem 2.5rem; }
-  .lightbox__arrow--prev { left: 0.5rem; }
-  .lightbox__arrow--next { right: 0.5rem; }
+  .lightbox__arrow--prev { inset-inline-start: 0.5rem; }
+  .lightbox__arrow--next { inset-inline-end: 0.5rem; }
 }
 
 /* ripple-wave keyframe lives in utils.css (global) */
