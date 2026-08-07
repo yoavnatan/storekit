@@ -36,6 +36,19 @@
  *                                trace that a buyer's card was touched for an order that does
  *                                not exist. A row whose detail says the void FAILED is money
  *                                owed back to a real person, and it pages someone.
+ *   refund_due                 — money was CAPTURED and the purchase was then undone (a seller
+ *                                cancelled a paid order). The buyer is owed this amount and has
+ *                                not been given it. Before this existed the only trace was a
+ *                                `shipping_status_changed` reading 'cancelled', which is a
+ *                                fulfilment fact: the order left every revenue sum and the seller
+ *                                stopped owing a parcel, while the money simply stayed with us and
+ *                                no screen anywhere said so. `refund-owed.ts` owns when it is
+ *                                written; `reconcile.ts` reports every one still outstanding.
+ *   refund_settled             — the money actually went back. Pairs off a `refund_due`.
+ *                                **Nothing writes this yet, and that is the honest state**: it
+ *                                needs the payment provider's refund call, and no provider is
+ *                                chosen (GO_LIVE_CHECKLIST §3). Its absence is what keeps every
+ *                                obligation visible instead of quietly closing itself.
  */
 export const MONEY_EVENT_TYPES = [
   'payment_attempted',
@@ -45,6 +58,8 @@ export const MONEY_EVENT_TYPES = [
   'payment_status_changed',
   'shipping_status_changed',
   'order_discount_changed',
+  'refund_due',
+  'refund_settled',
 ] as const;
 
 export type MoneyEventType = (typeof MONEY_EVENT_TYPES)[number];
@@ -66,6 +81,8 @@ export const MONEY_EVENT_LABELS: Record<MoneyEventType, string> = {
   payment_status_changed: 'סטטוס תשלום השתנה',
   shipping_status_changed: 'סטטוס משלוח השתנה',
   order_discount_changed: 'סכום הזמנה שונה',
+  refund_due: 'זיכוי מגיע לקונה',
+  refund_settled: 'זיכוי בוצע',
 };
 
 /** Type guard for a request-supplied value (`?mtype=`). */

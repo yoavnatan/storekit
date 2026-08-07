@@ -14,7 +14,7 @@ import { campaignHealth } from '../src/lib/ad-campaign-health.js';
 import { getCategoriesByStoreId } from '../src/lib/store-categories.js';
 import { countOpenOrdersByStore } from '../src/lib/store-lifecycle.js';
 import { buildSellerFunnel, getSellerFunnel } from '../src/lib/seller-funnel.js';
-import { reconcileOrders, reconcilePlatform } from '../src/lib/reconcile.js';
+import { JOURNAL_ONLY_CHECKS, reconcileOrders, reconcilePlatform } from '../src/lib/reconcile.js';
 import { daysInRangeInclusive } from '../src/lib/date-range.js';
 import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, getStoreRevenueBySlug } from '../src/lib/order-reporting.js';
 
@@ -767,11 +767,18 @@ describe('§3 — the queries agree with the JavaScript they replaced', () => {
     const fromDb = await reconcilePlatform(slugs);
     const fromJs = reconcileOrders(stored, slugs);
     expect(fromDb.checkedOrders, 'orders checked').toBe(fromJs.checkedOrders);
-    expect(fromDb.clean, 'clean verdict').toBe(fromJs.clean);
+    // Compared over the checks BOTH routes can run. Three of them read `money_events` (an unsettled
+    // refund, an order stuck before its capture, a charge with no order behind it) and
+    // `reconcileOrders` is handed orders and nothing else — so that is not drift between the two
+    // routes, it is the boundary of what a pure function over orders can know. Named by
+    // `JOURNAL_ONLY_CHECKS` rather than assumed, so a fourth one cannot slip past this by being
+    // unfamiliar.
+    const shared = fromDb.discrepancies.filter((d) => !JOURNAL_ONLY_CHECKS.includes(d.check));
+    expect(shared.length === 0, 'clean verdict over the shared checks').toBe(fromJs.clean);
     // Compared as sets of (check, subject, drift): the two routes are free to report in a
     // different ORDER, and requiring one would be asserting an implementation detail.
     const key = (d: { check: string; subject?: string; drift: number }) => `${d.check}|${d.subject ?? ''}|${d.drift}`;
-    expect(new Set(fromDb.discrepancies.map(key))).toEqual(new Set(fromJs.discrepancies.map(key)));
+    expect(new Set(shared.map(key))).toEqual(new Set(fromJs.discrepancies.map(key)));
   });
 
   // A reconciler that never fires is indistinguishable from one that is broken (the rule

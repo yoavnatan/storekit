@@ -58,6 +58,17 @@ export interface ReconciliationReport {
  *  and the count above it says how bad it really is. */
 const MAX_ROW_DISCREPANCIES = 50;
 
+/**
+ * How long an order may sit at `payment_status = 'pending'` before it is a problem rather than a
+ * checkout in flight.
+ *
+ * The whole handler — authorize, write the rows, capture — completes in well under a second, so
+ * anything still pending after this did not finish. Fifteen minutes rather than one so that a
+ * genuinely slow gateway, a retry, or a clock a little out of step cannot manufacture a false alarm
+ * on the admin's dashboard; the state it reports is permanent, so nothing is lost by waiting.
+ */
+export const STUCK_PENDING_MINUTES = 15;
+
 function drift(expected: number, actual: number): number {
   return expected - actual;
 }
@@ -138,6 +149,79 @@ function negativeTotal(orderId: string, total: number): Discrepancy {
     actual: total,
     drift: drift(0, total),
     explanation: 'הזמנה עם סכום שלילי. הנחה שגדולה מהסכום, או עריכה שהורידה פריטים בלי לעדכן את ההנחה.',
+  };
+}
+
+/**
+ * ── The second family of checks: the ORDERS against the MONEY JOURNAL ──
+ *
+ * Everything above compares two views of the same order rows. That catches arithmetic that drifted;
+ * it cannot catch money that moved with nothing to show for it, because both of its routes read the
+ * same table. The journal (`money-events.ts`) is the independent record — written by the code that
+ * touched the gateway, at the moment it touched it — so comparing the two is the only check here
+ * that can answer the question this area was audited for: **where can the money and what a seller or
+ * buyer SEES disagree?**
+ *
+ * Each of the three below is one answer to it, and each was reachable before it existed.
+ */
+
+/**
+ * The three checks above that only the QUERY route can run, by their `check` label.
+ *
+ * They read `money_events`, and `reconcileOrders` is handed orders and nothing else — so this is not
+ * a gap between the two routes, it is the boundary of what a pure function over orders can know.
+ * Exported because `tests/reporting-invariants.test.ts` runs the two side by side and requires the
+ * same verdict: without naming the difference, that test would either fail forever or would have to
+ * be loosened into proving nothing.
+ */
+export const JOURNAL_ONLY_CHECKS: readonly string[] = [
+  'זיכוי שמגיע לקונה ולא בוצע',
+  'הזמנה תקועה בהמתנה לתשלום',
+  'חיוב ביומן בלי הזמנה מאחוריו',
+];
+
+function refundOwedOutstanding(orderId: string, slug: string | null, amount: number, sinceDays: number): Discrepancy {
+  return {
+    severity: 'error',
+    check: JOURNAL_ONLY_CHECKS[0]!,
+    subject: `הזמנה ${shortId(orderId)}${slug ? ` · ${slug}` : ''}`,
+    expected: 0,
+    actual: amount,
+    drift: drift(0, amount),
+    explanation: `ההזמנה בוטלה אחרי שהתשלום כבר נגבה, כך שהכסף הזה שייך לקונה ועדיין לא הוחזר${sinceDays > 0 ? ` (${sinceDays} ימים)` : ''}. אין עדיין ספק סליקה מחובר, ולכן ההחזר הוא פעולה ידנית — ראו GO_LIVE_CHECKLIST §3.`,
+  };
+}
+
+function stuckPending(orderId: string, amount: number, minutes: number): Discrepancy {
+  // The checkout writes order rows as 'pending' and flips them to 'paid' only after the capture
+  // (payment.ts). A row that never flipped means the process died in that window, or `markOrdersPaid`
+  // itself threw after the money had been taken. Either way the stock is off the shelf, the seller
+  // has nothing to ship, no notification fired, and — if the capture had in fact succeeded — a real
+  // buyer paid for an order nobody will ever act on.
+  return {
+    severity: 'error',
+    check: JOURNAL_ONLY_CHECKS[1]!,
+    subject: `הזמנה ${shortId(orderId)}`,
+    expected: 0,
+    actual: amount,
+    drift: drift(0, amount),
+    explanation: `ההזמנה נוצרה לפני ${minutes} דקות ועדיין "ממתין לתשלום". החיוב לא הושלם ולא בוטל: המלאי ירד, המוכר לא קיבל התראה, והקונה לא יודע. צריך לבדוק מול ספק הסליקה אם נתפס כסף לפי האסמכתא שביומן.`,
+  };
+}
+
+function chargeWithNoOrder(checkoutRef: string, amount: number): Discrepancy {
+  // The 0017 class, as a live check rather than as a story. An authorization in the journal whose
+  // checkout produced no order row and was never voided is money held (or taken) for a purchase that
+  // does not exist — which is exactly the state the UNIQUE constraint on payment_ref used to create
+  // on every multi-store cart.
+  return {
+    severity: 'error',
+    check: JOURNAL_ONLY_CHECKS[2]!,
+    subject: `אסמכתא ${checkoutRef}`,
+    expected: 0,
+    actual: amount,
+    drift: drift(0, amount),
+    explanation: 'ביומן יש אישור חיוב לאסמכתא שלא נוצרה עבורה אף הזמנה, וגם לא נרשם ביטול חיוב. ייתכן שנתפס כסף על כרטיס של קונה בלי שום הזמנה מאחוריו — צריך לבדוק מול ספק הסליקה.',
   };
 }
 
@@ -253,7 +337,10 @@ export async function reconcilePlatform(storeSlugs: string[]): Promise<Reconcili
   const NET = 'GREATEST(os.subtotal_agorot - os.discount_applied_agorot, 0)';
   const COUNTS = 'o.payment_status = ANY($1::text[]) AND o.shipping_status = ANY($2::text[])';
 
-  const [checked, itemsVsSubtotal, totalVsParts, bounds, byRoute, orphans, totals, byStore] = await Promise.all([
+  const [
+    checked, itemsVsSubtotal, totalVsParts, bounds, byRoute, orphans, totals, byStore,
+    refundsOwed, stuck, orphanCharges,
+  ] = await Promise.all([
     firstRow<{ n: string | number }>('SELECT COUNT(*) AS n FROM orders'),
 
     // Route A: the line items. Route B: the stored subtotal.
@@ -317,6 +404,56 @@ export async function reconcilePlatform(storeSlugs: string[]): Promise<Reconcili
 
     getPlatformOrderTotals(),
     getStoreRevenueBySlug(''),
+
+    // ── Journal route 1: refunds owed and never settled. ──
+    // A `refund_due` with no `refund_settled` for the same order. Both are journal rows and the
+    // journal is append-only, so "settled" can only ever be a row someone wrote — it cannot be
+    // inferred, and it cannot quietly close itself.
+    rows<{ order_id: string; store_slug: string | null; amount: string | number; days: string | number }>(
+      `SELECT d.order_id, d.store_slug, d.amount_agorot AS amount,
+              EXTRACT(day FROM now() - d.at)::int AS days
+         FROM money_events d
+        WHERE d.type = 'refund_due'
+          AND NOT EXISTS (
+                SELECT 1 FROM money_events s
+                 WHERE s.type = 'refund_settled' AND s.order_id = d.order_id AND s.at >= d.at)
+        ORDER BY d.at DESC
+        LIMIT ${MAX_ROW_DISCREPANCIES + 1}`,
+    ),
+
+    // ── Journal route 2: orders stuck between the order write and the capture. ──
+    // `STUCK_PENDING_MINUTES` past creation is long enough that no live checkout is still in flight
+    // — the whole handler runs in under a second — so anything left here is a request that died.
+    rows<{ id: string; total: string | number; minutes: string | number }>(
+      `SELECT id, total_agorot AS total,
+              EXTRACT(epoch FROM now() - created_at)::int / 60 AS minutes
+         FROM orders
+        WHERE payment_status = 'pending'
+          AND created_at < now() - ($1::int * interval '1 minute')
+        ORDER BY created_at DESC
+        LIMIT ${MAX_ROW_DISCREPANCIES + 1}`,
+      [STUCK_PENDING_MINUTES],
+    ),
+
+    // ── Journal route 3: an authorization with no order behind it. ──
+    // Matched on `checkout_ref`, which is the only thing tying a charge to the orders it was for
+    // before any order row exists — which is the entire point of the window this checks.
+    rows<{ checkout_ref: string; amount: string | number }>(
+      `SELECT a.checkout_ref, MAX(a.amount_agorot) AS amount
+         FROM money_events a
+        WHERE a.type = 'payment_attempted'
+          AND a.checkout_ref IS NOT NULL
+          AND a.detail LIKE 'authorized%'
+          AND a.at < now() - ($1::int * interval '1 minute')
+          AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.checkout_ref = a.checkout_ref)
+          AND NOT EXISTS (
+                SELECT 1 FROM money_events v
+                 WHERE v.checkout_ref = a.checkout_ref AND v.type = 'charge_voided')
+        GROUP BY a.checkout_ref
+        ORDER BY MAX(a.at) DESC
+        LIMIT ${MAX_ROW_DISCREPANCIES + 1}`,
+      [STUCK_PENDING_MINUTES],
+    ),
   ]);
 
   const n = (v: string | number | null | undefined): number => Number(v ?? 0);
@@ -342,12 +479,28 @@ export async function reconcilePlatform(storeSlugs: string[]): Promise<Reconcili
       : oversizedDiscount(r.id, r.store_slug ?? '', n(r.expected), n(r.actual)));
   }
 
+  // The journal routes. Listed after the arithmetic ones because they are rarer, and because a
+  // reader scanning this card is reading the first line: an order that disagrees with itself is a
+  // reporting bug, while an unsettled refund is a person who is owed money today.
+  for (const r of refundsOwed.slice(0, MAX_ROW_DISCREPANCIES)) {
+    discrepancies.push(refundOwedOutstanding(r.order_id, r.store_slug, n(r.amount), n(r.days)));
+  }
+  for (const r of stuck.slice(0, MAX_ROW_DISCREPANCIES)) {
+    discrepancies.push(stuckPending(r.id, n(r.total), n(r.minutes)));
+  }
+  for (const r of orphanCharges.slice(0, MAX_ROW_DISCREPANCIES)) {
+    discrepancies.push(chargeWithNoOrder(r.checkout_ref, n(r.amount)));
+  }
+
   return {
     checkedOrders: n(checked?.n),
     discrepancies,
     clean: discrepancies.length === 0,
     ...(itemsVsSubtotal.length > MAX_ROW_DISCREPANCIES
       || totalVsParts.length > MAX_ROW_DISCREPANCIES
-      || bounds.length > MAX_ROW_DISCREPANCIES ? { truncated: true } : {}),
+      || bounds.length > MAX_ROW_DISCREPANCIES
+      || refundsOwed.length > MAX_ROW_DISCREPANCIES
+      || stuck.length > MAX_ROW_DISCREPANCIES
+      || orphanCharges.length > MAX_ROW_DISCREPANCIES ? { truncated: true } : {}),
   };
 }

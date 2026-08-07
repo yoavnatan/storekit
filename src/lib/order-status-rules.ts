@@ -81,12 +81,26 @@ export interface PaymentStatusRule {
    *  closure open forever. A pending one does: its outcome is unknown, and closing the store
    *  out from under an order that is about to be confirmed is the worse of the two mistakes. */
   blocksStoreClosure: boolean;
+  /**
+   * Has money actually LEFT the buyer's card?
+   *
+   * Not the same question as `countsAsRevenue`, and the difference is what `refund-owed.ts` is
+   * built on: revenue asks "does this order earn anyone anything today", and the answer flips back
+   * to false the moment it is cancelled. This asks "was a real person's money taken", and the
+   * answer never flips back — once captured, it is either kept or given back, and something has to
+   * say which. A cancelled paid order scores `false` on the first column and `true` on this one,
+   * which is precisely the state where the buyer is owed money.
+   *
+   * `pending` is false because the checkout writes the order rows BEFORE the capture (payment.ts):
+   * at that instant the gateway is holding the amount and has not been told to take it.
+   */
+  moneyWasTaken: boolean;
 }
 
 export const PAYMENT_STATUS_RULES: Record<PaymentStatus, PaymentStatusRule> = {
-  pending: { countsAsRevenue: false, awaitingOutcome: true , blocksStoreClosure: true  },
-  paid:    { countsAsRevenue: true,  awaitingOutcome: false, blocksStoreClosure: true  },
-  failed:  { countsAsRevenue: false, awaitingOutcome: false, blocksStoreClosure: false },
+  pending: { countsAsRevenue: false, awaitingOutcome: true , blocksStoreClosure: true , moneyWasTaken: false },
+  paid:    { countsAsRevenue: true,  awaitingOutcome: false, blocksStoreClosure: true , moneyWasTaken: true  },
+  failed:  { countsAsRevenue: false, awaitingOutcome: false, blocksStoreClosure: false, moneyWasTaken: false },
 };
 
 /** Statuses a seller may move an order TO — everything the UI offers. */
@@ -133,6 +147,12 @@ export const CLOSURE_BLOCKING_SHIPPING_STATUSES = shippingWhere('blocksStoreClos
 export function orderCountsAsRevenue(o: Pick<Order, 'paymentStatus' | 'shippingStatus'>): boolean {
   return PAYMENT_STATUS_RULES[o.paymentStatus]?.countsAsRevenue === true
     && SHIPPING_STATUS_RULES[o.shippingStatus]?.countsAsRevenue === true;
+}
+
+/** Was this order's money really captured? The column above says why this is a separate question
+ *  from `orderCountsAsRevenue`, and `refund-owed.ts` is the caller it exists for. */
+export function orderMoneyWasTaken(o: Pick<Order, 'paymentStatus'>): boolean {
+  return PAYMENT_STATUS_RULES[o.paymentStatus]?.moneyWasTaken === true;
 }
 
 /** Are this order's units still off the shelf? Reads the table rather than testing
