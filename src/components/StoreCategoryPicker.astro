@@ -54,7 +54,6 @@ const t = getT(getLang(Astro.cookies));
     full: t.dashboard.categoryLimit.replace('{n}', String(MAX_CATEGORIES_PER_STORE)),
     remove: t.dashboard.categoryRemove,
     enLabel: t.dashboard.categoryEnLabel,
-    enHint: t.dashboard.categoryEnHint,
     enPlaceholder: t.dashboard.categoryEnPlaceholder,
   })}
   data-seed-categories={JSON.stringify(SEED_CATEGORIES)}
@@ -72,7 +71,7 @@ const t = getT(getLang(Astro.cookies));
        already has a label we wrote, so it gets no row: a seller renaming the shelf
        everyone else sits on is a different thing entirely (category-translations.ts).
        Empty is the expected state and never blocks the save. -->
-  {askEnglish && <div class="store-cat-picker__en flex flex-col gap-1.5" data-en-fields hidden></div>}
+  {askEnglish && <div class="store-cat-picker__en flex flex-col gap-1.5 mt-2 mb-4" data-en-fields hidden></div>}
 
   <input
     type="text"

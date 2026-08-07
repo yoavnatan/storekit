@@ -26,7 +26,6 @@ interface PickerI18n {
   remove: string;
   /** The optional English-label block. See renderEnFields below. */
   enLabel?: string;
-  enHint?: string;
   enPlaceholder?: string;
 }
 
@@ -101,22 +100,28 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
     const invented = chosen.filter((c) => !seedCategories.has(c));
     enFieldsEl.hidden = invented.length === 0;
     if (!invented.length) { enFieldsEl.innerHTML = ''; return; }
-    enFieldsEl.innerHTML = `
-      <p class="m-0 text-[0.8rem] leading-relaxed [color:var(--color-muted)]">${esc(i18n.enHint ?? '')}</p>
-      ${invented.map((c) => `
-        <label class="flex items-center gap-2 text-[0.82rem]">
-          <span class="shrink-0 [color:var(--color-text)]">${esc(c)}</span>
-          <input
-            type="text"
-            class="input flex-1"
-            name="${esc(enPrefix + c)}"
-            data-en-for="${esc(c)}"
-            value="${esc(enValues[c] ?? '')}"
-            maxlength="${enMax}"
-            placeholder="${esc(i18n.enPlaceholder ?? '')}"
-            aria-label="${esc(i18n.enLabel ?? '')} — ${esc(c)}"
-          />
-        </label>`).join('')}`;
+    // One short box, and its placeholder IS the instruction — no heading, no
+    // explanatory paragraph, no label repeating the category name beside it
+    // (owner, 2026-08-07: "אינפוט קטן שכתוב בו 'שם הקטגוריה באנגלית (לא חובה)'...
+    // וזהו"). The first version was a full-width field under a paragraph of hint,
+    // which read as unrelated to the chip that produced it.
+    // The Hebrew is printed only when there are two or more, because with one box
+    // there is nothing to tell apart.
+    const many = invented.length > 1;
+    enFieldsEl.innerHTML = invented.map((c) => `
+      <div class="flex items-center gap-2">
+        ${many ? `<span class="shrink-0 text-[0.78rem] [color:var(--color-muted)]">${esc(c)}</span>` : ''}
+        <input
+          type="text"
+          class="input w-[13rem] max-w-full text-[0.82rem] py-[0.28rem]"
+          name="${esc(enPrefix + c)}"
+          data-en-for="${esc(c)}"
+          value="${esc(enValues[c] ?? '')}"
+          maxlength="${enMax}"
+          placeholder="${esc(i18n.enPlaceholder ?? '')}"
+          aria-label="${esc(i18n.enLabel ?? '')}${many ? ` — ${esc(c)}` : ''}"
+        />
+      </div>`).join('');
   }
 
   function renderChips(): void {
@@ -227,8 +232,18 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
   searchEl.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();  // never submit the whole settings form from this field
-    const first = listEl.querySelector<HTMLElement>('[data-pick]');
-    if (first?.dataset.pick) add(first.dataset.pick);
+    // The first row, whichever kind it is. This looked for `[data-pick]` only, and a
+    // brand-new category's row is `[data-create]` — so Enter did nothing in exactly
+    // the case a seller expects it to work: they typed a word that does not exist
+    // yet (owner, 2026-08-07). Routed through the same branch the click handler
+    // uses, so "add anyway" still shows the near-duplicates once before insisting.
+    const first = listEl.querySelector<HTMLElement>('[data-pick],[data-create]');
+    if (!first) return;
+    if (first.dataset.pick) { add(first.dataset.pick); return; }
+    const create = first.dataset.create ?? '';
+    const q = normalizeCategory(create);
+    if (findSimilarCategories(create, vocabulary).length && insistOn !== q) { insistOn = q; renderList(); return; }
+    add(create);
   });
 
   renderChips();
