@@ -615,7 +615,7 @@ const orderStatusColors: Record<string, string> = {
     <CreateStoreCard first={hasNoStore} error={error} vocabulary={categoryVocabulary} />
   ) : store ? (
   <Fragment>
-  <FormFallbackGuard message={d.saveUnavailable} draftFound={d.draftFound} draftRestore={d.draftRestore} draftDiscard={d.draftDiscard} draftNotice={d.draftNotice} draftNoticeMany={d.draftNoticeMany} draftNoticeGo={d.draftNoticeGo} />
+  <FormFallbackGuard message={d.saveUnavailable} draftFound={d.draftFound} draftRestore={d.draftRestore} draftDiscard={d.draftDiscard} draftNotice={d.draftNotice} draftNoticeMany={d.draftNoticeMany} goLabel={d.unsavedGo} />
   <div id="upload-config" data-cloud={cloudinaryCloud} data-preset={cloudinaryPreset} data-store-slug={store.slug} data-store-id={store.id} data-store-name={store.name} data-host={platformHost} data-seller-id={sellerId} data-bg-colors={JSON.stringify(store.bgColors ?? [])} hidden></div>
   <section class="section container dash-section dash-section--bleed">
     <div id="dash-main-card" class="card seller-dash" style="margin-bottom:1.5rem">

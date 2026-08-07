@@ -77,9 +77,14 @@ interface Props {
   /** The floating notice for an offer he cannot see. `{section}` is the tab's own label. */
   draftNotice: string;
   draftNoticeMany: string;
-  draftNoticeGo: string;
+  /** Its button. Deliberately the SAME string UnsavedChangesBar uses (`unsavedGo` — "קח אותי לשם"),
+   *  because it is the same act: it carries him to the offer and stops there. The first wording was
+   *  "הצג", and the owner read it exactly as it sounds — "press this and you will be shown the
+   *  changes" — which is not what happens and is not what should happen: the values only mean
+   *  anything sitting in the fields they belong to (2026-08-07). */
+  goLabel: string;
 }
-const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNoticeMany, draftNoticeGo } = Astro.props;
+const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNoticeMany, goLabel } = Astro.props;
 ---
 
 {/* The offer he would otherwise miss. Server-rendered and hidden rather than injected by the
@@ -90,22 +95,28 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNotic
     `!hidden`, not the `hidden` attribute: this is display:flex and a flex utility beats the
     attribute's display:none (the trap is documented across the dashboard).
 
-    Third floating slot: UnsavedChangesBar sits at bottom-6, StaleDataBar 4rem above it, this one
-    4rem above that. Furthest from the thumb because it is the rarest of the three and the only one
-    that appears at load rather than mid-task, so it is the one whose position matters least. Each
-    bar positions ITSELF rather than sharing a stack container — the elevation guard wants the
+    **It sits at the BOTTOM, and only steps up when it would land on another bar.** The first
+    version parked it permanently in a third slot above UnsavedChangesBar (bottom-6) and
+    StaleDataBar (bottom-[5.5rem]) — which meant that in the ONLY case that actually happens, this
+    bar alone on a fresh load, it floated a third of the way up the phone for no visible reason
+    (owner, 2026-08-07: "פתאום עלתה למעלה, היא אמורה להיות בתחתית"). The other two are mid-task
+    notices raised by a module; this one is raised at load, so the overlap needs the seller to have
+    ALSO started editing elsewhere while leaving the offer unanswered. Paying for that case with the
+    common one was the wrong way round. `refreshNotice` picks between the two positions.
+
+    Still positions ITSELF rather than sharing a stack container — the elevation guard wants the
     element casting a shadow to declare that it floats, and an ancestor cannot vouch for it. */}
 <div
   id="dash-draft-bar"
   role="status"
   aria-live="polite"
-  class="!hidden fixed bottom-[9.5rem] left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 max-w-[calc(100vw-2rem)] py-[0.55rem] ps-[0.9rem] pe-[0.55rem] rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.85rem]"
+  class="!hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 max-w-[calc(100vw-2rem)] py-[0.55rem] ps-[0.9rem] pe-[0.55rem] rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.85rem]"
 >
   <svg class="shrink-0 max-w-none [color:var(--color-warning)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>
   </svg>
   <span id="dash-draft-msg"></span>
-  <button type="button" id="dash-draft-go" class="btn btn--sm shrink-0">{draftNoticeGo}</button>
+  <button type="button" id="dash-draft-go" class="btn btn--sm shrink-0">{goLabel}</button>
 </div>
 
 <script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard, draftNotice, draftNoticeMany }}>
@@ -401,6 +412,20 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNotic
         : section ? draftNotice.replace('{section}', section) : draftFound;
       if (msgEl.textContent !== message) msgEl.textContent = message;
       bar.classList.toggle('!hidden', !message);
+
+      // The bottom slot is this bar's home; it only steps clear when one of the mid-task bars is
+      // actually out. One step over BOTH of them rather than arithmetic per bar — the gap when only
+      // the lower one is showing costs nothing, and a rule with no arithmetic in it cannot land this
+      // on top of another bar. Both class names are written out in full so Tailwind's scanner, which
+      // reads this file as text, generates them (a computed string would produce neither).
+      var others = ['dash-unsaved-bar', 'dash-stale-bar'];
+      var stacked = false;
+      for (var i = 0; i < others.length; i++) {
+        var el = document.getElementById(others[i]);
+        if (el && !el.classList.contains('!hidden')) stacked = true;
+      }
+      bar.classList.toggle('bottom-6', !stacked);
+      bar.classList.toggle('bottom-[9.5rem]', stacked);
     }
 
     /** Cheap enough per call (one rect per offer, and there are at most a handful), but it runs on
@@ -532,6 +557,10 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNotic
       refreshNotice();
       window.addEventListener('scroll', scheduleNotice, { passive: true });
       window.addEventListener('resize', scheduleNotice);
+      // Typing is what raises UnsavedChangesBar under this one, and it is the only signal that it
+      // happened — so the step-up above has to be reconsidered on the same events.
+      document.addEventListener('input', scheduleNotice);
+      document.addEventListener('change', scheduleNotice);
       // A panel becoming visible is the other half of "can he see it", and it fires no scroll
       // event (DashTabsBoot dispatches this on the panel it just revealed).
       document.addEventListener('dashtab:show', scheduleNotice);

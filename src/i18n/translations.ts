@@ -359,9 +359,8 @@ export const translations = {
       // tab's own label, read at runtime — never a second name for the panel that could drift.
       draftNotice: 'יש שינויים שלא הספקת לשמור ב{section}',
       draftNoticeMany: 'יש שינויים שלא הספקת לשמור בכמה מקומות',
-      // Not "שחזר": this button only takes him to the offer — the decision stays where he can see
-      // what it would change.
-      draftNoticeGo: 'הצג',
+      // Its button reuses `unsavedGo` ("קח אותי לשם") — same act, same words. See the prop's own
+      // comment in FormFallbackGuard.astro for why "הצג" was wrong.
       storeOverview: 'סקירת חנות',
       products: 'מוצרים',
       inStock: 'במלאי',
@@ -1716,7 +1715,6 @@ export const translations = {
       draftDiscard: 'Delete them',
       draftNotice: 'You have unsaved changes from last time in {section}',
       draftNoticeMany: 'You have unsaved changes from last time in more than one place',
-      draftNoticeGo: 'Show',
       storeOverview: 'Store overview',
       products: 'Products',
       inStock: 'In stock',

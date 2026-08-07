@@ -38,8 +38,10 @@ installGuard();
 
 /** The floating notice, as the component server-renders it — the script only ever fills it in. */
 const NOTICE_BAR =
-  `<div id="dash-draft-bar" class="!hidden"><span id="dash-draft-msg"></span>` +
-  `<button type="button" id="dash-draft-go"></button></div>`;
+  `<div id="dash-draft-bar" class="!hidden bottom-6"><span id="dash-draft-msg"></span>` +
+  `<button type="button" id="dash-draft-go"></button></div>` +
+  // The two mid-task bars it has to stay clear of, in their resting (hidden) state.
+  `<div id="dash-unsaved-bar" class="!hidden"></div><div id="dash-stale-bar" class="!hidden"></div>`;
 
 function render(inner: string, attrs = 'id="settings-form" method="POST" action="/api/store"'): HTMLFormElement {
   document.body.innerHTML =
@@ -484,6 +486,28 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     ]);
     document.dispatchEvent(new Event('DOMContentLoaded'));
     expect(noticeText()).toBe(NOTICE_MANY);
+  });
+
+  it('sits at the bottom, and steps up only when another bar is already there', () => {
+    leaveDraft();
+    renderPanels([
+      { tab: 'tab-products', label: 'Products', open: true, form: '' },
+      { tab: 'tab-settings', label: 'Store settings', open: false,
+        form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` },
+    ]);
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+
+    const notice = document.getElementById('dash-draft-bar')!;
+    // The case that actually happens — a fresh load, nothing else out. It belongs at the bottom.
+    expect(notice.classList.contains('bottom-6')).toBe(true);
+    expect(notice.classList.contains('bottom-[9.5rem]')).toBe(false);
+
+    // unsaved-guard.ts raises its own bar once he has edited something; this one has to get out of
+    // the way rather than land on top of it.
+    document.getElementById('dash-unsaved-bar')!.classList.remove('!hidden');
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    expect(notice.classList.contains('bottom-[9.5rem]')).toBe(true);
+    expect(notice.classList.contains('bottom-6')).toBe(false);
   });
 
   it('opens the tab and lands the keyboard on the decision — but never makes it', () => {
