@@ -11,6 +11,7 @@ import { SHIPPING_RATES, availableDeliveryMethods, type DeliveryMethod } from '.
 const lang = getLang(Astro.cookies);
 const t = getT(lang);
 const c = t.checkout;
+const cart = t.cart;
 
 const sessionUserId = getSellerSession(Astro.cookies);
 const isLoggedIn = !!sessionUserId;
@@ -60,6 +61,12 @@ for (const s of await getVisibleStores()) {
     methodPickupPoint: c.methodPickupPoint,
     pickupFrom: c.pickupFrom,
     removeItem: c.removeItem,
+    // The quantity stepper's three labels and the unit-price suffix — the only
+    // strings this file's cart renderer still wrote in Hebrew by hand.
+    qtyGroup: cart.qtyGroup,
+    qtyDecrease: cart.qtyDecrease,
+    qtyIncrease: cart.qtyIncrease,
+    perUnit: cart.perUnit,
     removeTitle: c.removeTitle,
     removeMsg: c.removeMsg,
     removeOk: c.removeOk,
@@ -514,10 +521,10 @@ for (const s of await getVisibleStores()) {
                   // "how many" of a view-only item is a control that does nothing.
                   // The sentence takes its place, so the row keeps its height.
                   ? `<span class="text-[.775rem] font-medium [color:var(--color-accent)] me-0.5">${esc(i18n['demoExcluded'] ?? '')}</span>`
-                  : `<div class="cart-line__qty shrink-0" dir="ltr" role="group" aria-label="כמות">
-                  <button class="co-qty__btn" data-action="dec" aria-label="הפחת כמות" type="button" ${item.qty <= 1 ? 'disabled' : ''}>−</button>
+                  : `<div class="cart-line__qty shrink-0" dir="ltr" role="group" aria-label="${esc(i18n['qtyGroup'] ?? 'כמות')}">
+                  <button class="co-qty__btn" data-action="dec" aria-label="${esc(i18n['qtyDecrease'] ?? 'הפחת כמות')}" type="button" ${item.qty <= 1 ? 'disabled' : ''}>−</button>
                   <span class="co-qty__num w-7" aria-live="polite">${item.qty}</span>
-                  <button class="co-qty__btn" data-action="inc" aria-label="הגדל כמות" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>
+                  <button class="co-qty__btn" data-action="inc" aria-label="${esc(i18n['qtyIncrease'] ?? 'הגדל כמות')}" type="button" data-stock="${item.stock ?? ''}" ${item.stock != null && item.qty >= item.stock ? 'disabled' : ''}>+</button>
                 </div>`}
                 <button class="w-[26px] h-[26px] shrink-0 bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-[var(--radius-sm)] cursor-pointer [color:var(--color-muted)] flex items-center justify-center transition-[color,background,border-color] duration-[130ms] hover:[color:var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)] hover:[border-color:color-mix(in_srgb,var(--color-danger)_30%,var(--color-border))]" data-action="remove" aria-label="${esc(i18n['removeItem'] ?? 'הסר')}" type="button">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -529,7 +536,7 @@ for (const s of await getVisibleStores()) {
                    of this total. A strikethrough would read as a discount. -->
               <span class="co-card__total text-[1.0625rem] font-extrabold ${isDemo ? '[color:var(--color-muted)] font-semibold' : itemSaving(item) > 0 ? 'price-now price-now--sale' : '[color:var(--color-text)]'}">${formatPrice(item.price * item.qty)}</span>
               ${itemSaving(item) > 0 ? `<s class="price-was !ms-0 text-[.72rem]">${formatPrice(item.basePrice! * item.qty)}</s>` : ''}
-              ${item.qty > 1 ? `<span class="co-card__unit text-[.72rem] [color:var(--color-muted)]">${formatPrice(item.price)} ליח׳</span>` : ''}
+              ${item.qty > 1 ? `<span class="co-card__unit text-[.72rem] [color:var(--color-muted)]">${formatPrice(item.price)} ${esc(i18n['perUnit'] ?? 'ליח׳')}</span>` : ''}
             </div>
           </div>`;
         });
@@ -603,7 +610,7 @@ for (const s of await getVisibleStores()) {
 
       const unitEl = priceCol?.querySelector<HTMLElement>('.co-card__unit');
       if (item.qty > 1) {
-        const txt = `${formatPrice(item.price)} ליח׳`;
+        const txt = `${formatPrice(item.price)} ${i18n['perUnit'] ?? 'ליח׳'}`;
         if (unitEl) { unitEl.textContent = txt; }
         else {
           const span = document.createElement('span');
