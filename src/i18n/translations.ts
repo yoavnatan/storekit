@@ -1249,6 +1249,10 @@ export const translations = {
     notifications: {
       title: 'התראות',
       markAllRead: 'סמן הכל כנקרא',
+      clearAll: 'נקה הכל',
+      close: 'סגור התראות',
+      unreadBadge: 'התראות חדשות',
+      deleteOne: 'מחק התראה',
       empty: 'אין התראות חדשות',
       newMessage: 'הודעה חדשה',
       newOrder: 'הזמנה חדשה',
@@ -2499,6 +2503,10 @@ export const translations = {
     notifications: {
       title: 'Notifications',
       markAllRead: 'Mark all as read',
+      clearAll: 'Clear all',
+      close: 'Close notifications',
+      unreadBadge: 'New notifications',
+      deleteOne: 'Delete notification',
       empty: 'No new notifications',
       newMessage: 'New message',
       newOrder: 'New order',

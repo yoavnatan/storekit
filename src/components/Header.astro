@@ -184,6 +184,8 @@ const strEmpty   = t.store.noProductsFound;
         data-str-products={t.home.searchSectionProducts}
         data-str-empty={t.home.searchEmpty}
         data-str-view-all={t.search.viewAllResults}
+        data-str-recents={strRecents}
+        data-str-clear={strClear}
       >
         <svg
           class="header-search__icon"
@@ -305,32 +307,32 @@ const strEmpty   = t.store.noProductsFound;
           <button
             id="notif-bell-btn"
             class="cart-btn"
-            aria-label="התראות"
+            aria-label={t.notifications.title}
             aria-haspopup="true"
             aria-expanded="false"
             aria-controls="notif-dropdown"
             style="position:relative"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span id="notif-count-badge" class="cart-count cart-count--alert" hidden={initialUnreadCount <= 0} aria-live="polite" aria-atomic="true" aria-label="התראות חדשות" data-ticker-value={initialUnreadCount > 0 ? initialUnreadLabel : undefined}>{initialUnreadCount > 0 && (
+            <span id="notif-count-badge" class="cart-count cart-count--alert" hidden={initialUnreadCount <= 0} aria-live="polite" aria-atomic="true" aria-label={t.notifications.unreadBadge} data-ticker-value={initialUnreadCount > 0 ? initialUnreadLabel : undefined}>{initialUnreadCount > 0 && (
               <span class="badge-ticker__track"><span class="badge-ticker__val">{initialUnreadLabel}</span></span>
             )}</span>
           </button>
-          <div id="notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="התראות">
+          <div id="notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label={t.notifications.title}>
             <div class="notif-panel-head">
               <span style="display:inline-flex;align-items:center;gap:0.4rem">
-                התראות
+                {t.notifications.title}
                 <span id="notif-loading-dot" class="dot-pulse" hidden aria-hidden="true"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span>
               </span>
               <span style="display:inline-flex;align-items:center;gap:0.6rem">
-                <button id="notif-clear-all-btn" class="notif-clear-all-btn" type="button" hidden>נקה הכל</button>
-                <button id="notif-close-btn" class="notif-close-btn" type="button" aria-label="סגור התראות">
+                <button id="notif-clear-all-btn" class="notif-clear-all-btn" type="button" hidden>{t.notifications.clearAll}</button>
+                <button id="notif-close-btn" class="notif-close-btn" type="button" aria-label={t.notifications.close}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </span>
             </div>
             <div id="notif-list" class="notif-list">
-              <p class="notif-empty">אין התראות חדשות</p>
+              <p class="notif-empty">{t.notifications.empty}</p>
             </div>
           </div>
         </div>
@@ -491,7 +493,7 @@ const strEmpty   = t.store.noProductsFound;
 
             <a href="/buyer/dashboard" class="user-dropdown__item" role="menuitem">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-              האזור שלי
+              {t.buyerDashboard.pageTitle}
             </a>
 
             {(Astro.props.hasStore || storeMode || sellerMode) && (
@@ -858,12 +860,32 @@ const strEmpty   = t.store.noProductsFound;
 
   interface NotifItem { id: string; type?: string; title: string; body: string; read: boolean; createdAt: string; storeName?: string; relatedId?: string; }
 
+  /**
+   * The dropdown's strings, from the `notifications` slice of `#i18n-data`
+   * (BaseLayout emits it whenever the bell is rendered — both are gated on the
+   * visitor being signed in). The panel around this list has been server-rendered
+   * from `t.notifications` all along; only what THIS script writes into it was
+   * inline Hebrew, so an English shopper got an English shell over Hebrew rows.
+   * Same two-renderers-one-dictionary drift as tests/orders-i18n.test.ts holds.
+   */
+  const notifI18n: Record<string, string> = (() => {
+    try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}').notifications ?? {}; }
+    catch { return {}; }
+  })();
+
+  /** The empty state, written from three places (first load, last row deleted, clear-all). */
+  function emptyNotifHtml(): string {
+    return `<p class="notif-empty">${escH(notifI18n.empty ?? 'אין התראות חדשות')}</p>`;
+  }
+
+  const withCount = (tpl: string, n: number) => tpl.replace('{n}', String(n));
+
   function timeAgo(iso: string): string {
     const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-    if (diff < 60)    return 'עכשיו';
-    if (diff < 3600)  return `לפני ${Math.floor(diff / 60)} ד'`;
-    if (diff < 86400) return `לפני ${Math.floor(diff / 3600)} ש'`;
-    return `לפני ${Math.floor(diff / 86400)} ימים`;
+    if (diff < 60)    return notifI18n.justNow ?? 'עכשיו';
+    if (diff < 3600)  return withCount(notifI18n.minutesAgo ?? 'לפני {n} דקות', Math.floor(diff / 60));
+    if (diff < 86400) return withCount(notifI18n.hoursAgo ?? 'לפני {n} שעות', Math.floor(diff / 3600));
+    return withCount(notifI18n.daysAgo ?? 'לפני {n} ימים', Math.floor(diff / 86400));
   }
 
   // Badge/title always reflect the server's own unreadCount (computed fresh from
@@ -882,10 +904,10 @@ const strEmpty   = t.store.noProductsFound;
     if (!notifList) return;
     const clearAllBtn = document.getElementById('notif-clear-all-btn') as HTMLButtonElement | null;
     if (clearAllBtn) clearAllBtn.hidden = items.length === 0;
-    if (!items.length) { notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>'; return; }
+    if (!items.length) { notifList.innerHTML = emptyNotifHtml(); return; }
     notifList.innerHTML = items.slice(0, 10).map((n) => `
       <div class="notif-item${n.read ? '' : ' notif-item--unread'}" data-id="${escH(n.id)}" data-type="${escH(n.type ?? '')}" data-related-id="${escH(n.relatedId ?? '')}" role="button" tabindex="0">
-        <button class="notif-item__delete" data-del-id="${escH(n.id)}" type="button" aria-label="מחק התראה">
+        <button class="notif-item__delete" data-del-id="${escH(n.id)}" type="button" aria-label="${escH(notifI18n.deleteOne ?? 'מחק התראה')}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
         <div class="notif-item__title">${escH(n.title)}</div>
@@ -901,7 +923,7 @@ const strEmpty   = t.store.noProductsFound;
         const card = btn.closest<HTMLElement>('.notif-item');
         card?.remove();
         if (notifList && !notifList.querySelector('.notif-item')) {
-          notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>';
+          notifList.innerHTML = emptyNotifHtml();
         }
         if (clearAllBtn && !notifList?.querySelector('.notif-item')) clearAllBtn.hidden = true;
         fetch('/api/notifications', {
@@ -969,7 +991,7 @@ const strEmpty   = t.store.noProductsFound;
 
   document.getElementById('notif-clear-all-btn')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (notifList) notifList.innerHTML = '<p class="notif-empty">אין התראות חדשות</p>';
+    if (notifList) notifList.innerHTML = emptyNotifHtml();
     (document.getElementById('notif-clear-all-btn') as HTMLButtonElement | null)!.hidden = true;
     setBadge(0);
     fetch('/api/notifications', {
@@ -1152,6 +1174,11 @@ const strEmpty   = t.store.noProductsFound;
     const strProducts = homeSearchWrap?.dataset.strProducts ?? 'מוצרים';
     const strEmptyRes = homeSearchWrap?.dataset.strEmpty ?? 'לא נמצאו תוצאות';
     const strViewAll  = homeSearchWrap?.dataset.strViewAll ?? 'צפו בכל התוצאות';
+    // The same two labels the STORE search dropdown renders (its own strRecents/
+    // strClear further down). That copy has always read them off the wrapper;
+    // this one had them inline, so the homepage said "חיפושים אחרונים" in English.
+    const strHomeRecents = homeSearchWrap?.dataset.strRecents ?? 'חיפושים אחרונים';
+    const strHomeClear   = homeSearchWrap?.dataset.strClear ?? 'נקה';
 
     const HOME_RECENTS_KEY = 'home_search_recent_v1';
     const MAX_HOME_RECENTS = 5;
@@ -1180,8 +1207,8 @@ const strEmpty   = t.store.noProductsFound;
       if (!recents.length) { hideHomeDd(); return; }
       homeSearchDdEl!.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;padding:0.3rem 0.5rem 0.1rem">
-          <span class="hsd-section-label" style="padding:0">חיפושים אחרונים</span>
-          <button class="hsd-clear-recents" type="button" id="home-clear-recents">נקה</button>
+          <span class="hsd-section-label" style="padding:0">${strHomeRecents}</span>
+          <button class="hsd-clear-recents" type="button" id="home-clear-recents">${strHomeClear}</button>
         </div>
         <div class="hsd-recents-list">
           ${recents.map(r => `<button class="hsd-recent-chip" type="button" data-q="${r.replace(/"/g,'&quot;')}">${r}</button>`).join('')}
