@@ -89,7 +89,20 @@ if (!storeMode && !sellerMode) {
   }
 }
 
-const searchIconPos = lang === 'he' ? 'right:0.55rem' : 'left:0.55rem';
+// The leading magnifier is a real "run the search" BUTTON, not decoration — until
+// something is typed it is `disabled`, i.e. it looks and behaves exactly like the
+// inert icon it replaced (owner, 2026-08-07: after typing there was no way to search
+// but the Enter key). It sits at the START of the field, where the icon already was,
+// on purpose: the field's END is where the browser draws `type=search`'s own clear
+// "x" — exactly when text exists, i.e. exactly when this button appears — and two
+// controls a few px apart is the clutter the "very subtle" ask rules out.
+// 0.15rem, not the old 0.55rem: the button carries 0.4rem of padding to reach a
+// touchable box, so the glyph inside it still lands on the same 0.55rem as before.
+// It carries `aria-label` and NO `title`: scripts/icon-tooltips.ts already turns an
+// icon button's aria-label into the site's own hover label, and it stands down for
+// any element carrying a `title` — so adding one replaces our tooltip with the
+// browser's grey native box (done here on 2026-08-07 and reverted the same day).
+const searchIconPos = lang === 'he' ? 'right:0.15rem' : 'left:0.15rem';
 const searchInputPad = lang === 'he' ? 'padding-right:2rem;padding-left:0.75rem' : 'padding-left:2rem;padding-right:0.75rem';
 const strRecents = lang === 'he' ? 'חיפושים אחרונים' : 'Recent searches';
 const strClear   = lang === 'he' ? 'נקה' : 'Clear';
@@ -187,16 +200,6 @@ const strEmpty   = t.store.noProductsFound;
         data-str-recents={strRecents}
         data-str-clear={strClear}
       >
-        <svg
-          class="header-search__icon"
-          width="13" height="13"
-          viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="2.5"
-          aria-hidden="true"
-          style={`top:50%;${searchIconPos}`}
-        >
-          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-        </svg>
         <form role="search" autocomplete="off" onsubmit="return false" style="display:contents">
           <label for="store-search" class="visually-hidden">{t.home.searchPlaceholder}</label>
           <input
@@ -214,6 +217,26 @@ const strEmpty   = t.store.noProductsFound;
           />
           <datalist id="store-search-empty-list"></datalist>
         </form>
+        {/* AFTER the input in source order, though it is drawn before it: that is what
+            puts it next in the tab order once it wakes up, so a keyboard user meets it
+            on the way out of the field rather than having to Shift+Tab back past it. */}
+        <button
+          type="button"
+          id="home-search-go"
+          class="header-search__icon header-search__go"
+          aria-label={t.search.submit}
+          disabled
+          style={`top:50%;${searchIconPos}`}
+        >
+          <svg
+            width="13" height="13"
+            viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2.5"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </button>
         <div
           id="home-search-dropdown"
           class="header-search__dropdown"
@@ -235,16 +258,6 @@ const strEmpty   = t.store.noProductsFound;
         data-str-clear={strClear}
         data-str-empty={strEmpty}
       >
-        <svg
-          class="header-search__icon"
-          width="13" height="13"
-          viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="2.5"
-          aria-hidden="true"
-          style={`top:50%;${searchIconPos}`}
-        >
-          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-        </svg>
         <label for="header-search-input" class="visually-hidden">{t.store.searchLabel}</label>
         <input
           type="search"
@@ -258,6 +271,23 @@ const strEmpty   = t.store.noProductsFound;
           aria-expanded="false"
           style={searchInputPad}
         />
+        <button
+          type="button"
+          id="header-search-go"
+          class="header-search__icon header-search__go"
+          aria-label={t.search.submit}
+          disabled
+          style={`top:50%;${searchIconPos}`}
+        >
+          <svg
+            width="13" height="13"
+            viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2.5"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </button>
         <div
           id="header-search-dropdown"
           class="header-search__dropdown"
@@ -1164,6 +1194,28 @@ const strEmpty   = t.store.noProductsFound;
     });
   }
 
+  /**
+   * The in-field search button, for both header search bars.
+   *
+   * It is `disabled` while the field is empty and wakes with the first character, so a
+   * press can never be a no-op — the site's rule that an interaction changing no state
+   * must not move. `input` is the only event needed: it fires for typing, for paste, and
+   * for the browser's own clear "x" alike. It is also re-read on `pageshow`, because a
+   * back-navigation restores the field's text without firing anything at all, and the
+   * button would otherwise sit grey over a full field.
+   */
+  function bindSearchGo(input: HTMLInputElement, btn: HTMLButtonElement | null, run: (q: string) => void): void {
+    if (!btn) return;
+    const sync = () => { btn.disabled = !input.value.trim(); };
+    input.addEventListener('input', sync);
+    window.addEventListener('pageshow', sync);
+    btn.addEventListener('click', () => {
+      const q = input.value.trim();
+      if (q) run(q);
+    });
+    sync();
+  }
+
   // ── Home / buyer-dashboard store+product search dropdown ─────
   const homeSearchIn  = document.getElementById('store-search') as HTMLInputElement | null;
   const homeSearchDdEl = document.getElementById('home-search-dropdown') as HTMLElement | null;
@@ -1173,7 +1225,7 @@ const strEmpty   = t.store.noProductsFound;
     const strStores   = homeSearchWrap?.dataset.strStores ?? 'חנויות';
     const strProducts = homeSearchWrap?.dataset.strProducts ?? 'מוצרים';
     const strEmptyRes = homeSearchWrap?.dataset.strEmpty ?? 'לא נמצאו תוצאות';
-    const strViewAll  = homeSearchWrap?.dataset.strViewAll ?? 'צפו בכל התוצאות';
+    const strViewAll  = homeSearchWrap?.dataset.strViewAll ?? 'לכל התוצאות';
     // The same two labels the STORE search dropdown renders (its own strRecents/
     // strClear further down). That copy has always read them off the wrapper;
     // this one had them inline, so the homepage said "חיפושים אחרונים" in English.
@@ -1311,6 +1363,12 @@ const strEmpty   = t.store.noProductsFound;
       if (!q) { hideHomeDd(); renderHomeRecents(); return; }
       homeDebounce = window.setTimeout(() => renderHomeResults(q), 150);
     });
+
+    bindSearchGo(
+      homeSearchIn,
+      document.getElementById('home-search-go') as HTMLButtonElement | null,
+      goToSearch,
+    );
 
     homeSearchIn.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Escape') { hideHomeDd(); homeSearchIn.blur(); }
@@ -1531,6 +1589,12 @@ const strEmpty   = t.store.noProductsFound;
       }
       debounceTimer = window.setTimeout(() => void renderResults(q), 150);
     });
+
+    bindSearchGo(
+      input,
+      document.getElementById('header-search-go') as HTMLButtonElement | null,
+      applySearch,
+    );
 
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {

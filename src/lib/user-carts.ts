@@ -223,7 +223,7 @@ export async function getFavoriteStoresForUser(userId: string): Promise<string[]
   return found.map((r) => r.slug);
 }
 
-/** The homepage's "ביקרת לאחרונה" shelf — the account half of it (the cookie half is per-browser). */
+/** The homepage's "בוקרו לאחרונה" shelf — the account half of it (the cookie half is per-browser). */
 export async function getRecentStoresForUser(userId: string): Promise<string[]> {
   const found = await rows<{ store_slug: string }>(
     'SELECT store_slug FROM recent_stores WHERE user_id = $1 ORDER BY position',

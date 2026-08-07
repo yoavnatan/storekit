@@ -1108,7 +1108,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
 
   if (storeSlug) {
     saveLastStore({ slug: storeSlug, name: storeName, url: location.pathname + location.search });
-    // Visiting the store itself counts toward the homepage's "ביקרת לאחרונה"
+    // Visiting the store itself counts toward the homepage's "בוקרו לאחרונה"
     // shelf (SSR-read cookie). Sync to the account only when the list changed.
     if (recordStoreVisit(storeSlug)) window.dispatchEvent(new CustomEvent('recent-stores:change'));
     applyStoreScrollQuery(storeSlug);

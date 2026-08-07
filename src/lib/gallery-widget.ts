@@ -66,7 +66,7 @@ export function galleryWidgetHtml(images: string[] = [], labels: GalleryLabels =
           ${i === 0 ? `<span class="gallery-slot__label">${l.main}</span>` : ''}
           ${uploadIcon}
         </button>
-        <div class="gallery-slot__filled"${hasUrl ? '' : ' hidden'}>
+        <div class="gallery-slot__filled dash-img-skel"${hasUrl ? ' data-skeleton' : ''}${hasUrl ? '' : ' hidden'}>
           <img class="gallery-slot__img" src="${esc(cdnThumb(url, 176, 176))}" alt="" width="88" height="88" loading="lazy" decoding="async">
           <div class="gallery-slot__overlay">
             <button type="button" class="gallery-slot__action gallery-slot__action--edit" aria-label="${esc(l.editImage)}">${editIcon}</button>
