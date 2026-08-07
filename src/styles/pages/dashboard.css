@@ -633,9 +633,15 @@ textarea.input { resize: none; }
   background: var(--color-surface);
 }
 
+/* z-index 2 on all three, and it is load-bearing since 2026-08-07: the slot's <img> was given
+   `position:relative; z-index:1` so it paints over the shimmer behind it (.dash-img-skel), and
+   these three are its POSITIONED SIBLINGS with no z-index of their own — which put the photo on
+   top of the hover scrim, its edit/remove buttons, the processing spinner and the batch tick.
+   Anything else layered over this photo declares a z-index here too. */
 .gallery-slot__overlay {
   position: absolute;
   inset: 0;
+  z-index: 2;
   background: rgba(0, 0, 0, 0.48);
   border-radius: var(--radius);
   display: flex;
@@ -671,6 +677,7 @@ textarea.input { resize: none; }
 .gallery-slot__loading {
   position: absolute;
   inset: 0;
+  z-index: 2;
   background: rgba(255, 255, 255, 0.8);
   border-radius: var(--radius);
   display: flex;
@@ -692,6 +699,7 @@ textarea.input { resize: none; }
 .gallery-slot--batch-selected .gallery-slot__img { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 .gallery-slot__check {
   position: absolute;
+  z-index: 2;
   top: 5px;
   inset-inline-start: 5px;
   width: 20px;
