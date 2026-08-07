@@ -98,6 +98,10 @@ if (!storeMode && !sellerMode) {
 // controls a few px apart is the clutter the "very subtle" ask rules out.
 // 0.15rem, not the old 0.55rem: the button carries 0.4rem of padding to reach a
 // touchable box, so the glyph inside it still lands on the same 0.55rem as before.
+// It carries `aria-label` and NO `title`: scripts/icon-tooltips.ts already turns an
+// icon button's aria-label into the site's own hover label, and it stands down for
+// any element carrying a `title` — so adding one replaces our tooltip with the
+// browser's grey native box (done here on 2026-08-07 and reverted the same day).
 const searchIconPos = lang === 'he' ? 'right:0.15rem' : 'left:0.15rem';
 const searchInputPad = lang === 'he' ? 'padding-right:2rem;padding-left:0.75rem' : 'padding-left:2rem;padding-right:0.75rem';
 const strRecents = lang === 'he' ? 'חיפושים אחרונים' : 'Recent searches';
@@ -219,7 +223,6 @@ const strEmpty   = t.store.noProductsFound;
           id="home-search-go"
           class="header-search__icon header-search__go"
           aria-label={t.search.submit}
-          title={t.search.submit}
           disabled
           style={`top:50%;${searchIconPos}`}
         >
@@ -271,7 +274,6 @@ const strEmpty   = t.store.noProductsFound;
           id="header-search-go"
           class="header-search__icon header-search__go"
           aria-label={t.search.submit}
-          title={t.search.submit}
           disabled
           style={`top:50%;${searchIconPos}`}
         >
