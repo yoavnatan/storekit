@@ -451,12 +451,14 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
   const orderIds: string[] = [];
   const createdOrders: Order[] = [];
-  // Flips the moment the order rows exist, and it is what the catch below reads.
-  // Before it: a throw means no purchase happened, so the reserved stock goes back.
-  // After it: the buyer HAS been charged and the orders are real, so restocking
-  // would put sold units back on the shelf and oversell them — a failure in the
-  // trailing steps (clearing the cart, analytics, confirmation mail) is not grounds
-  // for undoing a completed purchase. The old catch rolled back either way.
+  // Flips the moment the CAPTURE succeeds — not when the order rows are written, which is what it
+  // used to mean and is no longer the same instant (lib/payment.ts: authorize → order → capture).
+  // It is what the catch below reads.
+  // Before it: a throw means no purchase happened. The stock goes back and the hold is released,
+  // so the buyer is left owing nothing.
+  // After it: the money is really taken and the orders are real, so restocking would put sold
+  // units back on the shelf and oversell them — a failure in the trailing steps (clearing the
+  // cart, analytics, confirmation mail) is not grounds for undoing a completed purchase.
   let committed = false;
   // The HOLD, kept outside the try so the catch can release it. This is the variable that makes
   // "the buyer's money is committed to us and the order is not" a state the code can see; before

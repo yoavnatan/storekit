@@ -18,7 +18,7 @@ import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
 import { getFavoriteStoresForUser, getRecentStoresForUser } from '../lib/user-carts.js';
 import { parseRecentStores, mergeStoreSlugs } from '../lib/recent-stores.js';
 import { isLaunchMode, showShelfInvite, planLaunchShelf, launchInviteCount, MIN_SHELF_INVITES } from '../lib/launch-mode.js';
-import { categoryLabel } from '../lib/store-taxonomy.js';
+import { getCategoryTranslations, resolveCategoryLabel } from '../lib/category-translations.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId    = getSellerSession(Astro.cookies);
@@ -135,7 +135,8 @@ const recentStores: FeedStore[] = recentSlugs
 // to avoid a dupe.
 // `c.category` is the stored Hebrew value the shelf was grouped by; the heading is
 // its reader-facing label (store-taxonomy.ts#categoryLabel).
-const categoryShelves = feed.categories.map((c, i) => ({ id: `cat-${i}`, title: categoryLabel(c.category, lang), stores: c.stores }));
+const categoryTranslations = await getCategoryTranslations();
+const categoryShelves = feed.categories.map((c, i) => ({ id: `cat-${i}`, title: resolveCategoryLabel(c.category, lang, categoryTranslations), stores: c.stores }));
 const discoveryShelf = { id: 'discovery', title: t.home.shelfDiscovery, stores: feed.discovery.filter((fs) => !recentSlugs.includes(fs.store.slug)) };
 const discoverHasContent = recentStores.length > 0 || categoryShelves.some((s) => s.stores.length > 0)
   || feed.spotlight.length > 0 || discoveryShelf.stores.length > 0;

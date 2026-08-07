@@ -11,7 +11,7 @@ import { countRealStores, filterShopperStores, isDemoStore, realStores } from '.
 import { getStorePreviews, STORE_PREVIEW_SLOTS } from '../lib/store-products.js';
 import LoadingSweep from '../components/LoadingSweep.astro';
 import { isLaunchMode, showShelfInvite, launchInviteCount, LAUNCH_GRID_SLOTS } from '../lib/launch-mode.js';
-import { categoryLabel } from '../lib/store-taxonomy.js';
+import { getCategoryTranslations, resolveCategoryLabel } from '../lib/category-translations.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const PAGE_SIZE = 24;
@@ -67,9 +67,14 @@ const storesWithProducts = shopperStores
 // Sorted by the LABEL a reader sees, not by the stored Hebrew value: the value is
 // the identity (see store-taxonomy.ts#categoryLabel) and in English the chips would
 // otherwise come out in Hebrew alphabetical order under English words.
+// One read for the whole chip row, then a pure lookup per chip — the same shape
+// store-categories.ts uses, and for the same reason: a query per chip would make
+// this row a dozen round-trips for data it already holds.
+const categoryTranslations = await getCategoryTranslations();
+const catLabel = (c: string) => resolveCategoryLabel(c, lang, categoryTranslations);
 const allCategories = [...new Set(
   storesWithProducts.flatMap(({ store }) => (store.categories ?? []).map((c) => c.trim()).filter(Boolean))
-)].sort((a, b) => categoryLabel(a, lang).localeCompare(categoryLabel(b, lang), lang === 'he' ? 'he' : 'en'));
+)].sort((a, b) => catLabel(a).localeCompare(catLabel(b), lang === 'he' ? 'he' : 'en'));
 
 function norm(s: string): string {
   return s.toLowerCase().trim();
@@ -228,7 +233,7 @@ const jsonLd = {
                   {/* The ICON still keys off the stored Hebrew value — the icon map is
                       keyed by it — while the text is the reader's label. */}
                   <CategoryIcon label={c} />
-                  {categoryLabel(c, lang)}
+                  {catLabel(c)}
                 </a>
               ))}
             </div>

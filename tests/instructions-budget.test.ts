@@ -50,6 +50,15 @@ import { fileURLToPath } from 'node:url';
  *
  * When this fails, lowering CEILING to the new number is the wrong move unless the number went down.
  */
+/**
+ * **The anchoring trap, moved here from AI_INSTRUCTIONS §Workflow step 5 (2026-08-07) because this
+ * is the file it governs.** `## Workflow` also appears EARLIER in that document as a
+ * cross-reference, so `text.indexOf('## Workflow')` finds the mention rather than the section and a
+ * naive slice comes out negative or empty. A reverse doc-check built that way once reported all 323
+ * `src/` files as undocumented when the true count was zero. Anchor on LINE NUMBERS after
+ * `## Features built`, never on the first substring match — which is what the finder below does,
+ * and why its own "finds both section anchors" test exists.
+ */
 const CEILING = 40_153;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
