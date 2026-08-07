@@ -18,7 +18,6 @@ const FOUND = 'unsaved changes from last time';
 const RESTORE = 'restore';
 const DISCARD = 'dismiss';
 const NOTICE = 'unsaved work in {section}';
-const NOTICE_MANY = 'unsaved work in several places';
 
 /**
  * The <script is:inline define:vars={…}> body, with its vars bound the way Astro binds them.
@@ -30,16 +29,23 @@ function installGuard(): void {
   const file = readFileSync(SOURCE, 'utf8');
   const body = file.match(/<script is:inline define:vars=\{\{[^}]*\}\}>([\s\S]*?)<\/script>/)?.[1];
   if (!body) throw new Error('guard script not found — did the <script is:inline> tag change?');
-  new Function('msg', 'draftFound', 'draftRestore', 'draftDiscard', 'draftNotice', 'draftNoticeMany', body)(
-    MSG, FOUND, RESTORE, DISCARD, NOTICE, NOTICE_MANY,
+  new Function('msg', 'draftFound', 'draftRestore', 'draftDiscard', 'draftNotice', body)(
+    MSG, FOUND, RESTORE, DISCARD, NOTICE,
   );
 }
 installGuard();
 
-/** The floating notice, as the component server-renders it — the script only ever fills it in. */
+// jsdom ships no layout, so it implements neither of these. Every browser does, and the guard's
+// restore path ends by putting the form in front of the seller — so without them the tests would be
+// asserting against a script that cannot finish.
+Element.prototype.scrollIntoView = vi.fn();
+
+/** The floating notice, as the component server-renders it — the script only ever fills it in.
+ *  Its two buttons are the same two the in-form bar carries, and they call the same functions. */
 const NOTICE_BAR =
   `<div id="dash-draft-bar" class="!hidden bottom-6"><span id="dash-draft-msg"></span>` +
-  `<button type="button" id="dash-draft-go"></button></div>` +
+  `<button type="button" id="dash-draft-restore">${RESTORE}</button>` +
+  `<button type="button" id="dash-draft-discard">${DISCARD}</button></div>` +
   // The two mid-task bars it has to stay clear of, in their resting (hidden) state.
   `<div id="dash-unsaved-bar" class="!hidden"></div><div id="dash-stale-bar" class="!hidden"></div>`;
 
@@ -435,7 +441,6 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     // jsdom does no layout, so `getClientRects()` is empty for every element — which this script
     // reads as "in a closed panel". That is the case under test; the one test that needs the
     // opposite stubs it explicitly.
-    Element.prototype.scrollIntoView = vi.fn();
   });
 
   /** Leave a draft behind for the settings form, the way a crash would. */
@@ -467,7 +472,7 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     expect(noticeShown()).toBe(false);
   });
 
-  it('stops naming one section once a second one is holding work too', () => {
+  it('answers one offer at a time, and the next one takes its place', () => {
     leaveDraft();
     // A second draft, for a product editor — a different form, a different key.
     renderPanels([{ tab: 'tab-products', label: 'Products', open: true,
@@ -477,15 +482,38 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     type('name', 'also never saved');
     vi.advanceTimersByTime(1000);
 
+    const products = { tab: 'tab-products', label: 'Products', open: false,
+      form: `<form method="POST" action="/api/product" data-unsaved-guard>` +
+            `<input type="hidden" name="productId" value="p1" />${FIELDS}</form>` };
+    const settings = { tab: 'tab-settings', label: 'Store settings', open: false,
+      form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` };
+    renderPanels([products, settings]);
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+
+    // Never "in several places": the buttons would have no unambiguous subject.
+    expect(noticeText()).toBe('unsaved work in Products');
+    document.getElementById('dash-draft-discard')!.click();
+    expect(noticeText()).toBe('unsaved work in Store settings');
+  });
+
+  it('restores from the bottom bar itself, and ends with the form in front of him', () => {
+    leaveDraft();
     renderPanels([
-      { tab: 'tab-products', label: 'Products', open: false,
-        form: `<form method="POST" action="/api/product" data-unsaved-guard>` +
-              `<input type="hidden" name="productId" value="p1" />${FIELDS}</form>` },
+      { tab: 'tab-products', label: 'Products', open: true, form: '' },
       { tab: 'tab-settings', label: 'Store settings', open: false,
         form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` },
     ]);
     document.dispatchEvent(new Event('DOMContentLoaded'));
-    expect(noticeText()).toBe(NOTICE_MANY);
+
+    let opened = '';
+    document.getElementById('tab-settings')!.addEventListener('click', () => { opened = 'tab-settings'; });
+    document.getElementById('dash-draft-restore')!.click();
+
+    // The same act the bar inside the form performs — and then the form, because a restore is not a
+    // save: those values sit there until he presses the form's own save button.
+    expect(document.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('never saved');
+    expect(opened).toBe('tab-settings');
+    expect(noticeShown()).toBe(false);
   });
 
   it('sits at the bottom, and steps up only when another bar is already there', () => {
@@ -510,7 +538,7 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
     expect(notice.classList.contains('bottom-6')).toBe(false);
   });
 
-  it('opens the tab and lands the keyboard on the decision — but never makes it', () => {
+  it('leaves the values alone when he says no from the bottom bar', () => {
     leaveDraft();
     renderPanels([
       { tab: 'tab-products', label: 'Products', open: true, form: '' },
@@ -518,15 +546,13 @@ describe('FormFallbackGuard — the floating notice for an offer he cannot see',
         form: `<form id="settings-form" method="POST" action="/api/store" data-unsaved-guard>${FIELDS}</form>` },
     ]);
     document.dispatchEvent(new Event('DOMContentLoaded'));
+    document.getElementById('dash-draft-discard')!.click();
 
-    let opened = '';
-    document.getElementById('tab-settings')!.addEventListener('click', () => { opened = 'tab-settings'; });
-    document.getElementById('dash-draft-go')!.click();
-
-    expect(opened).toBe('tab-settings');
-    // The button carries him to the offer; the value is still the server's until HE restores it.
-    expect(document.activeElement?.textContent).toBe(RESTORE);
     expect(document.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('server');
+    expect(noticeShown()).toBe(false);
+    // Gone for good, and not offered again on the next load — the same statement the in-form
+    // "delete them" makes, because it is the same function.
+    expect(Object.keys(localStorage).filter((k) => k.startsWith('dz-draft:'))).toEqual([]);
   });
 
   it('keeps quiet about an offer that is already in front of him', () => {

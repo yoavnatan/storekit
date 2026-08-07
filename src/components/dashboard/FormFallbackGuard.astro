@@ -32,10 +32,10 @@
  *  a. *"אפשר לפספס את זה"* — the bar is inserted at the top of the form it belongs to, and that form
  *     usually sits in a panel the seller is not looking at. Panels are hidden, not destroyed, so an
  *     offer in Settings was announced to nobody while he stood in Products. It is now backed by a
- *     FLOATING notice (`#dash-draft-bar` below) that says which section is holding work and carries
- *     him there — the same shape, the same slot family and the same reasoning as
- *     `UnsavedChangesBar`, down to "it never decides anything for him". The decision itself stays on
- *     the bar inside the form, because that is the only place he can see what restoring would change.
+ *     FLOATING notice (`#dash-draft-bar` below), which appears exactly when the bar inside the form
+ *     is NOT in front of him and is otherwise the same bar: the same sentence, the same two buttons,
+ *     the same two functions behind them. The only thing it adds is WHERE, which is the one thing
+ *     the in-form bar never has to say.
  *
  *  b. *"לערוך משהו ואז השחזור ימחק את מה שהיוזר עשה"* — the offer's payload was frozen at load, so
  *     typing into an offered field and then pressing restore wrote the older value over the newer
@@ -74,17 +74,12 @@ interface Props {
   draftFound: string;
   draftRestore: string;
   draftDiscard: string;
-  /** The floating notice for an offer he cannot see. `{section}` is the tab's own label. */
+  /** The floating notice for an offer he cannot see: the same sentence as `draftFound`, plus the
+   *  one thing that bar never has to say — WHERE. `{section}` is the tab's own label. It reuses
+   *  `draftRestore` / `draftDiscard` above, because it is the same two buttons. */
   draftNotice: string;
-  draftNoticeMany: string;
-  /** Its button. Deliberately the SAME string UnsavedChangesBar uses (`unsavedGo` — "קח אותי לשם"),
-   *  because it is the same act: it carries him to the offer and stops there. The first wording was
-   *  "הצג", and the owner read it exactly as it sounds — "press this and you will be shown the
-   *  changes" — which is not what happens and is not what should happen: the values only mean
-   *  anything sitting in the fields they belong to (2026-08-07). */
-  goLabel: string;
 }
-const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNoticeMany, goLabel } = Astro.props;
+const { message, draftFound, draftRestore, draftDiscard, draftNotice } = Astro.props;
 ---
 
 {/* The offer he would otherwise miss. Server-rendered and hidden rather than injected by the
@@ -116,10 +111,11 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNotic
     <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>
   </svg>
   <span id="dash-draft-msg"></span>
-  <button type="button" id="dash-draft-go" class="btn btn--sm shrink-0">{goLabel}</button>
+  <button type="button" id="dash-draft-restore" class="btn btn--sm shrink-0">{draftRestore}</button>
+  <button type="button" id="dash-draft-discard" class="btn btn--ghost btn--sm shrink-0">{draftDiscard}</button>
 </div>
 
-<script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard, draftNotice, draftNoticeMany }}>
+<script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard, draftNotice }}>
   (function () {
     var PREFIX = 'dz-draft:';
     var MAX_AGE = 7 * 24 * 60 * 60 * 1000;
@@ -339,18 +335,8 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNotic
       no.className = 'btn btn--ghost btn--sm';
       no.textContent = draftDiscard;
 
-      // Drop BEFORE applying, not after: `apply` fires an input event per field, which queues a
-      // fresh draft of the restored values — and a `drop` running afterwards would cancel exactly
-      // that, leaving recovered work unprotected until the next keystroke. Same order for
-      // `closeOffer`, which also has to run first: while the offer is open `save` overlays its
-      // values, and the draft written a moment later would carry the pre-restore copy back.
-      yes.addEventListener('click', function () {
-        var pending = restorable(key);
-        closeOffer(key);
-        drop(form);
-        if (pending) apply(form, pending);
-      });
-      no.addEventListener('click', function () { closeOffer(key); drop(form); });
+      yes.addEventListener('click', function () { acceptOffer(key); });
+      no.addEventListener('click', function () { rejectOffer(key); });
 
       bar.appendChild(text);
       bar.appendChild(yes);
@@ -358,6 +344,58 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNotic
       form.insertBefore(bar, form.firstChild);
       offers[key] = { form: form, bar: bar, values: values };
       return bar;
+    }
+
+    /**
+     * Say yes to an offer. ONE implementation, because the offer is shown in two places — inside
+     * the form and, when that is off screen, on the floating notice — and they are the same
+     * decision. An earlier version gave the floating one a "take me there" button instead, on the
+     * theory that the decision belongs beside the form; the owner asked why (2026-08-07) and the
+     * theory did not survive the question. The bar inside the form shows exactly as much as the
+     * floating one does — one sentence — so the trip bought him nothing and cost a second verb.
+     *
+     * It still ENDS at the form, because a restore is not a save: the recovered values sit in those
+     * fields until he presses the form's own save button, so that is where he has to be either way.
+     * Restoring into a panel he cannot see and leaving him there would be a change with nothing on
+     * screen to show for it.
+     *
+     * Drop BEFORE applying, not after: `apply` fires an input event per field, which queues a fresh
+     * draft of the restored values — and a `drop` running afterwards would cancel exactly that,
+     * leaving recovered work unprotected until the next keystroke. `closeOffer` first for the same
+     * kind of reason: while the offer is open `save` overlays its values, so a draft written a
+     * moment later would carry the pre-restore copy back.
+     */
+    function acceptOffer(key) {
+      var o = offers[key];
+      if (!o) return;
+      var form = o.form;
+      var pending = restorable(key);
+      closeOffer(key);
+      drop(form);
+      if (pending) apply(form, pending);
+      reveal(form);
+    }
+
+    function rejectOffer(key) {
+      var o = offers[key];
+      if (!o) return;
+      closeOffer(key);
+      drop(o.form);
+    }
+
+    /** Put the form in front of him — opening its tab first if it is in a closed one. Does nothing
+     *  when he is already looking at it (`__dashScrollTo` is the no-op-when-visible helper). */
+    function reveal(form) {
+      var panel = form.closest ? form.closest('.dash-panel') : null;
+      var id = panel && panel.getAttribute('aria-labelledby');
+      var tab = id ? document.getElementById(id) : null;
+      if (tab && panel.hidden) tab.click();   // DashTabsBoot owns panel switching, and it is inline too
+      // The house helper when the module graph is alive — it accounts for the pinned chrome. The
+      // fallback is for the load this whole component exists for, where none of the bundle arrived,
+      // and it says 'center' rather than 'start' deliberately: 'start' parks the target's top edge
+      // at viewport y:0, which on this site is BEHIND the fixed header (tests/scroll-below-header).
+      if (window.__dashScrollTo) window.__dashScrollTo(form);
+      else form.scrollIntoView({ block: 'center' });
     }
 
     /* ---- the floating notice: an offer he cannot see says so from the bottom of every tab ---- */
@@ -401,14 +439,16 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNotic
       var bar = document.getElementById('dash-draft-bar');
       var msgEl = document.getElementById('dash-draft-msg');
       if (!bar || !msgEl) return;
-      var missed = [];
-      for (var key in offers) if (!onScreen(offers[key].bar)) missed.push(offers[key]);
-      noticeTarget = missed[0] || null;
+      // ONE offer at a time, always the first he cannot see. There used to be a second sentence for
+      // "in several places", which existed only because the button navigated and could not act on
+      // two forms at once. Now that the notice answers the offer itself, that sentence would be a
+      // bar whose buttons had no unambiguous subject. Answer this one and the next takes its place.
+      noticeTarget = null;
+      for (var key in offers) if (!onScreen(offers[key].bar)) { noticeTarget = offers[key]; break; }
       var section = noticeTarget ? sectionOf(noticeTarget.form) : '';
+      // The same sentence the bar inside the form uses, plus the one thing that bar never has to
+      // say: WHERE. That is the entire difference between them.
       var message = !noticeTarget ? ''
-        : missed.length > 1 ? draftNoticeMany
-        // A form outside the tab shell has no section to name; the plain sentence still tells him
-        // there is something, which is the whole job.
         : section ? draftNotice.replace('{section}', section) : draftFound;
       if (msgEl.textContent !== message) msgEl.textContent = message;
       bar.classList.toggle('!hidden', !message);
@@ -436,31 +476,23 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNotic
       noticeFrame = requestAnimationFrame(function () { noticeFrame = 0; refreshNotice(); });
     }
 
-    /** Take him to the offer; never answer it for him. The decision stays on the bar inside the
-     *  form, because that is the only place he can see what restoring would change — the same line
-     *  UnsavedChangesBar draws between telling and doing. */
-    function wireNoticeButton() {
-      var go = document.getElementById('dash-draft-go');
-      if (!go || go.hasAttribute('data-wired')) return;
-      go.setAttribute('data-wired', '');
-      go.addEventListener('click', function () {
-        var o = noticeTarget;
-        if (!o) return;
-        var panel = o.form.closest ? o.form.closest('.dash-panel') : null;
-        var id = panel && panel.getAttribute('aria-labelledby');
-        var tab = id ? document.getElementById(id) : null;
-        if (tab) tab.click();   // DashTabsBoot owns panel switching, and it is inline like this one
-        // The house helper when the module graph is alive — it accounts for the pinned chrome and
-        // does nothing when the bar is already fully on screen. `scrollIntoView` is the fallback for
-        // the load this component exists for, where nothing of the bundle arrived.
-        if (window.__dashScrollTo) window.__dashScrollTo(o.bar);
-        else o.bar.scrollIntoView({ block: 'center' });
-        // Land the keyboard on the decision, not at the top of the panel. `preventScroll` so the
-        // focus does not fight the animation that is already carrying him there.
-        var first = o.bar.querySelector('button');
-        if (first) first.focus({ preventScroll: true });
-        scheduleNotice();
-      });
+    /** The notice's two buttons ARE the offer's two buttons — `acceptOffer` / `rejectOffer`, the
+     *  same functions the bar inside the form calls. Nothing here decides anything the other bar
+     *  would decide differently; this one only exists because that one is out of sight. */
+    function wireNoticeButtons() {
+      var pairs = [['dash-draft-restore', acceptOffer], ['dash-draft-discard', rejectOffer]];
+      for (var i = 0; i < pairs.length; i++) {
+        var btn = document.getElementById(pairs[i][0]);
+        if (!btn || btn.hasAttribute('data-wired')) continue;
+        btn.setAttribute('data-wired', '');
+        btn.addEventListener('click', (function (act) {
+          return function () {
+            var o = noticeTarget;
+            if (!o) return;
+            act(keyFor(o.form));
+          };
+        })(pairs[i][1]));
+      }
     }
 
     document.addEventListener('submit', function (e) {
@@ -523,7 +555,7 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNotic
     });
 
     document.addEventListener('DOMContentLoaded', function () {
-      wireNoticeButton();
+      wireNoticeButtons();
       // A scan describes ONE document: both of these are "since this page loaded", so a re-scan
       // that inherited them would measure his typing against a form that no longer exists.
       offers = {};
