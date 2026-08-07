@@ -1528,7 +1528,7 @@ const pmI18n = {
     // this hint — both buttons that call it are server-rendered and carry them.
     const lead = btn.dataset.strLoginHint ?? 'כדי לשלוח הודעה יש';
     const link = btn.dataset.strLoginHintLink ?? 'להתחבר';
-    hint.innerHTML = `<span>${escHtml(lead)} <a href="${loginUrl}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">${escHtml(link)}</a></span>`;
+    hint.innerHTML = `<span>${escHtml(lead)} <a href="${escHtml(loginUrl)}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">${escHtml(link)}</a></span>`;
     hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:var(--shadow-card);font-size:0.8rem;color:var(--color-text)';
     hint.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease', fill: 'forwards' });
     const container = btn.parentElement ?? btn;

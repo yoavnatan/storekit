@@ -1259,11 +1259,11 @@ const strEmpty   = t.store.noProductsFound;
       if (!recents.length) { hideHomeDd(); return; }
       homeSearchDdEl!.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;padding:0.3rem 0.5rem 0.1rem">
-          <span class="hsd-section-label" style="padding:0">${strHomeRecents}</span>
-          <button class="hsd-clear-recents" type="button" id="home-clear-recents">${strHomeClear}</button>
+          <span class="hsd-section-label" style="padding:0">${escH(strHomeRecents)}</span>
+          <button class="hsd-clear-recents" type="button" id="home-clear-recents">${escH(strHomeClear)}</button>
         </div>
         <div class="hsd-recents-list">
-          ${recents.map(r => `<button class="hsd-recent-chip" type="button" data-q="${r.replace(/"/g,'&quot;')}">${r}</button>`).join('')}
+          ${recents.map(r => `<button class="hsd-recent-chip" type="button" data-q="${escH(r)}">${escH(r)}</button>`).join('')}
         </div>`;
       homeSearchDdEl!.querySelector<HTMLButtonElement>('#home-clear-recents')?.addEventListener('click', () => { clearHomeRecents(); hideHomeDd(); });
       homeSearchDdEl!.querySelectorAll<HTMLButtonElement>('.hsd-recent-chip').forEach(btn => {
@@ -1493,11 +1493,11 @@ const strEmpty   = t.store.noProductsFound;
       const strClear = headerSearch?.dataset.strClear ?? 'נקה';
       dropdown.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;padding:0.3rem 0.5rem 0.1rem">
-          <span class="hsd-section-label" style="padding:0">${strRecents}</span>
-          <button class="hsd-clear-recents" type="button">${strClear}</button>
+          <span class="hsd-section-label" style="padding:0">${escH(strRecents)}</span>
+          <button class="hsd-clear-recents" type="button">${escH(strClear)}</button>
         </div>
         <div class="hsd-recents-list">
-          ${recents.map((r) => `<button class="hsd-recent-chip" type="button" data-q="${r.replace(/"/g, '&quot;')}">${r}</button>`).join('')}
+          ${recents.map((r) => `<button class="hsd-recent-chip" type="button" data-q="${escH(r)}">${escH(r)}</button>`).join('')}
         </div>`;
       dropdown.querySelector<HTMLButtonElement>('.hsd-clear-recents')?.addEventListener('click', () => {
         clearRecents();
