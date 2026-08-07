@@ -48,8 +48,7 @@ import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
 import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
 import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
-import { getMoneyEventDay, getMoneyEvents } from '../../lib/money-events.js';
-import { parseMoneyLogQuery, filterMoneyEvents, eventPage, widenToEvent } from '../../lib/admin-moneylog-filter.js';
+import { loadMoneyLogPanel } from '../../lib/admin-moneylog-panel.js';
 import { reconcilePlatform } from '../../lib/reconcile.js';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
@@ -125,7 +124,6 @@ const tabUrl = buildAdminUrl;
 // some of it. Nothing below re-reads `sp` for these.
 const orderQuery = parseOrderQuery(sp);
 const threadQuery = parseAdminThreadQuery(sp);
-const requestedMoneyLog = parseMoneyLogQuery(sp);
 
 // "This month" is decided once, HERE, and handed to the query — the Overview card and the Stores
 // tab used to each ask their own clock what month it was (business-day.ts).
@@ -163,7 +161,7 @@ const [
   sellers, stores, newSince, openOrdersByStore, orderTotals, revenueByStore,
   orderStoreNamesRaw, threadsPage, errorsAll,
   brandCampaigns, adCampaigns, campaignTotals, brandTotals, platformAdSettings,
-  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLogEventDay,
+  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLog,
 ] = await Promise.all([
   getAllSellers(),
   getAllStores(),
@@ -198,17 +196,16 @@ const [
   getCampaignsInRange(perfFromISO, perfToISO),
   getAnalyticsOverview(dataRange.from, dataRange.to),
   getSellerFunnel(),
-  // A `?mev=` permalink widens the default window back to the row it names — otherwise every link
-  // older than 30 days would answer "this row is not in the current filter", which is the exact
-  // failure `moneyLogTargetMissing` exists to report, arriving by default.
-  getMoneyEventDay(requestedMoneyLog.eventId),
+  // Narrowing, search, count and page slice are ALL in the query now (money-events.ts) — this tab
+  // used to read every row of its 30-day window to display fifteen of them, over a network. Its own
+  // three-step chain (permalink → window → page) is stated once, in admin-moneylog-panel.ts.
+  loadMoneyLogPanel(sp),
 ]);
 
 const storeIds = stores.map((s) => s.id);
 const orderStoreNames = sortOrderStoreNames(orderStoreNamesRaw);
 const unreadMessagesForAdmin = threadsPage.unreadForAdmin;
 const perfStoreInputs = buildPlatformStoreInputs(stores, sellers);
-const moneyLogQuery = widenToEvent(requestedMoneyLog, moneyLogEventDay);
 const newOnly: Record<TrackedAdminTab, boolean> = {
   sellers: sp.get('snew') === '1',
   stores: sp.get('stnew') === '1',
@@ -219,7 +216,7 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 // ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
 const [
   productCounts, reconciliation, ordersPage, ordersSinceCount,
-  perfViews, perfSales, moneyLogEventsRaw, productNames,
+  perfViews, perfSales, productNames,
 ] = await Promise.all([
   getProductCountsByStore(storeIds),
   // Cross-check every money headline against a second, independent computation over the real
@@ -240,10 +237,6 @@ const [
   // either (DB_MIGRATION_PLAN.md §5 for the views, §3 for the sales).
   getStoreViewStats(perfStoreInputs.map((s) => s.id), perfFromISO, perfToISO, perfGranularity),
   getPlatformSales(perfStoreInputs.map((s) => s.slug), perfFromISO, perfToISO, perfGranularity),
-  // Type AND date window are pushed into the query (money-events.ts) — the journal is the one
-  // table nothing is deleted from, so opening this tab must not mean reading every row ever
-  // appended. That is why the window has a DEFAULT (30 days, decided with the owner 2026-08-03).
-  getMoneyEvents(moneyLogQuery.type, moneyLogQuery.from, moneyLogQuery.to),
   // Names for the handful of product ids the two top-lists actually name — a lookup by id, not a
   // pass over the whole catalogue (§3). A product that has since been deleted simply has no entry,
   // and the panel already falls back to rendering the id.
@@ -390,31 +383,11 @@ const perfRevenue = buildPlatformRevenue(
 // and the panel already falls back to rendering the id.
 
 // ── Money journal tab ──
-// Type narrowing happens inside getMoneyEvents so it covers the WHOLE journal before
-// any slicing (money-events.ts's header says why); search/date-window/permalink are a
-// filter over its result (admin-moneylog-filter.ts's header says why). Paginates
-// 15/page like every other list tab. The one rule that lives HERE because it is about
-// this page's URL: a `?mev=` permalink picks the page holding that row, but an explicit
-// ?mlpage always wins — otherwise the next arrow click snaps back to the linked row.
-// Type AND date window are pushed into the query (money-events.ts) — the journal is the one
-// table nothing is deleted from, so opening this tab must not mean reading every row ever
-// appended. That is why the window has a DEFAULT (30 days, decided with the owner 2026-08-03):
-// without one, "the admin opened the money log" was the last unbounded read on this page.
-// The free-text pass stays in memory: it matches the Hebrew LABEL of an event type and the
-// amount as it is RENDERED, and neither exists in the database (DB_MIGRATION_PLAN.md §8).
-//
-// A `?mev=` permalink widens the default window back to the row it names — otherwise every link
-// older than 30 days would answer "this row is not in the current filter", which is the exact
-// failure `moneyLogTargetMissing` exists to report, arriving by default.
-const moneyLogEvents = filterMoneyEvents(moneyLogEventsRaw, moneyLogQuery);
-const moneyLogTargetPage = eventPage(moneyLogEvents, moneyLogQuery.eventId);
-const moneyLogPageResult = paginate(
-  moneyLogEvents,
-  sp.get('mlpage') ? parsePage(sp, 'mlpage') : (moneyLogTargetPage ?? 1),
-);
-// Linked row that this filter/journal doesn't contain — said out loud, never silently
-// swallowed into "here's page 1".
-const moneyLogTargetMissing = moneyLogQuery.eventId !== '' && moneyLogTargetPage === null;
+// Nothing left here: type, business-day window, free-text search, count and page slice are all in
+// the query, and the three-step permalink chain that decides WHICH page is in `admin-moneylog-
+// panel.ts` (fetched in wave 1 above). What used to be here read every row of a 30-day window over
+// the network in order to render fifteen of them, then re-applied in JS the narrowing it had just
+// asked the database for.
 
 // ── "(N) new since last opened" tab badges (CURRENT_TASK.md → סשן ב׳) ──
 // Counted over the UNFILTERED lists on purpose: the badge answers "is there
@@ -648,17 +621,17 @@ const badgeCounts: Record<string, number> = {
 
       <div id="dash-panel-moneylog" class="dash-panel" role="tabpanel" aria-labelledby="tab-moneylog" hidden={initialPanel !== 'moneylog'}>
         <AdminMoneyLogPanel
-          events={moneyLogPageResult.items}
-          query={moneyLogQuery}
-          targetMissing={moneyLogTargetMissing}
-          total={moneyLogPageResult.total}
-          page={moneyLogPageResult.page}
-          totalPages={moneyLogPageResult.totalPages}
+          events={moneyLog.events}
+          query={moneyLog.query}
+          targetMissing={moneyLog.targetMissing}
+          total={moneyLog.total}
+          page={moneyLog.page}
+          totalPages={moneyLog.totalPages}
           buildUrl={(p) => tabUrl('moneylog', {
-            mtype: moneyLogQuery.type,
-            mq: moneyLogQuery.q || undefined,
-            mfrom: moneyLogQuery.from || undefined,
-            mto: moneyLogQuery.to || undefined,
+            mtype: moneyLog.query.type,
+            mq: moneyLog.query.q || undefined,
+            mfrom: moneyLog.query.from || undefined,
+            mto: moneyLog.query.to || undefined,
             mlpage: p > 1 ? String(p) : undefined,
           })}
           reconciliation={reconciliation}

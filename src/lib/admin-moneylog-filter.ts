@@ -14,11 +14,16 @@ import { isMoneyEventType, MONEY_EVENT_LABELS, type MoneyEvent, type MoneyEventT
  * free-text search (an order id, an אסמכתא, a store), a date window, and a way to
  * link straight AT a row.
  *
- * The narrowing lives here, not in money-events.ts, exactly as that module's own
- * header asks: `getMoneyEvents` owns the vocabulary-level type filter (so it applies
- * before any slicing), and anything per-order / per-store / per-day is a filter over
- * its result. This module is that filter — and it is pure, so every rule below is
- * unit-tested without a journal file on disk.
+ * **What runs in production, and what this is now.** `parseMoneyLogQuery`, `widenToEvent` and
+ * `hasActiveMoneyLogFilters` are live — they turn the URL into a question. `filterMoneyEvents` and
+ * `eventPage` are NOT: the narrowing they describe moved into SQL (money-events.ts,
+ * moneylog-search.ts) once the journal stopped being read whole to display fifteen rows of it.
+ *
+ * They are kept deliberately, and not as leftovers. They are the readable statement of the rules —
+ * what a search term may match, which calendar a bound means, how a permalink resolves to a page —
+ * and `tests/moneylog-search-parity.test.ts` runs the SQL against them over a corpus and fails on
+ * any disagreement. Two implementations only pay for themselves when something forces them to
+ * agree; that test is the something. Delete either one and the other stops being checked.
  */
 
 export interface MoneyLogQuery {
