@@ -27,6 +27,7 @@ const STORES: Record<string, { id: string; slug: string; name: string; sellerId:
 };
 
 const createOrder = vi.fn((input: Record<string, unknown>) => ({ id: 'order-1', ...input }));
+const updateOrder = vi.fn(async (_id: string, _patch: Record<string, unknown>) => ({ id: 'order-1' }));
 const createNotification = vi.fn();
 const getSellerSession = vi.fn(() => null as string | null);
 // Seller accounts keyed by address. The real column is `citext`, so the lookup is
@@ -58,7 +59,14 @@ vi.mock('../src/lib/store-products.js', () => ({
   isProductVisible: (product: { blocked?: boolean; hidden?: boolean }) => !product.blocked && !product.hidden,
   LOW_STOCK_THRESHOLD: 3,
 }));
-vi.mock('../src/lib/orders.js', () => ({ createOrder: (input: Record<string, unknown>) => createOrder(input) }));
+// `updateOrder` is mocked alongside `createOrder` because the checkout writes the order rows as
+// 'pending' and flips them to 'paid' only after the capture succeeds (lib/payment.ts's header says
+// why). A mock missing it made the whole POST throw, which is the mock lying about the endpoint
+// rather than the endpoint being wrong.
+vi.mock('../src/lib/orders.js', () => ({
+  createOrder: (input: Record<string, unknown>) => createOrder(input),
+  updateOrder: (id: string, patch: Record<string, unknown>) => updateOrder(id, patch),
+}));
 // `async` on purpose, not incidentally: checkout attaches a `.catch()` to this call so a failed
 // notification cannot fail a purchase that is already committed, and a mock returning `undefined`
 // would make that line throw here while working in production — the mock testing the mock again.

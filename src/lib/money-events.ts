@@ -59,10 +59,17 @@ import { BUSINESS_TIMEZONE, isDayISO } from './business-day.js';
  *                                takes an order out of every revenue sum while leaving
  *                                paymentStatus at 'paid'.
  *   order_discount_changed     — a seller applied/changed a discount on their slice.
+ *   charge_voided              — a charge SUCCEEDED and the purchase behind it then failed, so
+ *                                the money was given back (payment.ts#voidCharge). The most
+ *                                important row in this journal when it exists: it is the only
+ *                                trace that a buyer's card was touched for an order that does
+ *                                not exist. A row whose detail says the void FAILED is money
+ *                                owed back to a real person, and it pages someone.
  */
 export const MONEY_EVENT_TYPES = [
   'payment_attempted',
   'order_created',
+  'charge_voided',
   'duplicate_checkout_blocked',
   'payment_status_changed',
   'shipping_status_changed',
@@ -83,6 +90,7 @@ export type MoneyEventType = (typeof MONEY_EVENT_TYPES)[number];
 export const MONEY_EVENT_LABELS: Record<MoneyEventType, string> = {
   payment_attempted: 'ניסיון חיוב',
   order_created: 'הזמנה נוצרה',
+  charge_voided: 'חיוב בוטל',
   duplicate_checkout_blocked: 'חיוב כפול נמנע',
   payment_status_changed: 'סטטוס תשלום השתנה',
   shipping_status_changed: 'סטטוס משלוח השתנה',

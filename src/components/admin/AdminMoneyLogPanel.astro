@@ -33,6 +33,11 @@ const { events, query, targetMissing, total, page, totalPages, buildUrl, reconci
 const TYPE_TONE: Record<MoneyEventType, 'good' | 'bad' | 'warn' | 'plain'> = {
   payment_attempted: 'plain',
   order_created: 'good',
+  // Red, not amber. A released hold is technically the system working correctly — but every one of
+  // these rows means a real buyer's purchase failed after their card had already been touched, and
+  // a row whose detail says RELEASE FAILED is money still sitting on that card. There is no reading
+  // of this log where one of these is a row to scroll past.
+  charge_voided: 'bad',
   duplicate_checkout_blocked: 'warn',
   payment_status_changed: 'plain',
   shipping_status_changed: 'plain',

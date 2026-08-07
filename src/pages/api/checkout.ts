@@ -4,7 +4,7 @@ import type { APIContext } from 'astro';
 import { getStoreBySlug, getStoreBySlugOrPrevious, canStoreSell } from '../../lib/stores.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
 import { getProductBySlug, decrementStock, restockProduct, LOW_STOCK_THRESHOLD, isProductVisible } from '../../lib/store-products.js';
-import { createOrder } from '../../lib/orders.js';
+import { createOrder, updateOrder } from '../../lib/orders.js';
 import type { Order, OrderItem, StoreSubtotal } from '../../lib/orders.js';
 import { paymentProvider } from '../../lib/payment.js';
 import { normalizeDeliveryMethod, shippingPrice } from '../../lib/shipping.js';
@@ -67,6 +67,90 @@ function describeStockAlertProduct(productName: string, selectedVariants?: Recor
   if (!selectedVariants || !Object.keys(selectedVariants).length) return productName;
   const combo = Object.entries(selectedVariants).map(([k, v]) => `${k}: ${v}`).join(', ');
   return `${productName} (${combo})`;
+}
+
+/**
+ * Release a hold that will never be captured, and make the outcome impossible to miss.
+ *
+ * **Never throws.** It runs inside a failure path that still has to restock, release the
+ * idempotency claim and log — a compensation that can itself throw would turn one bad outcome into
+ * four. Its own failure is not swallowed either: it is journalled and it comes back in the return
+ * value, because "we could not give it back" is the one case a person must handle by hand.
+ */
+async function voidRefund(
+  hold: { paymentRef: string; amountAgorot: number },
+  checkoutRef: string,
+  idempotencyKey: string,
+  reason: unknown,
+): Promise<'voided' | 'void-failed'> {
+  const why = reason instanceof Error ? reason.message : String(reason);
+  let outcome: 'voided' | 'void-failed' = 'void-failed';
+  let detail: string;
+  try {
+    const res = await paymentProvider.voidCharge({
+      paymentRef: hold.paymentRef,
+      idempotencyKey,
+      amount: fromAgorot(hold.amountAgorot),
+      reason: why.slice(0, 200),
+    });
+    outcome = res.ok ? 'voided' : 'void-failed';
+    detail = res.ok ? `released ref=${hold.paymentRef}` : `RELEASE FAILED ref=${hold.paymentRef}: ${res.error ?? 'unknown'}`;
+  } catch (e) {
+    detail = `RELEASE THREW ref=${hold.paymentRef}: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  // Journalled either way. A released hold is a row nobody needs to act on; a failed release is
+  // money sitting on somebody's card, and it is the single most important row this journal can
+  // hold — so it is written before the alert, where nothing can drop it.
+  await recordMoneyEvent({
+    type: 'charge_voided',
+    checkoutRef,
+    amountAgorot: hold.amountAgorot,
+    actor: 'buyer',
+    detail: `${detail}; cause: ${why.slice(0, 160)}`,
+  }).catch(() => { /* the logError below still reports the whole failure */ });
+  if (outcome === 'void-failed') {
+    await logError({
+      source: 'server',
+      route: '/api/checkout',
+      message: `Authorization could not be released: ${detail}`,
+      statusCode: 500,
+      actorRole: 'buyer',
+      resolutionHint: '‼️ יש החזקה על כרטיס הקונה שלא שוחררה, ואין מולה הזמנה. נדרשת פעולה ידנית מול ספק הסליקה לפי מספר האסמכתא. זו התקלה היחידה כאן שעולה לקונה כסף.',
+    }).catch(() => { /* nothing left to try */ });
+  }
+  return outcome;
+}
+
+/** Capture failed: the orders exist but no money was taken, so they must never look sellable.
+ *  Marked rather than deleted — a money record is evidence. Never throws, same reason as above. */
+async function failCapture(orderIds: string[], checkoutRef: string, amountAgorot: number, error?: string): Promise<void> {
+  for (const id of orderIds) {
+    await updateOrder(id, { paymentStatus: 'failed', shippingStatus: 'cancelled' })
+      .catch(() => { /* reported by the money event below */ });
+  }
+  await recordMoneyEvent({
+    type: 'payment_status_changed',
+    checkoutRef,
+    amountAgorot,
+    to: 'failed',
+    actor: 'buyer',
+    detail: `capture failed: ${error ?? 'unknown'}; ${orderIds.length} order(s) cancelled, stock restored`,
+  }).catch(() => { /* the endpoint's own logError still fires */ });
+}
+
+/** The orders were written pending and the capture has now succeeded. This is the ONLY place a
+ *  checkout marks an order paid, and it runs strictly after the money moved. */
+async function markOrdersPaid(orderIds: string[], checkoutRef: string, paymentRef?: string): Promise<void> {
+  for (const id of orderIds) {
+    await updateOrder(id, { paymentStatus: 'paid' });
+  }
+  await recordMoneyEvent({
+    type: 'payment_status_changed',
+    checkoutRef,
+    to: 'paid',
+    actor: 'buyer',
+    detail: `captured ref=${paymentRef ?? '—'}; ${orderIds.length} order(s)`,
+  });
 }
 
 export async function POST({ request, cookies }: APIContext): Promise<Response> {
@@ -374,25 +458,30 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // trailing steps (clearing the cart, analytics, confirmation mail) is not grounds
   // for undoing a completed purchase. The old catch rolled back either way.
   let committed = false;
+  // The HOLD, kept outside the try so the catch can release it. This is the variable that makes
+  // "the buyer's money is committed to us and the order is not" a state the code can see; before
+  // 2026-08-07 the charge was a `const` inside the try and the catch could not know money had moved.
+  let held: { paymentRef: string; amountAgorot: number } | null = null;
 
   try {
-    // Charge before committing any order. Today this is the mock provider (always
-    // approves); at go-live the real gateway swaps in behind the same interface. A
-    // decline rolls back the stock reserved above so no order exists for an unpaid cart.
-    // NOTE: once a real provider charges here, a downstream throw after a SUCCESSFUL
-    // charge will need a refund/void — add that alongside the real provider swap.
+    // ── Step 1 of 3: AUTHORIZE. Holds the money, takes nothing. ──
+    // The owner's rule (2026-08-07): an order may exist only if money was really taken, and money
+    // may be taken only if the order really exists. No transaction spans a payment gateway and our
+    // database, so the only way to have both is to make the FIRST step reversible and the
+    // irreversible one LAST — hold here, write the orders, and capture at step 3. lib/payment.ts's
+    // header carries the full argument and the failure table.
     // Through `storeSliceTotalAgorot`, not inline: it is THE definition of what one store's slice
     // came to, and every surface that shows an order total already reads it. An inline
     // `subtotal + shipping` here is the shape that drifted from it three times before
     // (tests/order-total-single-source.test.ts fails on a new one).
     const grandTotalAgorot = Object.values(storeSubtotals).reduce((sum, d) => sum + storeSliceTotalAgorot(d), 0);
     // The key travels to the provider too, so the gateway's OWN de-duplication backs
-    // up ours: if our ledger write is lost between charging and recording, the retry
-    // still reaches a provider that recognises the key and refuses to charge twice.
+    // up ours: if our ledger write is lost between authorizing and recording, the retry
+    // still reaches a provider that recognises the key and refuses to hold twice.
     // The provider is handed ILS, because that is the unit a payment gateway's API speaks and the
     // unit the buyer's statement will show. This is a render/hand-off boundary, exactly like the
     // screen: `fromAgorot` once, at the edge, off an integer that is already exact.
-    const payment = await paymentProvider.charge({ amount: fromAgorot(grandTotalAgorot), checkoutRef, buyerEmail: buyerData.buyerEmail, idempotencyKey });
+    const payment = await paymentProvider.authorize({ amount: fromAgorot(grandTotalAgorot), checkoutRef, buyerEmail: buyerData.buyerEmail, idempotencyKey });
     // Journalled whether it succeeded or failed — a decline is exactly the kind of
     // event that is invisible afterwards (no order row is left behind to show it
     // happened) and exactly what someone asks about later.
@@ -401,18 +490,27 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       checkoutRef,
       amountAgorot: grandTotalAgorot,
       actor: 'buyer',
-      detail: payment.ok ? `approved ref=${payment.paymentRef ?? '—'}` : `declined: ${payment.error ?? 'unknown'}`,
+      detail: payment.ok ? `authorized ref=${payment.paymentRef ?? '—'}` : `declined: ${payment.error ?? 'unknown'}`,
     });
     if (!payment.ok) return abort({ error: payment.error ?? 'התשלום נכשל' }, 402);
+    // Recorded the instant the hold is known to exist, and before anything that can throw. A
+    // provider that approves without returning a reference leaves this null: we cannot release a
+    // hold we cannot name, and the catch says so out loud rather than pretending otherwise.
+    if (payment.paymentRef) held = { paymentRef: payment.paymentRef, amountAgorot: grandTotalAgorot };
 
     // Create one order per store so each seller owns a separate, isolated order
+    // ── Step 2 of 3: the order rows. Still 'pending' — no money has moved yet. ──
+    // Written as pending rather than paid because at this instant it is simply TRUE: the gateway is
+    // holding the amount and has not been told to take it. Writing 'paid' here is the lie the old
+    // flow told, and every revenue sum, seller balance and payout would have been computed from it
+    // for an order whose capture had not been attempted.
     for (const [storeSlug, sub] of Object.entries(storeSubtotals)) {
       const storeItems = orderItems.filter((i) => i.storeSlug === storeSlug);
       const storeTotalAgorot = storeSliceTotalAgorot(sub);
       const storeOrder = await createOrder({
         ...buyerData,
         checkoutRef,
-        paymentStatus: 'paid',
+        paymentStatus: 'pending',
         paymentRef: payment.paymentRef,
         items: storeItems,
         storeSubtotals: { [storeSlug]: sub },
@@ -428,34 +526,63 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         checkoutRef,
         storeSlug,
         amountAgorot: storeTotalAgorot,
-        to: 'paid',
+        to: 'pending',
         actor: 'buyer',
-        detail: `${storeItems.length} item(s); paymentRef=${payment.paymentRef ?? '—'}`,
+        detail: `${storeItems.length} item(s); authorized ref=${payment.paymentRef ?? '—'}`,
       });
-
-      const store = await getStoreBySlug(storeSlug);
-      if (store) {
-        // Swallowed on failure, deliberately: the charge and the order row are already committed by
-        // the time this runs, so a database hiccup here must not turn a completed purchase into a
-        // 500 for the buyer. The seller's dashboard shows the order either way; only the badge is
-        // at stake.
-        await createNotification({
-          userId: store.sellerId,
-          role: 'seller',
-          type: 'new_order',
-          title: 'הזמנה חדשה!',
-          body: `הזמנה מ-${buyerData.buyerName} על סך ${formatAgorot(storeTotalAgorot)}`,
-          relatedId: storeOrder.id,
-          storeSlug: store.slug,
-          storeName: store.name,
-        }).catch(() => { /* the sale itself stands */ });
-      }
     }
 
-    // The purchase is now real. Record the key's result before anything else can
-    // throw, so a retry replays these orders instead of buying them again.
+    // ── Step 3 of 3: CAPTURE. The irreversible step, and the orders provably exist. ──
+    // A failure here is the one remaining bad window, and it is now a HARMLESS one: the hold is
+    // released, the orders that were written are marked failed and cancelled, and their stock goes
+    // back. The rows survive rather than being deleted — a money record is evidence, and "an
+    // attempted purchase that could not be paid for" is exactly the thing someone asks about — but
+    // nothing is shippable, nothing counts as revenue (order-status-rules.ts), and no seller is
+    // told about it, because the seller notifications are below this point and not above it.
+    const capture = await paymentProvider.capture({
+      paymentRef: payment.paymentRef ?? '',
+      idempotencyKey,
+      amount: fromAgorot(grandTotalAgorot),
+    });
+    if (!capture.ok) {
+      await failCapture(orderIds, checkoutRef, grandTotalAgorot, capture.error);
+      // `held` is cleared only after the void so the catch below cannot double-release it.
+      if (held) { await voidRefund(held, checkoutRef, idempotencyKey, capture.error ?? 'capture failed'); held = null; }
+      for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+      await releaseCheckout(idempotencyKey);
+      return json({ error: capture.error ?? 'החיוב נכשל. לא בוצע חיוב — אפשר לנסות שוב.' }, 402);
+    }
+
+    // The money is now really taken and the orders really exist. Both halves of the owner's rule
+    // hold from this line onward, and `committed` is what tells the catch below never to undo it.
     committed = true;
+    held = null;
+    await markOrdersPaid(orderIds, checkoutRef, payment.paymentRef);
+    // Record the key's result before anything else can throw, so a retry replays these orders
+    // instead of buying them again.
     await completeCheckout(idempotencyKey, checkoutRef, orderIds, owner);
+
+    // Sellers are told only now — after the money is real. A "הזמנה חדשה!" for a purchase whose
+    // capture then failed is the notification that makes a seller pack a parcel for nothing.
+    for (const storeOrder of createdOrders) {
+      const storeSlug = storeOrder.items[0]?.storeSlug ?? '';
+      const store = storeSlug ? await getStoreBySlug(storeSlug) : null;
+      if (!store) continue;
+      // Swallowed on failure, deliberately: the money and the order row are already committed by
+      // the time this runs, so a database hiccup here must not turn a completed purchase into a
+      // 500 for the buyer. The seller's dashboard shows the order either way; only the badge is
+      // at stake.
+      await createNotification({
+        userId: store.sellerId,
+        role: 'seller',
+        type: 'new_order',
+        title: 'הזמנה חדשה!',
+        body: `הזמנה מ-${buyerData.buyerName} על סך ${formatAgorot(storeOrder.totalAgorot)}`,
+        relatedId: storeOrder.id,
+        storeSlug: store.slug,
+        storeName: store.name,
+      }).catch(() => { /* the sale itself stands */ });
+    }
 
     for (const alert of stockAlerts) {
       const label = describeStockAlertProduct(alert.productName, alert.selectedVariants);
@@ -514,6 +641,19 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
 
     return json({ orderIds, checkoutRef }, 201);
   } catch (err) {
+    // ── Give the money back before anything else ──
+    // Reached only when the charge SUCCEEDED and the purchase then did not. It is the first thing
+    // in this handler because it is the only part of the failure that costs a real person real
+    // money: the stock is ours to restore whenever, the log can wait a tick, a held charge cannot.
+    //
+    // `voidRefund` never throws — a compensation that can itself throw would skip the restock and
+    // the logging below and turn one bad outcome into three. Its own failure is captured and
+    // reported, because "we could not give it back" is precisely the case a person must handle by
+    // hand, and it is the one that must never be silent.
+    let voidOutcome: 'none' | 'voided' | 'void-failed' = 'none';
+    if (held && !committed) {
+      voidOutcome = await voidRefund(held, checkoutRef, idempotencyKey, err);
+    }
     if (!committed) {
       for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
       await releaseCheckout(idempotencyKey);
@@ -545,7 +685,13 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       resolutionHint: [
         committed
           ? 'ההזמנה נוצרה והתשלום עבר; הכשל היה בשלב שאחרי (ניקוי עגלה / מייל אישור). אין לבטל את ההזמנה — יש לבדוק שהמייל נשלח.'
-          : 'לא נוצרה הזמנה; המלאי שוחזר אוטומטית. הקונה ראה שגיאה כללית ולא יקבל שום עדכון נוסף, והמוכר אינו מיודע — כל פנייה אליהם היא ידנית. החיוב מתבצע לפני יצירת ההזמנה, לכן יש לוודא מול ספק הסליקה שלא נתפס חיוב שאין מולו הזמנה.',
+          : 'לא נוצרה הזמנה; המלאי שוחזר אוטומטית. הקונה ראה שגיאה כללית ולא יקבל שום עדכון נוסף, והמוכר אינו מיודע — כל פנייה אליהם היא ידנית.',
+        // What happened to the buyer's money, stated first among the details because it is the
+        // only line here that can require someone to act today.
+        committed ? '' :
+          voidOutcome === 'voided' ? 'לא בוצע חיוב: ההחזקה על הכרטיס שוחררה אוטומטית. אין צורך בהחזר ידני.'
+          : voidOutcome === 'void-failed' ? '‼️ ההחזקה על כרטיס הקונה לא שוחררה, ואין מולה הזמנה. נדרשת פעולה ידנית מול ספק הסליקה לפי מספר האסמכתא ביומן הכספי.'
+          : 'לא בוצעה החזקה על הכרטיס (או שהספק לא החזיר מספר עסקה), כך שאין מה לשחרר — הקונה לא חויב.',
         attempted.length
           ? `בעגלה: ${attempted.slice(0, 8).join(', ')}${attempted.length > 8 ? ` ועוד ${attempted.length - 8}` : ''}.`
           : '',

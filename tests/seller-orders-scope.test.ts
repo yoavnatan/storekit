@@ -144,13 +144,41 @@ describe('every order-mutating API route binds the order to a store', () => {
       e.isDirectory() ? walk(join(dir, e.name)) : e.name.endsWith('.ts') ? [join(dir, e.name)] : []);
   }
 
+  /**
+   * `/api/checkout` mutates orders it CREATED in the same request, from ids it never received.
+   *
+   * The rule this guard enforces is "an id is not a permission", and its hazard is a caller naming
+   * an order it does not own. Checkout cannot have that hazard: `orderIds` is a local array filled
+   * only from `createOrder(...).id` a few lines above, and the flow writes the rows as 'pending'
+   * and flips them to 'paid' only after the capture succeeds (lib/payment.ts). There is no store to
+   * bind to, because there is no caller claiming one.
+   *
+   * That is an argument about WHERE THE IDS COME FROM, so the exemption is written as that check
+   * rather than as a name on a list: the moment checkout starts reading an order id out of the
+   * request, the exemption stops applying and this goes red.
+   */
+  const CREATES_ITS_OWN_ORDERS = 'src/pages/api/checkout.ts';
+
   it('calls orderBelongsToStore wherever it calls updateOrder', () => {
     const offenders = walk('src/pages/api')
       .filter((f) => {
         const src = readFileSync(f, 'utf8');
         // Admin routes act platform-wide by design and are authorized by an admin session.
         return /\bupdateOrder\(/.test(src) && !f.includes('/admin') && !/orderBelongsToStore/.test(src);
-      });
+      })
+      .filter((f) => f.replace(/\\/g, '/') !== CREATES_ITS_OWN_ORDERS);
     expect(offenders).toEqual([]);
+  });
+
+  it('and the exempt route still takes no order id from the request', () => {
+    const src = readFileSync(CREATES_ITS_OWN_ORDERS, 'utf8');
+    // The exemption above holds only while this is true. `orderIds` is built from createOrder's
+    // return value; nothing may read an order id off `body`, the query string or a param.
+    expect(/body\.\s*orderId|body\[['"]orderId/.test(src), 'checkout reads an orderId from the body').toBe(false);
+    expect(/searchParams\.get\(['"]orderId/.test(src), 'checkout reads an orderId from the URL').toBe(false);
+    // And every updateOrder call in it names a local id from that array.
+    for (const [, arg] of src.matchAll(/\bupdateOrder\(\s*([A-Za-z0-9_.]+)/g)) {
+      expect(['id', 'orderId'], `updateOrder called with '${arg}'`).toContain(arg);
+    }
   });
 });
