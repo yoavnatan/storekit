@@ -1,0 +1,48 @@
+---
+interface Props {
+  /** Tab id — `dash-panel-<panel>` is what DashTabsBoot toggles and what swapPanel replaces. */
+  panel: string;
+  /** Is this the panel this request was asked for? */
+  active: boolean;
+}
+const { panel, active } = Astro.props;
+
+/**
+ * One admin tab's container — rendered for all eleven, filled for one.
+ *
+ * **Why the container is always here even when its contents are not.** Three separate mechanisms
+ * address a panel by id and would break if the element only existed when open: `DashTabsBoot`
+ * toggles `hidden` on `#dash-panel-<id>`, `swapPanel` replaces that element's `innerHTML`, and
+ * `wirePanelLinks` binds ONE delegated click listener to it that must survive every swap. So the
+ * shell is server-rendered always; only what goes inside it is conditional.
+ *
+ * `data-lazy` is the contract with `scripts/admin/lazy-panels.ts`: it means "this panel has never
+ * been filled", and it is removed the moment a load starts, so a second tab click cannot start a
+ * second one.
+ *
+ * The placeholder is **static** — bars, no shimmer. The travelling bar of `[data-busy]`
+ * (admin.css, put there by `swapPanel`) is what says a request is in flight, and it says it only
+ * while one actually is; a skeleton that shimmers on ten hidden panels would be exactly the ambient
+ * looping motion this project does not use. The bars are here so the busy bar and its dim have
+ * something to sit on, and so the panel has a shape rather than collapsing to nothing and jumping
+ * when the rows arrive.
+ */
+const BAR_WIDTHS = ['38%', '92%', '76%', '84%', '61%'];
+---
+
+<div
+  id={`dash-panel-${panel}`}
+  class="dash-panel"
+  role="tabpanel"
+  aria-labelledby={`tab-${panel}`}
+  hidden={!active}
+  data-lazy={active ? undefined : ''}
+>
+  {active ? <slot /> : (
+    <div class="flex flex-col gap-3 py-2" aria-hidden="true">
+      {BAR_WIDTHS.map((width) => (
+        <span class="block h-3 rounded-[var(--radius-sm)] bg-[color:var(--color-skeleton)]" style={`width:${width}`}></span>
+      ))}
+    </div>
+  )}
+</div>
