@@ -27,6 +27,27 @@
  *     the normal case — a save landed, so the reload shows the saved values and there is nothing
  *     to put back.
  *
+ * **Two things the offer used to get wrong, both reported by the owner on 2026-08-07:**
+ *
+ *  a. *"אפשר לפספס את זה"* — the bar is inserted at the top of the form it belongs to, and that form
+ *     usually sits in a panel the seller is not looking at. Panels are hidden, not destroyed, so an
+ *     offer in Settings was announced to nobody while he stood in Products. It is now backed by a
+ *     FLOATING notice (`#dash-draft-bar` below) that says which section is holding work and carries
+ *     him there — the same shape, the same slot family and the same reasoning as
+ *     `UnsavedChangesBar`, down to "it never decides anything for him". The decision itself stays on
+ *     the bar inside the form, because that is the only place he can see what restoring would change.
+ *
+ *  b. *"לערוך משהו ואז השחזור ימחק את מה שהיוזר עשה"* — the offer's payload was frozen at load, so
+ *     typing into an offered field and then pressing restore wrote the older value over the newer
+ *     one. **Newest wins, field by field**: `touched` records what he has edited since this page
+ *     loaded, `restorable` drops those fields from the offer, and an offer left with nothing to put
+ *     back removes itself rather than leaving a button that would do nothing.
+ *
+ *     The same set fixes a hole underneath it. Continuous drafting rewrites the stored draft on
+ *     every keystroke, so typing while an offer was open used to EVICT the very work the bar was
+ *     still offering — a second crash lost it for good. `save` now writes the UNION: what is on
+ *     screen, plus the offered values for fields he has not touched.
+ *
  * **The one deliberate imprecision, decided rather than overlooked:** leaving a page with unsaved
  * work raises the browser's own "leave / stay" prompt (scripts/dashboard/unsaved-guard.ts), and a
  * seller who chooses "leave" has decided to drop the edit — yet the draft survives and is offered
@@ -53,11 +74,41 @@ interface Props {
   draftFound: string;
   draftRestore: string;
   draftDiscard: string;
+  /** The floating notice for an offer he cannot see. `{section}` is the tab's own label. */
+  draftNotice: string;
+  draftNoticeMany: string;
+  draftNoticeGo: string;
 }
-const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
+const { message, draftFound, draftRestore, draftDiscard, draftNotice, draftNoticeMany, draftNoticeGo } = Astro.props;
 ---
 
-<script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard }}>
+{/* The offer he would otherwise miss. Server-rendered and hidden rather than injected by the
+    script, for the two reasons the dashboard already settled: an injected overlay flashes before
+    its styles land, and this component's whole contract is surviving a dead module graph — markup
+    that only exists if JS built it cannot do that.
+
+    `!hidden`, not the `hidden` attribute: this is display:flex and a flex utility beats the
+    attribute's display:none (the trap is documented across the dashboard).
+
+    Third floating slot: UnsavedChangesBar sits at bottom-6, StaleDataBar 4rem above it, this one
+    4rem above that. Furthest from the thumb because it is the rarest of the three and the only one
+    that appears at load rather than mid-task, so it is the one whose position matters least. Each
+    bar positions ITSELF rather than sharing a stack container — the elevation guard wants the
+    element casting a shadow to declare that it floats, and an ancestor cannot vouch for it. */}
+<div
+  id="dash-draft-bar"
+  role="status"
+  aria-live="polite"
+  class="!hidden fixed bottom-[9.5rem] left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 max-w-[calc(100vw-2rem)] py-[0.55rem] ps-[0.9rem] pe-[0.55rem] rounded-[var(--radius-lg)] border [border-color:var(--color-border)] [background:var(--color-surface)] shadow-[var(--shadow-card)] text-[0.85rem]"
+>
+  <svg class="shrink-0 max-w-none [color:var(--color-warning)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>
+  </svg>
+  <span id="dash-draft-msg"></span>
+  <button type="button" id="dash-draft-go" class="btn btn--sm shrink-0">{draftNoticeGo}</button>
+</div>
+
+<script is:inline define:vars={{ msg: message, draftFound, draftRestore, draftDiscard, draftNotice, draftNoticeMany }}>
   (function () {
     var PREFIX = 'dz-draft:';
     var MAX_AGE = 7 * 24 * 60 * 60 * 1000;
@@ -104,11 +155,27 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
     /** What the server rendered into each form, by storage key — see `edits` for what it buys. */
     var bases = {};
 
+    /** Offers still on screen and unanswered, by storage key: `{ form, bar, values }`. */
+    var offers = {};
+
+    /** Fields the seller has edited SINCE this page loaded, by storage key → field key.
+     *  The whole basis of "newest wins": everything in here is younger than the offer, so the
+     *  offer must not write over it. */
+    var touched = {};
+
     function save(form) {
       var key = keyFor(form);
       if (!key) return;
       cancel(key);   // this write supersedes any queued one — a blocked submit is not a keystroke
-      var draft = { at: Date.now(), values: snapshot(form), base: bases[key] };
+      var values = snapshot(form);
+      // An offer still on screen is work he has neither taken back nor thrown away. Writing only
+      // what is on screen would delete it — his new typing would evict the very values the bar is
+      // still offering, and the next crash would lose them with nothing left to offer. So the write
+      // is the UNION: what is on screen, plus the offered value of every field he has not touched.
+      var pending = offers[key] && offers[key].values;
+      var seen = touched[key] || {};
+      if (pending) for (var k in pending) if (!seen[k]) values[k] = pending[k];
+      var draft = { at: Date.now(), values: values, base: bases[key] };
       try { localStorage.setItem(key, JSON.stringify(draft)); }
       catch (err) { /* private mode / quota — the values are still on screen, which is the point */ }
     }
@@ -146,6 +213,41 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
       return any ? out : null;
     }
 
+    /**
+     * What is left of an offer RIGHT NOW — recomputed at the moment it would be applied, never read
+     * from what `edits` decided at load.
+     *
+     * That freeze was the bug: the offer sat on screen while the seller kept working, and pressing
+     * restore wrote its load-time payload over whatever he had typed in the meantime. A field
+     * qualifies only if he has not edited it since the page loaded (`touched` — his own typing is
+     * always newer than an offer from a previous session) and it still differs from what is on
+     * screen (nothing to put back otherwise).
+     */
+    function restorable(key) {
+      var o = offers[key];
+      if (!o) return null;
+      var current = snapshot(o.form);
+      var seen = touched[key] || {};
+      var out = {};
+      var any = false;
+      for (var k in o.values) {
+        if (seen[k]) continue;
+        if (JSON.stringify(current[k]) === JSON.stringify(o.values[k])) continue;
+        out[k] = o.values[k];
+        any = true;
+      }
+      return any ? out : null;
+    }
+
+    /** Take the offer off the screen — answered, superseded, or emptied by his own typing. */
+    function closeOffer(key) {
+      var o = offers[key];
+      if (!o) return;
+      delete offers[key];
+      if (o.bar.parentNode) o.bar.remove();
+      refreshNotice();
+    }
+
     function drop(form) {
       var key = keyFor(form);
       if (!key) return;
@@ -172,6 +274,15 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
       if (!form) return;
       var key = keyFor(form);
       if (!key) return;
+      // Remember WHICH field he just touched, before anything else: this is the record that keeps a
+      // later restore from writing over it, and it has to be taken even when no offer is open —
+      // one can be opened by nothing else, but the draft written below is measured against it.
+      if (el.name && !SKIP[el.type] && !SKIP_NAME[el.name]) {
+        (touched[key] || (touched[key] = {}))[fieldKey(form, el)] = 1;
+        // His own typing may have answered the offer field by field. An offer with nothing left to
+        // put back is a button that would do nothing, so it goes rather than sits there lying.
+        if (offers[key] && !restorable(key)) closeOffer(key);
+      }
       cancel(key);
       timers[key] = setTimeout(function () { delete timers[key]; save(form); }, DRAFT_DELAY);
     }
@@ -198,6 +309,7 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
     }
 
     function offer(form, values) {
+      var key = keyFor(form);
       var bar = document.createElement('div');
       bar.className = 'flex items-center gap-2 flex-wrap mb-3 py-2 px-2.5 rounded-[var(--radius-sm)] border border-[color:var(--color-border)] bg-[color:var(--color-surface)] text-[0.82rem]';
       bar.setAttribute('role', 'status');
@@ -218,14 +330,112 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
 
       // Drop BEFORE applying, not after: `apply` fires an input event per field, which queues a
       // fresh draft of the restored values — and a `drop` running afterwards would cancel exactly
-      // that, leaving recovered work unprotected until the next keystroke.
-      yes.addEventListener('click', function () { drop(form); apply(form, values); bar.remove(); });
-      no.addEventListener('click', function () { drop(form); bar.remove(); });
+      // that, leaving recovered work unprotected until the next keystroke. Same order for
+      // `closeOffer`, which also has to run first: while the offer is open `save` overlays its
+      // values, and the draft written a moment later would carry the pre-restore copy back.
+      yes.addEventListener('click', function () {
+        var pending = restorable(key);
+        closeOffer(key);
+        drop(form);
+        if (pending) apply(form, pending);
+      });
+      no.addEventListener('click', function () { closeOffer(key); drop(form); });
 
       bar.appendChild(text);
       bar.appendChild(yes);
       bar.appendChild(no);
       form.insertBefore(bar, form.firstChild);
+      offers[key] = { form: form, bar: bar, values: values };
+      return bar;
+    }
+
+    /* ---- the floating notice: an offer he cannot see says so from the bottom of every tab ---- */
+
+    /** Which offer the notice is currently pointing at, and therefore where its button goes. */
+    var noticeTarget = null;
+
+    /** The section holding an offer, named by ITS OWN TAB — no panel needs a second name in
+     *  translations.ts that could drift from the tab it describes (unsaved-guard.ts, same trick). */
+    function sectionOf(form) {
+      var panel = form.closest ? form.closest('.dash-panel') : null;
+      var id = panel && panel.getAttribute('aria-labelledby');
+      var tab = id ? document.getElementById(id) : null;
+      return tab ? (tab.textContent || '').trim() : '';
+    }
+
+    /**
+     * Is the seller actually looking at this bar?
+     *
+     * Not "is it in the viewport": every page here has a FIXED site header, and the dashboard stacks
+     * a sticky tab strip and the open panel's sticky head under it. A bar sitting behind those is
+     * exactly as unreadable as one in a closed tab, which is the miss this notice exists for. A
+     * hidden panel is display:none and owns no boxes at all, so it falls out on the first line.
+     */
+    function onScreen(bar) {
+      if (!bar.getClientRects().length) return false;
+      var chrome = document.querySelectorAll('.site-header, .dash-tabs, .dash-panel:not([hidden]) .dash-panel-head');
+      var top = 0;
+      for (var i = 0; i < chrome.length; i++) {
+        var pos = getComputedStyle(chrome[i]).position;
+        if (pos === 'fixed' || pos === 'sticky') top += chrome[i].getBoundingClientRect().height;
+      }
+      var r = bar.getBoundingClientRect();
+      return r.top >= top && r.bottom <= window.innerHeight;
+    }
+
+    /** Point the notice at the first offer he cannot see, or take it away when there is none.
+     *  Only ever writes when the sentence actually changed — `aria-live="polite"` would otherwise
+     *  re-announce an identical line on every scroll frame. */
+    function refreshNotice() {
+      var bar = document.getElementById('dash-draft-bar');
+      var msgEl = document.getElementById('dash-draft-msg');
+      if (!bar || !msgEl) return;
+      var missed = [];
+      for (var key in offers) if (!onScreen(offers[key].bar)) missed.push(offers[key]);
+      noticeTarget = missed[0] || null;
+      var section = noticeTarget ? sectionOf(noticeTarget.form) : '';
+      var message = !noticeTarget ? ''
+        : missed.length > 1 ? draftNoticeMany
+        // A form outside the tab shell has no section to name; the plain sentence still tells him
+        // there is something, which is the whole job.
+        : section ? draftNotice.replace('{section}', section) : draftFound;
+      if (msgEl.textContent !== message) msgEl.textContent = message;
+      bar.classList.toggle('!hidden', !message);
+    }
+
+    /** Cheap enough per call (one rect per offer, and there are at most a handful), but it runs on
+     *  scroll — so at most once a frame. */
+    var noticeFrame = 0;
+    function scheduleNotice() {
+      if (noticeFrame) return;
+      noticeFrame = requestAnimationFrame(function () { noticeFrame = 0; refreshNotice(); });
+    }
+
+    /** Take him to the offer; never answer it for him. The decision stays on the bar inside the
+     *  form, because that is the only place he can see what restoring would change — the same line
+     *  UnsavedChangesBar draws between telling and doing. */
+    function wireNoticeButton() {
+      var go = document.getElementById('dash-draft-go');
+      if (!go || go.hasAttribute('data-wired')) return;
+      go.setAttribute('data-wired', '');
+      go.addEventListener('click', function () {
+        var o = noticeTarget;
+        if (!o) return;
+        var panel = o.form.closest ? o.form.closest('.dash-panel') : null;
+        var id = panel && panel.getAttribute('aria-labelledby');
+        var tab = id ? document.getElementById(id) : null;
+        if (tab) tab.click();   // DashTabsBoot owns panel switching, and it is inline like this one
+        // The house helper when the module graph is alive — it accounts for the pinned chrome and
+        // does nothing when the bar is already fully on screen. `scrollIntoView` is the fallback for
+        // the load this component exists for, where nothing of the bundle arrived.
+        if (window.__dashScrollTo) window.__dashScrollTo(o.bar);
+        else o.bar.scrollIntoView({ block: 'center' });
+        // Land the keyboard on the decision, not at the top of the panel. `preventScroll` so the
+        // focus does not fight the animation that is already carrying him there.
+        var first = o.bar.querySelector('button');
+        if (first) first.focus({ preventScroll: true });
+        scheduleNotice();
+      });
     }
 
     document.addEventListener('submit', function (e) {
@@ -279,10 +489,20 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
       drop(form);
     });
     document.addEventListener('dash:discarded', function (e) {
-      if (e.target && e.target.tagName === 'FORM') drop(e.target);
+      if (!e.target || e.target.tagName !== 'FORM') return;
+      // He threw this form's work away on purpose (unsaved-guard.ts, behind its own confirm). An
+      // offer left standing afterwards would be the page arguing with a decision he just made.
+      closeOffer(keyFor(e.target));
+      delete touched[keyFor(e.target)];
+      drop(e.target);
     });
 
     document.addEventListener('DOMContentLoaded', function () {
+      wireNoticeButton();
+      // A scan describes ONE document: both of these are "since this page loaded", so a re-scan
+      // that inherited them would measure his typing against a form that no longer exists.
+      offers = {};
+      touched = {};
       var forms = document.querySelectorAll('form');
       for (var i = 0; i < forms.length; i++) {
         var form = forms[i];
@@ -305,6 +525,16 @@ const { message, draftFound, draftRestore, draftDiscard } = Astro.props;
         if (!pending) { drop(form); continue; }
         offer(form, pending);
       }
+
+      // Nothing offered means nothing to point at, ever — so don't put a scroll listener on the
+      // page for the overwhelmingly common load where the seller has no unsaved work waiting.
+      if (!Object.keys(offers).length) return;
+      refreshNotice();
+      window.addEventListener('scroll', scheduleNotice, { passive: true });
+      window.addEventListener('resize', scheduleNotice);
+      // A panel becoming visible is the other half of "can he see it", and it fires no scroll
+      // event (DashTabsBoot dispatches this on the panel it just revealed).
+      document.addEventListener('dashtab:show', scheduleNotice);
     });
   })();
 </script>

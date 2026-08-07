@@ -273,8 +273,11 @@ describe('the gate stays in one place', () => {
     // server just rendered turns a recovered form into a 403 nobody can explain.
     const guard = readFileSync(path.join(SRC_ROOT, 'components', 'dashboard', 'FormFallbackGuard.astro'), 'utf8');
     expect(guard).toMatch(/SKIP_NAME\s*=\s*\{\s*_csrf:\s*1\s*\}/);
-    // Both halves — the write and the restore — must consult it.
-    expect(guard.match(/SKIP_NAME\[el\.name\]/g) ?? []).toHaveLength(2);
+    // Every place that walks a form's named fields must consult it: `snapshot` (the write),
+    // `apply` (the restore), and `queueDraft` (which records the fields he has edited since the
+    // page loaded — a token counted as "something he typed" would exempt it from the next restore
+    // for a reason that has nothing to do with him).
+    expect(guard.match(/SKIP_NAME\[el\.name\]/g) ?? []).toHaveLength(3);
   });
 
   it('has no request-sending path that cannot carry a header', () => {
