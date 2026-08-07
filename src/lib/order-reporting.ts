@@ -25,6 +25,7 @@
  * money. `reconcile.ts` is what says the row itself is wrong; a report must not bend it silently.
  */
 import { rows, firstRow } from './db.js';
+import { CHECKOUT_GROUP_KEY_SQL } from './checkout-group.js';
 import { BUSINESS_TIMEZONE } from './business-day.js';
 import type { PerformanceGranularity } from './seller-performance.js';
 import type { TopProduct } from './seller-performance.js';
@@ -159,8 +160,12 @@ export async function getOpenOrderCountsByStore(): Promise<Map<string, number>> 
  *  the UNFILTERED set on purpose (a search box left open must not change it), which is exactly why
  *  it cannot be `page.total`. */
 export async function countOrdersSince(boundaryISO: string): Promise<number> {
+  // DISTINCT on the checkout-group key, because the tab this badge sits on lists PURCHASES: a
+  // five-store cart is one card there, and a badge counting rows would announce "5 new" above a
+  // list showing one. The badge, the "חדש" chip on the card and the "חדשות בלבד" filter have to
+  // tell one story — that is the whole reason the boundary is read once and threaded through.
   const row = await firstRow<{ n: string | number }>(
-    `SELECT COUNT(*) AS n FROM orders WHERE created_at > $1::timestamptz`,
+    `SELECT COUNT(DISTINCT ${CHECKOUT_GROUP_KEY_SQL}) AS n FROM orders o WHERE o.created_at > $1::timestamptz`,
     [boundaryISO],
   );
   return num(row?.n);

@@ -28,7 +28,13 @@ const { overview, attentionCount } = Astro.props;
     <dd>{overview.totalStores}</dd>
   </button>
   <button type="button" class="admin-stat-card w-full text-inherit font-inherit cursor-pointer" data-goto-panel="orders">
-    <dt>הזמנות ({overview.paidOrders} ששולמו)</dt>
+    {/* "למוכרים", and the word is doing real work as of 2026-08-07. This number counts order ROWS
+        — one per store — while the Orders tab it links to now lists PURCHASES, so a five-store
+        cart is 5 here and 1 card there. Both are right for their own job: the tab answers "what
+        did this person buy", and this figure is the one `reconcile.ts` cross-checks the money
+        against, where the unit has to be the per-store slice a seller is actually paid for. What
+        would be wrong is the two disagreeing under one unqualified word. */}
+    <dt title="נספרת שורה לכל חנות — רכישה מחמש חנויות היא חמש הזמנות כאן, וכרטיס אחד בלשונית ההזמנות">הזמנות למוכרים ({overview.paidOrders} ששולמו)</dt>
     <dd>{overview.totalOrders}</dd>
   </button>
   {/* GMV — what buyers paid sellers — NOT the platform's own income, which is

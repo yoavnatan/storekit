@@ -49,6 +49,7 @@ import {
 import { sanitizeAttribution, type OrderAttribution } from './attribution.js';
 import { firstRow, isUuid, rows, withTransaction, type Queryable } from './db.js';
 import { SHIPPING_SORT_ORDER, type AdminOrderQuery } from './admin-orders-filter.js';
+import { CHECKOUT_GROUP_KEY_SQL } from './checkout-group.js';
 
 export interface OrderItem {
   productId: string;
@@ -414,35 +415,77 @@ export async function getAdminOrdersPage(
    AND ($4::text   IS NULL OR position($4::text in ${HAYSTACK}) > 0)
    AND ($5::text   IS NULL OR o.created_at > $5::timestamptz)`;
 
-  // Sorted, then counted, then sliced — in that order, which is what makes page 2 of a search the
-  // real page 2. The trailing `created_at DESC, o.id` is not decoration: `Array.sort` is stable, so
-  // the JS twin breaks a tie by the order it was handed, which is exactly this.
+  // ── The page is a page of PURCHASES, not of order rows (owner, 2026-08-07) ──
+  //
+  // A cart spanning five stores is five rows in `orders`, and this tab used to show it as five
+  // separate orders — five cards, five "order numbers", five totals for one thing the buyer bought
+  // once. Everything below therefore counts, sorts and slices by `checkout-group.ts`'s key, and
+  // only then fetches rows.
+  //
+  // The consequence that matters for correctness: a group is selected by whether ANY of its rows
+  // matches the filter, and then ALL of its rows are returned. Filtering the rows themselves would
+  // hand the card a partial purchase — "shipping status = חדשה" on a five-store order would draw a
+  // card whose total is the sum of two slices, which is a wrong number rather than a narrow one.
   const byStatus = query.sortCol === 'shippingStatus';
-  // The fulfilment order is handed over as DATA ($6). A `CASE WHEN 'pending' THEN 0 …` written
-  // here would be a second copy of the status table, in a language `tests/money-guards.test.ts`
-  // cannot read — which is exactly what that guard exists to stop.
-  const sortKey = query.sortCol === 'amount'
-    ? 'o.total_agorot'
-    : byStatus
-      ? 'COALESCE(array_position($6::text[], o.shipping_status), 99)'
-      : 'o.created_at';
+  // The fulfilment order is handed over as DATA. A `CASE WHEN 'pending' THEN 0 …` written here
+  // would be a second copy of the status table, in a language `tests/money-guards.test.ts` cannot
+  // read — which is exactly what that guard exists to stop.
+  const rankAt = params.length + 1;
+  const keyedParams = [...params, SHIPPING_SORT_ORDER];
+  // Each aggregate answers for the WHOLE purchase, which is what the card shows: its date is when
+  // the checkout happened, its amount is what the buyer paid altogether, and its status is the
+  // least-advanced slice — the same headline rule `buyer-purchases.ts` renders by, because an
+  // order with one store delivered and four still pending is a pending order.
+  const KEYED = `
+    WITH keyed AS (
+      SELECT ${CHECKOUT_GROUP_KEY_SQL} AS gkey,
+             o.created_at, o.total_agorot,
+             COALESCE(array_position($${rankAt}::text[], o.shipping_status), 99) AS status_rank,
+             (${where}) AS matches
+        FROM orders o
+    ),
+    grouped AS (
+      SELECT gkey,
+             MIN(created_at)  AS created_at,
+             SUM(total_agorot) AS total_agorot,
+             MIN(status_rank) AS status_rank,
+             BOOL_OR(matches) AS matched
+        FROM keyed GROUP BY gkey
+    )`;
+
+  const sortKey = query.sortCol === 'amount' ? 'total_agorot'
+    : byStatus ? 'status_rank'
+    : 'created_at';
   const dir = query.sortDir === 'asc' ? 'ASC' : 'DESC';
-  const pageParams = byStatus ? [...params, SHIPPING_SORT_ORDER] : params;
-  const limitAt = pageParams.length + 1;
 
   const counts = await firstRow<{ matched: string | number; every: string | number }>(
-    `SELECT COUNT(*) FILTER (WHERE ${where}) AS matched, COUNT(*) AS every FROM orders o`, params,
+    `${KEYED} SELECT COUNT(*) FILTER (WHERE matched) AS matched, COUNT(*) AS every FROM grouped`,
+    keyedParams,
   );
   const total = bigIntOf(counts?.matched);
   const totalUnfiltered = bigIntOf(counts?.every);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
 
-  const found = await rows<OrderRow>(
-    `${SELECT_ORDERS} WHERE ${where}
-      ORDER BY ${sortKey} ${dir}, o.created_at DESC, o.id
+  const limitAt = keyedParams.length + 1;
+  // `gkey` last in the ORDER BY for the same reason `o.id` was: the slices of one checkout share a
+  // `created_at` to the microsecond, so without a total tie-break two purchases swap places between
+  // loads and page 2 silently repeats or skips one.
+  const keys = await rows<{ gkey: string }>(
+    `${KEYED}
+     SELECT gkey FROM grouped WHERE matched
+      ORDER BY ${sortKey} ${dir}, created_at DESC, gkey
       LIMIT $${limitAt} OFFSET $${limitAt + 1}`,
-    [...pageParams, pageSize, (safePage - 1) * pageSize],
+    [...keyedParams, pageSize, (safePage - 1) * pageSize],
+  );
+  if (keys.length === 0) return { orders: [], total, totalUnfiltered, page: safePage, totalPages };
+
+  // Every row of the chosen purchases, in the same group order the page was built in — the caller
+  // groups them back with `checkoutGroupKey` and must not have to re-sort to get the page right.
+  const found = await rows<OrderRow>(
+    `${SELECT_ORDERS} WHERE ${CHECKOUT_GROUP_KEY_SQL} = ANY($1::text[])
+      ORDER BY array_position($1::text[], ${CHECKOUT_GROUP_KEY_SQL}), o.created_at, o.id`,
+    [keys.map((k) => k.gkey)],
   );
   return { orders: found.map(toOrder), total, totalUnfiltered, page: safePage, totalPages };
 }

@@ -1,4 +1,5 @@
 import type { Order } from './orders.js';
+import { checkoutGroupKey } from './checkout-group.js';
 import { SHIPPING_PIPELINE_ORDER, SHIPPING_STATUS_RULES, type ShippingStatus } from './order-status-rules.js';
 
 /**
@@ -63,13 +64,10 @@ function pipelineRank(status: ShippingStatus): number {
 export function groupBuyerPurchases(orders: readonly Order[]): BuyerPurchase[] {
   const byKey = new Map<string, Order[]>();
   for (const o of orders) {
-    // `checkoutRef` is eight hex characters (`/api/checkout`), which is plenty for a human-quotable
-    // order number and thin for a key that now decides which rows share a TOTAL. `paymentRef` is
-    // the same for every row of one charge and differs between charges, so pairing them means two
-    // unrelated purchases cannot merge into one card even if their refs collide. It adds nothing
-    // against today's mock provider (whose ref is derived from the checkout ref) and everything
-    // against a real one — which is the point of putting it in before there is a real one.
-    const key = o.checkoutRef ? `${o.checkoutRef}|${o.paymentRef ?? ''}` : o.id;
+    // The rule moved to `checkout-group.ts` on 2026-08-07, when the admin Orders tab started
+    // grouping by the same key and needed it in SQL as well as here. It is one rule with two
+    // spellings now, and they live next to each other in that file for exactly that reason.
+    const key = checkoutGroupKey(o);
     const bucket = byKey.get(key);
     if (bucket) bucket.push(o);
     else byKey.set(key, [o]);

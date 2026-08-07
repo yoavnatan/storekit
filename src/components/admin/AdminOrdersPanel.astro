@@ -13,6 +13,7 @@ import { formatAgorot } from '../../lib/money.js';
 import type { Order } from '../../lib/orders.js';
 import { formatHeDateTime } from '../../lib/format-date.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
+import { groupBuyerPurchases } from '../../lib/buyer-purchases.js';
 import type { AdminOrderSortCol, AdminOrderSortDir } from '../../lib/admin-orders-filter.js';
 import AdminPager from './AdminPager.astro';
 import AdminNewBadge from './AdminNewBadge.astro';
@@ -59,6 +60,12 @@ const sortLabels: Record<string, string> = {
   'shippingStatus:asc': 'סטטוס משלוח: הזמנות חדשות קודם',
 };
 const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s.length > 0).length;
+
+// The page's rows, grouped back into the purchases they came from. `getAdminOrdersPage` already
+// paged BY purchase and returned the rows in that page order, so this only has to re-assemble them
+// — it can neither split a purchase across pages nor reorder the page, and `groupBuyerPurchases`
+// preserves first-seen order for exactly that reason.
+const purchases = groupBuyerPurchases(orders);
 ---
 
 <div class="admin-orders-search">
@@ -101,19 +108,40 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
     <AdminPager position="top" page={page} totalPages={totalPages} buildUrl={buildUrl} />
 
     <div class="flex flex-col gap-3" id="admin-orders-list">
-      {orders.map((o) => {
-        // Unique by slug so each store links to its storefront; an order can span
-        // several stores (platform-wide cart), so this is a list, not a single value.
-        const uniqueStores = [...new Map(o.items.map((i) => [i.storeSlug, i.storeName] as const)).entries()]
+      {purchases.map((purchase) => {
+        // ── One card per PURCHASE (owner, 2026-08-07) ──
+        // `orders` arrives as rows, and a multi-store cart is several of them naming one checkout.
+        // The tab used to give each row its own card: five cards, five order numbers and five
+        // totals for one thing the buyer bought once. Grouped through `groupBuyerPurchases` — the
+        // function the BUYER's own orders page already renders from — so the admin and the buyer
+        // cannot end up describing the same purchase differently. The page is already paged by
+        // purchase (orders.ts#getAdminOrdersPage), so a group is never cut by a page boundary.
+        const rows = purchase.slices.map((s) => s.order);
+        // The first row answers for the buyer: name, address and phone are copied onto every slice
+        // of one checkout by checkout.ts, so they cannot disagree.
+        const o = rows[0]!;
+        const allItems = rows.flatMap((r) => r.items);
+        const uniqueStores = [...new Map(allItems.map((i) => [i.storeSlug, i.storeName] as const)).entries()]
           .map(([slug, name]) => ({ slug, name }));
-        const itemCount = o.items.length;
+        const itemCount = allItems.length;
         const productsLabel = itemCount === 1 ? 'מוצר אחד' : `${itemCount} מוצרים`;
         const storesLabel = uniqueStores.length === 1 ? 'חנות אחת' : `${uniqueStores.length} חנויות`;
+        const split = purchase.slices.length > 1;
+        // What the buyer paid for the whole cart. `purchase.totalAgorot` is the sum of the slices,
+        // from the same function the buyer's card reads — never a re-derivation here.
+        const totalAgorot = purchase.totalAgorot;
+        const shippingAgorot = rows.reduce((sum, r) => sum + r.shippingAgorot, 0);
+        // The least-advanced LIVE slice. An order with one store delivered and four still pending
+        // is a pending order, and it reads as cancelled only when every slice is (buyer-purchases).
+        const headlineStatus = purchase.status;
+        // The card is "new" if ANY slice is, and the badge above the tab counts the same way
+        // (order-reporting.ts#countOrdersSince counts DISTINCT purchases).
+        const newestAt = rows.reduce((latest, r) => (r.createdAt > latest ? r.createdAt : latest), rows[0]!.createdAt);
         return (
           <div
             class="order-card @container/ordcard group border-[1.5px] border-[color:var(--color-border)] rounded-[var(--radius)] overflow-visible bg-[color:var(--color-surface)] transition-[border-color] duration-150 hover:border-[color:color-mix(in_srgb,var(--color-text)_20%,var(--color-border))]"
             data-order-id={o.id}
-            data-shipping-status={o.shippingStatus}
+            data-shipping-status={headlineStatus}
             data-payment-status={o.paymentStatus}
           >
             <div class="order-card__header grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 @[640px]/ordcard:flex @[640px]/ordcard:gap-3 px-4 py-[0.875rem] cursor-pointer select-none rounded-[calc(var(--radius)-1.5px)] group-data-[open]:rounded-b-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-accent)] focus-visible:[outline-offset:-2px]" role="button" tabindex="0" aria-expanded="false">
@@ -125,14 +153,14 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
                   sizes to this content, and 5rem of it wrapped the date onto a second
                   line. */}
               <div class="flex flex-col items-start gap-[0.2rem] @[640px]/ordcard:w-28 shrink-0 [grid-area:1/1]">
-                <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#{(o.checkoutRef ?? o.id.slice(0, 8)).toUpperCase()}</span>
-                <span class="text-[0.72rem] text-[color:var(--color-muted)] whitespace-nowrap">{formatHeDateTime(o.createdAt)}</span>
+                <span class="order-card__id text-[0.8rem] font-bold text-[color:var(--color-text)] font-mono">#{purchase.ref.toUpperCase()}</span>
+                <span class="text-[0.72rem] text-[color:var(--color-muted)] whitespace-nowrap">{formatHeDateTime(purchase.createdAt)}</span>
               </div>
               <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:flex-1 @[640px]/ordcard:items-center @[640px]/ordcard:gap-3 @[640px]/ordcard:min-w-0">
                 <div class="flex flex-col min-w-0 flex-1 gap-[0.15rem] [grid-area:1/2]">
                   <span class="flex items-center gap-1.5 min-w-0">
                     <span class="text-sm font-semibold text-[color:var(--color-text)] truncate">{o.buyerName}</span>
-                    {o.createdAt > newSince && <AdminNewBadge label="לא נצפתה" />}
+                    {newestAt > newSince && <AdminNewBadge label="לא נצפתה" />}
                   </span>
                   <span class="text-[0.72rem] text-[color:var(--color-muted)] truncate">{productsLabel} · {storesLabel}</span>
                 </div>
@@ -147,11 +175,11 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
                     grid and these wrappers go display:contents — see the seller dashboard's
                     copy of this card for the full note (admin↔seller parity). */}
                 <div class="contents @[640px]/ordcard:flex @[640px]/ordcard:items-center @[640px]/ordcard:gap-4 @[640px]/ordcard:shrink-0">
-                  <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatAgorot(o.totalAgorot)}</span>
+                  <span class="order-card__amount text-sm font-bold text-[color:var(--color-text)] text-start [grid-area:2/1] self-baseline @[640px]/ordcard:w-[6rem] @[640px]/ordcard:text-end @[640px]/ordcard:self-center">{formatAgorot(totalAgorot)}</span>
                   <span class="flex flex-wrap items-center justify-end gap-1.5 min-w-0 [grid-area:2/2/3/4] @[640px]/ordcard:w-[13.5rem] @[640px]/ordcard:flex-nowrap">
-                    <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(o.createdAt, o.shippingStatus, 'he')} />
-                    <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] whitespace-nowrap shrink-0" style={`background:${shippingColor[o.shippingStatus] ?? '#888'}1a;color:${shippingColor[o.shippingStatus] ?? '#888'}`}>
-                      {shippingLabel[o.shippingStatus] ?? o.shippingStatus}
+                    <span class="order-age-chip-slot flex items-center min-w-0 overflow-hidden empty:hidden" set:html={orderAgeChipHtml(purchase.createdAt, headlineStatus, 'he')} />
+                    <span class="order-card__status-badge text-[0.72rem] font-semibold px-[0.55rem] py-[0.2rem] rounded-[20px] whitespace-nowrap shrink-0" style={`background:${shippingColor[headlineStatus] ?? '#888'}1a;color:${shippingColor[headlineStatus] ?? '#888'}`}>
+                      {shippingLabel[headlineStatus] ?? headlineStatus}
                     </span>
                   </span>
                 </div>
@@ -178,28 +206,45 @@ const activeFilterCount = [shippingStatus, paymentStatus, store].filter((s) => s
                     <span class="normal-case">({uniqueStores.length} חנויות)</span>
                   )}
                 </h3>
-                <ul class="order-card__items list-none p-0 flex flex-col gap-2">
-                  {o.items.map((item) => (
-                    <li class="flex items-center gap-2.5 text-sm">
-                      {item.image && <img src={cdnThumb(item.image, 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
-                      <span class="flex-1 text-[color:var(--color-text)]">
-                        {item.productName}
-                        {uniqueStores.length > 1 && <> · <a href={`/${item.storeSlug}`} target="_blank" rel="noopener noreferrer" class="text-xs [color:var(--color-primary)] hover:underline">{item.storeName}</a></>}
-                      </span>
-                      <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
-                      <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatAgorot(item.priceAgorot * item.qty)}</span>
-                    </li>
-                  ))}
-                </ul>
+                {/* One block per STORE, each carrying that store's own status and slice total.
+                    This is the half of the card a flat item list could not express: the stores of
+                    one purchase genuinely disagree — every seller fulfils and cancels
+                    independently — so "נשלח" belongs beside the store it is true of, and not once
+                    at the bottom under a header that is only the least advanced of them. A
+                    single-store purchase shows no per-slice badge, because repeating the header's
+                    badge one line below says nothing. Same arrangement as the buyer's own card. */}
+                {purchase.slices.map((slice) => (
+                  <div class="mb-3 last:mb-0">
+                    {split && (
+                      <div class="flex items-center gap-2 flex-wrap mb-1.5">
+                        <a href={`/${slice.storeSlug}`} target="_blank" rel="noopener noreferrer" class="text-[0.82rem] font-semibold [color:var(--color-text)] no-underline hover:underline">{slice.storeName}</a>
+                        <span class="order-card__status-badge text-[0.7rem] font-semibold px-[0.5rem] py-[0.15rem] rounded-[20px] whitespace-nowrap" style={`background:${shippingColor[slice.order.shippingStatus] ?? '#888'}1a;color:${shippingColor[slice.order.shippingStatus] ?? '#888'}`}>
+                          {shippingLabel[slice.order.shippingStatus] ?? slice.order.shippingStatus}
+                        </span>
+                        <span class="text-[0.75rem] [color:var(--color-muted)] ms-auto tabular-nums">{formatAgorot(slice.totalAgorot)}</span>
+                      </div>
+                    )}
+                    <ul class="order-card__items list-none p-0 flex flex-col gap-2">
+                      {slice.order.items.map((item) => (
+                        <li class="flex items-center gap-2.5 text-sm">
+                          {item.image && <img src={cdnThumb(item.image, 72, 72)} alt="" width="36" height="36" loading="lazy" decoding="async" class="w-9 h-9 object-cover rounded-[var(--radius-sm)] shrink-0 border [border-color:var(--color-border)] bg-[color:var(--color-surface)]" />}
+                          <span class="flex-1 text-[color:var(--color-text)]">{item.productName}</span>
+                          <span class="text-[color:var(--color-muted)] text-[0.8rem]">×{item.qty}</span>
+                          <span class="font-bold text-[color:var(--color-text)] ms-auto">{formatAgorot(item.priceAgorot * item.qty)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
                 <div class="order-card__subtotals flex justify-between items-center mt-2.5 pt-2.5 border-t border-[color:var(--color-border)] text-sm text-[color:var(--color-muted)]">
-                  <span>משלוח: {o.shippingAgorot === 0 ? 'חינם' : formatAgorot(o.shippingAgorot)}</span>
-                  <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: {formatAgorot(o.totalAgorot)}</strong>
+                  <span>משלוח: {shippingAgorot === 0 ? 'חינם' : formatAgorot(shippingAgorot)}</span>
+                  <strong class="text-[color:var(--color-text)] text-[0.9375rem]">סה"כ: {formatAgorot(totalAgorot)}</strong>
                 </div>
               </div>
               <div>
                 <h3 class="text-[0.78rem] font-bold text-[color:var(--color-muted)] uppercase tracking-[0.05em] mb-2">סטטוס</h3>
                 <div class="flex gap-2 items-center flex-wrap">
-                  <span class={`admin-badge admin-badge--shipping-${o.shippingStatus}`}>הזמנה: {shippingLabel[o.shippingStatus] ?? o.shippingStatus}</span>
+                  <span class={`admin-badge admin-badge--shipping-${headlineStatus}`}>הזמנה: {shippingLabel[headlineStatus] ?? headlineStatus}</span>
                   {/* Payment is 'paid' on every order today (stub — real split-payment
                       not wired yet), so a "שולם" badge is pure noise. Surface it only
                       when it actually needs attention — pending/failed — which becomes

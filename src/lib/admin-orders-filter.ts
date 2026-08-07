@@ -15,6 +15,15 @@ import { SHIPPING_PIPELINE_ORDER } from './order-status-rules.js';
 // no longer on the render path but IS the query's unit-testable twin: `tests/admin-orders-page.test.ts`
 // runs the two over the same rows and requires the same list, so the rules cannot drift apart
 // silently. Same arrangement `selectMoneyEvents` has with `getMoneyEvents`.
+//
+// **What the twin does and does not cover, as of 2026-08-07.** The query now pages by PURCHASE
+// (`checkout-group.ts`), not by order row: it picks the checkout groups whose rows match, and
+// returns every row of those groups. `filterAndSortOrders` is still row-level, so the two agree
+// exactly while each checkout is one row — which is every case in
+// `tests/admin-orders-page.test.ts`'s fixture, and so the twin still pins the vocabulary it exists
+// to pin: what the search matches, which sorts exist, how a tie breaks. It does NOT define the
+// grouping, and must not be extended to; that is `tests/admin-orders-grouping.test.ts`, on a
+// fixture built from real multi-store checkouts.
 export type AdminOrderSortCol = 'date' | 'amount' | 'shippingStatus';
 export type AdminOrderSortDir = 'asc' | 'desc';
 
