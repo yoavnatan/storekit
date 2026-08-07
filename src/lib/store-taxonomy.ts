@@ -58,6 +58,58 @@ export const SEED_CATEGORIES: readonly string[] = [
   'כלבו',
 ];
 
+/**
+ * English display names for the seed vocabulary — display ONLY.
+ *
+ * The Hebrew string is the identity of a category everywhere it matters: it is what
+ * `Store.categories` stores, what `?category=` carries (`store-catalog-crawlable`),
+ * what groups the homepage shelves, and what `category-icons.ts` keys its icon off.
+ * Translating the value would fork all four and orphan every store already tagged.
+ * So the value never moves; only the label a reader sees does.
+ *
+ * Seeds only, deliberately — the same scope `category-icons.ts` draws. A seller may
+ * add a genuinely new category (the mall cannot predict every niche and approval
+ * would break zero-touch), and one typed in Hebrew has no English twin to look up.
+ * Those fall through and render as the seller wrote them, which is the honest
+ * outcome: a made-up translation would misname somebody's shop.
+ */
+const SEED_CATEGORY_EN: Readonly<Record<string, string>> = {
+  'אופנה': 'Fashion',
+  'הנעלה': 'Shoes',
+  'תיקים': 'Bags',
+  'תכשיטים': 'Jewellery',
+  'טיפוח': 'Beauty & care',
+  'אלקטרוניקה': 'Electronics',
+  'אביזרים': 'Accessories',
+  'לבית': 'Home',
+  'מטבח': 'Kitchen',
+  'ריהוט': 'Furniture',
+  'ספורט': 'Sport',
+  'מזון': 'Food',
+  'צעצועים': 'Toys',
+  'לתינוק': 'Baby',
+  'חיות מחמד': 'Pets',
+  'ספרים': 'Books',
+  'כלי עבודה': 'Tools',
+  'רכב': 'Car',
+  'מתנות': 'Gifts',
+  'כלבו': 'General store',
+};
+
+/**
+ * What a reader should SEE for a stored category value.
+ *
+ * Every surface that prints a category goes through this — the `/stores` filter
+ * chips, the homepage shelf headings, the store card's tags — so an English visitor
+ * stops reading Hebrew chips over an English page. Sorting must use it too, or the
+ * English chip row comes out in Hebrew alphabetical order.
+ */
+export function categoryLabel(value: string, lang: 'he' | 'en'): string {
+  const trimmed = value.trim();
+  if (lang === 'he') return trimmed;
+  return SEED_CATEGORY_EN[trimmed] ?? trimmed;
+}
+
 /** Words too generic to prove two categories are the same thing. Hebrew conjunctions
  *  and articles fuse onto the next word (ו/ה/ב/ל/מ/ש), so they're stripped as
  *  prefixes below rather than matched as standalone tokens. */

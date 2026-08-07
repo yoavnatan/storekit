@@ -18,6 +18,7 @@ import { buildHomeFeed, type FeedStore } from '../lib/home-feed.js';
 import { getFavoriteStoresForUser, getRecentStoresForUser } from '../lib/user-carts.js';
 import { parseRecentStores, mergeStoreSlugs } from '../lib/recent-stores.js';
 import { isLaunchMode, showShelfInvite, planLaunchShelf, launchInviteCount, MIN_SHELF_INVITES } from '../lib/launch-mode.js';
+import { categoryLabel } from '../lib/store-taxonomy.js';
 import { getLang, getT } from '../i18n/index.js';
 
 const sellerId    = getSellerSession(Astro.cookies);
@@ -132,7 +133,9 @@ const recentStores: FeedStore[] = recentSlugs
 // carousel, so a first-time visitor with no history still lands on discovery
 // content. Stores already in the recently-visited shelf are filtered out of it
 // to avoid a dupe.
-const categoryShelves = feed.categories.map((c, i) => ({ id: `cat-${i}`, title: c.category, stores: c.stores }));
+// `c.category` is the stored Hebrew value the shelf was grouped by; the heading is
+// its reader-facing label (store-taxonomy.ts#categoryLabel).
+const categoryShelves = feed.categories.map((c, i) => ({ id: `cat-${i}`, title: categoryLabel(c.category, lang), stores: c.stores }));
 const discoveryShelf = { id: 'discovery', title: t.home.shelfDiscovery, stores: feed.discovery.filter((fs) => !recentSlugs.includes(fs.store.slug)) };
 const discoverHasContent = recentStores.length > 0 || categoryShelves.some((s) => s.stores.length > 0)
   || feed.spotlight.length > 0 || discoveryShelf.stores.length > 0;

@@ -4,6 +4,7 @@ import {
   MAX_CATEGORY_LENGTH,
   SEED_CATEGORIES,
   buildVocabulary,
+  categoryLabel,
   categoryTokens,
   findSimilarCategories,
   normalizeCategory,
@@ -121,5 +122,36 @@ describe('sanitizeStoreCategories — the server-side rule', () => {
 
   it('drops empties and over-long entries', () => {
     expect(sanitizeStoreCategories(['', '   ', 'א'.repeat(MAX_CATEGORY_LENGTH + 1)])).toEqual([]);
+  });
+});
+
+/**
+ * A category's Hebrew string is its IDENTITY — the stored `Store.categories` value,
+ * the `?category=` parameter, the homepage grouping key and the icon map's key. The
+ * English is a label drawn over it, and these two facts are what keep them apart.
+ *
+ * The parity half mirrors `category-icons.test.ts`: adding a seed without an English
+ * twin fails here rather than showing one Hebrew chip in an otherwise English row —
+ * which is exactly how this was found (owner, 2026-08-07: "גם באנגלית כל הקטגוריות
+ * עדיין מופיעות בעברית").
+ */
+describe('categoryLabel — display only, never the value', () => {
+  it('gives every seed an English twin', () => {
+    const missing = SEED_CATEGORIES.filter((c) => categoryLabel(c, 'en') === c);
+    expect(missing, `seeds with no English label:\n${missing.join('\n')}`).toEqual([]);
+  });
+
+  it('returns the stored value untouched in Hebrew', () => {
+    for (const c of SEED_CATEGORIES) expect(categoryLabel(c, 'he')).toBe(c);
+  });
+
+  it('passes a seller-added category through rather than inventing a translation', () => {
+    // Not in the seed list, so there is no twin to look up and nothing to guess.
+    expect(categoryLabel('כלי נגינה', 'en')).toBe('כלי נגינה');
+    expect(categoryLabel('כלי נגינה', 'he')).toBe('כלי נגינה');
+  });
+
+  it('trims, so a stored value with stray spaces still resolves', () => {
+    expect(categoryLabel(' אופנה ', 'en')).toBe('Fashion');
   });
 });
