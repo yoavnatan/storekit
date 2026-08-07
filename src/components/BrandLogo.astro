@@ -171,7 +171,15 @@ const toneClass =
     // this class list is utilities and a stylesheet cannot address those. The
     // header needs to nudge THIS element and nothing else near it.
     'dz-logo',
-    'inline-flex flex-col items-start gap-[0.05em] align-middle',
+    'inline-flex flex-col gap-[0.05em] align-middle',
+    // The Hebrew line is narrower than the mark and hangs off the start edge by
+    // design, so the column aligns to start. The English line is WIDER than the
+    // mark, which makes it the widest child and therefore the column's width —
+    // start-aligning there would pin the mark to one edge with the whole overhang
+    // on the other. Centring the column instead splits the overhang evenly and
+    // keeps the mark on the lockup's axis. Only reachable with `tagline`, i.e.
+    // the homepage h1; the header and the auth pages draw no line at all.
+    isHe || !tagline ? 'items-start' : 'items-center',
     toneClass,
     className,
   ]}
@@ -273,16 +281,22 @@ const toneClass =
         'font-medium text-[0.3886em]',
         // Hebrew: the measured lockup above — one line, flush by construction.
         isHe && 'leading-none ms-[-0.0532em]',
-        // English: "A home for independent stores" is 28 characters against the
-        // Hebrew's 19, so at the same size it cannot sit on one line inside a
-        // 3.2925em mark. The owner's call (2026-08-07) was that two lines are
-        // fine as long as it looks aligned — so instead of re-deriving a size,
-        // the box IS the wordmark's ink width and the line wraps inside it.
-        // Both edges then meet the mark on the leading side by definition, and
-        // no bisection is needed because nothing is trying to be flush on the
-        // trailing one. `leading-tight` because two lines at `leading-none`
-        // collide.
-        !isHe && 'w-[3.2925em] leading-tight text-start text-balance',
+        // English: one line, centred on the mark, and allowed to overhang it.
+        //
+        // "A home for independent stores" is 28 characters against the Hebrew's
+        // 19, so it cannot be flush inside a 3.2925em mark at this size — and
+        // the owner's call (2026-08-07) was that overhanging is fine and centred
+        // is what matters. Centred, not start-aligned, because an overhang that
+        // spills to one side only reads as a mistake; split evenly it reads as
+        // the lockup being wider than the mark.
+        //
+        // A first attempt boxed it at `w-[3.2925em]` to wrap instead, and gave
+        // one word per line: `em` inside this span resolves against the span's
+        // OWN font-size, so that box was 3.2925 x 0.3886 = 1.28 of the lockup's
+        // em, a third of the mark. It is the same trap the margin note above
+        // spells out, walked into one element lower. Any length here has to be
+        // divided by 0.3886 first — which is why there is no length here now.
+        !isHe && 'whitespace-nowrap leading-none',
       ]}
       aria-hidden="true"
     >{t.home.startSelling}</span>
