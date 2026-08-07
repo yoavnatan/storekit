@@ -1080,6 +1080,12 @@ export const translations = {
       categoryAddAnyway: 'הוסיפו בכל זאת',
       categoryLimit: 'אפשר לבחור עד {n} קטגוריות.',
       categoryRemove: 'הסרת',
+      /** Optional English label for a category the seller invented. The word "לא חובה"
+       *  is load-bearing: many sellers do not read English and must be able to finish
+       *  this form without it (owner, 2026-08-07). */
+      categoryEnLabel: 'שם באנגלית (לא חובה)',
+      categoryEnHint: 'מוצג לקונים שגולשים באנגלית. בלי זה תוצג הקטגוריה כפי שכתבת.',
+      categoryEnPlaceholder: 'למשל: Eclectic',
       categoriesTitle: 'קטגוריות מוצרים',
       categoriesHint: 'ארגן את המוצרים שלך בקטגוריות ותתי-קטגוריות (עד 3 רמות). קונים יוכלו לסנן לפיהן בעמוד החנות.',
       settingsAutoSaved: 'נשמר אוטומטית',
@@ -2393,6 +2399,9 @@ export const translations = {
       categoryAddAnyway: 'Add anyway',
       categoryLimit: 'Up to {n} categories.',
       categoryRemove: 'Remove',
+      categoryEnLabel: 'English name (optional)',
+      categoryEnHint: 'Shown to shoppers browsing in English. Without it, your own wording is shown.',
+      categoryEnPlaceholder: 'e.g. Eclectic',
       categoriesTitle: 'Product categories',
       categoriesHint: 'Organize your products into categories and subcategories (up to 3 levels). Buyers can filter by them on your store page.',
       settingsAutoSaved: 'Saved automatically',

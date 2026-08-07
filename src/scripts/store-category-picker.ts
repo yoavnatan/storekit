@@ -24,6 +24,10 @@ interface PickerI18n {
   addAnyway: string;
   full: string;
   remove: string;
+  /** The optional English-label block. See renderEnFields below. */
+  enLabel?: string;
+  enHint?: string;
+  enPlaceholder?: string;
 }
 
 const CHIP_CLASS =
@@ -48,6 +52,13 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
   const vocabulary: string[] = JSON.parse(root.dataset.vocabulary || '[]');
   const i18n: PickerI18n = JSON.parse(root.dataset.i18n || '{}');
 
+  // The optional English label per invented category (lib/category-translations.ts).
+  const enFieldsEl = root.querySelector<HTMLElement>('[data-en-fields]');
+  const seedCategories = new Set<string>(JSON.parse(root.dataset.seedCategories || '[]'));
+  const enPrefix = root.dataset.enPrefix || 'categoryEn:';
+  const enMax = Number(root.dataset.enMax || '24');
+  const enValues: Record<string, string> = JSON.parse(root.dataset.enValues || '{}');
+
   let chosen: string[] = valueInput.value.split(',').map((c) => c.trim()).filter(Boolean);
   /** Set once the seller has been shown the near-duplicate suggestions and still wants their label. */
   let insistOn: string | null = null;
@@ -56,6 +67,7 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
   // notice never learns that the categories were edited (unsaved-guard.ts states the whole trap).
   const sync = (): void => {
     valueInput.value = chosen.join(', ');
+    renderEnFields();
     announceValueChange(valueInput);
   };
 
@@ -66,8 +78,46 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
     chosen = valueInput.value.split(',').map((c) => c.trim()).filter(Boolean);
     insistOn = null;
     renderChips();
+    renderEnFields();
     renderList();
   });
+
+  /**
+   * One optional English box per category the seller invented.
+   *
+   * Seeds get none: those twenty already have a label we wrote, and letting a seller
+   * retitle one would rename the shelf every other store sits on. The whole block
+   * hides when there is nothing to ask about, so a seller who only ever picks from
+   * the vocabulary — the common case — never sees an English field at all.
+   *
+   * Values already typed are read back off the live inputs before the repaint, so
+   * removing an unrelated chip does not wipe what the seller just wrote.
+   */
+  function renderEnFields(): void {
+    if (!enFieldsEl) return;
+    enFieldsEl.querySelectorAll<HTMLInputElement>('input[data-en-for]').forEach((el) => {
+      enValues[el.dataset.enFor ?? ''] = el.value;
+    });
+    const invented = chosen.filter((c) => !seedCategories.has(c));
+    enFieldsEl.hidden = invented.length === 0;
+    if (!invented.length) { enFieldsEl.innerHTML = ''; return; }
+    enFieldsEl.innerHTML = `
+      <p class="m-0 text-[0.8rem] leading-relaxed [color:var(--color-muted)]">${esc(i18n.enHint ?? '')}</p>
+      ${invented.map((c) => `
+        <label class="flex items-center gap-2 text-[0.82rem]">
+          <span class="shrink-0 [color:var(--color-text)]">${esc(c)}</span>
+          <input
+            type="text"
+            class="input flex-1"
+            name="${esc(enPrefix + c)}"
+            data-en-for="${esc(c)}"
+            value="${esc(enValues[c] ?? '')}"
+            maxlength="${enMax}"
+            placeholder="${esc(i18n.enPlaceholder ?? '')}"
+            aria-label="${esc(i18n.enLabel ?? '')} — ${esc(c)}"
+          />
+        </label>`).join('')}`;
+  }
 
   function renderChips(): void {
     chipsEl!.innerHTML = chosen.map((c) =>

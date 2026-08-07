@@ -75,6 +75,7 @@ import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { buildBarChartSvg, buildLineChartSvg, buildMultiLineChartSvg } from '../../lib/chart-svg.js';
 import StoreCategoryPicker from '../../components/StoreCategoryPicker.astro';
 import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxonomy.js';
+import { getCategoryTranslations } from '../../lib/category-translations.js';
 import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
@@ -277,6 +278,15 @@ const queryStoreId = Astro.url.searchParams.get('store');
 const lastStoreId = Astro.cookies.get(LAST_STORE_COOKIE)?.value ?? '';
 const activeStoreId = hasNoStore ? '' : (queryStoreId ?? lastStoreId);
 const store = hasNoStore ? undefined : (allStores.find((s) => s.id === activeStoreId) ?? allStores[0]);
+// Only the labels for THIS store's own categories — the picker reopens showing what
+// was saved rather than an empty box, which would read as "nothing set".
+const allCategoryLabelsEn = await getCategoryTranslations();
+const storeCategoryLabelsEn = Object.fromEntries(
+  (store?.categories ?? []).flatMap((c) => {
+    const en = allCategoryLabelsEn.get(c.trim());
+    return en ? [[c.trim(), en] as const] : [];
+  }),
+);
 if (store && store.id !== lastStoreId) {
   Astro.cookies.set(LAST_STORE_COOKIE, store.id, {
     httpOnly: true,
@@ -2471,7 +2481,7 @@ const orderStatusColors: Record<string, string> = {
 
           <div class="field">
             <span>{d.storeCategories}</span>
-            <StoreCategoryPicker vocabulary={categoryVocabulary} selected={store.categories ?? []} id="settings-store-cats" />
+            <StoreCategoryPicker vocabulary={categoryVocabulary} selected={store.categories ?? []} englishLabels={storeCategoryLabelsEn} id="settings-store-cats" />
           </div>
 
           <div class="field">
