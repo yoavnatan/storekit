@@ -24,9 +24,6 @@ interface PickerI18n {
   addAnyway: string;
   full: string;
   remove: string;
-  /** The optional English-label block. See renderEnFields below. */
-  enLabel?: string;
-  enPlaceholder?: string;
 }
 
 const CHIP_CLASS =
@@ -51,12 +48,6 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
   const vocabulary: string[] = JSON.parse(root.dataset.vocabulary || '[]');
   const i18n: PickerI18n = JSON.parse(root.dataset.i18n || '{}');
 
-  // The optional English label per invented category (lib/category-translations.ts).
-  const enFieldsEl = root.querySelector<HTMLElement>('[data-en-fields]');
-  const seedCategories = new Set<string>(JSON.parse(root.dataset.seedCategories || '[]'));
-  const enPrefix = root.dataset.enPrefix || 'categoryEn:';
-  const enMax = Number(root.dataset.enMax || '24');
-  const enValues: Record<string, string> = JSON.parse(root.dataset.enValues || '{}');
 
   let chosen: string[] = valueInput.value.split(',').map((c) => c.trim()).filter(Boolean);
   /** Set once the seller has been shown the near-duplicate suggestions and still wants their label. */
@@ -66,7 +57,6 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
   // notice never learns that the categories were edited (unsaved-guard.ts states the whole trap).
   const sync = (): void => {
     valueInput.value = chosen.join(', ');
-    renderEnFields();
     announceValueChange(valueInput);
   };
 
@@ -77,7 +67,6 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
     chosen = valueInput.value.split(',').map((c) => c.trim()).filter(Boolean);
     insistOn = null;
     renderChips();
-    renderEnFields();
     renderList();
   });
 
@@ -92,38 +81,6 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
    * Values already typed are read back off the live inputs before the repaint, so
    * removing an unrelated chip does not wipe what the seller just wrote.
    */
-  function renderEnFields(): void {
-    if (!enFieldsEl) return;
-    enFieldsEl.querySelectorAll<HTMLInputElement>('input[data-en-for]').forEach((el) => {
-      enValues[el.dataset.enFor ?? ''] = el.value;
-    });
-    const invented = chosen.filter((c) => !seedCategories.has(c));
-    enFieldsEl.hidden = invented.length === 0;
-    if (!invented.length) { enFieldsEl.innerHTML = ''; return; }
-    // One short box, and its placeholder IS the instruction — no heading, no
-    // explanatory paragraph, no label repeating the category name beside it
-    // (owner, 2026-08-07: "אינפוט קטן שכתוב בו 'שם הקטגוריה באנגלית (לא חובה)'...
-    // וזהו"). The first version was a full-width field under a paragraph of hint,
-    // which read as unrelated to the chip that produced it.
-    // The Hebrew is printed only when there are two or more, because with one box
-    // there is nothing to tell apart.
-    const many = invented.length > 1;
-    enFieldsEl.innerHTML = invented.map((c) => `
-      <div class="flex items-center gap-2">
-        ${many ? `<span class="shrink-0 text-[0.78rem] [color:var(--color-muted)]">${esc(c)}</span>` : ''}
-        <input
-          type="text"
-          class="input w-[13rem] max-w-full text-[0.82rem] py-[0.28rem]"
-          name="${esc(enPrefix + c)}"
-          data-en-for="${esc(c)}"
-          value="${esc(enValues[c] ?? '')}"
-          maxlength="${enMax}"
-          placeholder="${esc(i18n.enPlaceholder ?? '')}"
-          aria-label="${esc(i18n.enLabel ?? '')}${many ? ` — ${esc(c)}` : ''}"
-        />
-      </div>`).join('');
-  }
-
   function renderChips(): void {
     chipsEl!.innerHTML = chosen.map((c) =>
       `<span class="${CHIP_CLASS}">${esc(c)}<button type="button" class="leading-none opacity-60 hover:opacity-100"

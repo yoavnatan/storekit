@@ -15,8 +15,7 @@
  * unchanged and `/api/store.ts` re-sanitizes server-side regardless — this component
  * is convenience, never the rule.
  */
-import { MAX_CATEGORIES_PER_STORE, SEED_CATEGORIES } from '../lib/store-taxonomy.js';
-import { CATEGORY_EN_FIELD_PREFIX, MAX_TRANSLATION_LENGTH } from '../lib/category-translations.js';
+import { MAX_CATEGORIES_PER_STORE } from '../lib/store-taxonomy.js';
 import { getLang, getT } from '../i18n/index.js';
 
 interface Props {
@@ -24,21 +23,11 @@ interface Props {
   vocabulary: readonly string[];
   /** Categories this store already carries. */
   selected?: readonly string[];
-  /** Any English labels already recorded for the selected categories, keyed by the
-   *  stored Hebrew value — so re-opening the form shows what was saved rather than
-   *  an empty box that reads as "not set". */
-  englishLabels?: Record<string, string>;
-  /** Whether to offer the optional English label at all. OFF when opening a store
-   *  (owner, 2026-08-07: "אחרת זה עלול לסבך את הפתיחת חנות") — the first form a
-   *  seller ever meets asks for nothing extra, and the field waits in Settings for
-   *  whenever they want it. Nothing depends on it either way: an untranslated
-   *  category renders as the seller wrote it. */
-  askEnglish?: boolean;
   /** Distinguishes the two instances (settings form / new-store form) on one page. */
   id?: string;
 }
 
-const { vocabulary, selected = [], englishLabels = {}, askEnglish = true, id = 'store-cats' } = Astro.props;
+const { vocabulary, selected = [], id = 'store-cats' } = Astro.props;
 const t = getT(getLang(Astro.cookies));
 ---
 
@@ -53,13 +42,7 @@ const t = getT(getLang(Astro.cookies));
     addAnyway: t.dashboard.categoryAddAnyway,
     full: t.dashboard.categoryLimit.replace('{n}', String(MAX_CATEGORIES_PER_STORE)),
     remove: t.dashboard.categoryRemove,
-    enLabel: t.dashboard.categoryEnLabel,
-    enPlaceholder: t.dashboard.categoryEnPlaceholder,
   })}
-  data-seed-categories={JSON.stringify(SEED_CATEGORIES)}
-  data-en-prefix={CATEGORY_EN_FIELD_PREFIX}
-  data-en-max={MAX_TRANSLATION_LENGTH}
-  data-en-values={JSON.stringify(englishLabels)}
 >
   <!-- The real submitted value. Kept in sync by the script; the form works with
        whatever is here even if JS never runs (it holds the saved value already). -->
@@ -67,11 +50,6 @@ const t = getT(getLang(Astro.cookies));
 
   <div class="store-cat-picker__chips flex flex-wrap gap-1.5 mb-2" data-chips></div>
 
-  <!-- One optional English input per category the seller INVENTED. A seed category
-       already has a label we wrote, so it gets no row: a seller renaming the shelf
-       everyone else sits on is a different thing entirely (category-translations.ts).
-       Empty is the expected state and never blocks the save. -->
-  {askEnglish && <div class="store-cat-picker__en flex flex-col gap-1.5 mt-2 mb-4" data-en-fields hidden></div>}
 
   <input
     type="text"

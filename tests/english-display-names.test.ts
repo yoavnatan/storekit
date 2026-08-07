@@ -17,10 +17,10 @@
  *
  * Nothing about that is enforced by types — both sides are `string` — so it is enforced here.
  *
- * The other half is the requirement that made this optional in the first place (owner, 2026-08-07:
- * "אסור שזה יהיה חובה כי צריך לצאת מנקודת הנחה שהרבה מוכרים לא יודעים אנגלית"). A seller who reads
- * no English must be able to finish every form. So a missing translation is the NORMAL case and
- * must never surface as an error, a rejection, or an empty label.
+ * A missing translation is the NORMAL case, not an error — the table is empty today by design
+ * (`lib/category-translations.ts` says who is expected to fill it and why the seller-facing input
+ * was cut). So the fallback path is tested as hard as the hit: an untranslated category renders as
+ * the seller wrote it, never as a blank.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -107,34 +107,4 @@ describe('the English label never becomes an identity', () => {
     expect(line).toMatch(/categoryLabel=\{s\.value\}/);
   });
 
-  it('never writes an English label into the store record or a URL', () => {
-    // The one writer. It must put the seller's label in `category_translations` and nowhere near
-    // `stores.categories`, which is what `?category=` and the grouping both read.
-    const source = read('pages/api/store.ts');
-    // The IDENTIFIER, not the literal: the prefix is declared once in
-    // category-translations.ts, and a retyped copy here is the thing that silently
-    // stops matching — the save still succeeds and the label is simply never stored.
-    expect(source).toContain('CATEGORY_EN_FIELD_PREFIX');
-    // `categories` is still built from sanitizeStoreCategories alone.
-    expect(source).toMatch(/categories:\s*sanitizeStoreCategories\(/);
-    const merged = source.slice(source.indexOf('const saved = await updateStore'));
-    expect(
-      /categoryEn|name_en|nameEn/.test(merged),
-      'An English label reached updateStore(). It belongs in category_translations only — the store\n' +
-        "record holds the identity, and `?category=` reads it.",
-    ).toBe(false);
-  });
-});
-
-describe('an untranslated category is the normal case, not an error', () => {
-  it('has no code path that rejects a save for a missing English label', () => {
-    const source = read('pages/api/store.ts');
-    const block = source.slice(source.indexOf('CATEGORY_EN_FIELD_PREFIX)'));
-    const untilNextReturn = block.slice(0, block.indexOf('pingStoreChange'));
-    expect(
-      /return json\(\{\s*ok:\s*false/.test(untilNextReturn),
-      'The English label is optional by requirement (owner, 2026-08-07). Nothing in the block that\n' +
-        'stores it may fail the save — a seller who reads no English has to be able to finish the form.',
-    ).toBe(false);
-  });
 });
