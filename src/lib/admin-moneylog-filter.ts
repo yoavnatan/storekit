@@ -73,6 +73,21 @@ const OPEN_TO = '9999-12-31';
  */
 const MAX_SEARCH_LENGTH = 200;
 
+/**
+ * …and a cap on the TERM COUNT, which is now the half that costs.
+ *
+ * The length cap above was written when every term was tested against every row in JS. The search
+ * runs in the query now, where a term is not a loop but a ten-armed `OR` bolted into the `WHERE` —
+ * so 200 characters of `a a a a …` is 100 of those, and Postgres spends its time PLANNING rather
+ * than matching. Measured against the production build: 100 single-character terms took 1.26s where
+ * a real search takes about 70ms.
+ *
+ * Twelve, because no search anyone types is longer and because the cap has to be the same for both
+ * matchers — it is applied HERE, where the query is parsed, so the in-memory reference implementation
+ * and the SQL still see the identical string and `tests/moneylog-search-parity.test.ts` stays honest.
+ */
+const MAX_SEARCH_TERMS = 12;
+
 /** Parses the money-journal tab's own params (mtype/mq/mfrom/mto/mev). Kept beside the
  *  filter so the two things that must agree — what a param means and what the filter
  *  expects — cannot drift. Every param is registered in ADMIN_TAB_PARAMS
@@ -100,7 +115,8 @@ export function parseMoneyLogQuery(sp: URLSearchParams, today: string = business
 
   return {
     type: isMoneyEventType(type) ? type : undefined,
-    q: (sp.get('mq') ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
+    q: (sp.get('mq') ?? '').trim().slice(0, MAX_SEARCH_LENGTH)
+      .split(/\s+/).filter(Boolean).slice(0, MAX_SEARCH_TERMS).join(' '),
     from,
     to,
     eventId: (sp.get('mev') ?? '').trim(),

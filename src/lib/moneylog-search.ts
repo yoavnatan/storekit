@@ -110,7 +110,13 @@ export function amountGuards(term: string): string[] | null {
       const lo = decimals.length === 2 ? n : n * 10;
       const hi = decimals.length === 2 ? n : n * 10 + 9;
       if (hi === 0) return null;
-      guards.push(`(e.amount_agorot % 100 BETWEEN ${Math.max(lo, 1)} AND ${hi} OR e.amount_agorot % 100 BETWEEN ${-hi} AND ${-Math.max(lo, 1)})`);
+      // These two are the ONLY values this module interpolates into SQL rather than binding, so
+      // they are clamped to the range the regex above already guarantees (0–99 decimals) instead of
+      // being trusted to stay there. A bound parameter would be the usual answer and is the wrong
+      // one here — the guard has to be a constant the planner can see, or it stops pruning, which is
+      // the entire reason it exists.
+      const bound = (v: number) => Math.min(Math.max(Math.trunc(v) || 0, 0), 99);
+      guards.push(`(e.amount_agorot % 100 BETWEEN ${Math.max(bound(lo), 1)} AND ${bound(hi)} OR e.amount_agorot % 100 BETWEEN ${-bound(hi)} AND ${-Math.max(bound(lo), 1)})`);
     }
     return guards;
   }
