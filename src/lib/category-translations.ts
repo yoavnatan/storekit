@@ -8,17 +8,24 @@
  * has no twin anywhere in the codebase to look up. `/stores`' filter row showed exactly one such
  * chip in Hebrew inside an otherwise English row, which is what surfaced this (owner, 2026-08-07).
  *
- * So the seller supplies it, **optionally**, when they add the category. Owner, same day: "אסור
- * שזה יהיה חובה כי צריך לצאת מנקודת הנחה שהרבה מוכרים לא יודעים אנגלית." Nothing here treats a
- * missing translation as an error — `resolve()` hands back the Hebrew and the chip renders as the
- * seller wrote it, which is what happened before this module existed.
+ * **Nobody fills this table yet, and that is the current state rather than an oversight.** The
+ * first attempt asked the SELLER for the label as they added the category. It was built, and the
+ * owner cut it (2026-08-07): "אני חושב שזה רעיון רע כל הקטע הזה של לתת למוכר לתרגם, אולי אנחנו
+ * אחת לכמה זמן נעשה תרגום או שנמצא לזה בהמשך פתרון יותר טוב כמו רכיב ai". He was right on his own
+ * rule — it put a box in front of a seller who may not read English, and three passes at the UI
+ * still left "which category is this for?" unanswered.
+ *
+ * So the table stays and the input went. It is the shape a platform-side pass wants — a periodic
+ * translation, or whatever AI component ends up doing it — and that pass needs somewhere to put
+ * its output. Reading is wired and guarded; only the writer is open.
+ *
+ * **Empty is a working state.** With no rows, `resolveCategoryLabel` returns the seed label for the
+ * platform's own categories and the Hebrew for anything a seller invented — exactly what the site
+ * did before this module existed. Nothing treats a missing translation as an error.
  *
  * **Platform-wide, not per-store.** Two sellers who both tag themselves "אקלקטי" are in ONE
  * category — they share a filter chip and a homepage shelf — so it needs one English label, not one
  * per shop. The Hebrew value is the primary key because that is what makes them the same row.
- * First seller to name it names it for the shelf; a later one does not overwrite, because the
- * shelf's label changing under the first seller is a worse outcome than a synonym they'd have
- * preferred (`INSERT … ON CONFLICT DO NOTHING`).
  *
  * **The label never becomes the identity.** The Hebrew value stays what `Store.categories` holds,
  * what `?category=` carries, what groups the homepage shelves and what `category-icons.ts` keys its
@@ -26,8 +33,8 @@
  * language — an English visitor could not reach a store a Hebrew visitor can — and it is asserted
  * by `tests/english-display-names.test.ts`.
  */
-import { query, rows } from './db.js';
-import { categoryLabel, normalizeCategory } from './store-taxonomy.js';
+import { rows } from './db.js';
+import { categoryLabel } from './store-taxonomy.js';
 import type { Lang } from '../i18n/translations.js';
 
 interface TranslationRow { category: string; name_en: string }
@@ -64,33 +71,3 @@ export function resolveCategoryLabel(
   if (seed !== trimmed) return seed;
   return translations.get(trimmed) ?? trimmed;
 }
-
-/**
- * Record a seller's English label for a category, if they gave one.
- *
- * Silent no-op on an empty value — an untranslated category is the normal case, not a failure, and
- * nothing upstream may treat it as one. Also a no-op for a seed category: those are ours.
- */
-export async function saveCategoryTranslation(category: string, nameEn: string | null | undefined): Promise<void> {
-  const value = normalizeCategory(category);
-  const label = (nameEn ?? '').trim();
-  if (!value || !label) return;
-  // A seed category already has a label we wrote; a seller cannot rename the shared shelf.
-  if (categoryLabel(value, 'en') !== value) return;
-  await query(
-    'INSERT INTO category_translations (category, name_en) VALUES ($1, $2) ON CONFLICT (category) DO NOTHING',
-    [value, label.slice(0, MAX_TRANSLATION_LENGTH)],
-  );
-}
-
-/** Same ceiling the Hebrew label has (`MAX_CATEGORY_LENGTH`) — a sentence is a description. */
-export const MAX_TRANSLATION_LENGTH = 24;
-
-/**
- * Form-field prefix carrying a seller's English label: `categoryEn:<the Hebrew value>`.
- *
- * Declared here rather than typed into both the picker and `api/store.ts` — a name agreed in two
- * files is the shape that silently stops matching, and the failure would be invisible: the save
- * succeeds, the label is simply never stored, and the chip stays Hebrew.
- */
-export const CATEGORY_EN_FIELD_PREFIX = 'categoryEn:';
