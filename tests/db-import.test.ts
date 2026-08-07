@@ -128,15 +128,29 @@ describe('schema', () => {
     await db.query(`DELETE FROM store_products WHERE slug = 'dup-slug-check'`);
   });
 
-  it('rejects a second order carrying the same payment reference (§7.6)', async () => {
-    const row = ['44444444-4444-4444-8444-444444444444', 'A', 'a@b.c', 1000, 'pending', 'pending', 'ref-dup-check'];
+  it('ACCEPTS several orders carrying one payment reference (migration 0017)', async () => {
+    // Inverted on 2026-08-07, and the old assertion is worth keeping in view: this test used to
+    // demand the opposite, because 0001 declared `payment_ref` UNIQUE under the §7.6 heading "a
+    // payment webhook that fires twice must fail here". It made a green suite out of a schema that
+    // 500'd on any cart holding two shops — /api/checkout charges ONCE and then writes one order
+    // row per store, so the second row hit the constraint and the whole checkout rolled back.
+    //
+    // A test can only defend an invariant that is true. This one pinned the constraint rather than
+    // the behaviour the constraint was supposed to buy, so it defended the bug instead. The
+    // double-charge guard it was credited with is `lib/checkout-idempotency.ts`, which is in the
+    // request path, is unaffected, and has its own tests. See migrations/0017 for the long version.
+    const row = ['A', 'a@b.c', 1000, 'pending', 'pending', 'ref-dup-check'];
     const insert = (id: string) => db.query(
       `INSERT INTO orders (id, buyer_name, buyer_email, total_agorot, payment_status, shipping_status, payment_ref)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [id, ...row.slice(1)],
+      [id, ...row],
     );
-    await insert(row[0] as string);
-    await expect(insert('55555555-5555-4555-8555-555555555555')).rejects.toThrow();
+    await insert('44444444-4444-4444-8444-444444444444');
+    await expect(insert('55555555-5555-4555-8555-555555555555')).resolves.toBeTruthy();
+    // The replacement index still has to make "which orders did this transaction pay for?" one
+    // lookup — that question is the payment webhook's whole job (CURRENT_TASK א.2).
+    const found = await db.query(`SELECT id FROM orders WHERE payment_ref = 'ref-dup-check'`);
+    expect(found.rows).toHaveLength(2);
     await db.query(`DELETE FROM orders WHERE payment_ref = 'ref-dup-check'`);
   });
 

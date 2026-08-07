@@ -285,6 +285,27 @@ describe('creating an order', () => {
     expect(read.items[0]!.priceAgorot).toBe(0);
     expect(read.items[0]!.qty).toBe(1);
   });
+
+  it('lets ONE payment ref sit on the several orders of one multi-store checkout (migration 0017)', async () => {
+    // The bug this pins is the one that made a two-shop cart un-buyable, and it is a database
+    // fact, so only a database test could have caught it: `orders.payment_ref` was declared
+    // UNIQUE, while /api/checkout charges ONCE for the whole cart and then writes one order row
+    // per store. The second row died on `orders_payment_ref_key`, the transaction rolled back,
+    // and the buyer got a 500 — for the exact cart shape a marketplace exists to sell.
+    //
+    // Deliberately NOT a unique ref per order: the value is the gateway's transaction id, and
+    // reconciliation matches our money against theirs through this column. One charge is one ref,
+    // on every row it paid for.
+    const ref = `PAY-${crypto.randomUUID()}`;
+    const first = await createOrder(input({ checkoutRef: 'CHK-MULTI', paymentRef: ref }));
+    const second = await createOrder(input({ checkoutRef: 'CHK-MULTI', paymentRef: ref }));
+    expect((await getOrderById(first.id))!.paymentRef).toBe(ref);
+    expect((await getOrderById(second.id))!.paymentRef).toBe(ref);
+    // And one lookup by the ref finds BOTH — what the payment webhook (CURRENT_TASK א.2) will
+    // need, and what a unique index could never have returned.
+    const { rows } = await query<{ id: string }>('SELECT id FROM orders WHERE payment_ref = $1', [ref]);
+    expect(rows.map((r) => r.id).sort()).toEqual([first.id, second.id].sort());
+  });
 });
 
 /**
