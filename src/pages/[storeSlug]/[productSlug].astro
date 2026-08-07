@@ -693,12 +693,14 @@ const pmI18n = {
               data-store-slug={storeSlug}
               data-is-logged-in={String(isLoggedIn)}
               data-login-url={`/seller/login?next=/${storeSlug}/${productSlug}`}
+              data-str-login-hint={t.messages.loginToMessage}
+              data-str-login-hint-link={t.messages.loginToMessageLink}
               style="background:none;border:none;cursor:pointer;font-size:0.82rem;color:var(--color-muted);display:inline-flex;align-items:center;gap:0.35rem;padding:0.2rem 0;text-decoration:underline;text-underline-offset:3px;transition:color 0.15s"
               onmouseover="this.style.color='var(--color-text)'"
               onmouseout="this.style.color='var(--color-muted)'"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
-              שאלה על המוצר
+              {t.messages.askAboutProduct}
             </button>
           </div>
         </div>
@@ -822,6 +824,7 @@ const pmI18n = {
   import { comboKey } from '../../lib/variant-combo.js';
   import { adItemId } from '../../lib/ad-item-id.js';
   import { arrowStep } from '../../lib/arrow-step.js';
+  import { escapeHtml as escHtml } from '../../lib/html-escape.js';
   import { isColorVariant } from '../../lib/color-variants.js';
   import { initReadMore } from '../../lib/read-more.js';
   import { saveLastStore } from '../../lib/last-store.js';
@@ -1521,7 +1524,11 @@ const pmI18n = {
     const hint = document.createElement('div');
     hint.className = 'login-hint-popup';
     hint.setAttribute('role', 'status');
-    hint.innerHTML = `<span>כדי לשלוח הודעה יש <a href="${loginUrl}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">להתחבר</a></span>`;
+    // t.messages.loginToMessage / loginToMessageLink, off the button that opened
+    // this hint — both buttons that call it are server-rendered and carry them.
+    const lead = btn.dataset.strLoginHint ?? 'כדי לשלוח הודעה יש';
+    const link = btn.dataset.strLoginHintLink ?? 'להתחבר';
+    hint.innerHTML = `<span>${escHtml(lead)} <a href="${loginUrl}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">${escHtml(link)}</a></span>`;
     hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:var(--shadow-card);font-size:0.8rem;color:var(--color-text)';
     hint.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease', fill: 'forwards' });
     const container = btn.parentElement ?? btn;

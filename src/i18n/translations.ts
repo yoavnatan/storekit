@@ -199,6 +199,8 @@ export const translations = {
       clearSearchLabel: 'נקה חיפוש',
       closeSearchLabel: 'סגור חיפוש',
       saveStore: 'שמור חנות',
+      /** The banner button next to it — short on purpose, the store name is its aria-label. */
+      contactShort: 'צור קשר',
       savedStore: 'חנות שמורה',
       favCount: 'שמרו חנות זו',
       loginToSave: 'כדי לשמור חנות יש',
@@ -1126,6 +1128,16 @@ export const translations = {
       orderSortOptUrgency: 'לפי דחיפות',
       filterValUnread: 'לא נקרא',
       filterValRead: 'נקרא',
+      // The message ROW's own labels. `buyerDashboard` carries twins of these five
+      // under the same names: the buyer's messages tab and the seller's are
+      // separate surfaces with separate slices — which is why `buyerDashboard`
+      // exists at all — and the seller side reads only `dashboard`, both server-
+      // side and out of `#i18n-data`. Change one, look at the other.
+      deleteConv: 'מחק שיחה',
+      msgReplyPlaceholder: 'כתוב תשובה...',
+      msgReplySend: 'שלח',
+      msgReplyClose: 'סגור שיחה',
+      msgYou: 'אתה',
     },
     gallery: {
       main: 'ראשי',
@@ -1339,6 +1351,9 @@ export const translations = {
       sentShort: '✓ נשלח',
       close: 'סגור',
       loginRequired: 'יש להתחבר כדי לשלוח הודעה',
+      /** Split like t.store.loginToSave: the second half is the link's own text. */
+      loginToMessage: 'כדי לשלוח הודעה יש',
+      loginToMessageLink: 'להתחבר',
       errorSending: 'שגיאה בשליחה. נסה שוב.',
       productContext: 'בנוגע למוצר',
       toStore: 'אל',
@@ -1519,6 +1534,7 @@ export const translations = {
       clearSearchLabel: 'Clear search',
       closeSearchLabel: 'Close search',
       saveStore: 'Save store',
+      contactShort: 'Contact',
       savedStore: 'Saved',
       favCount: 'saved this store',
       loginToSave: 'To save a store,',
@@ -2404,6 +2420,11 @@ export const translations = {
       orderSortOptUrgency: 'By urgency',
       filterValUnread: 'Unread',
       filterValRead: 'Read',
+      deleteConv: 'Delete conversation',
+      msgReplyPlaceholder: 'Write a reply...',
+      msgReplySend: 'Send',
+      msgReplyClose: 'Close conversation',
+      msgYou: 'You',
     },
     gallery: {
       main: 'Main',
@@ -2592,6 +2613,8 @@ export const translations = {
       sentShort: '✓ Sent',
       close: 'Close',
       loginRequired: 'Please log in to send a message',
+      loginToMessage: 'To send a message you need to',
+      loginToMessageLink: 'log in',
       errorSending: 'Error sending. Please try again.',
       productContext: 'About product',
       toStore: 'To',

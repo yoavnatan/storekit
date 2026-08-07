@@ -608,6 +608,8 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                 data-login-url={`/seller/login?next=/${shopStore.slug}`}
                 data-is-logged-in={String(isLoggedIn)}
                 aria-label={isFavorited ? t.store.savedStore : t.store.saveStore}
+                data-str-saved={t.store.savedStore}
+                data-str-save={t.store.saveStore}
                 aria-pressed={isFavorited}
               >
                 <svg id="fav-store-icon" width="13" height="13" viewBox="0 0 24 24" fill={isFavorited ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;transition:fill 0.18s">
@@ -635,10 +637,12 @@ const bannerPreload = !isDemo && shopStore.bannerImage
                 data-store-name={shopStore.name}
                 data-is-logged-in={String(isLoggedIn)}
                 data-login-url={`/seller/login?next=/${shopStore.slug}`}
-                aria-label={`צור קשר עם ${shopStore.name}`}
+                data-str-login-hint={t.messages.loginToMessage}
+                data-str-login-hint-link={t.messages.loginToMessageLink}
+                aria-label={`${t.messages.contactStore}: ${shopStore.name}`}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                צור קשר
+                {t.store.contactShort}
               </button>
             )}
           </div>
@@ -1231,8 +1235,13 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       const nowFav = favBtn.dataset.favorited !== 'true';
       favBtn.dataset.favorited = String(nowFav);
       favBtn.setAttribute('aria-pressed', String(nowFav));
-      if (favLabel) favLabel.textContent = nowFav ? 'חנות שמורה' : 'שמור חנות';
-      favBtn.setAttribute('aria-label', nowFav ? 'חנות שמורה' : 'שמור חנות');
+      // t.store.savedStore / saveStore — the SSR label above already reads them;
+      // only this toggle had them inline, so a click re-labelled it in Hebrew.
+      const favText = nowFav
+        ? (favBtn.dataset.strSaved ?? 'חנות שמורה')
+        : (favBtn.dataset.strSave ?? 'שמור חנות');
+      if (favLabel) favLabel.textContent = favText;
+      favBtn.setAttribute('aria-label', favText);
       setFavStyle(nowFav);
       favBtn.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.28)' }, { transform: 'scale(1)' }],
@@ -2569,7 +2578,11 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     const hint = document.createElement('div');
     hint.className = 'login-hint-popup';
     hint.setAttribute('role', 'status');
-    hint.innerHTML = `<span>כדי לשלוח הודעה יש <a href="${loginUrl}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">להתחבר</a></span>`;
+    // t.messages.loginToMessage / loginToMessageLink, off the button that opened
+    // this hint — both buttons that call it are server-rendered and carry them.
+    const lead = btn.dataset.strLoginHint ?? 'כדי לשלוח הודעה יש';
+    const link = btn.dataset.strLoginHintLink ?? 'להתחבר';
+    hint.innerHTML = `<span>${escHtml(lead)} <a href="${loginUrl}" style="color:var(--color-accent);font-weight:600;text-decoration:underline">${escHtml(link)}</a></span>`;
     hint.style.cssText = 'position:absolute;top:calc(100% + 0.4rem);inset-inline-start:0;z-index:50;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);padding:0.45rem 0.8rem;white-space:nowrap;box-shadow:var(--shadow-card);font-size:0.8rem;color:var(--color-text)';
     hint.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease', fill: 'forwards' });
     const container = btn.parentElement ?? btn;
