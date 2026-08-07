@@ -1,5 +1,5 @@
 ---
-import { getLang, getT, translations } from '../i18n/index.js';
+import { getLang, getT } from '../i18n/index.js';
 /**
  * The platform's wordmark: a drawn `D` followed by "ezabin" in the site's own
  * font. One component, so the logo can never drift between the header, the auth
@@ -136,24 +136,26 @@ const { tone = 'brand', size, tagline = false, class: className = '' } = Astro.p
 const NAME = 'Dezabin';
 
 /**
- * The tagline is two different things here, and only one of them is copy.
+ * The tagline follows the visitor's language in both places it appears — the drawn
+ * line under the mark and the `aria-label` that is the homepage `<h1>`'s whole
+ * accessible name. Both read `home.startSelling`.
  *
- * **Drawn (below, `aria-hidden`).** A 19-glyph Hebrew run whose size and margin
- * were bisected against a real build until its right edge sat flush with the
- * wordmark's — see the block above the span. It is artwork solved for THESE
- * glyphs; an English string of another width would not be a translation of it,
- * it would be a different picture, and the note there says to re-solve all three
- * values against a build before changing the text. Read from the `he` block
- * rather than retyped, so a wording pass through `scripts/copy-review.mjs`
- * cannot silently leave the drawing behind — it will move, visibly, and that
- * note is the instruction for what to do next.
+ * They are laid out differently, and the reason is arithmetic rather than taste.
+ * The Hebrew is 19 glyphs and the measurement above the span solves it to sit flush
+ * with the wordmark on one line. "A home for independent stores" is 28 characters —
+ * roughly half again as wide at the same size — so no single line of it fits a
+ * 3.2925em mark, and the flush-both-edges result the Hebrew gets is not available
+ * to it at all.
  *
- * **Spoken (the `aria-label`).** Plain text, no geometry — and this is the
- * homepage `<h1>`'s whole accessible name, so it is what a screen reader and a
- * crawler get. That one follows the visitor's language like any other string.
+ * The owner's call (2026-08-07) was that two lines are fine, and that being aligned
+ * matters more than being one line. So the English is not a re-derivation of the
+ * three numbers: it is given the wordmark's own ink width as a box and allowed to
+ * wrap inside it. Alignment on the leading edge then holds by construction, and
+ * there is nothing left to bisect.
  */
-const TAGLINE = translations.he.home.startSelling;
-const t = getT(getLang(Astro.cookies));
+const lang = getLang(Astro.cookies);
+const isHe = lang === 'he';
+const t = getT(lang);
 
 const toneClass =
   tone === 'white'
@@ -266,9 +268,23 @@ const toneClass =
      * Weight 500 under an 800: the two-step gap is what keeps this a subtitle
      * rather than a second name. */
     <span
-      dir="rtl"
-      class="font-medium text-[0.3886em] leading-none ms-[-0.0532em]"
+      dir={isHe ? 'rtl' : 'ltr'}
+      class:list={[
+        'font-medium text-[0.3886em]',
+        // Hebrew: the measured lockup above — one line, flush by construction.
+        isHe && 'leading-none ms-[-0.0532em]',
+        // English: "A home for independent stores" is 28 characters against the
+        // Hebrew's 19, so at the same size it cannot sit on one line inside a
+        // 3.2925em mark. The owner's call (2026-08-07) was that two lines are
+        // fine as long as it looks aligned — so instead of re-deriving a size,
+        // the box IS the wordmark's ink width and the line wraps inside it.
+        // Both edges then meet the mark on the leading side by definition, and
+        // no bisection is needed because nothing is trying to be flush on the
+        // trailing one. `leading-tight` because two lines at `leading-none`
+        // collide.
+        !isHe && 'w-[3.2925em] leading-tight text-start text-balance',
+      ]}
       aria-hidden="true"
-    >{TAGLINE}</span>
+    >{t.home.startSelling}</span>
   )}
 </span>
