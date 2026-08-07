@@ -4,6 +4,7 @@ import { isUuid, query } from './db.js';
 import { deriveSeverity, type ErrorSeverity } from './error-severity.js';
 import { alertOnCriticalError } from './critical-alert.js';
 import { errorRef } from './error-reference.js';
+import { businessDayISO, isDayISO } from './business-day.js';
 import { getSellerSession, getSellerById } from './seller-auth.js';
 import { getStoreBySellerId, getStoreBySlug } from './stores.js';
 
@@ -439,6 +440,15 @@ export interface AlertsQuery {
    *  on a list to search. Bare (no `#`) — a `#` in a URL is a fragment and never reaches the
    *  server, so the link carries it without one and this compares without one. */
   ref?: string;
+  /** Inclusive day bounds, `YYYY-MM-DD`, either one optional — a half-open window ("everything
+   *  since the 1st") is a question worth being able to ask, so both are not required together.
+   *
+   *  Compared on the BUSINESS calendar day (`business-day.ts`), never by slicing the ISO
+   *  timestamp: `created_at` is stored in UTC, and Israel is ahead of it, so anything logged
+   *  after 21:00 local carries tomorrow's UTC date. A string compare would file yesterday
+   *  evening's failures under today and drop them from a "today" filter that must contain them. */
+  from?: string;
+  to?: string;
 }
 
 export function filterAndSortErrors(entries: ErrorLogEntry[], query: AlertsQuery): ErrorLogEntry[] {
@@ -446,8 +456,19 @@ export function filterAndSortErrors(entries: ErrorLogEntry[], query: AlertsQuery
   const storeSet = query.storeSlug.length ? new Set(query.storeSlug) : null;
   const severitySet = query.severity.length ? new Set(query.severity) : null;
   const ref = query.ref?.trim().replace(/^#/, '').toLowerCase() || null;
+  // Only a real day passes. A malformed bound becomes NO bound rather than a bound that compares
+  // false against everything — the alternative is a picker typo silently emptying the tab.
+  const from = query.from && isDayISO(query.from) ? query.from : null;
+  const to = query.to && isDayISO(query.to) ? query.to : null;
 
   const filtered = entries.filter((e) => {
+    // `businessDayISO`, not `e.createdAt.slice(0, 10)`. See AlertsQuery: the timestamp is UTC and
+    // the admin is asking in Israel time, so the two disagree for every entry logged after 21:00.
+    if (from || to) {
+      const day = businessDayISO(new Date(e.createdAt));
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+    }
     if (sourceSet && !sourceSet.has(e.source)) return false;
     if (storeSet && (!e.storeSlug || !storeSet.has(e.storeSlug))) return false;
     // `?? 'error'` matches the column default: an entry constructed in a test, or read from a row

@@ -1,5 +1,6 @@
 import { buildAdminUrl, debounce, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal, type FloatingPortal } from '../../lib/toolbar-portal.js';
+import { openRangePicker } from '../../lib/toolbar-range-picker.js';
 import { showToast, showErrorToast } from '../../lib/toast.js';
 
 // Money-journal tab. The panel is still SSR-filtered — every control here does the
@@ -53,48 +54,19 @@ function wireRangePicker(): void {
   if (!rangePortal) rangePortal = createFloatingPortal('admin-moneylog-range-portal');
   const portal = rangePortal;
 
-  // The portal's panel is built as an HTML STRING, so anything interpolated into it is
-  // an injection sink. The server only ever writes a `YYYY-MM-DD` into these data
-  // attributes (parseMoneyLogQuery drops everything else), but re-checking here is one
-  // regex and means this file doesn't depend on a rule enforced in another module.
-  const asDay = (v: string | undefined) => (/^\d{4}-\d{2}-\d{2}$/.test(v ?? '') ? v! : '');
-
   trigger.addEventListener('click', () => {
     if (portal.currentTrigger() === trigger) { portal.close(); return; }
-    const from = asDay(toolbar.dataset.from);
-    const to = asDay(toolbar.dataset.to);
-    // Each bound gets its own labelled row rather than the two sitting side by side with
-    // a dash between them: a `type="date"` renders its own internal dd/mm/yyyy order, so
-    // in an RTL panel nothing on screen said which of the two was the start (owner). The
-    // <label> wrapper is also what gives each input an accessible name.
-    const dateRow = (key: 'from' | 'to', label: string, value: string) => `
-      <label class="flex items-center gap-2 mb-1.5 text-[.78rem]">
-        <span class="w-[4.5rem] shrink-0 [color:var(--color-muted)]">${label}</span>
-        <input type="date" data-ml-${key} value="${value}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
-      </label>`;
-    portal.open(trigger, '19rem', () => `
-      <div class="px-3 pt-2 pb-2">
-        <div class="text-[.72rem] [color:var(--color-muted)] mb-2">טווח תאריכים</div>
-        ${dateRow('from', 'מתאריך', from)}
-        ${dateRow('to', 'עד תאריך', to)}
-        <div class="flex gap-1.5 mt-2">
-          <button type="button" class="btn btn--ghost btn--sm" data-ml-clear style="flex:1">נקה</button>
-          <button type="button" class="btn btn--accent btn--sm" data-ml-apply style="flex:1">הצג</button>
-        </div>
-      </div>`, (p) => {
-      p.querySelector('[data-ml-apply]')?.addEventListener('click', () => {
-        portal.close();
-        // Either bound alone is a valid open-ended window — requiring both would make
-        // "everything since the 1st" impossible to ask for.
-        navigate({
-          mfrom: p.querySelector<HTMLInputElement>('[data-ml-from]')?.value || undefined,
-          mto: p.querySelector<HTMLInputElement>('[data-ml-to]')?.value || undefined,
-        });
-      });
-      p.querySelector('[data-ml-clear]')?.addEventListener('click', () => {
-        portal.close();
-        navigate({ mfrom: undefined, mto: undefined });
-      });
+    // The panel itself is `lib/toolbar-range-picker.ts`, shared with the Alerts tab — this file
+    // only says what a chosen window means in THIS tab's query params.
+    openRangePicker(portal, trigger, {
+      from: toolbar.dataset.from ?? '',
+      to: toolbar.dataset.to ?? '',
+      // "נקה" here returns to the default 30-day window, not to the whole journal: the money log
+      // never opens unbounded (admin-moneylog-filter.ts#MONEY_LOG_DEFAULT_DAYS says why), so
+      // offering "everything" would name a state the tab cannot be in.
+      clearLabel: 'חזרה לברירת המחדל',
+      onApply: ({ from, to }) => navigate({ mfrom: from || undefined, mto: to || undefined }),
+      onClear: () => navigate({ mfrom: undefined, mto: undefined }),
     });
   });
 }

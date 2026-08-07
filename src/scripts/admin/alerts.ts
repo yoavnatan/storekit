@@ -1,5 +1,6 @@
 import { buildAdminUrl, encodeList, decodeList, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
+import { openRangePicker } from '../../lib/toolbar-range-picker.js';
 import { showErrorToast } from '../../lib/toast.js';
 
 const PANEL_ID = 'dash-panel-alerts';
@@ -22,6 +23,10 @@ function wireAlertsToolbar(): void {
   const storeSet = new Set(decodeList(state.store ?? ''));
   const storeOptions: { slug: string; name: string }[] = JSON.parse(state.storeOptions ?? '[]');
   let newOnly = state.newOnly === '1';
+  // Held as locals like every other control here, so no control can drop another's state — the
+  // reason this toolbar reads itself back off the DOM the server just rendered.
+  let from = state.from ?? '';
+  let to = state.to ?? '';
 
   function navigate(): void {
     const url = buildAdminUrl('alerts', {
@@ -29,10 +34,25 @@ function wireAlertsToolbar(): void {
       alsource: sourceSet.size ? [...sourceSet].join(',') : undefined,
       alsev: severitySet.size ? [...severitySet].join(',') : undefined,
       alstore: storeSet.size ? encodeList([...storeSet]) : undefined,
+      alfrom: from || undefined,
+      alto: to || undefined,
       alnew: newOnly ? '1' : undefined,
     });
     swapPanel(url, PANEL_ID, () => initAdminAlertsPanel());
   }
+
+  const rangeTrigger = document.getElementById('admin-alerts-range-trigger') as HTMLButtonElement | null;
+  rangeTrigger?.addEventListener('click', () => {
+    if (alertsPortal.currentTrigger() === rangeTrigger) { alertsPortal.close(); return; }
+    // The panel is `lib/toolbar-range-picker.ts`, shared with the money journal. "נקה" really does
+    // mean everything here: unlike the journal, this tab has no default window.
+    openRangePicker(alertsPortal, rangeTrigger, {
+      from, to,
+      clearLabel: 'כל התאריכים',
+      onApply: (r) => { from = r.from; to = r.to; navigate(); },
+      onClear: () => { from = ''; to = ''; navigate(); },
+    });
+  });
 
   const sortTrigger = document.getElementById('admin-alerts-sort-trigger') as HTMLButtonElement | null;
   sortTrigger?.addEventListener('click', () => {

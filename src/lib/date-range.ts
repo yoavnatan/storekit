@@ -60,6 +60,51 @@ export function presetRange(preset: AdRangePreset, today: Date = new Date()): { 
   return null;
 }
 
+/**
+ * The named windows a TOOLBAR range picker offers — the money journal's and the Alerts tab's.
+ *
+ * Separate from `AdRangePreset` on purpose, and the difference is not cosmetic. That vocabulary
+ * carries `custom` and `lifetime`, which are answers to an advertising question ("report each
+ * campaign over its own run period"); a journal has no such thing and offering it would be an
+ * option that cannot mean anything. What a toolbar needs is the opposite: the three or four
+ * windows someone actually asks for, reachable in one click.
+ *
+ * Added 2026-08-07 — the money journal's picker was two empty date inputs and nothing else, so
+ * "what happened today" cost two calendar interactions and knowing today's date (owner).
+ *
+ * The order is deliberate: narrowest first, because the narrow ones are the ones asked for in a
+ * hurry. The custom inputs stay beneath them for everything these do not cover.
+ */
+export type QuickRangeId = 'today' | 'thisWeek' | 'thisMonth' | '30d';
+export const QUICK_RANGE_PRESETS: readonly { id: QuickRangeId; label: string }[] = [
+  { id: 'today', label: 'היום' },
+  { id: 'thisWeek', label: 'השבוע' },
+  { id: 'thisMonth', label: 'החודש' },
+  { id: '30d', label: '30 יום' },
+];
+
+/**
+ * Resolve a toolbar preset to concrete bounds.
+ *
+ * Every bound is derived by calendar arithmetic from ONE business-day string, never from a fresh
+ * `Date` per bound — the rule the seller performance picker learned the hard way: building each
+ * end from the runtime's local clock computes "this month" against the browser's timezone while
+ * the server buckets rows against the business calendar, and the range silently gains or loses a
+ * day at each end.
+ */
+export function quickRange(id: QuickRangeId, today: Date = new Date()): { from: string; to: string } {
+  const to = businessDayISO(today);
+  if (id === 'today') return { from: to, to };
+  if (id === 'thisWeek') {
+    // Sunday-start, the Israeli week. `getUTCDay` on the parsed calendar date: a bare date string
+    // carries no zone, so this is the weekday of `to` itself and not of some instant near it.
+    const weekday = new Date(`${to}T00:00:00Z`).getUTCDay();
+    return { from: addDaysISO(to, -weekday), to };
+  }
+  if (id === 'thisMonth') return { from: businessMonthStartISO(to), to };
+  return { from: addDaysISO(to, -29), to };
+}
+
 /** The equal-length window immediately before [from,to] — for period-over-period comparison. */
 export function previousPeriod(fromISO: string, toISO: string): { from: string; to: string } {
   const len = daysInRangeInclusive(fromISO, toISO);

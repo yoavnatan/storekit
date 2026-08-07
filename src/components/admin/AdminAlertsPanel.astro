@@ -3,7 +3,7 @@ import type { AlertsSortDir, ErrorLogEntry } from '../../lib/error-log.js';
 import { SEVERITY_ORDER, type ErrorSeverity } from '../../lib/error-severity.js';
 import { errorRef, errorMeaning, errorCopyText } from '../../lib/error-reference.js';
 import { MAX_ENTRIES as MAX_ENTRIES_HINT } from '../../lib/error-log.js';
-import { formatHeDateTime } from '../../lib/format-date.js';
+import { formatHeDateTime, formatBusinessDateShort } from '../../lib/format-date.js';
 import AdminPager from './AdminPager.astro';
 import AdminNewBadge from './AdminNewBadge.astro';
 import AdminNewOnlyToggle from './AdminNewOnlyToggle.astro';
@@ -18,6 +18,10 @@ interface Props {
   severity: string[];
   /** Set when the alert mail's deep link narrowed the list to one entry. */
   entryRef?: string;
+  /** Inclusive day bounds, either one optional. Empty = no window, which is this tab's default —
+   *  see admin/index.astro on why the Alerts tab must not acquire one the way the journal has. */
+  from: string;
+  to: string;
   storeOptions: { slug: string; name: string }[];
   newSince: string;  // ISO — anything logged after this is what the tab's "(N)" counted
   newOnly: boolean;
@@ -26,7 +30,7 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, severity, entryRef, storeOptions, newSince, newOnly, newCount, page, totalPages, buildUrl } = Astro.props;
+const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, severity, entryRef, from, to, storeOptions, newSince, newOnly, newCount, page, totalPages, buildUrl } = Astro.props;
 
 const sourceLabel: Record<string, string> = { server: 'שרת', client: 'דפדפן' };
 // The three levels a person actually triages by (lib/error-severity.ts). The wording answers
@@ -43,6 +47,17 @@ const severityBadge: Record<ErrorSeverity, string> = { critical: 'admin-badge--f
 const severityOf = (e: ErrorLogEntry): ErrorSeverity => e.severity ?? 'error';
 const roleLabel: Record<string, string> = { buyer: 'קונה', seller: 'מוכר' };
 const sortLabels: Record<AlertsSortDir, string> = { desc: 'תאריך: חדש — ישן', asc: 'תאריך: ישן — חדש' };
+
+// The button NAMES the window rather than showing "טווח תאריכים" with a count beside it: on a
+// triage screen the question is "am I looking at everything?", and a label reading "כל התאריכים"
+// answers it without being opened. Same shape the money journal's trigger uses.
+const dayLabel = (iso: string) => formatBusinessDateShort(`${iso}T12:00:00Z`);
+const rangeLabel = from && to
+  ? (from === to ? dayLabel(from) : `${dayLabel(from)} – ${dayLabel(to)}`)
+  : from ? `מ־${dayLabel(from)}`
+  : to ? `עד ${dayLabel(to)}`
+  : 'כל התאריכים';
+const rangeActive = Boolean(from || to);
 
 // Plain-text dump for the "העתק" button — everything a developer would want
 // to paste elsewhere for diagnosis. Built server-side (one source of truth)
@@ -71,9 +86,28 @@ function buildCopyText(e: ErrorLogEntry): string {
     data-source={source.join(',')}
     data-store={storeSlug.join(',')}
     data-severity={severity.join(',')}
+    data-from={from}
+    data-to={to}
     data-new-only={newOnly ? '1' : ''}
     data-store-options={JSON.stringify(storeOptions)}
   >
+    {/* First in the row, before sort and the chips: "when" is the narrowing an admin reaches for
+        first on a log ("what broke today"), and the chips beside it answer "which kind". */}
+    <button
+      type="button"
+      id="admin-alerts-range-trigger"
+      class:list={[
+        'table-toolbar-btn inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] bg-[color:var(--color-surface)] border rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)]',
+        rangeActive
+          ? 'border-[color:var(--color-primary)] [color:var(--color-primary)]'
+          : 'border-[color:var(--color-border)] [color:var(--color-text)]',
+      ]}
+      aria-haspopup="dialog"
+      aria-expanded="false"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg>
+      {rangeLabel}
+    </button>
     <button type="button" id="admin-alerts-sort-trigger" class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]" aria-haspopup="listbox" aria-expanded="false">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
       <span id="admin-alerts-sort-label">{sortLabels[sortDir]}</span>

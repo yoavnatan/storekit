@@ -75,9 +75,12 @@ describe('nobody re-implements it', () => {
       // Reads a day back OUT of an ISO timestamp the application itself wrote — a capture, not a
       // validation of anything a request supplied.
       'src/lib/sitemap.ts',
-      // The browser half of the money-journal toolbar: it narrows a value on its way INTO a URL,
-      // and the server re-decides with isDayISO when it comes back (admin-moneylog-filter.ts).
-      'src/scripts/admin/moneylog.ts',
+      // `src/scripts/admin/moneylog.ts` was here — the browser half of the money-journal toolbar,
+      // allowed because it only narrowed a value on its way INTO a URL. It came off the list on
+      // 2026-08-07 when that picker moved to the shared `lib/toolbar-range-picker.ts`, which uses
+      // isDayISO properly. The exemption was never load-bearing: `2026-02-30` is day-SHAPED, and
+      // handing it to a `type="date"` input blanks the field, so the admin's current window
+      // silently disappeared when the picker was opened.
     ]);
   });
 });
