@@ -42,6 +42,11 @@ const TYPE_TONE: Record<MoneyEventType, 'good' | 'bad' | 'warn' | 'plain'> = {
   payment_status_changed: 'plain',
   shipping_status_changed: 'plain',
   order_discount_changed: 'warn',
+  // Red for the same reason `charge_voided` is: a real buyer's money is sitting with us for a
+  // purchase that is not happening, and until `refund_settled` pairs it off, nobody has given it
+  // back. Green for the settlement — the one row here that closes a debt.
+  refund_due: 'bad',
+  refund_settled: 'good',
 };
 
 const TONE_CLASS: Record<'good' | 'bad' | 'warn' | 'plain', string> = {

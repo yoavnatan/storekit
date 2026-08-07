@@ -18,6 +18,8 @@ interface Props {
   severity: string[];
   /** Set when the alert mail's deep link narrowed the list to one entry. */
   entryRef?: string;
+  /** Free-text search — an id above all (`error-log.ts#AlertsQuery.q`). */
+  q: string;
   /** Inclusive day bounds, either one optional. Empty = no window, which is this tab's default —
    *  see admin/index.astro on why the Alerts tab must not acquire one the way the journal has. */
   from: string;
@@ -30,7 +32,7 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
 }
-const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, severity, entryRef, from, to, storeOptions, newSince, newOnly, newCount, page, totalPages, buildUrl } = Astro.props;
+const { errors, totalAll, totalFiltered, sortDir, source, storeSlug, severity, entryRef, q, from, to, storeOptions, newSince, newOnly, newCount, page, totalPages, buildUrl } = Astro.props;
 
 const sourceLabel: Record<string, string> = { server: 'שרת', client: 'דפדפן' };
 // The three levels a person actually triages by (lib/error-severity.ts). The wording answers
@@ -88,9 +90,24 @@ function buildCopyText(e: ErrorLogEntry): string {
     data-severity={severity.join(',')}
     data-from={from}
     data-to={to}
+    data-q={q}
     data-new-only={newOnly ? '1' : ''}
     data-store-options={JSON.stringify(storeOptions)}
   >
+    {/* Takes the whole first line, like the money journal's box: an owner arriving here with a code
+        in hand ("my phone buzzed about #a1b2c3d4") is looking for ONE row, and every control beside
+        it answers a different question. */}
+    <div class="basis-full min-w-[14rem]">
+      <input
+        type="search"
+        id="admin-alerts-search"
+        class="input"
+        value={q}
+        placeholder="חיפוש לפי מזהה, נתיב, הודעה או חנות..."
+        aria-label="חיפוש ביומן השגיאות"
+      />
+    </div>
+
     {/* First in the row, before sort and the chips: "when" is the narrowing an admin reaches for
         first on a log ("what broke today"), and the chips beside it answer "which kind". */}
     <button

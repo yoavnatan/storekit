@@ -10,7 +10,6 @@ import { getAllStores, isStoreDiscoverable } from '../../lib/stores.js';
 import { getProductCountsByStore, getProductNames, getProductsByStoreIds } from '../../lib/store-products.js';
 import { getAdminOrdersPage } from '../../lib/orders.js';
 import {
-  countOrdersSince,
   getAllOrderStoreNames,
   getOpenOrderCountsByStore,
   getPlatformOrderTotals,
@@ -30,7 +29,8 @@ import { businessTodayISO, businessMonthStartISO, businessMonthKey } from '../..
 import { store as platform } from '../../config/store.config.js';
 import { paginate, parsePage, ADMIN_PAGE_SIZE } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
-import { getAllLastViewedAt, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
+import { getAllLastViewedAt, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
+import { getAdminTabBadges } from '../../lib/admin-tab-badges.js';
 import { buildPlatformPerformance, buildPlatformStoreInputs, parseStoreRowsQuery, selectStoreRows } from '../../lib/platform-performance.js';
 import { getStoreViewStats } from '../../lib/store-pageviews.js';
 import { buildPlatformRevenue } from '../../lib/platform-revenue.js';
@@ -48,8 +48,8 @@ import AdminAdvertisingPanel from '../../components/admin/AdminAdvertisingPanel.
 import AdminPerformancePanel from '../../components/admin/AdminPerformancePanel.astro';
 import AdminDataPanel from '../../components/admin/AdminDataPanel.astro';
 import AdminMoneyLogPanel from '../../components/admin/AdminMoneyLogPanel.astro';
-import { getMoneyEventDay, getMoneyEvents } from '../../lib/money-events.js';
-import { parseMoneyLogQuery, filterMoneyEvents, eventPage, widenToEvent } from '../../lib/admin-moneylog-filter.js';
+import AdminPanelShell from '../../components/admin/AdminPanelShell.astro';
+import { loadMoneyLogPanel } from '../../lib/admin-moneylog-panel.js';
 import { reconcilePlatform } from '../../lib/reconcile.js';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
@@ -120,12 +120,46 @@ const tabUrl = buildAdminUrl;
 // The pool is 10 (db.ts), so a wave of 20 is two batches, not 20 crossings. Nothing here reads
 // anything another wave WRITES — this page is entirely read-only — so the grouping cannot change
 // a number, only when it arrives.
+//
+// ── ONE PANEL PER REQUEST (owner, 2026-08-07) ──
+//
+// Parallelising the waves fixed the shape of the wait; it did not change the fact that this page
+// built ALL ELEVEN tabs on every request and `swapPanel` then threw ten of them away. Every read
+// below is now gated on whether the tab that displays it is the one being asked for, and a tab the
+// admin actually opens loads on the click.
+//
+// Two things are deliberately NOT gated, and both are the same rule: a signal about a tab you are
+// not looking at has to be computed whether or not you are looking at it.
+//   · the "(N)" badges — five COUNTs in one statement (admin-tab-badges.ts), and the reason that
+//     module exists at all;
+//   · `newSince`, the boundary those badges and every "חדש" chip are measured against.
+// Rendering this page still does not ADVANCE that boundary; only POST /api/admin/tab-view does.
+//
+// `only()` returns the fallback without touching the database when the panel is not the one asked
+// for. The fallback is always the empty value the pure code below already handles — an empty
+// roster, an empty map — so nothing downstream needs to know a panel was skipped; it simply
+// computes over nothing, and the template renders no panel at all (see `data-lazy`).
+const only = <T,>(panels: readonly string[], load: () => Promise<T>, fallback: T): Promise<T> =>
+  (panels.includes(initialPanel) ? load() : Promise.resolve(fallback));
+
+/** Is this the panel being rendered? Gates the derivations whose inputs would be missing otherwise,
+ *  and every panel component in the template below. */
+const shows = (panel: string): boolean => panel === initialPanel;
+
+// The roster — every seller and every store. Several tabs are a list of it or a partition of it, so
+// it is still read whole for those and not read at all for the rest. The two halves have different
+// readers and are gated separately: the Messages tab names sellers and never touches stores, while
+// the Advertising tab and the money journal's reconciliation are the other way round.
+const SELLER_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'attention', 'performance', 'messages'] as const;
+const STORE_ROSTER_PANELS = ['overview', 'sellers', 'stores', 'attention', 'advertising', 'performance', 'moneylog'] as const;
+/** Products per store: the counts behind the seller cards, the store rows, the attention list and
+ *  the feed figures on the advertising tab. */
+const COUNT_PANELS = ['overview', 'sellers', 'stores', 'attention', 'advertising'] as const;
 
 // Every query parameter this page reads, parsed up front: all of it is pure, and wave 1 needs
 // some of it. Nothing below re-reads `sp` for these.
 const orderQuery = parseOrderQuery(sp);
 const threadQuery = parseAdminThreadQuery(sp);
-const requestedMoneyLog = parseMoneyLogQuery(sp);
 
 // "This month" is decided once, HERE, and handed to the query — the Overview card and the Stores
 // tab used to each ask their own clock what month it was (business-day.ts).
@@ -163,10 +197,10 @@ const [
   sellers, stores, newSince, openOrdersByStore, orderTotals, revenueByStore,
   orderStoreNamesRaw, threadsPage, errorsAll,
   brandCampaigns, adCampaigns, campaignTotals, brandTotals, platformAdSettings,
-  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLogEventDay,
+  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLog,
 ] = await Promise.all([
-  getAllSellers(),
-  getAllStores(),
+  only(SELLER_ROSTER_PANELS, getAllSellers, []),
+  only(STORE_ROSTER_PANELS, getAllStores, []),
   // ── "new since you last left this tab" (owner feedback 2026-07-28) ──
   // One boundary per tracked tab, read ONCE here and threaded into that tab's panel, so three
   // things always tell the same story: the tab's "(N)" badge, the "חדש" chip on each row, and the
@@ -176,39 +210,39 @@ const [
   // same route and wiped the marks mid-session. It now advances only when the admin actually
   // leaves the tab (POST /api/admin/tab-view from tab-nav.ts).
   getAllLastViewedAt(),
-  getOpenOrderCountsByStore(),
-  getPlatformOrderTotals(),
-  getStoreRevenueBySlug(currentMonthKey),
-  getAllOrderStoreNames(),
+  only(['stores'], getOpenOrderCountsByStore, new Map()),
+  only(['overview'], getPlatformOrderTotals, { totalOrders: 0, paidOrders: 0, gmvAgorot: 0 }),
+  only(['sellers', 'stores'], () => getStoreRevenueBySlug(currentMonthKey), new Map()),
+  only(['orders'], getAllOrderStoreNames, []),
   // One page of threads, narrowed and sorted in the query (§3) — this used to read every system
   // message on the platform, group them all in JS, and keep fifteen.
-  getAdminThreadsPage(threadQuery, parsePage(sp, 'mpage'), ADMIN_PAGE_SIZE),
+  only(['messages'], () => getAdminThreadsPage(threadQuery, parsePage(sp, 'mpage'), ADMIN_PAGE_SIZE), null),
   // The write side enforces this same ceiling, so this really is the whole log — which is what
-  // lets the store-filter options and the alerts badge below be exact rather than "over newest N".
-  getRecentErrors(MAX_ERROR_ENTRIES),
-  getBrandCampaignsInRange(adSpan.from, adSpan.to),
-  getCampaignsInRange(adSpan.from, adSpan.to),
-  getCampaignTotals(),
-  getBrandCampaignTotals(),
-  getPlatformAdSettings(),
-  getSubscriptionAccrual(perfFromISO, perfToISO),
+  // lets the store-filter options here be exact rather than "over newest N". The alerts BADGE is
+  // no longer counted off it (admin-tab-badges.ts), which is what made this read skippable.
+  only(['alerts'], () => getRecentErrors(MAX_ERROR_ENTRIES), []),
+  only(['advertising'], () => getBrandCampaignsInRange(adSpan.from, adSpan.to), []),
+  only(['advertising'], () => getCampaignsInRange(adSpan.from, adSpan.to), []),
+  only(['advertising'], getCampaignTotals, { total: 0, active: 0, activeBudgetAgorot: 0 }),
+  only(['advertising'], getBrandCampaignTotals, { total: 0, active: 0, activeBudgetAgorot: 0 }),
+  only(['advertising'], getPlatformAdSettings, null),
+  only(['performance'], () => getSubscriptionAccrual(perfFromISO, perfToISO), []),
   // Its own fetch, narrowed to the PERFORMANCE range: this tab and the Advertising tab carry
   // separate date pickers, so one list cannot be scoped to both. The numbers are unchanged — the
   // narrowing is a superset and `campaignStatsInRange` still decides the overlap.
-  getCampaignsInRange(perfFromISO, perfToISO),
-  getAnalyticsOverview(dataRange.from, dataRange.to),
-  getSellerFunnel(),
-  // A `?mev=` permalink widens the default window back to the row it names — otherwise every link
-  // older than 30 days would answer "this row is not in the current filter", which is the exact
-  // failure `moneyLogTargetMissing` exists to report, arriving by default.
-  getMoneyEventDay(requestedMoneyLog.eventId),
+  only(['performance'], () => getCampaignsInRange(perfFromISO, perfToISO), []),
+  only(['data'], () => getAnalyticsOverview(dataRange.from, dataRange.to), null),
+  only(['data'], getSellerFunnel, null),
+  // Narrowing, search, count and page slice are ALL in the query now (money-events.ts) — this tab
+  // used to read every row of its 30-day window to display fifteen of them, over a network. Its own
+  // three-step chain (permalink → window → page) is stated once, in admin-moneylog-panel.ts.
+  only(['moneylog'], () => loadMoneyLogPanel(sp), null),
 ]);
 
 const storeIds = stores.map((s) => s.id);
+const storeSlugs = stores.map((s) => s.slug);
 const orderStoreNames = sortOrderStoreNames(orderStoreNamesRaw);
-const unreadMessagesForAdmin = threadsPage.unreadForAdmin;
 const perfStoreInputs = buildPlatformStoreInputs(stores, sellers);
-const moneyLogQuery = widenToEvent(requestedMoneyLog, moneyLogEventDay);
 const newOnly: Record<TrackedAdminTab, boolean> = {
   sellers: sp.get('snew') === '1',
   stores: sp.get('stnew') === '1',
@@ -218,39 +252,38 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 
 // ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
 const [
-  productCounts, reconciliation, ordersPage, ordersSinceCount,
-  perfViews, perfSales, moneyLogEventsRaw, productNames,
+  productCounts, reconciliation, ordersPage, badgeCounts,
+  perfViews, perfSales, productNames,
 ] = await Promise.all([
-  getProductCountsByStore(storeIds),
+  only(COUNT_PANELS, () => getProductCountsByStore(storeIds), new Map()),
   // Cross-check every money headline against a second, independent computation over the real
   // orders (lib/reconcile.ts). Read-only, and it returns only rows that DISAGREE, so it runs on
-  // each render rather than behind a button — a reconciliation nobody clicks is a reconciliation
-  // that never catches anything.
-  reconcilePlatform(stores.map((s) => s.slug)),
+  // each render of the tab that shows it rather than behind a button — a reconciliation nobody
+  // clicks is a reconciliation that never catches anything. It is shown on the money journal, so
+  // that is the tab whose render pays for it.
+  only(['moneylog'], () => reconcilePlatform(storeSlugs), null),
   // Filter, sort, "new only" and the page slice are ALL in the query (orders.ts#getAdminOrdersPage).
   // This used to read every order the platform has ever taken, to render fifteen rows.
-  getAdminOrdersPage(
+  only(['orders'], () => getAdminOrdersPage(
     { ...orderQuery, ...(newOnly.orders ? { newSince: newSince.orders } : {}) },
     parsePage(sp, 'opage'),
     ADMIN_PAGE_SIZE,
-  ),
-  // A COUNT, because this one cannot be taken off a list any more: the Orders tab holds one page.
-  countOrdersSince(newSince.orders),
+  ), null),
+  // Every tab's "(N) new since you last left it", as one statement of five COUNTs. It is fetched
+  // unconditionally and on EVERY request — including a panel swap — because a badge exists to
+  // report a tab the admin is not looking at (admin-tab-badges.ts).
+  getAdminTabBadges(newSince),
   // One query for every store's traffic and one for every store's sales, not a per-store pass over
   // either (DB_MIGRATION_PLAN.md §5 for the views, §3 for the sales).
-  getStoreViewStats(perfStoreInputs.map((s) => s.id), perfFromISO, perfToISO, perfGranularity),
-  getPlatformSales(perfStoreInputs.map((s) => s.slug), perfFromISO, perfToISO, perfGranularity),
-  // Type AND date window are pushed into the query (money-events.ts) — the journal is the one
-  // table nothing is deleted from, so opening this tab must not mean reading every row ever
-  // appended. That is why the window has a DEFAULT (30 days, decided with the owner 2026-08-03).
-  getMoneyEvents(moneyLogQuery.type, moneyLogQuery.from, moneyLogQuery.to),
+  only(['performance'], () => getStoreViewStats(perfStoreInputs.map((s) => s.id), perfFromISO, perfToISO, perfGranularity), new Map()),
+  only(['performance'], () => getPlatformSales(perfStoreInputs.map((s) => s.slug), perfFromISO, perfToISO, perfGranularity), { byStore: new Map(), topProducts: [] }),
   // Names for the handful of product ids the two top-lists actually name — a lookup by id, not a
   // pass over the whole catalogue (§3). A product that has since been deleted simply has no entry,
   // and the panel already falls back to rendering the id.
-  getProductNames([
-    ...analyticsOverview.topAdded.map((p) => p.productId),
-    ...analyticsOverview.topAbandoned.map((p) => p.productId),
-  ]),
+  only(['data'], () => getProductNames([
+    ...(analyticsOverview?.topAdded ?? []).map((p) => p.productId),
+    ...(analyticsOverview?.topAbandoned ?? []).map((p) => p.productId),
+  ]), new Map()),
 ]);
 
 const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
@@ -266,21 +299,28 @@ function keepNewOnly<T>(items: T[], on: boolean, boundary: string, createdAt: (i
 // stores on the page being rendered, since the per-product block toggle inside an expanded card is
 // the one thing here that needs a row rather than a number (§3 — this used to read the whole
 // catalogue on every dashboard load).
+//
+// WAVE 3, and the only one left: the page slice has to exist before the products on it can be
+// asked for. It is inside the `shows` gate because it is a query — the pure derivations above and
+// below are left to run over their empty fallbacks, which costs nothing and keeps the diff honest.
 const sellerQuery = parseSellerQuery(sp);
-const sellerCardsAll = getSellerCards(sellers, stores, productCounts, revenueByStore);
-const sellerCardsFiltered = keepNewOnly(filterAndSortSellerCards(sellerCardsAll, sellerQuery), newOnly.sellers, newSince.sellers, (c) => c.seller.createdAt);
-const sellerPageResult = paginate(sellerCardsFiltered, parsePage(sp, 'spage'));
-const sellerPageCards = attachProducts(
-  sellerPageResult.items,
-  await getProductsByStoreIds(sellerPageResult.items.flatMap((c) => c.stores.map((s) => s.store.id))),
-);
-// Accrued balances (lib/seller-balance.ts) — reporting only: the processor pays each seller
-// directly, so nothing here is an instruction to do anything. Costs no query: it is derived from
-// the same `revenueByStore` map the cards above are already built from, which is also what makes
-// the balance and the gross figure printed beside it literally the same number.
-const balanceBySeller = new Map(
-  buildSellerBalances(sellers, stores, revenueByStore).map((b) => [b.sellerId, b]),
-);
+const sellersTab = shows('sellers') ? await (async () => {
+  const all = getSellerCards(sellers, stores, productCounts, revenueByStore);
+  const filtered = keepNewOnly(filterAndSortSellerCards(all, sellerQuery), newOnly.sellers, newSince.sellers, (c) => c.seller.createdAt);
+  const page = paginate(filtered, parsePage(sp, 'spage'));
+  return {
+    cards: attachProducts(page.items, await getProductsByStoreIds(page.items.flatMap((c) => c.stores.map((s) => s.store.id)))),
+    // Accrued balances (lib/seller-balance.ts) — reporting only: the processor pays each seller
+    // directly, so nothing here is an instruction to do anything. Costs no query: derived from the
+    // same `revenueByStore` map the cards are already built from, which is also what makes the
+    // balance and the gross figure printed beside it literally the same number.
+    balanceBySeller: new Map(buildSellerBalances(sellers, stores, revenueByStore).map((b) => [b.sellerId, b])),
+    totalAll: all.length,
+    totalFiltered: filtered.length,
+    page: page.page,
+    totalPages: page.totalPages,
+  };
+})() : null;
 
 // ── Stores tab ──
 const storeQuery = parseStoreQuery(sp);
@@ -293,7 +333,6 @@ const storeRowsFiltered = keepNewOnly(filterAndSortStoreRows(storeRowsAll, store
 const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
-const orderPageResult = { items: ordersPage.orders, page: ordersPage.page, totalPages: ordersPage.totalPages, total: ordersPage.total };
 // Destructured for the panel below, which needs the query params back to rebuild its own URLs.
 const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore } = orderQuery;
 
@@ -308,23 +347,26 @@ const attentionPageResult = paginate(attentionAll, parsePage(sp, 'apage'));
 // an inline `!blocked` copy here would have gone on counting those and over-reported what the
 // platform is actually advertising. Reuses the already-fetched stores + the per-store product
 // counts, so this tab adds no read of its own.
-const feedStores = stores.filter((s) => isStoreDiscoverable(s) && (productCounts.get(s.id)?.unblocked ?? 0) > 0);
-const feedProductCount = feedStores.reduce((sum, s) => sum + (productCounts.get(s.id)?.unblocked ?? 0), 0);
-
-const adInputBase = { feedStores, feedProductCount, allStores: stores, campaigns: adCampaigns, brandCampaigns, campaignTotals, brandTotals, ads: platform.ads, settings: platformAdSettings };
-const adOverview = buildPlatformAdOverview({ ...adInputBase, range: adRange });
-const adPrevOverview = buildPlatformAdOverview({ ...adInputBase, range: adPrevRange });
 const pctChange = (cur: number, prev: number): number | null => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
-const adCompare = {
-  impressions: pctChange(adOverview.exposure.totalImpressions, adPrevOverview.exposure.totalImpressions),
-  clicks: pctChange(adOverview.exposure.totalClicks, adPrevOverview.exposure.totalClicks),
-  spend: pctChange(adOverview.exposure.totalSpend, adPrevOverview.exposure.totalSpend),
-};
-
-// ── Messages tab ──
-// One page of threads, narrowed and sorted in the query (§3) — this used to read every system
-// message on the platform, group them all in JS, and keep fifteen.
-const messagePageResult = { items: threadsPage.threads, page: threadsPage.page, totalPages: threadsPage.totalPages, total: threadsPage.total };
+const advertisingTab = platformAdSettings && (() => {
+  const feedStores = stores.filter((s) => isStoreDiscoverable(s) && (productCounts.get(s.id)?.unblocked ?? 0) > 0);
+  const base = {
+    feedStores,
+    feedProductCount: feedStores.reduce((sum, s) => sum + (productCounts.get(s.id)?.unblocked ?? 0), 0),
+    allStores: stores, campaigns: adCampaigns, brandCampaigns, campaignTotals, brandTotals,
+    ads: platform.ads, settings: platformAdSettings,
+  };
+  const overview = buildPlatformAdOverview({ ...base, range: adRange });
+  const previous = buildPlatformAdOverview({ ...base, range: adPrevRange });
+  return {
+    overview,
+    compare: {
+      impressions: pctChange(overview.exposure.totalImpressions, previous.exposure.totalImpressions),
+      clicks: pctChange(overview.exposure.totalClicks, previous.exposure.totalClicks),
+      spend: pctChange(overview.exposure.totalSpend, previous.exposure.totalSpend),
+    },
+  };
+})();
 
 // ── Alerts tab ──
 const alSortDir = sp.get('alsort') === 'asc' ? 'asc' : 'desc';
@@ -333,13 +375,16 @@ const alStore = decodeList(sp.get('alstore') ?? '');
 const alSeverity = (sp.get('alsev') ?? '').split(',').filter(Boolean);
 // The alert mail's deep link — one entry's short code, so the mail lands on its row.
 const alRef = sp.get('alref') ?? '';
+// Free-text search, an id above all (owner, 2026-08-07). Capped for the same reason the money
+// journal's is: terms × rows on a single-threaded SSR server, both halves request-controlled.
+const alQ = (sp.get('alq') ?? '').trim().slice(0, 200);
 // Unlike the money journal, the Alerts tab has NO default window and must not grow one: the log is
 // already capped at MAX_ENTRIES, and an admin opening it after a quiet week has to see the last
 // thing that broke even if it broke eleven days ago. The range is opt-in narrowing, nothing more.
 const alFrom = sp.get('alfrom') ?? '';
 const alTo = sp.get('alto') ?? '';
 const errorsFiltered = keepNewOnly(
-  filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore, severity: alSeverity, ref: alRef, from: alFrom, to: alTo }),
+  filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore, severity: alSeverity, ref: alRef, q: alQ, from: alFrom, to: alTo }),
   newOnly.alerts, newSince.alerts, (e) => e.createdAt,
 );
 const alertsPageResult = paginate(errorsFiltered, parsePage(sp, 'alpage'));
@@ -356,30 +401,25 @@ const perfDir = getDir(perfLang);
 // orders by. date-range.ts's toISODate reads the RUNTIME's local calendar, which is
 // UTC on a production server and so quietly reintroduced the off-by-one-day this
 // range is supposed to avoid.
-const platformPerf = buildPlatformPerformance(
-  perfSales,
-  perfStoreInputs,
-  perfViews,
-  perfFromISO,
-  perfToISO,
-  perfGranularity,
-);
-// First page of the searchable breakdown table. Search/sort/paging all re-fetch
-// the endpoint client-side afterwards (platform-performance.ts) — the URL params
-// are still honoured here so a deep-linked ?storeQ= renders server-side too.
-const perfStorePage = selectStoreRows(platformPerf.stores, parseStoreRowsQuery(sp));
-// Where the platform's income actually comes from — commission is only one of three.
-// Its own fetch, narrowed to the PERFORMANCE range: this tab and the Advertising tab carry
-// separate date pickers, so one list cannot be scoped to both. The numbers are unchanged — the
-// narrowing is a superset and `campaignStatsInRange` still decides the overlap.
-const perfRevenue = buildPlatformRevenue(
-  platformPerf.summary.platformCommissionAgorot,
-  platformPerf.summary.commissionRate,
-  perfTiers,
-  perfCampaigns,
-  perfFromISO,
-  perfToISO,
-);
+const performanceTab = shows('performance') ? (() => {
+  const perf = buildPlatformPerformance(perfSales, perfStoreInputs, perfViews, perfFromISO, perfToISO, perfGranularity);
+  return {
+    summary: perf.summary,
+    // First page of the searchable breakdown table. Search/sort/paging all re-fetch the endpoint
+    // client-side afterwards (platform-performance.ts) — the URL params are still honoured here so
+    // a deep-linked ?storeQ= renders server-side too.
+    storePage: selectStoreRows(perf.stores, parseStoreRowsQuery(sp)),
+    // Where the platform's income actually comes from — commission is only one of three.
+    revenue: buildPlatformRevenue(
+      perf.summary.platformCommissionAgorot,
+      perf.summary.commissionRate,
+      perfTiers,
+      perfCampaigns,
+      perfFromISO,
+      perfToISO,
+    ),
+  };
+})() : null;
 
 // ── Data tab (first-party analytics — CURRENT_TASK.md item 2) ──
 // The buyer-funnel window recomputes per ?datapreset via the panel-swap AJAX
@@ -390,47 +430,22 @@ const perfRevenue = buildPlatformRevenue(
 // and the panel already falls back to rendering the id.
 
 // ── Money journal tab ──
-// Type narrowing happens inside getMoneyEvents so it covers the WHOLE journal before
-// any slicing (money-events.ts's header says why); search/date-window/permalink are a
-// filter over its result (admin-moneylog-filter.ts's header says why). Paginates
-// 15/page like every other list tab. The one rule that lives HERE because it is about
-// this page's URL: a `?mev=` permalink picks the page holding that row, but an explicit
-// ?mlpage always wins — otherwise the next arrow click snaps back to the linked row.
-// Type AND date window are pushed into the query (money-events.ts) — the journal is the one
-// table nothing is deleted from, so opening this tab must not mean reading every row ever
-// appended. That is why the window has a DEFAULT (30 days, decided with the owner 2026-08-03):
-// without one, "the admin opened the money log" was the last unbounded read on this page.
-// The free-text pass stays in memory: it matches the Hebrew LABEL of an event type and the
-// amount as it is RENDERED, and neither exists in the database (DB_MIGRATION_PLAN.md §8).
-//
-// A `?mev=` permalink widens the default window back to the row it names — otherwise every link
-// older than 30 days would answer "this row is not in the current filter", which is the exact
-// failure `moneyLogTargetMissing` exists to report, arriving by default.
-const moneyLogEvents = filterMoneyEvents(moneyLogEventsRaw, moneyLogQuery);
-const moneyLogTargetPage = eventPage(moneyLogEvents, moneyLogQuery.eventId);
-const moneyLogPageResult = paginate(
-  moneyLogEvents,
-  sp.get('mlpage') ? parsePage(sp, 'mlpage') : (moneyLogTargetPage ?? 1),
-);
-// Linked row that this filter/journal doesn't contain — said out loud, never silently
-// swallowed into "here's page 1".
-const moneyLogTargetMissing = moneyLogQuery.eventId !== '' && moneyLogTargetPage === null;
+// Nothing left here: type, business-day window, free-text search, count and page slice are all in
+// the query, and the three-step permalink chain that decides WHICH page is in `admin-moneylog-
+// panel.ts` (fetched in wave 1 above). What used to be here read every row of a 30-day window over
+// the network in order to render fifteen of them, then re-applied in JS the narrowing it had just
+// asked the database for.
 
 // ── "(N) new since last opened" tab badges (CURRENT_TASK.md → סשן ב׳) ──
-// Counted over the UNFILTERED lists on purpose: the badge answers "is there
-// anything I haven't seen in that tab", which a search box left open in that
-// tab must not change. Same `newSince` boundary the panels mark their rows
-// with, so "(3)" always means exactly the 3 rows wearing a "חדש" chip.
-// Messages isn't in this list — unreadMessagesForAdmin above is already an
-// exact per-message signal, more precise than a per-tab timestamp.
-const badgeCounts: Record<string, number> = {
-  sellers: countSince(sellers, newSince.sellers, (s) => s.createdAt),
-  stores: countSince(stores, newSince.stores, (s) => s.createdAt),
-  // A COUNT, because this one cannot be taken off a list any more: the Orders tab holds one page.
-  orders: ordersSinceCount,
-  alerts: countSince(errorsAll, newSince.alerts, (e) => e.createdAt),
-  messages: unreadMessagesForAdmin,
-};
+// Fetched in wave 2 above, as five COUNTs in one statement (admin-tab-badges.ts). They used to be
+// JS filters over lists this page happened to have already loaded — free while every tab was built
+// on every request, and silently zero the moment one is not. Counted over the UNFILTERED table on
+// purpose: the badge answers "is there anything I haven't seen in that tab", which a search box
+// left open in that tab must not change. Same `newSince` boundary the panels mark their rows with,
+// so "(3)" always means exactly the 3 rows wearing a "חדש" chip.
+// Indexed by tab id for the strip below, which walks `tabs` and knows only the id — a cast inside
+// the template is a compile error in `.astro`, so the widening happens here.
+const badgeFor: Record<string, number> = badgeCounts;
 ---
 
 {/* sellerMode=true here isn't "seller dashboard" semantics — reusing the flag
@@ -455,7 +470,7 @@ const badgeCounts: Record<string, number> = {
 
       <div class="dash-tabs" role="tablist">
         {tabs.map((tab) => {
-          const count = badgeCounts[tab.id] ?? 0;
+          const count = badgeFor[tab.id] ?? 0;
           return (
             <button
               class={`dash-tab${initialPanel === tab.id ? ' dash-tab--active' : ''}`}
@@ -477,25 +492,25 @@ const badgeCounts: Record<string, number> = {
       </div>
       <DashTabsBoot />
 
-      <div id="dash-panel-overview" class="dash-panel" role="tabpanel" aria-labelledby="tab-overview" hidden={initialPanel !== 'overview'}>
+      <AdminPanelShell panel="overview" active={shows('overview')}>
         <AdminOverviewPanel overview={overview} attentionCount={attentionAll.length} />
-      </div>
+      </AdminPanelShell>
 
-      <div id="dash-panel-data" class="dash-panel" role="tabpanel" aria-labelledby="tab-data" hidden={initialPanel !== 'data'}>
-        <AdminDataPanel
-          overview={analyticsOverview}
-          sellerFunnel={sellerFunnel}
+      <AdminPanelShell panel="data" active={shows('data') && !!analyticsOverview && !!sellerFunnel}>
+        {analyticsOverview && sellerFunnel && <AdminDataPanel
+          overview={analyticsOverview!}
+          sellerFunnel={sellerFunnel!}
           range={dataRange}
           activePreset={dataPreset}
           productNames={productNames}
           buildUrl={(preset) => tabUrl('data', { datapreset: preset !== '30d' ? preset : undefined })}
-        />
-      </div>
+        />}
+      </AdminPanelShell>
 
-      <div id="dash-panel-sellers" class="dash-panel" role="tabpanel" aria-labelledby="tab-sellers" hidden={initialPanel !== 'sellers'}>
-        <AdminSellersPanel
-          sellerCards={sellerPageCards}
-          balanceBySeller={balanceBySeller}
+      <AdminPanelShell panel="sellers" active={!!sellersTab}>
+        {sellersTab && <AdminSellersPanel
+          sellerCards={sellersTab!.cards}
+          balanceBySeller={sellersTab!.balanceBySeller}
           q={sellerQuery.q}
           sortCol={sellerQuery.sortCol}
           sortDir={sellerQuery.sortDir}
@@ -503,10 +518,10 @@ const badgeCounts: Record<string, number> = {
           newSince={newSince.sellers}
           newOnly={newOnly.sellers}
           newCount={badgeCounts.sellers}
-          totalAll={sellerCardsAll.length}
-          totalFiltered={sellerCardsFiltered.length}
-          page={sellerPageResult.page}
-          totalPages={sellerPageResult.totalPages}
+          totalAll={sellersTab!.totalAll}
+          totalFiltered={sellersTab!.totalFiltered}
+          page={sellersTab!.page}
+          totalPages={sellersTab!.totalPages}
           buildUrl={(p) => tabUrl('sellers', {
             sq: sellerQuery.q || undefined,
             ssort: (sellerQuery.sortCol !== 'joined' || sellerQuery.sortDir !== 'desc') ? `${sellerQuery.sortCol}:${sellerQuery.sortDir}` : undefined,
@@ -514,10 +529,10 @@ const badgeCounts: Record<string, number> = {
             snew: newOnly.sellers ? '1' : undefined,
             spage: p > 1 ? String(p) : undefined,
           })}
-        />
-      </div>
+        />}
+      </AdminPanelShell>
 
-      <div id="dash-panel-stores" class="dash-panel" role="tabpanel" aria-labelledby="tab-stores" hidden={initialPanel !== 'stores'}>
+      <AdminPanelShell panel="stores" active={shows('stores')}>
         <AdminStoresPanel
           storeRows={storePageResult.items}
           q={storeQuery.q}
@@ -540,13 +555,13 @@ const badgeCounts: Record<string, number> = {
             stpage: p > 1 ? String(p) : undefined,
           })}
         />
-      </div>
+      </AdminPanelShell>
 
-      <div id="dash-panel-orders" class="dash-panel" role="tabpanel" aria-labelledby="tab-orders" hidden={initialPanel !== 'orders'}>
-        <AdminOrdersPanel
-          orders={orderPageResult.items}
-          totalAll={ordersPage.totalUnfiltered}
-          totalFiltered={ordersPage.total}
+      <AdminPanelShell panel="orders" active={!!ordersPage}>
+        {ordersPage && <AdminOrdersPanel
+          orders={ordersPage!.orders}
+          totalAll={ordersPage!.totalUnfiltered}
+          totalFiltered={ordersPage!.total}
           q={oq}
           sortCol={oSortCol}
           sortDir={oSortDir}
@@ -557,8 +572,8 @@ const badgeCounts: Record<string, number> = {
           newSince={newSince.orders}
           newOnly={newOnly.orders}
           newCount={badgeCounts.orders}
-          page={orderPageResult.page}
-          totalPages={orderPageResult.totalPages}
+          page={ordersPage!.page}
+          totalPages={ordersPage!.totalPages}
           buildUrl={(p) => tabUrl('orders', {
             oq: oq || undefined,
             osort: (oSortCol !== 'date' || oSortDir !== 'desc') ? `${oSortCol}:${oSortDir}` : undefined,
@@ -568,53 +583,53 @@ const badgeCounts: Record<string, number> = {
             onew: newOnly.orders ? '1' : undefined,
             opage: p > 1 ? String(p) : undefined,
           })}
-        />
-      </div>
+        />}
+      </AdminPanelShell>
 
-      <div id="dash-panel-performance" class="dash-panel" role="tabpanel" aria-labelledby="tab-performance" hidden={initialPanel !== 'performance'}>
-        <AdminPerformancePanel
-          summary={platformPerf.summary}
-          revenue={perfRevenue}
-          storePage={perfStorePage}
+      <AdminPanelShell panel="performance" active={!!performanceTab}>
+        {performanceTab && <AdminPerformancePanel
+          summary={performanceTab!.summary}
+          revenue={performanceTab!.revenue}
+          storePage={performanceTab!.storePage}
           fromISO={perfFromISO}
           toISO={perfToISO}
           lang={perfLang}
           dir={perfDir}
-        />
-      </div>
+        />}
+      </AdminPanelShell>
 
-      <div id="dash-panel-attention" class="dash-panel" role="tabpanel" aria-labelledby="tab-attention" hidden={initialPanel !== 'attention'}>
+      <AdminPanelShell panel="attention" active={shows('attention')}>
         <AdminAttentionPanel
           entries={attentionPageResult.items}
           page={attentionPageResult.page}
           totalPages={attentionPageResult.totalPages}
           buildUrl={(p) => tabUrl('attention', { apage: p > 1 ? String(p) : undefined })}
         />
-      </div>
+      </AdminPanelShell>
 
-      <div id="dash-panel-advertising" class="dash-panel" role="tabpanel" aria-labelledby="tab-advertising" hidden={initialPanel !== 'advertising'}>
-        <AdminAdvertisingPanel overview={adOverview} brandCampaigns={brandCampaigns} range={adRange} activePreset={adPreset} compare={adCompare} />
-      </div>
+      <AdminPanelShell panel="advertising" active={!!advertisingTab}>
+        {advertisingTab && <AdminAdvertisingPanel overview={advertisingTab!.overview} brandCampaigns={brandCampaigns} range={adRange} activePreset={adPreset} compare={advertisingTab!.compare} />}
+      </AdminPanelShell>
 
-      <div id="dash-panel-messages" class="dash-panel" role="tabpanel" aria-labelledby="tab-messages" hidden={initialPanel !== 'messages'}>
-        <AdminMessagesPanel
-          threads={messagePageResult.items}
+      <AdminPanelShell panel="messages" active={!!threadsPage}>
+        {threadsPage && <AdminMessagesPanel
+          threads={threadsPage!.threads}
           sellers={sellers}
           sortCol={threadQuery.sortCol}
           unreadOnly={threadQuery.unreadOnly}
-          totalAll={threadsPage.totalUnfiltered}
-          totalFiltered={threadsPage.total}
-          page={messagePageResult.page}
-          totalPages={messagePageResult.totalPages}
+          totalAll={threadsPage!.totalUnfiltered}
+          totalFiltered={threadsPage!.total}
+          page={threadsPage!.page}
+          totalPages={threadsPage!.totalPages}
           buildUrl={(p) => tabUrl('messages', {
             msort: threadQuery.sortCol !== 'recent' ? threadQuery.sortCol : undefined,
             munread: threadQuery.unreadOnly ? '1' : undefined,
             mpage: p > 1 ? String(p) : undefined,
           })}
-        />
-      </div>
+        />}
+      </AdminPanelShell>
 
-      <div id="dash-panel-alerts" class="dash-panel" role="tabpanel" aria-labelledby="tab-alerts" hidden={initialPanel !== 'alerts'}>
+      <AdminPanelShell panel="alerts" active={shows('alerts')}>
         <AdminAlertsPanel
           errors={alertsPageResult.items}
           totalAll={errorsAll.length}
@@ -624,6 +639,7 @@ const badgeCounts: Record<string, number> = {
           storeSlug={alStore}
           severity={alSeverity}
           entryRef={alRef}
+          q={alQ}
           from={alFrom}
           to={alTo}
           storeOptions={errorStoreOptions}
@@ -637,6 +653,7 @@ const badgeCounts: Record<string, number> = {
             alsource: alSource.length ? alSource.join(',') : undefined,
             alsev: alSeverity.length ? alSeverity.join(',') : undefined,
             alref: alRef || undefined,
+            alq: alQ || undefined,
             alstore: alStore.length ? encodeList(alStore) : undefined,
             alfrom: alFrom || undefined,
             alto: alTo || undefined,
@@ -644,26 +661,26 @@ const badgeCounts: Record<string, number> = {
             alpage: p > 1 ? String(p) : undefined,
           })}
         />
-      </div>
+      </AdminPanelShell>
 
-      <div id="dash-panel-moneylog" class="dash-panel" role="tabpanel" aria-labelledby="tab-moneylog" hidden={initialPanel !== 'moneylog'}>
-        <AdminMoneyLogPanel
-          events={moneyLogPageResult.items}
-          query={moneyLogQuery}
-          targetMissing={moneyLogTargetMissing}
-          total={moneyLogPageResult.total}
-          page={moneyLogPageResult.page}
-          totalPages={moneyLogPageResult.totalPages}
+      <AdminPanelShell panel="moneylog" active={!!moneyLog && !!reconciliation}>
+        {moneyLog && reconciliation && <AdminMoneyLogPanel
+          events={moneyLog!.events}
+          query={moneyLog!.query}
+          targetMissing={moneyLog!.targetMissing}
+          total={moneyLog!.total}
+          page={moneyLog!.page}
+          totalPages={moneyLog!.totalPages}
           buildUrl={(p) => tabUrl('moneylog', {
-            mtype: moneyLogQuery.type,
-            mq: moneyLogQuery.q || undefined,
-            mfrom: moneyLogQuery.from || undefined,
-            mto: moneyLogQuery.to || undefined,
+            mtype: moneyLog!.query.type,
+            mq: moneyLog!.query.q || undefined,
+            mfrom: moneyLog!.query.from || undefined,
+            mto: moneyLog!.query.to || undefined,
             mlpage: p > 1 ? String(p) : undefined,
           })}
-          reconciliation={reconciliation}
-        />
-      </div>
+          reconciliation={reconciliation!}
+        />}
+      </AdminPanelShell>
     </div>
   </div>
 </BaseLayout>
@@ -681,7 +698,13 @@ const badgeCounts: Record<string, number> = {
   import { initAdminPlatformPerformance } from '../../scripts/admin/platform-performance.js';
   import { initAdminDataPanel } from '../../scripts/admin/data-panel.js';
   import { initAdminMoneyLogPanel } from '../../scripts/admin/moneylog.js';
+  import { initLazyAdminPanels } from '../../scripts/admin/lazy-panels.js';
   initDashTabs();
+  // Ten of the eleven panels arrive on the click that opens them. Every init below still runs on
+  // load: each one early-returns on the elements it cannot find, and the ones that matter — the
+  // delegated pager/link listeners bound to the panel CONTAINER, which survives every swap — have
+  // to be wired before there is anything inside it.
+  initLazyAdminPanels();
   initAdminSellersPanel();
   initAdminStoresPanel();
   initAdminOrdersFilter();

@@ -1,6 +1,13 @@
 import crypto from 'node:crypto';
 import { isUuid, query, rows } from './db.js';
 import { BUSINESS_TIMEZONE, isDayISO } from './business-day.js';
+import { searchClauses } from './moneylog-search.js';
+import type { MoneyEventType } from './money-event-types.js';
+
+// The vocabulary and its Hebrew labels live in `money-event-types.ts` — the SQL builder above needs
+// them and this module needs the SQL builder, so the shared half is its own module rather than a
+// cycle. Re-exported here because this has always been where the rest of the app imports them from.
+export { MONEY_EVENT_TYPES, MONEY_EVENT_LABELS, isMoneyEventType, type MoneyEventType } from './money-event-types.js';
 
 /**
  * Append-only journal of every event that moves, or claims to move, money.
@@ -38,69 +45,6 @@ import { BUSINESS_TIMEZONE, isDayISO } from './business-day.js';
  * on `money_events` carries the `REVOKE UPDATE, DELETE` that makes it true (a GO_LIVE step, since
  * the role name is environment-specific). There is deliberately no `updateMoneyEvent` to grep for.
  */
-
-/**
- * The vocabulary, as a value rather than a bare union — a reader validating a
- * user-supplied type (the admin journal's filter) must check it against the set of
- * types that EXIST, never against the types that happen to appear in the rows it
- * just loaded. Doing the latter silently turns "show me only the blocked double
- * charges" into "show me everything" on any journal that has none yet, which is a
- * filter that lies rather than one that comes back empty.
- *
- *   payment_attempted          — a charge was attempted at the payment provider.
- *   order_created              — an order row was created off a successful charge.
- *   duplicate_checkout_blocked — a repeat submit of an already-completed checkout was
- *                                served from the ledger instead of charged again
- *                                (checkout-idempotency.ts). Their absence proves
- *                                nothing; their PRESENCE proves a double charge was
- *                                caught, which is what's worth being able to show.
- *   payment_status_changed     — paymentStatus moved (pending → paid → failed…).
- *   shipping_status_changed    — shippingStatus moved, including the cancellation that
- *                                takes an order out of every revenue sum while leaving
- *                                paymentStatus at 'paid'.
- *   order_discount_changed     — a seller applied/changed a discount on their slice.
- *   charge_voided              — a charge SUCCEEDED and the purchase behind it then failed, so
- *                                the money was given back (payment.ts#voidCharge). The most
- *                                important row in this journal when it exists: it is the only
- *                                trace that a buyer's card was touched for an order that does
- *                                not exist. A row whose detail says the void FAILED is money
- *                                owed back to a real person, and it pages someone.
- */
-export const MONEY_EVENT_TYPES = [
-  'payment_attempted',
-  'order_created',
-  'charge_voided',
-  'duplicate_checkout_blocked',
-  'payment_status_changed',
-  'shipping_status_changed',
-  'order_discount_changed',
-] as const;
-
-export type MoneyEventType = (typeof MONEY_EVENT_TYPES)[number];
-
-/**
- * The Hebrew name of each type, next to the vocabulary rather than in the panel that
- * renders it — because the admin's free-text search matches these labels too
- * (admin-moneylog-filter.ts). An owner who types "ביטול" is searching for the word he
- * is looking at on screen; if the label lived only in the component, the filter would
- * have had to keep a second copy of it, and the day they drifted the search would
- * quietly stop finding the rows whose chip still said the old word.
- * The panel keeps only the TONE (presentational) beside these.
- */
-export const MONEY_EVENT_LABELS: Record<MoneyEventType, string> = {
-  payment_attempted: 'ניסיון חיוב',
-  order_created: 'הזמנה נוצרה',
-  charge_voided: 'חיוב בוטל',
-  duplicate_checkout_blocked: 'חיוב כפול נמנע',
-  payment_status_changed: 'סטטוס תשלום השתנה',
-  shipping_status_changed: 'סטטוס משלוח השתנה',
-  order_discount_changed: 'סכום הזמנה שונה',
-};
-
-/** Type guard for a request-supplied value (`?mtype=`). */
-export function isMoneyEventType(value: string): value is MoneyEventType {
-  return (MONEY_EVENT_TYPES as readonly string[]).includes(value);
-}
 
 export interface MoneyEvent {
   id: string;
@@ -197,43 +141,163 @@ export async function recordMoneyEvent(event: Omit<MoneyEvent, 'id' | 'at'>): Pr
   return entry;
 }
 
-/** Newest-first read of the journal, narrowed to one type and/or a business-day window.
+/** Always aliased `e`, in every query below and in `moneylog-search.ts`: the permalink rank joins
+ *  this table to itself, where an unqualified `id` is ambiguous rather than merely untidy — and one
+ *  spelling everywhere is what stops the two modules' fragments from only composing by luck. */
+const EVENT_COLUMNS = `e.id, e.at, e.type, e.order_id, e.checkout_ref, e.store_slug, e.amount_agorot,
+                       e.from_value, e.to_value, e.actor, e.detail`;
+
+/** The narrowing shared by every read here: the type filter, the business-day window, and the
+ *  free-text search. Returns SQL fragments and appends their parameters to `params`, so the caller
+ *  decides what to select and how to slice. */
+function narrowingClauses(n: MoneyLogNarrowing, params: unknown[]): string {
+  return [...windowClauses(n.type, n.from, n.to, params), ...searchClauses(n.q ?? '', params)].join(' AND ');
+}
+
+/** What the admin's toolbar narrows the journal by — the subset of `MoneyLogQuery`
+ *  (admin-moneylog-filter.ts) that the database can answer. Declared here rather than imported so
+ *  this module keeps depending on nothing that knows about URLs. */
+export interface MoneyLogNarrowing {
+  type?: MoneyEventType;
+  q?: string;
+  from?: string;
+  to?: string;
+}
+
+/**
+ * The narrowing every read of this journal shares, as SQL.
  *
- *  Both narrowings are pushed into SQL. The type one has to be (see below); the DAY one is here
- *  because the journal is the one table nothing is ever deleted from, so "the admin opened the
- *  money log" must not mean "read every event ever recorded". The window is expressed in the
- *  platform's business calendar (§7.8) — `AT TIME ZONE 'Asia/Jerusalem'`, the same conversion
- *  `business-day.ts` does in JS, so a row found by searching a date here is the row the seller's
- *  chart counts on that day. UTC would move the boundary by two or three hours and silently file
- *  every after-midnight event under the wrong day on both screens.
+ * **The date window is a half-open range on the RAW column, and that is the whole point.** It used
+ * to read `(at AT TIME ZONE $tz)::date >= $from::date` — correct, and unable to use an index: a
+ * function applied to the indexed column takes `money_events_at_idx` out of the plan and leaves a
+ * sequential scan of the one table nothing is ever deleted from, so the money log got monotonically
+ * slower for the life of the platform. Measured on the real journal (295 rows, 2026-08-07):
+ * `Seq Scan … rows=295` before, `Index Scan using money_events_at_idx … Buffers: shared hit=3` after.
+ * On a 300,000-row copy of it, which is where this actually matters: 149ms and 12,747 rows crossing
+ * the network, against 17ms and 15 rows.
  *
- *  There is deliberately NO row cap: the admin panel paginates, and a cap would both
- *  make its "N events" count describe the window rather than the journal, and hide
- *  older rows of a filtered type behind newer rows of other types — which is exactly
- *  how the type filter came to look broken (it used to take the newest 500 and narrow
- *  those). Narrowing therefore belongs HERE, ahead of any slicing a caller does.
+ * Both forms mean the same window, and it is still the platform's business calendar (§7.8): each
+ * BOUND is converted to an instant once, here, instead of every ROW being converted to a day. The
+ * upper bound is the start of the day AFTER `to`, which is what makes it inclusive of `to` without
+ * naming an end-of-day time that daylight saving can move.
  *
- *  Free-text search stays in memory over the result, in `admin-moneylog-filter.ts`: it matches
- *  the Hebrew LABEL of a type as well as the stored columns, and the labels do not exist in the
- *  database. The trigram indexes (0001/0004) are what a future pushdown of the column half would
- *  use. */
-export async function getMoneyEvents(type?: MoneyEventType, fromDay?: string, toDay?: string): Promise<MoneyEvent[]> {
-  // A bound that is not a real day is dropped rather than cast. Postgres RAISES on `2026-02-30`
-  // instead of matching nothing, so without this an admin arriving on a hand-edited URL gets a 500
-  // for the whole dashboard (business-day.ts#isDayISO). Callers reject it upstream too.
+ * A bound that is not a real day is dropped rather than cast. Postgres RAISES on `2026-02-30`
+ * instead of matching nothing, so without this an admin arriving on a hand-edited URL gets a 500
+ * for the whole dashboard (business-day.ts#isDayISO). Callers reject it upstream too.
+ */
+function windowClauses(type: MoneyEventType | undefined, fromDay: string | undefined, toDay: string | undefined, params: unknown[]): string[] {
   const from = fromDay && isDayISO(fromDay) ? fromDay : null;
   const to = toDay && isDayISO(toDay) ? toDay : null;
+  params.push(type ?? null, from, to, BUSINESS_TIMEZONE);
+  const [t, f, u, tz] = [params.length - 3, params.length - 2, params.length - 1, params.length];
+  return [
+    `($${t}::text IS NULL OR e.type = $${t}::text)`,
+    `($${f}::date IS NULL OR e.at >= ($${f}::date)::timestamp AT TIME ZONE $${tz}::text)`,
+    `($${u}::date IS NULL OR e.at <  ($${u}::date + 1)::timestamp AT TIME ZONE $${tz}::text)`,
+  ];
+}
+
+/** Newest-first read of the journal, narrowed to one type and/or a business-day window.
+ *
+ *  Kept for callers that genuinely want the whole window in memory — today only the tests and the
+ *  parity guard. **The admin panel uses `getMoneyEventsPage`**, which adds the free-text search and
+ *  a `LIMIT`; reading a window whole to display fifteen rows of it is the thing that was wrong here.
+ *
+ *  There is deliberately NO row cap: a cap would both make the panel's "N events" count describe the
+ *  cap rather than the journal, and hide older rows of a filtered type behind newer rows of other
+ *  types — which is exactly how the type filter came to look broken (it used to take the newest 500
+ *  and narrow those). Narrowing therefore belongs HERE, ahead of any slicing a caller does. */
+export async function getMoneyEvents(type?: MoneyEventType, fromDay?: string, toDay?: string): Promise<MoneyEvent[]> {
+  const params: unknown[] = [];
+  const where = windowClauses(type, fromDay, toDay, params).join(' AND ');
   const found = await rows<EventRow>(
-    `SELECT id, at, type, order_id, checkout_ref, store_slug, amount_agorot,
-            from_value, to_value, actor, detail
-       FROM money_events
-      WHERE ($1::text IS NULL OR type = $1::text)
-        AND ($2::date IS NULL OR (at AT TIME ZONE $4::text)::date >= $2::date)
-        AND ($3::date IS NULL OR (at AT TIME ZONE $4::text)::date <= $3::date)
-      ORDER BY at DESC, id`,
-    [type ?? null, from, to, BUSINESS_TIMEZONE],
+    `SELECT ${EVENT_COLUMNS} FROM money_events e WHERE ${where} ORDER BY e.at DESC, e.id`,
+    params,
   );
   return found.map(toEvent);
+}
+
+/** One page of the journal, with the total behind it — everything the admin panel renders.
+ *
+ *  Narrowing, ordering, counting and slicing are ALL in the query. What used to happen instead:
+ *  every row of the window travelled from Neon, was turned into objects, was filtered in JS, and
+ *  fifteen of them were kept. The three costs that removes are the network transfer, the allocation,
+ *  and the (terms × rows) scan on a single-threaded SSR server — none of which grows with anything
+ *  the admin can see.
+ *
+ *  The total comes back with the page rather than from a second round trip: the pager needs the
+ *  exact figure, and the database is over the network (~64ms a crossing regardless of the query).
+ *
+ *  **`LEFT JOIN … ON true`, not `count(*) OVER ()`**, and the difference is a real bug rather than a
+ *  style choice: a window function has no row to ride on when the page is past the end of the
+ *  result (a hand-typed `?mlpage=999`), so the total would come back as 0 and the pager would say
+ *  the journal is empty. Joining the page ONTO the count always yields the count. */
+export interface MoneyEventsPage {
+  events: MoneyEvent[];
+  /** Rows matching the narrowing, across all pages. */
+  total: number;
+}
+
+export async function getMoneyEventsPage(
+  narrowing: MoneyLogNarrowing,
+  offset: number,
+  limit: number,
+): Promise<MoneyEventsPage> {
+  const params: unknown[] = [];
+  const where = narrowingClauses(narrowing, params);
+  params.push(limit, offset);
+  const found = await rows<Partial<EventRow> & { total_count: string | number }>(
+    `WITH n AS (SELECT count(*) AS total_count FROM money_events e WHERE ${where}),
+          p AS (SELECT ${EVENT_COLUMNS} FROM money_events e
+                 WHERE ${where}
+                 ORDER BY e.at DESC, e.id
+                 LIMIT $${params.length - 1} OFFSET $${params.length})
+     SELECT n.total_count, p.* FROM n LEFT JOIN p ON true`,
+    params,
+  );
+  return {
+    // A page past the end still returns the count row, with every event column NULL.
+    events: found.filter((r) => r.id).map((r) => toEvent(r as EventRow)),
+    // `count` is a bigint: a string from `pg`, a number from PGlite (§8).
+    total: Number(found[0]?.total_count ?? 0),
+  };
+}
+
+/** Which page of the current result set holds `eventId`, and whether it is in it at all — the
+ *  answer to "open this link and show me that row", which no client can know: the row's page depends
+ *  on the filters and on every row appended since the link was copied.
+ *
+ *  The rank is counted in SQL rather than by finding the row in a list, for the same reason the page
+ *  is: the list no longer exists in memory. `ORDER BY at DESC, id` is a MIXED ordering, so "comes
+ *  before" is spelled out rather than written as a row-value comparison, which would silently mean
+ *  something else.
+ *
+ *  `null` = the row is not in this result set (wrong filter, or a journal that no longer has it),
+ *  and the panel says so rather than silently showing page 1. */
+export async function moneyEventPage(
+  narrowing: MoneyLogNarrowing,
+  eventId: string,
+  pageSize: number,
+): Promise<number | null> {
+  // Postgres REJECTS a malformed uuid literal rather than simply not matching it, so a hand-edited
+  // `?mev=nonsense` would be a 500 on the whole dashboard.
+  if (!isUuid(eventId)) return null;
+  const params: unknown[] = [eventId];
+  const where = narrowingClauses(narrowing, params);
+  // ONE round trip, not two: the rank and "is it even in this result set" are both needed before a
+  // page can be chosen, and the database is over the network.
+  const [found] = await rows<{ rank: string | number | null; present: boolean }>(
+    `WITH target AS (SELECT at, id FROM money_events WHERE id = $1)
+     SELECT
+       (SELECT count(*) FROM money_events e, target t
+         WHERE ${where} AND (e.at > t.at OR (e.at = t.at AND e.id < t.id))) AS rank,
+       EXISTS (SELECT 1 FROM money_events e WHERE e.id = $1 AND ${where}) AS present`,
+    params,
+  );
+  // The row itself must be inside the narrowing, not merely newer than rows that are: a `?mev=` to
+  // an event the current filter excludes has to report itself missing rather than land on page 1.
+  if (!found?.present) return null;
+  return Math.floor(Number(found.rank ?? 0) / pageSize) + 1;
 }
 
 /**

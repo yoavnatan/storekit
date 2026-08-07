@@ -55,10 +55,19 @@ describe('parseMoneyLogQuery', () => {
     expect(q('mq=%20%20ord-1%20%20&mev=%20abc%20')).toMatchObject({ q: 'ord-1', eventId: 'abc' });
   });
 
-  it('caps the search term so a 16KB query string cannot amplify into terms × rows', () => {
-    // Every term is tested against every row on a single-threaded SSR server, so an
-    // uncapped `a a a a …` query is a stall, not a search.
-    expect(q(`mq=${'a b '.repeat(5000)}`).q.length).toBe(200);
+  it('caps the search so a 16KB query string cannot amplify', () => {
+    // Two caps, and the second is the one that costs now. Length first — a query string can carry
+    // ~16KB. Then TERMS, because the search runs in the query: each one is a ten-armed `OR` bolted
+    // into the WHERE, so 200 characters of `a b a b …` is 100 of them and Postgres spends its time
+    // planning. Measured against the production build: 1.26s, where a real search takes ~70ms.
+    const capped = q(`mq=${'a b '.repeat(5000)}`).q;
+    expect(capped.split(/\s+/)).toHaveLength(12);
+    expect(capped.length).toBeLessThanOrEqual(200);
+  });
+
+  it('leaves a search nobody would call excessive completely alone', () => {
+    // The cap must be invisible to every real search — it exists for the pathological one only.
+    expect(q('mq=ord-1111+keramika+cancelled').q).toBe('ord-1111 keramika cancelled');
   });
 });
 

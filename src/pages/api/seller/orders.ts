@@ -14,6 +14,7 @@ import { paginate, parsePage } from '../../../lib/pagination.js';
 import type { Order } from '../../../lib/orders.js';
 import { orderNetForStore } from '../../../lib/admin-stats.js';
 import { recordMoneyEvent } from '../../../lib/money-events.js';
+import { recordRefundOwed } from '../../../lib/refund-owed.js';
 import { storeSliceTotalAgorot } from '../../../lib/order-totals.js';
 import { toAgorot } from '../../../lib/money.js';
 import { SHIPPING_STATUS_RULES, canTransition, orderHoldsStock, type ShippingStatus } from '../../../lib/order-status-rules.js';
@@ -283,6 +284,12 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
         ? 'cancelled — items restocked, order leaves every revenue sum (countsAsRevenue)'
         : undefined,
     });
+    // …and, separately, whether that move left the BUYER owed money. The row above is a fulfilment
+    // fact: the order stopped counting and the seller stopped owing a parcel. It says nothing about
+    // the money, which was really captured off a real card and is still ours until someone gives it
+    // back. `refund-owed.ts` owns the rule and writes the obligation; without it the only trace was
+    // a status row whose meaning a reader had to infer.
+    await recordRefundOwed(before, updated, storeSlug, sellerId);
   }
   const newNet = orderNetForStore(updated, storeSlug);
   if (newNet !== prevNet) {

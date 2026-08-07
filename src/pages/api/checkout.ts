@@ -574,6 +574,13 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       // the time this runs, so a database hiccup here must not turn a completed purchase into a
       // 500 for the buyer. The seller's dashboard shows the order either way; only the badge is
       // at stake.
+      //
+      // **But it is no longer swallowed SILENTLY, and that was the gap.** "The capture succeeded
+      // and the seller was never told" produced nothing anywhere — no log line, no alert, and a
+      // seller who does not open their dashboard has a paid order sitting unshipped with the one
+      // thing that would have prompted them missing. Reported at `warning`: the sale stands and
+      // nothing is owed to anyone, so it must not page a person (lib/error-severity.ts), but it
+      // must be findable in the Alerts tab beside the order it belongs to.
       await createNotification({
         userId: store.sellerId,
         role: 'seller',
@@ -583,7 +590,24 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         relatedId: storeOrder.id,
         storeSlug: store.slug,
         storeName: store.name,
-      }).catch(() => { /* the sale itself stands */ });
+      }).catch((err: unknown) => {
+        void logError({
+          source: 'server',
+          // Named for what actually failed, not for the handler it ran inside, and that decides how
+          // loudly it is reported: `/api/checkout` is a MONEY path, so an entry under it pages a
+          // person (error-severity.ts) — which is the right answer for a checkout that broke and
+          // the wrong one for a checkout that succeeded and then failed to ring a bell. An alert
+          // channel that wakes someone for a badge is a channel that gets muted. Severity is not
+          // passed: it is derived, exactly so this decision is made in one place and by the route.
+          route: 'notify:new_order',
+          message: `new-order notification failed for order ${storeOrder.id}: ${err instanceof Error ? err.message : String(err)}`,
+          storeSlug: store.slug,
+          storeName: store.name,
+          actorRole: 'seller',
+          actorId: store.sellerId,
+          resolutionHint: 'התשלום נגבה וההזמנה קיימת — רק ההתראה למוכר נכשלה. ההזמנה מופיעה בדשבורד שלו, אבל בלי התראה הוא עלול לא לשים לב אליה. שווה ליידע אותו ידנית.',
+        });
+      });
     }
 
     for (const alert of stockAlerts) {
@@ -599,7 +623,21 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         relatedId: alert.productId,
         storeSlug: alert.storeSlug,
         storeName: alert.storeName,
-      }).catch(() => { /* same reason: the purchase is already committed */ });
+      }).catch((err: unknown) => {
+        // Same reason as the new-order notification above: the purchase is already committed, so
+        // this must not fail it — and must not disappear either. A seller who is never told a
+        // product ran out is a seller who does not restock it.
+        void logError({
+          source: 'server',
+          route: 'notify:stock_alert',
+          message: `${alert.type} notification failed for product ${alert.productId}: ${err instanceof Error ? err.message : String(err)}`,
+          storeSlug: alert.storeSlug,
+          storeName: alert.storeName,
+          actorRole: 'seller',
+          actorId: alert.sellerId,
+          resolutionHint: 'ההזמנה והתשלום תקינים — רק ההתראה על המלאי למוכר נכשלה. המלאי בדשבורד שלו נכון; ייתכן שלא ישים לב שהמוצר אזל.',
+        });
+      });
     }
 
     // Remove only the purchased lines from the server-side cart (the buyer may have left other

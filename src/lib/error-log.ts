@@ -440,6 +440,20 @@ export interface AlertsQuery {
    *  on a list to search. Bare (no `#`) — a `#` in a URL is a fragment and never reaches the
    *  server, so the link carries it without one and this compares without one. */
   ref?: string;
+  /**
+   * Free text (owner, 2026-08-07: "I'm missing a search by id in the alerts tab"). Space-separated
+   * terms are ANDed, same rule as the money journal's box.
+   *
+   * **What an "id" means here is not one thing, and that is the point.** The short code is what a
+   * person sees — on the row, in the alert mail, in a screenshot someone pasted (`#a1b2c3d4`). The
+   * uuid is what a log line or a database row carries. Both are the same entry, so both find it,
+   * with or without the leading `#`. The route, the message and the store go in beside them because
+   * the next thing an owner types after failing to find an id is the thing they remember instead.
+   *
+   * Distinct from `ref` above, which is an EXACT match the mail's deep link sets: that one narrows
+   * to one row on purpose and reports nothing when the entry has aged out. This is a search.
+   */
+  q?: string;
   /** Inclusive day bounds, `YYYY-MM-DD`, either one optional — a half-open window ("everything
    *  since the 1st") is a question worth being able to ask, so both are not required together.
    *
@@ -451,11 +465,24 @@ export interface AlertsQuery {
   to?: string;
 }
 
+/** Everything about one entry a search may legitimately match — the two spellings of its id first,
+ *  since that is what the box is for. Lowercased once per row rather than per term. */
+function alertHaystack(e: ErrorLogEntry): string {
+  return [
+    errorRef(e.id).replace(/^#/, ''), e.id, e.route, e.message,
+    e.storeSlug, e.storeName, e.actorLabel, e.actorId, e.source, e.severity,
+    e.statusCode === undefined ? '' : String(e.statusCode),
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
 export function filterAndSortErrors(entries: ErrorLogEntry[], query: AlertsQuery): ErrorLogEntry[] {
   const sourceSet = query.source.length ? new Set(query.source) : null;
   const storeSet = query.storeSlug.length ? new Set(query.storeSlug) : null;
   const severitySet = query.severity.length ? new Set(query.severity) : null;
   const ref = query.ref?.trim().replace(/^#/, '').toLowerCase() || null;
+  // A pasted `#a1b2c3d4` is the same search as `a1b2c3d4`: the `#` is how the code is PRINTED, not
+  // part of it, and an owner copying it off a row or out of a mail brings it along.
+  const terms = (query.q ?? '').toLowerCase().replace(/#/g, '').split(/\s+/).filter(Boolean);
   // Only a real day passes. A malformed bound becomes NO bound rather than a bound that compares
   // false against everything — the alternative is a picker typo silently emptying the tab.
   const from = query.from && isDayISO(query.from) ? query.from : null;
@@ -484,6 +511,10 @@ export function filterAndSortErrors(entries: ErrorLogEntry[], query: AlertsQuery
     // which is exactly why it was wrong in the first draft: folding only the query looks correct
     // and silently stops matching the day an id arrives from anywhere else.
     if (ref && errorRef(e.id).replace(/^#/, '').toLowerCase() !== ref) return false;
+    if (terms.length) {
+      const hay = alertHaystack(e);
+      if (!terms.every((t) => hay.includes(t))) return false;
+    }
     return true;
   });
 
