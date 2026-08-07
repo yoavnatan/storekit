@@ -588,30 +588,49 @@ button.admin-store-row__count { padding: 0; text-align: start; }
 /* ── Panel busy state (admin-nav.ts#swapPanel) ──
    Every filter, sort, chip and pager arrow on this dashboard re-renders its panel over the
    network, and until 2026-08-07 nothing on screen said so — a click simply did nothing for about
-   a second (owner). The old rows stay put and stay readable: they are still the correct answer to
-   the PREVIOUS question, and blanking them makes a short wait look like lost data. So this is a
-   bar plus a slight dim, never a spinner in place of the content.
-   `pointer-events: none` because a second click during a swap would queue a second full render —
-   which is the one thing guaranteed to make it slower. */
+   a second (owner).
+
+   **It is a CHIP inside the section, not a bar across the top, and that was the owner's second
+   correction (2026-08-07): the first version read as a page loader.** It was already scoped to the
+   panel — measured, the track was exactly the panel's 1126px — but a full-bleed 2px line at the
+   top edge is the universal idiom for "the PAGE is loading" (every browser and every site puts one
+   there), so being technically panel-sized did not stop it saying "whole page". A small labelled
+   chip sitting inside the panel cannot be misread: it is visibly a thing belonging to the section
+   it sits in.
+
+   The content behind it stays put and stays readable — it is still the correct answer to the
+   PREVIOUS question, and blanking or heavily dimming it makes a one-second wait look like lost
+   data. Hence a barely-there fade rather than the half-opacity of the first version, which was the
+   other half of the "the whole page went grey" impression.
+   `pointer-events: none` because a second click during a swap queues a second full render —
+   the one thing guaranteed to make it slower. */
 [data-busy] { position: relative; }
-[data-busy] > * { opacity: 0.55; pointer-events: none; transition: opacity 0.12s ease-out; }
-[data-busy]::before {
-  content: ''; position: absolute; inset-inline: 0; top: 0; height: 2px; z-index: 2;
-  border-radius: 2px; background: color-mix(in srgb, var(--color-primary) 22%, transparent);
-}
+[data-busy] > * { opacity: 0.9; pointer-events: none; transition: opacity 0.12s ease-out; }
 [data-busy]::after {
-  content: ''; position: absolute; inset-inline-start: 0; top: 0; height: 2px; width: 35%; z-index: 3;
-  border-radius: 2px; background: var(--color-primary);
-  animation: admin-busy-slide 0.9s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  content: 'מעדכן…';
+  position: absolute; top: 0.35rem; inset-inline-start: 50%; transform: translateX(50%);
+  z-index: 3; display: block; width: max-content;
+  padding: 0.32rem 0.9rem;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  font-size: 0.78rem; font-weight: 600; line-height: 1.1;
+  box-shadow: var(--shadow-card);
+  /* The chip itself is the moving part. A separate animated dot was tried first and dropped: its
+     offset from the label had to be computed from the text's rendered width, so it drifted away
+     from the chip at other font sizes and in the other language — fragile arithmetic for one dot.
+     Pulsing the whole chip needs no measurements and cannot come apart. */
+  animation: admin-busy-pulse 1.05s ease-in-out infinite;
 }
 /* The one place an `infinite` animation is right, and it is the documented exception: it runs only
-   while a request is genuinely in flight and stops the moment the panel swaps, so it is reporting
-   a state rather than decorating an idle page. */
-@keyframes admin-busy-slide {
-  0%   { inset-inline-start: -35%; }
-  100% { inset-inline-start: 100%; }
+   while a request is genuinely in flight and stops the moment the panel swaps, so it reports a
+   state rather than decorating an idle page. */
+@keyframes admin-busy-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* No travelling bar; the dim alone still says "working", and it says it without motion. */
-  [data-busy]::after { animation: none; inset-inline-start: 0; width: 100%; opacity: 0.5; }
+  /* The chip alone still says "working", and it says it without moving. */
+  [data-busy]::after { animation: none; opacity: 1; }
 }

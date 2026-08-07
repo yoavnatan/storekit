@@ -53,6 +53,7 @@ const FLOATING = new Map<string, string>([
   // Added 2026-08-02, when every overlay's hand-rolled rgba(0,0,0,…) was replaced by the
   // tokens (18 of them, pure black, blurs 14→60px). They were invisible to this guard only
   // because they were hand-rolled; each one floats, and now says so here.
+  ['[data-busy]::after', 'the admin panel\'s "מעדכן…" chip — absolutely positioned OVER the rows it covers while a swap is in flight (admin-nav.ts)'],
   ['.notif-dropdown', 'dropdown anchored to the header bell'],
   ['.user-dropdown', 'dropdown anchored to the header account button'],
   ['.header-search__dropdown', 'search suggestions, absolutely positioned over the page'],
