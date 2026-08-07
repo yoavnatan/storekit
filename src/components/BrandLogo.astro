@@ -1,4 +1,5 @@
 ---
+import { getLang, getT, translations } from '../i18n/index.js';
 /**
  * The platform's wordmark: a drawn `D` followed by "ezabin" in the site's own
  * font. One component, so the logo can never drift between the header, the auth
@@ -133,7 +134,26 @@ const { tone = 'brand', size, tagline = false, class: className = '' } = Astro.p
 /** The accessible name. Not `store.name` from the config: this component draws
  *  these exact seven letters, so the two must not be able to disagree. */
 const NAME = 'Dezabin';
-const TAGLINE = 'מתחם חנויות דיגיטלי';
+
+/**
+ * The tagline is two different things here, and only one of them is copy.
+ *
+ * **Drawn (below, `aria-hidden`).** A 19-glyph Hebrew run whose size and margin
+ * were bisected against a real build until its right edge sat flush with the
+ * wordmark's — see the block above the span. It is artwork solved for THESE
+ * glyphs; an English string of another width would not be a translation of it,
+ * it would be a different picture, and the note there says to re-solve all three
+ * values against a build before changing the text. Read from the `he` block
+ * rather than retyped, so a wording pass through `scripts/copy-review.mjs`
+ * cannot silently leave the drawing behind — it will move, visibly, and that
+ * note is the instruction for what to do next.
+ *
+ * **Spoken (the `aria-label`).** Plain text, no geometry — and this is the
+ * homepage `<h1>`'s whole accessible name, so it is what a screen reader and a
+ * crawler get. That one follows the visitor's language like any other string.
+ */
+const TAGLINE = translations.he.home.startSelling;
+const t = getT(getLang(Astro.cookies));
 
 const toneClass =
   tone === 'white'
@@ -143,7 +163,7 @@ const toneClass =
 
 <span
   role="img"
-  aria-label={tagline ? `${NAME} — ${TAGLINE}` : NAME}
+  aria-label={tagline ? `${NAME} — ${t.home.startSelling}` : NAME}
   class:list={[
     // `dz-logo` carries no styling — it is a stable hook, because the rest of
     // this class list is utilities and a stylesheet cannot address those. The
