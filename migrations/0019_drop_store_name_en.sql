@@ -1,0 +1,26 @@
+-- Removes `stores.name_en`, added one migration ago on a premise that did not survive the day.
+--
+-- 0018 added it alongside `category_translations`, on the assumption that a Hebrew store name needs
+-- an English twin the way a category does. It does not, and the difference is what a name IS:
+--
+--   · A CATEGORY is a shared vocabulary. "אופנה" is one shelf that many stores sit on, so it needs
+--     a label per language — and no single seller owns the wording.
+--   · A STORE NAME is a proper noun its owner already controls. The field is free text: a seller
+--     who wants an English name types one (owner, 2026-08-07 — "יכול להיות שמוכר מחליט שהשם שלו
+--     מוצג תמיד באנגלית"), and the demo data already carries "City Market" doing exactly that.
+--     `<bdi>` on the card and the header handles the direction either way. There is nothing to
+--     translate, only a name to render.
+--
+-- Dropped rather than left in place because an unwritten column is a promise the schema makes and
+-- nothing keeps: the next session reads `name_en` as a feature and wires half of it.
+--
+-- The second reason it is gone is the one that made it risky to build at all, now checked against
+-- the published spec rather than assumed. `product-feed.ts` sends the store name as `brand` when a
+-- product has none, and Merchant Center matches listings across the market on brand. Verified
+-- 2026-08-07 against Google's own docs: a brand mismatch between feed and landing page is NOT a
+-- listed disapproval or suspension reason (only price and availability are), but conflicting brand
+-- values are documented as causing "limited performance". So two names for one shop was never an
+-- account-level danger — the earlier warning in this repo overstated it — and it was still a real
+-- cost for no benefit, since the English UI is served by cookie on one URL and is never crawled.
+
+ALTER TABLE stores DROP COLUMN IF EXISTS name_en;

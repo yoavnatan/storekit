@@ -355,6 +355,12 @@ export const translations = {
       // Not "התעלם"/"סגור": pressing this DELETES the recovered copy, and there is no undo. A label
       // that reads as "close this notice" makes an irreversible button look like a dismissal.
       draftDiscard: 'מחק אותם',
+      // The floating notice for an offer sitting in a tab he is not looking at. {section} is the
+      // tab's own label, read at runtime — never a second name for the panel that could drift.
+      draftNotice: 'יש שינויים שלא הספקת לשמור ב{section}',
+      draftNoticeMany: 'יש שינויים שלא הספקת לשמור בכמה מקומות',
+      // Its button reuses `unsavedGo` ("קח אותי לשם") — same act, same words. See the prop's own
+      // comment in FormFallbackGuard.astro for why "הצג" was wrong.
       storeOverview: 'סקירת חנות',
       products: 'מוצרים',
       inStock: 'במלאי',
@@ -1707,6 +1713,8 @@ export const translations = {
       draftFound: 'You have changes from last time that were never saved.',
       draftRestore: 'Restore them',
       draftDiscard: 'Delete them',
+      draftNotice: 'You have unsaved changes from last time in {section}',
+      draftNoticeMany: 'You have unsaved changes from last time in more than one place',
       storeOverview: 'Store overview',
       products: 'Products',
       inStock: 'In stock',

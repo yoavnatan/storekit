@@ -29,7 +29,7 @@ const ART: Readonly<Record<CategoryIconKey, string>> = {
   bag: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
   jewelry: '<path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M11 3 8 9l4 12 4-12-3-6"/><path d="M2 9h20"/>',
   beauty: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/><path d="M5 3v3"/><path d="M3.5 4.5h3"/><path d="M19 18v3"/><path d="M17.5 19.5h3"/>',
-  electronics: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
+  electronics: '<path d="M9 2v6"/><path d="M15 2v6"/><path d="M5.5 8h13v3a6.5 6.5 0 0 1-13 0Z"/><path d="M12 17.5V22"/>',
   accessories: '<circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M10 15a2 2 0 0 1 4 0"/><path d="M2.5 13 5 7.4A3 3 0 0 1 7.8 5.5"/><path d="M21.5 13 19 7.4a3 3 0 0 0-2.8-1.9"/>',
   // The chimney is drawn open-ended (up the left side, over the top, back down) so
   // its bottom edge disappears into the roof stroke instead of boxing itself off.
@@ -52,6 +52,8 @@ const ART: Readonly<Record<CategoryIconKey, string>> = {
   // into a smudge, while the star stays readable at any size.
   judaica: '<path d="M12 3 20.7 18H3.3Z"/><path d="M12 21 3.3 6h17.4Z"/>',
   computers: '<path d="M4 16V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9"/><path d="M2.6 16h18.8l-1 2.4a1 1 0 0 1-.9.6H4.5a1 1 0 0 1-.9-.6Z"/>',
+  phone: '<rect x="6.5" y="2" width="11" height="20" rx="2.5"/><path d="M10.5 5.5h3"/><path d="M10.5 18.5h3"/>',
+  flowers: '<path d="M12 2.5c-2.6 0-4.5 2-4.5 4.5 0 2.9 2 5.2 4.5 6.82.5-1.6 4.5-3.9 4.5-6.8 0-2.5-1.9-4.5-4.5-4.5Z"/><path d="M12 13.8V22"/><path d="M12 18.5c-2.7 0-4.3-1.6-4.3-3.8 2.7 0 4.3 1.6 4.3 3.8Z"/>',
   // A balloon, not a child figure (would read as an account avatar) and not a kite
   // (its diamond body collides with the jewelry gem at chip size).
   kids: '<path d="M12 2.5a5.5 5.5 0 0 1 5.5 5.5c0 3.9-3.3 7-5.5 7S6.5 11.9 6.5 8A5.5 5.5 0 0 1 12 2.5Z"/><path d="m10.7 14.7 1.3 1.8 1.3-1.8"/><path d="M12 16.5c0 2.6 3.2 2 3.2 4.2"/>',

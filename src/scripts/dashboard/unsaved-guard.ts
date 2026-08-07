@@ -263,6 +263,13 @@ export function announceValueChange(input: HTMLInputElement): void {
 }
 
 export function initUnsavedGuard(): void {
+  // Published for the ONE caller that cannot import it: the inline draft guard
+  // (components/dashboard/FormFallbackGuard.astro), whose whole contract is running on a load where
+  // this module never arrived. Same seam, and the same reason, as __dashTabActivate — it falls back
+  // to a plain scrollIntoView when this is absent, and takes the chrome-aware version when it is
+  // not, rather than carrying a second copy of scroll-utils' measurements inline.
+  window.__dashScrollTo = (el: HTMLElement): void => scrollRowBackIntoView(el);
+
   document.addEventListener('focusin', (e) => remember(e.target), true);
   document.addEventListener('pointerdown', (e) => remember(e.target), true);
 

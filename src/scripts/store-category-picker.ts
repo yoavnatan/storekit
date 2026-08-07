@@ -48,6 +48,7 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
   const vocabulary: string[] = JSON.parse(root.dataset.vocabulary || '[]');
   const i18n: PickerI18n = JSON.parse(root.dataset.i18n || '{}');
 
+
   let chosen: string[] = valueInput.value.split(',').map((c) => c.trim()).filter(Boolean);
   /** Set once the seller has been shown the near-duplicate suggestions and still wants their label. */
   let insistOn: string | null = null;
@@ -69,6 +70,17 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
     renderList();
   });
 
+  /**
+   * One optional English box per category the seller invented.
+   *
+   * Seeds get none: those twenty already have a label we wrote, and letting a seller
+   * retitle one would rename the shelf every other store sits on. The whole block
+   * hides when there is nothing to ask about, so a seller who only ever picks from
+   * the vocabulary — the common case — never sees an English field at all.
+   *
+   * Values already typed are read back off the live inputs before the repaint, so
+   * removing an unrelated chip does not wipe what the seller just wrote.
+   */
   function renderChips(): void {
     chipsEl!.innerHTML = chosen.map((c) =>
       `<span class="${CHIP_CLASS}">${esc(c)}<button type="button" class="leading-none opacity-60 hover:opacity-100"
@@ -177,8 +189,18 @@ export function initStoreCategoryPicker(root: HTMLElement): void {
   searchEl.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();  // never submit the whole settings form from this field
-    const first = listEl.querySelector<HTMLElement>('[data-pick]');
-    if (first?.dataset.pick) add(first.dataset.pick);
+    // The first row, whichever kind it is. This looked for `[data-pick]` only, and a
+    // brand-new category's row is `[data-create]` — so Enter did nothing in exactly
+    // the case a seller expects it to work: they typed a word that does not exist
+    // yet (owner, 2026-08-07). Routed through the same branch the click handler
+    // uses, so "add anyway" still shows the near-duplicates once before insisting.
+    const first = listEl.querySelector<HTMLElement>('[data-pick],[data-create]');
+    if (!first) return;
+    if (first.dataset.pick) { add(first.dataset.pick); return; }
+    const create = first.dataset.create ?? '';
+    const q = normalizeCategory(create);
+    if (findSimilarCategories(create, vocabulary).length && insistOn !== q) { insistOn = q; renderList(); return; }
+    add(create);
   });
 
   renderChips();

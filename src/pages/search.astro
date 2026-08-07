@@ -1,5 +1,6 @@
 ---
 export const prerender = false;
+import { getCategoryTranslations } from '../lib/category-translations.js';
 import { Image } from 'astro:assets';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import StoreCard from '../components/StoreCard.astro';
@@ -15,6 +16,7 @@ const isLoggedIn = !!sellerId;
 const hasStore   = sellerId ? (await getStoresBySellerId(sellerId)).length > 0 : false;
 
 const lang = getLang(Astro.cookies);
+const categoryTranslations = await getCategoryTranslations();
 const t    = getT(lang);
 
 const q = (Astro.url.searchParams.get('q') ?? '').trim();
@@ -91,7 +93,7 @@ const jsonLd = {
             <h2 class="search-section__title">{t.search.sectionStores}</h2>
             <div class="stores-directory__grid" role="list">
               {storeCards.map(({ store, previewImages }, i) => (
-                <StoreCard store={store} previewImages={previewImages} eager={i === 0} role="listitem" />
+                <StoreCard store={store} previewImages={previewImages} eager={i === 0} role="listitem" categoryLabels={categoryTranslations} />
               ))}
             </div>
           </section>

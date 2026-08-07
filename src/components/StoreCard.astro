@@ -6,10 +6,17 @@ import { storeHomeHref } from '../lib/custom-domain.js';
 import type { Store } from '../lib/stores.js';
 import { isStoreSaleLive, isSaleScoped } from '../lib/discounts.js';
 import { storeMark } from '../lib/store-mark.js';
-import { categoryLabel } from '../lib/store-taxonomy.js';
+import { resolveCategoryLabel } from '../lib/category-translations.js';
 import { getLang } from '../i18n/index.js';
 
 interface Props {
+  /** Seller-supplied English category labels, keyed by the stored Hebrew value
+   *  (`lib/category-translations.ts`). Optional and read-only: a card renders
+   *  inside a list, and a query per card would be a round trip per card — so the
+   *  PAGE fetches the map once and hands it down. Left out, the seed vocabulary
+   *  still translates and a seller-added category shows as the seller typed it,
+   *  which is the same fallback the chip row has. */
+  categoryLabels?: ReadonlyMap<string, string>;
   store: Store;
   previewImages?: string[];
   class?: string;
@@ -37,6 +44,7 @@ const noImgIconSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none
 // At most 2 tags shown + a "+N" for the rest — a gentle label, not a wall of chips.
 const CATEGORY_TAGS_SHOWN = 2;
 const lang = getLang(Astro.cookies);
+const categoryLabels = Astro.props.categoryLabels ?? new Map<string, string>();
 const categories = (store.categories ?? []).map((c) => c.trim()).filter(Boolean);
 const shownCategories = categories.slice(0, CATEGORY_TAGS_SHOWN);
 const extraCategoryCount = categories.length - shownCategories.length;
@@ -127,7 +135,7 @@ const markGlow = store.profileImage ? undefined : storeMark(store.slug || store.
         {store.sale!.title}
       </span>
     )}
-    {shownCategories.map((c) => <span class="store-card__tag badge-finish">{categoryLabel(c, lang)}</span>)}
+    {shownCategories.map((c) => <span class="store-card__tag badge-finish">{resolveCategoryLabel(c, lang, categoryLabels)}</span>)}
     {extraCategoryCount > 0 && <span class="store-card__tag store-card__tag--more badge-finish">+{extraCategoryCount}</span>}
   </div>
   <div class="store-card__preview" aria-hidden="true">

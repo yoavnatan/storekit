@@ -20,4 +20,8 @@ interface Window {
    *  the strip only, never the page (a sticky strip makes scrollIntoView jump the
    *  document). Same file, same reason as __dashTabActivate. */
   __dashTabReveal?: (tab: HTMLElement) => void;
+  /** Scrolls an element back below the dashboard's pinned chrome, and does nothing when it is
+   *  already fully on screen. Published by initUnsavedGuard for the inline draft guard, which must
+   *  still work on a load where no module arrived — see its comment there. */
+  __dashScrollTo?: (el: HTMLElement) => void;
 }
