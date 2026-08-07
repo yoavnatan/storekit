@@ -93,47 +93,168 @@ const tabUrl = buildAdminUrl;
 // orders per store, the platform headline, the reconciliation, the sales behind the performance
 // charts and this page's own Orders tab. None of those grows with the size of the catalogue or
 // with how many orders the platform has ever taken.
-const sellers = await getAllSellers();
-const stores = await getAllStores();
-const storeIds = stores.map((s) => s.id);
+// ── ONE round trip per dependency LEVEL, not one per question (owner, 2026-08-07: "everything
+//    here is slow") ──
+//
+// The database is Neon — it is over the network, and that is the whole story. Measured from this
+// machine: `SELECT 1` costs 64ms and `SELECT count(*) FROM orders` costs 64ms. The queries are
+// free; the round trip is not. This page ran 41 of them, and it ran them in about seventeen
+// SEQUENTIAL steps — `await` on one line, `await` on the next — so the render could not finish in
+// less than seventeen network crossings however fast Postgres answered. Measured: ~2.3s of
+// time-to-first-byte, in dev AND in a production build, on every single load.
+//
+// So the fetches are grouped by what they actually DEPEND on rather than by which tab they belong
+// to. Three waves, because that is how deep the dependency chain really goes:
+//   1. everything that needs nothing but the URL,
+//   2. everything that needs the store/seller roster, the tab boundaries, or a wave-1 answer,
+//   3. the one fetch that needs a page slice computed from wave 2.
+// Reading it by tab was the natural way to write it and is the reason it was slow: the Messages
+// tab's query has never had anything to do with the Alerts tab's, and waiting for one before
+// starting the other bought nothing.
+//
+// **Grouped with `Promise.all`, not started early and awaited later.** A promise left floating
+// while an earlier `await` throws is an UNHANDLED rejection, and Node's default is to kill the
+// process for one — an admin page that 500s would take the whole server with it. Inside a
+// `Promise.all` every rejection has an awaiter by construction.
+//
+// The pool is 10 (db.ts), so a wave of 20 is two batches, not 20 crossings. Nothing here reads
+// anything another wave WRITES — this page is entirely read-only — so the grouping cannot change
+// a number, only when it arrives.
+
+// Every query parameter this page reads, parsed up front: all of it is pure, and wave 1 needs
+// some of it. Nothing below re-reads `sp` for these.
+const orderQuery = parseOrderQuery(sp);
+const threadQuery = parseAdminThreadQuery(sp);
+const requestedMoneyLog = parseMoneyLogQuery(sp);
 
 // "This month" is decided once, HERE, and handed to the query — the Overview card and the Stores
 // tab used to each ask their own clock what month it was (business-day.ts).
 const currentMonthKey = businessMonthKey(new Date());
 
-const [orderTotals, revenueByStore, productCounts, openOrdersByStore, reconciliation] = await Promise.all([
+// Date range for all ad metrics (default: last 7 days — the Google/Meta
+// convention). `adpreset` drives it; `custom` reads adfrom/adto. Everything is
+// recomputed over the range, plus the equal-length previous period for a
+// period-over-period comparison on the headline totals.
+const adPresetRaw = sp.get('adpreset') as AdRangePreset | null;
+const adPreset: AdRangePreset = AD_RANGE_PRESETS.includes(adPresetRaw as AdRangePreset) ? adPresetRaw! : '7d';
+const adRange = adPreset === 'custom' ? coerceRange(sp.get('adfrom'), sp.get('adto')) : presetRange(adPreset)!;
+const adPrevRange = previousPeriod(adRange.from, adRange.to);
+// Campaigns are fetched for the WIDER of the two windows — the current range and the equal-length
+// previous period are drawn side by side, so one read has to cover both. `getCampaignsInRange` is
+// a superset narrowing; `campaignStatsInRange` still decides the exact overlap per window, so
+// widening the fetch cannot change a number, only which rows travelled.
+const adSpan = { from: adPrevRange.from < adRange.from ? adPrevRange.from : adRange.from, to: adRange.to > adPrevRange.to ? adRange.to : adPrevRange.to };
+
+// Business calendar (business-day.ts) — the same one the per-store summaries bucket
+// orders by. date-range.ts's toISODate reads the RUNTIME's local calendar, which is
+// UTC on a production server and so quietly reintroduced the off-by-one-day this
+// range is supposed to avoid.
+const perfToISO = businessTodayISO();
+const perfFromISO = businessMonthStartISO(perfToISO);
+const perfGranularity = pickGranularity(perfFromISO, perfToISO);
+
+const DATA_PRESETS: AdRangePreset[] = ['today', '7d', '30d', 'thisMonth'];
+const dataPresetRaw = sp.get('datapreset') as AdRangePreset | null;
+const dataPreset: AdRangePreset = DATA_PRESETS.includes(dataPresetRaw as AdRangePreset) ? dataPresetRaw! : '30d';
+const dataRange = presetRange(dataPreset)!;
+
+// ── WAVE 1: needs nothing but the URL ──
+const [
+  sellers, stores, newSince, openOrdersByStore, orderTotals, revenueByStore,
+  orderStoreNamesRaw, threadsPage, errorsAll,
+  brandCampaigns, adCampaigns, campaignTotals, brandTotals, platformAdSettings,
+  perfTiers, perfCampaigns, analyticsOverview, sellerFunnel, moneyLogEventDay,
+] = await Promise.all([
+  getAllSellers(),
+  getAllStores(),
+  // ── "new since you last left this tab" (owner feedback 2026-07-28) ──
+  // One boundary per tracked tab, read ONCE here and threaded into that tab's panel, so three
+  // things always tell the same story: the tab's "(N)" badge, the "חדש" chip on each row, and the
+  // "חדשים בלבד" filter. The boundary is deliberately NOT advanced by rendering this page — that
+  // used to happen, so the badge said "3 new" while every row inside looked identical, and any
+  // in-panel AJAX refresh (search/sort/pager, see admin-nav.ts#swapPanel) silently re-fetched this
+  // same route and wiped the marks mid-session. It now advances only when the admin actually
+  // leaves the tab (POST /api/admin/tab-view from tab-nav.ts).
+  getAllLastViewedAt(),
+  getOpenOrderCountsByStore(),
   getPlatformOrderTotals(),
   getStoreRevenueBySlug(currentMonthKey),
-  getProductCountsByStore(storeIds),
-  getOpenOrderCountsByStore(),
-  // Cross-check every money headline against a second, independent computation over the real
-  // orders (lib/reconcile.ts). Read-only, and it returns only rows that DISAGREE, so it runs on
-  // each render rather than behind a button — a reconciliation nobody clicks is a reconciliation
-  // that never catches anything.
-  reconcilePlatform(stores.map((s) => s.slug)),
+  getAllOrderStoreNames(),
+  // One page of threads, narrowed and sorted in the query (§3) — this used to read every system
+  // message on the platform, group them all in JS, and keep fifteen.
+  getAdminThreadsPage(threadQuery, parsePage(sp, 'mpage'), ADMIN_PAGE_SIZE),
+  // The write side enforces this same ceiling, so this really is the whole log — which is what
+  // lets the store-filter options and the alerts badge below be exact rather than "over newest N".
+  getRecentErrors(MAX_ERROR_ENTRIES),
+  getBrandCampaignsInRange(adSpan.from, adSpan.to),
+  getCampaignsInRange(adSpan.from, adSpan.to),
+  getCampaignTotals(),
+  getBrandCampaignTotals(),
+  getPlatformAdSettings(),
+  getSubscriptionAccrual(perfFromISO, perfToISO),
+  // Its own fetch, narrowed to the PERFORMANCE range: this tab and the Advertising tab carry
+  // separate date pickers, so one list cannot be scoped to both. The numbers are unchanged — the
+  // narrowing is a superset and `campaignStatsInRange` still decides the overlap.
+  getCampaignsInRange(perfFromISO, perfToISO),
+  getAnalyticsOverview(dataRange.from, dataRange.to),
+  getSellerFunnel(),
+  // A `?mev=` permalink widens the default window back to the row it names — otherwise every link
+  // older than 30 days would answer "this row is not in the current filter", which is the exact
+  // failure `moneyLogTargetMissing` exists to report, arriving by default.
+  getMoneyEventDay(requestedMoneyLog.eventId),
 ]);
 
-const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
-
-// ── "new since you last left this tab" (owner feedback 2026-07-28) ──
-// One boundary per tracked tab, read ONCE here and threaded into that tab's
-// panel, so three things always tell the same story: the tab's "(N)" badge,
-// the "חדש" chip on each row, and the "חדשים בלבד" filter. The boundary is
-// deliberately NOT advanced by rendering this page — that used to happen, so
-// the badge said "3 new" while every row inside looked identical, and any
-// in-panel AJAX refresh (search/sort/pager, see admin-nav.ts#swapPanel)
-// silently re-fetched this same route and wiped the marks mid-session.
-// It now advances only when the admin actually leaves the tab
-// (POST /api/admin/tab-view from tab-nav.ts).
-// One read for all four tabs — the per-tab loop this replaced was four round trips for a single
-// jsonb row (DB_MIGRATION_PLAN.md §8).
-const newSince = await getAllLastViewedAt();
+const storeIds = stores.map((s) => s.id);
+const orderStoreNames = sortOrderStoreNames(orderStoreNamesRaw);
+const unreadMessagesForAdmin = threadsPage.unreadForAdmin;
+const perfStoreInputs = buildPlatformStoreInputs(stores, sellers);
+const moneyLogQuery = widenToEvent(requestedMoneyLog, moneyLogEventDay);
 const newOnly: Record<TrackedAdminTab, boolean> = {
   sellers: sp.get('snew') === '1',
   stores: sp.get('stnew') === '1',
   orders: sp.get('onew') === '1',
   alerts: sp.get('alnew') === '1',
 };
+
+// ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
+const [
+  productCounts, reconciliation, ordersPage, ordersSinceCount,
+  perfViews, perfSales, moneyLogEventsRaw, productNames,
+] = await Promise.all([
+  getProductCountsByStore(storeIds),
+  // Cross-check every money headline against a second, independent computation over the real
+  // orders (lib/reconcile.ts). Read-only, and it returns only rows that DISAGREE, so it runs on
+  // each render rather than behind a button — a reconciliation nobody clicks is a reconciliation
+  // that never catches anything.
+  reconcilePlatform(stores.map((s) => s.slug)),
+  // Filter, sort, "new only" and the page slice are ALL in the query (orders.ts#getAdminOrdersPage).
+  // This used to read every order the platform has ever taken, to render fifteen rows.
+  getAdminOrdersPage(
+    { ...orderQuery, ...(newOnly.orders ? { newSince: newSince.orders } : {}) },
+    parsePage(sp, 'opage'),
+    ADMIN_PAGE_SIZE,
+  ),
+  // A COUNT, because this one cannot be taken off a list any more: the Orders tab holds one page.
+  countOrdersSince(newSince.orders),
+  // One query for every store's traffic and one for every store's sales, not a per-store pass over
+  // either (DB_MIGRATION_PLAN.md §5 for the views, §3 for the sales).
+  getStoreViewStats(perfStoreInputs.map((s) => s.id), perfFromISO, perfToISO, perfGranularity),
+  getPlatformSales(perfStoreInputs.map((s) => s.slug), perfFromISO, perfToISO, perfGranularity),
+  // Type AND date window are pushed into the query (money-events.ts) — the journal is the one
+  // table nothing is deleted from, so opening this tab must not mean reading every row ever
+  // appended. That is why the window has a DEFAULT (30 days, decided with the owner 2026-08-03).
+  getMoneyEvents(moneyLogQuery.type, moneyLogQuery.from, moneyLogQuery.to),
+  // Names for the handful of product ids the two top-lists actually name — a lookup by id, not a
+  // pass over the whole catalogue (§3). A product that has since been deleted simply has no entry,
+  // and the panel already falls back to rendering the id.
+  getProductNames([
+    ...analyticsOverview.topAdded.map((p) => p.productId),
+    ...analyticsOverview.topAbandoned.map((p) => p.productId),
+  ]),
+]);
+
+const overview = { ...getStoreOverview(sellers.length, stores), ...orderTotals };
+
 // Applied AFTER each tab's own filter+sort so it composes with them instead of
 // replacing them (search "דני" + חדשים בלבד = new sellers named דני).
 function keepNewOnly<T>(items: T[], on: boolean, boundary: string, createdAt: (item: T) => string): T[] {
@@ -172,18 +293,9 @@ const storeRowsFiltered = keepNewOnly(filterAndSortStoreRows(storeRowsAll, store
 const storePageResult = paginate(storeRowsFiltered, parsePage(sp, 'stpage'));
 
 // ── Orders tab ──
-// Filter, sort, "new only" and the page slice are ALL in the query (orders.ts#getAdminOrdersPage).
-// This used to read every order the platform has ever taken, to render fifteen rows.
-const orderQuery = parseOrderQuery(sp);
-const ordersPage = await getAdminOrdersPage(
-  { ...orderQuery, ...(newOnly.orders ? { newSince: newSince.orders } : {}) },
-  parsePage(sp, 'opage'),
-  ADMIN_PAGE_SIZE,
-);
 const orderPageResult = { items: ordersPage.orders, page: ordersPage.page, totalPages: ordersPage.totalPages, total: ordersPage.total };
 // Destructured for the panel below, which needs the query params back to rebuild its own URLs.
 const { q: oq, sortCol: oSortCol, sortDir: oSortDir, shippingStatus: oShip, paymentStatus: oPay, store: oStore } = orderQuery;
-const orderStoreNames = sortOrderStoreNames(await getAllOrderStoreNames());
 
 // ── Attention tab (no filters — pagination only, see CURRENT_TASK.md → סשן ב׳: already a filtered subset) ──
 const attentionAll = getStoresNeedingAttention(stores, sellers, productCounts);
@@ -199,28 +311,6 @@ const attentionPageResult = paginate(attentionAll, parsePage(sp, 'apage'));
 const feedStores = stores.filter((s) => isStoreDiscoverable(s) && (productCounts.get(s.id)?.unblocked ?? 0) > 0);
 const feedProductCount = feedStores.reduce((sum, s) => sum + (productCounts.get(s.id)?.unblocked ?? 0), 0);
 
-// Date range for all ad metrics (default: last 7 days — the Google/Meta
-// convention). `adpreset` drives it; `custom` reads adfrom/adto. Everything is
-// recomputed over the range, plus the equal-length previous period for a
-// period-over-period comparison on the headline totals.
-const adPresetRaw = sp.get('adpreset') as AdRangePreset | null;
-const adPreset: AdRangePreset = AD_RANGE_PRESETS.includes(adPresetRaw as AdRangePreset) ? adPresetRaw! : '7d';
-const adRange = adPreset === 'custom' ? coerceRange(sp.get('adfrom'), sp.get('adto')) : presetRange(adPreset)!;
-const adPrevRange = previousPeriod(adRange.from, adRange.to);
-
-// Campaigns are fetched for the WIDER of the two windows — the current range and the equal-length
-// previous period are drawn side by side, so one read has to cover both. `getCampaignsInRange` is
-// a superset narrowing; `campaignStatsInRange` still decides the exact overlap per window, so
-// widening the fetch cannot change a number, only which rows travelled.
-const adSpan = { from: adPrevRange.from < adRange.from ? adPrevRange.from : adRange.from, to: adRange.to > adPrevRange.to ? adRange.to : adPrevRange.to };
-const [brandCampaigns, adCampaigns, campaignTotals, brandTotals, platformAdSettings] = await Promise.all([
-  getBrandCampaignsInRange(adSpan.from, adSpan.to),
-  getCampaignsInRange(adSpan.from, adSpan.to),
-  getCampaignTotals(),
-  getBrandCampaignTotals(),
-  getPlatformAdSettings(),
-]);
-
 const adInputBase = { feedStores, feedProductCount, allStores: stores, campaigns: adCampaigns, brandCampaigns, campaignTotals, brandTotals, ads: platform.ads, settings: platformAdSettings };
 const adOverview = buildPlatformAdOverview({ ...adInputBase, range: adRange });
 const adPrevOverview = buildPlatformAdOverview({ ...adInputBase, range: adPrevRange });
@@ -234,15 +324,9 @@ const adCompare = {
 // ── Messages tab ──
 // One page of threads, narrowed and sorted in the query (§3) — this used to read every system
 // message on the platform, group them all in JS, and keep fifteen.
-const threadQuery = parseAdminThreadQuery(sp);
-const threadsPage = await getAdminThreadsPage(threadQuery, parsePage(sp, 'mpage'), ADMIN_PAGE_SIZE);
-const unreadMessagesForAdmin = threadsPage.unreadForAdmin;
 const messagePageResult = { items: threadsPage.threads, page: threadsPage.page, totalPages: threadsPage.totalPages, total: threadsPage.total };
 
 // ── Alerts tab ──
-// The write side enforces this same ceiling, so this really is the whole log — which is what lets
-// the store-filter options and the alerts badge below be exact rather than "over the newest N".
-const errorsAll = await getRecentErrors(MAX_ERROR_ENTRIES);
 const alSortDir = sp.get('alsort') === 'asc' ? 'asc' : 'desc';
 const alSource = (sp.get('alsource') ?? '').split(',').filter(Boolean);
 const alStore = decodeList(sp.get('alstore') ?? '');
@@ -272,17 +356,6 @@ const perfDir = getDir(perfLang);
 // orders by. date-range.ts's toISODate reads the RUNTIME's local calendar, which is
 // UTC on a production server and so quietly reintroduced the off-by-one-day this
 // range is supposed to avoid.
-const perfToISO = businessTodayISO();
-const perfFromISO = businessMonthStartISO(perfToISO);
-const perfGranularity = pickGranularity(perfFromISO, perfToISO);
-const perfStoreInputs = buildPlatformStoreInputs(stores, sellers);
-// One query for every store's traffic and one for every store's sales, not a per-store pass over
-// either (DB_MIGRATION_PLAN.md §5 for the views, §3 for the sales).
-const [perfViews, perfSales, perfTiers] = await Promise.all([
-  getStoreViewStats(perfStoreInputs.map((s) => s.id), perfFromISO, perfToISO, perfGranularity),
-  getPlatformSales(perfStoreInputs.map((s) => s.slug), perfFromISO, perfToISO, perfGranularity),
-  getSubscriptionAccrual(perfFromISO, perfToISO),
-]);
 const platformPerf = buildPlatformPerformance(
   perfSales,
   perfStoreInputs,
@@ -299,7 +372,6 @@ const perfStorePage = selectStoreRows(platformPerf.stores, parseStoreRowsQuery(s
 // Its own fetch, narrowed to the PERFORMANCE range: this tab and the Advertising tab carry
 // separate date pickers, so one list cannot be scoped to both. The numbers are unchanged — the
 // narrowing is a superset and `campaignStatsInRange` still decides the overlap.
-const perfCampaigns = await getCampaignsInRange(perfFromISO, perfToISO);
 const perfRevenue = buildPlatformRevenue(
   platformPerf.summary.platformCommissionAgorot,
   platformPerf.summary.commissionRate,
@@ -313,21 +385,9 @@ const perfRevenue = buildPlatformRevenue(
 // The buyer-funnel window recomputes per ?datapreset via the panel-swap AJAX
 // (data-panel.ts); the seller onboarding funnel is a lifetime snapshot — five COUNTs, where it
 // used to read every seller, store, product and order on the platform (§3).
-const DATA_PRESETS: AdRangePreset[] = ['today', '7d', '30d', 'thisMonth'];
-const dataPresetRaw = sp.get('datapreset') as AdRangePreset | null;
-const dataPreset: AdRangePreset = DATA_PRESETS.includes(dataPresetRaw as AdRangePreset) ? dataPresetRaw! : '30d';
-const dataRange = presetRange(dataPreset)!;
-const [analyticsOverview, sellerFunnel] = await Promise.all([
-  getAnalyticsOverview(dataRange.from, dataRange.to),
-  getSellerFunnel(),
-]);
 // Names for the handful of product ids the two top-lists actually name — a lookup by id, not a
 // pass over the whole catalogue (§3). A product that has since been deleted simply has no entry,
 // and the panel already falls back to rendering the id.
-const productNames = await getProductNames([
-  ...analyticsOverview.topAdded.map((p) => p.productId),
-  ...analyticsOverview.topAbandoned.map((p) => p.productId),
-]);
 
 // ── Money journal tab ──
 // Type narrowing happens inside getMoneyEvents so it covers the WHOLE journal before
@@ -346,12 +406,7 @@ const productNames = await getProductNames([
 // A `?mev=` permalink widens the default window back to the row it names — otherwise every link
 // older than 30 days would answer "this row is not in the current filter", which is the exact
 // failure `moneyLogTargetMissing` exists to report, arriving by default.
-const requestedMoneyLog = parseMoneyLogQuery(sp);
-const moneyLogQuery = widenToEvent(requestedMoneyLog, await getMoneyEventDay(requestedMoneyLog.eventId));
-const moneyLogEvents = filterMoneyEvents(
-  await getMoneyEvents(moneyLogQuery.type, moneyLogQuery.from, moneyLogQuery.to),
-  moneyLogQuery,
-);
+const moneyLogEvents = filterMoneyEvents(moneyLogEventsRaw, moneyLogQuery);
 const moneyLogTargetPage = eventPage(moneyLogEvents, moneyLogQuery.eventId);
 const moneyLogPageResult = paginate(
   moneyLogEvents,
@@ -372,7 +427,7 @@ const badgeCounts: Record<string, number> = {
   sellers: countSince(sellers, newSince.sellers, (s) => s.createdAt),
   stores: countSince(stores, newSince.stores, (s) => s.createdAt),
   // A COUNT, because this one cannot be taken off a list any more: the Orders tab holds one page.
-  orders: await countOrdersSince(newSince.orders),
+  orders: ordersSinceCount,
   alerts: countSince(errorsAll, newSince.alerts, (e) => e.createdAt),
   messages: unreadMessagesForAdmin,
 };
