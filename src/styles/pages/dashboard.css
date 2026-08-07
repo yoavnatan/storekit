@@ -824,11 +824,13 @@ textarea.input { resize: none; }
    removed there; this table kept its copy because the two were fixed by hand rather than by
    a rule. Fixed 2026-08-04 — the class is now the shared one, added by the shared module.
    The photo's visibility no longer depends on JS at all. */
-.thumb-wrap.is-loading::before {
+.thumb-wrap.is-loading::before,
+.dash-img-skel.is-loading::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: 0;
+  border-radius: inherit;
   background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-skeleton) 50%, var(--color-surface) 75%);
   background-size: 400% 100%;
   animation: skeleton-shimmer 1.8s ease-in-out infinite;
@@ -841,6 +843,20 @@ textarea.input { resize: none; }
   position: relative;
   z-index: 1;
 }
+
+/* Everything said above holds for every OTHER image box on this dashboard too — the order
+   cards' item thumbs, the open edit row's header thumb, the Settings banner/logo previews
+   and the product gallery's slots — so they wear `.dash-img-skel` and share the one rule
+   rather than each growing a copy of it (owner, 2026-08-07: the seller dashboard was the
+   one surface still loading images with nothing in their place). The box only ever says it
+   CAN shimmer; lib/img-skeleton.ts decides whether a fetch is really in flight, which is
+   what keeps a shimmer from running behind an already-painted transparent photo and showing
+   straight through the subject. `border-radius: inherit` because these boxes are round
+   (the logo) or rounded, and a square shimmer under a round photo shows at the corners. */
+.dash-img-skel { position: relative; }
+/* Direct child only: a gallery slot's overlay/spinner are siblings of its <img> and must
+   keep their own stacking, and the order-card row must not lift unrelated icons. */
+.dash-img-skel > img { position: relative; z-index: 1; }
 
 .name-col { padding-inline-start: 0.2rem; vertical-align: middle; }
 
