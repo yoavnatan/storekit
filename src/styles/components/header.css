@@ -428,8 +428,30 @@ nav a:hover { color: var(--color-text); }
   top: 50%;
   transform: translateY(-50%);
   color: var(--color-muted);
-  pointer-events: none;
 }
+
+/* The leading magnifier, which is a real submit button (Header.astro says why it is at
+   the START of the field and not the end). Three states, ONE signal each, so nothing is
+   stacked: DISABLED — the field is empty — is the inert grey icon this element has always
+   been, and the site's disabled cursor rule (reset.css) keeps it from claiming otherwise;
+   ENABLED darkens to --color-text, which is the whole tell that a press now does something
+   (the same muted→text move every other header icon makes to say "live"); HOVER adds the
+   --color-bg chip, which is the fill the dropdown design system already uses for a hovered
+   row. Not --color-primary on hover: it is LIGHTER than --color-text, so the glyph would
+   have gone backwards under the pointer.
+   The 0.4rem padding is a touch target (≈26px against the 13px glyph), not spacing — the
+   inline `right/left` in Header.astro is pulled in by the same amount to pay for it. */
+.header-search__go {
+  display: inline-flex;
+  padding: 0.4rem;
+  border-radius: 9999px;
+  transition: color 0.1s, background-color 0.1s, transform 0.1s;
+}
+.header-search__go:disabled { color: var(--color-muted); }
+.header-search__go:not(:disabled) { color: var(--color-text); }
+.header-search__go:not(:disabled):hover,
+.header-search__go:not(:disabled):focus-visible { background: var(--color-bg); }
+.header-search__go:not(:disabled):active { transform: translateY(-50%) scale(0.9); }
 
 .header-search__dropdown {
   position: absolute;
