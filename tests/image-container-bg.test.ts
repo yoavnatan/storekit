@@ -86,3 +86,66 @@ describe('an image container never uses the page background', () => {
     expect(NO_IMAGE_EXEMPT.test('.product-card__img-placeholder')).toBe(true);
   });
 });
+
+/**
+ * The same rule, in MARKUP — because the CSS half above could not see the one that got through.
+ *
+ * The checkout's cart card filled its 80px photo box with `--color-border` as a Tailwind bracket
+ * class, so every background-removed product on the page it matters most sat on grey; it survived
+ * the three hand-fixes this file documents AND the guard written to end them, because the guard
+ * only ever read `src/styles/**`. As the codebase converts to Tailwind, a rule enforced on the
+ * stylesheets alone protects less every month.
+ *
+ * The shape it looks for is an image CELL and nothing else: a fixed box (`w-` and `h-`) that clips
+ * its content (`overflow-hidden`) and is filled with a colour that is not a surface. A hairline
+ * divider — the legitimate use of `--color-border` as a background, ~30 of them in this tree — has
+ * no width AND height pair and never clips; a progress track has no `w-`. Measured when written:
+ * this matches exactly one element in `src/**`, which is the bug it was written for.
+ */
+const MARKUP_BAD_FILL = /(?:bg-\[color:var\(--color-(?:bg|border)\)\]|\[background:var\(--color-(?:bg|border)\)\])/;
+
+function markupFiles(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return markupFiles(full);
+    return /\.(astro|ts)$/.test(e.name) ? [full] : [];
+  });
+}
+
+/** Every `class="…"` / `class={`…`}` value in the tree, with its file. */
+function classLists(): { file: string; cls: string }[] {
+  const out: { file: string; cls: string }[] = [];
+  for (const file of markupFiles(path.join(process.cwd(), 'src'))) {
+    const src = fs.readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/class(?:Name)?\s*=\s*(?:"([^"]*)"|\{`([^`]*)`\}|'([^']*)')/g)) {
+      out.push({ file: path.relative(process.cwd(), file), cls: m[1] ?? m[2] ?? m[3] ?? '' });
+    }
+  }
+  return out;
+}
+
+/** A fixed, clipping box — i.e. something a photo is put INSIDE. */
+function isImageCell(cls: string): boolean {
+  return /\boverflow-hidden\b/.test(cls) && /\bw-\S+/.test(cls) && /\bh-\S+/.test(cls);
+}
+
+describe('an image container never uses the page background — in markup too', () => {
+  it('finds no fixed, clipping box filled with --color-bg or --color-border', () => {
+    const offences = classLists().filter(({ cls }) => MARKUP_BAD_FILL.test(cls) && isImageCell(cls));
+    expect(
+      offences,
+      offences.length
+        ? `A photo box filled with the page/line colour shows it through a transparent product. Use var(--color-surface) (add a 1px border if it needs an edge):\n${offences.map((o) => `  ${o.file}  ${o.cls.slice(0, 120)}`).join('\n')}`
+        : '',
+    ).toEqual([]);
+  });
+
+  it('actually reads the tree, and its matcher recognises what it forbids', () => {
+    expect(classLists().length).toBeGreaterThan(100);
+    expect(MARKUP_BAD_FILL.test('w-20 h-20 bg-[color:var(--color-border)]')).toBe(true);
+    expect(isImageCell('shrink-0 block w-20 h-20 rounded-[var(--radius)] overflow-hidden')).toBe(true);
+    // …and that the legitimate uses of the same colour stay out of its way.
+    expect(isImageCell('product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]')).toBe(false);
+    expect(isImageCell('mt-3 h-[4px] rounded-full bg-[color:var(--color-bg)] overflow-hidden')).toBe(false);
+  });
+});

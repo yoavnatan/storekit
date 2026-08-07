@@ -505,7 +505,13 @@ for (const s of await getVisibleStores()) {
             ${isDemo
               ? '<span class="shrink-0 w-5" aria-hidden="true"></span>'
               : checkboxHtml('co-item-check', `data-store-slug="${esc(cart.storeSlug)}" data-cart-key="${esc(item.cartKey)}" ${isSelected ? 'checked' : ''}`, `${i18n['selectItemAria'] ?? ''} ${item.name}`, false)}
-            <button type="button" class="pqv-trigger shrink-0 block w-20 h-20 rounded-[var(--radius)] overflow-hidden bg-[color:var(--color-border)] transition-opacity duration-[140ms] border-0 p-0 cursor-pointer hover:opacity-[.85]"
+            <!-- --color-surface, never --color-border: this box is FILLED, not outlined, and a
+                 background-removed product photo shows its fill straight through the subject —
+                 which is why every such photo here read as sitting on grey (owner, 2026-08-07).
+                 The 1px border is what keeps a white photo on a white card from having no edge.
+                 tokens.css carries the rule; tests/image-container-bg.test.ts now covers markup
+                 as well as CSS, which is how this one survived three earlier fixes of the same bug. -->
+            <button type="button" class="pqv-trigger shrink-0 block w-20 h-20 rounded-[var(--radius)] overflow-hidden bg-[color:var(--color-surface)] border [border-color:var(--color-border)] transition-opacity duration-[140ms] p-0 cursor-pointer hover:opacity-[.85]"
               data-store-slug="${esc(cart.storeSlug)}" data-product-slug="${esc(item.slug)}" data-store-name="${esc(cart.storeName)}"
               aria-label="${esc(i18n['viewProduct'] ?? '')} ${esc(item.name)}">
               ${imgHtml}
