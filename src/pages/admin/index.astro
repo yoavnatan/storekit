@@ -10,7 +10,6 @@ import { getAllStores, isStoreDiscoverable } from '../../lib/stores.js';
 import { getProductCountsByStore, getProductNames, getProductsByStoreIds } from '../../lib/store-products.js';
 import { getAdminOrdersPage } from '../../lib/orders.js';
 import {
-  countOrdersSince,
   getAllOrderStoreNames,
   getOpenOrderCountsByStore,
   getPlatformOrderTotals,
@@ -30,7 +29,8 @@ import { businessTodayISO, businessMonthStartISO, businessMonthKey } from '../..
 import { store as platform } from '../../config/store.config.js';
 import { paginate, parsePage, ADMIN_PAGE_SIZE } from '../../lib/pagination.js';
 import { buildAdminUrl, encodeList, decodeList } from '../../lib/admin-nav.js';
-import { getAllLastViewedAt, countSince, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
+import { getAllLastViewedAt, type TrackedAdminTab } from '../../lib/admin-tab-views.js';
+import { getAdminTabBadges } from '../../lib/admin-tab-badges.js';
 import { buildPlatformPerformance, buildPlatformStoreInputs, parseStoreRowsQuery, selectStoreRows } from '../../lib/platform-performance.js';
 import { getStoreViewStats } from '../../lib/store-pageviews.js';
 import { buildPlatformRevenue } from '../../lib/platform-revenue.js';
@@ -204,7 +204,6 @@ const [
 
 const storeIds = stores.map((s) => s.id);
 const orderStoreNames = sortOrderStoreNames(orderStoreNamesRaw);
-const unreadMessagesForAdmin = threadsPage.unreadForAdmin;
 const perfStoreInputs = buildPlatformStoreInputs(stores, sellers);
 const newOnly: Record<TrackedAdminTab, boolean> = {
   sellers: sp.get('snew') === '1',
@@ -215,7 +214,7 @@ const newOnly: Record<TrackedAdminTab, boolean> = {
 
 // ── WAVE 2: needs the roster, a tab boundary, or a wave-1 answer ──
 const [
-  productCounts, reconciliation, ordersPage, ordersSinceCount,
+  productCounts, reconciliation, ordersPage, badgeCounts,
   perfViews, perfSales, productNames,
 ] = await Promise.all([
   getProductCountsByStore(storeIds),
@@ -231,8 +230,10 @@ const [
     parsePage(sp, 'opage'),
     ADMIN_PAGE_SIZE,
   ),
-  // A COUNT, because this one cannot be taken off a list any more: the Orders tab holds one page.
-  countOrdersSince(newSince.orders),
+  // Every tab's "(N) new since you last left it", as one statement of five COUNTs. It is fetched
+  // unconditionally and on EVERY request — including a panel swap — because a badge exists to
+  // report a tab the admin is not looking at (admin-tab-badges.ts).
+  getAdminTabBadges(newSince),
   // One query for every store's traffic and one for every store's sales, not a per-store pass over
   // either (DB_MIGRATION_PLAN.md §5 for the views, §3 for the sales).
   getStoreViewStats(perfStoreInputs.map((s) => s.id), perfFromISO, perfToISO, perfGranularity),
@@ -390,20 +391,15 @@ const perfRevenue = buildPlatformRevenue(
 // asked the database for.
 
 // ── "(N) new since last opened" tab badges (CURRENT_TASK.md → סשן ב׳) ──
-// Counted over the UNFILTERED lists on purpose: the badge answers "is there
-// anything I haven't seen in that tab", which a search box left open in that
-// tab must not change. Same `newSince` boundary the panels mark their rows
-// with, so "(3)" always means exactly the 3 rows wearing a "חדש" chip.
-// Messages isn't in this list — unreadMessagesForAdmin above is already an
-// exact per-message signal, more precise than a per-tab timestamp.
-const badgeCounts: Record<string, number> = {
-  sellers: countSince(sellers, newSince.sellers, (s) => s.createdAt),
-  stores: countSince(stores, newSince.stores, (s) => s.createdAt),
-  // A COUNT, because this one cannot be taken off a list any more: the Orders tab holds one page.
-  orders: ordersSinceCount,
-  alerts: countSince(errorsAll, newSince.alerts, (e) => e.createdAt),
-  messages: unreadMessagesForAdmin,
-};
+// Fetched in wave 2 above, as five COUNTs in one statement (admin-tab-badges.ts). They used to be
+// JS filters over lists this page happened to have already loaded — free while every tab was built
+// on every request, and silently zero the moment one is not. Counted over the UNFILTERED table on
+// purpose: the badge answers "is there anything I haven't seen in that tab", which a search box
+// left open in that tab must not change. Same `newSince` boundary the panels mark their rows with,
+// so "(3)" always means exactly the 3 rows wearing a "חדש" chip.
+// Indexed by tab id for the strip below, which walks `tabs` and knows only the id — a cast inside
+// the template is a compile error in `.astro`, so the widening happens here.
+const badgeFor: Record<string, number> = badgeCounts;
 ---
 
 {/* sellerMode=true here isn't "seller dashboard" semantics — reusing the flag
@@ -428,7 +424,7 @@ const badgeCounts: Record<string, number> = {
 
       <div class="dash-tabs" role="tablist">
         {tabs.map((tab) => {
-          const count = badgeCounts[tab.id] ?? 0;
+          const count = badgeFor[tab.id] ?? 0;
           return (
             <button
               class={`dash-tab${initialPanel === tab.id ? ' dash-tab--active' : ''}`}

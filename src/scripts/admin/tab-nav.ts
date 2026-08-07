@@ -5,6 +5,7 @@ import { stripForeignTabParams } from '../../lib/admin-nav.js';
 // client reports becomes a tab the route answers 400 to. That module imports nothing, which is
 // what lets browser code have it; `admin-tab-views.ts` cannot come here, it imports the database.
 import { isTrackedAdminTab } from '../../lib/admin-tabs.js';
+import { acknowledgeTabLeft, initAdminTabBadges } from './tab-badges.js';
 
 // Everything that says "this tab has new rows" is cleared together, the moment
 // the tab is left — the count on the tab, the "חדש" chip on each row, and the
@@ -41,11 +42,15 @@ function clearTabBadge(panel: string): void {
 // mid-session. Now the server only reads the boundary; this is the only writer.
 function recordLeft(panel: string): void {
   if (!isTrackedAdminTab(panel)) return;
-  fetch('/api/admin/tab-view', {
+  const recorded = fetch('/api/admin/tab-view', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab: panel }),
-  }).catch(() => {});
+  });
+  // The live poller has to know this write is in flight, or a response that left before it lands
+  // puts the badge back — same number, apparently unclearable (tab-badges.ts).
+  acknowledgeTabLeft(panel, recorded);
+  recorded.catch(() => {});
 }
 
 // The address bar must describe the tab you are LOOKING at, and nothing else.
@@ -68,6 +73,8 @@ function wireTabParamCleanup(): void {
 export function initAdminTabNav(): void {
   initGotoPanelLinks();
   wireTabParamCleanup();
+  // The badges keep updating while the admin sits on one tab — that is the whole point of them.
+  initAdminTabBadges();
 
   // initDashTabs() switches tabs entirely client-side with no reload, so this
   // tracks the currently-active tab itself (independent of listener order vs.
