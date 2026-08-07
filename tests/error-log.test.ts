@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { truncateStack, filterAndSortErrors, getErrorStoreNames, type ErrorLogEntry } from '../src/lib/error-log.js';
+import { errorRef } from '../src/lib/error-reference.js';
 
 describe('truncateStack', () => {
   it('returns short stacks unchanged', () => {
@@ -120,6 +121,58 @@ describe('filterAndSortErrors', () => {
     ];
     const result = filterAndSortErrors(entries, { sortDir: 'desc', source: [], storeSlug: ['store-a'], severity: [] });
     expect(result.map((e) => e.id)).toEqual(['e1']);
+  });
+});
+
+describe('the free-text search (owner, 2026-08-07: "I am missing a search by id here")', () => {
+  const base = { sortDir: 'desc' as const, source: [], storeSlug: [], severity: [] };
+  const UUID = '4f8c2a1e-9b3d-4c7f-8e2a-1d6b9f3c8e4a';
+  const entries = [
+    entry({ id: UUID, route: '/api/checkout', message: 'payment provider timed out', storeSlug: 'keramika', storeName: 'קרמיקה', statusCode: 500 }),
+    entry({ id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', route: '/cart', message: 'render failed', storeSlug: 'tools-shop', source: 'client' }),
+  ];
+  const found = (q: string) => filterAndSortErrors(entries, { ...base, q }).map((e) => e.id);
+
+  it('finds an entry by the SHORT code, which is the only id a person ever sees', () => {
+    // The row prints it, the alert mail prints it, and a screenshot carries it. `errorRef` is where
+    // that spelling is defined, so the search asks it rather than re-deriving the eight characters.
+    expect(found(errorRef(UUID))).toEqual([UUID]);
+  });
+
+  it('finds it with or without the leading #', () => {
+    // The `#` is how the code is PRINTED, not part of it — and it is what an owner pastes.
+    expect(found('4f8c2a1e')).toEqual([UUID]);
+    expect(found('#4f8c2a1e')).toEqual([UUID]);
+  });
+
+  it('finds it by the full uuid, which is what a log line or a database row carries', () => {
+    expect(found(UUID)).toEqual([UUID]);
+    expect(found('1d6b9f3c8e4a')).toEqual([UUID]);
+  });
+
+  it('also matches route, message, store and status — what an owner types after the id fails', () => {
+    expect(found('/api/checkout')).toEqual([UUID]);
+    expect(found('timed out')).toEqual([UUID]);
+    expect(found('tools-shop')).toEqual(['aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee']);
+    expect(found('קרמיקה')).toEqual([UUID]);
+    expect(found('500')).toEqual([UUID]);
+  });
+
+  it('is case-insensitive and ANDs its terms, so a second word narrows', () => {
+    expect(found('PAYMENT TIMED')).toEqual([UUID]);
+    expect(found('payment /cart')).toEqual([]);
+  });
+
+  it('leaves the list alone when the box is empty', () => {
+    expect(found('')).toHaveLength(2);
+    expect(found('   ')).toHaveLength(2);
+    expect(filterAndSortErrors(entries, base)).toHaveLength(2);
+  });
+
+  it('composes with the other narrowings rather than replacing them', () => {
+    expect(filterAndSortErrors(entries, { ...base, source: ['client'], q: 'render' }).map((e) => e.id))
+      .toEqual(['aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee']);
+    expect(filterAndSortErrors(entries, { ...base, source: ['server'], q: 'render' })).toEqual([]);
   });
 });
 

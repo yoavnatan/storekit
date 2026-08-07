@@ -375,13 +375,16 @@ const alStore = decodeList(sp.get('alstore') ?? '');
 const alSeverity = (sp.get('alsev') ?? '').split(',').filter(Boolean);
 // The alert mail's deep link — one entry's short code, so the mail lands on its row.
 const alRef = sp.get('alref') ?? '';
+// Free-text search, an id above all (owner, 2026-08-07). Capped for the same reason the money
+// journal's is: terms × rows on a single-threaded SSR server, both halves request-controlled.
+const alQ = (sp.get('alq') ?? '').trim().slice(0, 200);
 // Unlike the money journal, the Alerts tab has NO default window and must not grow one: the log is
 // already capped at MAX_ENTRIES, and an admin opening it after a quiet week has to see the last
 // thing that broke even if it broke eleven days ago. The range is opt-in narrowing, nothing more.
 const alFrom = sp.get('alfrom') ?? '';
 const alTo = sp.get('alto') ?? '';
 const errorsFiltered = keepNewOnly(
-  filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore, severity: alSeverity, ref: alRef, from: alFrom, to: alTo }),
+  filterAndSortErrors(errorsAll, { sortDir: alSortDir, source: alSource, storeSlug: alStore, severity: alSeverity, ref: alRef, q: alQ, from: alFrom, to: alTo }),
   newOnly.alerts, newSince.alerts, (e) => e.createdAt,
 );
 const alertsPageResult = paginate(errorsFiltered, parsePage(sp, 'alpage'));
@@ -636,6 +639,7 @@ const badgeFor: Record<string, number> = badgeCounts;
           storeSlug={alStore}
           severity={alSeverity}
           entryRef={alRef}
+          q={alQ}
           from={alFrom}
           to={alTo}
           storeOptions={errorStoreOptions}
@@ -649,6 +653,7 @@ const badgeFor: Record<string, number> = badgeCounts;
             alsource: alSource.length ? alSource.join(',') : undefined,
             alsev: alSeverity.length ? alSeverity.join(',') : undefined,
             alref: alRef || undefined,
+            alq: alQ || undefined,
             alstore: alStore.length ? encodeList(alStore) : undefined,
             alfrom: alFrom || undefined,
             alto: alTo || undefined,

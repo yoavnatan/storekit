@@ -1,4 +1,4 @@
-import { buildAdminUrl, encodeList, decodeList, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
+import { buildAdminUrl, debounce, encodeList, decodeList, swapPanel, wirePanelLinks, wirePopstateReload } from '../../lib/admin-nav.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { openRangePicker } from '../../lib/toolbar-range-picker.js';
 import { showErrorToast } from '../../lib/toast.js';
@@ -28,18 +28,32 @@ function wireAlertsToolbar(): void {
   let from = state.from ?? '';
   let to = state.to ?? '';
 
-  function navigate(): void {
+  function navigate(afterSwap?: () => void): void {
     const url = buildAdminUrl('alerts', {
       alsort: sortDir !== 'desc' ? sortDir : undefined,
       alsource: sourceSet.size ? [...sourceSet].join(',') : undefined,
       alsev: severitySet.size ? [...severitySet].join(',') : undefined,
       alstore: storeSet.size ? encodeList([...storeSet]) : undefined,
+      // Read off the LIVE input rather than a captured local: this is the one control that changes
+      // between keystrokes, and a chip clicked mid-typing must carry what is on screen.
+      alq: (document.getElementById('admin-alerts-search') as HTMLInputElement | null)?.value.trim() || undefined,
       alfrom: from || undefined,
       alto: to || undefined,
       alnew: newOnly ? '1' : undefined,
     });
-    swapPanel(url, PANEL_ID, () => initAdminAlertsPanel());
+    swapPanel(url, PANEL_ID, () => {
+      initAdminAlertsPanel();
+      afterSwap?.();
+    });
   }
+
+  // Refocuses itself after the swap (the input node is replaced) so typing continues uninterrupted
+  // — same as the money journal's and the Orders tab's search boxes.
+  const search = document.getElementById('admin-alerts-search') as HTMLInputElement | null;
+  search?.addEventListener('input', debounce(() => navigate(() => {
+    const fresh = document.getElementById('admin-alerts-search') as HTMLInputElement | null;
+    if (fresh) { fresh.focus(); fresh.setSelectionRange(fresh.value.length, fresh.value.length); }
+  }), 250));
 
   const rangeTrigger = document.getElementById('admin-alerts-range-trigger') as HTMLButtonElement | null;
   rangeTrigger?.addEventListener('click', () => {
