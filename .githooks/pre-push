@@ -26,6 +26,21 @@ if [ ! -d "$MEM/.git" ]; then
   echo "[pre-push] .claude-memory is not a git repo — skipping memory backup." >&2
   echo "[pre-push] Run: bash scripts/setup-claude-memory.sh" >&2
 else
+  # `.claude/settings.local.json` rides along, because on 2026-08-09 an audit of "what survives if
+  # this disk dies" found it in neither repo: gitignored by the code repo on purpose (it is this
+  # MACHINE's permission grants, not the project's), and never copied anywhere else. Losing it costs
+  # no work, but it costs re-granting ~4.8KB of permissions one dialog at a time, which is the kind
+  # of tax that gets paid by turning the gates off.
+  #
+  # It belongs with memory rather than with code for the same reason memory does: the memory repo is
+  # private and the code repo is meant to be publishable. Checked for secrets before this was
+  # written — the file holds a `permissions` object and nothing else — and it stays that way only as
+  # long as that is true, so if a credential ever lands in there this line is what leaks it.
+  if [ -f "$REPO_ROOT/.claude/settings.local.json" ]; then
+    cp "$REPO_ROOT/.claude/settings.local.json" "$MEM/settings.local.json.bak" 2>/dev/null \
+      || echo "[pre-push] WARNING: could not stage settings.local.json for backup." >&2
+  fi
+
   (
     cd "$MEM" || exit 0
 
