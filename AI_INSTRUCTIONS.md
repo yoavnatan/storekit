@@ -27,7 +27,7 @@ Multi-vendor internet mall for the Israeli market. Sellers open stores; shoppers
 3. **Marketing** — GTM + Meta Pixel on every page; dataLayer feeds campaigns; seller picks budget only
 
 ### Israeli market — hard constraints
-- **Payments:** Split-payment via Israeli marketplace-capable processor — PayMe or SUMIT, final pick pending (see Payment architecture). Never Stripe. **Separate Authorize/Capture is disqualifying if absent (owner 2026-08-07)** — why, in `lib/payment.ts`.
+- **Payments: PayMe** (decided 2026-08-09; never Stripe). Our commission is taken inside the transaction via `market_fee`; funds never pass through the platform. **Separate Authorize/Capture was the owner's disqualifier (2026-08-07) and PayMe has it** — `sale_type="authorize"` holds for up to 168h, `/capture-sale` completes at an amount ≤ the original. Why it matters: `lib/payment.ts`.
 - **Shipping:** Sendit / Israel Post / iPost only.
 - **Currency:** ILS (₪) always.
 - **Language:** Hebrew-first, RTL.
@@ -35,7 +35,7 @@ Multi-vendor internet mall for the Israeli market. Sellers open stores; shoppers
 ### Payment architecture — decided (2026-07-06)
 **Split payment via the payment processor.** Platform never holds seller funds — each seller has a sub-merchant account with the processor, which splits payment automatically at checkout (seller's share → seller, commission → platform). Reason: platform holding + manually disbursing seller money would be a regulated PSP service in Israel; split payment keeps the platform a pure software/marketplace layer.
 - **Buyer pays per-store OR unified (decided 2026-07-22 — offer both).** Per-store = one charge per seller (independent refunds/cancellations, today's cart UI). Unified = one card charge for the whole cart, split by the processor across every seller's sub-merchant account.
-- **Provider not committed — PayMe leads, SUMIT second, and תקבול (Takbull) is OUT (reviewed 2026-08-03: its marketplace product is a WooCommerce plugin, don't propose it again).** The comparison, the regulatory frame that fixes this architecture, and the open questions per provider are in `GO_LIVE_CHECKLIST.md` §3 — a one-time setup decision, not a per-session rule.
+- **Provider decided — PayMe. Takbull and SUMIT were both examined and both are OUT; don't re-propose either** (Takbull's marketplace product is a WooCommerce plugin; SUMIT bills every seller a separate subscription and takes card details server-to-server). The comparison, the regulatory frame that fixes this architecture, and what is still open are in `GO_LIVE_CHECKLIST.md` §3 — a one-time setup decision, not a per-session rule. The only blocker left is PayMe's sandbox keys; until they arrive the payment layer is not built.
 - No manual payout queue — the processor pays sellers directly, so admin never marks a payout "paid". `SellerBalance` and the admin dashboard are **reporting** views only.
 - Commission is deducted at processor/order level, at the rate the seller's own tier gives (`lib/pricing.ts`) — **not** from a global config value; `store.config.ts` deliberately has no `commissionPercent`.
 
