@@ -1,0 +1,67 @@
+# Weekly off-site database backup — GO_LIVE §6.
+#
+# **Why this runs here and not on the app server.** Neon's Free plan keeps 6 hours of restore
+# history, and that history lives inside the account it protects: a suspension or a deleted project
+# takes it with it. So the second copy has to leave Neon, and the job that makes it has to run
+# somewhere that is neither Neon nor a laptop — a weekly backup that depends on one machine being
+# awake is not a backup. GitHub Actions also settles the practical blocker: `pg_dump` is a binary,
+# the ubuntu runner ships it, and the machine this was developed on has neither it nor Docker.
+#
+# **It is deliberately independent of the app host.** Nothing here knows where the site is deployed,
+# so choosing Render or Vercel later changes nothing about whether backups keep happening.
+#
+# **Five secrets** (Settings → Secrets and variables → Actions): DATABASE_URL, R2_ACCOUNT_ENDPOINT,
+# R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BACKUP_BUCKET. The R2 token is scoped to the backup
+# bucket alone and can only write objects — if it leaks, what it buys is the ability to add files to
+# a backup bucket, not to read the site or reach the database.
+name: Database backup
+
+on:
+  schedule:
+    # 02:17 UTC every Sunday. Not on the hour: GitHub's scheduler queues heavily at :00 and delays
+    # can run to tens of minutes, and a backup has no reason to compete for that slot.
+    - cron: '17 2 * * 0'
+  # So the first run — and every restore drill — is a button rather than a week of waiting.
+  workflow_dispatch:
+
+# Two backup runs at once would upload two near-identical dumps and prove nothing extra.
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    # A dump of this database takes seconds; anything approaching this ceiling means something is
+    # wrong, and a job that hangs until the default 6-hour limit reports nothing for six hours.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # The runner's bundled client can lag the server's major version, and pg_dump REFUSES to dump
+      # a server newer than itself rather than producing a partial file. Neon is Postgres 17, so the
+      # version is pinned here instead of being inherited from whatever the runner image happens to
+      # carry this month — a silent upgrade of that image would otherwise start failing backups.
+      - name: Install postgresql-client-17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          pg_dump --version
+
+      # No `npm ci`: the script imports nothing outside node: builtins, on purpose. Installing the
+      # whole dependency tree would put a broken lockfile between an incident and its backup.
+      - name: Dump and upload
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          R2_ACCOUNT_ENDPOINT: ${{ secrets.R2_ACCOUNT_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BACKUP_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+        run: node scripts/backup-db.mjs
