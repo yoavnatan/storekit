@@ -38,7 +38,14 @@ const { storeId, d } = Astro.props;
 
   {/* The editor. One form for new and existing — `data-coupon-id` is the only difference, and it
       is what the save handler reads to decide create vs update. */}
-  <form id="coupon-form" class="mt-4 hidden" hidden>
+  {/* `data-unsaved-guard` so a half-typed code warns like every other dashboard form — the tab now
+      has TWO saves, and the one at the top saves only the sale. It fits this form without any extra
+      plumbing, which is why it is worth having: baselines are taken lazily on first contact and
+      `showForm()` writes its values BEFORE focusing the code field, so opening an existing coupon
+      starts clean and only goes dirty when the seller actually changes something; and a form with a
+      `hidden` ancestor is "not live", so the closed form and the one just saved (hideForm) are both
+      clean with nothing to reset. */}
+  <form id="coupon-form" class="mt-4 hidden" hidden data-unsaved-guard>
     <div class="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr]">
       <label class="field">
         <span class="text-[0.85rem]">{d.couponCode}</span>

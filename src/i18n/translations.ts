@@ -349,6 +349,10 @@ export const translations = {
       description: 'תיאור',
       descPlaceholder: 'שורה קצרה על החנות',
       saveChanges: 'שמור שינויים',
+      // The מבצעים tab's head button. It submits the store-sale form and nothing else, and since
+      // the coupon card arrived below it with its own save, a generic "שמור שינויים" up there was a
+      // button that looked like it covered the whole tab.
+      storeSaleSave: 'שמירת המבצע',
       saveUnavailable: 'השמירה לא זמינה כרגע. שמרנו את מה שהקלדת — רענן את הדף ונציע לך לשחזר.',
       draftFound: 'יש שינויים שלא הספקת לשמור מהפעם הקודמת.',
       draftRestore: 'שחזר אותם',
@@ -728,7 +732,9 @@ export const translations = {
       couponStatusEnded: 'הסתיים',
       couponStatusPending: 'טרם התחיל',
       couponStatusUsedUp: 'נוצל',
-      couponSave: 'שמירה',
+      // Symmetric with `storeSaleSave` above, and for the same reason: two saves on one screen must
+      // each name what they save.
+      couponSave: 'שמירת הקוד',
       couponCancel: 'ביטול',
       couponEdit: 'עריכה',
       couponDelete: 'מחיקה',
@@ -1766,6 +1772,7 @@ export const translations = {
       description: 'Description',
       descPlaceholder: 'A short line about your store',
       saveChanges: 'Save changes',
+      storeSaleSave: 'Save sale',
       saveUnavailable: 'Saving is unavailable right now. We kept what you typed — reload the page and we will offer it back.',
       draftFound: 'You have changes from last time that were never saved.',
       draftRestore: 'Restore them',
@@ -2110,7 +2117,7 @@ export const translations = {
       couponStatusEnded: 'Ended',
       couponStatusPending: 'Not started',
       couponStatusUsedUp: 'Used up',
-      couponSave: 'Save',
+      couponSave: 'Save code',
       couponCancel: 'Cancel',
       couponEdit: 'Edit',
       couponDelete: 'Delete',
