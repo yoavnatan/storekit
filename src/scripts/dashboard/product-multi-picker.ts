@@ -55,6 +55,22 @@ export function initProductMultiPicker(config: ProductPickerConfig): ProductMult
     announceValueChange(hidden);
   };
 
+  /**
+   * Re-read the picked set FROM the field, then repaint.
+   *
+   * The set is the source of truth for every tick and for what `commit` writes back, and it is read
+   * from `hidden.value` once at init — so a "discard changes" or a recovered draft replacing that
+   * field leaves this widget holding the OLD ids. Two things then go wrong, and the second is the
+   * dangerous one: the ticks show a selection the form no longer posts, and the seller's very next
+   * tick calls `commit`, which writes this stale set back over the value that was just restored.
+   */
+  const syncFromField = (): void => {
+    selected.clear();
+    for (const id of hidden.value.split(',').map((v) => v.trim()).filter(Boolean)) selected.add(id);
+    if (count) count.textContent = selected.size ? `(${selected.size} ${labels.selected ?? ''})` : '';
+    render();
+  };
+
   const render = (): void => {
     const q = (search?.value ?? '').trim().toLowerCase();
     // Ticked rows always render, whatever the search term — otherwise a seller could not see
@@ -84,6 +100,8 @@ export function initProductMultiPicker(config: ProductPickerConfig): ProductMult
     commit();
   });
   search?.addEventListener('input', render);
+
+  hidden.closest('form')?.addEventListener('dash:fieldsrewritten', syncFromField);
 
   return { render, selected: () => [...selected] };
 }

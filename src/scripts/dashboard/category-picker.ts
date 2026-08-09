@@ -195,13 +195,19 @@ export function initCategoryPicker(root: HTMLElement): void {
   // Without this the trigger kept advertising categories the form was no longer posting, and the
   // save then failed on "pick at least one" while the label showed a selection. A dedicated
   // event, not `input` — the picker dispatches `input` itself and would re-enter.
-  hiddenInput.addEventListener('picker:sync', () => {
+  const syncFromField = (): void => {
     const ids = hiddenInput.value.split(',').map((s) => s.trim()).filter(Boolean);
     selectedIds.length = 0;
     selectedIds.push(...ids);
     updateLabel();
     if (!menu.hidden) render();
-  });
+  };
+  hiddenInput.addEventListener('picker:sync', syncFromField);
+  // The FORM-wide version of the same statement: "discard changes" and a recovered draft both
+  // replace this field from outside (unsaved-guard.ts owns the pair). Without it a restore put the
+  // ids back while the trigger kept advertising the old ones — the identical mismatch `picker:sync`
+  // exists for, arriving by a different door.
+  hiddenInput.closest('form')?.addEventListener('dash:fieldsrewritten', syncFromField);
 
   // Not root.contains(e.target) — the in-menu click handler below can call render(), which
   // replaces menu.innerHTML (and so detaches the original e.target) before this bubbles up

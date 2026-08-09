@@ -121,6 +121,37 @@ export function initGalleryWidget(gallery: Element): void {
     filled?.removeAttribute('hidden');
   }
 
+  /**
+   * Repaint every slot from its own url field — the widget's answer to "your fields were replaced".
+   *
+   * The gallery keeps each image in a `.gallery-slot__url` input and its thumbnail in the DOM, so a
+   * "discard changes" or a recovered draft writes the urls back and leaves the pictures showing the
+   * previous set (unsaved-guard.ts owns the pair; `store-image.ts`, the two pickers and the
+   * header-logo card all answer the same event). The in-session blobs go with it: they belonged to
+   * the edit that was just discarded, and keeping them would let the next "remove background"
+   * operate on an image the form no longer holds.
+   */
+  function repaintFromFields(): void {
+    for (const slot of gallery.querySelectorAll<Element>('.gallery-slot')) {
+      const st = wState.get(slot);
+      if (st) {
+        st.original = undefined; st.processed = undefined; st.useProcessed = false;
+        st.pristineOriginal = undefined; st.pristineProcessed = undefined;
+        st.croppedOriginal = false; st.croppedProcessed = false;
+      }
+      const url = slot.querySelector<HTMLInputElement>('.gallery-slot__url')?.value ?? '';
+      const slotImg = slot.querySelector<HTMLImageElement>('.gallery-slot__img');
+      const empty   = slot.querySelector<HTMLElement>('.gallery-slot__empty');
+      const filled  = slot.querySelector<HTMLElement>('.gallery-slot__filled');
+      if (slotImg) slotImg.src = url;
+      empty?.toggleAttribute('hidden', !!url);
+      filled?.toggleAttribute('hidden', !url);
+    }
+    updateBatchAvailability();
+  }
+
+  gallery.closest('form')?.addEventListener('dash:fieldsrewritten', repaintFromFields);
+
   function clearSlot(slot: Element) {
     const st = wState.get(slot);
     if (st) {
