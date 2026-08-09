@@ -48,24 +48,61 @@ function valueLabel(c: CouponView): string {
   return c.kind === 'percent' ? `-${c.value}%` : `-${formatPrice(c.value)}`;
 }
 
+/** `YYYY-MM-DD` → the short local date the rest of the dashboard prints (products.ts uses the same
+ *  shape). Noon UTC so a date-only string cannot land on the previous day in a negative offset. */
+function shortDay(iso: string): string {
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+/**
+ * The schedule, in words rather than with an arrow.
+ *
+ * There was a `→ 31.08` here and it was wrong twice over (owner, 2026-08-09: "התאריכים לא ברורים,
+ * תאריך התחלה לא מופיע, והחץ הפוך"). The start date was simply never printed — so a code scheduled
+ * for next week looked identical to one running now, which is exactly the pair a seller needs to
+ * tell apart. And an arrow is a DIRECTION on screen, so in Hebrew it points the wrong way; the fix
+ * is not to flip it but to remove it, since "מ… עד…" says the same thing in every direction and
+ * needs no maintenance the day someone renders this in English.
+ */
+function scheduleLabel(c: CouponView, i: Record<string, string>): string {
+  const from = c.startsAt ? `${i['couponFrom'] ?? 'מ'}-${shortDay(c.startsAt)}` : '';
+  const to = c.endsAt ? `${i['couponUntil'] ?? 'עד'} ${shortDay(c.endsAt)}` : '';
+  return [from, to].filter(Boolean).join(' ');
+}
+
+/**
+ * Redemptions, said so the number cannot be misread.
+ *
+ * "מומש 0 מתוך 1" was three questions at once — of what, per whom, and is 1 a count of coupons?
+ * (owner, 2026-08-09.) The cap is a TOTAL across every buyer, which is what "first N customers"
+ * means, so the row now says the total out loud and the form's own label and hint say it too.
+ */
+function usesLabel(c: CouponView, i: Record<string, string>): string {
+  const used = `${i['couponRedemptions'] ?? 'מימושים'}: ${c.usedCount}`;
+  return c.maxUses === undefined
+    ? `${used} ${i['couponUsesUnlimited'] ?? '(ללא הגבלה)'}`
+    : `${used} ${i['couponUsedOf'] ?? 'מתוך'} ${c.maxUses}`;
+}
+
 function rowHtml(c: CouponView, i: Record<string, string>): string {
   const status = statusLabel(c, i);
-  const conditions: string[] = [];
-  if (c.minSubtotalAgorot > 0) conditions.push(`${i['couponMinBadge'] ?? 'מעל'} ${formatPrice(fromAgorot(c.minSubtotalAgorot))}`);
-  conditions.push(c.maxUses !== undefined
-    ? `${i['couponUsed'] ?? 'מומש'} ${c.usedCount} ${i['couponUsedOf'] ?? 'מתוך'} ${c.maxUses}`
-    : `${i['couponUsed'] ?? 'מומש'} ${c.usedCount}`);
-  if (c.endsAt) conditions.push(`→ ${c.endsAt}`);
+  // ONE line: code, then what it gives, then its conditions — a seller scanning this list reads
+  // across a row, and the code stacked above its own data made every row two rows and none of them
+  // aligned (owner, 2026-08-09). `flex-wrap` still lets a 375px screen break it, which is a
+  // different thing from building it broken.
+  const facts: string[] = [];
+  if (c.minSubtotalAgorot > 0) facts.push(`${i['couponMinBadge'] ?? 'מעל'} ${formatPrice(fromAgorot(c.minSubtotalAgorot))}`);
+  facts.push(usesLabel(c, i));
+  const when = scheduleLabel(c, i);
+  if (when) facts.push(when);
 
-  return `<li class="flex items-center gap-3 flex-wrap py-2 px-2.5 rounded-[var(--radius-sm)] border border-[color:var(--color-border)]" data-coupon-row="${esc(c.id)}">
-    <span class="min-w-0 flex-1">
-      <span class="font-semibold text-[0.86rem] block overflow-hidden text-ellipsis whitespace-nowrap" dir="ltr">${esc(c.code)}</span>
-      <span class="muted text-[0.75rem]">${esc(conditions.join(' · '))}</span>
-    </span>
-    <span class="sale-chip" dir="ltr">${esc(valueLabel(c))}</span>
-    <span class="text-[0.75rem] font-semibold ${status.live ? '[color:var(--color-sale)]' : '[color:var(--color-muted)]'}">${esc(status.text)}</span>
-    <button type="button" class="btn btn--ghost btn--sm" data-coupon-edit="${esc(c.id)}">${esc(i['couponEdit'] ?? 'עריכה')}</button>
-    <button type="button" class="btn btn--ghost btn--sm" data-coupon-delete="${esc(c.id)}" data-coupon-code="${esc(c.code)}">${esc(i['couponDelete'] ?? 'מחיקה')}</button>
+  return `<li class="flex items-center gap-2.5 flex-wrap py-2 px-2.5 rounded-[var(--radius-sm)] border border-[color:var(--color-border)]" data-coupon-row="${esc(c.id)}">
+    <span class="font-semibold text-[0.86rem] shrink-0 max-w-[11rem] overflow-hidden text-ellipsis whitespace-nowrap" dir="ltr">${esc(c.code)}</span>
+    <span class="sale-chip shrink-0" dir="ltr">${esc(valueLabel(c))}</span>
+    <span class="muted text-[0.75rem] min-w-0 flex-1">${esc(facts.join(' · '))}</span>
+    <span class="text-[0.75rem] font-semibold shrink-0 ${status.live ? '[color:var(--color-sale)]' : '[color:var(--color-muted)]'}">${esc(status.text)}</span>
+    <button type="button" class="btn btn--ghost btn--sm shrink-0" data-coupon-edit="${esc(c.id)}">${esc(i['couponEdit'] ?? 'עריכה')}</button>
+    <button type="button" class="btn btn--ghost btn--sm shrink-0" data-coupon-delete="${esc(c.id)}" data-coupon-code="${esc(c.code)}">${esc(i['couponDelete'] ?? 'מחיקה')}</button>
   </li>`;
 }
 

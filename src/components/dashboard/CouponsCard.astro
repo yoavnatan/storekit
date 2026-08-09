@@ -74,10 +74,14 @@ const { storeId, d } = Astro.props;
       <label class="field">
         <span class="text-[0.85rem]">{d.couponMinSubtotal}</span>
         <input class="input" name="minSubtotal" id="coupon-min" type="number" min="0" step="1" placeholder="0" />
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.couponMinSubtotalHint}</p>
       </label>
       <label class="field">
         <span class="text-[0.85rem]">{d.couponMaxUses}</span>
         <input class="input" name="maxUses" id="coupon-uses" type="number" min="1" max={MAX_COUPON_USES} step="1" />
+        {/* The hint is the answer to "of what, and per whom" — the cap is a total across every
+            buyer, and a seller deciding the number has to know that HERE, not from the list row. */}
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.couponMaxUsesHint}</p>
       </label>
     </div>
 
