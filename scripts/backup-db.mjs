@@ -36,11 +36,16 @@ import { putObject, getObject, sha256 } from './lib/s3-put.mjs';
  * A bare `pg_dump` is resolved by whatever `PATH` says at the moment it runs, so anything that can
  * put a file earlier on that path decides what reads the production database and where its output
  * goes. On a CI runner that is not a hypothetical: `PATH` there includes writable, tool-managed
- * directories. `/usr/bin/pg_dump` is where `postgresql-client-17` installs it on the ubuntu runner
- * (the workflow pins that package for the same reason — pg_dump refuses to dump a server NEWER than
- * itself, so an image upgrade must not be allowed to decide the version).
+ * directories.
  *
- * `PG_DUMP_PATH` overrides it, for a local run where Homebrew puts it somewhere else entirely
+ * **`/usr/bin/pg_dump` is only the fallback, and the workflow deliberately does not use it.** It is
+ * a `postgresql-common` wrapper that chooses a version by its own rules, and on the ubuntu runner it
+ * kept choosing the preinstalled 16 even with 18 installed alongside — so the first real run failed
+ * with `server version: 18.4 … pg_dump version: 16.14` (2026-08-09). The workflow therefore sets
+ * `PG_DUMP_PATH` to the versioned binary. The lesson generalises past CI: installing the right
+ * client and running it are two different things, and only the second one is checkable.
+ *
+ * `PG_DUMP_PATH` also covers a local run, where Homebrew puts it somewhere else entirely
  * (`/opt/homebrew/opt/libpq/bin/pg_dump`). Overriding is a deliberate act; inheriting is not.
  */
 const PG_DUMP = process.env.PG_DUMP_PATH || '/usr/bin/pg_dump';
