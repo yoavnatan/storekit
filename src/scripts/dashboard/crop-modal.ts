@@ -52,11 +52,36 @@ let cropVpH = VP_SIZE_DEFAULT;
 let isDragging = false;
 let dragStartX = 0, dragStartY = 0, dragStartPanX = 0, dragStartPanY = 0;
 
+/** Exported for `tests/crop-pan-range.test.ts` — the clamp is the whole of "can I put my logo on
+ *  the right", and it is arithmetic, so it is worth testing as arithmetic rather than by driving a
+ *  drag. Kept next to the function it mirrors so the two cannot drift. */
+export function panRange(imageSize: number, viewportSize: number, scale: number): number {
+  return Math.abs(imageSize * scale - viewportSize) / 2;
+}
+
+/**
+ * How far the image may travel from centre, per axis.
+ *
+ * **`Math.abs`, not `Math.max(0, …)`, and that one character is a whole feature** (owner,
+ * 2026-08-09: "אי אפשר להזיז אותה בפנים ימינה ושמאלה… אדם רוצה שהלוגו יהיה צמוד לימין").
+ *
+ * The old expression assumed the image is always BIGGER than the frame, which is true for `cover`
+ * and false for `contain`: a square logo fitted into the header's 4.4:1 slot is narrower than the
+ * frame, so `imageWidth − viewportWidth` went negative, the clamp floored it at 0, and the pan was
+ * pinned to dead centre. Dragging did nothing and the seller could not put their mark anywhere but
+ * the middle — which for a logo is the least likely thing they want.
+ *
+ * The distance is the same either way, it is just signed differently: with the image larger, it may
+ * travel until its own edge reaches the frame's (a crop); with the image smaller, until its edge
+ * reaches the frame's from the inside (a position). `abs` is both, and it is exactly the old value
+ * in `cover` mode — `cropFitScale` there is the MAX ratio and zoom is ≥ 1, so the image is never
+ * smaller than the frame on either axis and nothing about the banner or the avatar changes.
+ */
 function clampCropPan() {
   if (!cropImgEl?.naturalWidth) return;
   const s = cropFitScale * cropZoomVal;
-  const halfW = Math.max(0, (cropImgEl.naturalWidth * s - cropVpW) / 2);
-  const halfH = Math.max(0, (cropImgEl.naturalHeight * s - cropVpH) / 2);
+  const halfW = panRange(cropImgEl.naturalWidth, cropVpW, s);
+  const halfH = panRange(cropImgEl.naturalHeight, cropVpH, s);
   cropPanX = Math.min(halfW, Math.max(-halfW, cropPanX));
   cropPanY = Math.min(halfH, Math.max(-halfH, cropPanY));
 }
