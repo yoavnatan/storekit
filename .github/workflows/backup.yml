@@ -18,9 +18,30 @@ name: Database backup
 
 on:
   schedule:
-    # 02:17 UTC every Sunday. Not on the hour: GitHub's scheduler queues heavily at :00 and delays
-    # can run to tens of minutes, and a backup has no reason to compete for that slot.
-    - cron: '17 2 * * 0'
+    # 02:17 UTC daily. Not on the hour: GitHub's scheduler queues heavily at :00 and delays there
+    # run to tens of minutes, and a backup has no reason to compete for that slot.
+    #
+    # **Daily, not weekly, and the weekly first draft had no argument behind it — only caution
+    # (changed 2026-08-09, asked "why not daily?" and there was no answer).** The interval IS the
+    # worst-case data loss: a week of orders is a week nobody can reconstruct, and the whole point
+    # of this file is that the database has no other copy. So the only question is what daily costs,
+    # and it was measured rather than assumed, at the real dump size of 825 KB:
+    #
+    #   R2 storage      23.6 MB/month · 287 MB/year, against a 10 GB free tier — ~36 years
+    #   R2 writes       30/month, against 1,000,000 free
+    #   Actions minutes ~22/month (43s a run), against 2,000 free for a private repo
+    #   Neon           one 20-second read a day
+    #
+    # Nothing here is close to a limit, so weekly was buying nothing and costing six days.
+    #
+    # **What daily does introduce is a bucket that grows forever**, which is the same shape this
+    # project just spent a session fixing in the database. It is not urgent — the arithmetic above
+    # is decades at the current size, and dumps compress with the data — but it is not self-solving
+    # either, because the dump grows with the catalogue. The fix when it matters is an R2 lifecycle
+    # rule (Cloudflare dashboard → the bucket → Object lifecycle rules → delete after N days), not
+    # code here: expiry belongs to the store, and a deleting backup script is one bug away from
+    # being the disaster it exists to prevent.
+    - cron: '17 2 * * *'
   # So the first run — and every restore drill — is a button rather than a week of waiting.
   workflow_dispatch:
 

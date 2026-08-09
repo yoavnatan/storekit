@@ -10,7 +10,7 @@
 // second copy. GO_LIVE §6 carries the owner-facing version.
 //
 // **Where it runs, and why not here.** `pg_dump` is a binary, and the machine this was written on
-// has neither it nor Docker — which is the useful fact, not an inconvenience: a weekly backup that
+// has neither it nor Docker — which is the useful fact, not an inconvenience: a scheduled backup that
 // depends on one laptop being awake is not a backup. It runs in GitHub Actions
 // (`.github/workflows/backup.yml`), where `pg_dump` is preinstalled, the schedule is not ours to
 // keep, and the credentials are GitHub secrets rather than a file on a desk. Nothing here is

@@ -150,7 +150,7 @@ export const sha256 = (data) => crypto.createHash('sha256').update(data).digest(
  *   · **By size.** `content-length` reads as `null` through Node's `fetch` — undici does not expose
  *     it on these responses — so a length check reported "0 bytes" for an object that was
  *     verifiably complete. A verification that fails on a working system is exactly as useless as
- *     one that passes on a broken one, and this one would have declared every weekly backup lost.
+ *     one that passes on a broken one, and this one would have declared every nightly backup lost.
  *
  *   · **By ETag.** A PUT answered `"2485c0…"` while a HEAD of that same object answered
  *     `W/"2485c0…"` — a weak validator — and a second object in the same run came back strong. So
