@@ -161,6 +161,100 @@ describe('the same key twice is one purchase', () => {
 });
 
 /**
+ * ── Coupons, against the real till ──
+ *
+ * The pure decision is pinned in `coupons.test.ts` and the concurrency of the claim in
+ * `store-coupons-db.test.ts`. What only THIS file can prove is that the decision reaches the money:
+ * that the amount authorized actually drops, that the order row records both the discount and the
+ * code that caused it, and — the one that costs a seller real inventory of a capped code — that a
+ * checkout which does not complete gives the redemption back.
+ */
+describe('a coupon reaches the money, and only when it should', () => {
+  const CODE = 'E2E10';
+  async function giveKeramikaACode(extra: Record<string, unknown> = {}): Promise<string> {
+    const { rows } = await query<{ id: string }>(
+      `INSERT INTO store_coupons (store_id, code, kind, percent, min_subtotal_agorot, max_uses, ends_at, active)
+            VALUES ($1, $2, 'percent', 10, $3, $4, $5, $6) RETURNING id`,
+      [KERAMIKA, CODE, extra['min'] ?? 0, extra['maxUses'] ?? null, extra['endsAt'] ?? null, extra['active'] ?? true],
+    );
+    return rows[0]!.id;
+  }
+  const usedCount = async (): Promise<number> => {
+    const { rows } = await query<{ used_count: number }>(
+      `SELECT used_count FROM store_coupons WHERE store_id = $1 AND code = $2`, [KERAMIKA, CODE]);
+    return Number(rows[0]?.used_count ?? -1);
+  };
+
+  beforeEach(async () => {
+    await query(`DELETE FROM store_coupons WHERE store_id = $1`, [KERAMIKA]);
+  });
+
+  it('takes the discount off that store\'s slice and leaves the other store alone', async () => {
+    await giveKeramikaACode();
+    const res = await POST(ctx(twoStoreCart({ coupons: { keramika: 'e2e 10' } }))); // typed loosely on purpose
+    expect(res.status, await res.clone().text()).toBe(201);
+    const { orderIds } = await res.json() as { orderIds: string[] };
+    const orders = await Promise.all(orderIds.map((id) => getOrderById(id)));
+
+    const keramika = orders.find((o) => o!.items[0]!.storeSlug === 'keramika')!;
+    const other = orders.find((o) => o!.items[0]!.storeSlug === 'tachshitim')!;
+    const slice = keramika.storeSubtotals['keramika']!;
+
+    // The money: exactly 10% of that store's goods, and the total is goods − discount + shipping.
+    expect(slice.discount?.appliedAgorot).toBe(Math.round(slice.subtotalAgorot * 0.1));
+    expect(keramika.totalAgorot).toBe(slice.subtotalAgorot - slice.discount!.appliedAgorot + slice.shippingAgorot);
+    // The provenance, so the seller's order card can say which code did this.
+    expect(slice.couponCode).toBe(CODE);
+    // A code is one seller's to give. The other store's slice is untouched by it.
+    expect(other.storeSubtotals['tachshitim']!.discount).toBeUndefined();
+    expect(await usedCount()).toBe(1);
+  });
+
+  it('refuses the whole checkout rather than quietly charging full price', async () => {
+    // The buyer was shown a discount. Charging without it, and saying nothing, is the outcome this
+    // 409 exists to prevent — their page clears the code, redraws the total, and one more press pays.
+    await giveKeramikaACode({ endsAt: '2020-01-01' });
+    const before = await stockOf(KERAMIKA);
+    const res = await POST(ctx(twoStoreCart({ coupons: { keramika: CODE } })));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'coupon-invalid', coupon: { storeSlug: 'keramika' } });
+    // Nothing reserved: the stock goes back and no redemption was spent on a purchase that failed.
+    expect(await stockOf(KERAMIKA)).toBe(before);
+    expect(await usedCount()).toBe(0);
+  });
+
+  it('refuses a code that belongs to a different store', async () => {
+    await giveKeramikaACode();
+    const res = await POST(ctx(twoStoreCart({ coupons: { tachshitim: CODE } })));
+    expect(res.status).toBe(409);
+    expect(await usedCount()).toBe(0);
+  });
+
+  it('gives the redemption back when the card is declined', async () => {
+    // The expensive failure if it were missed: a capped "first 50" code burnt down by declines, and
+    // the fiftieth real customer turned away for purchases that never happened.
+    await giveKeramikaACode({ maxUses: 1 });
+    const res = await POST(ctx(twoStoreCart({
+      coupons: { keramika: CODE },
+      buyerEmail: `nope${MOCK_DECLINE_MARKER}example.test`,
+    })));
+    expect(res.status).toBe(402);
+    expect(await usedCount()).toBe(0);
+  });
+
+  it('is not reported as a discrepancy by the reconciliation', async () => {
+    // A coupon writes the same order-level discount slot a seller's own edit does, and
+    // `reconcile.ts` flags a discount larger than its subtotal as a corrupt row. This is what says
+    // the clamp in `couponDiscountAgorot` keeps an ordinary voucher out of that report.
+    await giveKeramikaACode();
+    await POST(ctx(twoStoreCart({ coupons: { keramika: CODE } })));
+    const { rows: storeRows } = await query<{ slug: string }>('SELECT slug FROM stores');
+    const { discrepancies } = await reconcilePlatform(storeRows.map((s) => s.slug));
+    expect(discrepancies.map((d) => d.check)).not.toContain('discount');
+  });
+});
+
+/**
  * ── The audit (owner, 2026-08-07, review-diff row 2): where the money and what a seller or buyer
  *    SEES can disagree ──
  *

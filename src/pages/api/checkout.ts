@@ -23,6 +23,8 @@ import { storeSliceTotalAgorot } from '../../lib/order-totals.js';
 import { toAgorot, fromAgorot, formatAgorot } from '../../lib/money.js';
 import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 import { readAttribution } from '../../lib/attribution.js';
+import { getCouponByCode, claimCoupon, releaseCoupon } from '../../lib/store-coupons.js';
+import { checkCoupon, normalizeCouponCode } from '../../lib/coupons.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -45,6 +47,12 @@ interface CheckoutBody {
    *  each value is re-validated against what the store actually offers, and the price is
    *  recomputed server-side from the central platform rate. */
   deliveryMethods?: Record<string, unknown>;
+  /** Coupon code the buyer typed for each store, keyed by (current) store slug. Untrusted in every
+   *  way that matters: the code is re-looked-up against that store, re-checked against the schedule
+   *  and the remaining uses, and the money it takes off is recomputed here — the client's own figure
+   *  is never read. An invalid one FAILS the checkout rather than being dropped, because a buyer who
+   *  was shown a discount and charged without it is the one outcome this must not produce. */
+  coupons?: Record<string, unknown>;
   /** Client-minted key identifying this checkout ATTEMPT, reused across retries so a
    *  repeat submit replays the first result instead of charging again. Required —
    *  see lib/checkout-idempotency.ts for why a missing one is not safe to wave through. */
@@ -158,7 +166,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   if (!read.ok) return json({ error: read.status === 413 ? 'Body too large' : 'Invalid JSON body' }, read.status);
   const body = read.value;
 
-  const { buyerName, buyerEmail, buyerPhone, buyerAddress, items, deliveryMethods, idempotencyKey } = body;
+  const { buyerName, buyerEmail, buyerPhone, buyerAddress, items, deliveryMethods, coupons, idempotencyKey } = body;
 
   // Refused outright rather than waved through when absent: without a key this
   // endpoint cannot tell a second purchase from the same purchase arriving twice,
@@ -275,6 +283,11 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const orderItems: OrderItem[] = [];
   const storeSubtotals: Record<string, StoreSubtotal> = {};
   const decremented: { productId: string; qty: number; selectedVariants?: Record<string, string> }[] = [];
+  // Coupon uses consumed by THIS request. A claim is a reservation exactly like a stock decrement,
+  // and it has to be undone on every path that undoes the stock — otherwise a declined card burns
+  // a use of a capped code and the fiftieth customer is turned away for a purchase that never
+  // happened. Kept beside `decremented` so the two are impossible to unwind separately.
+  const couponClaims: string[] = [];
   // What the buyer was actually trying to buy, in words, kept only so a failure can say so.
   //
   // The error entry already names the buyer and the store; without this it cannot name the thing.
@@ -297,6 +310,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   // existed. One helper on every exit is what keeps that from coming back.
   const abort = async (payload: Record<string, unknown>, status: number): Promise<Response> => {
     for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+    for (const id of couponClaims) await releaseCoupon(id);
     await releaseCheckout(idempotencyKey);
     return json(payload, status);
   };
@@ -413,6 +427,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
   const clientMethods = (deliveryMethods && typeof deliveryMethods === 'object' && !Array.isArray(deliveryMethods))
     ? deliveryMethods as Record<string, unknown>
     : {};
+  const clientCoupons = (coupons && typeof coupons === 'object' && !Array.isArray(coupons))
+    ? coupons as Record<string, unknown>
+    : {};
+  const now = new Date();
   for (const [storeSlug, data] of Object.entries(storeSubtotals)) {
     const store = await getStoreBySlug(storeSlug);
     const offersSelfPickup = !!store?.shipping?.selfPickup && !!store?.address;
@@ -421,6 +439,36 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     // `shippingPrice` is a config rate in ILS — the last ILS number to enter the pipeline, and it
     // converts here rather than being trusted to already be whole agorot.
     data.shippingAgorot = toAgorot(shippingPrice(method));
+
+    // ── The coupon, in the same pass, off the store this loop already fetched ──
+    //
+    // Here rather than in the item loop because a coupon applies to the SUBTOTAL, which only
+    // exists once every line of that store has been priced. Everything about it is re-derived:
+    // the code is looked up against THIS store (a code is one seller's to give, and a valid code
+    // from another shop must not apply here), the schedule and the remaining uses are re-checked
+    // against the database, and `checkCoupon` recomputes the money from the subtotal we just
+    // built. The client's number is never read — it is only ever a preview.
+    const code = normalizeCouponCode(clientCoupons[storeSlug]);
+    if (!code || !store) continue;
+    const coupon = await getCouponByCode(store.id, code);
+    // Refused, not ignored. A buyer who was shown "−₪20" and charged the full amount would have no
+    // way to know, and "the code expired while you were typing your address" is a sentence their
+    // page can act on — it re-renders without the discount and they press pay again.
+    if (!coupon) return abort({ error: 'coupon-invalid', coupon: { storeSlug, code, reason: 'unknown' } }, 409);
+    const verdict = checkCoupon(coupon, data.subtotalAgorot, now);
+    if (!verdict.ok) return abort({ error: 'coupon-invalid', coupon: { storeSlug, code, reason: verdict.reason } }, 409);
+    // The claim is the reservation, and it is what makes a capped code mean its cap under
+    // concurrency (store-coupons.ts#claimCoupon). It happens BEFORE the money is authorized, for
+    // the same reason the stock decrement does: a reservation that can be released is safe to take
+    // early, and a limit checked after the charge is not a limit.
+    if (!(await claimCoupon(coupon.id))) {
+      return abort({ error: 'coupon-invalid', coupon: { storeSlug, code, reason: 'exhausted' } }, 409);
+    }
+    couponClaims.push(coupon.id);
+    // Written into the order-level discount slot every money surface already subtracts, with the
+    // code beside it as provenance (orders.ts#StoreSubtotal.couponCode, migrations/0020).
+    data.discount = { type: coupon.kind, value: coupon.value, appliedAgorot: verdict.appliedAgorot };
+    data.couponCode = coupon.code;
   }
 
   const buyerData = {
@@ -551,6 +599,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       // `held` is cleared only after the void so the catch below cannot double-release it.
       if (held) { await voidRefund(held, checkoutRef, idempotencyKey, capture.error ?? 'capture failed'); held = null; }
       for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+      for (const id of couponClaims) await releaseCoupon(id);
       await releaseCheckout(idempotencyKey);
       return json({ error: capture.error ?? 'החיוב נכשל. לא בוצע חיוב — אפשר לנסות שוב.' }, 402);
     }
@@ -696,6 +745,10 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     }
     if (!committed) {
       for (const d of decremented) await restockProduct(d.productId, d.qty, d.selectedVariants);
+      // Same rule as the stock: a purchase that did not happen consumed nothing. Never above the
+      // `committed` line — a completed order's coupon use is spent, and giving it back would let
+      // one buyer redeem a one-per-store code twice.
+      for (const id of couponClaims) await releaseCoupon(id);
       await releaseCheckout(idempotencyKey);
     }
     const storeSlugs = Object.keys(storeSubtotals);

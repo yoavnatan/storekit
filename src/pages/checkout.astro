@@ -104,6 +104,15 @@ for (const s of await getVisibleStores()) {
     quantity: t.cart.quantity,
     qtyDecrease: t.cart.qtyDecrease,
     qtyIncrease: t.cart.qtyIncrease,
+    couponHave: c.couponHave,
+    couponPlaceholder: c.couponPlaceholder,
+    couponApply: c.couponApply,
+    couponRemove: c.couponRemove,
+    couponInvalid: c.couponInvalid,
+    couponThrottled: c.couponThrottled,
+    couponBelowMin: c.couponBelowMin,
+    couponApplied: c.couponApplied,
+    couponExpired: c.couponExpired,
   })}></script>
 
   {/* A <div>, not a second <main> carrying id=main-content — BaseLayout already wraps this slot in
@@ -262,7 +271,11 @@ for (const s of await getVisibleStores()) {
     import { CART_FRAGMENT_KEY, decodeHandoffCart } from '../lib/cart-handoff.js';
     import { HANDOFF_PARAM } from '../lib/platform-routes.js';
     import { sortCurrentStoreFirst } from '../lib/cart-sovereignty.js';
-    import { refreshCartPrices, watchCartPrices, hasIncrease, stockCorrections } from '../lib/cart-prices.js';
+    import { refreshCartPrices, watchCartPrices, hasIncrease, stockCorrections, storeOffersCoupon } from '../lib/cart-prices.js';
+    import {
+      couponRowHtml, openCouponPanel, applyCouponCode, appliedCoupon, clearCoupon, clearAllCoupons,
+      couponCodesFor, couponSavingIls, type CouponStrings,
+    } from '../scripts/checkout-coupon.js';
     import { splitDemoCarts } from '../lib/demo-stores.js';
     import { formatPrice, cdnThumb } from '../config/store.config.js';
     import { escapeHtml as esc } from '../lib/html-escape.js';
@@ -412,6 +425,19 @@ for (const s of await getVisibleStores()) {
         ${dash}
       </label>`;
     }
+
+    // One place the coupon UI's wording is assembled, so the row, the messages and the applied
+    // chip all read from the same i18n table this page already ships.
+    const couponStrings = (): CouponStrings => ({
+      have:        i18n['couponHave'] ?? 'יש לי קוד קופון',
+      placeholder: i18n['couponPlaceholder'] ?? 'קוד קופון',
+      apply:       i18n['couponApply'] ?? 'הפעלה',
+      remove:      i18n['couponRemove'] ?? 'הסרה',
+      invalid:     i18n['couponInvalid'] ?? 'הקוד אינו תקף',
+      throttled:   i18n['couponThrottled'] ?? 'נסו שוב בעוד רגע',
+      belowMin:    i18n['couponBelowMin'] ?? 'הקוד תקף מ-{min}',
+      applied:     i18n['couponApplied'] ?? 'הקוד הופעל',
+    });
 
     function renderCart(): void {
       const carts = getOrderedCarts();
@@ -570,6 +596,14 @@ for (const s of await getVisibleStores()) {
           <strong class="co-store-saving__amount text-[.9375rem] font-extrabold [color:var(--color-sale)]"></strong>
         </div>`;
 
+        // The coupon field, and only where there is a code to type: the server reports which of
+        // this cart's stores is actually running one (/api/cart/prices → storeOffersCoupon), so a
+        // shop with no promotion adds nothing to this page at all. An already-applied code keeps
+        // its row regardless — a re-render must never drop a discount the buyer has earned.
+        if (storeOffersCoupon(cart.storeSlug) || appliedCoupon(cart.storeSlug)) {
+          html += couponRowHtml(cart.storeSlug, couponStrings(), idx);
+        }
+
         const isFree = shipping === 0;
         const methods = shippingStores[cart.storeSlug]?.methods ?? ['courier'];
         const chosen  = methodFor(cart.storeSlug);
@@ -651,6 +685,13 @@ for (const s of await getVisibleStores()) {
       let totalItems = 0;
       let totalSelected = 0;
 
+      // A code applied and then left stranded — every line of its store unticked — is dropped
+      // rather than kept as an invisible discount that reappears on the next tick, and it must not
+      // travel to /api/checkout either, which refuses a coupon for a store not in the order. The
+      // re-render happens after the loop, never inside it: redrawing the markup this loop is
+      // reading from is how a half-updated page happens.
+      let couponDropped = false;
+
       carts.forEach(cart => {
         const block = document.querySelector<HTMLElement>(`.co-store-block[data-store-slug="${CSS.escape(cart.storeSlug)}"]`);
         let subtotal = 0;
@@ -663,6 +704,15 @@ for (const s of await getVisibleStores()) {
             selCount++;
           }
         });
+        // The coupon comes off the SUBTOTAL, after the two price levers have decided each line and
+        // before shipping — exactly the order `/api/checkout` applies it in, and the reason it is
+        // computed from `subtotal` here rather than from the grand total. A store with nothing
+        // ticked gets nothing off: there is no slice for a code to discount.
+        if (selCount === 0 && appliedCoupon(cart.storeSlug)) { clearCoupon(cart.storeSlug); couponDropped = true; }
+        const couponSaving = selCount > 0 ? couponSavingIls(cart.storeSlug, subtotal) : 0;
+        // Counted as a saving because it is one, by the same definition the rest of this footer
+        // uses: the gap between the listed price and what is actually charged.
+        storeSaving += couponSaving;
         totalSaving += storeSaving;
 
         const savingRow = block?.querySelector<HTMLElement>('.co-store-saving');
@@ -683,7 +733,7 @@ for (const s of await getVisibleStores()) {
         totalSelected += selCount;
 
         const shipping = selCount > 0 ? calcShipping(cart.storeSlug) : 0;
-        grandTotal += subtotal + shipping;
+        grandTotal += subtotal - couponSaving + shipping;
 
         const shipCard = block?.querySelector<HTMLElement>('.co-shipping-card');
         if (shipCard) {
@@ -715,6 +765,10 @@ for (const s of await getVisibleStores()) {
         const storeCountEl = block?.querySelector<HTMLElement>('.co-store-count');
         if (storeCountEl) storeCountEl.textContent = `(${selCount} ${itemWord(selCount)})`;
       });
+
+      // The markup is now out of date in one specific way — a coupon row that must go back to its
+      // closed state — so the whole cart is redrawn and this pass restarts against it.
+      if (couponDropped) { renderCart(); return; }
 
       const selectAllBox = document.querySelector<HTMLInputElement>('.co-select-all-check input');
       if (selectAllBox) {
@@ -806,6 +860,71 @@ for (const s of await getVisibleStores()) {
           onConfirm: () => { removeItem(storeSlug, cartKey); renderCart(); },
         },
       }));
+    }
+
+    /** The subtotal of one store's TICKED lines — what a coupon is measured against, and the same
+     *  figure `updateSelectionUI` builds the total from. Read fresh at the moment a code is
+     *  applied rather than cached, because a quantity can move between opening the field and
+     *  pressing "הפעלה". */
+    function selectedSubtotal(storeSlug: string): number {
+      const cart = getOrderedCarts().find(c => c.storeSlug === storeSlug);
+      if (!cart) return 0;
+      return cart.items.reduce((sum, item) =>
+        selected.has(selKey(storeSlug, item.cartKey)) ? sum + item.price * item.qty : sum, 0);
+    }
+
+    // Delegated over the whole cart, like the checkboxes below and for the same reason: the store
+    // blocks are rebuilt on every render, so a per-element listener would have to be re-attached
+    // each time and would silently stop working the first time somebody forgot.
+    document.getElementById('cart-content')?.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+
+      const toggle = target.closest<HTMLElement>('.co-coupon__toggle');
+      if (toggle) {
+        const row = toggle.closest<HTMLElement>('.co-coupon');
+        if (row) openCouponPanel(row);
+        return;
+      }
+
+      const removeBtn = target.closest<HTMLElement>('.co-coupon__remove');
+      if (removeBtn) {
+        clearCoupon(removeBtn.dataset['storeSlug'] ?? '');
+        renderCart();
+        return;
+      }
+
+      const applyBtn = target.closest<HTMLButtonElement>('.co-coupon__apply');
+      if (applyBtn) { void applyFromRow(applyBtn.dataset['storeSlug'] ?? ''); }
+    });
+
+    // Enter inside the code field applies it. The field is NOT inside the checkout <form> (it sits
+    // in the cart list above it), so nothing would otherwise happen — and a buyer pressing Enter on
+    // a code and getting silence reads it as the code being rejected.
+    document.getElementById('cart-content')?.addEventListener('keydown', (e) => {
+      const input = (e.target as HTMLElement).closest<HTMLInputElement>('.co-coupon__input');
+      if (!input || (e as KeyboardEvent).key !== 'Enter') return;
+      e.preventDefault();
+      void applyFromRow(input.dataset['storeSlug'] ?? '');
+    });
+
+    async function applyFromRow(storeSlug: string): Promise<void> {
+      const row = document.querySelector<HTMLElement>(`.co-coupon[data-store-slug="${CSS.escape(storeSlug)}"]`);
+      const input = row?.querySelector<HTMLInputElement>('.co-coupon__input');
+      const msg = row?.querySelector<HTMLElement>('.co-coupon__msg');
+      const code = input?.value.trim() ?? '';
+      if (!code || !row) return;
+      const btn = row.querySelector<HTMLButtonElement>('.co-coupon__apply');
+      if (btn) btn.disabled = true;
+      const result = await applyCouponCode(storeSlug, code, selectedSubtotal(storeSlug), couponStrings(), formatPrice);
+      if (btn) btn.disabled = false;
+      if (result.ok) {
+        // Redrawn rather than patched: the row becomes the applied chip, and the total, the
+        // per-store saving and the footer all move together in one paint.
+        renderCart();
+        return;
+      }
+      if (msg) { msg.textContent = result.message; msg.classList.remove('hidden'); }
+      input?.focus();
     }
 
     // Delegated (not re-attached per render) — item + per-store "select all" checkboxes
@@ -1076,12 +1195,33 @@ for (const s of await getVisibleStores()) {
         },
         items,
         deliveryMethods,
+        // Codes only, and only for the stores actually being paid for. The server re-looks-up each
+        // one and recomputes what it takes off — the figure on screen never travels.
+        coupons: couponCodesFor(new Set(purchased.map(p => p.storeSlug))),
         idempotencyKey: checkoutAttemptKey(),
       };
 
       try {
         const res  = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-        const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string; outOfStock?: OutOfStockDetail };
+        const data = await res.json() as { orderIds?: string[]; checkoutRef?: string; error?: string; outOfStock?: OutOfStockDetail; coupon?: { storeSlug?: string } };
+        // A code that stopped being valid between typing it and pressing pay — it expired, the
+        // seller switched it off, or somebody else took the last use of a capped one. Handled
+        // exactly like a changed price and for the same reason: the buyer is not at fault, the
+        // cart is corrected in front of them, and the button stays live so one more press buys the
+        // order at the price now on screen. Charging them the discounted total we could no longer
+        // honour, or charging the full one without saying so, are the two outcomes this prevents.
+        if (res.status === 409 && data.error === 'coupon-invalid') {
+          labelEl?.classList.remove('hidden');
+          loadingEl?.classList.add('hidden');
+          if (data.coupon?.storeSlug) clearCoupon(data.coupon.storeSlug); else clearAllCoupons();
+          renderCart();
+          if (priceNoticeEl) {
+            priceNoticeEl.textContent = i18n['couponExpired'] ?? 'הקוד כבר לא תקף. הסכום עודכן.';
+            priceNoticeEl.classList.remove('hidden');
+          }
+          if (submitBtn) submitBtn.disabled = false;
+          return;
+        }
         // Handled here rather than in the catch below because it is the only rejection that
         // carries data to apply, and because it is not an error message: it shows up in the same
         // warning line a changed price uses, with the pay button live, since the cart has just
