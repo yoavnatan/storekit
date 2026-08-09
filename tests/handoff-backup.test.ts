@@ -327,3 +327,118 @@ describe('CLAUDE.md — the new-machine entry point', () => {
       .toBeLessThanOrEqual(4000);
   });
 });
+
+/**
+ * `.claude/hooks/memory-backup-age.sh` — the alarm on the one risk that was silent by construction.
+ *
+ * Memory reaches GitHub as a side effect of pushing CODE, which is an action with its own unrelated
+ * schedule. So a stretch of memory-only work is a stretch of unbacked memory, and nothing said so.
+ *
+ * The assertions that matter are the SILENT ones. An alarm that fires on ordinary state is read
+ * twice and ignored forever after, and memory is dirty during most of a normal session — so "dirty
+ * but backed up yesterday" has to stay quiet, and only age turns it into speech.
+ */
+const AGE_HOOK = fileURLToPath(new URL('../.claude/hooks/memory-backup-age.sh', import.meta.url));
+
+/** Seconds → a git-usable timestamp that far in the past. */
+const agoIso = (seconds: number) => new Date((NOW_MS - seconds * 1000)).toISOString();
+
+/**
+ * `Date.now()` once, at module load: every timestamp below is derived from it, so a suite that
+ * takes seconds to run cannot have one case straddle the 24h boundary while another does not.
+ */
+const NOW_MS = Date.now();
+
+/**
+ * A checkout with a `.claude-memory` in whatever state the case needs.
+ * `lastPushAge` is how long ago the commit that reached the remote was made; `dirty` leaves an
+ * uncommitted file behind; `unpushed` adds a local commit the remote has never seen.
+ */
+function withMemory(opts: { lastPushAge?: number; dirty?: boolean; unpushed?: boolean; none?: boolean }) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'memage-')));
+  temps.push(root);
+  const repo = join(root, 'repo');
+  mkdirSync(repo, { recursive: true });
+  git(repo, 'init', '-b', 'main');
+  if (opts.none) return repo;
+
+  const remote = join(root, 'remote.git');
+  // eslint-disable-next-line sonarjs/no-os-command-from-path
+  execFileSync('git', ['init', '--bare', '-b', 'main', remote], { stdio: 'ignore' });
+  const seed = join(root, 'seed');
+  mkdirSync(seed, { recursive: true });
+  git(seed, 'init', '-b', 'main');
+  writeFileSync(join(seed, 'MEMORY.md'), '# Memory Index\n');
+  git(seed, 'add', '-A');
+  const when = agoIso(opts.lastPushAge ?? 0);
+  execFileSync(
+    // eslint-disable-next-line sonarjs/no-os-command-from-path
+    'git',
+    ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-m', 'seed', '--date', when],
+    { cwd: seed, env: { ...process.env, GIT_COMMITTER_DATE: when }, stdio: 'ignore' },
+  );
+  git(seed, 'remote', 'add', 'origin', remote);
+  git(seed, 'push', '-q', 'origin', 'main');
+
+  const mem = join(repo, '.claude-memory');
+  // eslint-disable-next-line sonarjs/no-os-command-from-path
+  execFileSync('git', ['clone', '-q', remote, mem], { stdio: 'ignore' });
+  if (opts.dirty) writeFileSync(join(mem, 'scratch.md'), 'written this session\n');
+  if (opts.unpushed) {
+    writeFileSync(join(mem, 'committed.md'), 'committed, never pushed\n');
+    git(mem, 'add', '-A');
+    git(mem, 'commit', '-m', 'local only');
+  }
+  return repo;
+}
+
+function runAgeHook(repo: string): string {
+  // eslint-disable-next-line sonarjs/no-os-command-from-path
+  return execFileSync('bash', [AGE_HOOK], {
+    cwd: repo,
+    env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+const DAY = 86_400;
+
+describe('memory-backup-age.sh — silent until it is actually overdue', () => {
+  it('says nothing when memory is clean and pushed', () => {
+    expect(runAgeHook(withMemory({ lastPushAge: 5 * DAY }))).toBe('');
+  });
+
+  it('says nothing about ordinary unsaved work — memory is dirty most of a session', () => {
+    expect(runAgeHook(withMemory({ lastPushAge: 2 * 3600, dirty: true }))).toBe('');
+  });
+
+  it('says nothing when there is no memory repo — that is the restore protocol, not this', () => {
+    expect(runAgeHook(withMemory({ none: true }))).toBe('');
+  });
+
+  it('speaks when unbacked work has been sitting for more than a day', () => {
+    const out = runAgeHook(withMemory({ lastPushAge: 3 * DAY, dirty: true }));
+    expect(out).toContain('memory backup is overdue');
+    expect(out).toContain('3 day(s) ago');
+    expect(out).toContain('1 file(s) written but not committed');
+  });
+
+  it('counts a commit that never left the machine as unbacked, because it is', () => {
+    const out = runAgeHook(withMemory({ lastPushAge: 4 * DAY, unpushed: true }));
+    expect(out).toContain('1 commit(s) never pushed');
+  });
+
+  it('tells the session to offer the push and not to run it', () => {
+    const out = runAgeHook(withMemory({ lastPushAge: 3 * DAY, dirty: true }));
+    expect(out).toContain('HIS call');
+    expect(out).toContain('do not run it unasked');
+  });
+
+  it('is wired into Stop, or it is a file that runs never', () => {
+    const settings = JSON.parse(readFileSync(fileURLToPath(new URL('../.claude/settings.json', import.meta.url)), 'utf8'));
+    const commands = (settings.hooks?.Stop ?? []).flatMap((g: { hooks?: { command?: string }[] }) => g.hooks ?? [])
+      .map((h: { command?: string }) => h.command ?? '');
+    expect(commands).toContain('bash .claude/hooks/memory-backup-age.sh');
+  });
+});
