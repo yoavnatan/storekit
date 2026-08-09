@@ -12,9 +12,17 @@
 # The image is pgvector's, not plain postgres: the semantic search in
 # CONTEXTUAL_SEARCH_STRATEGY.md needs that extension, and discovering at that point that local
 # dev cannot run it is a wasted day. It is a superset of the official image.
+#
+# **The major version tracks Neon, and Neon MOVES — raised 17 → 18 on 2026-08-09.** Not a guess: the
+# first real run of the backup workflow reported `server version: 18.4`, i.e. the managed service
+# had upgraded under us while this file still said 17. That matters for the same reason `TZ: UTC`
+# below does — a local database that differs from production is a place where a bug hides until it
+# ships. It matters twice for `pg_dump`, which refuses outright to dump a server newer than itself.
+# **Not verified by running it:** this machine has no Docker, so the tag was confirmed to exist on
+# Docker Hub and nothing more. If `docker compose up` fails on it, that is why.
 services:
   db:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg18
     container_name: storekit-db
     environment:
       POSTGRES_USER: storekit

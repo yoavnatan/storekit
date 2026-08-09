@@ -42,23 +42,34 @@ jobs:
         with:
           node-version: 22
 
-      # The runner's bundled client can lag the server's major version, and pg_dump REFUSES to dump
-      # a server newer than itself rather than producing a partial file. Neon is Postgres 17, so the
-      # version is pinned here instead of being inherited from whatever the runner image happens to
-      # carry this month — a silent upgrade of that image would otherwise start failing backups.
-      - name: Install postgresql-client-17
+      # `pg_dump` REFUSES to dump a server newer than itself — it aborts rather than writing a
+      # partial file, which is the right behaviour and the reason this step is pinned.
+      #
+      # **The version is 18 because Neon runs 18.4, measured — not assumed (2026-08-09).** The first
+      # run of this workflow failed with `server version: 18.4 … pg_dump version: 16.14`, which is
+      # also how we learned that the project's own notes (and docker-compose.yml) still say 17: Neon
+      # upgraded under us, as a managed service will. If this step ever fails that way again, the
+      # error names both numbers — raise this one to match the server, never lower it.
+      #
+      # **And `PG_DUMP_PATH` points at the VERSIONED binary, not `/usr/bin/pg_dump`.** That was the
+      # second half of the same failure: `/usr/bin/pg_dump` is a `postgresql-common` wrapper that
+      # picks a cluster's version on its own and chose the runner's preinstalled 16 even after 18
+      # was installed beside it. Installing the right client is not the same as running it.
+      - name: Install postgresql-client-18
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-17
-          pg_dump --version
+          sudo apt-get install -y postgresql-client-18
+          /usr/lib/postgresql/18/bin/pg_dump --version
 
       # No `npm ci`: the script imports nothing outside node: builtins, on purpose. Installing the
       # whole dependency tree would put a broken lockfile between an incident and its backup.
       - name: Dump and upload
         env:
+          # The exact binary, bypassing the wrapper — see the install step above.
+          PG_DUMP_PATH: /usr/lib/postgresql/18/bin/pg_dump
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           R2_ACCOUNT_ENDPOINT: ${{ secrets.R2_ACCOUNT_ENDPOINT }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
