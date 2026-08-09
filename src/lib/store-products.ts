@@ -71,7 +71,7 @@ export interface StoreProduct {
   /** Shipping weight in whole GRAMS, absent when the seller has not stated one — and absent is not
    *  zero (lib/product-weight.ts). Collected before there is anything to price it: the carrier
    *  quotes on address + weight, so a catalogue that starts filling in today is one that does not
-   *  have to be revisited the day Sendit is connected. Already read by the ad feed's
+   *  have to be revisited the day the carrier is connected. Already read by the ad feed's
    *  `shipping_weight`. */
   weightGrams?: number;
   specs?: ProductSpec[];
