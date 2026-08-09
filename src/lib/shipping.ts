@@ -8,8 +8,16 @@
 export type DeliveryMethod = 'pickup' | 'courier' | 'pickup_point';
 
 /** Platform shipping rates in ILS — central, identical for every store. Change here to
- *  change it everywhere. Self-pickup is always free and never appears here. (Real carrier
- *  billing arrives with the courier integration — GO_LIVE §5.) */
+ *  change it everywhere. Self-pickup is always free and never appears here.
+ *
+ *  **These two numbers are placeholders, not chosen prices** (owner, 2026-08-09), and the rule
+ *  that will replace them is already fixed: **the platform does not absorb shipping cost.** The
+ *  carrier quoted a tariff that varies by pickup locality and destination, so whatever lands here
+ *  must cover the real cost — either one number high enough for the expensive case, or a function
+ *  of destination. A function is allowed: "platform-set" means the seller never prices shipping
+ *  or profits from it, not that there is exactly one number. What it would cost elsewhere —
+ *  chiefly `offerShippingDetails()` below, which publishes a single figure to Merchant Center —
+ *  is worked out in GO_LIVE §5.0.3, and no number moves before their rate table arrives. */
 export const SHIPPING_RATES = {
   courier: 30,
   pickup_point: 20,
