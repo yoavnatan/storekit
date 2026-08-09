@@ -60,13 +60,13 @@ import { fileURLToPath } from 'node:url';
  * and why its own "finds both section anchors" test exists.
  */
 /**
- * 2026-08-09, the session-workflow pass: §4 changed from "a worktree each, always" to "only when
- * another session is actually working in this tree", and the Testing rule now names the hook that
- * blocks a hand-run check. Both were paid for out of the same pass — the worktree close-out recipe
- * moved into `worktree-handoff.sh` (the hook that puts the decision in front of you) and the
- * budget bullet dropped two fragments this test already carries. 40,127 → 40,071.
+ * 2026-08-09, the session-workflow pass: the Testing rule now names the hook that blocks a hand-run
+ * check instead of explaining why not to run one, and the budget bullet dropped two fragments this
+ * file already carries (the line-vs-character history, the ~539-total argument). §4 was rewritten in
+ * the same pass and reverted in it — the re-measurement is in `one-session-per-tree.sh`.
+ * 40,127 → 39,900.
  */
-const CEILING = 40_071;
+const CEILING = 39_900;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
 
