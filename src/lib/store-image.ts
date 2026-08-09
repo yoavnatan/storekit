@@ -25,7 +25,28 @@ export type StoreImageFormat = 'logo' | 'square' | 'portrait' | 'landscape';
 
 /** The sizes external platforms actually ask for. Kept small and fixed on
  *  purpose: the fallback endpoint renders pixels per request, so the set of
- *  renderable sizes has to be a closed whitelist, not a query parameter. */
+ *  renderable sizes has to be a closed whitelist, not a query parameter.
+ *
+ *  ⚠️ WHAT THIS IS NOT, checked against the code 2026-08-09: it is not the
+ *  creative of a seller's boost campaign. **No boost carries a store-level
+ *  image.** All four boost scopes — 'product', 'products', 'categories' and
+ *  'store' — advertise PRODUCTS, and the creative is the product's own photo out
+ *  of the feed. 'store' is not a brand ad: the form tells the seller it means
+ *  every product, each auto-targeted by its own category. Three independent
+ *  confirmations, if this is ever doubted again: `ad_campaigns` (migration 0001)
+ *  has no image column at all; the boost form has no file input; and migration
+ *  0016 auto-pauses a campaign when ITS PRODUCTS have no photo, because
+ *  `image_link` is a required Merchant Center / Catalog attribute.
+ *  The only uploaded ad creative in this system is the PLATFORM's own brand
+ *  campaign (`brand-campaigns.ts`), which has an image precisely because it has
+ *  no product.
+ *
+ *  A `storeAdCreative()` helper used to live here returning all four as one set,
+ *  documented as the asset group for a "scope 'store' boost". It had no caller in
+ *  `src/` — only its own test — and the scope it named does not work that way, so
+ *  it was removed rather than left to be believed. What the map still genuinely
+ *  serves: `og:image` (`OG_IMAGE_FORMAT`), and the mark endpoint's whitelist. If a
+ *  real store-level asset group is ever needed, rebuild it against a caller. */
 export const STORE_IMAGE_FORMATS: Readonly<Record<StoreImageFormat, { width: number; height: number }>> = {
   /** Square brand slot — Merchant Center / Business Profile logo. */
   logo: { width: 512, height: 512 },
@@ -43,10 +64,13 @@ export const OG_IMAGE_FORMAT: StoreImageFormat = 'landscape';
 /** The browser's own icon slots — a store page's tab and its iOS home screen.
  *
  *  DELIBERATELY NOT IN `STORE_IMAGE_FORMATS`, and this is the reason: that map is
- *  not a list of available sizes, it is the COMPLETE set of ratios an ad asset
- *  group requires, and `storeAdCreative` submits every entry of it. A favicon
- *  added there would be offered to Google and Meta as ad creative. Same renderer,
- *  same route, different question — so, a different map. */
+ *  not a list of available sizes, it is the set of ratios an external platform
+ *  asks for, so anything added there is a candidate to be handed to Google or
+ *  Meta. A favicon is a browser icon and would be nonsense as one. Same renderer,
+ *  same route, different question — so, a different map.
+ *  (Was worded as "`storeAdCreative` submits every entry of it". That function is
+ *  gone — see the note above `STORE_IMAGE_FORMATS` — but the separation it argued
+ *  for stands on its own and is guarded in tests/store-image.test.ts.) */
 export type StoreIconFormat = 'favicon' | 'touch';
 
 export const STORE_ICON_FORMATS: Readonly<Record<StoreIconFormat, { width: number; height: number }>> = {
@@ -207,25 +231,7 @@ export function storeImageUrl(
   return src.startsWith('http') ? src : `${stripTrailingSlashes(baseUrl)}${src}`;
 }
 
-/**
- * Every store-level image asset a campaign needs, absolute, all four ratios
- * present — the shape Google Performance Max asset groups and Meta ad sets ask
- * for (a square, a landscape, a portrait, plus a logo slot).
- *
- * The point of returning the complete set unconditionally: an asset group is
- * rejected as a whole when a required ratio is missing, so a boost campaign
- * (`ad-campaigns.ts`, scope 'store') must never be in a position where it can't
- * be submitted because this particular seller skipped the upload step. There is
- * no partial state to handle — only "the seller's picture" or "the store's
- * mark", both at the exact required size.
- */
-export function storeAdCreative(
-  store: StoreImageSource,
-  baseUrl: string = platform.url,
-): Record<StoreImageFormat, string> {
-  const formats = Object.keys(STORE_IMAGE_FORMATS) as StoreImageFormat[];
-  return Object.fromEntries(formats.map((f) => [f, storeImageUrl(store, f, baseUrl)])) as Record<
-    StoreImageFormat,
-    string
-  >;
-}
+/* `storeAdCreative()` stood here and was removed 2026-08-09 — see the ⚠️ note on
+   STORE_IMAGE_FORMATS for why. Short version: it described itself as the asset
+   group for a "scope 'store' boost", no such creative exists, and it had no
+   caller. Callers that need one ratio use `storeImageUrl` directly. */

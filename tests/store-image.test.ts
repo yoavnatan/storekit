@@ -11,7 +11,6 @@ import {
   pairedImageSource,
   parseStoreImageFile,
   resolveStoreImage,
-  storeAdCreative,
   storeIconUrl,
   storeImageUrl,
   storeMarkPath,
@@ -180,21 +179,30 @@ describe('store image resolution', () => {
   });
 });
 
-describe('ad creative set', () => {
-  it('is complete and absolute for a store with no uploads at all', () => {
-    const creative = storeAdCreative({ slug: 'bella-shop' }, 'https://dezabin.co.il');
-    expect(Object.keys(creative).sort()).toEqual([...FORMATS].sort());
-    for (const url of Object.values(creative)) expect(url.startsWith('https://dezabin.co.il/')).toBe(true);
+/* The `ad creative set` block that stood here tested `storeAdCreative()`, removed
+   2026-08-09 as an orphan whose docstring misdescribed the product (no boost scope
+   carries a store-level image — see src/lib/store-image.ts). Both of its real
+   assertions survive below against `storeImageUrl`, which every remaining caller
+   actually uses: the fallback is absolute, and each ratio picks the right source. */
+describe('per-ratio image URLs', () => {
+  it('is absolute for a store with no uploads at all', () => {
+    for (const format of FORMATS) {
+      const url = storeImageUrl({ slug: 'bella-shop' }, format, 'https://dezabin.co.il');
+      expect(url.startsWith('https://dezabin.co.il/')).toBe(true);
+    }
   });
 
   it('uses the seller’s own imagery where it can, per ratio', () => {
-    const creative = storeAdCreative(
-      { slug: 'bella-shop', profileImage: CLOUDINARY, bannerImage: CLOUDINARY.replace('store', 'banner') },
-      'https://dezabin.co.il',
-    );
-    expect(creative.logo).toContain('w_512,h_512');
-    expect(creative.landscape).toContain('w_1200,h_628');
-    expect(creative.portrait).toContain('banner');
+    const store = {
+      slug: 'bella-shop',
+      profileImage: CLOUDINARY,
+      bannerImage: CLOUDINARY.replace('store', 'banner'),
+    };
+    const at = (f: StoreImageFormat) => storeImageUrl(store, f, 'https://dezabin.co.il');
+    expect(at('logo')).toContain('w_512,h_512');
+    expect(at('landscape')).toContain('w_1200,h_628');
+    // Wide/tall ratios lead with the banner, square ones with the avatar.
+    expect(at('portrait')).toContain('banner');
   });
 });
 
@@ -229,12 +237,14 @@ describe('mark URL round-trip', () => {
 
 describe('store favicon', () => {
   it('never hands an ad platform a browser icon', () => {
-    // The whole reason STORE_ICON_FORMATS is a second map: storeAdCreative submits
-    // EVERY entry of STORE_IMAGE_FORMATS as a creative, so a favicon merged in
-    // there would be offered to Google and Meta as an image to advertise with.
-    const creative = storeAdCreative({ slug: 'bella-shop' }, 'https://dezabin.co.il');
+    // The whole reason STORE_ICON_FORMATS is a second map. STORE_IMAGE_FORMATS is
+    // the set of ratios external platforms ask for, so anything merged into it is
+    // a candidate to be sent to Google or Meta — and a 64px browser icon is
+    // nonsense as one. Asserted directly against the two maps: it used to go
+    // through storeAdCreative(), which no longer exists, and the separation is
+    // what mattered rather than the helper that consumed it.
     for (const format of Object.keys(STORE_ICON_FORMATS)) {
-      expect(Object.keys(creative)).not.toContain(format);
+      expect(Object.keys(STORE_IMAGE_FORMATS)).not.toContain(format);
     }
   });
 
