@@ -15,6 +15,14 @@
  *   · `scripts/setup-claude-memory.sh` copies it BACK on a fresh machine — and never over a file
  *     that already exists, because on a machine in use the local file is newer than the snapshot.
  *
+ * `.env` is the deliberate exception, and it stays one. Backing it up alongside memory was put to
+ * the owner the same day and turned down for the better reason: every value in it can be reissued
+ * from a console, so a copy in the memory repo would buy a few minutes of convenience at the cost
+ * of a second place the secrets can leak from. What replaced it is instructions — the setup script
+ * prints the five values a fresh clone has to fill and where each one comes from. The last block
+ * here pins that they stay accurate, because a recovery note that has drifted is worse than none:
+ * it is trusted.
+ *
  * Everything here runs against local bare repos under a temp HOME. Nothing touches the real memory
  * repo, the real `~/.claude`, or the network.
  */
@@ -135,16 +143,10 @@ describe('setup-claude-memory.sh — what a fresh machine gets back', () => {
     expect(readFileSync(join(b, '.claude', 'settings.local.json'), 'utf8')).toBe(local);
   });
 
-  it('says out loud that .env is still missing — the one thing neither repo carries', () => {
-    const m = machine();
-    const b = checkout(m.root, 'machine-b');
-    expect(runSetup(b, m)).toContain('STILL MISSING: .env');
-  });
-
   it('says nothing about .env when it is already there', () => {
     const m = machine();
     const b = checkout(m.root, 'machine-b', { env: true });
-    expect(runSetup(b, m)).not.toContain('STILL MISSING');
+    expect(runSetup(b, m)).not.toContain('ONE THING LEFT');
   });
 
   it('links the harness memory path at this checkout to the memory repo', () => {
@@ -229,5 +231,55 @@ describe('.githooks/pre-push — what a push actually backs up', () => {
     runPrePush(a);
 
     expect(existsSync(join(a, '.claude-memory', 'settings.local.json.bak'))).toBe(false);
+  });
+});
+
+/**
+ * The five values a fresh clone must supply by hand.
+ *
+ * Not "the five in `.env.example`" — that file lists twenty-odd variables and all but these work
+ * empty. These are the ones without which the app cannot connect to its database or serve the
+ * flows that depend on an account, so they are what a recovery note has to name and the rest is
+ * noise on the one morning anybody reads it.
+ */
+const MUST_FILL = [
+  'DATABASE_URL',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'PUBLIC_CLOUDINARY_CLOUD_NAME',
+  'PUBLIC_CLOUDINARY_UPLOAD_PRESET',
+];
+
+describe('the .env recovery note — the part nothing restores for you', () => {
+  const example = readFileSync(fileURLToPath(new URL('../.env.example', import.meta.url)), 'utf8');
+
+  it('walks a fresh clone through it, naming every value and where it comes from', () => {
+    const m = machine();
+    const out = runSetup(checkout(m.root, 'machine-b'), m);
+
+    expect(out).toContain('ONE THING LEFT: .env');
+    expect(out).toContain('cp .env.example .env');
+    for (const key of MUST_FILL) expect(out).toContain(key);
+    // A variable name on its own sends you looking; the console name is the actual instruction.
+    for (const where of ['Neon', 'Google Cloud', 'Cloudinary']) expect(out).toContain(where);
+  });
+
+  /**
+   * The drift guard, and the reason this block exists at all. A note naming a variable the project
+   * no longer has — or silent about one it has gained — is worse than no note, because it is read
+   * exactly once, under pressure, and believed. Renaming a variable now fails here until both the
+   * script and `.env.example` are brought along.
+   */
+  it('names only variables that really exist in .env.example', () => {
+    for (const key of MUST_FILL) {
+      expect(example, `${key} is in the recovery note but not in .env.example`)
+        .toMatch(new RegExp(`^${key}=`, 'mu'));
+    }
+  });
+
+  it('puts the same list at the top of .env.example, for whoever opens the file instead', () => {
+    const header = example.slice(0, example.indexOf('# --- '));
+    expect(header).toContain('JUST CLONED');
+    for (const key of MUST_FILL) expect(header).toContain(key);
   });
 });

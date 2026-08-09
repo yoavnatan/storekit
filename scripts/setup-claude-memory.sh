@@ -89,12 +89,54 @@ else
   echo "==> Restored .claude/settings.local.json from the memory repo"
 fi
 
-# What this script CANNOT restore, said out loud rather than discovered later: `.env` is gitignored
-# and deliberately in neither repo. `.env.example` lists the keys; the values come from the Neon,
-# Google Cloud and Cloudinary consoles, or from wherever the file itself was kept.
+# 5. The one thing nothing restores, and what to do about it -------------
+#
+# `.env` is in neither repo on purpose. Backing it up alongside memory was considered on 2026-08-09
+# and turned down by the owner for the better reason: every value in it can be reissued, so storing
+# the secrets in a second place would buy convenience at the cost of a second place they can leak
+# from. Nothing here is unrecoverable — that is a property worth keeping true, and a check to make
+# before adding any new variable.
+#
+#   DATABASE_URL          Neon console → the POOLED connection string. The data lives in Neon, so
+#                         a lost URL costs the URL and nothing else.
+#   GOOGLE_CLIENT_*       Google Cloud → APIs & Services → Credentials → issue a new client secret.
+#   PUBLIC_CLOUDINARY_*   Cloudinary dashboard. Not secrets at all — they ship in the browser bundle.
+#   ADMIN_SECRET          Pick a new long random string.
+#   AUTH_SECRET           Pick a new one too, and know what it does: it signs seller session
+#                         cookies, so changing it signs every seller out. Annoying after launch,
+#                         free before it.
+#
+# So this prints where to go rather than only that something is missing — the gap between those two
+# is the whole distance between a five-minute recovery and an afternoon of guessing.
 if [ ! -f "$REPO_ROOT/.env" ]; then
-  echo ""
-  echo "==> STILL MISSING: .env — copy it across, or refill it from .env.example."
+  cat <<'ENVHELP'
+
+────────────────────────────────────────────────────────────────────────
+  ONE THING LEFT: .env
+
+  It is in no repo, on purpose. Nothing in it is lost for good — every
+  value can be reissued. Do this:
+
+    1.  cp .env.example .env
+
+    2.  Open .env and fill in five values:
+
+        DATABASE_URL              Neon console → Connection string.
+                                  Pick the POOLED one (host has "-pooler").
+
+        GOOGLE_CLIENT_ID          Google Cloud console → APIs & Services
+        GOOGLE_CLIENT_SECRET      → Credentials → your OAuth client.
+                                  Issue a new secret if you cannot see it.
+
+        PUBLIC_CLOUDINARY_CLOUD_NAME      Cloudinary dashboard.
+        PUBLIC_CLOUDINARY_UPLOAD_PRESET   Not secrets — safe to copy.
+
+    3.  npm ci && npm run dev
+
+  Everything else in .env.example is optional and can stay empty; the
+  file explains each one where it sits.
+────────────────────────────────────────────────────────────────────────
+ENVHELP
 fi
 
 echo "Done. Verify: $(head -1 "$LINK/MEMORY.md")"
