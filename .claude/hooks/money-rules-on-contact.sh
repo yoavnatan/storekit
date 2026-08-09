@@ -96,6 +96,16 @@ Vitest test in the SAME change. Stock is one statement — UPDATE ... SET stock 
 re-read the count, because the statement's opening snapshot is stale under contention and that
 number is what the buyer's page clamps to (store-products.ts#stockAfterRefusal).
 
+ONE DEFENCE IS DELIBERATELY NOT BUILT YET, and this is where its trigger has to arrive, because the
+checklist that records it is read before a LAUNCH and this item fires after one. Money is a plain
+`number` here, so agorot and shekels add together and TypeScript says nothing. Branded types would
+make that a compile error — the only layer in the standing money-defence list still missing. It was
+deferred on 2026-08-09 for one reason: unlike every other layer it is not additive, it rewrites the
+signature of every function that carries a price. TRIGGER: payments live, the payment webhook
+running, and a month of real orders with no emergency fix in the money layer. Order: lib/money.ts
+first, then the modules above, then outward. Full entry: GO_LIVE_CHECKLIST.md §3. If you are reading
+this and that trigger has passed, it is the next thing to do — do not start it before.
+
 This surface is also the security-review gate's: the Stop hook will not let the turn end until a
 review is recorded for this diff. Run the review-diff skill, fix what it finds, then
 `bash .claude/hooks/record-review.sh`.
