@@ -17,7 +17,7 @@ interface OrderFixture {
   buyerPhone: string;
   buyerAddress: { city: string; street: string; zip?: string };
   items: { productId: string; qty: number; priceAgorot: number; storeSlug: string; productName: string }[];
-  storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { type: string; value: number; appliedAgorot: number } }>;
+  storeSubtotals: Record<string, { subtotalAgorot: number; shippingAgorot: number; discount?: { type: string; value: number; appliedAgorot: number }; couponCode?: string }>;
   totalAgorot: number;
 }
 let ORDER: OrderFixture;
@@ -100,6 +100,43 @@ describe('PATCH /api/seller/orders — a partial edit touches only what it names
     expect(res.status).toBe(200);
     expect(ORDER.storeSubtotals['test-store']!.discount).toBeUndefined();
     expect(ORDER.totalAgorot).toBe(7_000); // 50 ₪ + 20 ₪, nothing off
+  });
+
+  it('clears the discount when THAT IS THE ONLY THING the seller changed', async () => {
+    // The standalone clear. It was a no-op until 2026-08-09: `discount: null` was excluded from the
+    // recalculation gate, so the endpoint answered 200, the modal showed the discount gone, and the
+    // order kept charging it. Every existing test here bundles the clear with an item delete, which
+    // is exactly why none of them saw it.
+    const res = await PATCH(ctx({ ...base, discount: null }));
+    expect(res.status).toBe(200);
+    expect(ORDER.storeSubtotals['test-store']!.discount).toBeUndefined();
+    expect(ORDER.totalAgorot).toBe(27_000); // 250 ₪ + 20 ₪, nothing off
+  });
+
+  it('drops the coupon code when the seller replaces the discount with their own', async () => {
+    // The receipt must never name a code beside a number that code did not give. A coupon and a
+    // seller's own edit share ONE order-level discount slot on purpose (migrations/0020), so the
+    // provenance has to be cleared by whoever overwrites the money — this is that rule.
+    ORDER.storeSubtotals['test-store']!.couponCode = 'SUMMER10';
+    const res = await PATCH(ctx({ ...base, discount: { type: 'amount', value: 30 } }));
+    expect(res.status).toBe(200);
+    expect(ORDER.storeSubtotals['test-store']!.couponCode).toBeUndefined();
+  });
+
+  it('drops it when the discount is cleared outright', async () => {
+    ORDER.storeSubtotals['test-store']!.couponCode = 'SUMMER10';
+    await PATCH(ctx({ ...base, discount: null }));
+    expect(ORDER.storeSubtotals['test-store']!.couponCode).toBeUndefined();
+  });
+
+  it('KEEPS it when the seller only deletes an item — the code is still what produced the number', async () => {
+    // The one case the code survives: nobody touched the discount, so its own percent is simply
+    // re-applied to the smaller basket. That IS what the coupon gave, and erasing the name here
+    // would lose the only record of which code the buyer redeemed.
+    ORDER.storeSubtotals['test-store']!.couponCode = 'SUMMER10';
+    await PATCH(ctx({ ...base, itemDeletes: ['p1'] }));
+    expect(ORDER.storeSubtotals['test-store']!.couponCode).toBe('SUMMER10');
+    expect(ORDER.storeSubtotals['test-store']!.discount).toEqual({ type: 'percent', value: 10, appliedAgorot: 500 });
   });
 
   it('still applies a discount the seller does send', async () => {

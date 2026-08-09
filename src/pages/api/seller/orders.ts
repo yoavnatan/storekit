@@ -158,10 +158,19 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     updates['sellerNotes'] = notes;
   }
 
-  // Item deletes + shipping override + discount — all require recalculating subtotals
+  // Item deletes + shipping override + discount — all require recalculating subtotals.
+  //
+  // **`null` counts, and excluding it was a live no-op (found 2026-08-09, coupon review).** The
+  // three values `discount` can take are "not mentioned" (undefined → leave it alone), an object
+  // (set it) and `null` (CLEAR it) — and the last one used to fall out of this condition, so a
+  // seller who pressed "clear discount" and changed nothing else got a 200, a UI that showed the
+  // discount gone, and an order that still carried it. Only a clear bundled with an item delete or
+  // a shipping override ever worked, which is why the existing tests all passed: every one of them
+  // sends `discount: null` alongside `itemDeletes`. `undefined` is the only value that means
+  // "untouched", and it is now the only one skipped.
   const hasOrderEdit = (Array.isArray(itemDeletes) && itemDeletes.length > 0)
     || typeof shippingOverride === 'number'
-    || (discount !== undefined && discount !== null);
+    || discount !== undefined;
 
   if (hasOrderEdit) {
     const original = existing;
@@ -230,7 +239,17 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
         }
       }
 
-      newSubtotals[storeSlug] = { ...newSubtotals[storeSlug]!, subtotalAgorot, shippingAgorot, discount: discountEntry };
+      // **The coupon code goes only where it is still TRUE.** `newSubtotals` is spread from the
+      // stored row, which carries `couponCode` when a buyer's code wrote that discount — so an
+      // untouched spread would leave the order saying "קופון: SUMMER10" beside a number the seller
+      // has just replaced with their own. It survives exactly one case: the seller changed items or
+      // shipping and did NOT name a discount, where the code's own percent is re-applied to the new
+      // base and is therefore still the thing that produced it (the `else` branch above).
+      const prior = newSubtotals[storeSlug]!;
+      const keepsCoupon = discount === undefined && !!discountEntry && !!prior.couponCode;
+      const next: StoreSubtotal = { ...prior, subtotalAgorot, shippingAgorot, discount: discountEntry };
+      if (!keepsCoupon) delete next.couponCode;
+      newSubtotals[storeSlug] = next;
     }
 
     // The same definition the seller's own card renders (order-totals.ts) — so the total this
