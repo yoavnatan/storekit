@@ -111,7 +111,6 @@ for (const s of await getVisibleStores()) {
     couponInvalid: c.couponInvalid,
     couponThrottled: c.couponThrottled,
     couponBelowMin: c.couponBelowMin,
-    couponApplied: c.couponApplied,
     couponExpired: c.couponExpired,
   })}></script>
 
@@ -436,7 +435,6 @@ for (const s of await getVisibleStores()) {
       invalid:     i18n['couponInvalid'] ?? 'הקוד אינו תקף',
       throttled:   i18n['couponThrottled'] ?? 'נסו שוב בעוד רגע',
       belowMin:    i18n['couponBelowMin'] ?? 'הקוד תקף מ-{min}',
-      applied:     i18n['couponApplied'] ?? 'הקוד הופעל',
     });
 
     function renderCart(): void {

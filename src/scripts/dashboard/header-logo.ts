@@ -39,7 +39,7 @@ const SLOT_ASPECT = SLOT_W / SLOT_H;
 export interface HeaderLogoConfig {
   cloud: string;
   preset: string;
-  labels: { upload: string; change: string; adjust: string; uploading: string; loading: string; failed: string; removingBg: string; bgFailed: string; loadFailed: string };
+  labels: { upload: string; change: string; uploading: string; loading: string; failed: string; removingBg: string; bgFailed: string; loadFailed: string };
 }
 
 function el<T extends HTMLElement>(id: string): T | null {

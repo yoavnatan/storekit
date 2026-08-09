@@ -77,7 +77,6 @@ export interface CouponStrings {
   throttled: string;
   /** "הקוד תקף מ-{min}" — `{min}` is replaced with the formatted threshold. */
   belowMin: string;
-  applied: string;
 }
 
 /**
