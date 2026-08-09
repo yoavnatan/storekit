@@ -28,7 +28,7 @@ Multi-vendor internet mall for the Israeli market. Sellers open stores; shoppers
 
 ### Israeli market — hard constraints
 - **Payments: PayMe** (decided 2026-08-09; never Stripe). **Separate Authorize/Capture was the owner's disqualifier (2026-08-07) and PayMe has it** — why it matters: `lib/payment.ts`; verified API facts: GO_LIVE §3.
-- **Shipping: ShipOS** (owner, 2026-08-09, over the older Sendit plan). An **aggregator, not a carrier**: one REST API over ~42 Israeli couriers, the contract stays ours. **Blocked on the one question only they answer — a per-shipment sender address**; we are a marketplace, the courier collects from the *seller*, and their public API has no sender field. Don't build the layer until answered: GO_LIVE §5.0.
+- **Shipping: one Israeli courier, direct** (owner, 2026-08-09) — our single business account, each shipment carrying the *seller's* pickup address. The ShipOS aggregator is plan B only: it is not a carrier (the contract is ours either way) and its API has no per-shipment sender field. Build behind an adapter, like `lib/payment.ts`; don't build until the three questions in GO_LIVE §5.0 are answered.
 - **Currency:** ILS (₪) always.
 - **Language:** Hebrew-first, RTL.
 

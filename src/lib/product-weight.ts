@@ -2,7 +2,7 @@
  * A product's shipping weight, in whole grams — one definition of what a valid one is.
  *
  * The field exists before the thing that will consume it. A carrier prices a parcel on address +
- * weight, and `total_weight` is a field on ShipOS's create-shipment call (GO_LIVE_CHECKLIST.md §5),
+ * weight, and the weight is a field on the create-shipment call (GO_LIVE_CHECKLIST.md §5),
  * so the day shipping is connected, every product without a weight is a product that cannot be
  * dispatched without a guess — and a seller with a catalogue of dozens of items is
  * being asked to revisit all of them at the worst possible moment. Collected from today, the

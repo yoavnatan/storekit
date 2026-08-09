@@ -44,7 +44,7 @@
  *
  * The old reason to wait was JSON write collisions, and a real database made that moot. The
  * trigger now is having a real external call worth retrying against — the split-payment webhook,
- * Cloudinary, the email provider, ShipOS — plus deadlock and dropped-connection retry on Postgres
+ * Cloudinary, the email provider, the courier — plus deadlock and dropped-connection retry on Postgres
  * itself, which is a different mechanism and belongs in `db.ts` beside `connectWithWakeRetry`.
  *
  * **The trap, and it is the reason this is written down rather than left to judgement: never retry
