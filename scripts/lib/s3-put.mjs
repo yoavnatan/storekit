@@ -36,7 +36,7 @@ const REQUEST_TIMEOUT_MS = 5 * 60_000;
 const ALGORITHM = 'AWS4-HMAC-SHA256';
 // R2 is region-less but SigV4 requires a region in the credential scope, and R2 accepts exactly
 // this value. Not a setting: a different string here produces a signature R2 rejects.
-export const R2_REGION = 'auto';
+const R2_REGION = 'auto';
 const SERVICE = 's3';
 
 const sha256Hex = (data) => crypto.createHash('sha256').update(data).digest('hex');

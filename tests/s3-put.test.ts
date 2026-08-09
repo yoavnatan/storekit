@@ -76,6 +76,22 @@ describe('SigV4 — pinned against AWS documented vectors', () => {
   });
 });
 
+describe('the object key', () => {
+  it('sorts chronologically as plain text and carries no colon', async () => {
+    // Both are stated properties of the name and neither is obvious from reading it. Sorting as
+    // text is what makes "the latest backup" answerable by listing the bucket, with no metadata.
+    // The colons go because S3 keys allow them and Windows filenames do not — a restore should
+    // never be blocked by which machine the file was downloaded onto.
+    const { backupKey } = await import('../scripts/backup-db.mjs');
+    const earlier = backupKey(new Date('2026-08-09T12:15:00.000Z'));
+    const later = backupKey(new Date('2026-12-01T02:00:00.000Z'));
+
+    expect(earlier).toBe('dezabin-2026-08-09T12-15-00Z.sql.gz');
+    expect(earlier < later).toBe(true);
+    expect(earlier).not.toContain(':');
+  });
+});
+
 describe('the read-back comparison', () => {
   it('agrees byte-for-byte with itself and disagrees on a single flipped byte', () => {
     // The whole verification is `sha256(sent) === sha256(readBack)`, so what has to be true is that
