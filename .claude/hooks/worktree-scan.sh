@@ -21,29 +21,14 @@
 # to ignore the report. Pushing is the push gate's job, not this one's.
 WORKTREE_BASE=main
 
-# Is a Claude session live in this worktree right now?
+# Is a Claude session live in this worktree right now? — `session_live_in`, defined ONCE in
+# review-state.sh (sourced by every caller of this file).
 #
-# The difference between "you left work behind" and "someone is typing in there" — without it the
-# report is actively wrong during the exact situation it was built for: three sessions at once, all
-# mid-task, none ready to merge (owner, 2026-08-04). one-session-per-tree.sh registers each session's
-# PID under the state dir of ITS OWN tree, keyed by a hash of the tree path (review-state.sh), so the
-# same key can be recomputed here for any other worktree. `ps -p` rather than `kill -0`, and an entry
-# older than 12h is treated as a reused PID.
-session_live_in() {
-  local tree="$1" dir pid started now
-  dir="/tmp/claude-review-state-$(printf '%s' "$tree" | shasum | cut -d' ' -f1)/sessions"
-  [ -d "$dir" ] || return 1
-  now=$(date +%s)
-  for entry in "$dir"/*; do
-    [ -e "$entry" ] || continue
-    pid="$(basename "$entry")"
-    started="$(cat "$entry" 2>/dev/null || echo 0)"
-    ps -p "$pid" -o pid= >/dev/null 2>&1 || continue
-    [ $((now - started)) -gt 43200 ] && continue
-    return 0
-  done
-  return 1
-}
+# It is the difference between "you left work behind" and "someone is typing in there", without
+# which the report is actively wrong during the exact situation it was built for: three sessions at
+# once, all mid-task, none ready to merge (owner, 2026-08-04). It used to live here with its own
+# copy of the rule, which is how it came to disagree with one-session-per-tree.sh — the answer moved
+# to activity (2026-08-09) and a second copy would still be answering "the PID exists".
 
 # Every linked worktree's path, one per line. `--porcelain` is the only stable form: a path may
 # contain spaces (this repo lives under one) and the human format cannot be parsed for them. Read in

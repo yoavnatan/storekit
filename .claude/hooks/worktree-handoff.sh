@@ -12,6 +12,12 @@
 # AI_INSTRUCTIONS §4 is explicit that it is the owner's. So it speaks, once, at the moment the
 # decision is actually in front of somebody.
 #
+# CLOSING A WORKTREE OUT IS THE SESSION'S CALL, NOT A QUESTION FOR THE OWNER (owner, 2026-08-05 —
+# moved here from AI_INSTRUCTIONS §4 on 2026-08-09, because this hook is what puts the decision in
+# front of you). When the task is done and `npm run verify -- --all` is green: merge main IN, then
+# fast-forward main, confirm `git log main..<branch>` is empty, and remove the tree. Never push from
+# a worktree (memory `project_prepush_hook_wiped_worktree`), and never leave one LIVE or ORPHANED.
+#
 # Two different things get said, and conflating them is what made the start-of-session report easy
 # to skim past:
 #   • THIS tree — you are the session that is leaving. Say what is unmerged and what it would take.
@@ -50,7 +56,14 @@ session_dir_for() {
   printf '/tmp/claude-review-state-%s/sessions' "$(printf '%s' "$1" | shasum | cut -d' ' -f1)"
 }
 my_dir="$(session_dir_for "$here")"
-mkdir -p "$my_dir" 2>/dev/null && date +%s > "$my_dir/$PPID" 2>/dev/null || true
+# Line 1 is last-seen, line 2 is this session's transcript path — the two things `session_live_in`
+# reads (review-state.sh). Line 2 is CARRIED, not dropped: SessionStart is what knows the transcript
+# path, so overwriting the file with a bare timestamp would leave a session that is mid-command —
+# no Stop for twenty minutes — looking idle to the next session, which is the deadlock this pair of
+# hooks exists to prevent.
+mkdir -p "$my_dir" 2>/dev/null || true
+prev_transcript="$(sed -n 2p "$my_dir/$PPID" 2>/dev/null || echo '')"
+printf '%s\n%s\n' "$(date +%s)" "$prev_transcript" > "$my_dir/$PPID" 2>/dev/null || true
 while IFS= read -r other; do
   [ -n "$other" ] && [ "$other" != "$here" ] && rm -f "$(session_dir_for "$other")/$PPID" 2>/dev/null
 done <<EOF

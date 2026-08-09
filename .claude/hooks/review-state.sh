@@ -48,3 +48,47 @@ diff_fingerprint() {
 touches_sensitive() {
   changed_files | grep -Eq "$SENSITIVE_RE"
 }
+
+# ── Is another session LIVE in a tree? ───────────────────────────────────────────────────────────
+#
+# One definition, because three hooks ask the question and a disagreement between them is a silent
+# wrong answer: one-session-per-tree.sh (should I move to a worktree?), worktree-scan.sh /
+# worktree-handoff.sh (is somebody working in that tree, or is it forgotten?).
+#
+# A session registers `$STATE_DIR/sessions/<pid>` holding a last-seen timestamp on line 1 and, when
+# it is known, its transcript path on line 2. Live means the process is alive AND one of those two
+# moved within SESSION_IDLE_SECS — a Stop-hook heartbeat every turn, or the transcript itself, which
+# a working session appends to continuously. Before 2026-08-09 the only question was whether the PID
+# existed, and in VS Code a tab left open is a live `claude` process for days: the check fired on
+# every session in the repo and each one paid ~2.5 min for a worktree it did not need.
+# 15 minutes: a working session stamps itself at every turn end and appends to its transcript on
+# every tool result, so seconds would do — the slack is for a long build or a user reading. Raise it
+# and idle tabs come back; lower it and a session waiting on a slow command reads as gone.
+SESSION_IDLE_SECS=900
+
+session_last_seen() {
+  local entry="$1" stamp transcript mt
+  stamp="$(sed -n 1p "$entry" 2>/dev/null || echo 0)"
+  case "$stamp" in (*[!0-9]*|'') stamp=0 ;; esac
+  transcript="$(sed -n 2p "$entry" 2>/dev/null || echo '')"
+  if [ -n "$transcript" ] && [ -f "$transcript" ]; then
+    mt="$(stat -f %m "$transcript" 2>/dev/null || stat -c %Y "$transcript" 2>/dev/null || echo 0)"
+    [ "$mt" -gt "$stamp" ] 2>/dev/null && stamp="$mt"
+  fi
+  printf '%s' "$stamp"
+}
+
+# 0 = a session is live in $1 (a working-tree path). Never prunes: this is the read-only question.
+session_live_in() {
+  local dir entry pid now
+  dir="/tmp/claude-review-state-$(printf '%s' "$1" | shasum | cut -d' ' -f1)/sessions"
+  [ -d "$dir" ] || return 1
+  now=$(date +%s)
+  for entry in "$dir"/*; do
+    [ -e "$entry" ] || continue
+    pid="$(basename "$entry")"
+    ps -p "$pid" -o pid= >/dev/null 2>&1 || continue
+    [ $((now - $(session_last_seen "$entry"))) -le "$SESSION_IDLE_SECS" ] && return 0
+  done
+  return 1
+}
