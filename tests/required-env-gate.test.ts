@@ -28,6 +28,17 @@ function runGate(env: Record<string, string>): { code: number; err: string } {
   }
 }
 
+/**
+ * Every gate assertion spawns `node`, and that is why these five carry an explicit timeout.
+ * The work itself is milliseconds; what varies is how long the OS takes to start a process when
+ * the machine is saturated — three worktrees running `verify` at once is a normal afternoon here,
+ * and under that load a spawn was measured at 30s+, which tripped the 30s project-wide default
+ * and failed a test whose subject had not changed. A timeout on a process spawn is a statement
+ * about the machine, not about the gate, so it is set where it cannot be mistaken for a
+ * performance assertion. Re-running the file alone passes every time; that is the tell.
+ */
+const SPAWN_TIMEOUT_MS = 120_000;
+
 const REAL = {
   AUTH_SECRET: 'a'.repeat(64),
   ADMIN_SECRET: 'b'.repeat(64),
@@ -37,14 +48,14 @@ const REAL = {
 describe('the production start gate', () => {
   it('passes with every required value set', () => {
     expect(runGate(REAL).code).toBe(0);
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   it('refuses to start when a secret is missing, and names it', () => {
     const { code, err } = runGate({ ADMIN_SECRET: REAL.ADMIN_SECRET, DATABASE_URL: REAL.DATABASE_URL });
     expect(code).toBe(1);
     expect(err).toContain('AUTH_SECRET');
     expect(err).not.toContain('ADMIN_SECRET is');
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   it('refuses to start with no database, now that accounts are read from one', () => {
     // Since DB_MIGRATION_PLAN.md §8 stage 2 began, a server with no DATABASE_URL boots looking
@@ -53,7 +64,7 @@ describe('the production start gate', () => {
     const { code, err } = runGate({ AUTH_SECRET: REAL.AUTH_SECRET, ADMIN_SECRET: REAL.ADMIN_SECRET });
     expect(code).toBe(1);
     expect(err).toContain('DATABASE_URL');
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   it('refuses the public dev defaults, not just an empty value', () => {
     // The whole point of the guard: shipping with a secret that is a literal in this repo lets
@@ -62,11 +73,11 @@ describe('the production start gate', () => {
     expect(code).toBe(1);
     expect(err).toContain('AUTH_SECRET');
     expect(err).toContain('ADMIN_SECRET');
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   it('treats a blank value as missing', () => {
     expect(runGate({ AUTH_SECRET: '', ADMIN_SECRET: '', DATABASE_URL: '' }).code).toBe(1);
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   it('is wired as prestart, and start serves the BUILD rather than the dev server', () => {
     // `start` used to be an alias for `astro dev` — the command a host runs by default — where
