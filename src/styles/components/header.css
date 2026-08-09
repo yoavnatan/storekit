@@ -756,6 +756,23 @@ nav a:hover { color: var(--color-text); }
    so stores with no logo had their badge pushed 4px down and stores with one did
    not. Two stores, two vertical positions, from a selector that looked harmless. */
 .site-header .dz-logo { transform: translateY(0.113em); }
+/* RE-MEASURED 2026-08-09 when the store name moved to Noto Serif, and deliberately
+   NOT changed. The obvious expectation was that a value bisected against Heebo's
+   metrics would be wrong for another family — that is the class of bug the note at
+   the top of main.css exists for — so it was measured rather than assumed: the real
+   built stylesheet, the real lockup, screenshotted at DPR 2 and the ink scanned out
+   of the raster. Offset of the name's ink centre from the 32px avatar's centre,
+   Heebo → Noto Serif: descenderless -2.00 → -1.50px, with a descender -3.00 →
+   -3.75px, Latin -2.50 → -2.00px.
+   Under 1px either way, and the two Hebrew cases move in OPPOSITE directions — so
+   there is no correction that improves both, and any value fitted to one of them is
+   fitted to noise (the measurement's own avatar-edge detection is ±1px, the same
+   order as the differences). The compromise this value already is for Heebo is the
+   same compromise for Noto Serif.
+   The happy consequence, and the reason this is worth the paragraph: `font-display:
+   optional` means a cold first visit can paint the name in Heebo instead. One value
+   that serves both families is the only version of this rule that is right in that
+   frame too. Do not "fix" it for one font. */
 .site-header .store-name-text { transform: translateY(0.095em); }
 
 /* THE HEADER HAS ONE BOTTOM LINE — the 1px --color-border above, on every page,
@@ -790,8 +807,20 @@ nav a:hover { color: var(--color-text); }
    on this site is 1px --color-border. The header being the one exception was the
    original complaint. */
 
-/* Inner text span — ellipsis when name is too long. */
+/* Inner text span — ellipsis when name is too long, and the one place in the
+   header that wears the display face.
+   It goes on the SPAN, not on `.store-name-link` and never on `.logo`: `.logo` is
+   shared with the platform wordmark (BrandLogo), whose drawn underline is solved
+   against Heebo's glyph widths at three measured values. A family change up there
+   is not a font change, it is a re-measure of the lockup.
+   font-weight overrides `.logo`'s 800 for the same reason `.store-name` in
+   store.css sits at 700 — Noto Serif's heavy cuts thicken the serifs until the
+   counters start to close, and at 1.3rem beside a 32px avatar that reads as mud.
+   Inheritance loses to any declared value on the element, so `.logo`'s 800 on the
+   parent does not need out-specifying here. */
 .store-name-text {
+  font-family: var(--font-display);
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -183,25 +183,50 @@ body:has(.site-header.is-stuck) .store-banner {
 }
 
 
+/* THE BANNER IS THREE STEPS, NOT TWO (reworked 2026-08-09, owner: the name is
+   "בסיסי מדי", the tagline and description "אפורים מדי, קטנים מדי").
+   Both paragraphs used to be --color-muted at 0.95rem and 0.9rem — close enough
+   in size that they read as ONE grey block of caption text under a big black
+   name. Two steps, and the second one looked like a footnote.
+   The tagline is not a caption: it is the second half of the store's own
+   sentence, the line the seller wrote to say what the shop IS. It gets
+   --color-text and real size. The description stays muted BECAUSE the tagline
+   no longer is — the grey is what now makes it legible as the third step rather
+   than more of the same.
+   The greys were never a contrast failure (--color-muted is ~6.4:1 on
+   --color-bg); this was hierarchy, so nothing here trades away accessibility. */
 .store-name {
+  font-family: var(--font-display);
   font-size: clamp(1.75rem, 5vw, 2.75rem);
-  font-weight: 800;
+  /* 700, down from 800: Noto Serif's heaviest cuts thicken the serifs until the
+     counters in ם/ס/ט start to close at banner size. The face carries authority
+     from its contrast, not from weight — the extra 100 was Heebo compensating. */
+  font-weight: 700;
   color: var(--color-text);
   margin: 0;
-  letter-spacing: -0.03em;
+  /* Was -0.03em, tuned for Heebo's geometric sans. A serif needs the space its
+     serifs occupy — at -0.03em adjacent letters touch. -0.01em keeps the name
+     tight without collision. */
+  letter-spacing: -0.01em;
   line-height: 1.1;
 }
 
 .store-tagline {
   margin: 0.5rem 0 0;
-  font-size: 0.95rem;
-  color: var(--color-muted);
-  line-height: 1.5;
+  font-size: clamp(1rem, 2.2vw, 1.15rem);
+  font-weight: 500;
+  color: var(--color-text);
+  line-height: 1.45;
 }
 
+/* Step three. Stays --color-muted — see the note above .store-name: the grey is
+   what separates it from the tagline now that the tagline is --color-text, so
+   darkening this too would collapse the hierarchy back into two steps. Only the
+   size moves, 0.9 → 0.95rem, because 0.9rem was below the site's own body size
+   for what is a paragraph of the seller's prose. */
 .store-desc {
   margin: 0.5rem 0 0;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   line-height: 1.65;
   color: var(--color-muted);
 }
