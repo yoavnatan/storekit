@@ -34,13 +34,20 @@ on:
     #
     # Nothing here is close to a limit, so weekly was buying nothing and costing six days.
     #
-    # **What daily does introduce is a bucket that grows forever**, which is the same shape this
-    # project just spent a session fixing in the database. It is not urgent — the arithmetic above
-    # is decades at the current size, and dumps compress with the data — but it is not self-solving
-    # either, because the dump grows with the catalogue. The fix when it matters is an R2 lifecycle
-    # rule (Cloudflare dashboard → the bucket → Object lifecycle rules → delete after N days), not
-    # code here: expiry belongs to the store, and a deleting backup script is one bug away from
-    # being the disaster it exists to prevent.
+    # **Nothing deletes old dumps, and that is the decision rather than an oversight to fix later.**
+    # It was first written down here as a future task, which was wrong twice over and is worth
+    # correcting in place: the "decades of headroom" figure came from today's 825 KB dump, and the
+    # dump grows with the catalogue. Recomputed at the target scale of ~1000 sellers, roughly 20×
+    # today, it is 5.6 GB a year — past the 10 GB free tier inside two years, not decades.
+    #
+    # Which turns out to settle it in the opposite direction, because the overage price is
+    # $0.015/GB-month: two years costs $0.02 a month, five years $0.27, ten years $0.69. Keeping
+    # every dump this project ever takes, forever, is cheaper than the meeting about deleting them.
+    #
+    # So: no lifecycle rule, no cleanup job, and no line in GO_LIVE. If a reason ever appears to
+    # bound it, the fix is a lifecycle rule on the bucket (Cloudflare dashboard → Object lifecycle
+    # rules) and NOT code here — a backup script that deletes things is one bug away from deleting
+    # backups, which is the failure this whole file exists to prevent.
     - cron: '17 2 * * *'
   # So the first run — and every restore drill — is a button rather than a week of waiting.
   workflow_dispatch:
