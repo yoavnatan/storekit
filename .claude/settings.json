@@ -81,6 +81,12 @@
             "command": "bash .claude/hooks/worktree-handoff.sh",
             "timeout": 15,
             "statusMessage": "Checking what this session leaves behind..."
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/memory-backup-age.sh",
+            "timeout": 15,
+            "statusMessage": "Checking when memory last reached GitHub..."
           }
         ]
       }
