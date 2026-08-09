@@ -1,4 +1,5 @@
 import { openCropModal } from './crop-modal.js';
+import { busyButton } from './btn-busy.js';
 import { cloudinaryUpload } from './cloudinary.js';
 import { cdnSrc } from '../../config/store.config.js';
 import { showErrorToast } from '../../lib/toast.js';
@@ -115,20 +116,13 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
   /** Swap a button into a busy state and hand back the undo — one place, so no path can
    *  leave a button disabled or wearing a spinner after it finished. The label carries
    *  `[data-busy-label]` so a long-running caller can rewrite it in place with progress. */
-  function busy(btn: HTMLButtonElement, label: string): () => void {
-    const before = btn.innerHTML;
-    const wasDisabled = btn.disabled;
-    btn.disabled = true;
-    btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em"><span data-busy-label>${label}</span><span class="dot-pulse" role="status" aria-label="${label}"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
-    return () => { btn.disabled = wasDisabled; btn.innerHTML = before; };
-  }
 
   /** Upload one crop and adopt it as the image. The seller is told when it fails: the upload
    *  layer already produces a sentence they can act on ("the file is too large", "unsupported
    *  format"), and this widget used to read it off the wire and drop it — leaving a button that
    *  went back to normal with nothing changed and nothing said. */
   async function commitCrop(croppedBlob: Blob, btn: HTMLButtonElement): Promise<boolean> {
-    const done = busy(btn, cfg.labels.uploading);
+    const job = busyButton(btn, cfg.labels.uploading);
     try {
       hiddenInput!.value = await cloudinaryUpload(croppedBlob, cfg.cloud, cfg.preset);
       announceValueChange(hiddenInput!);
@@ -137,7 +131,7 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
       showErrorToast(cfg.labels.failed, err instanceof Error ? err.message : '');
       return false;
     } finally {
-      done();
+      job.done();
       render();
     }
   }
@@ -181,7 +175,7 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
     // `cdnSrc` derivative — re-framing a 200px preview would throw away the resolution the
     // storefront is about to ask for.
     const url = sourceInput?.value || hiddenInput!.value;
-    const done = busy(btn, cfg.labels.loading);
+    const job = busyButton(btn, cfg.labels.loading);
     try {
       // **`outboundFetch`, for the deadline.** This is a GET to Cloudinary, and a bare `fetch` here
       // had no way to end: the CDN accepting the connection and then not answering left this button
@@ -202,7 +196,7 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
       // a picture that is already fine.
       showErrorToast(cfg.labels.loadFailed);
       return null;
-    } finally { done(); }
+    } finally { job.done(); }
   }
 
   uploadBtn.addEventListener('click', () => fileInput.click());
@@ -244,20 +238,16 @@ export function initStoreImageWidget(cfg: StoreImageWidgetConfig): void {
       if (!removeBg) return;
       const blob = await ensureSourceBlob(removeBg);
       if (!blob) return;
-      const done = busy(removeBg, cfg.labels.removingBg);
-      const label = removeBg.querySelector<HTMLElement>('[data-busy-label]');
-      const baseText = cfg.labels.removingBg.replace(/[.…]+$/, '');
+      const job = busyButton(removeBg, cfg.labels.removingBg);
       let cutout: Blob;
       try {
         // A live percentage, because this is the one action in the widget that can take tens of
         // seconds: the first run also downloads the model, so a blind wait reads as a hang.
-        cutout = await removeBackgroundInWorker(blob, (p) => {
-          if (label) label.textContent = `${baseText} ${Math.round(p * 100)}%`;
-        });
+        cutout = await removeBackgroundInWorker(blob, (p) => job.setProgress(p));
       } catch (err) {
         showErrorToast(cfg.labels.bgFailed, err instanceof Error ? err.message : '');
         return;
-      } finally { done(); }
+      } finally { job.done(); }
       // Straight into the crop tool: the cutout has different edges than the photo it came from,
       // so the framing the seller chose for the original is no longer the framing they want.
       adoptPhoto(cutout, removeBg);

@@ -1,0 +1,35 @@
+---
+/** The two image-action icons, in one place because they appear on five buttons across two widgets
+ *  (banner, avatar, header logo) and five hand-copied SVGs is five chances to drift.
+ *
+ *  Both follow the site's icon rules: inline SVG, `currentColor`, `aria-hidden` — the button's own
+ *  text is the accessible name, so the icon must not announce itself a second time. 13px matches
+ *  the other icons that sit inside a `.btn--sm`, and `.btn`'s own `gap: 0.4rem` does the spacing,
+ *  so nothing here positions anything.
+ *
+ *  `adjust` is the crop frame — two overlapping rules, the universal mark for "reframe this", and
+ *  the same gesture the tool it opens actually performs.
+ *  `bg` is a wand with a spark. Deliberately NOT scissors: scissors say "cut a piece out", and this
+ *  action removes the backdrop and keeps the subject whole, which is the opposite promise.
+ */
+interface Props {
+  name: 'adjust' | 'bg';
+}
+const { name } = Astro.props;
+---
+
+{name === 'adjust' ? (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+    <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+  </svg>
+) : (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M15 4V2" /><path d="M15 16v-2" />
+    <path d="M8 9h2" /><path d="M20 9h2" />
+    <path d="M17.8 11.8 19 13" /><path d="M17.8 6.2 19 5" />
+    <path d="m3 21 9-9" /><path d="M12.2 6.2 11 5" />
+  </svg>
+)}

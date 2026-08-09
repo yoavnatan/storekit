@@ -11,6 +11,7 @@ import TabHint from '../../components/dashboard/TabHint.astro';
 import InfoTip from '../../components/dashboard/InfoTip.astro';
 import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
 import HeaderStyleCard from '../../components/dashboard/HeaderStyleCard.astro';
+import ImageActionIcon from '../../components/dashboard/ImageActionIcon.astro';
 import BoostFormFields from '../../components/dashboard/BoostFormFields.astro';
 import CampaignHistory from '../../components/dashboard/CampaignHistory.astro';
 import StaleDataBar from '../../components/dashboard/StaleDataBar.astro';
@@ -2402,7 +2403,7 @@ const orderStatusColors: Record<string, string> = {
             </div>
             <div class="flex gap-2" style="margin-top:1.1rem">
               <button type="button" class="btn btn--sm btn--ghost" id="banner-upload-btn">{store.bannerImage ? d.storeImageChange : d.uploadImage}</button>
-              <button type="button" class="btn btn--sm btn--ghost" id="banner-adjust-btn" hidden={!store.bannerImage}>{d.adjustImage}</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="banner-adjust-btn" hidden={!store.bannerImage}><ImageActionIcon name="adjust" />{d.adjustImage}</button>
               <button type="button" class="btn btn--sm btn--ghost" id="banner-remove-btn" hidden={!store.bannerImage}>{d.removeImage}</button>
             </div>
             <input type="file" accept="image/*" id="banner-file-input" hidden />
@@ -2437,12 +2438,12 @@ const orderStatusColors: Record<string, string> = {
                 "remove background" was added, and four ghost buttons do not fit a 375px column. */}
             <div class="flex flex-wrap gap-2" style="margin-top:1.1rem">
               <button type="button" class="btn btn--sm btn--ghost" id="avatar-upload-btn">{store.profileImage ? d.storeImageChange : d.uploadImage}</button>
-              <button type="button" class="btn btn--sm btn--ghost" id="avatar-adjust-btn" hidden={!store.profileImage}>{d.adjustImage}</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="avatar-adjust-btn" hidden={!store.profileImage}><ImageActionIcon name="adjust" />{d.adjustImage}</button>
               {/* Logo only. The products tab has offered this since the gallery was built, and the
                   logo is where it matters most: this image is drawn on a white card, inside a
                   circle and in a browser tab, so a photo's own backdrop shows up as a grey plate
                   around the mark. The banner deliberately has no such button — it IS a background. */}
-              <button type="button" class="btn btn--sm btn--ghost" id="avatar-bg-btn" hidden={!store.profileImage}>{d.removeBackground}</button>
+              <button type="button" class="btn btn--sm btn--ghost" id="avatar-bg-btn" hidden={!store.profileImage}><ImageActionIcon name="bg" />{d.removeBackground}</button>
               <button type="button" class="btn btn--sm btn--ghost" id="avatar-remove-btn" hidden={!store.profileImage}>{d.removeImage}</button>
             </div>
             <input type="file" accept="image/*" id="avatar-file-input" hidden />

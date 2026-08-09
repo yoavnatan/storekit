@@ -18,14 +18,13 @@ import { isValidIdempotencyKey } from '../src/lib/checkout-idempotency.js';
 type Cryptoish = { randomUUID?: () => string; getRandomValues?: (a: Uint8Array) => Uint8Array };
 
 /** Minimal sessionStorage, so the persistence behaviour is exercised rather than stubbed away. */
-function installStorage(): Map<string, string> {
+function installStorage(): void {
   const map = new Map<string, string>();
   vi.stubGlobal('sessionStorage', {
     getItem: (k: string) => map.get(k) ?? null,
     setItem: (k: string, v: string) => void map.set(k, v),
     removeItem: (k: string) => void map.delete(k),
   });
-  return map;
 }
 
 function withCrypto(c: Cryptoish | undefined): void {

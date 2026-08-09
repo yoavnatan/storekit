@@ -22,6 +22,7 @@
  *  Header.astro, so a logo that fits here fits there.
  */
 import StoreAvatar from './../StoreAvatar.astro';
+import ImageActionIcon from './ImageActionIcon.astro';
 import { cdnContain } from '../../config/store.config.js';
 import type { Store } from '../../lib/stores.js';
 import type { getT } from '../../i18n/index.js';
@@ -100,10 +101,10 @@ const CAPTION = 'block text-[0.85rem] font-semibold mb-1.5 text-start';
         the avatar already offer. The crop frame here is the header slot's ratio and it opens
         CONTAINED (crop-modal.ts `fit`), so the seller's first view is their whole logo sitting in
         the bar, not a wordmark already cut at both ends. */}
-    <button type="button" class="btn btn--sm btn--ghost" id="header-logo-adjust-btn" hidden={!store.headerLogo}>{d.adjustImage}</button>
+    <button type="button" class="btn btn--sm btn--ghost" id="header-logo-adjust-btn" hidden={!store.headerLogo}><ImageActionIcon name="adjust" />{d.adjustImage}</button>
     {/* Offered for the same reason the avatar offers it: a logo lands on the header's own surface,
         so a photo's white backdrop shows up as a plate around the mark. */}
-    <button type="button" class="btn btn--sm btn--ghost" id="header-logo-bg-btn" hidden={!store.headerLogo}>{d.removeBackground}</button>
+    <button type="button" class="btn btn--sm btn--ghost" id="header-logo-bg-btn" hidden={!store.headerLogo}><ImageActionIcon name="bg" />{d.removeBackground}</button>
     <button type="button" class="btn btn--sm btn--ghost" id="header-logo-remove-btn" hidden={!store.headerLogo}>{d.removeImage}</button>
   </div>
   <p class="muted m-0 mt-2 text-[0.76rem]">{d.headerStyleLogoTip}</p>

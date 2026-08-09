@@ -15,6 +15,7 @@
 // image because a contained crop discards nothing.
 
 import { openCropModal } from './crop-modal.js';
+import { busyButton, type BusyButton } from './btn-busy.js';
 import { cloudinaryUpload } from './cloudinary.js';
 import { removeBackgroundInWorker, warmBgWorker } from './bg-worker.js';
 import { cdnContain } from '../../config/store.config.js';
@@ -101,20 +102,18 @@ export function initHeaderLogoCard(cfg: HeaderLogoConfig): void {
     sync();
   };
 
-  /** Run `job` with the button showing what is happening, and put the button back whatever
-   *  happens — including on the throw, which is the case a bare try/finally-less version loses. */
-  const busy = async (btn: HTMLButtonElement, label: string, job: () => Promise<void>): Promise<void> => {
-    const original = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = label;
+  /** Run `work` with the button in the shared in-flight state — dots, `cursor: progress`, and a
+   *  live percentage for whoever reports one — and put it back whatever happens, including on the
+   *  throw, which is the case a version without `finally` loses. */
+  const busy = async (btn: HTMLButtonElement, label: string, work: (job: BusyButton) => Promise<void>): Promise<void> => {
+    const job = busyButton(btn, label);
     try {
-      await job();
+      await work(job);
     } catch (err) {
       showErrorToast(err instanceof Error ? err.message : cfg.labels.failed);
     } finally {
-      btn.disabled = false;
-      btn.textContent = original;
-      // `sync` owns the upload button's own label, so restoring `original` above would put back a
+      job.done();
+      // `sync` owns the upload button's own label, so the restore above would otherwise put back a
       // stale "העלאה" after the first successful upload.
       sync();
     }
@@ -149,8 +148,10 @@ export function initHeaderLogoCard(cfg: HeaderLogoConfig): void {
   bgBtn?.addEventListener('click', () => {
     const url = hidden.value.trim();
     if (!url) return;
-    void busy(bgBtn, cfg.labels.removingBg, async () => {
-      const cutout = await removeBackgroundInWorker(await storedBlob(url));
+    void busy(bgBtn, cfg.labels.removingBg, async (job) => {
+      // A live percentage: the first run also downloads the model, so a blind wait of tens of
+      // seconds reads as a hang rather than as work.
+      const cutout = await removeBackgroundInWorker(await storedBlob(url), (p) => job.setProgress(p));
       write(await cloudinaryUpload(cutout, cfg.cloud, cfg.preset));
     });
   });
