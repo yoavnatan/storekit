@@ -20,6 +20,7 @@ import type { Store } from '../../lib/stores.js';
 import type { StoreCategory } from '../../lib/store-categories.js';
 import type { getT } from '../../i18n/index.js';
 import InfoTip from './InfoTip.astro';
+import CouponsCard from './CouponsCard.astro';
 import { jsonForScript } from '../../lib/json-script.js';
 
 interface Props {
@@ -215,3 +216,8 @@ const discounted = products
       </ul>
     )}
 </div>
+
+{/* Third card, last: the two above are levers on the PUBLISHED price and belong together; a
+    coupon is the one promotion the storefront never shows, so it reads as a separate idea rather
+    than a third variation of the same one. */}
+<CouponsCard storeId={store.id} d={d} />

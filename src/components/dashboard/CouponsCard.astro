@@ -1,0 +1,104 @@
+---
+/** Seller dashboard → "מבצעים" tab, third card. Display shell only; everything that moves lives in
+ *  scripts/dashboard/coupons.ts.
+ *
+ *  **A card in the existing tab, not a tab of its own.** A coupon is a promotion, it sits beside
+ *  the two levers the seller already reasons about here, and a fourth dashboard tab for one
+ *  feature is the kind of growth that makes a dashboard hard to learn. The card is the unit this
+ *  tab is already built out of.
+ *
+ *  The list is fetched when the tab first opens rather than rendered here, so a seller who never
+ *  runs a coupon pays nothing for it on every dashboard load (memory `project_dashboard_html_weight`).
+ *  The form below starts hidden and is the SAME form for creating and editing — a second markup
+ *  block for "edit" is how the two would end up validating differently.
+ */
+import InfoTip from './InfoTip.astro';
+import { COUPON_CODE_MAX } from '../../lib/coupons.js';
+import { MAX_COUPON_AMOUNT, MAX_COUPON_USES } from '../../lib/coupon-input.js';
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  storeId: string;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { storeId, d } = Astro.props;
+---
+
+<div class="card card--flat p-4 md:p-5 mt-4" id="coupons-card" data-store-id={storeId}>
+  <div class="flex items-start justify-between gap-3 flex-wrap">
+    <div>
+      <h3 class="text-[1.05rem] font-bold m-0 flex items-center gap-1.5">
+        {d.couponsTitle}
+        <InfoTip text={d.couponsTip} />
+      </h3>
+      <p class="muted m-0 mt-1 text-[0.82rem]">{d.couponsHint}</p>
+    </div>
+    <button type="button" class="btn btn--sm shrink-0" id="coupon-add-btn">{d.couponAdd}</button>
+  </div>
+
+  {/* The editor. One form for new and existing — `data-coupon-id` is the only difference, and it
+      is what the save handler reads to decide create vs update. */}
+  <form id="coupon-form" class="mt-4 hidden" hidden>
+    <div class="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr]">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.couponCode}</span>
+        {/* `dir="ltr"` and upper-cased on the way in: the code is an ASCII token on an RTL page,
+            and left to inherit it renders with its punctuation on the wrong side. */}
+        <input class="input uppercase" name="code" id="coupon-code" dir="ltr" autocomplete="off"
+               spellcheck="false" maxlength={COUPON_CODE_MAX} placeholder={d.couponCodePlaceholder} required />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.couponKind}</span>
+        <select class="input" name="kind" id="coupon-kind">
+          <option value="percent">{d.couponKindPercent}</option>
+          <option value="amount">{d.couponKindAmount}</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.couponValue}</span>
+        <input class="input" name="value" id="coupon-value" type="number" min="1" max={MAX_COUPON_AMOUNT} step="1" required />
+      </label>
+    </div>
+
+    {/* Everything below is optional, and it is separated from the three fields above for that
+        reason alone: a seller must be able to publish a working code after filling in a code and a
+        number (memory `feedback_seller_form_burden`). */}
+    <div class="grid gap-4 md:grid-cols-2 mt-1">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.couponMinSubtotal}</span>
+        <input class="input" name="minSubtotal" id="coupon-min" type="number" min="0" step="1" placeholder="0" />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.couponMaxUses}</span>
+        <input class="input" name="maxUses" id="coupon-uses" type="number" min="1" max={MAX_COUPON_USES} step="1" />
+      </label>
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-2">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.couponStarts}</span>
+        <input class="input" name="startsAt" id="coupon-starts" type="date" />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.couponEnds}</span>
+        <input class="input" name="endsAt" id="coupon-ends" type="date" />
+      </label>
+    </div>
+    <p class="muted m-0 -mt-2 mb-3 text-[0.76rem]">{d.saleDatesHint}</p>
+
+    <label class="flex items-center gap-2 text-[0.85rem] cursor-pointer mb-3">
+      <input type="checkbox" name="active" id="coupon-active" checked style="width:16px;height:16px;cursor:pointer" />
+      {d.couponActive}
+    </label>
+
+    <p class="hidden text-sm [color:var(--color-danger)] mb-3" id="coupon-error" role="alert"></p>
+
+    <div class="flex items-center gap-2">
+      <button type="submit" class="btn btn--sm btn--accent" id="coupon-save-btn">{d.couponSave}</button>
+      <button type="button" class="btn btn--ghost btn--sm" id="coupon-cancel-btn">{d.couponCancel}</button>
+    </div>
+  </form>
+
+  <ul role="list" class="list-none m-0 mt-4 p-0 flex flex-col gap-1.5" id="coupon-list"></ul>
+  <p class="muted m-0 mt-2 text-[0.85rem]" id="coupon-empty" hidden>{d.couponsEmpty}</p>
+</div>
