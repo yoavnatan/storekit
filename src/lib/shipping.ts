@@ -55,6 +55,13 @@ export function normalizeDeliveryMethod(method: unknown, offersSelfPickup: boole
  * a merchant listing states the cost of getting it to the buyer's address, and quoting the
  * cheaper method as the shipping cost would understate what most shoppers pay.
  *
+ * **If the rate ever becomes zone-based, publish the HIGHEST one here.** Google documents a single
+ * shipping figure for a product's structured data (per-region rates live in Merchant Center's own
+ * account-level regions, which in Israel are defined by district, not postal code — checked against
+ * their docs 2026-08-09, GO_LIVE §5.0.3). The asymmetry is what matters: publishing less than
+ * checkout charges is a feed/landing-page mismatch, the one family that actually gets accounts
+ * suspended; publishing more is merely unattractive.
+ *
  * **`deliveryTime` is deliberately absent.** It is a recommended property, not a required one,
  * and the platform has no delivery-time commitment yet — that arrives with the real carrier
  * integration (GO_LIVE_CHECKLIST.md §5). An invented handling/transit window would be a promise
