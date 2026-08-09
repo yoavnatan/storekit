@@ -123,7 +123,11 @@ function changedFiles() {
 // deleting one would turn the suite red while this cache reported green. Both are tracked and
 // stable, so counting them costs nothing; `settings.local.json` and the state that actually churns
 // stay out.
-const CHECKED_DOCS = /(?:^|\/)AI_INSTRUCTIONS\.md$|(?:^|\/)\.claude\/(?:hooks|skills)\//;
+//
+// `CLAUDE.md` joined them on 2026-08-09, read by `tests/handoff-backup.test.ts`. It is the one page
+// a freshly cloned machine loads before it knows anything else, so its restore steps are pinned
+// against `.env.example` — and a pin whose check can be skipped from cache is not a pin.
+const CHECKED_DOCS = /(?:^|\/)(?:AI_INSTRUCTIONS|CLAUDE)\.md$|(?:^|\/)\.claude\/(?:hooks|skills)\//;
 const IRRELEVANT = /(?:(?:^|\/)\.claude\/)|(?:\.md$)/;
 const relevant = (p) => p && (CHECKED_DOCS.test(p) || !IRRELEVANT.test(p));
 

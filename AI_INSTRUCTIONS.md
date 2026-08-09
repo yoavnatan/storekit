@@ -6,7 +6,7 @@ Read this + `CURRENT_TASK.md` at session start — but **never `Read` this file 
 
 **Three root-level docs, each authoritative in its lane — read the relevant one BEFORE writing code in it, and update it when a decision changes:** `DB_MIGRATION_PLAN.md` (the JSON→Postgres move: schema, index list, edge cases measured against real data, module-by-module order), `GO_LIVE_CHECKLIST.md` (every demo domain / empty id / mock number / dev-only JSON, and what to swap when connecting ads, SEO, payments, email, shipping or DB — add a row the moment new code takes a real-data dependency), `CONTEXTUAL_SEARCH_STRATEGY.md` (the semantic-search plan, DB-dependent).
 
-**New-machine bootstrap (do first):** if `.claude-memory/` is missing or memory looks empty, run `bash scripts/setup-claude-memory.sh` — it restores memory from the private `storekit-memory` repo and enables the auto-push hook. Tell the user; memory and backup don't work until it runs.
+**New machine / fresh clone:** the restore protocol is `CLAUDE.md`, and only there — a session with no memory yet never reaches this file.
 
 ---
 

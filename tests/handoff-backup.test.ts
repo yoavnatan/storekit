@@ -283,3 +283,47 @@ describe('the .env recovery note — the part nothing restores for you', () => {
     for (const key of MUST_FILL) expect(header).toContain(key);
   });
 });
+
+/**
+ * `CLAUDE.md` — the page that has to work when nothing else has been read.
+ *
+ * The owner's requirement, 2026-08-09: after a clone he says "I'm restoring on a new machine" and
+ * the session does the work, rather than him running anything. Which exposed a circle nobody had
+ * noticed. What normally points a session at `AI_INSTRUCTIONS.md` is memory; memory arrives from
+ * the private repo; the private repo is restored by a script a session only knows about because
+ * `AI_INSTRUCTIONS.md` mentions it. On an existing machine the circle is closed and invisible. On a
+ * fresh clone it has no entry at all — and there was no root `CLAUDE.md`, the one file the harness
+ * loads without being told.
+ *
+ * So these assertions are about the trigger surviving: the steps have to be here, in the file that
+ * gets read first, naming the same five values as everything else.
+ */
+describe('CLAUDE.md — the new-machine entry point', () => {
+  const claude = readFileSync(fileURLToPath(new URL('../CLAUDE.md', import.meta.url)), 'utf8');
+
+  it('sends the session to the real instructions', () => {
+    expect(claude).toContain('AI_INSTRUCTIONS.md');
+    expect(claude).toContain('CURRENT_TASK.md');
+  });
+
+  it('carries the restore steps, since nothing else can be assumed read', () => {
+    expect(claude).toContain('scripts/setup-claude-memory.sh');
+    expect(claude).toContain('npm ci');
+    for (const key of MUST_FILL) expect(claude).toContain(key);
+  });
+
+  it('forbids the three things that would turn a restore into damage', () => {
+    for (const rule of ['invent', 'commit `.env`', 'push']) expect(claude).toContain(rule);
+  });
+
+  /**
+   * A ceiling, in the same spirit as `instructions-budget.test.ts` and for the same reason: this
+   * file is always-read, and an always-read file with no bound grows into a second copy of the
+   * instructions — at which point the budget on the first one has been quietly defeated. If a rule
+   * needs more room than this, it belongs in `AI_INSTRUCTIONS.md`, which is where rules live.
+   */
+  it('stays small enough to remain an entry point rather than a second rulebook', () => {
+    expect(claude.length, `CLAUDE.md is ${claude.length} chars — move detail to AI_INSTRUCTIONS.md`)
+      .toBeLessThanOrEqual(4000);
+  });
+});
