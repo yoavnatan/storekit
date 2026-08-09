@@ -823,12 +823,19 @@ nav a:hover { color: var(--color-text); }
    this feature and this feature is not allowed an exception. So the logo is drawn into a box whose
    BOTH dimensions are fixed here and neither of which is read from the image:
 
-     height   32px — the same 32px the avatar occupies, so the store-page grid row (which sizes to
-                     its tallest item) lands on exactly the height it does today. Changing this is
-                     changing the header's height, whatever it looks like locally.
-     max-width 11rem — 176px. The cap that matters, and it is a MOBILE number: at 375px this row is
-                     logo + search + actions, and 176px is what leaves the search box usable. It is
-                     also generous — at 32px tall it admits a 5.5:1 wordmark at full height.
+     height   40px — and the 8px above the avatar's 32px is DERIVED, not chosen (owner, 2026-08-09:
+                     "זה קטן מדי"). The row is `height: 2rem` — a FIXED height whose own rule says
+                     anything taller overflows visually instead of resizing it — and the header is
+                     3.4rem with `padding-block: calc((3.4rem - 1px - 2rem) / 2)` = 10.7px each
+                     side. A 40px box centred in a 32px row overflows 4px per side, which lands
+                     inside that padding with 6.7px to spare, and `.site-header` sets no `overflow`.
+                     So the bar's height is untouched and the logo is 25% bigger. 48px would spend
+                     the entire margin and is the first value that could clip.
+                     The avatar stays 32px: it sits in a lockup WITH TEXT, where its size was
+                     measured against the name's cap height, and this is not that.
+     max-width 11rem — 176px on a phone. The cap that matters, and it is a MOBILE number: at 375px
+                     this row is logo + search + actions. 14rem from 1024px up, where the search has
+                     a column of its own and the extra width costs nothing.
 
    Past 5.5:1 nothing clips and nothing overflows: `object-fit: contain` scales the mark down inside
    the 176x32 box, so an 8:1 banner renders 176x22 and simply sits shorter. That is the whole trick,
@@ -843,10 +850,17 @@ nav a:hover { color: var(--color-text); }
 .store-header__brand {
   display: flex;
   align-items: center;
-  height: 32px;
+  height: 40px;
   max-width: min(100%, 11rem);
   min-width: 0;
   flex: 0 1 auto;
+}
+
+/* Desktop gets a wider cap — from here the search bar has its own grid column and the logo is not
+   competing with it for room. Deliberately not a taller box: the height is bounded by the header's
+   own padding (see above) and that ceiling does not move with the viewport. */
+@media (min-width: 1024px) {
+  .store-header__brand { max-width: min(100%, 14rem); }
 }
 
 .store-header__brand img {

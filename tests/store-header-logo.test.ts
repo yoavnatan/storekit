@@ -35,17 +35,26 @@ describe('the logo box cannot move the bar', () => {
   const box = ruleBody(headerCss, '.store-header__brand');
   const img = ruleBody(headerCss, '.store-header__brand img');
 
-  it('fixes the height at the avatar\'s own 32px', () => {
-    // The store-page container is a grid whose row sizes to its tallest item, so this number IS the
-    // header's height on a store page. 40px was measured and rejected for the avatar on 2026-08-05
-    // (the row went to 48.6px and hung the icons below the bar's edge); a logo has no dispensation
-    // the avatar did not get.
-    expect(box).toMatch(/height:\s*32px/);
+  it('fixes the height, and inside the header\'s own spare padding', () => {
+    // 40px, raised from 32px on 2026-08-09 ("זה קטן מדי"), and the ceiling is arithmetic rather
+    // than taste: the row is `height: 2rem` (a FIXED height — its own rule says taller children
+    // overflow instead of resizing it) inside a 3.4rem header whose padding is
+    // `calc((3.4rem - 1px - 2rem) / 2)` = 10.7px a side. A 40px box centred in a 32px row overflows
+    // 4px a side, so it sits 6.7px clear of the header's edge and the bar does not move. 48px is
+    // the first value that spends the whole margin — so this assertion is the guard, and the two
+    // below are the numbers it depends on.
+    expect(box).toMatch(/height:\s*40px/);
+    expect(headerCss).toMatch(/\.site-header \.container \{ height: 2rem;/);
+    expect(headerCss).toMatch(/padding-block: calc\(\(3\.4rem - 1px - 2rem\) \/ 2\)/);
+    // A clipping header would turn the overflow above into a cropped logo rather than a visible one.
+    expect(ruleBody(headerCss, '.site-header')).not.toMatch(/overflow:\s*hidden/);
   });
 
   it('caps the width, so a wide wordmark cannot eat the row', () => {
-    // A mobile number: at 375px this row is logo + search + actions.
+    // A mobile number: at 375px this row is logo + search + actions. Desktop gets 14rem, where the
+    // search has its own grid column and the extra width costs nothing.
     expect(box).toMatch(/max-width:\s*min\(100%,\s*11rem\)/);
+    expect(headerCss).toMatch(/\.store-header__brand \{ max-width: min\(100%, 14rem\); \}/);
     // `min-width: 0` is what stops an <img>'s intrinsic width becoming a min-content FLOOR that the
     // flex column has to honour — without it the cap above is advisory and a 2000px-wide logo
     // pushes the search out.

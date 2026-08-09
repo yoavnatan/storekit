@@ -37,8 +37,12 @@ const chosen = store.headerStyle === 'logo' ? 'logo' : 'name';
  *  store-name's measured baseline nudge) — everything else here is a utility. */
 const BAR = 'hdr-preview flex items-center h-[3.4rem] px-4 rounded-[var(--radius)] border [border-color:var(--color-border)] bg-[color:var(--color-surface)] overflow-hidden';
 /** The label box. Depth on hover only and a fill when chosen — the site's pressed/selected
- *  language (Hard rules → elevation), not a new treatment. */
-const BOX = 'block cursor-pointer rounded-[var(--radius)] border [border-color:var(--color-border)] p-3 transition-[background,border-color,box-shadow] duration-150 hover:shadow-[var(--shadow-hover)] peer-checked:[border-color:var(--color-accent)] peer-checked:[background:color-mix(in_srgb,var(--color-accent)_5%,transparent)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:[outline-color:var(--color-accent)] peer-disabled:opacity-55 peer-disabled:cursor-default peer-disabled:hover:shadow-none';
+ *  language (Hard rules → elevation), not a new treatment.
+ *  `p-2.5` and a `mb-1.5` caption, down from p-3/mb-2 (owner, 2026-08-09: "אפשר פחות מרווח בלמעלה
+ *  למטה… זה קטן מדי") — the padding was framing the preview instead of holding it, and every pixel
+ *  it gives back goes to the thing the seller is trying to judge. */
+const BOX = 'block cursor-pointer rounded-[var(--radius)] border [border-color:var(--color-border)] p-2.5 transition-[background,border-color,box-shadow] duration-150 hover:shadow-[var(--shadow-hover)] peer-checked:[border-color:var(--color-accent)] peer-checked:[background:color-mix(in_srgb,var(--color-accent)_5%,transparent)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:[outline-color:var(--color-accent)] peer-disabled:opacity-55 peer-disabled:cursor-default peer-disabled:hover:shadow-none';
+const CAPTION = 'block text-[0.85rem] font-semibold mb-1.5 text-start';
 ---
 
 <div class="card card--flat p-4 md:p-5 mt-4" id="header-style-card">
@@ -49,7 +53,7 @@ const BOX = 'block cursor-pointer rounded-[var(--radius)] border [border-color:v
     <label>
       <input type="radio" name="headerStyle" value="name" checked={chosen === 'name'} class="sr-only peer" />
       <span class={BOX}>
-        <span class="block text-[0.85rem] font-semibold mb-2">{d.headerStyleName}</span>
+        <span class={CAPTION}>{d.headerStyleName}</span>
         <span class={BAR} aria-hidden="true">
           <span class="store-header__logo-col">
             <span class="logo store-name-link">
@@ -67,18 +71,22 @@ const BOX = 'block cursor-pointer rounded-[var(--radius)] border [border-color:v
           enables it the moment an upload lands. */}
       <input type="radio" name="headerStyle" value="logo" checked={chosen === 'logo'} class="sr-only peer"
              id="header-style-logo" disabled={!store.headerLogo} />
-      <span class={BOX}>
-        <span class="block text-[0.85rem] font-semibold mb-2">{d.headerStyleLogo}</span>
+      <span class={BOX} id="header-logo-drop">
+        <span class={CAPTION}>{d.headerStyleLogo}</span>
         <span class={BAR} aria-hidden="true">
+          {/* The placeholder lives INSIDE the flex column, not beside it. Beside it, the column's
+              `flex: 1 1 0` ate the row and pushed this text to the far end — which in Hebrew is the
+              far LEFT, i.e. the one place a caption in an RTL bar must not be. Inside, it starts at
+              the inline-start exactly where a logo would. */}
           <span class="store-header__logo-col">
             <span class="logo store-name-link store-name-link--logo">
               <span class="store-header__brand" id="header-logo-preview-box" hidden={!store.headerLogo}>
-                <img id="header-logo-preview" src={store.headerLogo ? cdnContain(store.headerLogo, 480, 64) : ''}
-                     alt="" width="176" height="32" loading="lazy" decoding="async" />
+                <img id="header-logo-preview" src={store.headerLogo ? cdnContain(store.headerLogo, 480, 80) : ''}
+                     alt="" width="176" height="40" loading="lazy" decoding="async" />
               </span>
+              <span class="muted text-[0.78rem] font-normal" id="header-logo-empty" hidden={!!store.headerLogo}>{d.headerStyleLogoEmpty}</span>
             </span>
           </span>
-          <span class="muted text-[0.78rem]" id="header-logo-empty" hidden={!!store.headerLogo}>{d.headerStyleLogoEmpty}</span>
         </span>
       </span>
     </label>
@@ -88,6 +96,11 @@ const BOX = 'block cursor-pointer rounded-[var(--radius)] border [border-color:v
     <button type="button" class="btn btn--sm btn--ghost" id="header-logo-upload-btn">
       {store.headerLogo ? d.storeImageChange : d.uploadImage}
     </button>
+    {/* "התאמה" — move and zoom the mark inside the header's own slot, the same verb the banner and
+        the avatar already offer. The crop frame here is the header slot's ratio and it opens
+        CONTAINED (crop-modal.ts `fit`), so the seller's first view is their whole logo sitting in
+        the bar, not a wordmark already cut at both ends. */}
+    <button type="button" class="btn btn--sm btn--ghost" id="header-logo-adjust-btn" hidden={!store.headerLogo}>{d.adjustImage}</button>
     {/* Offered for the same reason the avatar offers it: a logo lands on the header's own surface,
         so a photo's white backdrop shows up as a plate around the mark. */}
     <button type="button" class="btn btn--sm btn--ghost" id="header-logo-bg-btn" hidden={!store.headerLogo}>{d.removeBackground}</button>

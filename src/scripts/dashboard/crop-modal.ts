@@ -21,6 +21,24 @@ export interface CropOptions {
    *  It exists because the seller was framing to a square and the site was showing a circle:
    *  ~21% of what they lined up was cropped away by a shape they could not see. */
   round?: boolean;
+  /**
+   * How the image is SIZED to the viewport when the tool opens.
+   *
+   * `cover` (default) scales until the frame is full, which is right for a photo: a banner or an
+   * avatar is a window onto a picture, and empty space inside it is a defect.
+   *
+   * `contain` scales until the whole image is INSIDE the frame, leaving transparent space around
+   * it. That is what a logo needs, and it is a different job rather than a preference: a logo's
+   * aspect ratio is the thing it is, so opening at `cover` means the tool's first frame has already
+   * cut the ends off a wordmark, and the seller's only move is to zoom out to a place the slider
+   * cannot reach. Opening `contain` shows them their whole mark in the header's own slot, and every
+   * adjustment from there is theirs.
+   *
+   * The render needs nothing else: `applyCrop` already asks `drawImage` for a source region that
+   * may fall outside the image, the canvas starts transparent, and the output is PNG — so the space
+   * around a contained logo comes out transparent rather than black or white.
+   */
+  fit?: 'cover' | 'contain';
 }
 
 let cropApplyCallback: ((blob: Blob, isProcessed: boolean) => void) | null = null;
@@ -70,7 +88,10 @@ export function openCropModal(blob: Blob, isProcessed: boolean, onApply?: (blob:
   cropPanX = 0; cropPanY = 0; cropZoomVal = 1;
   cropZoomEl.value = '1';
   cropImgEl.onload = () => {
-    cropFitScale = Math.max(cropVpW / cropImgEl!.naturalWidth, cropVpH / cropImgEl!.naturalHeight);
+    // max = cover (fill the frame), min = contain (fit inside it). See CropOptions.fit.
+    cropFitScale = options?.fit === 'contain'
+      ? Math.min(cropVpW / cropImgEl!.naturalWidth, cropVpH / cropImgEl!.naturalHeight)
+      : Math.max(cropVpW / cropImgEl!.naturalWidth, cropVpH / cropImgEl!.naturalHeight);
     updateCropDisplay();
   };
   cropImgEl.src = URL.createObjectURL(blob);
