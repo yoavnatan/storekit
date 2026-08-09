@@ -807,20 +807,13 @@ nav a:hover { color: var(--color-text); }
    on this site is 1px --color-border. The header being the one exception was the
    original complaint. */
 
-/* Inner text span — ellipsis when name is too long, and the one place in the
-   header that wears the display face.
-   It goes on the SPAN, not on `.store-name-link` and never on `.logo`: `.logo` is
-   shared with the platform wordmark (BrandLogo), whose drawn underline is solved
-   against Heebo's glyph widths at three measured values. A family change up there
-   is not a font change, it is a re-measure of the lockup.
-   font-weight overrides `.logo`'s 800 for the same reason `.store-name` in
-   store.css sits at 700 — Noto Serif's heavy cuts thicken the serifs until the
-   counters start to close, and at 1.3rem beside a 32px avatar that reads as mud.
-   Inheritance loses to any declared value on the element, so `.logo`'s 800 on the
-   parent does not need out-specifying here. */
+/* Inner text span — ellipsis when name is too long.
+   It briefly wore a serif display face (2026-08-09) and the owner reverted it the
+   same day: neutral is the requirement here, not voice. A seller who wants their
+   own voice in this slot puts a LOGO in it — see `.store-name-link`'s note on how
+   an arbitrary logo fits a bar whose height may never change. Kept as a note
+   because the serif is the obvious idea and it has now been tried. */
 .store-name-text {
-  font-family: var(--font-display);
-  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -195,19 +195,21 @@ body:has(.site-header.is-stuck) .store-banner {
    than more of the same.
    The greys were never a contrast failure (--color-muted is ~6.4:1 on
    --color-bg); this was hierarchy, so nothing here trades away accessibility. */
+/* THE NAME STAYS IN THE SITE'S OWN FACE (owner, 2026-08-09, reverting the serif
+   the same day it landed: "עדיף הפונט הקודם שהיה, היה הרבה יותר ניטרלי").
+   The three-step hierarchy above is his and stays; only the family goes back, and
+   with it the two values that existed solely to compensate for a serif — 700 and
+   -0.01em return to Heebo's measured 800 / -0.03em. Neutral is the requirement:
+   this page has to look right for a tool shop, a fashion boutique and a grocery,
+   and a serif is a voice, which is a thing one of those three always wants and the
+   other two do not. If a seller wants their own voice here, that is a LOGO, not a
+   second platform font. */
 .store-name {
-  font-family: var(--font-display);
   font-size: clamp(1.75rem, 5vw, 2.75rem);
-  /* 700, down from 800: Noto Serif's heaviest cuts thicken the serifs until the
-     counters in ם/ס/ט start to close at banner size. The face carries authority
-     from its contrast, not from weight — the extra 100 was Heebo compensating. */
-  font-weight: 700;
+  font-weight: 800;
   color: var(--color-text);
   margin: 0;
-  /* Was -0.03em, tuned for Heebo's geometric sans. A serif needs the space its
-     serifs occupy — at -0.03em adjacent letters touch. -0.01em keeps the name
-     tight without collision. */
-  letter-spacing: -0.01em;
+  letter-spacing: -0.03em;
   line-height: 1.1;
 }
 
