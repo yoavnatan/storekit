@@ -11,9 +11,14 @@ import { join, relative } from 'node:path';
 // writes anything? A route added next month is covered by that question on the day it is created,
 // which is the only kind of coverage an unwritten file can have.
 //
-// Measured 2026-08-09 when this was written: nothing was wrong. All 47 API routes passed, and the
-// four public POSTs below were public on purpose. That is the point — a guard is worth writing while
-// the tree is green, because then a red line is always news.
+// Measured 2026-08-09 when this was written: nothing was wrong. Every API route passed, and the
+// public POSTs below were public on purpose. That is the point — a guard is worth writing while the
+// tree is green, because then a red line is always news.
+//
+// It earned itself within the hour: merging it onto main put it in contact with `cart/coupon.ts`,
+// written by a parallel session, and it went red. That one turned out to be a POST that writes
+// nothing — correctly public — so it joined the list with its reason. The guard did its job either
+// way: a new route could not enter the tree without someone answering the question out loud.
 
 const API_ROOT = join('src', 'pages', 'api');
 
@@ -39,6 +44,8 @@ const PUBLIC_BY_DESIGN: Record<string, string> = {
     'anonymous page-view beacon — a shopper is not signed in, and requiring identity would mean tracking one',
   'src/pages/api/cart/prices.ts':
     'guest checkout must work; it reads prices from the DB and never trusts the posted ones, so there is nothing to own',
+  'src/pages/api/cart/coupon.ts':
+    'a POST that writes nothing — it asks "is this code real" for a guest, and POST only because the code travels in a body. Its exposure is guessing, not writing, and that is answered by couponLookupRules throttling plus a single `unknown` answer for every kind of miss',
   'src/pages/api/lang.ts':
     'writes the language cookie of whoever asked, and that is the whole blast radius',
   'src/pages/api/log-client-error.ts':
