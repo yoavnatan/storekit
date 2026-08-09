@@ -29,11 +29,18 @@ function mintKey(): string {
   }
   // Last resort. Weaker, but the key only needs to be unique per buyer session —
   // it is a de-duplication token, never a secret or an authorisation.
+  //
+  // `padEnd` is not cosmetic: `Math.random().toString(36)` is only ~12 chars for a TYPICAL value.
+  // A degenerate one is far shorter — 0.5 renders as "0.i", leaving one character after the slice,
+  // and 0 leaves none — which used to be able to mint a key under the server's 16-char floor, i.e.
+  // a checkout the server rejects outright. Padding makes the length structural rather than
+  // probabilistic. Pinned by tests/checkout-attempt-key.test.ts against the real validator.
   // eslint-disable-next-line sonarjs/pseudo-random -- reviewed: a de-duplication token, not a
   // secret. crypto is used whenever it exists; this path is for browsers that have neither
   // randomUUID nor getRandomValues. Guessing another buyer's key grants nothing, because the
   // server binds a completed record to its owner (sha256 of the email) and replays only to them.
-  return `co-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}-${Math.random().toString(36).slice(2, 12)}`;
+  const chunk = (): string => Math.random().toString(36).slice(2, 12).padEnd(10, '0');
+  return `co-${Date.now().toString(36).padEnd(8, '0')}-${chunk()}-${chunk()}`;
 }
 
 /** The current attempt's key, minting and persisting one on first use. */
