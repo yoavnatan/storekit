@@ -52,7 +52,7 @@ export function initAdminOrdersFilter(): void {
 
   const FILTER_COLUMNS: FilterColumnDef[] = [
     // 'ready' (ממתין לאיסוף) is intentionally omitted — no seller can set it today;
-    // it returns as a carrier-driven state once Sendit is wired (GO_LIVE §5). Keeping
+    // it returns as a carrier-driven state once shipping is wired (GO_LIVE §5). Keeping
     // it out keeps the admin filter in sync with the states orders actually reach.
     { col: 'shippingStatus', label: 'סטטוס הזמנה', values: ['pending', 'processing', 'shipped', 'delivered'], labels: SHIPPING_LABELS, colors: SHIPPING_COLORS },
     { col: 'paymentStatus', label: 'סטטוס תשלום', values: ['pending', 'paid', 'failed'], labels: PAYMENT_LABELS, colors: PAYMENT_COLORS },

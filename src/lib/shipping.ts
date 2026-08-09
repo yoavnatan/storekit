@@ -9,7 +9,7 @@ export type DeliveryMethod = 'pickup' | 'courier' | 'pickup_point';
 
 /** Platform shipping rates in ILS — central, identical for every store. Change here to
  *  change it everywhere. Self-pickup is always free and never appears here. (Real carrier
- *  billing arrives with the Sendit integration — GO_LIVE §5.) */
+ *  billing arrives with the ShipOS integration — GO_LIVE §5.) */
 export const SHIPPING_RATES = {
   courier: 30,
   pickup_point: 20,

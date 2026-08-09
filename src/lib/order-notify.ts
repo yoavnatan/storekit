@@ -2,7 +2,7 @@
 //
 // Whenever an order's shippingStatus changes — no matter WHO triggered it (the
 // seller clicking a status in the dashboard today, or the shipping carrier's
-// webhook once Sendit is wired, see GO_LIVE_CHECKLIST §5) — the SAME function
+// webhook once the carrier is wired, see GO_LIVE_CHECKLIST §5) — the SAME function
 // runs and tells the buyer what happened. The trigger is manual/external; the
 // downstream communication is what's automated. Wiring a carrier later means
 // its webhook calls notifyOrderStatusChanged() too — nothing here changes.

@@ -262,7 +262,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       const currentVal = statusInput?.value ?? '';
       // Seller's manual states only: בטיפול → נשלח → נמסר. 'pending' is the
       // auto initial state, 'cancelled' is the confirm-gated button, and 'ready'
-      // (ממתין לאיסוף שליח) returns as a CARRIER-driven state once Sendit is
+      // (ממתין לאיסוף שליח) returns as a CARRIER-driven state once shipping is
       // wired — not a manual toggle with nothing behind it (see GO_LIVE §5).
       orderStatusPortal.open(statusTrigger, '11rem', () => Object.entries(labelMap).filter(([v]) => ['processing', 'shipped', 'delivered'].includes(v)).map(([v, l]) =>
         `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.84rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-value="${v}" style="${currentVal === v ? 'font-weight:700' : ''}"><span class="order-status-dot" style="background:${colorMap[v] ?? '#888'}"></span>${l}</button>`
@@ -480,7 +480,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
   // /api/seller/orders parse against — a second copy here drifted once already: the
   // server's default view included 'ready' while this file's did not, so the first
   // filter change would have silently dropped rows the page had shown. ('ready' is
-  // omitted from the menu itself — no seller can set it until Sendit is wired,
+  // omitted from the menu itself — no seller can set it until shipping is wired,
   // GO_LIVE §5. OWES_ACTION still lists it so a future 'ready' order stays
   // cancellable — that's business logic, not the UI.)
   const ACTIVE_STATUSES = new Set(ORDER_ACTIVE_STATUSES);

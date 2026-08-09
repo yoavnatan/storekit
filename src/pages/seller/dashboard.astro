@@ -563,7 +563,7 @@ const newOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'pending')
 // (בטיפול) = started but not yet shipped, the second attention stage after the
 // new-orders ('pending') count above. 'ready' (ממתין לאיסוף) is omitted for the
 // same reason the Orders filter omits it — no seller can reach it today (carrier-
-// driven once Sendit is wired). Clicking a square jumps to the Orders tab filtered
+// driven once shipping is wired). Clicking a square jumps to the Orders tab filtered
 // to exactly that status, so the count and the filtered list always agree.
 const unshippedOrdersCount = storeOrders.filter((o) => o.shippingStatus === 'processing').length;
 // Orders tab pagination — same server-paginated approach as Products above

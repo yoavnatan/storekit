@@ -7,7 +7,7 @@
 // Deliberately EXCLUDES 'processing' (בטיפול) and 'delivered' (נמסר): the first
 // is the seller's internal work state (pinging the buyer adds no value and can
 // backfire when marked late); the second is redundant — the buyer has the parcel
-// and the carrier sends its own delivery confirmation once Sendit is wired.
+// and the carrier sends its own delivery confirmation once shipping is wired.
 // The buyer only hears about real, actionable milestones.
 
 import type { Order } from './orders.js';

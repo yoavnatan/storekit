@@ -1,9 +1,10 @@
 /**
  * A product's shipping weight, in whole grams — one definition of what a valid one is.
  *
- * The field exists before the thing that will price it. Sendit quotes a parcel on address + weight
- * (GO_LIVE_CHECKLIST.md §5), so the day that integration is connected, every product without a
- * weight is a product that cannot be quoted — and a seller with a catalogue of dozens of items is
+ * The field exists before the thing that will consume it. A carrier prices a parcel on address +
+ * weight, and `total_weight` is a field on ShipOS's create-shipment call (GO_LIVE_CHECKLIST.md §5),
+ * so the day shipping is connected, every product without a weight is a product that cannot be
+ * dispatched without a guess — and a seller with a catalogue of dozens of items is
  * being asked to revisit all of them at the worst possible moment. Collected from today, the
  * catalogue fills in as it is edited. Until then it already pays for itself in the ad feed, where
  * `shipping_weight` is a real Merchant Center attribute.
@@ -17,8 +18,8 @@
 /**
  * The ceiling, and why there is one at all.
  *
- * 100kg is far above anything an Israeli parcel carrier will take (Sendit's own limit is an order
- * of magnitude lower) and far below the `int` column's. It exists to catch the mistake the unit
+ * 100kg is far above anything an Israeli parcel carrier will take, and far below what the `int`
+ * column would allow. It exists to catch the mistake the unit
  * invites — a seller typing 2.5 for "2.5 kg" is handled by the parser, but one typing 2500000
  * because they were thinking in milligrams is not, and a silently stored nonsense weight becomes a
  * nonsense shipping quote to a real buyer later. Refusing it at the form is a sentence the seller

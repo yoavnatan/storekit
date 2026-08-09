@@ -24,7 +24,7 @@ const URGENCY_GROUP: Record<string, number> = {
 /** The statuses the seller's Orders filter menu can express, in workflow order — the one
  *  source both this module and the client toolbar (scripts/dashboard/orders.ts) read.
  *  'ready' (ממתין לאיסוף) is deliberately absent: no seller can set it today, and it returns
- *  as a carrier-driven state once Sendit is wired (GO_LIVE §5) — same omission as the admin
+ *  as a carrier-driven state once shipping is wired (GO_LIVE §5) — same omission as the admin
  *  orders filter. A status the menu cannot show must not sit in the default selection either,
  *  or the first filter change silently drops rows the page had already shown. */
 export const ORDER_FILTER_STATUSES: string[] = (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[])
