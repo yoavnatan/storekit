@@ -19,6 +19,17 @@
 //     pure .ts change plain `tsc` covers the same ground. A docs-only turn runs nothing at all.
 // Typical warm checkpoint lands ~30s instead of ~115s, bounded by the test suite.
 //
+// ⚠️ A FULL `--all` CHECKPOINT IS CPU-BOUND, NOT TOOL-BOUND — don't try to speed it up by shrinking
+// one check (measured 2026-08-09, and this is the discarded attempt so it is not re-walked). Warm
+// and alone, `astro check` is 88s over the 649 files the root tsconfig's `**/*` gives it; pointed at
+// a src-only tsconfig it is 398 files and **40s**. That looks like half a checkpoint saved. It is
+// not: `tsc` then has to run alongside it to keep `tests/` and `scripts/` checked, and with vitest
+// already saturating every core the two just take turns. Measured A/B on the same tree, same
+// machine, uncached: old shape 84s astro + 10s lint + 56s test = **1:24.7 wall / 351s CPU**; split
+// shape 82s astro + 14s tsc + 11s lint + 61s test = **1:22.6 wall / 363s CPU**. Two seconds, for
+// more CPU and a second tsconfig to keep in sync. The only thing that would actually move this
+// number is doing less total work — fewer checks, or a smaller test suite — not re-dividing it.
+//
 // `--all` disables the scoping and runs everything (the Stop hook and any "am I really green?"
 // moment use it). Scoping keys off the working diff, so it is deliberately not the default for a
 // final gate — a check skipped because its file was committed earlier in the session is still a

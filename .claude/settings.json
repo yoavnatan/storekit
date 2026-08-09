@@ -20,6 +20,16 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/one-way-to-verify.sh",
+            "statusMessage": "Checking the one-command testing rule..."
+          }
+        ]
+      },
+      {
         "matcher": "Write",
         "hooks": [
           {

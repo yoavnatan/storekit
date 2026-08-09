@@ -15,6 +15,18 @@
 # then opens a fresh gate on a fresh fingerprint and never ends. "Our tasks don't overlap" was the
 # belief that made this look impossible; the fingerprint is the tree, not your files.
 #
+# RE-MEASURED 2026-08-09, AFTER THE OWNER ASKED WHY A WORKTREE EVERY TIME — AND THE DUMB RULE WON.
+# The suspicion was reasonable and the fix was written before it was checked: in VS Code a session
+# tab left open is a live `claude` process for days, so "the PID exists" looked like it would fire on
+# abandoned tabs and charge ~2.5 min of worktree setup for nothing. It does not. Every session's
+# transcript in ~/.claude/projects carries a timestamp per event, so overlap is measurable directly:
+# of the 40 sessions started 2026-08-04→09, **40 had another session emitting events between their
+# start and their last event** — genuinely concurrent, every time. An "active within 15 minutes"
+# rule would have been WORSE, not better: it answers yes for only 36 of those 40, and the 4 it drops
+# are the neighbour that goes quiet, then resumes — which is exactly the deadlock this file exists to
+# prevent, reintroduced to save a worktree the session needed anyway. The activity version was built,
+# tested and reverted the same session. Don't rebuild it; re-run the overlap measurement first.
+#
 # Liveness, kept deliberately dumb. Each session registers the PID that spawned this hook (its own
 # Claude process) under the per-tree state dir, and entries are pruned when that PID is gone or the
 # clock says the machine has since rebooted into a reused PID. A wrong answer is possible in exactly

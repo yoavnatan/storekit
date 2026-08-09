@@ -59,7 +59,21 @@ import { fileURLToPath } from 'node:url';
  * `## Features built`, never on the first substring match — which is what the finder below does,
  * and why its own "finds both section anchors" test exists.
  */
-const CEILING = 40_153;
+/**
+ * 2026-08-09, two sessions in one day, and the second one found main already over the line — worth
+ * recording because it is the first time this test failed on somebody else's merge rather than on
+ * the session that was editing.
+ *
+ * The payments session settled the provider (+345 chars, unpaid: main sat at 40,472 against a
+ * 40,153 ceiling). The session-workflow pass paid its own way — the Testing rule now names the hook
+ * that blocks a hand-run check instead of arguing against one, and the budget bullet dropped two
+ * fragments this file already carries — and then paid for the payments content too, out of what that
+ * decision made redundant: the "per-store OR unified" bullet under *Payment architecture* had been
+ * contradicting the new one-store-per-charge rule three paragraphs above it, and the *Business
+ * model* line was restating the whole PayMe argument that now lives under *Payment architecture*.
+ * Deleting a contradiction is the cheapest budget there is. 40,472 → 40,133.
+ */
+const CEILING = 40_133;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
 
