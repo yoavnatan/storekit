@@ -48,6 +48,15 @@ import { fileURLToPath } from 'node:url';
  * waypoint' bullet became a built one naming its four capture surfaces, and the six new modules
  * went into Project structure, which this budget deliberately does not count. 40,221 → 40,153.
  *
+ * The 2026-08-09 shipping pass paid for the ShipOS decision line (the provider changed from a single
+ * carrier to an aggregator, and the blocking question had to be where a session reads it before
+ * building anything). Paid out of duplication in the same slice: the PayMe constraint line repeated
+ * `market_fee`/"funds never pass through us" verbatim from the *Payment architecture* block fifteen
+ * lines below it, and the authorize/capture mechanics live in GO_LIVE §3; the Store data-model note
+ * carried the removed `flatRate`/`freeAbove` history, which GO_LIVE §5 holds. It also fixed a line
+ * that had gone false — "Shipping — integrated carrier, **per-store config**, tracking", when the
+ * 2026-07-27 decision is that a seller configures nothing but self-pickup. 40,153 → 40,106.
+ *
  * When this fails, lowering CEILING to the new number is the wrong move unless the number went down.
  */
 /**
@@ -73,7 +82,7 @@ import { fileURLToPath } from 'node:url';
  * model* line was restating the whole PayMe argument that now lives under *Payment architecture*.
  * Deleting a contradiction is the cheapest budget there is. 40,472 → 40,133.
  */
-const CEILING = 40_133;
+const CEILING = 40_106;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
 
