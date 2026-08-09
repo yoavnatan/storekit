@@ -81,8 +81,16 @@ import { fileURLToPath } from 'node:url';
  * contradicting the new one-store-per-charge rule three paragraphs above it, and the *Business
  * model* line was restating the whole PayMe argument that now lives under *Payment architecture*.
  * Deleting a contradiction is the cheapest budget there is. 40,472 → 40,133.
+ *
+ * Later that day, the first block moved out to a hook rather than compressed: the money rules now
+ * arrive on contact (`.claude/hooks/money-rules-on-contact.sh`) and the bullet keeps the rule plus
+ * every module name, because a pointer is what makes a rule findable and the reverse-doc check
+ * asserts they resolve. **Worth being honest about the size of this: 390 characters, ~100 tokens.**
+ * The reason to do it is not the budget — it is that the traps behind those five modules now reach
+ * the one session in five that edits money code, instead of being skimmed by the other four at
+ * session start. Relocation buys attention here, not bytes. 40,106 → 39,743.
  */
-const CEILING = 40_106;
+const CEILING = 39_743;
 
 const SRC = readFileSync(fileURLToPath(new URL('../AI_INSTRUCTIONS.md', import.meta.url)), 'utf8');
 
