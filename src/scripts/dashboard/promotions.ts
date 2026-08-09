@@ -7,6 +7,7 @@
 // The preview is deliberately the SAME markup/classes the storefront banner uses, so what the
 // seller sees here is the thing shoppers get — not an approximation of it.
 
+import { escapeHtml as esc } from '../../lib/html-escape.js';
 import { showToast, showErrorToast } from '../../lib/toast.js';
 import { resolvePrice, type ProductDiscount } from '../../lib/discounts.js';
 import { refreshDiscountFieldsIn } from './discount-field.js';
@@ -287,7 +288,15 @@ function initSaleForm(): void {
         saveBtn.style.minWidth = `${saveBtn.offsetWidth}px`;
         saveBtn.disabled = true;
         saveBtn.classList.add('btn--busy');
-        saveBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${i.savingShort ?? 'שומר'}<span class="dot-pulse" role="status" aria-label="${i.savingShort ?? 'שומר'}"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
+        // ⚠️ The THIRD hand-rolled copy of the busy-button markup. `scripts/dashboard/btn-busy.ts`
+        // owns this treatment now (it was extracted from store-image.ts and header-logo.ts on
+        // 2026-08-09) and this one should move onto it — it is left in place only because this
+        // button's restore is not the module's: it also pins `minWidth` and clears
+        // `btn--confirmed`, so the swap is a change to the save flow rather than a substitution.
+        // Escaped in the meantime for the reason btn-busy.ts stopped using innerHTML at all:
+        // `aria-label="${…}"` is an attribute context, and this file had no escaper at all.
+        const savingLabel = esc(i.savingShort ?? 'שומר');
+        saveBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${savingLabel}<span class="dot-pulse" role="status" aria-label="${savingLabel}"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
       }
       const restoreSave = (): void => {
         if (!saveBtn) return;
