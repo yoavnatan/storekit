@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { cdnSrc, cdnSrcSet, cdnBand, cdnCropSrcSet, cdnThumb, cdnFill, LIGHTBOX_WIDTHS, BANNER_WIDTHS } from '../src/lib/cdn.js';
+import { cdnSrc, cdnSrcSet, cdnBand, cdnCropSrcSet, cdnThumb, cdnFill, cdnContain, LIGHTBOX_WIDTHS, BANNER_WIDTHS } from '../src/lib/cdn.js';
 
 /**
  * The image-performance guard.
@@ -73,7 +73,7 @@ const SRC_ALLOWED = [
   /^src=("|')?\{?["'`]?\s*["'`]?$/,            // empty src, filled by JS (checked at the assignment)
   /^src="https:\/\/www\.facebook\.com\/tr\?/,  // Meta pixel beacon, not an image
   /^src="\/[^"]*\.(svg|png|webp|avif|jpg)"/,   // static asset shipped in /public
-  /cdnSrc|cdnSrcSet|cdnBand|cdnThumb|cdnFill|thumbUrl/,
+  /cdnSrc|cdnSrcSet|cdnBand|cdnThumb|cdnFill|cdnContain|thumbUrl/,
 ];
 
 describe('cdn delivery', () => {
@@ -84,6 +84,21 @@ describe('cdn delivery', () => {
     expect(cdnSrc(CLOUD, 300)).toBe(
       'https://res.cloudinary.com/demo/image/upload/c_limit,f_auto,q_auto,w_300/v1/photo.jpg',
     );
+  });
+
+  it('fits a logo INSIDE a box, cropping nothing and inventing nothing', () => {
+    // The logo case (store header, migration 0021), and it is the one shape none of the others can
+    // serve: `cdnThumb`/`cdnBand`/`cdnFill` all FILL, i.e. crop — correct for a photo, and for a
+    // wordmark it takes off the last letters. `cdnSrc` bounds width only, so a tall narrow mark
+    // arrives many times taller than the 32px bar can paint.
+    expect(cdnContain(CLOUD, 480, 64)).toBe(
+      'https://res.cloudinary.com/demo/image/upload/c_limit,f_auto,q_auto,w_480,h_64/v1/photo.jpg',
+    );
+    // Both dimensions, and `c_limit` on both — a logo smaller than the box must come back untouched
+    // rather than blown up soft.
+    expect(cdnContain(CLOUD, 480, 64)).toContain('c_limit,');
+    expect(cdnContain(CLOUD, 480, 64)).not.toContain('c_fill');
+    expect(cdnContain(CLOUD, 480, 64)).not.toContain('g_auto');
   });
 
   it('asks for a CEILING, never an upscale — `w_` alone invents pixels', () => {

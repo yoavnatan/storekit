@@ -10,6 +10,7 @@ import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
 import TabHint from '../../components/dashboard/TabHint.astro';
 import InfoTip from '../../components/dashboard/InfoTip.astro';
 import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
+import HeaderStyleCard from '../../components/dashboard/HeaderStyleCard.astro';
 import BoostFormFields from '../../components/dashboard/BoostFormFields.astro';
 import CampaignHistory from '../../components/dashboard/CampaignHistory.astro';
 import StaleDataBar from '../../components/dashboard/StaleDataBar.astro';
@@ -2449,6 +2450,13 @@ const orderStatusColors: Record<string, string> = {
             <input type="hidden" name="profileImageSource" id="avatar-source-input" value={store.profileImageSource ?? ''} />
           </div>
 
+          {/* Directly under the two images, because it is the third thing about how the shop LOOKS
+              and because it renders one of them: the "name" preview shows the avatar the seller has
+              just uploaded. Inside the settings form, so it saves with the same button as
+              everything else on this tab — a per-card save here would be the split this project has
+              already been burned by (memory `feedback_save_model_clarity`). */}
+          <HeaderStyleCard store={store} d={d} />
+
           <label class="field">
             <span>{d.storeName}</span>
             <input class="input" name="name" value={store.name} required />
@@ -3261,7 +3269,7 @@ const orderStatusColors: Record<string, string> = {
     },
 
     settings: async () => {
-      const [img, tree, domain, lifecycle, url, feed, storeCats] = await Promise.all([
+      const [img, tree, domain, lifecycle, url, feed, storeCats, headerLogo] = await Promise.all([
         import('../../scripts/dashboard/store-image.js'),
         import('../../scripts/dashboard/category-tree.js'),
         import('../../scripts/dashboard/custom-domain.js'),
@@ -3269,6 +3277,7 @@ const orderStatusColors: Record<string, string> = {
         import('../../scripts/dashboard/store-url.js'),
         import('../../scripts/dashboard/feed-sync.js'),
         import('../../scripts/store-category-picker.js'),
+        import('../../scripts/dashboard/header-logo.js'),
         imageEditors(),
       ]);
       const i18n = dashI18n();
@@ -3300,6 +3309,10 @@ const orderStatusColors: Record<string, string> = {
         // that was never on screen.
         aspect: 1, vpWidth: 220, previewWidth: 200, round: true, cloud: CLOUD, preset: PRESET, labels,
       });
+      // Its own module, not a third `initStoreImageWidget` call: a logo is never cropped, so it
+      // shares that widget's uploader and background worker by import and none of its crop flow
+      // (header-logo.ts's header says why in full).
+      headerLogo.initHeaderLogoCard({ cloud: CLOUD, preset: PRESET, labels });
       tree.initCategoryTreeEditor();
       domain.initCustomDomain();
       lifecycle.initStoreLifecycle();

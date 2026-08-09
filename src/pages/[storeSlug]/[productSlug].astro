@@ -2,7 +2,7 @@
 export const prerender = false;
 import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice } from '../../lib/stores.js';
+import { getStoreBySlug, getStoreByPreviousSlug, isStoreVisible, storeHttpStatus, showsPausedNotice, storeHeaderLogo } from '../../lib/stores.js';
 import { OG_IMAGE_FORMAT, storeImageUrl } from '../../lib/store-image.js';
 import { isDemoStore } from '../../lib/demo-stores.js';
 import { storeCanonicalUrl, productCanonicalUrl, customDomainRedirectUrl, isPlatformAdLanding, adLandingUrl, hasActiveCustomDomain } from '../../lib/custom-domain.js';
@@ -288,6 +288,7 @@ const pmI18n = {
   storeName={shopStore.name}
   storeSlug={shopStore.slug}
   storeLogo={shopStore.profileImage}
+  storeHeaderLogo={storeHeaderLogo(shopStore)}
   dataLayer={{ event: 'page_view', page_type: 'product', store_id: shopStore.id, store_name: shopStore.name, store_slug: storeSlug, currency: 'ILS', ecommerce: { currency: 'ILS', items: [{ item_id: product.id, item_name: product.name, price: pv.price, item_category: productCategoryPathStr }] } }}
   productPrice={pv.price}
   productCurrency="ILS"

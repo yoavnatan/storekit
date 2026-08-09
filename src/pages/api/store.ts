@@ -57,6 +57,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       categories: sanitizeStoreCategories(String(form.get('categories') ?? '').split(',')),
       bannerImage: sanitizeImageUrl(form.get('bannerImage')) || undefined,
       profileImage: sanitizeImageUrl(form.get('profileImage')) || undefined,
+      // Same validation as every other image the seller can submit — it renders into an `<img src>`
+      // in the site header, which is a surface on every page of their store.
+      headerLogo: sanitizeImageUrl(form.get('headerLogo')) || undefined,
+      // Anything that is not the literal 'logo' is the name lockup. Written as an explicit
+      // narrowing rather than trusting the radio, because this endpoint is directly callable and
+      // the column carries a CHECK constraint a stray value would trip as a 500.
+      headerStyle: form.get('headerStyle') === 'logo' ? 'logo' as const : 'name' as const,
       address: String(form.get('address') ?? '').trim() || undefined,
       addressVisible: form.get('addressVisible') === 'on',
       hoursVisible: form.get('hoursVisible') === 'on',
@@ -116,6 +123,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       categories,
       bannerImage: merged.bannerImage as string | undefined,
       profileImage: merged.profileImage as string | undefined,
+      headerLogo: merged.headerLogo as string | undefined,
+      // A logo the seller removed cannot leave 'logo' selected — that would publish an empty bar.
+      // The dashboard already flips the radio back, and this is the server saying the same thing:
+      // the two columns are independent, but this ONE combination is not a state the header can
+      // render.
+      headerStyle: (merged.headerStyle === 'logo' && merged.headerLogo) ? 'logo' : 'name',
       bannerImageSource: sourceFor('bannerImage'),
       profileImageSource: sourceFor('profileImage'),
       address,

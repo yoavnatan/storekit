@@ -21,7 +21,7 @@
 //    to spawnRipple()'s static→relative promotion: the alert dot nests INSIDE `.user-btn`, so a
 //    ripple-triggered position change on first click would silently move the dot's containing
 //    block (fixed 2026-07-16).
-import { store } from '../config/store.config.js';
+import { store, cdnContain } from '../config/store.config.js';
 import CsrfField from './CsrfField.astro';
 import StoreAvatar from './StoreAvatar.astro';
 import BrandLogo from './BrandLogo.astro';
@@ -39,6 +39,9 @@ interface Props {
    *  purpose: a storeMode page that doesn't have the store record (checkout,
    *  admin) simply renders the generated mark, never an empty box. */
   storeLogo?: string;
+  /** The seller's chosen header logo, already resolved by `stores.ts#storeHeaderLogo` — present
+   *  only when they uploaded one AND chose it. Absent = today's avatar + name lockup. */
+  storeHeaderLogo?: string;
   sellerMode?: boolean;
   hideNav?: boolean;
   showSearch?: boolean;
@@ -46,7 +49,7 @@ interface Props {
   initialUnreadCount?: number;
 }
 
-const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, isHome = false, storeName, storeSlug, storeLogo, initialUnreadCount = 0 } = Astro.props;
+const { isLoggedIn = false, storeMode = false, sellerMode = false, hideNav = false, showSearch = false, isHome = false, storeName, storeSlug, storeLogo, storeHeaderLogo, initialUnreadCount = 0 } = Astro.props;
 const initialUnreadLabel = initialUnreadCount > 99 ? '99+' : String(initialUnreadCount);
 
 // Same SSR-not-async-fetch fix as the notif badge above, for the other
@@ -122,7 +125,22 @@ const strEmpty   = t.store.noProductsFound;
 
     <!-- Logo / store home -->
     <div class={storeMode ? 'store-header__logo-col' : undefined} style={storeMode ? undefined : 'flex-shrink:0'}>
-      {storeMode && storeName && storeSlug
+      {storeMode && storeName && storeSlug && storeHeaderLogo
+        ? <a href={`/${storeSlug}`} class="logo store-name-link store-name-link--logo" aria-label={storeName} data-astro-prefetch>
+            {/* The seller's own logo INSTEAD of the avatar-and-name lockup (migration 0021).
+                Both dimensions are fixed by CSS and neither comes from the image, so no aspect
+                ratio can move this bar — a wide wordmark shrinks until it fits and a tall mark is
+                capped by the same 32px the avatar uses. `object-fit: contain`, never cover: a logo
+                cropped is a logo with its last letters missing.
+                The store's NAME does not disappear with the text — it is this link's `aria-label`
+                above, so a screen reader and a crawler still get the shop's name, which is also
+                why the <img> alt is empty rather than a second copy of it. */}
+            <span class="store-header__brand">
+              <img src={cdnContain(storeHeaderLogo, 480, 64)} alt="" width="176" height="32"
+                   loading="eager" fetchpriority="high" decoding="sync" />
+            </span>
+          </a>
+        : storeMode && storeName && storeSlug
         ? <a href={`/${storeSlug}`} class="logo store-name-link" aria-label={storeName} data-astro-prefetch>
             {/* 32px, and that ceiling is structural rather than timid: this row is
                 pinned to 2rem, and on a store page — which renders a search bar — the

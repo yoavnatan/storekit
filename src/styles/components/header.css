@@ -773,7 +773,12 @@ nav a:hover { color: var(--color-text); }
    optional` means a cold first visit can paint the name in Heebo instead. One value
    that serves both families is the only version of this rule that is right in that
    frame too. Do not "fix" it for one font. */
-.site-header .store-name-text { transform: translateY(0.095em); }
+/* `.hdr-preview` is the settings-page preview of this same lockup (HeaderStyleCard.astro). It is
+   named here rather than given a nudge of its own for the reason that whole card exists: a preview
+   built from a second set of rules drifts from the thing it previews, and drifts silently. One
+   declaration, two places that render it. */
+.site-header .store-name-text,
+.hdr-preview .store-name-text { transform: translateY(0.095em); }
 
 /* THE HEADER HAS ONE BOTTOM LINE — the 1px --color-border above, on every page,
    store or not. There is no store-colour bar and it should not come back
@@ -813,6 +818,45 @@ nav a:hover { color: var(--color-text); }
    own voice in this slot puts a LOGO in it — see `.store-name-link`'s note on how
    an arbitrary logo fits a bar whose height may never change. Kept as a note
    because the serif is the obvious idea and it has now been tried. */
+/* THE SELLER'S OWN LOGO, AND WHY IT CANNOT MOVE THIS BAR (2026-08-09).
+   The header's height is pinned inline on <header> and must never change — that rule is older than
+   this feature and this feature is not allowed an exception. So the logo is drawn into a box whose
+   BOTH dimensions are fixed here and neither of which is read from the image:
+
+     height   32px — the same 32px the avatar occupies, so the store-page grid row (which sizes to
+                     its tallest item) lands on exactly the height it does today. Changing this is
+                     changing the header's height, whatever it looks like locally.
+     max-width 11rem — 176px. The cap that matters, and it is a MOBILE number: at 375px this row is
+                     logo + search + actions, and 176px is what leaves the search box usable. It is
+                     also generous — at 32px tall it admits a 5.5:1 wordmark at full height.
+
+   Past 5.5:1 nothing clips and nothing overflows: `object-fit: contain` scales the mark down inside
+   the 176x32 box, so an 8:1 banner renders 176x22 and simply sits shorter. That is the whole trick,
+   and it is why an arbitrary upload is safe here — the two failure modes a logo normally has (it
+   stretches the container, or it gets cropped) are both removed by fixing the box and containing
+   the image rather than by validating the file.
+
+   The column around it (`.store-header__logo-col`, above: flex 1 1 0, min-width 0, overflow hidden)
+   already refuses to push its siblings — that is what makes a long store NAME truncate today. An
+   <img> would otherwise contribute its intrinsic width as a min-content floor; `max-width` on the
+   box plus `min-width: 0` on the column is what keeps that floor from existing. */
+.store-header__brand {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  max-width: min(100%, 11rem);
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.store-header__brand img {
+  max-height: 100%;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
 .store-name-text {
   overflow: hidden;
   text-overflow: ellipsis;

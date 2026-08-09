@@ -67,6 +67,15 @@ export interface Store {
    *  rendered anywhere: every public surface reads `bannerImage`/`profileImage`. */
   bannerImageSource?: string;
   profileImageSource?: string;
+  /** The seller's own logo for the TOP OF THEIR STORE, and nothing else — every other surface
+   *  (store cards, search rows, the saved-stores menu, emails) keeps reading `profileImage`,
+   *  because those are fixed circular slots and a logo's whole meaning is its aspect ratio
+   *  (migration 0021). Uploading one does not adopt it: `headerStyle` decides. */
+  headerLogo?: string;
+  /** Which lockup the store header renders. 'name' is today's avatar + store name and the default
+   *  for every store that has never chosen. Kept apart from `headerLogo` so switching back to the
+   *  name does not throw the upload away. */
+  headerStyle?: 'name' | 'logo';
   /** Store-wide sale: the seller's own headline/copy for a running sale, plus an optional
    *  percent that automatically applies to every product WITHOUT its own discount (a
    *  product's own discount always wins — see discounts.ts). Announcement and price live in
@@ -167,6 +176,20 @@ export function byPromoWeight(a: Store, b: Store): number {
 }
 
 /**
+ * The logo the store HEADER should render, or `undefined` for the name-and-avatar lockup.
+ *
+ * One function rather than the two-part test written at each call site, because it is already asked
+ * from three places that must agree — the store page, the product page, and the settings preview
+ * that promises the seller what those two will do. The two halves are deliberately separate columns
+ * (migration 0021): an uploaded logo the seller has not chosen must not appear, and choosing the
+ * name back must not delete the upload. Conflating them at a call site is how one of the three ends
+ * up rendering a logo the other two do not.
+ */
+export function storeHeaderLogo(store: Pick<Store, 'headerStyle' | 'headerLogo'>): string | undefined {
+  return store.headerStyle === 'logo' && store.headerLogo ? store.headerLogo : undefined;
+}
+
+/**
  * One store row.
  *
  * Selected explicitly rather than `SELECT *`, so a column a later migration adds cannot silently
@@ -176,7 +199,8 @@ export function byPromoWeight(a: Store, b: Store): number {
  */
 const COLUMNS = `s.id, s.seller_id, s.slug, s.name, s.tagline, s.description, s.colors,
     s.categories, s.shipping, s.banner_image, s.profile_image,
-    s.banner_image_source, s.profile_image_source, s.sale, s.address,
+    s.banner_image_source, s.profile_image_source, s.header_logo, s.header_style,
+    s.sale, s.address,
     s.address_visible, s.hours, s.hours_visible, s.blocked, s.demo, s.promo_weight, s.bg_colors,
     s.feed_sync, s.feed_export_token, s.custom_domain_hostname, s.custom_domain_status,
     s.custom_domain_added_at, s.custom_domain_checked_at,
@@ -216,6 +240,8 @@ interface StoreRow {
   profile_image: string | null;
   banner_image_source: string | null;
   profile_image_source: string | null;
+  header_logo: string | null;
+  header_style: 'name' | 'logo' | null;
   sale: StoreSale | null;
   address: string | null;
   address_visible: boolean;
@@ -273,6 +299,10 @@ function toStore(row: StoreRow): Store {
   if (row.profile_image) store.profileImage = row.profile_image;
   if (row.banner_image_source) store.bannerImageSource = row.banner_image_source;
   if (row.profile_image_source) store.profileImageSource = row.profile_image_source;
+  if (row.header_logo) store.headerLogo = row.header_logo;
+  // Only the non-default is carried, so `headerStyle` reads absent for the overwhelming majority of
+  // stores and every consumer's `=== 'logo'` test is the same shape as the other optional fields.
+  if (row.header_style === 'logo') store.headerStyle = 'logo';
   if (row.sale) store.sale = row.sale;
   if (row.address) store.address = row.address;
   if (row.address_visible) store.addressVisible = true;
@@ -842,6 +872,10 @@ const UPDATABLE: Record<string, { sql: string; value: (v: unknown) => unknown }>
   profileImage:   { sql: 'profile_image = $', value: (v) => v ?? null },
   bannerImageSource:  { sql: 'banner_image_source = $', value: (v) => v ?? null },
   profileImageSource: { sql: 'profile_image_source = $', value: (v) => v ?? null },
+  headerLogo:  { sql: 'header_logo = $', value: (v) => v ?? null },
+  // NOT NULL with a default in the schema, so an absent/unknown value writes the default rather
+  // than null — a settings save that omitted it would otherwise violate the column.
+  headerStyle: { sql: 'header_style = $', value: (v) => (v === 'logo' ? 'logo' : 'name') },
   sale:           { sql: 'sale = $::jsonb', value: (v) => (v == null ? null : JSON.stringify(v)) },
   address:        { sql: 'address = $', value: (v) => v ?? null },
   addressVisible: { sql: 'address_visible = $', value: (v) => Boolean(v) },

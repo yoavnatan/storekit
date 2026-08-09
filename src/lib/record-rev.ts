@@ -74,6 +74,18 @@ export const PRODUCT_REV_FIELDS = [
 export const STORE_REV_FIELDS = [
   'name', 'tagline', 'description', 'categories', 'bannerImage', 'profileImage',
   'address', 'addressVisible', 'hours', 'hoursVisible', 'shipping',
+  // Appended rather than inserted — a convention here, not a safety property, and the difference is
+  // worth stating because the obvious guess is wrong. `fieldRevs` joins one revision PER FIELD
+  // positionally, so the tempting conclusion is that a mid-list insert would misalign an in-flight
+  // baseline against the wrong fields. It cannot: `mergeByFieldRev` gates on
+  // `base.length === fields.length`, so a baseline minted before this deploy is judged UNUSABLE as
+  // a whole and that one save falls back to "take everything the seller submitted", exactly as it
+  // behaved before per-field merging existed. That is the real cost of extending this list — any
+  // extension, in any position — and it is one save per form open across a deploy, self-healing on
+  // the next page load. Appending simply keeps the list readable next to the form.
+  // Two fields and not one, on purpose (migration 0021): uploading a logo does not adopt it, and
+  // choosing the name back does not delete it — so they merge independently too.
+  'headerLogo', 'headerStyle',
 ] as const;
 
 /** One revision PER FIELD, positional over the field list above — that is what lets a save be merged field by field instead of accepted or rejected whole. */

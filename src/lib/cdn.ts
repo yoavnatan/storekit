@@ -128,6 +128,26 @@ export function cdnSrc(url: string, w = 400): string {
 }
 
 /**
+ * An image asked to FIT INSIDE a box of both dimensions, never cropped and never upscaled — for a
+ * logo, whose aspect ratio is the thing it is.
+ *
+ * Every other helper here answers a different question. `cdnThumb`/`cdnCircle`/`cdnBand` all FILL a
+ * shape the layout dictates, which means cropping — correct for a photo, destructive for a
+ * wordmark, where the crop takes off the last letters or the symbol. `cdnSrc` bounds width only, so
+ * a tall narrow mark would be delivered far taller than the 32px bar can show and the browser would
+ * download several times the pixels it paints.
+ *
+ * `c_limit` with BOTH `w` and `h` is Cloudinary's "contain": it scales down until the whole image
+ * fits inside w×h, keeps the ratio, and does nothing at all when the source is already smaller. The
+ * returned pixel size is therefore not predictable from the arguments — which is fine and is the
+ * point: the markup draws it into a CSS box with `object-fit: contain`, so the box governs the
+ * layout and this only governs the bytes.
+ */
+export function cdnContain(url: string, w: number, h: number): string {
+  return deliver(url, `c_limit,f_auto,q_auto,w_${w},h_${h}`);
+}
+
+/**
  * The only widths a full-screen (lightbox) image is ever requested at, and the
  * widths `image-derive.ts` pre-renders when a seller saves a product.
  *

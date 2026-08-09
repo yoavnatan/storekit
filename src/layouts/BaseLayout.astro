@@ -34,7 +34,7 @@ import '../styles/main.css';
 
 const {
   title, description, image, type, noindex, jsonLd, canonical,
-  isLoggedIn, hasStore, storeMode, storeName, storeSlug, storeLogo, sellerMode, hideNav, showSearch, isHome,
+  isLoggedIn, hasStore, storeMode, storeName, storeSlug, storeLogo, storeHeaderLogo, sellerMode, hideNav, showSearch, isHome,
   dataLayer, productPrice, productCurrency, preloadImage,
 } = Astro.props;
 
@@ -286,7 +286,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
         Empty until a navigation actually starts, and it needs no teardown — the
         document is replaced. */}
     <div id="nav-progress" class="progress-track fixed inset-x-0 top-[var(--site-header-h,3.4rem)] z-[70] pointer-events-none" role="status" aria-label={t.nav.loading}></div>
-    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} storeLogo={storeLogo} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} isHome={isHome} initialUnreadCount={initialUnreadCount} />
+    <Header isLoggedIn={isLoggedIn} hasStore={hasStore} storeMode={storeMode} storeName={storeName} storeSlug={storeSlug} storeLogo={storeLogo} storeHeaderLogo={storeHeaderLogo} sellerMode={sellerMode} hideNav={hideNav} showSearch={showSearch} isHome={isHome} initialUnreadCount={initialUnreadCount} />
     <main id="main-content">
       <slot />
     </main>

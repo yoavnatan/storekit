@@ -1,0 +1,100 @@
+---
+/** Settings → "ראש החנות": the seller chooses between today's avatar-and-name lockup and their own
+ *  logo, by LOOKING at both (owner, 2026-08-09: "להראות לו תצוגה מקדימה… ואם זה מוצא חן בעיניו או
+ *  שהוא רוצה לבחור בהדר פונטי רגיל ותמונה").
+ *
+ *  **Both previews are on screen at once, and that is the design.** A radio pair with a single
+ *  preview makes the seller click in order to find out, which is a preview of a decision already
+ *  made. Two rows one under the other is the comparison he asked for, and choosing is a click on
+ *  the one he prefers.
+ *
+ *  **The previews reuse the header's OWN classes** — `.store-header__logo-col`, `.store-name-link`,
+ *  `.store-header__logo`, `.store-header__brand`, `.store-name-text` — never lookalikes. The repo
+ *  has been here with the store-sale banner (PromotionsPanel.astro): a preview assembled from its
+ *  own rules drifts from the thing it claims to show, and it fails silently because nobody
+ *  re-checks a preview against production. Concretely: the 32px avatar, the 11rem logo cap and the
+ *  `object-fit: contain` are the same declarations here as on the storefront, so a wide wordmark
+ *  shrinks in this box by exactly as much as it will there.
+ *
+ *  What it deliberately does NOT reproduce: `.site-header` itself (it is `position: fixed`), the
+ *  search field and the action icons. The bar's HEIGHT is reproduced, because that is the question
+ *  a seller is actually asking of a logo — the row is `h-[3.4rem]`, the pinned height from
+ *  Header.astro, so a logo that fits here fits there.
+ */
+import StoreAvatar from './../StoreAvatar.astro';
+import { cdnContain } from '../../config/store.config.js';
+import type { Store } from '../../lib/stores.js';
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  store: Store;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { store, d } = Astro.props;
+const chosen = store.headerStyle === 'logo' ? 'logo' : 'name';
+
+/** The bar. `hdr-preview` is a marker the header stylesheet also names (one selector, for the
+ *  store-name's measured baseline nudge) — everything else here is a utility. */
+const BAR = 'hdr-preview flex items-center h-[3.4rem] px-4 rounded-[var(--radius)] border [border-color:var(--color-border)] bg-[color:var(--color-surface)] overflow-hidden';
+/** The label box. Depth on hover only and a fill when chosen — the site's pressed/selected
+ *  language (Hard rules → elevation), not a new treatment. */
+const BOX = 'block cursor-pointer rounded-[var(--radius)] border [border-color:var(--color-border)] p-3 transition-[background,border-color,box-shadow] duration-150 hover:shadow-[var(--shadow-hover)] peer-checked:[border-color:var(--color-accent)] peer-checked:[background:color-mix(in_srgb,var(--color-accent)_5%,transparent)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:[outline-color:var(--color-accent)] peer-disabled:opacity-55 peer-disabled:cursor-default peer-disabled:hover:shadow-none';
+---
+
+<div class="card card--flat p-4 md:p-5 mt-4" id="header-style-card">
+  <h3 class="text-[1.05rem] font-bold m-0">{d.headerStyleTitle}</h3>
+  <p class="muted m-0 mt-1 mb-4 text-[0.82rem]">{d.headerStyleHint}</p>
+
+  <div class="grid gap-3">
+    <label>
+      <input type="radio" name="headerStyle" value="name" checked={chosen === 'name'} class="sr-only peer" />
+      <span class={BOX}>
+        <span class="block text-[0.85rem] font-semibold mb-2">{d.headerStyleName}</span>
+        <span class={BAR} aria-hidden="true">
+          <span class="store-header__logo-col">
+            <span class="logo store-name-link">
+              <StoreAvatar name={store.name} slug={store.slug} profileImage={store.profileImage} size={32} class="store-header__logo" />
+              <span class="store-name-text">{store.name}</span>
+            </span>
+          </span>
+        </span>
+      </span>
+    </label>
+
+    <label>
+      {/* Disabled until there IS a logo: "choose the logo" is not an offer with nothing to show,
+          and a radio that selects an empty header is a way to publish a blank bar. The script
+          enables it the moment an upload lands. */}
+      <input type="radio" name="headerStyle" value="logo" checked={chosen === 'logo'} class="sr-only peer"
+             id="header-style-logo" disabled={!store.headerLogo} />
+      <span class={BOX}>
+        <span class="block text-[0.85rem] font-semibold mb-2">{d.headerStyleLogo}</span>
+        <span class={BAR} aria-hidden="true">
+          <span class="store-header__logo-col">
+            <span class="logo store-name-link store-name-link--logo">
+              <span class="store-header__brand" id="header-logo-preview-box" hidden={!store.headerLogo}>
+                <img id="header-logo-preview" src={store.headerLogo ? cdnContain(store.headerLogo, 480, 64) : ''}
+                     alt="" width="176" height="32" loading="lazy" decoding="async" />
+              </span>
+            </span>
+          </span>
+          <span class="muted text-[0.78rem]" id="header-logo-empty" hidden={!!store.headerLogo}>{d.headerStyleLogoEmpty}</span>
+        </span>
+      </span>
+    </label>
+  </div>
+
+  <div class="flex flex-wrap gap-2 mt-3">
+    <button type="button" class="btn btn--sm btn--ghost" id="header-logo-upload-btn">
+      {store.headerLogo ? d.storeImageChange : d.uploadImage}
+    </button>
+    {/* Offered for the same reason the avatar offers it: a logo lands on the header's own surface,
+        so a photo's white backdrop shows up as a plate around the mark. */}
+    <button type="button" class="btn btn--sm btn--ghost" id="header-logo-bg-btn" hidden={!store.headerLogo}>{d.removeBackground}</button>
+    <button type="button" class="btn btn--sm btn--ghost" id="header-logo-remove-btn" hidden={!store.headerLogo}>{d.removeImage}</button>
+  </div>
+  <p class="muted m-0 mt-2 text-[0.76rem]">{d.headerStyleLogoTip}</p>
+
+  <input type="file" accept="image/*" id="header-logo-file-input" hidden />
+  <input type="hidden" name="headerLogo" id="header-logo-input" value={store.headerLogo ?? ''} />
+</div>

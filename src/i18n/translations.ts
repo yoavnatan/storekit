@@ -708,6 +708,15 @@ export const translations = {
       // Coupons. The hint states the one thing that separates a coupon from the two levers above
       // it — the price on the store stays as it is — because that is what a seller has to
       // understand before deciding to run one.
+      // Header lockup (settings). The wording avoids "עיצוב" on purpose — this platform has one
+      // fixed template and no per-seller design tooling; what is on offer is an identity slot, not
+      // a theme.
+      headerStyleTitle: 'ראש החנות',
+      headerStyleHint: 'איך ייראה החלק העליון של החנות שלך. בחרו את מה שנראה לכם טוב יותר.',
+      headerStyleName: 'תמונה ושם החנות',
+      headerStyleLogo: 'לוגו משלכם',
+      headerStyleLogoEmpty: 'העלו לוגו כדי לבחור באפשרות הזו',
+      headerStyleLogoTip: 'כל יחס גובה-רוחב מתאים — הלוגו מוקטן כדי להיכנס, ואף פעם לא נחתך ולא מגדיל את הסרגל. רקע שקוף (PNG) ייראה הכי טוב.',
       couponsTitle: 'קודי קופון',
       couponsHint: 'הנחה שרק מי שמקבל את הקוד יכול לממש. המחיר בחנות לא משתנה, וההנחה יורדת בתשלום.',
       couponsTip: 'הקוד לא מופיע בשום מקום באתר — אתם מפיצים אותו. שדה הקופון בתשלום מוצג רק כשיש לכם קוד פעיל.',
@@ -2093,6 +2102,12 @@ export const translations = {
       saleSourceProduct: 'per-product discount',
       discountedProductsHint: 'Products with a separate discount of their own. To add one, use the Products tab — a single product edit, or select several at once.',
       discountedProductsEmpty: 'No products currently have a discount.',
+      headerStyleTitle: 'Store header',
+      headerStyleHint: 'How the top of your store looks. Pick whichever you prefer.',
+      headerStyleName: 'Picture and store name',
+      headerStyleLogo: 'Your own logo',
+      headerStyleLogoEmpty: 'Upload a logo to choose this',
+      headerStyleLogoTip: 'Any aspect ratio works — the logo scales down to fit, is never cropped, and never makes the bar taller. A transparent PNG looks best.',
       couponsTitle: 'Coupon codes',
       couponsHint: 'A discount only people who receive the code can use. Your store prices stay as they are; the discount comes off at checkout.',
       couponsTip: 'The code appears nowhere on the site — you hand it out. The coupon field at checkout is shown only while you have a live code.',
