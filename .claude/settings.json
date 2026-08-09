@@ -56,6 +56,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash .claude/hooks/money-rules-on-contact.sh",
+            "statusMessage": "Money surface — loading its rules..."
+          },
+          {
+            "type": "command",
             "command": "bash .claude/hooks/remind-css-conversion.sh"
           }
         ]
