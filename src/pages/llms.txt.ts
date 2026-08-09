@@ -62,7 +62,7 @@ ${storeLines || '- (no stores published yet)'}${moreNote}
 
 ## Structured data
 
-- [Content sitemap](${baseUrl}/sitemap-content.xml): every store + product page (the complete, authoritative list)
+- [Content sitemap](${baseUrl}/sitemap-content.xml): a sitemap index over numbered files listing every store + product page (the complete, authoritative list)
 - [Site sitemap index](${baseUrl}/sitemap-index.xml): build-time public routes
 - [Product feed](${baseUrl}/api/feed/products.xml): the full catalog as a Google Merchant / Meta Catalog feed (title, price, availability, brand, images, attributes)
 

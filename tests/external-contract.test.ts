@@ -494,8 +494,11 @@ describe('two surfaces describing one product describe it identically', () => {
     expect(adLandingUrl(storeFixture(), 'x')).toBe(productCanonicalUrl(storeFixture(), 'x'));
   });
 
-  it('the feed endpoint takes that URL from the helper, not from a template', () => {
-    const source = readFileSync(join(SRC, 'pages/api/feed/products.xml.ts'), 'utf8');
+  it('the feed document takes that URL from the helper, not from a template', () => {
+    // `lib/feed-document.ts`, not the route: the route stopped assembling the feed on 2026-08-09
+    // (it serves a pre-built artifact — GO_LIVE §7), and the rule follows the code that builds the
+    // link rather than the file that used to.
+    const source = readFileSync(join(SRC, 'lib/feed-document.ts'), 'utf8');
     expect(source, 'the feed link must come from adLandingUrl').toContain('adLandingUrl');
     expect(source, 'the seller-domain canonical is not a feed link — see the rule above')
       .not.toContain('productCanonicalUrl');

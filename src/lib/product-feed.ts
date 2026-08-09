@@ -399,19 +399,45 @@ function itemXml(it: FeedItem, currency: string): string {
   return `<item>\n${lines.join('\n')}\n</item>`;
 }
 
-/** Serialize feed rows to a Google Merchant Center RSS 2.0 feed (the `g:`
- *  namespace) — the same document Meta Catalog ingests as a data-feed URL, so
- *  one endpoint drives both. */
-export function toMerchantXml(items: FeedItem[], meta: FeedChannelMeta): string {
-  const body = items.map((it) => itemXml(it, meta.currency)).join('\n');
+/**
+ * The document, in its three pieces — because it is no longer built in one go.
+ *
+ * The feed is written to storage a part at a time by a job (`feed-document.ts` → `artifacts.ts`),
+ * so the header, each item and the footer have to be obtainable separately. They are exported
+ * rather than inlined at the call site for the obvious reason: two places writing the same
+ * document's frame is two places to get an `<rss>` attribute wrong, and the one that ships is the
+ * one Google parses. `toMerchantXml` below is now composed of exactly these, which is what makes
+ * "the streamed document equals the single-shot one" a property rather than a hope — and
+ * `tests/catalog-artifacts.test.ts` asserts it byte for byte over real rows anyway, because the
+ * risk that remains is the ORDER the parts are produced in, not the parts.
+ */
+export function feedXmlHeader(meta: FeedChannelMeta): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
 <channel>
 <title>${xmlEscape(meta.title)}</title>
 <link>${xmlEscape(meta.link)}</link>
 <description>${xmlEscape(meta.description)}</description>
-${body}
+`;
+}
+
+/** Items are joined with a newline, so the separator belongs to whoever emits the SECOND one — the
+ *  footer's leading newline closes the last item's line, and an empty feed keeps the blank line the
+ *  single-shot version always produced. */
+export const FEED_XML_FOOTER = `
 </channel>
 </rss>
 `;
+
+/** One `<item>`, the unit the streamed build emits. */
+export function feedItemXml(item: FeedItem, currency: string): string {
+  return itemXml(item, currency);
+}
+
+/** Serialize feed rows to a Google Merchant Center RSS 2.0 feed (the `g:`
+ *  namespace) — the same document Meta Catalog ingests as a data-feed URL, so
+ *  one endpoint drives both. */
+export function toMerchantXml(items: FeedItem[], meta: FeedChannelMeta): string {
+  const body = items.map((it) => itemXml(it, meta.currency)).join('\n');
+  return `${feedXmlHeader(meta)}${body}${FEED_XML_FOOTER}`;
 }
