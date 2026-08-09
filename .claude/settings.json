@@ -30,6 +30,16 @@
         ]
       },
       {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/worktree-before-edit.sh",
+            "statusMessage": "Checking this session owns the tree..."
+          }
+        ]
+      },
+      {
         "matcher": "Write",
         "hooks": [
           {
