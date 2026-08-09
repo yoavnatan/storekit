@@ -31,7 +31,15 @@ function walk(dir: string, exts = ['.ts']): string[] {
 const posix = (p: string): string => relative('.', p).replaceAll('\\', '/');
 
 /** Anything that proves WHO is calling — a session, an admin cookie, an ownership resolution, or a
- *  provider signature on an inbound webhook. A route may use any of them; it may not use none. */
+ *  provider signature on an inbound webhook. A route may use any of them; it may not use none.
+ *
+ *  KNOW WHAT THIS IS: a textual scan, so it proves the question was ASKED, not that it was answered
+ *  correctly. A route that imports getSellerSession and ignores the result passes here. That is
+ *  deliberate rather than a shortcut — deciding whether a check is *correct* is what
+ *  store-ownership.test.ts and the per-route tests do, and they can only do it for a route someone
+ *  wrote a test for. This one covers the routes nobody has thought about yet, and the cheapest
+ *  honest thing it can assert about them is that authorization is mentioned at all. Do not read a
+ *  green run here as "every route is authorized"; read it as "no route skipped the subject". */
 const ESTABLISHES_IDENTITY =
   /getSellerSession|getUserSession|getBuyerSession|requireAdmin|isAdminRequest|ownedStore|ownedProduct|verifySignature/;
 
