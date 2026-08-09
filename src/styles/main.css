@@ -126,14 +126,67 @@
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 
-/* HEEBO IS THE ONLY FAMILY ON THIS SITE, including inside the logo (2026-08-05).
- * A single Rubik face lived here for one line — the Hebrew under the wordmark in
- * BrandLogo.astro — and it is gone: it cost an eleventh font preload on every
- * page for a line that renders on one, and being a second `font-display:optional`
- * face it could be refused at first paint and silently fall back to Heebo at the
- * wrong metrics, which is precisely how the lockup shipped misaligned. Heebo is
- * Rubik's own Hebrew companion, so the family was buying almost nothing for it.
- * Do not re-add a second family for a single component. */
+/* Noto Serif Hebrew, the DISPLAY face — a store's own name, and nothing else
+ * (2026-08-09, owner: the store header and the top of a store page read "בסיסי
+ * מדי"). Read the rule below before adding a third family; this one is inside it,
+ * not an exception to it.
+ *
+ * The VARIABLE cut on purpose. Two files carry weight 100–900, so the header
+ * (~600) and the hero (800) cost one request per script instead of one per
+ * weight per script — which is what made a second family affordable at all.
+ * 18KB hebrew + 29KB latin. latin-ext is skipped for the same reason Heebo skips
+ * it: this site has two alphabets. The unicode-ranges below are byte-identical
+ * to Heebo's, so the two families split a mixed string at exactly the same
+ * boundary and a name like "MegaMart תל אביב" cannot resolve half from each. */
+@font-face {
+  font-family: 'Noto Serif Hebrew Variable';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/noto-serif-hebrew/files/noto-serif-hebrew-hebrew-wght-normal.woff2') format('woff2');
+  unicode-range: U+0307-0308,U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F;
+}
+@font-face {
+  font-family: 'Noto Serif Hebrew Variable';
+  font-style: normal;
+  font-display: optional;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/noto-serif-hebrew/files/noto-serif-hebrew-latin-wght-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* TWO FAMILIES, AND THE SECOND ONE HAD TO EARN IT (was "HEEBO IS THE ONLY FAMILY
+ * ON THIS SITE", 2026-08-05 — narrowed 2026-08-09, not lifted).
+ *
+ * The original: a single Rubik face lived here for one line — the Hebrew under
+ * the wordmark in BrandLogo.astro — and it went. It cost an eleventh font
+ * preload on every page for a line that renders on one, and being a second
+ * `font-display:optional` face it could be refused at first paint and silently
+ * fall back to Heebo at the wrong metrics, which is precisely how the lockup
+ * shipped misaligned. Heebo is Rubik's own Hebrew companion, so the family was
+ * buying almost nothing for it.
+ *
+ * That failure had two causes, and only one of them was "a second family". The
+ * other was a face with NO PRELOAD under `font-display:optional` — which is a
+ * face the browser is free to refuse, on a site whose whole font strategy is
+ * "already available or don't bother". So the rule is now the two conditions
+ * that would have caught it, and a family that meets both is allowed:
+ *
+ *   1. It is used on a whole class of pages, not in one component. Noto Serif
+ *      carries the store name in the header AND the store-page hero, i.e. every
+ *      storefront page on the site — the highest-traffic surface there is.
+ *   2. It is PRELOADED, every subset, in BaseLayout.astro. Non-negotiable, and
+ *      tests/font-preload.test.ts now fails the build if a face here has no
+ *      preload there. That test is the reason this rule can be relaxed at all.
+ *
+ * A third family has to answer both in writing, here. "It would look nicer on
+ * one component" is the exact argument that shipped the misaligned lockup.
+ *
+ * A consequence to carry, because `optional` makes it real: on a genuinely cold
+ * first visit the display face may be refused and the store name paints in
+ * Heebo. That is a deliberate, legible fallback — Heebo is the site's own voice —
+ * but any px-level nudge tuned to Noto Serif's metrics is WRONG for that paint.
+ * See header.css's `.store-name-text` transform for the one place that matters. */
 
 /* ============================================================
  *  main.css — single entry point for all styles.

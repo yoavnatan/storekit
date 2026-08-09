@@ -55,6 +55,14 @@
 
   --font-base: 'Heebo', system-ui, -apple-system, sans-serif;
 
+  /* The display face — a store's own name only (header lockup + store-page hero).
+     Deliberately NOT on `body` and not on h1/h2 generally: see main.css for the
+     two conditions a second family has to meet here. `--font-base` is the fallback
+     rather than a generic serif on purpose — if the face is refused at first paint
+     (`font-display: optional`), the name should land in the site's own voice, not
+     in whatever serif the OS happens to ship. */
+  --font-display: 'Noto Serif Hebrew Variable', var(--font-base);
+
   /* The default step of the radius scale (see the @theme block below), under
      the name the codebase already uses everywhere: var(--radius). */
   --radius: var(--radius-md);

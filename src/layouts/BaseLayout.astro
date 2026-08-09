@@ -27,11 +27,16 @@ import heebo500LatinUrl from '@fontsource/heebo/files/heebo-latin-500-normal.wof
 import heebo600LatinUrl from '@fontsource/heebo/files/heebo-latin-600-normal.woff2?url';
 import heebo700LatinUrl from '@fontsource/heebo/files/heebo-latin-700-normal.woff2?url';
 import heebo800LatinUrl from '@fontsource/heebo/files/heebo-latin-800-normal.woff2?url';
-// There is no eleventh preload here on purpose: the logo's Hebrew line is Heebo
-// too now (BrandLogo.astro), so it is already covered by the five Hebrew weights
-// below. A second family needed its own preload — `font-display:optional` refuses
-// any face that is not available at first paint — for a line that renders on one
-// page, on every page of the site.
+// The display face (store names): two VARIABLE files covering weight 100-900, so
+// the header (~600) and the store hero (800) add two preloads between them rather
+// than four. `font-display:optional` refuses any face not available at first paint,
+// so a face declared in main.css without a preload here is a face that silently
+// falls back at the wrong metrics — that is how the old Rubik lockup shipped
+// misaligned, and tests/font-preload.test.ts now fails the build on it.
+import notoSerifHebrewUrl from '@fontsource-variable/noto-serif-hebrew/files/noto-serif-hebrew-hebrew-wght-normal.woff2?url';
+import notoSerifLatinUrl from '@fontsource-variable/noto-serif-hebrew/files/noto-serif-hebrew-latin-wght-normal.woff2?url';
+// The logo's Hebrew line is Heebo too (BrandLogo.astro), already covered by the
+// five Hebrew weights above — it needs nothing of its own.
 
 import '../styles/main.css';
 
@@ -215,9 +220,15 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
        @font-face independently, so both scripts need every weight actually
        used or one half of the string can still swap on its own). Preloading
        the full matrix removes the race everywhere instead of chasing it
-       page-by-page; each file is ~5-12KB. */}
+       page-by-page; each file is ~5-12KB.
+
+       The last two are the display face (store names). They are variable cuts —
+       18KB + 29KB for the whole 100-900 range — which is why a second family is
+       two entries here and not eight. Every @font-face in main.css must appear in
+       this list; tests/font-preload.test.ts enforces it. */}
     {[heebo400HebrewUrl, heebo500HebrewUrl, heebo600HebrewUrl, heebo700HebrewUrl, heebo800HebrewUrl,
-      heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl].map((href) => (
+      heebo400LatinUrl, heebo500LatinUrl, heebo600LatinUrl, heebo700LatinUrl, heebo800LatinUrl,
+      notoSerifHebrewUrl, notoSerifLatinUrl].map((href) => (
       <link rel="preload" href={href} as="font" type="font/woff2" crossorigin />
     ))}
     <Seo title={title} description={description} image={image} type={type} noindex={noindex} jsonLd={jsonLd} canonical={canonical} productPrice={productPrice} productCurrency={productCurrency} />
