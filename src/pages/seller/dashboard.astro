@@ -3249,8 +3249,15 @@ const orderStatusColors: Record<string, string> = {
     },
 
     promotions: async () => {
-      const { initPromotionsTab } = await import('../../scripts/dashboard/promotions.js');
-      initPromotionsTab();
+      // Two modules for one tab, loaded together: the coupon card fetches its own list on first
+      // open (it is not rendered server-side — see CouponsCard.astro), so it has to be booted with
+      // the tab and not on some later interaction.
+      const [promo, coupons] = await Promise.all([
+        import('../../scripts/dashboard/promotions.js'),
+        import('../../scripts/dashboard/coupons.js'),
+      ]);
+      promo.initPromotionsTab();
+      coupons.initCouponsCard();
     },
 
     settings: async () => {

@@ -78,6 +78,14 @@ export interface StoreSubtotal {
    *  `percent`, ILS for `amount`. `appliedAgorot` is the money it came to, and is the only one of
    *  the two any total is built from. They are stored in separate columns for the same reason. */
   discount?: { type: 'percent' | 'amount'; value: number; appliedAgorot: number };
+  /** The coupon code that WROTE the discount above, when a buyer's code is what produced it rather
+   *  than the seller editing the order afterwards. Provenance only — no total is built from it, and
+   *  a coupon and a seller discount are deliberately not two slots (migrations/0020's header says
+   *  why: one order-level discount column is what makes a coupon correct in every money surface on
+   *  day one). It follows that a seller who later edits the discount on such an order REPLACES the
+   *  coupon's number, and the code is cleared with it — the alternative is a receipt naming a code
+   *  beside an amount that code never gave. */
+  couponCode?: string;
 }
 
 export interface Order {
@@ -182,6 +190,7 @@ interface StoreRow {
   discount_percent: number | null;
   discount_amount_agorot: string | number | null;
   discount_applied_agorot: string | number;
+  coupon_code: string | null;
   seller_notes: string[] | null;
 }
 
@@ -265,6 +274,9 @@ function toStoreSubtotal(row: StoreRow): StoreSubtotal {
       : bigIntOf(row.discount_amount_agorot) / 100;
     sub.discount = { type: row.discount_type, value, appliedAgorot: bigIntOf(row.discount_applied_agorot) };
   }
+  // Only alongside a discount it can explain. A stored code with no discount left beside it would
+  // print "קופון: X" on a receipt showing nothing taken off.
+  if (row.coupon_code && sub.discount) sub.couponCode = row.coupon_code;
   return sub;
 }
 
@@ -704,20 +716,25 @@ async function writeStores(
       discount_percent: d?.type === 'percent' ? Math.round(Number(d.value) || 0) : null,
       discount_amount_agorot: d?.type === 'amount' ? nonNegative(Number(d.value) * 100) : null,
       discount_applied_agorot: nonNegative(d?.appliedAgorot),
+      // Written only with the discount it explains — see the `couponCode` doc comment. A discount
+      // arriving without one clears the column, which is exactly what a seller's own edit of a
+      // couponed order must do.
+      coupon_code: d && sub?.couponCode ? sub.couponCode : null,
       seller_notes: sellerNotes?.[slug] ?? [],
     };
   });
   await tx.query(
     `INSERT INTO order_stores (order_id, store_slug, store_name, subtotal_agorot, shipping_agorot,
                                delivery_method, discount_type, discount_percent,
-                               discount_amount_agorot, discount_applied_agorot, seller_notes)
+                               discount_amount_agorot, discount_applied_agorot, coupon_code, seller_notes)
      SELECT $1, x.store_slug, x.store_name, x.subtotal_agorot, x.shipping_agorot,
             x.delivery_method, x.discount_type, x.discount_percent,
-            x.discount_amount_agorot, x.discount_applied_agorot, x.seller_notes
+            x.discount_amount_agorot, x.discount_applied_agorot, x.coupon_code, x.seller_notes
        FROM jsonb_to_recordset($2::jsonb) AS x(
          store_slug text, store_name text, subtotal_agorot bigint, shipping_agorot bigint,
          delivery_method text, discount_type text, discount_percent int,
-         discount_amount_agorot bigint, discount_applied_agorot bigint, seller_notes text[])`,
+         discount_amount_agorot bigint, discount_applied_agorot bigint, coupon_code text,
+         seller_notes text[])`,
     [orderId, JSON.stringify(payload)],
   );
 }

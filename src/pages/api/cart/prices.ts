@@ -4,6 +4,7 @@ import { getStoreBySlugOrPrevious, canStoreSell } from '../../../lib/stores.js';
 import { getProductBySlug, isProductVisible, getEffectiveStock } from '../../../lib/store-products.js';
 import { resolvePrice } from '../../../lib/discounts.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
+import { storesWithLiveCoupons } from '../../../lib/store-coupons.js';
 
 /** A cart lives in the buyer's browser and can sit there for days. Prices do not: a seller can
  *  start a sale, end one, or change a price while an item waits in a cart. This re-prices those
@@ -71,6 +72,9 @@ export const POST: APIRoute = async ({ request }) => {
   const lines = Array.isArray(body.items) ? body.items.slice(0, MAX_LINES) : [];
 
   const items: CartPriceRow[] = [];
+  // Store id per slug, collected as the loop resolves each one, so the coupon question below costs
+  // one query for the whole cart instead of a lookup per store.
+  const storeIdBySlug = new Map<string, string>();
   for (const raw of lines) {
     const line = raw as PriceRequestLine;
     const storeSlug = typeof line.storeSlug === 'string' ? line.storeSlug.trim() : '';
@@ -90,6 +94,9 @@ export const POST: APIRoute = async ({ request }) => {
     // reported `gone`, exactly like a deleted product, so the drawer stops quoting a price
     // checkout would refuse a moment later.
     const product = store && canStoreSell(store) ? await getProductBySlug(store.id, slug) : null;
+    // Keyed by the slug the CLIENT sent, because that is the key its cart is grouped by — a
+    // renamed store's old slug must still light up its own block.
+    if (store && canStoreSell(store)) storeIdBySlug.set(storeSlug, store.id);
     if (!product || !isProductVisible(product)) {
       items.push({ storeSlug, slug, price: 0, gone: true });
       continue;
@@ -116,5 +123,21 @@ export const POST: APIRoute = async ({ request }) => {
     });
   }
 
-  return json({ ok: true, items });
+  // Which of these stores is even offering a code right now.
+  //
+  // **This is the whole "least burden on the existing UI" decision, and it is a server decision.**
+  // A permanent coupon box on a checkout is a field almost nobody can fill in, and one that sends
+  // the shoppers who can't off to hunt for a code they will not find. So the field does not exist
+  // unless there is something to type in it — and the page cannot know that on its own, because
+  // the cart is built from localStorage and the server never rendered it.
+  //
+  // Deliberately a BOOLEAN per store and never the codes themselves: a list of live codes on a
+  // public endpoint is the promotion given away to everyone, which is the opposite of what a
+  // coupon is for. `/api/cart/coupon` still has to be told the code.
+  const withCoupons = await storesWithLiveCoupons([...storeIdBySlug.values()]);
+  const couponStores = [...storeIdBySlug.entries()]
+    .filter(([, id]) => withCoupons.has(id))
+    .map(([slug]) => slug);
+
+  return json({ ok: true, items, couponStores });
 };

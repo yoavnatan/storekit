@@ -32,6 +32,14 @@ const CHECK_TIMEOUT_MS = 2500;
 
 let pending: Promise<CartPriceChange[]> | null = null;
 let lastAt = 0;
+/** Store slugs that are offering a coupon code right now, as of the last successful re-price.
+ *  Empty until one completes — the coupon field appears WITH the resolved prices rather than
+ *  before them, which is the same moment the savings rows appear and one fewer thing that moves. */
+let couponStores = new Set<string>();
+
+export function storeOffersCoupon(storeSlug: string): boolean {
+  return couponStores.has(storeSlug);
+}
 let installed = false;
 const listeners: Array<(changes: CartPriceChange[]) => void> = [];
 
@@ -63,8 +71,15 @@ export function refreshCartPrices(opts: { maxAge?: number } = {}): Promise<CartP
         signal: abort.signal,
       });
       if (!res.ok) return [];
-      const data = await res.json() as { ok?: boolean; items?: Parameters<typeof applyServerPrices>[0] };
+      const data = await res.json() as { ok?: boolean; items?: Parameters<typeof applyServerPrices>[0]; couponStores?: unknown };
       if (!data.ok || !Array.isArray(data.items)) return [];
+      // Rides on the answer this request was already making, rather than a second round trip: the
+      // checkout page needs it at exactly the moment prices resolve, and only to decide whether a
+      // store's block offers a coupon field at all. Replaced wholesale on every successful check —
+      // a code that ran out while the tab sat open takes its field away with it.
+      if (Array.isArray(data.couponStores)) {
+        couponStores = new Set(data.couponStores.filter((s): s is string => typeof s === 'string'));
+      }
       return applyServerPrices(data.items);
     } catch {
       // Offline, slow, or server down — the stored prices stay as they are, and checkout still

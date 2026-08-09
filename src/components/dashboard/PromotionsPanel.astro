@@ -20,6 +20,7 @@ import type { Store } from '../../lib/stores.js';
 import type { StoreCategory } from '../../lib/store-categories.js';
 import type { getT } from '../../i18n/index.js';
 import InfoTip from './InfoTip.astro';
+import CouponsCard from './CouponsCard.astro';
 import { jsonForScript } from '../../lib/json-script.js';
 
 interface Props {
@@ -74,7 +75,13 @@ const discounted = products
 
 <div class="dash-panel-head mb-5 py-[0.6rem] border-b border-[color:var(--color-border)] flex items-center justify-between gap-3 flex-wrap">
   <h2 class="text-[color:var(--color-text)] m-0">{d.tabPromotions}</h2>
-  <button class="btn btn--sm" type="submit" form="store-sale-form" id="store-sale-save-btn">{d.saveChanges}</button>
+  {/* Named for WHAT it saves, not "שמור שינויים". This head button submits `store-sale-form` and
+      only that — which was unambiguous while the tab held one form, and stopped being so the day
+      the coupon card arrived below it with a save of its own. A generic label on a scoped button is
+      how a seller fills in a coupon, presses the button at the top, and loses it (memory
+      `feedback_save_model_clarity`: never let one save button and a second save model share a
+      screen without saying which is which). */}
+  <button class="btn btn--sm" type="submit" form="store-sale-form" id="store-sale-save-btn">{d.storeSaleSave}</button>
 </div>
 
 <form method="POST" action="/api/store" id="store-sale-form" data-unsaved-guard>
@@ -215,3 +222,8 @@ const discounted = products
       </ul>
     )}
 </div>
+
+{/* Third card, last: the two above are levers on the PUBLISHED price and belong together; a
+    coupon is the one promotion the storefront never shows, so it reads as a separate idea rather
+    than a third variation of the same one. */}
+<CouponsCard storeId={store.id} d={d} />

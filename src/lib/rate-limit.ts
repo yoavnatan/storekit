@@ -89,6 +89,25 @@ export function adminLoginRules(ip: string): RateLimitRule[] {
   return [{ bucket: `admin-ip:${ip}`, limit: ADMIN_LIMIT, windowSec: WINDOW_SEC }];
 }
 
+/**
+ * Coupon-code lookup, by ORIGIN only.
+ *
+ * Not a credential, and that is exactly why it is here rather than in a mechanism of its own: a
+ * coupon code is a short, human-typable secret checked by an endpoint anyone can call, which is
+ * the same guessing surface a password has and none of bcrypt's cost to slow it down. Left open,
+ * a script walks `SAVE10`, `SAVE15`, `SUMMER20` against a store until something works, and the
+ * seller finds out from their margin.
+ *
+ * Failures only, per the file's own protocol, so a buyer who types their real code correctly never
+ * writes a row. The limit is the loose origin one for the NAT reason above — several shoppers on
+ * one office address must not lock each other out over a typo — and the bucket is per STORE as
+ * well as per address, because guessing is a per-store activity and the cap should not be spent by
+ * an unrelated shop's shoppers.
+ */
+export function couponLookupRules(storeSlug: string, ip: string): RateLimitRule[] {
+  return [{ bucket: `coupon:${storeSlug.slice(0, 120)}:${ip}`, limit: ORIGIN_LIMIT, windowSec: WINDOW_SEC }];
+}
+
 export interface RateVerdict {
   allowed: boolean;
   /** Whole seconds until the blocking window expires; 0 when allowed. The UI turns this into
