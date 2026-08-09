@@ -19,6 +19,9 @@
  */
 import { purgeExpiredCheckouts } from '../checkout-idempotency.js';
 import { purgeExpiredAuthAttempts } from '../rate-limit.js';
+import { purgeOldAnalyticsVisitors } from '../analytics.js';
+import { purgeOldStoreViewVisitors } from '../store-pageviews.js';
+import { visitorRetentionCutoffISO } from '../visitor-retention.js';
 import { getStoresWithFeedUrl, getStoresWithCustomDomain, canStoreSell } from '../stores.js';
 import { reverifyCustomDomains } from '../custom-domain-verify.js';
 import { syncStoreFeed, syncedRowCount } from '../store-feed-sync.js';
@@ -168,6 +171,40 @@ const purgeAuthAttempts: Job = {
 };
 
 /**
+ * Drop per-visitor detail past the retention window (`lib/visitor-retention.ts`).
+ *
+ * *What it is for:* these are the only two tables in the schema that grow with **traffic** and had
+ * nothing bounding them — one row per person per day, forever. Everything else is either aggregated
+ * (a row per day, per store, per product), capped at write time (`error_log`) or already purged
+ * (`checkout_idempotency`, `auth_attempts`). At the platform's target scale the difference is
+ * between a table that reaches a ceiling and one that reaches tens of millions of rows a year, under
+ * every dashboard query that has to walk its index.
+ *
+ * *Idempotent:* two `DELETE … WHERE day < cutoff` statements, like the two purges above. A second
+ * pass finds nothing. The cutoff comes from the business calendar and is computed ONCE here rather
+ * than per statement, so both tables are cut on the same day even if the run straddles midnight.
+ *
+ * *Daily, not hourly:* a day's worth of rows is what a single pass removes, and running it more
+ * often only re-asks a question whose answer changes once a day. Deliberately the LAST job in the
+ * registry list — it is the only one that deletes rows the application still displays inside its
+ * window, so if a session ever reads this log top-down, it reads in order of blast radius.
+ */
+const purgeVisitorDetail: Job = {
+  name: 'purge-visitor-detail',
+  intervalSec: 24 * HOUR,
+  leaseSec: 10 * MINUTE,
+  async run() {
+    const cutoff = visitorRetentionCutoffISO();
+    // Sequential, not Promise.all: two DELETEs over large tables, and there is no click waiting on
+    // them. Holding one pooled connection for twice as long beats holding two — the pool has ten,
+    // and a shopper's page load needs one of them more than this job needs to finish sooner.
+    const analytics = await purgeOldAnalyticsVisitors(cutoff);
+    const stores = await purgeOldStoreViewVisitors(cutoff);
+    return `before ${cutoff}: purged ${analytics} analytics + ${stores} store visitor rows`;
+  },
+};
+
+/**
  * Re-ask the edge provider whether each seller's custom domain still verifies.
  *
  * *What it fixes:* the status was written only when a human pressed "check" in the dashboard, and
@@ -236,4 +273,4 @@ const merchantStatus: Job = {
 
 /** The registry. The jobs are independent and the scheduler starts them concurrently, so this order
  *  is only what the log reads like — no job can delay another past its own interval. */
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus];
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus, purgeVisitorDetail];

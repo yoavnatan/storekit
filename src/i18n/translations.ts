@@ -839,6 +839,9 @@ export const translations = {
       perfIncomeAdMargin: 'עמלת קמפיינים',
       perfIncomeAdMarginNote: '{rate}% על {spend} הוצאת פרסום',
       perfIncomeTotal: 'סה״כ הכנסות',
+      // Admin panel only — the seller never sees this. It answers the one question the retention
+      // window can raise ("why is this zero?") at the place it gets asked, instead of in a document.
+      perfRetentionNote: 'מבקרים ייחודיים נשמרים {days} יום אחורה. בטווח ישן יותר הצפיות מלאות, הייחודיים 0, ושיעור ההמרה מחושב לפי צפיות במקום לפי אנשים — כלומר נמוך יותר. מספרי הצפיות עצמם נשמרים לתמיד.',
       adTitle: 'פרסום ושיווק',
       adSubtitle: 'שליטה בתקציב הפרסום שלך ומעקב אחר יעילותו',
       adBaselineTitle: 'קידום בסיס',
@@ -2162,6 +2165,7 @@ export const translations = {
       perfIncomeAdMargin: 'Campaign margin',
       perfIncomeAdMarginNote: '{rate}% on {spend} of ad spend',
       perfIncomeTotal: 'Total income',
+      perfRetentionNote: 'Unique visitors are kept for {days} days. An older range shows full view counts, 0 unique, and a conversion rate computed over views instead of people — so it reads lower. The view counts themselves are kept forever.',
       adTitle: 'Advertising & marketing',
       adSubtitle: 'Control your ad budget and track its impact',
       adBaselineTitle: 'Baseline promotion',

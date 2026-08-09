@@ -209,10 +209,14 @@ describe('the registry itself', () => {
     // lapsed stayed 'active' forever, so the store 301'd into a dead host and nothing re-read it)
     // and `merchant-status` (2026-08-06 — Google and Meta reject feed rows silently, so a product
     // stops being advertised while the storefront still looks perfectly fine).
+    // And `purge-visitor-detail` (2026-08-09) — the only job that deletes rows the application still
+    // DISPLAYS inside its window, which is why its idempotency argument and the AUX_EVENTS carve-out
+    // it depends on are pinned in a file of their own (`tests/visitor-retention-db.test.ts`) rather
+    // than in the double-run pass below.
     // The list is asserted whole so a job added without a written idempotency argument above fails
     // here rather than shipping quietly.
     expect(JOBS.map((j) => j.name).sort()).toEqual(
-      ['campaign-sweep', 'custom-domain-check', 'feed-sync', 'merchant-status', 'purge-auth-attempts', 'purge-checkouts'],
+      ['campaign-sweep', 'custom-domain-check', 'feed-sync', 'merchant-status', 'purge-auth-attempts', 'purge-checkouts', 'purge-visitor-detail'],
     );
   });
 });

@@ -7,6 +7,7 @@ import type { StoreRowsPage } from '../../lib/platform-performance.js';
 import type { PlatformRevenue } from '../../lib/platform-revenue.js';
 import { getT, type Lang } from '../../i18n/index.js';
 import { jsonForScript } from '../../lib/json-script.js';
+import { VISITOR_RETENTION_DAYS } from '../../lib/visitor-retention.js';
 
 // Platform-wide performance tab (CURRENT_TASK.md item 4) — mirrors the seller
 // performance tab (same #perf-* DOM ids so the shared performance.ts client
@@ -115,6 +116,18 @@ const pageLabel = d.perfStorePageOf.replace('{page}', String(storePage.page)).re
     <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-conversion">{summary.conversionRate.toFixed(1)}%</dd>
   </div>
 </dl>
+
+{/* Retention note — admin only, and deliberately a visible line rather than a tooltip: it explains
+    a number that can read as a bug ("0 unique visitors") on a range nobody looks at often, so it
+    has to be legible without knowing to hover. The seller shares `perfUniqueVisitorsHint` and is
+    not shown this; the window is far outside their longest preset (90 days), and a line about data
+    retention on their own dashboard would raise a question it then has to answer.
+    The day count is interpolated from `VISITOR_RETENTION_DAYS`, never typed — the job that enforces
+    the window reads the same constant, so the screen cannot promise a window the purge is not
+    keeping (lib/visitor-retention.ts). */}
+<p class="mt-2 mb-0 text-[0.72rem] [color:var(--color-muted)]">
+  {d.perfRetentionNote.replace('{days}', String(VISITOR_RETENTION_DAYS))}
+</p>
 
 {/* Two cards, because they answer two different questions and mixing them was
     the reported gap (CURRENT_TASK.md → סשן ב׳ item 2):

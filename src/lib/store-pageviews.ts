@@ -1,4 +1,4 @@
-import { rows } from './db.js';
+import { rows, query } from './db.js';
 
 /**
  * Store page-view counters — how many loads a storefront got, and how many different people.
@@ -169,6 +169,29 @@ export async function getStoreViewStats(
   for (const row of totalRows) statsFor(row.store_id).totalUniqueVisitors = count(row.uniques);
 
   return result;
+}
+
+/**
+ * Drop per-visitor rows older than the retention window (`visitor-retention.ts` holds the window and
+ * the reasoning; GO_LIVE §6 holds the owner decision).
+ *
+ * **Safe without exception, and it is worth saying why this one needs no carve-out.** Every reader
+ * of `store_page_view_visitors` in the application is inside `getStoreViewStats` above, and both of
+ * its queries bound `day` on the caller's range — there is no lifetime or unbounded count of this
+ * table anywhere. So a row outside the window cannot reach a screen, and deleting it changes no
+ * number anyone can ask for. (`analytics_visitors` is not like this and carries an exclusion — see
+ * `analytics.ts#purgeOldAnalyticsVisitors`.)
+ *
+ * `store_page_views` — the counts themselves — is deliberately untouched and kept forever. It is one
+ * row per store per day and it is what a range older than the window still reports correctly.
+ */
+export async function purgeOldStoreViewVisitors(cutoffDayISO: string): Promise<number> {
+  if (!isDayISO(cutoffDayISO)) throw new Error(`purgeOldStoreViewVisitors: bad day ${cutoffDayISO}`);
+  const { rowCount } = await query(
+    'DELETE FROM store_page_view_visitors WHERE day < $1::date',
+    [cutoffDayISO],
+  );
+  return rowCount;
 }
 
 /** The single-store case, which is what every seller-facing surface needs. */

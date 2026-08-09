@@ -12,6 +12,7 @@ import { getOrdersByStoreSlug } from '../../../../lib/orders.js';
 import type { Order } from '../../../../lib/orders.js';
 import { buildPerformanceSummary, pickGranularity } from '../../../../lib/seller-performance.js';
 import { getViewStatsForStore } from '../../../../lib/store-pageviews.js';
+import { VISITOR_RETENTION_DAYS } from '../../../../lib/visitor-retention.js';
 import { buildBarChartSvg, buildMultiLineChartSvg } from '../../../../lib/chart-svg.js';
 import { formatPrice } from '../../../../config/store.config.js';
 import { getLang, getDir, getT } from '../../../../i18n/index.js';
@@ -170,6 +171,15 @@ const visitorsChartSvg = buildMultiLineChartSvg(
             <dd class="m-0 text-[1.1rem] font-bold" id="perf-kpi-conversion">{summary.conversionRate.toFixed(1)}%</dd>
           </div>
         </dl>
+
+        {/* Same note as the platform tab, and it has to be on both: this page shows the identical
+            KPI row for ONE store, so an old range reads "0 unique" here exactly as it does there.
+            A note that appears on only one of two admin screens explaining the same zero is the
+            half-measure that teaches you to distrust the note. The seller's own dashboard is
+            deliberately excluded — see AdminPerformancePanel.astro. */}
+        <p class="mt-2 mb-0 text-[0.72rem] [color:var(--color-muted)]">
+          {d.perfRetentionNote.replace('{days}', String(VISITOR_RETENTION_DAYS))}
+        </p>
 
         {/* Profitability "receipt": gross revenue less platform commission =
             net to the seller. Reporting only; the real deduction happens at the

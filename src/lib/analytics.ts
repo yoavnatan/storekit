@@ -1,4 +1,4 @@
-import { rows } from './db.js';
+import { rows, query } from './db.js';
 import { recordPageViewTap } from './page-view-tap.js';
 
 /**
@@ -293,4 +293,37 @@ export async function getLifetimeEventSessions(type: AnalyticsEvent): Promise<nu
     [type],
   );
   return count(result[0]?.sessions ?? 0);
+}
+
+/**
+ * Drop session rows older than the retention window — see `VISITOR_RETENTION_DAYS` for the window
+ * itself and why it is that number.
+ *
+ * **`AUX_EVENTS` are excluded, and that exclusion is the whole correctness argument.** Every other
+ * reader of this table is date-bounded (`getEventTotals`), so deleting outside the window cannot
+ * change a number anyone can ask for. `getLifetimeEventSessions` is the exception: it counts
+ * `COUNT(DISTINCT visitor_id)` with **no** date bound, deliberately — the seller-onboarding funnel's
+ * top is cumulative since launch (`seller-funnel.ts` says why) — so a purge that touched its rows
+ * would silently walk a displayed number downwards.
+ *
+ * The obvious repair is a rolled-up counter: snapshot the pre-cutoff distinct count, delete, then
+ * add the two. It is **wrong**, and quietly: distinct counts do not add. A visitor who appears on
+ * both sides of the cutoff is one session and would be counted twice, so the "lifetime" figure
+ * would drift upward a little more at every purge, in the direction that looks like growth.
+ *
+ * Excluding the events instead is exact rather than approximate, and it costs nothing here because
+ * of what those events are: `AUX_EVENTS` is one visit to the seller registration page, against
+ * `page_view` on every page load by every shopper. The rows this keeps forever are a rounding error
+ * beside the rows it deletes, which is precisely why the cheap answer is also the right one. If an
+ * aux event ever became high-volume, the honest fix is a dedicated counter written at the time of
+ * the event — not a sum of distinct counts.
+ */
+export async function purgeOldAnalyticsVisitors(cutoffDayISO: string): Promise<number> {
+  if (!isDayISO(cutoffDayISO)) throw new Error(`purgeOldAnalyticsVisitors: bad day ${cutoffDayISO}`);
+  const { rowCount } = await query(
+    `DELETE FROM analytics_visitors
+      WHERE day < $1::date AND event <> ALL($2::text[])`,
+    [cutoffDayISO, AUX_EVENTS],
+  );
+  return rowCount;
 }
