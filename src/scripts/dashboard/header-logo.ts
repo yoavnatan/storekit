@@ -193,5 +193,18 @@ export function initHeaderLogoCard(cfg: HeaderLogoConfig): void {
     fileInput.click();
   });
 
+  /**
+   * Something replaced the hidden field under us — "discard changes", or a recovered draft
+   * (unsaved-guard.ts names both, FormFallbackGuard dispatches it).
+   *
+   * **This card PAINTS from that field, so without this listener a restore put the URL back and
+   * nothing on screen moved** (owner, 2026-08-09: "כשאני לוחץ שחזר התמונה לא חוזרת"). The preview
+   * stayed empty, the radio stayed disabled, and the next save would have written a logo the seller
+   * could not see. A programmatic `.value` write fires no event of its own, which is why the form
+   * has to announce it and why every widget that draws from a field must answer — `store-image.ts`
+   * has had the same three lines since the cropper was built.
+   */
+  hidden.closest('form')?.addEventListener('dash:fieldsrewritten', () => sync());
+
   sync();
 }

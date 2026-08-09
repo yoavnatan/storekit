@@ -42,13 +42,40 @@ export function busyButton(btn: HTMLButtonElement, label: string): BusyButton {
 
   btn.disabled = true;
   btn.classList.add('btn--busy');
-  // `role="status"` on the dots and an aria-label carrying the action: a screen reader hears what
-  // is happening, and the percentage below updates the same live region rather than a second one.
-  btn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">`
-    + `<span data-busy-label>${label}</span>`
-    + `<span class="dot-pulse" role="status" aria-label="${label}">`
-    + `<span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span>`
-    + `</span></span>`;
+
+  /* Built with DOM calls rather than an `innerHTML` string, for two reasons that were both wrong in
+     the version this replaced.
+     (1) `label` went into `aria-label="${label}"` unescaped. Every caller today passes a dictionary
+         constant so nothing was exploitable, but this module exists to be THE definition every
+         dashboard button uses, its parameter is an ordinary `string`, and a later caller passing a
+         store or product name would have had an attribute breakout. This repo's own review list
+         names that exact shape — an escaper missing inside `attr="…"` — and its history is a rule
+         that was right everywhere but one place. `textContent` cannot have the bug at all, so the
+         sink is removed rather than escaped.
+     (2) `role="status"` sat on the DOTS while the percentage was written to a SIBLING span, so the
+         live region announced nothing when progress changed — the previous comment claimed the
+         opposite and the tests only checked the text, so it passed while being false. The region is
+         now the wrapper, which CONTAINS the label, so an update to the percentage is what the
+         screen reader hears. The dots become decorative: the words beside them already say it. */
+  const live = document.createElement('span');
+  live.style.cssText = 'display:inline-flex;align-items:center;gap:0.5em';
+  live.setAttribute('role', 'status');
+
+  const text = document.createElement('span');
+  text.setAttribute('data-busy-label', '');
+  text.textContent = label;
+
+  const dots = document.createElement('span');
+  dots.className = 'dot-pulse';
+  dots.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < 3; i++) {
+    const dot = document.createElement('span');
+    dot.className = 'dot-pulse__dot';
+    dots.appendChild(dot);
+  }
+
+  live.append(text, dots);
+  btn.replaceChildren(live);
 
   const base = stem(label);
   return {

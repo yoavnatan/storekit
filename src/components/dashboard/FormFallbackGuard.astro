@@ -300,12 +300,22 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
       timers[key] = setTimeout(function () { delete timers[key]; save(form); }, DRAFT_DELAY);
     }
 
+    /** Returns the FIRST element it actually changed, so the caller can put THAT in front of him
+     *  rather than the form. See `reveal`. */
     function apply(form, values) {
+      var firstChanged = null;
       for (var i = 0; i < form.elements.length; i++) {
         var el = form.elements[i];
         if (!el.name || el.disabled || SKIP[el.type] || SKIP_NAME[el.name]) continue;
         var saved = values[fieldKey(form, el)];
         if (!saved) continue;
+        // Compared BEFORE the write: a draft holds every field, not only the edited ones, so most
+        // of this loop assigns a value identical to what is already there. Without this test the
+        // "first changed" field would always be the form's first field, which is the same wrong
+        // answer as scrolling to the form.
+        var moved = (el.type === 'checkbox' || el.type === 'radio') ? (el.checked !== !!saved.c)
+          : (typeof saved.v === 'string' && el.value !== saved.v);
+        if (moved && !firstChanged) firstChanged = el;
         if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!saved.c;
         else if (typeof saved.v === 'string') el.value = saved.v;
         // Everything downstream — the sale preview, the unsaved-changes baseline, the scope
@@ -319,6 +329,7 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
       // something else, and the next save would write the one the seller cannot see. Same statement
       // "discard changes" makes, so it is the same event (unsaved-guard.ts owns the pair).
       form.dispatchEvent(new CustomEvent('dash:fieldsrewritten', { bubbles: true }));
+      return firstChanged;
     }
 
     function offer(form, values) {
@@ -383,8 +394,14 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
       var pending = restorable(key);
       closeOffer(key);
       drop(form);
-      if (pending) apply(form, pending);
-      if (!seen) reveal(form);
+      var changed = pending ? apply(form, pending) : null;
+      // Scroll to what CAME BACK, never to the form (owner, 2026-08-09: "למה כל פעם כשלוחצים שחזר
+      // זה גולל למעלה הדף? זה מטעה, הגלילה מרגישה כאילו היא מגיעה לשינוי שאני אמור לראות בעוד שלא
+      // בטוח שהוא במעלה הדף"). The settings form is the whole tab, so `block:'center'` on it landed
+      // near its midpoint — a confident movement to a place with nothing to see, which reads as "we
+      // put it here" and teaches the seller to distrust the restore. And with nothing identifiable
+      // to show, the honest answer is not to move at all.
+      if (!seen && changed) reveal(changed, form);
     }
 
     function rejectOffer(key) {
@@ -399,9 +416,21 @@ const { message, draftFound, draftRestore, draftDiscard, draftNotice, goLabel } 
      *  is for the load this whole component exists for, where none of the bundle arrived; it says
      *  'center' rather than 'start' deliberately, since 'start' parks the target's top edge at
      *  viewport y:0, which on this site is BEHIND the fixed header (tests/scroll-below-header). */
-    function reveal(form) {
-      if (window.__dashScrollTo) window.__dashScrollTo(form);
-      else form.scrollIntoView({ block: 'center' });
+    function reveal(el, form) {
+      // A hidden input owns no box, so scrolling to it scrolls to nothing. Its widget is what the
+      // seller has to look at — the nearest labelled block. This is why the image cards were the
+      // case that exposed the old behaviour: their value lives in a `type="hidden"` field by design.
+      var target = el;
+      if (target.type === 'hidden' || !target.getClientRects || !target.getClientRects().length) {
+        target = el.closest('.card, .field, label, fieldset');
+      }
+      // **No container, no scroll**, and the fallback is deliberately not the form. Landing on the
+      // form is the behaviour being removed here: it is a confident movement to a place with
+      // nothing to see, which reads as "we put it here" and teaches the seller to distrust the
+      // restore. Staying put says less, and everything it says is true.
+      if (!target || target === form) return;
+      if (window.__dashScrollTo) window.__dashScrollTo(target);
+      else target.scrollIntoView({ block: 'center' });
     }
 
     /* ---- the floating notice: an offer he cannot see says so from the bottom of every tab ---- */

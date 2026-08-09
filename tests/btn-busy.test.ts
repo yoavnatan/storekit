@@ -32,7 +32,39 @@ describe('busyButton', () => {
     // stylesheet distinguishes them.
     expect(btn.classList.contains('btn--busy')).toBe(true);
     expect(btn.querySelectorAll('.dot-pulse__dot')).toHaveLength(3);
-    expect(btn.querySelector('.dot-pulse')?.getAttribute('role')).toBe('status');
+  });
+
+  it('announces through a region that CONTAINS the label, so progress is heard', () => {
+    // `role="status"` used to sit on the dots, with the percentage written to a sibling span — so
+    // the live region's own contents never changed and a screen reader announced nothing after the
+    // first render. The dots are decorative; the words are the message.
+    const job = busyButton(btn, 'מסיר רקע…');
+    const region = btn.querySelector('[role="status"]')!;
+    expect(region.querySelector('[data-busy-label]')).not.toBeNull();
+    expect(btn.querySelector('.dot-pulse')?.getAttribute('aria-hidden')).toBe('true');
+    job.setProgress(0.5);
+    expect(region.textContent).toContain('50%');
+  });
+
+  it('cannot break out of an attribute, whatever the label contains', () => {
+    // Every caller today passes a dictionary constant, so this was never live — but this module is
+    // the one definition every dashboard button uses and its parameter is a plain string. The
+    // version that built its markup with `innerHTML` put the label into `aria-label="${label}"`
+    // unescaped, which is the exact shape this repo's review list calls out.
+    const hostile = '" onfocus="alert(1)" x="';
+    const job = busyButton(btn, hostile);
+    expect(btn.querySelector('[data-busy-label]')!.textContent).toBe(hostile);
+    expect(btn.querySelector('[onfocus]')).toBeNull();
+    // Ask the DOM, not the serialized string. `innerHTML` escapes `&`, `<` and `>` in a text node
+    // but leaves `"` alone — it does not need escaping there — so a hostile label round-tripping
+    // correctly as TEXT still puts the characters `onfocus="alert(1)"` in that string while being
+    // completely inert. Substring-matching the serialization therefore fails on the implementation
+    // that is actually safe, and would pass on an escaped-but-still-interpolated one. What "cannot
+    // break out" means is that no ELEMENT gained an attribute, so that is what gets asserted — and
+    // over every handler attribute rather than the one this payload happens to use.
+    const attrs = [...btn.querySelectorAll('*')].flatMap((el) => [...el.attributes].map((a) => a.name));
+    expect(attrs.filter((n) => n.startsWith('on'))).toEqual([]);
+    job.done();
   });
 
   it('puts the ICON back, not just the words', () => {

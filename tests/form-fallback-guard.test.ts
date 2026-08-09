@@ -256,6 +256,63 @@ describe('FormFallbackGuard — drafting while the seller types', () => {
     expect(fresh.querySelector<HTMLInputElement>('[name="name"]')!.value).toBe('typed, never saved');
   });
 
+  it('restores a HIDDEN field and tells the widget that paints from it to repaint', () => {
+    // The image cards keep their URL in a `type="hidden"` input by design, so a restore that only
+    // wrote the value put the picture back in the form and nothing back on screen — the preview
+    // stayed empty and the next save would have written a logo the seller could not see (owner,
+    // 2026-08-09: "כשאני לוחץ שחזר התמונה לא חוזרת"). The value is half the job; the event is the
+    // other half, and every widget drawing from a field listens for it.
+    const form = reload(FIELDS, GUARDED);
+    type(form, 'logo', 'https://cdn/new-logo.png');
+    vi.advanceTimersByTime(1000);
+
+    const fresh = reload(FIELDS, GUARDED);
+    const repaints: string[] = [];
+    fresh.addEventListener('dash:fieldsrewritten', () => repaints.push('paint'));
+    Array.from(fresh.querySelector('[role="status"]')!.querySelectorAll('button'))
+      .find((b) => b.textContent === RESTORE)!.click();
+
+    expect(fresh.querySelector<HTMLInputElement>('[name="logo"]')!.value).toBe('https://cdn/new-logo.png');
+    expect(repaints).toEqual(['paint']);
+  });
+
+  it('scrolls to what CAME BACK, never to the form, and not at all with nothing to show', () => {
+    // A confident scroll to a place with nothing to see reads as "we put it here" and teaches the
+    // seller to distrust the restore (owner, 2026-08-09: "הגלילה מרגישה כאילו היא מגיעה לשינוי
+    // שאני אמור לראות בעוד שלא בטוח שהוא במעלה הדף"). The settings form IS the whole tab, so
+    // centring it landed near its midpoint — reliably not where the restored field is.
+    const seen: Element[] = [];
+    (window as unknown as { __dashScrollTo?: (el: Element) => void }).__dashScrollTo = (el) => { seen.push(el); };
+
+    const form = reload(FIELDS, GUARDED);
+    type(form, 'logo', 'https://cdn/new-logo.png');
+    vi.advanceTimersByTime(1000);
+
+    const fresh = reload(FIELDS, GUARDED);
+    // Off-screen, which is the branch that scrolls at all: jsdom gives every element a zero rect,
+    // so `onScreen` is false and the restore is the "he pressed it from somewhere else" path.
+    Array.from(fresh.querySelector('[role="status"]')!.querySelectorAll('button'))
+      .find((b) => b.textContent === RESTORE)!.click();
+
+    // A bare hidden input with no labelled container of its own: there is nothing to show, so the
+    // page does not move. Falling back to the form is the behaviour being removed.
+    expect(seen).toEqual([]);
+
+    // Wrapped in the `.card` the real settings tab puts it in, the same restore scrolls — to the
+    // card, which is what the seller actually has to look at.
+    localStorage.clear();
+    const carded = '<div class="card"><input type="hidden" name="logo" value="a.jpg" /></div><input name="name" value="server" />';
+    const f2 = reload(carded, GUARDED);
+    type(f2, 'logo', 'https://cdn/other.png');
+    vi.advanceTimersByTime(1000);
+    const f3 = reload(carded, GUARDED);
+    Array.from(f3.querySelector('[role="status"]')!.querySelectorAll('button'))
+      .find((b) => b.textContent === RESTORE)!.click();
+    expect(seen).toHaveLength(1);
+    expect((seen[0] as HTMLElement).className).toBe('card');
+    delete (window as unknown as { __dashScrollTo?: unknown }).__dashScrollTo;
+  });
+
   it('debounces — a burst of keystrokes is one write, and nothing is written before it settles', () => {
     const form = reload(FIELDS, GUARDED);
     type(form, 'name', 'a');
