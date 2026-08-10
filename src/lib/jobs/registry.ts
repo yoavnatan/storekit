@@ -29,6 +29,9 @@ import { getStoreIdsWithLiveCampaigns } from '../ad-campaigns.js';
 import { getCampaignsForStore } from '../ad-campaign-health.js';
 import { runMerchantStatusCheck } from '../merchant-status-check.js';
 import { rebuildCatalogArtifact, FEED_ARTIFACT, SITEMAP_ARTIFACT, CATALOG_ARTIFACT_INTERVAL_SEC } from '../catalog-artifacts.js';
+import { runPayouts, isPayoutDay } from '../payout-run.js';
+import { PAYOUT_DAY_OF_MONTH } from '../payout-schedule.js';
+import { businessTodayISO } from '../business-day.js';
 
 export interface Job {
   /** Primary key in `job_runs`. Never rename one — the row is the schedule's memory, and a renamed
@@ -317,4 +320,37 @@ const sitemapArtifact: Job = {
 
 /** The registry. The jobs are independent and the scheduler starts them concurrently, so this order
  *  is only what the log reads like — no job can delay another past its own interval. */
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, purgeVisitorDetail];
+/**
+ * Build this month's seller payouts, on the payout day.
+ *
+ * *Runs daily, acts on one day a month.* The alternative — a job that fires monthly — would have to
+ * know when it last ran, and a schedule that remembers is a schedule that pays twice after a
+ * restart or not at all after an outage. Asking the calendar every day is cheap and has no memory
+ * to be wrong (`project_scheduler`: a job must INFER NOTHING).
+ *
+ * *Idempotent:* `seller_payouts` is UNIQUE on (seller, period), so a second pass on the same day
+ * creates nothing and reports every seller as already paid. That constraint, not this job's
+ * control flow, is what makes a double payout impossible.
+ *
+ * *It moves no money.* It writes `pending` rows; the transfer is a separate, later step
+ * (`payout-run.ts`'s header for why the reversible half and the irreversible half are split).
+ *
+ * *Lease:* generous, because the run reads three tables per seller and the platform is meant to
+ * hold a thousand of them. An overlapping second instance would be harmless — see idempotent
+ * above — but a lease that expires mid-run turns a clean report into two partial ones.
+ */
+const payoutRun: Job = {
+  name: 'payout-run',
+  intervalSec: 12 * HOUR,
+  leaseSec: 30 * MINUTE,
+  async run() {
+    const today = businessTodayISO();
+    if (!isPayoutDay(today)) return `not the payout day (${today}); next on day ${PAYOUT_DAY_OF_MONTH}`;
+    const r = await runPayouts(today);
+    return `period ${r.periodKey}: created ${r.created} payout(s) totalling ${r.totalAgorot} agorot; `
+      + `skipped ${r.skippedBelowMinimum} below minimum, ${r.skippedNoBank} without bank details, `
+      + `${r.skippedAlreadyPaid} already paid`;
+  },
+};
+
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, payoutRun, purgeVisitorDetail];

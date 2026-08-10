@@ -308,7 +308,11 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
     // the money, which was really captured off a real card and is still ours until someone gives it
     // back. `refund-owed.ts` owns the rule and writes the obligation; without it the only trace was
     // a status row whose meaning a reader had to infer.
-    await recordRefundOwed(before, updated, storeSlug, sellerId);
+    // `sellerId` twice, and they are two different things: the fourth argument is the ACTOR (who
+    // performed the cancellation, for the journal), the fifth is whose BALANCE it comes out of.
+    // They coincide here because a seller is cancelling their own order; on an admin path they
+    // would not.
+    await recordRefundOwed(before, updated, storeSlug, sellerId, sellerId);
   }
   const newNet = orderNetForStore(updated, storeSlug);
   if (newNet !== prevNet) {
