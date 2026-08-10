@@ -38,8 +38,8 @@ import type { StoreProduct } from './store-products.js';
 // Re-exported here so a server caller has one import for the whole feature.
 import type { SalesRow, ReportTotals, ProductSalesRow, StockRow } from './seller-report-shapes.js';
 import { LOW_STOCK_AT } from './seller-report-shapes.js';
-export type { ReportId, SalesRow, ReportTotals, ProductSalesRow, StockRow } from './seller-report-shapes.js';
-export { REPORT_IDS, isReportId, LOW_STOCK_AT } from './seller-report-shapes.js';
+export type { ReportId, SalesRow, ProductSalesRow, StockRow } from './seller-report-shapes.js';
+export { isReportId, LOW_STOCK_AT } from './seller-report-shapes.js';
 
 /* ── 1. Sales, one row per order ─────────────────────────────────────────────────────────── */
 
