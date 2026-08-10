@@ -139,6 +139,86 @@ describe('AI_INSTRUCTIONS.md describes the repo it lives in', () => {
     expect(dead, `Project structure lists paths that no longer exist:\n${dead.join('\n')}`).toEqual([]);
   });
 
+  /**
+   * The narrow slice of "is the note TRUE" that a machine can actually settle.
+   *
+   * The header above says this file cannot check whether a note tells the truth, and in general
+   * that is still so. But one kind of claim is checkable and turned out to rot exactly as
+   * predicted: a note naming a FUNCTION. On 2026-08-10 a sweep of the map found the structure line
+   * for `product-seo-hints.ts` had listed `productSeoScore` since 2026-08-04 and no such function
+   * existed — it happened to come true that day when one was written for another reason. Two more
+   * were live: `admin-tab-views.ts` named `getLastViewedAt()` (really `getAllLastViewedAt()`) and
+   * pointed at `data/admin-tab-views.json`, deleted with every other JSON file on 2026-08-03; and
+   * `order-totals.ts` named `storeSliceTotal()`, renamed to `storeSliceTotalAgorot()`.
+   *
+   * A stale symbol is worse than a stale path. A dead path fails the test above, and a session that
+   * follows one lands nowhere and knows it. A dead symbol sends a session to a real file to look
+   * for something that is not in it — where the honest conclusions are "I misread" or "someone
+   * deleted it", and the tempting one is to write it again beside the thing that already does it.
+   *
+   * Two forms, and the distinction is what keeps this quiet:
+   *   · `someFn()` — unqualified, so it must live in the file the line documents.
+   *   · `other-module.ts#someFn` — qualified, so it must live in THAT module; the line is telling a
+   *     session where to go next, and those pointers rot the same way. Checking them against the
+   *     documented file instead reports three false failures on the current map.
+   * Bare `#foo` with no module before it is not a symbol at all (`#rrggbb` is a colour format), and
+   * prose is left alone: only a name wearing `()` or sitting after `module#` makes a claim.
+   */
+  it('every function name in Project structure exists in the file it names', () => {
+    const FILE_IN_HEAD = /[\w@[][\w./[\]-]*\.(?:astro|tsx|mjs|ts|js)\b/g;
+    const QUALIFIED = /([\w@[][\w./[\]-]*\.(?:astro|tsx|mjs|ts|js))#([a-zA-Z_]\w*)/g;
+    const UNQUALIFIED = /(^|[^#\w.])([a-z]\w{3,})\(\)/g;
+
+    const bodyOf = (token: string): string | null => {
+      const clean = token.replace(/\/$/, '');
+      const hit = existsSync(join(ROOT, clean))
+        ? clean
+        : tracked.find((p) => p === clean || p.endsWith('/' + clean));
+      if (!hit || safeIsDir(join(ROOT, hit))) return null;
+      try {
+        return readFileSync(join(ROOT, hit), 'utf8');
+      } catch {
+        return null;
+      }
+    };
+
+    const wrong: string[] = [];
+    for (let i = STRUCTURE_AT + 1; i < WORKFLOW_AT; i++) {
+      const line = LINES[i];
+      if (!line.trim() || line.startsWith('<!--') || line.startsWith('```') || line.startsWith('#')) continue;
+      const [head, ...rest] = line.split('←');
+      const note = rest.join('←');
+      if (!note.trim()) continue;
+
+      // Qualified pointers: checked against the module they name, wherever the line sits.
+      for (const [, mod, name] of note.matchAll(QUALIFIED)) {
+        const body = bodyOf(mod);
+        if (body && !new RegExp(`\\b${name}\\b`).test(body)) {
+          wrong.push(`line ${i + 1}: ${mod}#${name} — not in ${mod}`);
+        }
+      }
+
+      // Unqualified: any of the files this line documents may hold it (`a.ts + b.ts ← …`).
+      const owners = [...new Set(head.match(FILE_IN_HEAD) ?? [])]
+        .map(bodyOf)
+        .filter((b): b is string => b !== null);
+      if (owners.length === 0) continue;
+      for (const [, , name] of note.matchAll(UNQUALIFIED)) {
+        const re = new RegExp(`\\b${name}\\b`);
+        if (!owners.some((body) => re.test(body))) {
+          wrong.push(`line ${i + 1}: ${name}() — not in ${head.trim()}`);
+        }
+      }
+    }
+
+    expect(
+      wrong,
+      `Project structure names ${wrong.length} function(s) that are not in the file it sends a ` +
+        `session to. Fix the NAME here after checking the code — never rename the code to match ` +
+        `the note:\n${wrong.join('\n')}`,
+    ).toEqual([]);
+  });
+
   it('every tracked src/ file is named in Project structure', () => {
     const structure = LINES.slice(STRUCTURE_AT, WORKFLOW_AT).join('\n');
     const undocumented = tracked
