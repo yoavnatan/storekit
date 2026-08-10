@@ -3,6 +3,7 @@ import {
   productSeoHints,
   openProductSeoHints,
   needsSeoAttention,
+  productSeoScore,
   MIN_DESCRIPTION_LENGTH,
   MIN_NAME_LENGTH,
   MIN_SPECS,
@@ -76,5 +77,40 @@ describe('needsSeoAttention — the products-table marker', () => {
 
   it('fires on a listing that carries only a name and a price', () => {
     expect(needsSeoAttention({ name: 'כיסא', description: '', imageCount: 0, hasCategory: false, specCount: 0 })).toBe(true);
+  });
+});
+
+describe('productSeoScore — the editor meter', () => {
+  it('counts out of the same list the panel lists', () => {
+    expect(productSeoScore(COMPLETE)).toMatchObject({ done: 5, total: 5, percent: 100 });
+    expect(productSeoScore({ ...COMPLETE, specCount: 0 })).toMatchObject({ done: 4, total: 5, percent: 80 });
+  });
+
+  it('reads `strong` only when nothing at all is open', () => {
+    expect(productSeoScore(COMPLETE).level).toBe('strong');
+    expect(productSeoScore({ ...COMPLETE, specCount: 0 }).level).toBe('partial');
+  });
+
+  it('draws its bands from needsSeoAttention, so the meter and the table marker agree', () => {
+    // This is the invariant that matters: two surfaces describing one product must never
+    // disagree — a row flagged in the table cannot show a reassuring meter when opened.
+    const cases: ProductSeoInput[] = [
+      COMPLETE,
+      { ...COMPLETE, specCount: 0 },
+      { ...COMPLETE, specCount: 0, hasCategory: false },
+      { ...COMPLETE, imageCount: 0 },
+      { ...COMPLETE, specCount: 0, hasCategory: false, description: '' },
+      { name: 'כיסא', description: '', imageCount: 0, hasCategory: false, specCount: 0 },
+    ];
+    for (const input of cases) {
+      expect(productSeoScore(input).level === 'weak').toBe(needsSeoAttention(input));
+    }
+  });
+
+  it('never calls an image-less listing anything but weak, however complete the rest is', () => {
+    // 4 of 5 done, and still amber: the one missing item is the one that keeps it out of the
+    // ad feed entirely, so a green-ish meter there would be a lie the seller acts on.
+    const noImage = { ...COMPLETE, imageCount: 0 };
+    expect(productSeoScore(noImage)).toMatchObject({ done: 4, percent: 80, level: 'weak' });
   });
 });
