@@ -32,6 +32,9 @@ export const translations = {
       searchSectionStores: 'חנויות',
       searchSectionProducts: 'מוצרים',
       searchEmpty: 'לא נמצאו תוצאות',
+      /** The search REQUEST failed. Never `searchEmpty` — that one is a statement about the
+       *  catalogue, and a request that did not arrive is not entitled to make it. */
+      searchFailed: 'החיפוש אינו זמין כרגע. נסו שוב.',
       allStores: 'כל החנויות',
       viewAllStores: 'כל החנויות',
       shelfLiked: 'חנויות ששמרת',
@@ -226,6 +229,11 @@ export const translations = {
       filterSearchLabel: 'חיפוש בקטגוריה זו',
       searchResultsFor: 'תוצאות חיפוש ל"{query}"',
       noResultsFor: 'לא נמצאו תוצאות ל"{query}"',
+      /** The request for a page of products failed. Says "we could not load", never "there is
+       *  nothing" — telling a shopper a store is empty because the server did not answer is the
+       *  bug this string exists to end (see fetchProductsPage in [storeSlug]/index.astro). */
+      loadFailedTitle: 'לא הצלחנו לטעון את המוצרים',
+      loadFailedBody: 'בדקו את החיבור ונסו שוב.',
       clearSearchLabel: 'נקה חיפוש',
       closeSearchLabel: 'סגור חיפוש',
       saveStore: 'שמור חנות',
@@ -1571,6 +1579,7 @@ export const translations = {
       searchSectionStores: 'Stores',
       searchSectionProducts: 'Products',
       searchEmpty: 'No results found',
+      searchFailed: 'Search is unavailable right now. Please try again.',
       allStores: 'All Stores',
       viewAllStores: 'All stores',
       shelfLiked: 'Stores you saved',
@@ -1687,6 +1696,8 @@ export const translations = {
       filterSearchLabel: 'Search in this category',
       searchResultsFor: 'Search results for "{query}"',
       noResultsFor: 'No results for "{query}"',
+      loadFailedTitle: 'We could not load the products',
+      loadFailedBody: 'Check your connection and try again.',
       clearSearchLabel: 'Clear search',
       closeSearchLabel: 'Close search',
       saveStore: 'Save store',

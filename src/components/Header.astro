@@ -214,6 +214,7 @@ const strEmpty   = t.store.noProductsFound;
         data-str-stores={t.home.searchSectionStores}
         data-str-products={t.home.searchSectionProducts}
         data-str-empty={t.home.searchEmpty}
+        data-str-failed={t.home.searchFailed}
         data-str-view-all={t.search.viewAllResults}
         data-str-recents={strRecents}
         data-str-clear={strClear}
@@ -1243,6 +1244,7 @@ const strEmpty   = t.store.noProductsFound;
     const strStores   = homeSearchWrap?.dataset.strStores ?? 'חנויות';
     const strProducts = homeSearchWrap?.dataset.strProducts ?? 'מוצרים';
     const strEmptyRes = homeSearchWrap?.dataset.strEmpty ?? 'לא נמצאו תוצאות';
+    const strSearchFailed = homeSearchWrap?.dataset.strFailed ?? 'החיפוש אינו זמין כרגע';
     const strViewAll  = homeSearchWrap?.dataset.strViewAll ?? 'לכל התוצאות';
     // The same two labels the STORE search dropdown renders (its own strRecents/
     // strClear further down). That copy has always read them off the wrapper;
@@ -1319,14 +1321,21 @@ const strEmpty   = t.store.noProductsFound;
       const token = ++homeSearchToken;
       let stores: SiteSearchStore[] = [];
       let products: SiteSearchProduct[] = [];
+      // A failed search and a search with nothing in it are different answers, and until
+      // 2026-08-10 they produced the same line: a network error rendered "לא נמצאו תוצאות",
+      // i.e. told the shopper their query has no matches on the strength of a request that
+      // never came back. The old comment here said so out loud and shipped anyway.
+      let searchOk = false;
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
         const data = await res.json() as { ok: boolean; stores?: SiteSearchStore[]; products?: SiteSearchProduct[] };
-        if (data.ok) { stores = data.stores ?? []; products = data.products ?? []; }
-      } catch { /* network error — falls through to the empty-results message */ }
+        if (data.ok) { stores = data.stores ?? []; products = data.products ?? []; searchOk = true; }
+      } catch { /* searchOk stays false — reported below, never as "no results" */ }
       if (token !== homeSearchToken) return;
 
-      if (!stores.length && !products.length) {
+      if (!searchOk) {
+        homeSearchDdEl!.innerHTML = `<div class="hsd-empty" role="alert">${strSearchFailed}</div>`;
+      } else if (!stores.length && !products.length) {
         homeSearchDdEl!.innerHTML = `<div class="hsd-empty">${strEmptyRes}</div>`;
       } else {
         const storesHtml = !stores.length ? '' : `
@@ -1431,10 +1440,15 @@ const strEmpty   = t.store.noProductsFound;
      * is idempotent and shares one in-flight promise, so those two calls are one request.
      *
      * A failure leaves `products` empty: the dropdown offers nothing and Enter still
-     * submits the query, which is exactly what a visitor without JS gets.
+     * submits the query, which is exactly what a visitor without JS gets. `indexReady` is
+     * what keeps that promise honest — without it "the index never arrived" and "the index
+     * arrived and this store has no match" were the same empty array, and the dropdown said
+     * "לא נמצאו מוצרים" for both. Suggestions being unavailable is silence, not a claim about
+     * the store's catalogue.
      */
     type SearchProduct = { slug: string; name: string; price: number; basePrice?: number; image: string };
     let products: SearchProduct[] = [];
+    let indexReady = false;
     let indexLoad: Promise<void> | null = null;
 
     function loadIndex(): Promise<void> {
@@ -1442,7 +1456,7 @@ const strEmpty   = t.store.noProductsFound;
         indexLoad = fetch(`/api/store-search-index?store=${encodeURIComponent(storeSlug)}`)
           .then((r) => (r.ok ? r.json() : null))
           .then((data: { ok?: boolean; products?: SearchProduct[] } | null) => {
-            if (data?.ok && Array.isArray(data.products)) products = data.products;
+            if (data?.ok && Array.isArray(data.products)) { products = data.products; indexReady = true; }
           })
           .catch(() => { /* suggestions unavailable; Enter still searches */ });
       }
@@ -1554,6 +1568,9 @@ const strEmpty   = t.store.noProductsFound;
       // The index may have taken longer than the next keystroke or a blur. Anything
       // rendered now would be answering a question the box no longer asks.
       if (input.value.trim() !== q) return;
+      // The index never loaded — say nothing rather than "this store has no such product".
+      // Enter still runs the real server-side search, which is the recovery path.
+      if (!indexReady) { hideDropdown(); return; }
       const hits = products.filter((p) => matchesSearch(q, p.name)).slice(0, 5);
       if (!hits.length) {
         dropdown.innerHTML = `<div class="hsd-empty">${strEmpty}</div>`;

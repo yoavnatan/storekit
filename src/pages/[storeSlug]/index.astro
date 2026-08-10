@@ -339,6 +339,8 @@ const pmI18n = {
   filterByCategory: t.store.filterByCategory,
   searchResultsFor: t.store.searchResultsFor,
   noResultsFor: t.store.noResultsFor,
+  loadFailedTitle: t.store.loadFailedTitle,
+  loadFailedBody: t.store.loadFailedBody,
   fullPage: lang === 'he' ? 'לדף המוצר המלא' : 'View full product page',
   close: lang === 'he' ? 'סגור' : 'Close',
   showMore: lang === 'he' ? 'עוד' : 'More',
@@ -1074,6 +1076,7 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   import { initStickyBar } from '../../lib/sticky-bar.js';
   import { resolvePrice, type StoreSale } from '../../lib/discounts.js';
   import { priceHtml, saleBadgeHtml } from '../../lib/price-html.js';
+  import { showErrorToast } from '../../lib/toast.js';
 
   // Parsed once — the store's sale never changes within a page view.
   const storeSale: StoreSale | null = (() => {
@@ -2058,7 +2061,23 @@ const bannerPreload = !isDemo && shopStore.bannerImage
   }
   searchResultsClear?.addEventListener('click', clearActiveSearch);
 
-  async function fetchProductsPage(offset: number): Promise<{ products: StoreProductDTO[]; hasMore: boolean }> {
+  /**
+   * `ok` is the whole point of this shape, and it was missing until 2026-08-10.
+   *
+   * A failed request used to return `{ products: [], hasMore: false }` — the exact value a
+   * SUCCESSFUL request returns for a store whose last page you have already seen. Both callers
+   * then acted on it as fact, and both of them lied to the shopper rather than showing an error:
+   * "טען עוד" hid its own button (`updateResultsState(false)`), i.e. announced "that is the whole
+   * catalogue" when the server had simply not answered; and a category or sort click blanked the
+   * grid and rendered "no results", i.e. announced that a store with products has none. Neither
+   * left anything on screen saying a thing had gone wrong, and both are unrecoverable without a
+   * manual reload since the request is never retried.
+   *
+   * An empty answer and no answer are different facts, so they get different values. What each
+   * caller does with a failure is its own business — the shared part is only that neither may
+   * treat one as the other.
+   */
+  async function fetchProductsPage(offset: number): Promise<{ ok: boolean; products: StoreProductDTO[]; hasMore: boolean }> {
     const params = new URLSearchParams({ store: storeSlug, offset: String(offset) });
     if (activeTag) params.set('category', activeTag);
     if (currentSort !== 'default') params.set('sort', currentSort);
@@ -2067,11 +2086,19 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     try {
       const res = await fetch(`/api/store-products?${params.toString()}`);
       const data = await res.json() as { ok: boolean; products?: StoreProductDTO[]; hasMore?: boolean };
-      if (!data.ok) return { products: [], hasMore: false };
-      return { products: data.products ?? [], hasMore: !!data.hasMore };
+      if (!data.ok) return { ok: false, products: [], hasMore: false };
+      return { ok: true, products: data.products ?? [], hasMore: !!data.hasMore };
     } catch {
-      return { products: [], hasMore: false };
+      return { ok: false, products: [], hasMore: false };
     }
+  }
+
+  /** The shopper-facing half of the above. The site's one toast surface (lib/toast.ts) — this is a
+   *  transient failure of a thing they asked for, not a state of the page, so it does not belong
+   *  as an inline panel that would then have to be cleared again. */
+  function reportProductsLoadFailure(): void {
+    const s = getPMI18n();
+    showErrorToast(s.loadFailedTitle ?? '', s.loadFailedBody ?? '');
   }
 
   // Guards against an older, slower request (e.g. rapid category clicks)
@@ -2098,10 +2125,17 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     // renderings reads as the layout "resetting". The bar above the grid is
     // that marker now — see LoadingSweep.astro for why it replaced dimming.
     startLoadingSweep(loadingBar);
-    const { products: page, hasMore } = await fetchProductsPage(0);
+    const { ok, products: page, hasMore } = await fetchProductsPage(0);
     // A newer filter is already in flight: it owns the bar and the grid now.
     if (token !== refreshToken) return;
     stopLoadingSweep(loadingBar);
+    // The request failed. The grid on screen is now stale — it is the PREVIOUS filter's result —
+    // but stale-and-labelled beats "this category is empty", which is what emptying it here would
+    // have claimed. The URL has already been synced, so a reload lands on what they asked for.
+    if (!ok) {
+      reportProductsLoadFailure();
+      return;
+    }
     // renderCategoryNav() used to be called synchronously by the click handler,
     // immediately — well before this fetch resolves. That meant the breadcrumb/
     // chip row reflowed at one moment and the grid reflowed at another, separated
@@ -2151,9 +2185,17 @@ const bannerPreload = !isDemo && shopStore.bannerImage
     if (loadMoreLabel) {
       loadMoreLabel.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${escHtml(getPMI18n().loadingMore ?? '')}<span class="dot-pulse" role="status"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
     }
-    const { products: page, hasMore } = await fetchProductsPage(offset);
-    appendProductCards(page, true);
-    updateResultsState(hasMore);
+    const { ok, products: page, hasMore } = await fetchProductsPage(offset);
+    // On failure, leave `hasMore` exactly as it was: passing the failed `false` through to
+    // updateResultsState() removes this very button, so the shopper is told they have reached the
+    // end of the catalogue by a request that never arrived — and there is then nothing left to
+    // press. The button comes back live below, so the fix is to press it again.
+    if (ok) {
+      appendProductCards(page, true);
+      updateResultsState(hasMore);
+    } else {
+      reportProductsLoadFailure();
+    }
     loadMoreBtn.removeAttribute('aria-disabled');
     if (loadMoreLabel) loadMoreLabel.textContent = originalLabel;
   });
