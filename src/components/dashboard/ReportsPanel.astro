@@ -1,0 +1,116 @@
+---
+/**
+ * The seller's reports tab: pick a report, pick a period, read the table, export the CSV.
+ *
+ * **Why this is its own tab and not a button on Performance.** Performance answers "how am I
+ * doing" — six figures and four charts, read at a glance. A report answers "give me the rows": the
+ * sheet a bookkeeper reconciles a month against, the list a stocktake is done from. Putting an
+ * export on the charts tab would have made both worse, because the two want opposite layouts — one
+ * wants everything visible at once, the other wants one long scrollable column.
+ *
+ * **Nothing is rendered server-side, deliberately.** Every row here comes from `/api/seller/reports`
+ * on first reveal, the same deferral Performance and Advertising already make (dashboard.astro's
+ * `perfIsInitial` note): this is rarely the tab a seller lands on, and a report is the heaviest
+ * thing the dashboard can build. The panel ships as its controls plus an empty table body, which is
+ * a few hundred bytes on the pages nobody opens it from — memory `project_dashboard_html_weight`.
+ *
+ * **Mobile is the default, not an adaptation.** Below 700px each row becomes a card whose cells
+ * carry their own label (`data-label`, drawn by `::before` in dashboard.css's report block). That
+ * is a new treatment here, not the products table's — that one fixes column widths and hides
+ * columns, which is right for a table you SCAN and wrong for one you reconcile against a bank
+ * statement, where losing a column loses the point of the export.
+ */
+import { PERIOD_PRESETS } from '../../lib/date-range.js';
+import { REPORT_IDS } from '../../lib/seller-report-shapes.js';
+
+interface Props {
+  storeSlug: string;
+  /** The `dashboard` translation slice, already resolved by the page. */
+  d: Record<string, string>;
+}
+const { storeSlug, d } = Astro.props;
+
+const REPORT_META: Record<string, { titleKey: string; descKey: string; icon: 'receipt' | 'box' | 'layers' }> = {
+  sales:    { titleKey: 'repSalesTitle',    descKey: 'repSalesDesc',    icon: 'receipt' },
+  products: { titleKey: 'repProductsTitle', descKey: 'repProductsDesc', icon: 'box' },
+  stock:    { titleKey: 'repStockTitle',    descKey: 'repStockDesc',    icon: 'layers' },
+};
+
+const PRESET_LABEL_KEY: Record<string, string> = {
+  today: 'perfPresetToday', thisWeek: 'perfPresetThisWeek', thisMonth: 'perfPresetThisMonth',
+  lastMonth: 'perfPresetLastMonth', '7d': 'perfPreset7d', '30d': 'perfPreset30d', '90d': 'perfPreset90d',
+};
+---
+
+<div id="reports-root" data-store-slug={storeSlug} data-report="sales" data-preset="thisMonth">
+  <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
+    <h2 class="m-0 text-base font-semibold">{d.repTitle}</h2>
+    <p class="muted text-[0.82rem] m-0 mt-1">{d.repSubtitle}</p>
+  </div>
+
+  {/* Which report. Three plain buttons carrying `aria-pressed`, NOT a `radiogroup`: a radiogroup
+      owes the keyboard a roving tabindex driven by arrow keys, and an arrow key on this RTL site
+      is its own problem (`lib/arrow-step.ts` — ArrowRight goes BACKWARD). The half-built version
+      of that pattern is worse than none: the seller tabs to the checked option and cannot reach
+      the other two at all. Plain buttons are each tabbable and each activate on Enter and Space,
+      which is the whole interaction, and `aria-pressed` is already this panel's idiom one row
+      down on the period chips. */}
+  <div class="grid gap-2.5 sm:grid-cols-3 mb-4" role="group" aria-label={d.repPickLabel}>
+    {REPORT_IDS.map((id) => (
+      <button
+        type="button"
+        class="report-pick text-start rounded-[var(--radius)] border [border-color:var(--color-border)] bg-[color:var(--color-surface)] p-3 cursor-pointer font-[inherit] transition-colors duration-150 hover:[border-color:var(--color-primary)] aria-pressed:[border-color:var(--color-primary)] aria-pressed:[background:color-mix(in_srgb,var(--color-primary)_6%,var(--color-surface))]"
+        data-report={id}
+        aria-pressed={id === 'sales'}
+      >
+        <span class="flex items-center gap-2 font-semibold text-[0.9rem]">
+          {REPORT_META[id].icon === 'receipt' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 3 2V2l-3 2-3-2-3 2-3-2-3 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="14" x2="13" y2="14"/></svg>}
+          {REPORT_META[id].icon === 'box' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>}
+          {REPORT_META[id].icon === 'layers' && <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>}
+          {d[REPORT_META[id].titleKey]}
+        </span>
+        <span class="muted block text-[0.78rem] mt-1 leading-snug">{d[REPORT_META[id].descKey]}</span>
+      </button>
+    ))}
+  </div>
+
+  {/* The period. A chip row rather than the dropdown Performance uses: seven short labels fit a
+      row, and a horizontal scroller is already this site's answer to a row that does not
+      (chip-scroller.ts, the store's category strip). `hidden` for the stock report — a stocktake
+      is a statement about NOW, and offering it a date range would promise a period the file's
+      contents do not describe. */}
+  <div id="reports-range" class="flex items-center gap-2 flex-wrap mb-4">
+    <span class="muted text-[0.8rem] shrink-0">{d.repPeriodLabel}</span>
+    {PERIOD_PRESETS.map((p) => (
+      <button
+        type="button"
+        class="report-preset text-[0.8rem] rounded-full border [border-color:var(--color-border)] bg-[color:var(--color-surface)] py-[.25rem] px-[.7rem] cursor-pointer font-[inherit] transition-colors duration-120 hover:[border-color:var(--color-primary)] aria-pressed:[border-color:var(--color-primary)] aria-pressed:[color:var(--color-primary)] aria-pressed:font-semibold"
+        data-preset={p}
+        aria-pressed={p === 'thisMonth'}
+      >{d[PRESET_LABEL_KEY[p]]}</button>
+    ))}
+  </div>
+
+  <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+    <p id="reports-summary" class="m-0 text-[0.85rem] [color:var(--color-muted)]" aria-live="polite"></p>
+    {/* A real <a download>, not a fetch-and-blob: the browser's own download is what puts the file
+        where the seller expects it, and it survives this script failing to load. `href` is filled
+        in by reports.ts as the selection changes; without JS there is nothing to export yet, so it
+        starts disabled rather than pointing at a range nobody chose. */}
+    {/* No `role="button"`: this navigates to a URL and hands the response to the browser's own
+        download, which is exactly what a link is. */}
+    <a
+      id="reports-export"
+      class="btn btn--accent inline-flex items-center gap-2 text-[0.85rem] py-[.45rem] px-[.9rem]"
+      download
+      aria-disabled="true"
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      {d.repExportCsv}
+    </a>
+  </div>
+
+  <div id="reports-table-wrap" class="report-table-wrap" aria-busy="true">
+    <p class="muted text-[0.85rem] m-0 py-6 text-center">{d.repLoading}</p>
+  </div>
+</div>

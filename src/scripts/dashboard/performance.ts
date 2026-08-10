@@ -11,11 +11,12 @@ import type { PerformanceSummary, ProductPerformanceSummary } from '../../lib/se
 import { showTooltip, showTooltipAtPoint, hideTooltip, mountTooltipIn, initInfoTooltips } from '../tooltip.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 import { showErrorToast } from '../../lib/toast.js';
-import { businessDayISO, businessMonthStartISO, calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
-import { addDaysISO } from '../../lib/date-range.js';
+import { calendarDayISO, BUSINESS_TIMEZONE } from '../../lib/business-day.js';
+import { PERIOD_PRESETS as PRESETS, periodRange as presetRange, type PeriodPreset } from '../../lib/date-range.js';
 
-const PRESETS = ['today', 'thisWeek', 'thisMonth', 'lastMonth', '7d', '30d', '90d'] as const;
-type Preset = typeof PRESETS[number];
+// The preset list and its bounds now live in lib/date-range.ts, shared with the reports tab —
+// two tabs naming the same period had to mean the same days. Only the LABELS stay here.
+type Preset = PeriodPreset;
 const PRESET_LABEL_KEY: Record<Preset, string> = {
   today: 'perfPresetToday', thisWeek: 'perfPresetThisWeek',
   thisMonth: 'perfPresetThisMonth', lastMonth: 'perfPresetLastMonth',
@@ -53,39 +54,6 @@ function getI18n(): Record<string, string> {
 
 function formatShortDate(iso: string): string {
   return new Date(iso + 'T12:00:00Z').toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', timeZone: BUSINESS_TIMEZONE });
-}
-
-/**
- * Every bound is derived from the BUSINESS day (business-day.ts) by calendar
- * arithmetic on the date string — never from the browser's own clock.
- *
- * This used to build each bound from a local `Date`, which is the SELLER'S DEVICE
- * timezone. On a laptop still set to another zone (or simply travelling), "this
- * month" was computed against one calendar while the server bucketed the orders
- * against another, and the range silently included or dropped a day at each end.
- * Deriving everything from one `today` string removes the possibility rather than
- * making the two agree by luck.
- */
-function presetRange(preset: string): { from: string; to: string } {
-  const to = businessDayISO(new Date());
-  if (preset === 'today') return { from: to, to };
-  if (preset === 'thisWeek') {
-    // Week starts on Sunday (Israeli convention). getUTCDay() on the parsed calendar
-    // date — a pure date string has no zone, so this is the weekday of `to` itself.
-    const weekday = new Date(to + 'T00:00:00Z').getUTCDay();
-    return { from: addDaysISO(to, -weekday), to };
-  }
-  if (preset === '7d' || preset === '30d' || preset === '90d') {
-    const days = preset === '7d' ? 7 : preset === '30d' ? 30 : 90;
-    return { from: addDaysISO(to, -(days - 1)), to };
-  }
-  if (preset === 'thisMonth') return { from: businessMonthStartISO(to), to };
-  if (preset === 'lastMonth') {
-    // Day before this month's 1st = last day of the previous month.
-    const end = addDaysISO(businessMonthStartISO(to), -1);
-    return { from: businessMonthStartISO(end), to: end };
-  }
-  return { from: to, to };
 }
 
 function renderTopProducts(container: HTMLElement, summary: PerformanceSummary, i18n: Record<string, string>): void {

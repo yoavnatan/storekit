@@ -10,6 +10,7 @@ import CreateStoreCard from '../../components/dashboard/CreateStoreCard.astro';
 import TabHint from '../../components/dashboard/TabHint.astro';
 import InfoTip from '../../components/dashboard/InfoTip.astro';
 import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
+import ReportsPanel from '../../components/dashboard/ReportsPanel.astro';
 import HeaderStyleCard from '../../components/dashboard/HeaderStyleCard.astro';
 import ImageActionIcon from '../../components/dashboard/ImageActionIcon.astro';
 import BoostFormFields from '../../components/dashboard/BoostFormFields.astro';
@@ -364,7 +365,7 @@ const productsPage = paginate(filteredSortedProducts, parsePage(Astro.url.search
 // `hidden={initialPanel !== <its name>}`, so an unknown value (a typo, a stale
 // bookmark, a link someone edited) hid ALL of them and served a dashboard with
 // an empty body. Fall back to the landing tab instead.
-const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'advertising', 'messages', 'promotions', 'settings'] as const;
+const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'settings'] as const;
 const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
 const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
 // Performance + Advertising are the two heaviest tabs to render server-side —
@@ -763,6 +764,17 @@ const orderStatusColors: Record<string, string> = {
           aria-selected={initialPanel === 'performance'}
           tabindex={initialPanel === 'performance' ? 0 : -1}
         ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>{d.tabPerformance}</button>
+        {/* Next to Performance and not next to Orders, deliberately: the two answer the same
+            question — "how did this period go" — and a seller who wants the rows behind a figure
+            looks beside the figure. */}
+        <button
+          class={`dash-tab${initialPanel === 'reports' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-reports"
+          data-panel="reports"
+          aria-selected={initialPanel === 'reports'}
+          tabindex={initialPanel === 'reports' ? 0 : -1}
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>{d.tabReports}</button>
         <button
           class={`dash-tab${initialPanel === 'advertising' ? ' dash-tab--active' : ''}`}
           role="tab"
@@ -2123,6 +2135,11 @@ const orderStatusColors: Record<string, string> = {
         {store && <PerfProductSection products={products} />}
       </div>
 
+      <!-- ── Panel: Reports ── -->
+      <div id="dash-panel-reports" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-reports" hidden={initialPanel !== 'reports'}>
+        <ReportsPanel storeSlug={store.slug} d={d as unknown as Record<string, string>} />
+      </div>
+
       <!-- ── Panel: Advertising ── -->
       <div id="dash-panel-advertising" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-advertising" hidden={initialPanel !== 'advertising'}>
         {showTabHints && <TabHint text={d.tabHintAdvertising} />}
@@ -3250,6 +3267,11 @@ const orderStatusColors: Record<string, string> = {
     performance: async () => {
       const { initPerformanceTab } = await import('../../scripts/dashboard/performance.js');
       initPerformanceTab();
+    },
+
+    reports: async () => {
+      const { initReportsTab } = await import('../../scripts/dashboard/reports.js');
+      initReportsTab();
     },
 
     advertising: async () => {

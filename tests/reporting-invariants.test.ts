@@ -19,6 +19,7 @@ import { daysInRangeInclusive } from '../src/lib/date-range.js';
 import { getOpenOrderCountsByStore, getPlatformOrderTotals, getPlatformSales, getStoreRevenueBySlug } from '../src/lib/order-reporting.js';
 
 import { buildPerformanceSummary, buildProductPerformance } from '../src/lib/seller-performance.js';
+import { buildSalesReport, buildProductSalesReport, buildStockReport } from '../src/lib/seller-reports.js';
 import { buildPlatformPerformance, buildPlatformSales } from '../src/lib/platform-performance.js';
 import { buildSellerBalances, type SellerBalance } from '../src/lib/seller-balance.js';
 
@@ -347,6 +348,70 @@ describe('the seller performance summary reconciles with itself', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. Two surfaces describing the same money must produce the same number.
 // ─────────────────────────────────────────────────────────────────────────────
+
+describe('the three seller reports reconcile with each other and with Performance', () => {
+  // One discounted multi-line order, one plain one, one cancelled. The discount is deliberately
+  // indivisible across its lines: that is where a per-line rounding loses or invents an agora, and
+  // where the sales and product exports would start disagreeing by amounts nobody can explain.
+  const orders = [
+    makeOrder('r1', {
+      items: [{ productId: 'p1', priceAgorot: 1999, qty: 1 }, { productId: 'p2', priceAgorot: 4001, qty: 1 }],
+      discount: { type: 'amount', value: 1, appliedAgorot: 100 },
+      createdAt: '2026-07-04T09:00:00.000Z',
+    }),
+    makeOrder('r2', { items: [{ productId: 'p1', priceAgorot: 1999, qty: 3 }], createdAt: '2026-07-09T09:00:00.000Z' }),
+    makeOrder('r3', {
+      items: [{ productId: 'p3', priceAgorot: 90000, qty: 1 }],
+      createdAt: '2026-07-15T09:00:00.000Z',
+      over: { shippingStatus: 'cancelled' },
+    }),
+  ];
+  const FROM = '2026-07-01';
+  const TO = '2026-07-31';
+  const RATE = 12;
+
+  const sales = buildSalesReport(orders, STORE, FROM, TO, RATE);
+  const byProduct = buildProductSalesReport(orders, [], STORE, FROM, TO);
+
+  it('the product report and the sales report agree to the agora', () => {
+    expect(byProduct.totals.grossAgorot).toBe(sales.totals.grossAgorot);
+    expect(byProduct.totals.discountAgorot).toBe(sales.totals.discountAgorot);
+    expect(byProduct.totals.netAgorot).toBe(sales.totals.netAgorot);
+  });
+
+  it('the sales report and the Performance tab agree about the same window', () => {
+    // The two are read side by side — a seller checks the tab's headline and then exports the rows
+    // behind it — so a difference here is the one that gets noticed and never explained.
+    const perf = buildPerformanceSummary(orders, EMPTY_VIEW_STATS, STORE, FROM, TO, 'day', RATE);
+    expect(sales.totals.netAgorot).toBe(perf.totalRevenueAgorot);
+    expect(sales.totals.commissionAgorot).toBe(perf.platformCommissionAgorot);
+    expect(sales.totals.rows).toBeGreaterThan(perf.totalOrders); // the cancelled row is listed, not counted
+  });
+
+  it('a cancelled order is listed, contributes nothing, and is charged no commission', () => {
+    const row = sales.rows.find((r) => r.orderId === 'r3');
+    expect(row?.countsAsRevenue).toBe(false);
+    expect(row?.commissionAgorot).toBe(0);
+    expect(sales.totals.grossAgorot).toBe(1999 + 4001 + 1999 * 3);
+  });
+
+  it('every payout is net minus commission, and no figure is ever negative', () => {
+    for (const r of sales.rows) {
+      expect(r.payoutAgorot).toBe(r.netAgorot - r.commissionAgorot);
+      for (const v of [r.grossAgorot, r.netAgorot, r.commissionAgorot, r.payoutAgorot]) expect(v).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('the stock report values the shelf at the same agorot every money surface uses', () => {
+    const stock = buildStockReport([
+      { id: 'p1', storeId: 's', slug: 'p1', name: 'p1', description: '', price: 19.99, stock: 3 },
+      { id: 'p2', storeId: 's', slug: 'p2', name: 'p2', description: '', price: 0.145, stock: 1 },
+    ] as never);
+    // 19.99 → 1999 and not 1998: `toAgorot`'s EPSILON nudge, the same one product prices are
+    // stored with, so a stocktake and the catalogue cannot disagree about a shelf's worth.
+    expect(stock.totals.valueAgorot).toBe(1999 * 3 + 15);
+  });
+});
 
 describe('the admin surfaces reconcile with each other', () => {
   const orders = [
