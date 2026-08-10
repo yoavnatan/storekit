@@ -8,6 +8,7 @@ import { businessTodayISO } from './business-day.js';
 import { buildSellerAccount, type AccountSlice, type SellerAccount } from './seller-account.js';
 import { getSellerById } from './seller-auth.js';
 import type { Order } from './orders.js';
+import type { DeliveryMethod } from './shipping.js';
 
 /**
  * Storage for the two things the agent model made real: **a transfer that left**, and **a debt that
@@ -251,8 +252,9 @@ export async function getSellerAccountRows(sellerId: string, limit = 500): Promi
     order_id: string; store_slug: string; net: string | number;
     payment_status: Order['paymentStatus']; shipping_status: Order['shippingStatus'];
     paid_at: Date | string | null; delivered_at: Date | string | null;
+    delivery_method: DeliveryMethod | null;
   }>(
-    `SELECT os.order_id, os.store_slug, ${NET_SQL} AS net,
+    `SELECT os.order_id, os.store_slug, ${NET_SQL} AS net, os.delivery_method,
             o.payment_status, o.shipping_status, o.paid_at, o.delivered_at
        FROM order_stores os
        JOIN orders o  ON o.id = os.order_id
@@ -273,6 +275,11 @@ export async function getSellerAccountRows(sellerId: string, limit = 500): Promi
       shippingStatus: r.shipping_status,
       paidAt: iso(r.paid_at),
       deliveredAt: iso(r.delivered_at),
+      // Carried, not dropped: without it every self-pickup slice on the seller's own screen is
+      // judged by the courier milestone and reads "held" while the payout run has already released
+      // it — two surfaces disagreeing about the same money, which is the whole class
+      // reporting-invariants.test.ts exists for.
+      deliveryMethod: r.delivery_method,
     },
   }));
 }

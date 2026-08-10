@@ -7,9 +7,11 @@ import {
   REVENUE_PAYMENT_STATUSES,
   REVENUE_SHIPPING_STATUSES,
   PAYOUT_CLOCK_SHIPPING_STATUSES,
+  PICKUP_PAYOUT_CLOCK_SHIPPING_STATUSES,
 } from './order-status-rules.js';
 import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from './payout-schedule.js';
 import type { Order } from './orders.js';
+import type { DeliveryMethod } from './shipping.js';
 
 /**
  * WHEN a seller's share of an order stops being at risk and may be paid out.
@@ -88,6 +90,10 @@ export interface OrderHold {
 export type HoldableOrder = Pick<Order, 'paymentStatus' | 'shippingStatus'> & {
   paidAt?: string | null;
   deliveredAt?: string | null;
+  /** How the buyer gets it. Self-pickup never passes through `shipped`, so it reaches the payout
+   *  gate one status earlier — `order-status-rules.ts`'s `pickupPayoutClockRuns` column. Absent
+   *  takes the stricter courier answer, since orders predate the field. */
+  deliveryMethod?: DeliveryMethod | null;
 };
 
 /**
@@ -126,7 +132,14 @@ export function orderHold(order: HoldableOrder, todayISO: string = businessToday
   // indefinitely. That is strictly better than paying the seller for it, and it is still wrong —
   // the buyer is owed a cancellation and a refund after some number of days. That mechanism does
   // not exist and the number is an owner decision (CURRENT_TASK §ג.11, with the returns policy).
-  if (!orderPayoutClockRuns(order)) return { state: 'held', releaseDayISO: null, basis: 'unshipped' };
+  //
+  // Self-pickup (owner, 2026-08-10, immediately after the above): a collected order has no shipping
+  // leg at all and never reaches `shipped`, so gating on that alone froze a pickup order's money
+  // until the seller remembered to press "נמסר" — and forever if they forgot. The delivery method
+  // therefore picks the column, and `ready` is the milestone for pickup. See the column's doc.
+  if (!orderPayoutClockRuns(order, order.deliveryMethod)) {
+    return { state: 'held', releaseDayISO: null, basis: 'unshipped' };
+  }
 
   // A captured order with no `paid_at` cannot be dated, and dating it from something else would be
   // guessing with a seller's money. It stays held rather than releasable — the safe direction — and
@@ -174,17 +187,28 @@ export function isReleasable(order: HoldableOrder, todayISO: string = businessTo
  * `shipping_status <> 'cancelled'` in this string would have been the third definition of cancelled
  * in the codebase.
  *
- * Parameter order is fixed by `RELEASABLE_PARAMS` below, so a caller cannot get it subtly wrong.
+ * Parameter order is fixed by `releasableParams` below, so a caller cannot get it subtly wrong.
+ *
+ * ⚠️ **This predicate needs BOTH aliases: `o` for `orders` and `os` for `order_stores`.** The
+ * delivery method lives on the per-store slice, not the order, so any query using this must join
+ * `order_stores os`. That is not a burden in practice — every caller is already summing that
+ * table's amounts.
  */
 export const RELEASABLE_SQL = `
   o.payment_status = ANY($1::text[])
   AND o.shipping_status = ANY($2::text[])
-  -- The parcel has to have LEFT. ANDed with the revenue list rather than replacing it: revenue
-  -- excludes a cancelled order, this excludes one that was never sent, and they are different
-  -- questions. Its own list off payoutClockRuns, so a new status propagates here by filling in a
-  -- row and never by someone remembering this string exists.
+  -- The seller has to have done their part. ANDed with the revenue list rather than replacing it:
+  -- revenue excludes a cancelled order, this excludes one that was never sent, and they are
+  -- different questions. Both lists come off the status table, so a new status propagates here by
+  -- filling in a row and never by someone remembering this string exists.
+  --
+  -- The CASE is the self-pickup milestone: a collected order never reaches 'shipped', so it uses
+  -- the pickup list ('ready' and later). delivery_method is NULL on orders that predate the field,
+  -- and a NULL = 'pickup' is NULL rather than true, so those fall to ELSE and take the stricter
+  -- courier list — the same default the JS half applies for an absent method.
   -- (No backticks anywhere in this string: it is a template literal, and one would end it.)
-  AND o.shipping_status = ANY($7::text[])
+  AND o.shipping_status = ANY(
+        CASE WHEN os.delivery_method = 'pickup' THEN $8::text[] ELSE $7::text[] END)
   AND o.paid_at IS NOT NULL
   -- Prefilter on the RAW column so orders_payout_scan_idx stays in the plan. An order paid fewer
   -- than min(hold, fallback) days ago cannot be releasable under EITHER clock, so this excludes
@@ -207,7 +231,7 @@ export const RELEASABLE_SQL = `
  * comparing a uuid array against a list of shipping statuses. A positional parameter written as a
  * literal after a variable-length prefix is a number that goes stale the moment the prefix changes.
  */
-export const RELEASABLE_PARAM_COUNT = 7;
+export const RELEASABLE_PARAM_COUNT = 8;
 
 /** The parameters `RELEASABLE_SQL` reads, in order. Built here so the SQL and its arguments cannot
  *  be assembled apart. `$6` (today) is supplied by the caller so a run and a report can be asked
@@ -221,5 +245,6 @@ export function releasableParams(todayISO: string = businessTodayISO()): readonl
     FALLBACK_DAYS_AFTER_PAYMENT,
     todayISO,
     PAYOUT_CLOCK_SHIPPING_STATUSES,
+    PICKUP_PAYOUT_CLOCK_SHIPPING_STATUSES,
   ];
 }

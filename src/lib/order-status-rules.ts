@@ -1,4 +1,5 @@
 import type { Order } from './orders.js';
+import type { DeliveryMethod } from './shipping.js';
 
 /**
  * What every order status MEANS, as one table.
@@ -84,15 +85,35 @@ export interface ShippingStatusRule {
    * and not the whole answer.
    */
   payoutClockRuns: boolean;
+  /**
+   * The same question for an order the buyer COLLECTS — where the answer is different by one row.
+   *
+   * Self-pickup has no shipping leg: nothing is ever handed to a courier, so the order goes
+   * `pending → processing → ready → delivered` and never touches `shipped`. Under
+   * `payoutClockRuns` alone, a pickup order's money would therefore be frozen until the seller
+   * remembered to press "נמסר" after the buyer walked out — and if they forgot, frozen forever.
+   * That is the same freeze the fallback clock exists to prevent, arriving through a different door.
+   *
+   * So for pickup, **`ready` is the milestone**: it is the last thing the seller controls. After it
+   * the parcel is packed and waiting and the remaining step belongs to the buyer, exactly as
+   * `shipped` means the remaining step belongs to the courier.
+   *
+   * **Why the weaker evidence is acceptable here and not for a courier order.** `ready` is a status
+   * the seller sets with nothing corroborating it — the objection that keeps it FALSE in the column
+   * above. It is much weaker for pickup: the buyer physically turns up at the shop, so an order
+   * marked ready with nothing behind it produces a person standing at the counter that day, not a
+   * silent non-delivery discovered weeks later. The fallback hold still has to elapse on top.
+   */
+  pickupPayoutClockRuns: boolean;
 }
 
 export const SHIPPING_STATUS_RULES: Record<ShippingStatus, ShippingStatusRule> = {
-  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false },
-  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false },
-  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false },
-  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: true  },
-  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: true  },
-  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false },
+  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false },
+  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: false },
+  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false, pickupPayoutClockRuns: true  },
+  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: true , pickupPayoutClockRuns: true  },
+  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: true , pickupPayoutClockRuns: true  },
+  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false, pickupPayoutClockRuns: false },
 };
 
 export interface PaymentStatusRule {
@@ -168,10 +189,30 @@ export const SHIPPING_PIPELINE_ORDER: ShippingStatus[] =
  *  cancelled order is excluded by revenue, an unshipped one by this. */
 export const PAYOUT_CLOCK_SHIPPING_STATUSES = shippingWhere('payoutClockRuns');
 
-/** Has the parcel left the seller, so money may release on a timer? Asked of the table rather than
- *  compared against 'shipped'/'delivered' — the whole reason the table exists. */
-export function orderPayoutClockRuns(o: Pick<Order, 'shippingStatus'>): boolean {
-  return SHIPPING_STATUS_RULES[o.shippingStatus]?.payoutClockRuns === true;
+/** The same list for an order the buyer collects — `ready` and later. See the column's own doc
+ *  for why self-pickup has a different milestone and why weaker evidence is acceptable there. */
+export const PICKUP_PAYOUT_CLOCK_SHIPPING_STATUSES = shippingWhere('pickupPayoutClockRuns');
+
+/**
+ * Has the seller done everything they control, so money may release on a timer?
+ *
+ * Asked of the table rather than compared against 'shipped'/'delivered' — the whole reason the
+ * table exists — and it takes the DELIVERY METHOD because the milestone genuinely differs: a
+ * courier order needs `shipped`, a collected one needs `ready`. Passing the method in and picking a
+ * column keeps both answers in the table; an `if (method === 'pickup')` at the call site would be a
+ * second definition of the pipeline living next to the payout rule.
+ *
+ * An unknown or absent method takes the stricter courier answer. Orders predate the field
+ * (`StoreSubtotal.deliveryMethod` is optional for backward compatibility), and defaulting the other
+ * way would release an old order's money a status early.
+ */
+export function orderPayoutClockRuns(
+  o: Pick<Order, 'shippingStatus'>,
+  deliveryMethod?: DeliveryMethod | null,
+): boolean {
+  const rule = SHIPPING_STATUS_RULES[o.shippingStatus];
+  if (!rule) return false;
+  return deliveryMethod === 'pickup' ? rule.pickupPayoutClockRuns : rule.payoutClockRuns;
 }
 
 /** Both halves of `orderBlocksStoreClosure`. */

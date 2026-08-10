@@ -27,6 +27,8 @@ interface Case {
   shippingStatus: 'pending' | 'processing' | 'ready' | 'shipped' | 'delivered' | 'cancelled';
   paidAt: string | null;
   deliveredAt: string | null;
+  /** Absent = courier, the stricter default and the shape of a pre-field order. */
+  deliveryMethod?: 'pickup' | 'courier' | 'pickup_point';
   expect: 'not_payable' | 'held' | 'releasable';
 }
 
@@ -49,6 +51,19 @@ const CASES: Case[] = [
   // on the seller's table, and a status the seller sets alone must not start a clock ending in a
   // transfer.
   { note: 'packed and labelled, still on the seller\'s table', paymentStatus: 'paid', shippingStatus: 'ready', paidAt: at(daysAgo(120)), deliveredAt: null, expect: 'held' },
+
+  // ── Self-pickup: no shipping leg, so `ready` is the milestone ──
+  // Without its own column a collected order would be frozen until the seller remembered to press
+  // "נמסר" after the buyer walked out — and forever if they forgot.
+  { note: 'pickup, ready and past the fallback', paymentStatus: 'paid', shippingStatus: 'ready', paidAt: at(daysAgo(FALLBACK_DAYS_AFTER_PAYMENT + 1)), deliveredAt: null, deliveryMethod: 'pickup', expect: 'releasable' },
+  { note: 'pickup, ready but still inside the fallback', paymentStatus: 'paid', shippingStatus: 'ready', paidAt: at(daysAgo(2)), deliveredAt: null, deliveryMethod: 'pickup', expect: 'held' },
+  // Still gated before `ready`: a pickup order nobody has even packed is not the buyer's turn yet.
+  { note: 'pickup, never packed', paymentStatus: 'paid', shippingStatus: 'processing', paidAt: at(daysAgo(120)), deliveredAt: null, deliveryMethod: 'pickup', expect: 'held' },
+  // The same row for a COURIER order stays held — this is the pair that proves the column is doing
+  // the work rather than `ready` having simply been loosened for everyone.
+  { note: 'courier, ready and past the fallback — still held', paymentStatus: 'paid', shippingStatus: 'ready', paidAt: at(daysAgo(FALLBACK_DAYS_AFTER_PAYMENT + 1)), deliveredAt: null, deliveryMethod: 'courier', expect: 'held' },
+  // A pickup POINT is a courier leg to a locker, so it takes the courier milestone, not pickup's.
+  { note: 'pickup_point, ready and past the fallback — still held', paymentStatus: 'paid', shippingStatus: 'ready', paidAt: at(daysAgo(FALLBACK_DAYS_AFTER_PAYMENT + 1)), deliveredAt: null, deliveryMethod: 'pickup_point', expect: 'held' },
 
   // ── The delivery clock ──
   { note: 'delivered yesterday', paymentStatus: 'paid', shippingStatus: 'delivered', paidAt: at(daysAgo(30)), deliveredAt: at(daysAgo(1)), expect: 'held' },
@@ -75,13 +90,12 @@ const CASES: Case[] = [
 describe('the hold rule', () => {
   for (const c of CASES) {
     it(`${c.note} → ${c.expect}`, () => {
-      const hold = orderHold(
-        { paymentStatus: c.paymentStatus, shippingStatus: c.shippingStatus, paidAt: c.paidAt, deliveredAt: c.deliveredAt },
-        TODAY,
-      );
-      expect(hold.state, c.note).toBe(c.expect);
-      expect(isReleasable({ paymentStatus: c.paymentStatus, shippingStatus: c.shippingStatus, paidAt: c.paidAt, deliveredAt: c.deliveredAt }, TODAY))
-        .toBe(c.expect === 'releasable');
+      const projection = {
+        paymentStatus: c.paymentStatus, shippingStatus: c.shippingStatus,
+        paidAt: c.paidAt, deliveredAt: c.deliveredAt, deliveryMethod: c.deliveryMethod ?? null,
+      };
+      expect(orderHold(projection, TODAY).state, c.note).toBe(c.expect);
+      expect(isReleasable(projection, TODAY)).toBe(c.expect === 'releasable');
     });
   }
 
@@ -148,6 +162,13 @@ describe('the SQL twin agrees with the JS rule', () => {
          VALUES ($1, 'T', 'twin@example.com', 1000, $2, $3, $4::timestamptz, $5::timestamptz)`,
         [id, c.paymentStatus, c.shippingStatus, c.paidAt, c.deliveredAt],
       );
+      // The predicate reads the delivery method off the per-store slice, so the twin needs the real
+      // two-table shape rather than a bare orders row — which is also how every caller queries it.
+      await query(
+        `INSERT INTO order_stores (order_id, store_slug, store_name, subtotal_agorot, shipping_agorot, delivery_method)
+         VALUES ($1, 'twin-shop', 'Twin', 1000, 0, $2)`,
+        [id, c.deliveryMethod ?? null],
+      );
     }
   });
 
@@ -155,14 +176,19 @@ describe('the SQL twin agrees with the JS rule', () => {
     const found = await rows<{ id: string }>(
       // Derived, not written as a literal — this test hardcoded `$7` and broke the day the
       // predicate grew a seventh parameter of its own.
-      `SELECT o.id FROM orders o WHERE o.id = ANY($${RELEASABLE_PARAM_COUNT + 1}::uuid[]) AND ${RELEASABLE_SQL}`,
+      `SELECT o.id FROM orders o
+         JOIN order_stores os ON os.order_id = o.id
+        WHERE o.id = ANY($${RELEASABLE_PARAM_COUNT + 1}::uuid[]) AND ${RELEASABLE_SQL}`,
       [...releasableParams(TODAY), [...ids.keys()]],
     );
     const fromSql = new Set(found.map((r) => r.id));
 
     for (const [id, c] of ids) {
       const js = isReleasable(
-        { paymentStatus: c.paymentStatus, shippingStatus: c.shippingStatus, paidAt: c.paidAt, deliveredAt: c.deliveredAt },
+        {
+          paymentStatus: c.paymentStatus, shippingStatus: c.shippingStatus,
+          paidAt: c.paidAt, deliveredAt: c.deliveredAt, deliveryMethod: c.deliveryMethod ?? null,
+        },
         TODAY,
       );
       expect(fromSql.has(id), `${c.note}: SQL says ${fromSql.has(id)}, JS says ${js}`).toBe(js);
