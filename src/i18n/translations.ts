@@ -537,6 +537,9 @@ export const translations = {
       bulkDeleteTitle: 'מחיקת מוצרים',
       bulkDeleteMsg: 'המוצרים הנבחרים יימחקו לצמיתות.',
       bulkDeleted: 'המוצרים נמחקו.',
+      // Names the NUMBER, because "חלק נכשלו" leaves the seller counting rows by hand. The ones
+      // that failed stay selected, so pressing delete again retries exactly them.
+      bulkDeleteFailed: '{n} מוצרים לא נמחקו. הם עדיין מסומנים — נסו שוב.',
       csvImportExport: 'ייבוא/ייצוא CSV',
       csvExport: 'ייצוא קטלוג (CSV)',
       csvTemplate: 'הורד תבנית לדוגמה',
@@ -1250,6 +1253,7 @@ export const translations = {
       saveCategoryName: 'שמור',
       cancelCategoryEdit: 'ביטול',
       deleteCategoryTitle: 'למחוק את הקטגוריה?',
+      deleteCategoryFailed: 'מחיקת הקטגוריה נכשלה. נסו שוב.',
       deleteCategoryMsg: 'הפעולה לא ניתנת לביטול.',
       categoryHasChildrenTooltip: 'יש למחוק קודם את תתי-הקטגוריות',
       noCategoriesYet: 'עדיין לא הוספת קטגוריות.',
@@ -2026,6 +2030,7 @@ export const translations = {
       bulkDeleteTitle: 'Delete products',
       bulkDeleteMsg: 'Selected products will be permanently deleted.',
       bulkDeleted: 'Products deleted.',
+      bulkDeleteFailed: '{n} products were not deleted. They are still selected — try again.',
       csvImportExport: 'CSV Import/Export',
       csvExport: 'Export catalog (CSV)',
       csvTemplate: 'Download sample template',
@@ -2695,6 +2700,7 @@ export const translations = {
       saveCategoryName: 'Save',
       cancelCategoryEdit: 'Cancel',
       deleteCategoryTitle: 'Delete this category?',
+      deleteCategoryFailed: 'Deleting the category failed. Please try again.',
       deleteCategoryMsg: 'This cannot be undone.',
       categoryHasChildrenTooltip: 'Delete its subcategories first',
       noCategoriesYet: "You haven't added any categories yet.",

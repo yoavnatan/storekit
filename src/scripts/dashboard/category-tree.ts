@@ -170,8 +170,12 @@ export function initCategoryTreeEditor(): void {
           okLabel: i.deleteCategory ?? 'Delete',
           onConfirm: async () => {
             const data = await callApi('delete-category', { categoryId });
-            if (data.ok && data.tree) { tree = data.tree; render(); }
-            else if (data.error) showError(data.error);
+            if (data.ok && data.tree) { tree = data.tree; render(); return; }
+            // `else if (data.error)` was the whole failure handling, which left two shapes silent:
+            // a refusal carrying no `error` field, and an `ok` response with no tree. In both the
+            // category stayed exactly where it was and the seller was told nothing — after
+            // confirming a delete, which reads as done.
+            showError(data.error ?? (i.deleteCategoryFailed ?? ''));
           },
         },
       }));

@@ -597,6 +597,7 @@ const strEmpty   = t.store.noProductsFound;
 
 <script>
   import { initHeaderScrolled } from '../lib/sticky-bar.js';
+  import { showActionFailedToast } from '../lib/toast.js';
   import { animateScrollTo } from '../scripts/dashboard/scroll-utils.js';
   import { getCount } from '../lib/cart.js';
   import { getWishlistCount } from '../lib/wishlist.js';
@@ -979,11 +980,23 @@ const strEmpty   = t.store.noProductsFound;
           notifList.innerHTML = emptyNotifHtml();
         }
         if (clearAllBtn && !notifList?.querySelector('.notif-item')) clearAllBtn.hidden = true;
+        // The card is already off screen — an optimistic delete, which is right for something this
+        // small. What was wrong is what happened when the request did not land: `.catch(() => {})`
+        // swallowed it, `loadNotifs` never ran, and the notification stayed on the server while
+        // the user watched it disappear. It then reappeared on the next page load, with no
+        // explanation, looking like the site had undone their action by itself.
+        // `loadNotifs` on BOTH paths, so the list always ends up showing server truth.
         fetch('/api/notifications', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'delete', id }),
-        }).then(loadNotifs).catch(() => {});
+        }).then((res) => {
+          if (!res.ok) throw new Error('delete failed');
+          return loadNotifs();
+        }).catch(() => {
+          showActionFailedToast();
+          void loadNotifs();
+        });
       });
     });
     notifList.querySelectorAll<HTMLElement>('[data-id]').forEach((el) => {
@@ -1000,6 +1013,9 @@ const strEmpty   = t.store.noProductsFound;
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'mark-read', id }),
             keepalive: true,
+          // silent: this fires as the page is navigating away, so there is no surface left to put
+          // a message on. It is also self-correcting — the item simply stays unread and the next
+          // click marks it again.
           }).catch(() => {});
         }
         const type = el.dataset.type ?? '';

@@ -109,6 +109,31 @@ describe('a failed request is never silent by accident', () => {
     expect(all).toEqual([]);
   });
 
+  it('a confirmed action that throws is reported, not swallowed by the dialog closing', () => {
+    /*
+     * `ConfirmModal.astro` is the funnel every destructive action on this site goes through —
+     * delete a product, delete a category, delete a coupon, cancel an order, close a store, clear
+     * the alert log, delete a campaign. It ran `try { await action() } finally { …close() }` with
+     * NO catch, so an `onConfirm` whose fetch was dropped closed the dialog and restored the
+     * button exactly as a success does. The action had not happened; the only trace was an
+     * unhandled rejection. That is the worst shape a failure can take, because the user has
+     * already decided and therefore does not check.
+     *
+     * Asserted on the source rather than driven in jsdom: the component's script is a bundled
+     * Astro island with no import surface, and what has to hold is one structural fact.
+     */
+    const modal = readFileSync(fileURLToPath(new URL('../src/components/ConfirmModal.astro', import.meta.url)), 'utf8');
+    const block = modal.slice(modal.indexOf('await action()'));
+    // The tokens `} catch {` / `} finally {`, not the bare words: the catch's own comment
+    // explains what the missing `finally`-only version used to do, and matching the word found
+    // that sentence instead of the clause.
+    const catchIdx = block.indexOf('} catch {');
+    const finallyIdx = block.indexOf('} finally {');
+    expect(catchIdx, 'ConfirmModal must catch a throwing onConfirm').toBeGreaterThan(-1);
+    expect(catchIdx, 'the catch must come before the finally that closes the dialog').toBeLessThan(finallyIdx);
+    expect(block.slice(catchIdx, finallyIdx)).toMatch(/showActionFailedToast/);
+  });
+
   it('the one wording for a failed action lives in one place', () => {
     // Six surfaces had each hand-written their own Hebrew sentence for the same event before the
     // audit. New code reaches for the shared one; the remaining literals are older, more specific

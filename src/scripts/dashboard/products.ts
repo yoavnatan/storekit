@@ -3296,27 +3296,54 @@ export function initBulkSelect(cloud: string, preset: string): void {
         message: `${count} ${i.bulkDeleteMsg ?? 'מוצרים יימחקו לצמיתות.'}`,
         okLabel: `${i.bulkDelete ?? 'מחק'} (${count})`,
         workingLabel: `${i.deleting ?? 'מוחק...'} (${count})`,
+        /**
+         * N independent deletes, and until 2026-08-10 the report at the end was a flat
+         * "המוצרים נמחקו" regardless of how many of them had actually happened. A failure inside
+         * the loop was dropped on the floor — `if (data.ok)` with no else — so a seller could
+         * select twenty, have three refused, and be told all twenty were gone. `applyPagination()`
+         * re-fetches, so the three were still on the page; but a seller who has just been told the
+         * job is done does not re-count the list, which is the whole reason that sentence is
+         * dangerous.
+         *
+         * Each delete is also wrapped on its own now. One dropped connection used to reject the
+         * whole `Promise.all`, which skipped `clearBulkSelection`, `updateBar`, `applyPagination`
+         * AND the message — leaving the table showing rows that were already deleted, with the
+         * selection bar still armed over them.
+         */
         onConfirm: async () => {
           const ids = selectedRowIds();
-          await Promise.all(ids.map(async (productId) => {
+          const results = await Promise.all(ids.map(async (productId) => {
             const row = document.querySelector<HTMLTableRowElement>(`[data-product-display="${productId}"]`);
             const storeId = row?.dataset.storeId ?? '';
             const fd = new FormData();
             fd.set('_action', 'delete-product');
             fd.set('productId', productId);
             fd.set('storeId', storeId);
-            const res = await fetch('/api/product', { method: 'POST', body: fd });
-            const data = await res.json() as { ok: boolean };
-            if (data.ok) setBulkSelected(productId, false);
+            try {
+              const res = await fetch('/api/product', { method: 'POST', body: fd });
+              const data = await res.json() as { ok: boolean };
+              if (data.ok) setBulkSelected(productId, false);
+              return data.ok;
+            } catch {
+              // silent: counted, not announced per item — the tally below is the one message, and
+              // twenty toasts for twenty failures is not a report.
+              return false;
+            }
           }));
-          // The rows that replace these must not be swept up by an armed "select
-          // all" — the seller asked to delete a selection, not to keep selecting.
-          clearBulkSelection();
+          const failed = results.filter((ok) => !ok).length;
+          // Only the ones that survived are deselected above, so what stays selected IS the retry
+          // set: pressing delete again re-attempts exactly the products that did not go.
+          if (failed === 0) clearBulkSelection();
           updateBar();
           // Re-fetches the current page from the server (drops deleted rows,
           // clamps the page if it ran off the end) — same as single-delete.
           applyPagination();
-          showStatus(i.bulkDeleted ?? 'המוצרים נמחקו.');
+          if (failed === 0) {
+            showStatus(i.bulkDeleted ?? 'המוצרים נמחקו.');
+          } else {
+            // Says how many, because "some failed" leaves the seller counting rows by hand.
+            showStatus((i.bulkDeleteFailed ?? '{n} מוצרים לא נמחקו. נסו שוב.').replace('{n}', String(failed)), true);
+          }
         },
       },
     }));
