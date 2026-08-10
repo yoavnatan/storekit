@@ -42,10 +42,6 @@ export const INK_WIDTH_EM = 3.452;
  *  gives every letter its own full ramp and reads as pieces stuck together. */
 export const GRADIENT = { from: '#2a3c40', to: '#3a5260', x1: 0, y1: 0, x2: 3438, y2: 714 };
 
-/** The D covers the first 16.5% of the lockup, so a mark shown alone in brand
- *  colour takes exactly that slice of the ramp. */
-export const MARK_GRADIENT = { from: '#2a3c40', to: '#2d4045' };
-
 /** The Hebrew line under the mark, which is still live Heebo text because it
  *  follows the visitor's language. `sizeEm` matches its ink width to the
  *  wordmark's; `marginEm` (in the tagline's OWN em) cancels Heebo's side

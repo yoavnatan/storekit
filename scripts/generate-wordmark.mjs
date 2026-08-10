@@ -127,7 +127,7 @@ function ink(font, ch) {
   const b = g.getPath(0, 0, font.unitsPerEm).getBoundingBox();
   // getPath renders y-down with the baseline at 0, so ink above the baseline is
   // negative. Flip it back, because every number in the brand notes is "above".
-  return { adv: g.advanceWidth, x1: b.x1, x2: b.x2, top: -b.y1, bottom: b.y2 };
+  return { adv: g.advanceWidth, x1: b.x1, x2: b.x2, top: -b.y1 };
 }
 
 /**
@@ -226,7 +226,7 @@ function run(font, text, { size, x, y, tracking = 0, dir = 'ltr' }) {
     const kern = next ? font.getKerningValue(g, next) : 0;
     pen += (g.advanceWidth + kern) * scale + tracking * size;
   });
-  return { path, advanceEnd: pen, box: path.getBoundingBox() };
+  return { path, box: path.getBoundingBox() };
 }
 
 /** Ink width of a string at 1em, for the ratios below. */
@@ -355,10 +355,6 @@ export const INK_WIDTH_EM = ${r5((INK_W + STROKE) / UPEM)};
  *  \`gradientUnits="userSpaceOnUse"\`: the default resolves per element, which
  *  gives every letter its own full ramp and reads as pieces stuck together. */
 export const GRADIENT = { from: '${BRAND_A}', to: '${BRAND_B}', x1: 0, y1: 0, x2: ${r(INK_W)}, y2: ${r(H)} };
-
-/** The D covers the first ${(100 * W / INK_W).toFixed(1)}% of the lockup, so a mark shown alone in brand
- *  colour takes exactly that slice of the ramp. */
-export const MARK_GRADIENT = { from: '${BRAND_A}', to: '${D_SLICE_END}' };
 
 /** The Hebrew line under the mark, which is still live Heebo text because it
  *  follows the visitor's language. \`sizeEm\` matches its ink width to the
