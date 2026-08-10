@@ -276,6 +276,17 @@ const payoutAccount = await getSellerAccountFor(sellerId);
 const seller = payoutAccount?.seller ?? null;
 // The badge condition, and it is the banner's condition too — one predicate, so the strip and the
 // panel cannot disagree about whether there is anything to do (PayoutsPanel.astro).
+// Both tables on the Payments tab page through the URL, so each link has to carry the OTHER
+// table's page too — otherwise stepping through the history silently resets the held list under
+// the seller's cursor. Built here rather than in the component so the store id and the open tab
+// stay this page's business.
+function payoutsTabHref(pages: { paypage: number; payhist: number }): string {
+  const params = new URLSearchParams({ panel: 'payouts' });
+  if (store) params.set('store', store.id);
+  if (pages.paypage > 1) params.set('paypage', String(pages.paypage));
+  if (pages.payhist > 1) params.set('payhist', String(pages.payhist));
+  return `/seller/dashboard?${params.toString()}`;
+}
 const payoutNeedsBank = !!payoutAccount && payoutAccount.account.payableNowAgorot > 0 && !hasPayableBank(payoutAccount.seller);
 // `?new=1` opens the SAME store-creation card an empty account gets — that's the entry point
 // for a seller opening an additional store (store switcher → "פתיחת חנות נוספת"). All of a
@@ -2428,6 +2439,10 @@ const orderStatusColors: Record<string, string> = {
             payouts={payoutAccount.payouts}
             seller={payoutAccount.seller}
             multiStore={allStores.length > 1}
+            heldPage={parsePage(Astro.url.searchParams, 'paypage')}
+            payoutPage={parsePage(Astro.url.searchParams, 'payhist')}
+            heldPageHref={(p) => payoutsTabHref({ paypage: p, payhist: parsePage(Astro.url.searchParams, 'payhist') })}
+            payoutPageHref={(p) => payoutsTabHref({ paypage: parsePage(Astro.url.searchParams, 'paypage'), payhist: p })}
             d={d}
           />
         )}
@@ -3343,8 +3358,11 @@ const orderStatusColors: Record<string, string> = {
     },
 
     payouts: async () => {
-      const { initPayoutsTab } = await import('../../scripts/dashboard/payouts.js');
+      const { initPayoutsTab, watchPayoutsFreshness } = await import('../../scripts/dashboard/payouts.js');
       initPayoutsTab();
+      // Once per page: it survives the panel being replaced by a refresh, which `initPayoutsTab`
+      // deliberately does not (it binds the form that was just swapped out).
+      watchPayoutsFreshness();
     },
 
     settings: async () => {
