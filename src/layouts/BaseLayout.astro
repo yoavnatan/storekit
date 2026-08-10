@@ -77,6 +77,10 @@ const needsDashboardStrings = DASHBOARD_ROUTES.some((p) => Astro.url.pathname.st
 const i18nJson = jsonForScript({
   cart: t.cart,
   confirm: t.confirm,
+  // Ungated, unlike `dashboard` below: forms exist on shopper-facing pages too (message
+  // compose, search), it is ten short strings, and a missing slice here degrades to the
+  // Hebrew fallbacks baked into lib/field-validity.ts — i.e. silently wrong in English.
+  formErrors: t.formErrors,
   gallery: t.gallery,
   wishlist: t.wishlist,
   // Gated on `isLoggedIn`, not on a path: the notification bell Header draws is
@@ -302,6 +306,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
     <script>import '../lib/cart-sync.js';</script>
     <script>import { initErrorReporter } from '../scripts/error-reporter.js'; initErrorReporter();</script>
     <script>import { initIconTooltips } from '../scripts/icon-tooltips.js'; initIconTooltips();</script>
+    <script>import { initFormValidity } from '../scripts/form-validity.js'; initFormValidity();</script>
     <script>import { initNavProgress } from '../scripts/nav-progress.js'; initNavProgress();</script>
     {sessionUserId && (
       <script is:inline set:html={`

@@ -282,6 +282,21 @@ export const translations = {
       cancel: 'ביטול',
       working: 'מבצע',
     },
+    // The site's replacement for the browser's native validation bubble — lib/field-validity.ts.
+    // Deliberately short and without an exclamation mark: the field's own line has already said
+    // WHICH one, so this only has to say what is missing.
+    formErrors: {
+      required: 'יש למלא שדה זה',
+      email: 'כתובת אימייל לא תקינה',
+      url: 'כתובת אתר לא תקינה',
+      number: 'יש להזין מספר',
+      tooShort: 'לפחות {n} תווים',
+      tooLong: 'עד {n} תווים',
+      min: 'לא פחות מ-{n}',
+      max: 'לא יותר מ-{n}',
+      pattern: 'הערך אינו בפורמט הנדרש',
+      invalid: 'הערך אינו תקין',
+    },
     auth: {
       sellerLogin: 'כניסה',
       email: 'דואר אלקטרוני',
@@ -1722,6 +1737,18 @@ export const translations = {
       confirm: 'Confirm',
       cancel: 'Cancel',
       working: 'Working',
+    },
+    formErrors: {
+      required: 'Please fill in this field',
+      email: 'That email address is not valid',
+      url: 'That web address is not valid',
+      number: 'Please enter a number',
+      tooShort: 'At least {n} characters',
+      tooLong: 'Up to {n} characters',
+      min: 'No less than {n}',
+      max: 'No more than {n}',
+      pattern: 'That is not the required format',
+      invalid: 'That value is not valid',
     },
     auth: {
       sellerLogin: 'Log in',
