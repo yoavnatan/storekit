@@ -2,17 +2,25 @@
  * Concurrent callers asking for the same expensive build share one build.
  *
  * **The shape this exists for.** Two public, unauthenticated routes —
- * `/api/feed/products.xml` and `/sitemap-content.xml` — assemble the ENTIRE platform catalogue on
- * every request: every indexable store, every visible product, every category tree, then a single
- * large XML string. That is not a theoretical cost. `products.xml.ts` carries a measurement taken in
- * this repository: 45 stores put the endpoint at **6.1 seconds** before its N+1 was batched, and the
- * batching fixed the round trips, not the size of the job.
+ * `/api/feed/products.xml` and `/sitemap-content.xml` — assemble the ENTIRE platform catalogue:
+ * every indexable store, every visible product, every category tree, then a single large XML
+ * string. That is not a theoretical cost. `catalog-artifacts.ts` carries a measurement taken in
+ * this repository: 45 stores put the feed endpoint at **6.1 seconds** before its N+1 was batched,
+ * and the batching fixed the round trips, not the size of the job.
  *
  * Node serves one process, one event loop. Building that string is CPU work, so while it runs, every
  * OTHER request in the process waits — a shopper mid-checkout included. The routes are public and
  * take no token, so nothing stops Google's retry, Meta's pull and anyone with `curl` from starting
  * that work several times over. Each one is a full second-scale build competing for the same loop
  * and the same ten-connection pool.
+ *
+ * **Since 2026-08-09 those routes no longer build anything, and this became the guard on the ONE
+ * path that still can.** The documents are pre-built by a job and served from storage
+ * (`catalog-artifacts.ts`, migration 0022). The single case left is a database that has never held
+ * one — a first deploy, a fresh environment — where the route answers 503 and starts the build
+ * behind the response. Every cold caller arriving in that window would otherwise start its own, so
+ * the reasoning below is unchanged; it just applies to a window that closes after the first build
+ * instead of to every request forever. Restraint is now the second layer, not the only one.
  *
  * **What this does, and the reason it is exactly this and not a cache.** The first caller for a key
  * runs the build; every caller that arrives while it is still running gets that same promise. When
@@ -22,8 +30,9 @@
  * old and no worse than what it would have got by arriving a moment earlier. A TTL cache would beat
  * this on a sequential hammer, and it would also mean holding the whole catalogue's XML in memory
  * per instance and choosing a freshness window. Not worth either, here: sequential flooding is an
- * edge/CDN problem, and both routes already publish `Cache-Control: max-age=3600` for exactly that
- * layer to act on (GO_LIVE §1).
+ * edge/CDN problem, and both routes publish a `Cache-Control` window for exactly that layer to act
+ * on (`CATALOG_ARTIFACT_INTERVAL_SEC`, GO_LIVE §1). The stale-snapshot question this paragraph
+ * decided is settled differently now anyway — the artifact IS a snapshot, with a stated age.
  *
  * **On "no shared write state" (AI_INSTRUCTIONS → Hard rules → Scalability).** This is process-local
  * and it does not breach that rule, which is about state whose CORRECTNESS depends on which instance

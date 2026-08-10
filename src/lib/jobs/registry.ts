@@ -28,6 +28,7 @@ import { syncStoreFeed, syncedRowCount } from '../store-feed-sync.js';
 import { getStoreIdsWithLiveCampaigns } from '../ad-campaigns.js';
 import { getCampaignsForStore } from '../ad-campaign-health.js';
 import { runMerchantStatusCheck } from '../merchant-status-check.js';
+import { rebuildCatalogArtifact, FEED_ARTIFACT, SITEMAP_ARTIFACT, CATALOG_ARTIFACT_INTERVAL_SEC } from '../catalog-artifacts.js';
 
 export interface Job {
   /** Primary key in `job_runs`. Never rename one — the row is the schedule's memory, and a renamed
@@ -271,6 +272,49 @@ const merchantStatus: Job = {
   },
 };
 
+/**
+ * Pre-build the two catalogue-wide documents Google and Meta pull.
+ *
+ * *What it fixes:* `/api/feed/products.xml` and `/sitemap-content.xml` assembled the WHOLE platform
+ * catalogue in memory on every request — 6.1 seconds at 45 stores, measured in this repo, on the
+ * one event loop every shopper shares, and a several-hundred-megabyte string at a thousand sellers.
+ * Both routes now serve a document this job wrote (`catalog-artifacts.ts`, migration 0022). The
+ * build did not get cheaper; it stopped happening on the request path, and it stopped happening in
+ * one allocation — it flushes every ~256KB, and each flush is an `await` that hands the loop back
+ * to whoever is at checkout. GO_LIVE §7.
+ *
+ * *Idempotent:* a build is a function of current state that ends in a pointer swap, so a second run
+ * writes a second generation with identical content and publishes it over the first. Nothing
+ * accumulates — publishing keeps the live generation and the one before it, and drops the rest,
+ * including the parts of a run that was abandoned at its lease.
+ *
+ * *Every half hour, which is also the `max-age` the routes publish:* the two are one number in
+ * `catalog-artifacts.ts`, so worst-case staleness stays the hour it already was when the document
+ * was built fresh and cached for one. Why an hour is the budget, and why there is no
+ * "rebuild only if changed" fingerprint, are argued at that constant.
+ *
+ * *Two entries, not one:* they are independent documents and either can fail on its own. One job
+ * doing both would report a single line for two states and re-run the healthy half to retry the
+ * broken one.
+ */
+const feedArtifact: Job = {
+  name: 'feed-artifact',
+  intervalSec: CATALOG_ARTIFACT_INTERVAL_SEC,
+  leaseSec: 10 * MINUTE,
+  async run() {
+    return rebuildCatalogArtifact(FEED_ARTIFACT);
+  },
+};
+
+const sitemapArtifact: Job = {
+  name: 'sitemap-artifact',
+  intervalSec: CATALOG_ARTIFACT_INTERVAL_SEC,
+  leaseSec: 10 * MINUTE,
+  async run() {
+    return rebuildCatalogArtifact(SITEMAP_ARTIFACT);
+  },
+};
+
 /** The registry. The jobs are independent and the scheduler starts them concurrently, so this order
  *  is only what the log reads like — no job can delay another past its own interval. */
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus, purgeVisitorDetail];
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, purgeVisitorDetail];
