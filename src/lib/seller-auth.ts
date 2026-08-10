@@ -4,6 +4,7 @@ import type { SellerTierId } from './pricing.js';
 import { secretsEqual } from './secret-compare.js';
 import { requiredSecret } from './runtime-env.js';
 import { firstRow, isUuid, query, rows } from './db.js';
+import type { PayoutDetails } from './payout-details.js';
 
 const COOKIE_NAME = 'seller_session';
 const ONE_DAY = 60 * 60 * 24;
@@ -350,6 +351,39 @@ export async function updateSeller(
     if (isUniqueViolation(err)) return { ok: false, error: 'כתובת המייל כבר בשימוש' };
     throw err;
   }
+}
+
+/**
+ * Where this seller's payouts go, and who their invoices are from (migration 0023).
+ *
+ * **Not folded into `updateSeller`, and that is the point.** This form is written as a UNIT: the
+ * bank block is all four fields or none (`payout-details.ts` says why), and an explicit clear has
+ * to reach the database as NULL. `updateSeller`'s `COALESCE` shape means exactly the opposite —
+ * "a field this request did not carry keeps what it holds" — so a seller clearing their account
+ * there would silently keep the old one, and the next payout run would send money to it.
+ *
+ * The values arriving here are already validated and normalised; this writes them.
+ */
+export async function updateSellerPayoutDetails(id: string, details: PayoutDetails): Promise<Seller | null> {
+  if (!isUuid(id)) return null;
+  const row = await firstRow<SellerRow>(
+    `UPDATE sellers
+        SET bank_code           = $2,
+            bank_branch         = $3,
+            bank_account        = $4,
+            bank_account_holder = $5,
+            business_id         = $6,
+            business_type       = $7
+      WHERE id = $1
+      RETURNING ${COLUMNS}`,
+    [
+      id,
+      details.bankCode ?? null, details.bankBranch ?? null,
+      details.bankAccount ?? null, details.bankAccountHolder ?? null,
+      details.businessId ?? null, details.businessType ?? null,
+    ],
+  );
+  return row ? toSeller(row) : null;
 }
 
 /**

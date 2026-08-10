@@ -11,6 +11,7 @@ import TabHint from '../../components/dashboard/TabHint.astro';
 import InfoTip from '../../components/dashboard/InfoTip.astro';
 import PromotionsPanel from '../../components/dashboard/PromotionsPanel.astro';
 import ReportsPanel from '../../components/dashboard/ReportsPanel.astro';
+import PayoutsPanel from '../../components/dashboard/PayoutsPanel.astro';
 import HeaderStyleCard from '../../components/dashboard/HeaderStyleCard.astro';
 import ImageActionIcon from '../../components/dashboard/ImageActionIcon.astro';
 import BoostFormFields from '../../components/dashboard/BoostFormFields.astro';
@@ -25,7 +26,7 @@ import { productSeoPanelHtml, productSeoLabels } from '../../lib/product-seo-fie
 import { productSeoInputFrom, type ProductSeoInput } from '../../lib/product-seo-hints.js';
 import { resolvePrice } from '../../lib/discounts.js';
 import { buildOnboardingSteps, onboardingProgress } from '../../lib/seller-onboarding.js';
-import { getSellerById, getSellerSession } from '../../lib/seller-auth.js';
+import { getSellerSession } from '../../lib/seller-auth.js';
 import { getStoresBySellerId, createStore, updateStore, normalizeSlug, canOpenAnotherStore, MAX_STORES_PER_SELLER, STORE_WEEKDAYS, storeLifecycle } from '../../lib/stores.js';
 // Every no-JS fallback POST below settles ownership through this, never through the form's ids.
 import { ownedProduct, ownedStore } from '../../lib/store-ownership.js';
@@ -81,6 +82,8 @@ import { buildVocabulary, sanitizeStoreCategories } from '../../lib/store-taxono
 import { productEditRev, storeSettingsRev } from '../../lib/record-rev.js';
 import { MAX_WEIGHT_GRAMS } from '../../lib/product-weight.js';
 import { getVisibleStores, isStoreDiscoverable } from '../../lib/stores.js';
+import { getSellerAccountFor } from '../../lib/payouts.js';
+import { hasPayableBank } from '../../lib/payout-details.js';
 
 
 // Color dimensions must go through resolveVariantColor() before display — a
@@ -263,6 +266,17 @@ if (Astro.request.method === 'POST') {
 
 const allStores = await getStoresBySellerId(sellerId);
 const hasNoStore = allStores.length === 0;
+// **The one read on this page that is not about the store in the switcher.** A payout is per
+// registered business, so this covers every store the seller owns — three small indexed reads
+// assembled by one call (`payouts.ts#getSellerAccountFor`), issued on every load rather than only
+// when the tab is open, because what it decides is the tab's BADGE: money released with no bank
+// account to send it to is the one state a seller has to be told about from wherever they are
+// standing. It also carries the seller row, which the performance tab reads for the tier.
+const payoutAccount = await getSellerAccountFor(sellerId);
+const seller = payoutAccount?.seller ?? null;
+// The badge condition, and it is the banner's condition too — one predicate, so the strip and the
+// panel cannot disagree about whether there is anything to do (PayoutsPanel.astro).
+const payoutNeedsBank = !!payoutAccount && payoutAccount.account.payableNowAgorot > 0 && !hasPayableBank(payoutAccount.seller);
 // `?new=1` opens the SAME store-creation card an empty account gets — that's the entry point
 // for a seller opening an additional store (store switcher → "פתיחת חנות נוספת"). All of a
 // seller's stores bill through their one registered business, so extra stores are extra brands,
@@ -365,7 +379,7 @@ const productsPage = paginate(filteredSortedProducts, parsePage(Astro.url.search
 // `hidden={initialPanel !== <its name>}`, so an unknown value (a typo, a stale
 // bookmark, a link someone edited) hid ALL of them and served a dashboard with
 // an empty body. Fall back to the landing tab instead.
-const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'settings'] as const;
+const PANEL_NAMES = ['overview', 'products', 'orders', 'performance', 'reports', 'advertising', 'messages', 'promotions', 'payouts', 'settings'] as const;
 const requestedPanel = Astro.url.searchParams.get('panel') ?? '';
 const initialPanel = (PANEL_NAMES as readonly string[]).includes(requestedPanel) ? requestedPanel : 'overview';
 // Performance + Advertising are the two heaviest tabs to render server-side —
@@ -431,7 +445,7 @@ const perfGranularity = pickGranularity(perfFromISO, perfToISO);
 const perfViews = (store && perfIsInitial)
   ? await getViewStatsForStore(store.id, perfFromISO, perfToISO, perfGranularity)
   : EMPTY_VIEW_STATS;
-const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier((await getSellerById(sellerId))?.tier)) : undefined;
+const perfSummary = (store && perfIsInitial) ? buildPerformanceSummary(storeOrders, perfViews, store.slug, perfFromISO, perfToISO, perfGranularity, commissionPercentForTier(seller?.tier)) : undefined;
 
 // Advertising tab — campaigns + mock stats (see ad-campaigns.ts; no real
 // Google Ads/Meta API wired up yet).
@@ -795,6 +809,27 @@ const orderStatusColors: Record<string, string> = {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{t.dashboard.tabMessages}
           {unreadMsgRows > 0 && (
             <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={t.dashboard.msgUnreadCount.replace('{n}', String(unreadMsgRows))}></span>
+          )}
+        </button>
+        {/* Between Messages and Settings, and the position is the argument: this is the seller's
+            own money rather than the store's operation, so it sits at the end of the working tabs
+            and beside the other account-shaped one. */}
+        <button
+          class={`dash-tab${initialPanel === 'payouts' ? ' dash-tab--active' : ''}`}
+          role="tab"
+          id="tab-payouts"
+          data-panel="payouts"
+          aria-selected={initialPanel === 'payouts'}
+          tabindex={initialPanel === 'payouts' ? 0 : -1}
+          style="position:relative"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>{d.tabPayouts}
+          {/* "danger", like the orders badge and unlike the stock one: this is not a wrong state
+              that can wait, it is the seller's own money sitting still because of a form nobody
+              has asked them to fill in. `data-tab-alert` is what lets the strip's edge flag it
+              while this tab is scrolled off screen (scripts/dashboard/tab-alert-edges.ts). */}
+          {payoutNeedsBank && (
+            <span data-tab-alert="danger" style="position:absolute;top:0.45rem;inset-inline-end:0.6rem;width:7px;height:7px;background:var(--color-danger);border-radius:50%" aria-label={d.payNoBankTitle}></span>
           )}
         </button>
         <button
@@ -2382,6 +2417,22 @@ const orderStatusColors: Record<string, string> = {
         <PromotionsPanel store={store} products={products} categories={storeCategoryList} selectedScopeLabel={t.store.saleOnSelected} storeScopeLabel={t.store.saleOnWholeStore} andMoreLabel={t.store.saleAndMore} d={d} />
       </div>
 
+      <!-- ── Panel: Payments ── -->
+      {/* Server-rendered rather than deferred like Reports/Performance: its numbers ARE the reason
+          the tab is opened, and they cost three small indexed reads that the page has already made
+          for the badge above. `data-hydrating` only because the details form needs its handler. */}
+      <div id="dash-panel-payouts" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-payouts" hidden={initialPanel !== 'payouts'}>
+        {payoutAccount && (
+          <PayoutsPanel
+            account={payoutAccount.account}
+            payouts={payoutAccount.payouts}
+            seller={payoutAccount.seller}
+            multiStore={allStores.length > 1}
+            d={d}
+          />
+        )}
+      </div>
+
       <!-- ── Panel: Settings ── -->
       <div id="dash-panel-settings" data-hydrating class="dash-panel" role="tabpanel" aria-labelledby="tab-settings" hidden={initialPanel !== 'settings'}>
         {showTabHints && <TabHint text={d.tabHintSettings} />}
@@ -3289,6 +3340,11 @@ const orderStatusColors: Record<string, string> = {
       ]);
       promo.initPromotionsTab();
       coupons.initCouponsCard();
+    },
+
+    payouts: async () => {
+      const { initPayoutsTab } = await import('../../scripts/dashboard/payouts.js');
+      initPayoutsTab();
     },
 
     settings: async () => {
