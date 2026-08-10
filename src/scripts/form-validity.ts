@@ -87,6 +87,32 @@ function onEdit(e: Event): void {
   else showFieldError(el, fieldErrorMessage(el, strings));
 }
 
+/**
+ * Re-check every field this form has already marked.
+ *
+ * **The case that needed it, and it is a class this project had already learned twice.** The seller
+ * empties a required field, presses save, sees the message — then presses "בטל שינויים", the value
+ * comes back, and the message stays (owner, 2026-08-10). `unsaved-guard.ts#discardChanges` writes
+ * `field.value` directly and dispatches `dash:fieldsrewritten`; it fires no `input` event, because
+ * a programmatic write never does. So the handler below, which only ever heard `input`/`change`,
+ * never learned the field had been fixed.
+ *
+ * `tests/field-repaint-guard.test.ts` holds exactly this rule for widgets that WRITE a field. This
+ * module is the other half nobody had named: a reader that paints state FROM a field's value, and
+ * which therefore has to re-derive it whenever the form replaces its fields from outside. The
+ * writers' version of the bug had four instances; this is the reader's first.
+ *
+ * `reset` is handled with it — a native form reset restores values the same silent way.
+ */
+function revalidateMarked(form: HTMLFormElement): void {
+  for (const el of Array.from(form.elements)) {
+    if (!isValidatableField(el)) continue;
+    if (el.getAttribute('aria-invalid') !== 'true') continue;
+    if (el.validity.valid) clearFieldError(el);
+    else showFieldError(el, fieldErrorMessage(el, strings));
+  }
+}
+
 export function initFormValidity(): void {
   strings = readStrings();
   // Capture on all three: `invalid` does not bubble at all, and capturing the edits keeps this
@@ -94,4 +120,15 @@ export function initFormValidity(): void {
   document.addEventListener('invalid', onInvalid, true);
   document.addEventListener('input', onEdit, true);
   document.addEventListener('change', onEdit, true);
+
+  // The form replaced its own fields — "discard changes" or a recovered draft (unsaved-guard.ts).
+  document.addEventListener('dash:fieldsrewritten', (e) => {
+    if (e.target instanceof HTMLFormElement) revalidateMarked(e.target);
+  });
+  // A native reset restores values the same silent way, and fires BEFORE it does — so the check
+  // has to wait for the values it is checking.
+  document.addEventListener('reset', (e) => {
+    const form = e.target;
+    if (form instanceof HTMLFormElement) queueMicrotask(() => revalidateMarked(form));
+  });
 }
