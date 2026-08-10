@@ -23,22 +23,39 @@ import { fileURLToPath } from 'node:url';
  * That is the same shape as the CSS-conversion rule's "say so in the session summary when you skip
  * one": the exemption is free, hiding it is not.
  *
- * **Scope: `src/scripts/` — the client-script tree.** `.astro` component scripts are not walked
- * here; their failures are covered by the surfaces above and by review. Widening this is a fine
- * thing to do, but it must not be done by widening the marker instead.
+ * **Scope: every file that ships JS to a browser.** `src/scripts/**` is the client-script tree;
+ * `.astro` files under components/pages/layouts carry client `<script>` blocks and a great deal of
+ * this app's fetching lives in them — the header's polls, the store grid, checkout, the buyer
+ * dashboard. The first version of this test covered only `src/scripts/` and said so in this header,
+ * which is precisely the shape of exemption that rots: the owner asked "is there anywhere else",
+ * and the answer was the half the test had excused itself from. Only the FRONTMATTER of a `.astro`
+ * file is skipped, because that is server code and its failures are the API layer's business.
  *
  * fileURLToPath, not `.pathname` — this repo's own directory name is Hebrew and `.pathname` hands
  * back the percent-encoded form, which `readdirSync` cannot open.
  */
-const SCRIPTS = fileURLToPath(new URL('../src/scripts/', import.meta.url));
+const SRC = fileURLToPath(new URL('../src/', import.meta.url));
+const CLIENT_ROOTS = ['scripts', 'components', 'pages', 'layouts'].map((d) => join(SRC, d));
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) walk(p, out);
-    else if (name.endsWith('.ts')) out.push(p);
+    else if (name.endsWith('.ts') || name.endsWith('.astro')) out.push(p);
   }
   return out;
+}
+
+/** The half of a file that runs in the browser. For `.ts` that is all of it; for `.astro` it is
+ *  everything after the frontmatter fence, since the frontmatter runs on the server. Returned with
+ *  the line offset so a reported line number still points at the real file. */
+function clientHalf(file: string): { lines: string[]; offset: number } {
+  const text = readFileSync(file, 'utf8');
+  if (!file.endsWith('.astro')) return { lines: text.split('\n'), offset: 0 };
+  const first = text.indexOf('---');
+  const end = first === 0 ? text.indexOf('\n---', 3) : -1;
+  if (end < 0) return { lines: text.split('\n'), offset: 0 };
+  return { lines: text.slice(end).split('\n'), offset: text.slice(0, end).split('\n').length - 1 };
 }
 
 /** Anything that puts the failure in front of a person, or hands it to someone who will. */
@@ -55,8 +72,7 @@ interface Offence { file: string; line: number; snippet: string }
  * `JSON.parse` catches that open half these files — those are in functions that fetch nothing.
  */
 function offences(file: string): Offence[] {
-  const text = readFileSync(file, 'utf8');
-  const lines = text.split('\n');
+  const { lines, offset } = clientHalf(file);
   const found: Offence[] = [];
 
   lines.forEach((line, i) => {
@@ -89,23 +105,25 @@ function offences(file: string): Offence[] {
     const before = lines.slice(Math.max(0, start - 60), start).join('\n');
     const scope = before.slice(before.lastIndexOf('function ') >= 0 ? before.lastIndexOf('function ') : 0);
     if (!/fetch\s*\(/.test(scope)) return;
-    found.push({ file, line: start + 1, snippet: lines[start].trim().slice(0, 100) });
+    found.push({ file, line: offset + start + 1, snippet: lines[start].trim().slice(0, 100) });
   });
   return found;
 }
 
 describe('a failed request is never silent by accident', () => {
-  const files = walk(SCRIPTS);
+  const files = CLIENT_ROOTS.flatMap((d) => walk(d));
 
   it('the scan can see the tree it is scanning', () => {
-    // A guard that matches nothing passes for the wrong reason. There are dozens of client scripts
-    // and most of the dashboard's fetching lives in them.
-    expect(files.length).toBeGreaterThan(20);
-    expect(files.filter((f) => readFileSync(f, 'utf8').includes('fetch(')).length).toBeGreaterThan(10);
+    // A guard that matches nothing passes for the wrong reason. Both halves have to be in view:
+    // the client-script tree AND the .astro files that carry their own <script> blocks.
+    const fetching = files.filter((f) => readFileSync(f, 'utf8').includes('fetch('));
+    expect(files.length).toBeGreaterThan(60);
+    expect(fetching.filter((f) => f.endsWith('.ts')).length).toBeGreaterThan(10);
+    expect(fetching.filter((f) => f.endsWith('.astro')).length).toBeGreaterThan(3);
   });
 
   it('every catch around a fetch either reports the failure or says why it does not', () => {
-    const all = files.flatMap(offences).map((o) => `${o.file.slice(SCRIPTS.length)}:${o.line}  ${o.snippet}`);
+    const all = files.flatMap(offences).map((o) => `${o.file.slice(SRC.length)}:${o.line}  ${o.snippet}`);
     expect(all).toEqual([]);
   });
 

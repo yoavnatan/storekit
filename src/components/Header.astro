@@ -811,8 +811,8 @@ const strEmpty   = t.store.noProductsFound;
             ? `<a href="/?panel=liked" role="menuitem" class="flex items-center w-full py-1.5 px-2 rounded-sm text-[0.78rem] font-medium text-[color:var(--color-primary)] no-underline transition-colors hover:bg-[color:var(--color-bg)] focus-visible:[outline-offset:-2px]">${escH(strSavedAll)}</a>`
             : '');
     } catch {
-      // The disclosure stays empty rather than claiming "you saved nothing", and the flag goes
-      // back so the next open genuinely retries.
+      // silent: nobody is waiting on a number. The disclosure stays empty rather than claiming
+      // "you saved nothing", and the flag goes back so the next open genuinely retries.
       savedStoresLoaded = false;
     }
   }
@@ -1101,6 +1101,8 @@ const strEmpty   = t.store.noProductsFound;
       setBadge(unreadCount ?? 0);
       const sellerReplyCount = (notifications ?? []).filter((n: NotifItem) => n.type === 'seller_reply' && !n.read).length;
       window.dispatchEvent(new CustomEvent('msg-badge-update', { detail: sellerReplyCount }));
+    // silent: the notification poll. The badge keeps its last true count and the next tick
+    // retries — a toast on a timer is how a toast surface stops being read.
     } catch { /* ignore */ }
     finally {
       loadingDot?.setAttribute('hidden', '');
@@ -1158,6 +1160,8 @@ const strEmpty   = t.store.noProductsFound;
         const { hasAlert } = await res.json() as { hasAlert: boolean };
         avatarDot?.toggleAttribute('hidden', !hasAlert);
         dropdownDot?.toggleAttribute('hidden', !hasAlert);
+      // silent: a 30s background poll for the avatar's alert dot. Same reasoning as the
+      // notification poll above.
       } catch { /* ignore */ }
     }
 
@@ -1350,7 +1354,9 @@ const strEmpty   = t.store.noProductsFound;
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
         const data = await res.json() as { ok: boolean; stores?: SiteSearchStore[]; products?: SiteSearchProduct[] };
         if (data.ok) { stores = data.stores ?? []; products = data.products ?? []; searchOk = true; }
-      } catch { /* searchOk stays false — reported below, never as "no results" */ }
+      // silent: reported below — `searchOk` stays false, which draws the "search unavailable"
+      // line instead of "no results".
+      } catch { /* searchOk stays false */ }
       if (token !== homeSearchToken) return;
 
       if (!searchOk) {

@@ -2089,6 +2089,8 @@ const bannerPreload = !isDemo && shopStore.bannerImage
       if (!data.ok) return { ok: false, products: [], hasMore: false };
       return { ok: true, products: data.products ?? [], hasMore: !!data.hasMore };
     } catch {
+      // silent: reported by the callers — both of them turn `ok: false` into a toast and keep
+      // whatever is on screen, rather than drawing an empty catalogue.
       return { ok: false, products: [], hasMore: false };
     }
   }
