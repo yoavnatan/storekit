@@ -1,4 +1,5 @@
 import { formatPrice } from '../../config/store.config.js';
+import { showActionFailedToast } from '../../lib/toast.js';
 
 /** Integer agorot → ILS on screen. Server twin: `money.ts#formatAgorot`. Every money field on a
  *  performance summary is agorot since the `orders` migration, so a bare `formatPrice` on one
@@ -147,12 +148,17 @@ async function fetchTable(): Promise<void> {
   wrap?.setAttribute('aria-busy', 'true');
   try {
     const res = await fetch(`${endpoint}?from=${from}&to=${to}&${storeParams()}`);
-    if (!res.ok) return;
+    if (!res.ok) { showActionFailedToast(); return; }
     const data = await res.json() as LoadedDetail;
     // A slower earlier request must not overwrite a newer one's rows.
     if (token !== inFlight) return;
     renderTable(data);
-  } catch { /* keep the last-known rows on a transient network failure */ }
+  } catch {
+    // Keep the last-known rows — blanking the table would claim the search matched nothing — but
+    // say so. This runs on a typed search and on a sort click, and a table that does not move
+    // is otherwise indistinguishable from one that matched exactly what was already there.
+    showActionFailedToast();
+  }
   finally { if (token === inFlight) wrap?.removeAttribute('aria-busy'); }
 }
 

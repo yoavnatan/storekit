@@ -1,4 +1,5 @@
 import { esc } from '../../lib/gallery-widget.js';
+import { showActionFailedToast } from '../../lib/toast.js';
 import { galleryWidgetHtml, initGalleryWidget, resolveGalleryUrls, resetGallery, finalizeGallery, closeGalleryPanel } from './gallery.js';
 import { showStatus } from './status.js';
 import { formatPrice } from '../../config/store.config.js';
@@ -2288,10 +2289,16 @@ export async function applyPagination(): Promise<void> {
 
   let data: { ok: boolean; items?: ProductData[]; page?: number; totalPages?: number; total?: number; stockAlerts?: number };
   try {
+  // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
+  // the list would claim the filter matched nothing — but it is silent unless it says so, and
+  // "nothing moved" is indistinguishable from "the filter matched what was already here".
     const res = await fetch(`/api/seller/products?${params.toString()}`);
     data = await res.json() as typeof data;
-  } catch { return; }
-  if (!data.ok) return;
+  } catch {
+    showActionFailedToast();
+    return;
+  }
+  if (!data.ok) { showActionFailedToast(); return; }
 
   productsCurrentPage = data.page ?? 1;
   updateStockBadge(data.stockAlerts);

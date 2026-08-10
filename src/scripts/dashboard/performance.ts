@@ -411,7 +411,10 @@ function initBreakdownModal(storeSlug: string, endpoint: string, i18n: Record<st
     const { from, to } = bucketRange(key);
     try {
       const res = await fetch(`${endpoint}?storeSlug=${encodeURIComponent(storeSlug)}&from=${from}&to=${to}&products=all`);
-      if (!res.ok) { paint(msg(i18n.perfBreakdownEmpty ?? '')); return; }
+      // `perfBreakdownFailed`, never `perfBreakdownEmpty`: the empty line is a statement about the
+      // store's sales that day, and a request that did not come back has not earned it. Both used
+      // to say "no products sold in this period" — including for a dropped connection.
+      if (!res.ok) { paint(msg(i18n.perfBreakdownFailed ?? '')); return; }
       const data = await res.json() as { summary?: PerformanceSummary };
       const s = data.summary;
       const tops = s?.topProducts ?? [];
@@ -426,7 +429,7 @@ function initBreakdownModal(storeSlug: string, endpoint: string, i18n: Record<st
       const total = slices.reduce((a, b) => a + b.value, 0);
       paint(renderSlices(slices, total));
     } catch {
-      paint(msg(i18n.perfBreakdownEmpty ?? ''));
+      paint(msg(i18n.perfBreakdownFailed ?? ''));
     }
   };
 }
@@ -544,6 +547,8 @@ export function initPerformanceTab(): void {
       if (!res.ok) return;
       const data = await res.json() as { ok?: boolean; product?: ProductPerformanceSummary };
       if (data.product) renderProductSummary(data.product);
+      // silent: an enrichment. The drill-down already on screen stays and nothing the seller
+      // pressed is waiting on it — selecting a product again re-fetches.
     } catch { /* keep last-known product data on a transient failure */ }
   }
   function refreshSelectedProduct(): void { if (selectedProductId) void loadProduct(); }
@@ -686,6 +691,8 @@ export function initPerformanceTab(): void {
       // (the admin platform tab's per-store breakdown + GMV split card read
       // `stores`/`totalStores` off this response). Harmless where unlistened.
       document.dispatchEvent(new CustomEvent('perf:loaded', { detail: data }));
+      // silent: reported in `finally` — `rendered` stays false, which restores the previous
+      // figures AND the range label, then toasts. One place covers all three failure shapes.
     } catch { /* handled by the restore below, same as any other failed path */ }
     finally {
       window.clearTimeout(pendingTimer);

@@ -293,6 +293,13 @@ export const translations = {
     // The site's replacement for the browser's native validation bubble — lib/field-validity.ts.
     // Deliberately short and without an exclamation mark: the field's own line has already said
     // WHICH one, so this only has to say what is missing.
+    // The site-wide "that didn't go through" pair — lib/toast.ts#showActionFailedToast. One
+    // wording for every retryable action that failed, because six hand-written Hebrew sentences
+    // for one event is what the 2026-08-10 audit actually found. Never used for money.
+    common: {
+      actionFailedTitle: 'הפעולה לא בוצעה',
+      actionFailedBody: 'משהו השתבש בדרך לשרת. נסו שוב.',
+    },
     formErrors: {
       required: 'יש למלא שדה זה',
       email: 'כתובת אימייל לא תקינה',
@@ -798,6 +805,7 @@ export const translations = {
       couponsTip: 'הקוד לא מופיע בשום מקום באתר — אתם מפיצים אותו. שדה הקופון בתשלום מוצג רק כשיש לכם קוד פעיל.',
       couponsEmpty: 'אין עדיין קודי קופון.',
       couponAdd: 'קוד חדש',
+      couponsLoadFailed: 'לא הצלחנו לטעון את קודי ההנחה. רעננו את העמוד.',
       couponCode: 'הקוד',
       couponCodePlaceholder: 'למשל SUMMER10',
       couponKind: 'סוג ההנחה',
@@ -950,6 +958,8 @@ export const translations = {
       perfBreakdownTitle: 'הרכב ההכנסות',
       perfBreakdownClose: 'סגור',
       perfBreakdownEmpty: 'אין מכירות בתקופה זו.',
+      // A statement about the REQUEST, never about the store — the two used to share one line.
+      perfBreakdownFailed: 'לא הצלחנו לטעון את הפילוח. נסו שוב.',
       perfErrorLoading: 'שגיאה בטעינת הנתונים.',
       // Admin platform-wide performance tab (aggregates every store)
       perfPlatformTitle: 'ביצועי הפלטפורמה',
@@ -1802,6 +1812,10 @@ export const translations = {
       cancel: 'Cancel',
       working: 'Working',
     },
+    common: {
+      actionFailedTitle: 'That did not go through',
+      actionFailedBody: 'Something went wrong on the way to the server. Please try again.',
+    },
     formErrors: {
       required: 'Please fill in this field',
       email: 'That email address is not valid',
@@ -2258,6 +2272,7 @@ export const translations = {
       couponsTip: 'The code appears nowhere on the site — you hand it out. The coupon field at checkout is shown only while you have a live code.',
       couponsEmpty: 'No coupon codes yet.',
       couponAdd: 'New code',
+      couponsLoadFailed: 'We could not load your discount codes. Please refresh the page.',
       couponCode: 'Code',
       couponCodePlaceholder: 'e.g. SUMMER10',
       couponKind: 'Discount type',
@@ -2397,6 +2412,7 @@ export const translations = {
       perfBreakdownTitle: 'Revenue breakdown',
       perfBreakdownClose: 'Close',
       perfBreakdownEmpty: 'No sales in this period.',
+      perfBreakdownFailed: 'We could not load the breakdown. Please try again.',
       perfLoading: 'Loading data…',
       dashHydrating: 'Loading this tab…',
       dashPanelLoadFailed: 'This tab did not load. Please reload the page and try again.',

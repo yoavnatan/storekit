@@ -81,6 +81,9 @@ const i18nJson = jsonForScript({
   // compose, search), it is ten short strings, and a missing slice here degrades to the
   // Hebrew fallbacks baked into lib/field-validity.ts — i.e. silently wrong in English.
   formErrors: t.formErrors,
+  // Two strings, and ungated for the same reason: `showActionFailedToast` is the answer on every
+  // surface that can fail, shopper-facing ones included.
+  common: t.common,
   gallery: t.gallery,
   wishlist: t.wishlist,
   // Gated on `isLoggedIn`, not on a path: the notification bell Header draws is

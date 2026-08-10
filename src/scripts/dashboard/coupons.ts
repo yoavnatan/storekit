@@ -177,6 +177,7 @@ export function initCouponsCard(): void {
         body: JSON.stringify({ storeId, ...payload }),
       });
       return await res.json() as CouponsResponse;
+      // silent: the caller turns this into `errorText` beside the form, or a toast.
     } catch {
       return { ok: false };
     }
@@ -246,17 +247,30 @@ export function initCouponsCard(): void {
     }));
   });
 
+  /**
+   * The list did not load.
+   *
+   * It used to reveal the EMPTY state here, and the note beside it argued that a toast on page
+   * load would be noise for a list most sellers have nothing in. The noise judgement was right and
+   * the empty state was the wrong way to act on it: "אין עדיין קודי הנחה" is a statement about the
+   * store, and a seller who has three codes and sees it will reasonably conclude they were
+   * deleted. So: no toast (nobody pressed anything), and a line that says what actually happened.
+   */
+  function showLoadFailed(): void {
+    empty?.setAttribute('hidden', '');
+    list!.innerHTML = `<p class="muted text-[0.85rem] m-0 py-4 text-center">${esc(i['couponsLoadFailed'] ?? '')}</p>`;
+  }
+
   void (async () => {
     try {
       const res = await fetch(`/api/seller/coupons?storeId=${encodeURIComponent(storeId)}`);
       const data = await res.json() as CouponsResponse;
       if (data.ok && data.coupons) render(data.coupons);
-      else empty?.removeAttribute('hidden');
+      else showLoadFailed();
+      // silent: as a TOAST — nobody pressed anything, this is a page-load read. `showLoadFailed`
+      // writes the reason where the list would have been, instead of the empty state.
     } catch {
-      // Silent: the tab still works for everything else, and a toast on page-load for a list that
-      // is empty for most sellers anyway would be noise. The next save re-renders from a fresh
-      // response regardless.
-      empty?.removeAttribute('hidden');
+      showLoadFailed();
     }
   })();
 }

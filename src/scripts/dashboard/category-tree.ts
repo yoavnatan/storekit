@@ -94,7 +94,8 @@ export function initCategoryTreeEditor(): void {
       const res = await fetch('/api/store-category', { method: 'POST', body: fd });
       return await res.json() as { ok: boolean; tree?: CategoryNode[]; error?: string };
     } catch {
-      return { ok: false, error: 'שגיאת רשת.' };
+      // silent: the caller renders this `error` string in the tree panel.
+    return { ok: false, error: 'שגיאת רשת.' };
     }
   }
 

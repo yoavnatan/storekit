@@ -194,6 +194,8 @@ export function initReportsTab(): void {
     try {
       const res = await fetch(query());
       if (res.ok) payload = await res.json() as Payload;
+      // silent: reported below — `payload` stays null, which restores the previous selection and
+      // toasts, and never draws an empty report for a request that did not arrive.
     } catch { /* payload stays null — reported below, never drawn as an empty report */ }
 
     // A newer click already went out: it owns the table now.
