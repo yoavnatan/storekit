@@ -12,7 +12,20 @@
  *  publish a promise to every buyer that the product's own structured data deliberately refuses to
  *  guess. When the owner sets it, this page and `hasMerchantReturnPolicy` take the SAME number.
  *
- *  ⚠️ NOT a substitute for legal review before launch. It is accurate, not lawyered.
+ *  **The collection clause under "הזמנה ותשלום" is load-bearing, not boilerplate.** The platform
+ *  collects the buyer's payment as the seller's agent and holds the balance for them
+ *  (AI_INSTRUCTIONS → Payment architecture), and the sentence saying the buyer's payment to us
+ *  DISCHARGES their debt to the seller is what makes that an agency rather than us receiving money
+ *  on our own account and forwarding it later. Its counterpart in "פתיחת חנות" is the seller
+ *  appointing us to collect. Neither may be reworded without the other.
+ *
+ *  The hold/payout periods are interpolated from `lib/payout-schedule.ts` — the same constants the
+ *  scheduler runs on — and are ⚠️ PLACEHOLDERS pending the owner's decision, which is the same
+ *  decision as the returns window above. They cannot be set independently: a hold shorter than the
+ *  return window pays a seller for goods the buyer may still send back.
+ *
+ *  ⚠️ NOT a substitute for legal review before launch. It is accurate, not lawyered — and the
+ *  agency clauses above are exactly what `docs/legal-brief-agent-model.md` puts in front of the עו״ד.
  *
  *  Hebrew, in both UI languages, with the Hebrew stated as binding — the standard for an Israeli
  *  consumer site, and more honest than a machine translation that would then contradict it.
@@ -24,6 +37,17 @@ import { getSellerSession } from '../lib/seller-auth.js';
 import { getStoresBySellerId } from '../lib/stores.js';
 import { getLang } from '../i18n/index.js';
 import { store as platform } from '../config/store.config.js';
+// Interpolated rather than restated. A hold period written as a digit in a legal clause AND
+// separately in the scheduler is a number that will eventually disagree with itself, and the copy a
+// seller can hold us to is this one. tests/payout-schedule.test.ts pins that these clauses carry no
+// bare number of their own.
+import {
+  HOLD_DAYS_AFTER_DELIVERY,
+  FALLBACK_DAYS_AFTER_PAYMENT,
+  PAYOUT_DAY_OF_MONTH,
+  MIN_PAYOUT_AGOROT,
+} from '../lib/payout-schedule.js';
+import { formatAgorot } from '../lib/money.js';
 
 const lang = getLang(Astro.cookies);
 const sellerId = getSellerSession(Astro.cookies);
@@ -46,8 +70,16 @@ const clauses: { h: string; p: string[] }[] = [
     h: 'הזמנה ותשלום',
     p: [
       'ההזמנה נוצרת עם השלמת התשלום בעמוד הצ׳ק-אאוט. המחיר הקובע הוא המחיר המוצג בעמוד המוצר במועד ההזמנה, כולל מבצע שפעיל אז, ובשקלים חדשים.',
-      'סל אחד יכול לכלול מוצרים מכמה חנויות. במקרה כזה נוצרת הזמנה נפרדת מול כל מוכר, וכל אחת מהן נשלחת ומטופלת בנפרד.',
+      'סל אחד יכול לכלול מוצרים מכמה חנויות. התשלום נגבה בחיוב אחד, ונוצרת הזמנה נפרדת מול כל מוכר — כל אחת מהן נשלחת ומטופלת בנפרד.',
+      // The sentence the entire legal position rests on: we collect AS THE SELLER'S AGENT, and the
+      // buyer's payment to us discharges their debt to the seller at that instant. Without it the
+      // arrangement reads as us receiving funds on our own account and forwarding them later, which
+      // is the shape that looks like a payment service. It is stated to the BUYER because the buyer
+      // is the one whose debt is being discharged; the seller's side of the same fact is in
+      // "פתיחת חנות" below. Both must move together if either is ever reworded.
+      `${platform.name} גובה את התשלום מהקונה בשם המוכר וכשלוחו לעניין הגבייה בלבד. תשלום שבוצע ל-${platform.name} פורע באותו רגע את חוב הקונה כלפי המוכר בגין אותה הזמנה, גם אם ההעברה למוכר מתבצעת במועד מאוחר יותר. הקונה אינו נושא בסיכון כלשהו הנובע מהיחסים שבין ${platform.name} למוכר.`,
       'זמינות נבדקת מול המלאי בעת התשלום. אם פריט אזל בין הוספתו לסל לבין התשלום, ההזמנה לא תושלם עליו והתשלום עבורו לא ייגבה.',
+      'חשבונית המס על ההזמנה מונפקת בשם המוכר, שהוא המוכר בעסקה. הפלטפורמה מפיקה ושולחת אותה עבורו באופן אוטומטי.',
     ],
   },
   {
@@ -67,7 +99,12 @@ const clauses: { h: string; p: string[] }[] = [
     p: [
       'פתיחת חנות פתוחה לעסק פעיל. המוכר אחראי לכך שהמוצרים שהוא מפרסם מותרים למכירה, שהתכנים והתמונות שהעלה הם שלו או שיש לו רשות להשתמש בהם, ושהפרטים שמסר נכונים.',
       'התשלום לפלטפורמה הוא לפי המסלול שהמוכר בחר — דמי מנוי חודשיים ועמלה מכל מכירה, כפי שהם מוצגים בעמוד המסלולים בעת ההצטרפות ובאזור האישי.',
-      'מוכר יכול להשהות או לסגור את חנותו בכל עת. סגירה נכנסת לתוקף לאחר טיפול בהזמנות הפתוחות.',
+      `המוכר ממנה את ${platform.name} לגבות בשמו את התמורה מהקונים. ${platform.name} מנכה מהתמורה את עמלת המכירה ומחזיקה את היתרה עבור המוכר עד למועד התשלום. היתרה שייכת למוכר ואינה הכנסה של ${platform.name}.`,
+      `תשלום מרוכז מבוצע ב-${PAYOUT_DAY_OF_MONTH} בכל חודש, על כל סכום ששוחרר עד אותו מועד. סכום משוחרר ${HOLD_DAYS_AFTER_DELIVERY} ימים לאחר שההזמנה סומנה כנמסרה, או ${FALLBACK_DAYS_AFTER_PAYMENT} ימים לאחר התשלום אם לא סומנה מסירה. יתרה הנמוכה מ-${formatAgorot(MIN_PAYOUT_AGOROT)} נצברת למועד התשלום הבא ואינה נגרעת.`,
+      'זיכוי, ביטול או חיוב-חוזר בהזמנה ששולמה כבר למוכר מקוזזים מהתשלום הבא. אין בכך כדי לגרוע מאחריות המוכר לעסקה מול הקונה.',
+      'תשלום מותנה במסירת פרטי חשבון בנק ופרטי עסק תקינים באזור האישי. עד למסירתם היתרה נצברת ואינה נגרעת.',
+      `${platform.name} מפיקה עבור המוכר חשבונית מס לקונה בשמו על כל הזמנה, ומוציאה למוכר חשבונית מס על עמלת המכירה, דמי המנוי והפרסום. אחריות הדיווח לרשויות המס בגין מכירותיו היא של המוכר.`,
+      'מוכר יכול להשהות או לסגור את חנותו בכל עת. סגירה נכנסת לתוקף לאחר טיפול בהזמנות הפתוחות, ויתרה שטרם שולמה משולמת במועד התשלום הבא שלאחר סיומן.',
     ],
   },
   {
