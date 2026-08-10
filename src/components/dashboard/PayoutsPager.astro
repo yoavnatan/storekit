@@ -33,8 +33,14 @@ const { page, totalPages, buildUrl, label, d } = Astro.props;
 const DISABLED = 'btn btn--ghost btn--sm opacity-40 pointer-events-none';
 ---
 
+{/* `data-payouts-pager` is what the panel's delegated handler looks for
+    (scripts/dashboard/payouts.ts): followed as plain links these reload the whole dashboard to move
+    one table by ten rows, so the click is intercepted and only this panel is re-rendered. The links
+    stay real, so with no JS the navigation still works.
+    The comment sits OUTSIDE the `&&` — inside it, a comment and an element are two expressions
+    where the parentheses allow one, and it does not compile. */}
 {totalPages > 1 && (
-  <nav class="flex items-center gap-2 mt-3 text-[0.8rem]" aria-label={label}>
+  <nav class="flex items-center gap-2 mt-3 text-[0.8rem]" aria-label={label} data-payouts-pager>
     {page > 1
       ? <a href={buildUrl(page - 1)} rel="prev" class="btn btn--ghost btn--sm">{d.payPagePrev}</a>
       : <span class={DISABLED} aria-disabled="true">{d.payPagePrev}</span>}

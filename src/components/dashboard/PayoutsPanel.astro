@@ -72,14 +72,31 @@ const heldPageResult = paginate(heldSlices, heldPage, PAGE_SIZE);
  *  that is comfortable in month two and unreadable in year two is a table nobody scrolls. */
 const payoutPageResult = paginate(payouts, payoutPage, PAGE_SIZE);
 
-// The reason a seller waits, in their words and with the actual number in it. Interpolated from
-// `payout-schedule.ts` rather than written into the sentence: those two constants are still owner
-// decisions, and a copy line that says "21 days" while the code waits 30 is a promise we break.
+/**
+ * Three columns, and each answers a different question the seller actually has: **when** the money
+ * is approved, **why** then, and **whether anything is waiting on them** (owner, 2026-08-10). The
+ * third is the one that was missing, and it is the only one that can require a decision — a table
+ * of dates a seller cannot influence teaches them there is nothing to do, which is true for two of
+ * these three rows and false for the one that matters.
+ *
+ * The day counts are interpolated from `payout-schedule.ts` rather than written into the sentence:
+ * those constants are still owner decisions, and a line promising 21 days while the code waits 30
+ * is a promise we break.
+ */
 const WHY: Record<string, string> = {
   delivery: d.payWhyDelivery.replace('{n}', String(HOLD_DAYS_AFTER_DELIVERY)),
   payment: d.payWhyPayment.replace('{n}', String(FALLBACK_DAYS_AFTER_PAYMENT)),
   unshipped: d.payWhyUnshipped,
 };
+const ACTION: Record<string, string> = {
+  delivery: d.payActionNone,
+  payment: d.payActionMarkDelivered,
+  unshipped: d.payActionShip,
+};
+/** The one basis where the seller is BLOCKING their own money: no clock runs until they ship. It is
+ *  the only action here that changes an outcome rather than a date, so it is the only one that
+ *  takes a colour — three highlighted rows would highlight nothing. */
+const BLOCKING = 'unshipped';
 const STATUS: Record<SellerPayout['status'], string> = {
   pending: d.payStatusPending,
   sent: d.payStatusSent,
@@ -216,6 +233,7 @@ const CELL = 'py-2 px-2.5 text-[0.85rem]';
             <th class={`${CELL} text-start font-medium`}>{d.payColAmount}</th>
             <th class={`${CELL} text-start font-medium`}>{d.payColRelease}</th>
             <th class={`${CELL} text-start font-medium`}>{d.payColWhy}</th>
+            <th class={`${CELL} text-start font-medium`}>{d.payColAction}</th>
           </tr>
         </thead>
         <tbody>
@@ -225,10 +243,13 @@ const CELL = 'py-2 px-2.5 text-[0.85rem]';
               {multiStore && <td class={CELL}>{slice.storeSlug}</td>}
               <td class={CELL}>{formatAgorot(slice.netOfCommissionAgorot)}</td>
               {/* An em dash, not a blank: `basis: 'unshipped'` has NO date because the thing the
-                  date would depend on has not happened, and the column beside it says so. A blank
-                  reads as a value that failed to load. */}
+                  date would depend on has not happened, and the two columns beside it say so. A
+                  blank reads as a value that failed to load. */}
               <td class={CELL}>{slice.hold.releaseDayISO ? formatBusinessDayLabel(slice.hold.releaseDayISO) : '—'}</td>
               <td class={`${CELL} [color:var(--color-muted)]`}>{WHY[slice.hold.basis ?? ''] ?? d.payWhyUnknown}</td>
+              <td class={`${CELL} ${slice.hold.basis === BLOCKING ? 'font-semibold [color:var(--color-warning)]' : '[color:var(--color-muted)]'}`}>
+                {ACTION[slice.hold.basis ?? ''] ?? d.payActionNone}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -13,7 +13,7 @@
 
 import { showToast, showErrorToast } from '../../lib/toast.js';
 import { busyButton } from './btn-busy.js';
-import { scrollRowBackIntoView } from './scroll-utils.js';
+import { scrollBelowPinnedChrome } from './scroll-utils.js';
 import { registerPanelRefresh } from './tab-sync.js';
 
 interface SaveResponse { ok?: boolean; error?: string; field?: string; bankLine?: string | null }
@@ -64,24 +64,26 @@ export function initPayoutsTab(): void {
   if (!form || !save || !error) return;
 
   /**
-   * "Fill in the details" → the first field that is actually empty, focused.
+   * "Fill in the details" → the details CARD parked at the top of the readable area, with the first
+   * empty field focused.
    *
-   * It was `href="#pay-details-form"`, and an anchor jump puts the TARGET's top at the VIEWPORT's
-   * top — under this site's fixed header, and above the heading and hint the form opens with. The
-   * owner landed in the middle of the inputs (2026-08-10). `scrollRowBackIntoView` is the house
-   * helper that knows about the fixed header and the sticky strip, and it does nothing at all when
-   * the target is already on screen (`feedback_subtle_scroll`: a control that moves the page when
-   * it did not need to teaches people not to press it).
+   * Two wrong versions before this one, and both are worth recording because they are the two ways
+   * this goes wrong. It started as `href="#pay-details-form"`: an anchor jump puts the target's top
+   * at the VIEWPORT's top, which on this site is underneath the fixed header, so it landed in the
+   * middle of the inputs. Then it scrolled to the first empty FIELD through `scrollRowBackIntoView`
+   * — which does nothing when the target is already on screen, and the form sits directly under the
+   * banner, so pressing the button moved nothing at all (owner, 2026-08-10).
    *
-   * The first EMPTY field rather than the form: a seller pressing this has come to type, and the
-   * box they must type in first is the only thing on that card they need.
+   * `scrollBelowPinnedChrome` is the right helper: it parks the element's top just below the pinned
+   * chrome and it always moves. The element is the CARD, not the field — the seller asked to be
+   * taken to the section, and a section whose heading and hint are off screen has not been arrived
+   * at. The focus still goes to the first empty box, with `preventScroll` so the browser's own
+   * focus scrolling cannot undo the placement.
    */
   document.getElementById('pay-goto-details')?.addEventListener('click', () => {
+    scrollBelowPinnedChrome(form);
     const fields = Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select'));
-    const target = fields.find((f) => !f.value) ?? fields[0];
-    if (!target) return;
-    scrollRowBackIntoView(target);
-    target.focus({ preventScroll: true });
+    (fields.find((f) => !f.value) ?? fields[0])?.focus({ preventScroll: true });
   });
 
   form.addEventListener('submit', async (e) => {
@@ -141,6 +143,40 @@ export function watchPayoutsFreshness(): void {
   const panel = document.getElementById('dash-panel-payouts');
   if (!panel) return;
   let stale = false;
+
+  /**
+   * Paging swaps the TABLE, not the page.
+   *
+   * The pagers are real links so they work with no JS, and followed as links they reload the whole
+   * dashboard — 865KB of HTML and every panel's markup, to move one table by ten rows (owner,
+   * 2026-08-10). Intercepted here they go through the same panel refresh an order change already
+   * uses: the server renders the panel, this swaps `#payouts-root`, and nothing else on the page
+   * moves. `pushState` keeps the address bar honest, so a reload or a shared link lands on the same
+   * page of the same table.
+   *
+   * **In here and not in `initPayoutsTab`, and that distinction is a bug this file already made
+   * once.** The listener is delegated on `#dash-panel-payouts`, which a refresh does NOT replace —
+   * only `#payouts-root` inside it is swapped. Registering it from the function that re-runs after
+   * every refresh therefore stacked a second handler on every page turn, so the third click fired
+   * four refreshes. Everything bound to markup that gets replaced belongs in `initPayoutsTab`;
+   * everything bound to the panel, the window or the document belongs here, once.
+   *
+   * A refresh that fails falls back to the navigation the link would have done anyway — the seller
+   * asked for a page and gets one, slowly, rather than a click that does nothing.
+   */
+  panel.addEventListener('click', (e) => {
+    const link = (e.target as Element | null)?.closest<HTMLAnchorElement>('[data-payouts-pager] a[href]');
+    if (!link || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    history.pushState(null, '', link.href);
+    void refreshPayoutsPanel().catch(() => { window.location.href = link.href; });
+  });
+
+  // Back and Forward across the pages the pager pushed. Bound once, for the same reason.
+  window.addEventListener('popstate', () => {
+    if (!document.getElementById('payouts-root')) return;
+    void refreshPayoutsPanel().catch(() => { /* the panel stays as it is; the URL is still honest */ });
+  });
 
   registerPanelRefresh('dash-panel-payouts', refreshPayoutsPanel);
 
