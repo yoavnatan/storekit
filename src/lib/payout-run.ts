@@ -106,6 +106,17 @@ export async function runPayouts(todayISO: string = businessTodayISO()): Promise
     const adjusted = adjustments.reduce((sum, a) => sum + a.amountAgorot, 0);
     const payable = row.netAgorot - paidOut + adjusted;
 
+    // ── The commission INCREMENT, and why it is not `row.commissionAgorot` ──
+    // `getReleasableBySeller` is cumulative: it answers "commission on everything out of hold",
+    // which still includes every earlier period, because a balance that sat below the minimum last
+    // month is still releasable this month. Harmless in a balance — prior payouts are subtracted
+    // above — and NOT harmless on the tax invoice generated below, which would bill the seller a
+    // second time for commission they were already invoiced for. So each payout records the slice
+    // it settled and the next one subtracts them all. A failed payout is excluded here for the
+    // same reason it is excluded from `paidOut`: its commission was never really settled either.
+    const commissionInvoiced = payouts.reduce((sum, p) => (p.status === 'failed' ? sum : sum + p.commissionAgorot), 0);
+    const commissionThisPeriod = Math.max(0, row.commissionAgorot - commissionInvoiced);
+
     if (payable < MIN_PAYOUT_AGOROT) { result.skippedBelowMinimum++; continue; }
 
     const bank = bankOf(seller);
@@ -115,8 +126,9 @@ export async function runPayouts(todayISO: string = businessTodayISO()): Promise
       sellerId: row.sellerId,
       periodKey,
       amountAgorot: payable,
+      commissionAgorot: commissionThisPeriod,
       bankSnapshot: bank,
-      detail: `released ${row.netAgorot} − paid ${paidOut} ${adjusted >= 0 ? '+' : '−'} adj ${Math.abs(adjusted)}`,
+      detail: `released ${row.netAgorot} − paid ${paidOut} ${adjusted >= 0 ? '+' : '−'} adj ${Math.abs(adjusted)}; commission settled ${commissionThisPeriod}`,
     });
     // Null means the UNIQUE index caught a concurrent run. Not an error — the other run created it.
     if (!payout) { result.skippedAlreadyPaid++; continue; }
@@ -129,11 +141,12 @@ export async function runPayouts(todayISO: string = businessTodayISO()): Promise
     // Placed here, in the payout run, because this is the moment the three figures exist together
     // and agree with what the seller is about to see on their statement.
     //
-    // **The commission invoiced is the commission on what was RELEASED this period, not on the
-    // month's orders**, and that choice is deliberate. Commission on orders would invoice a seller
-    // for money still sitting in hold — a document for a fee not yet taken, arriving before the
-    // payout it relates to. Invoicing what was actually deducted means the document and the payout
-    // describe the same transaction, which is the only version a seller can reconcile.
+    // **The commission invoiced is the commission SETTLED BY THIS PAYOUT** — the increment computed
+    // above, never the cumulative figure and never commission on the month's orders. Commission on
+    // orders would bill a seller for money still sitting in hold, a fee not yet taken arriving
+    // before the payout it relates to; the cumulative figure would bill them again for every period
+    // that rolled over below the minimum. Invoicing exactly what was deducted from this transfer is
+    // the only version that reconciles against the payout beside it.
     //
     // The subscription is included because reaching a payout PROVES a sale happened, which is
     // exactly the trigger `pricing.ts` names for billing to start. ⚠️ Its other half — the 2-month
@@ -147,7 +160,7 @@ export async function runPayouts(todayISO: string = businessTodayISO()): Promise
     await planPlatformInvoice({
       seller,
       periodKey,
-      commissionAgorot: row.commissionAgorot,
+      commissionAgorot: commissionThisPeriod,
       includeSubscription: true,
     }).catch(() => null);
   }

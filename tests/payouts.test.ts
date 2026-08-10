@@ -88,6 +88,49 @@ describe('a payout run cannot pay twice', () => {
   });
 });
 
+/**
+ * The double-billing bug, found reviewing this change and fixed in it.
+ *
+ * `getReleasableBySeller` is CUMULATIVE — it answers "commission on everything out of hold", which
+ * still includes every earlier period, because a balance that stayed below the payout minimum is
+ * still releasable next month. Feeding that straight to the platform's tax invoice bills the seller
+ * a second time for commission they were already invoiced for. The fix is that each payout records
+ * the slice of commission it settled, and the next run subtracts them.
+ */
+describe('commission is invoiced once, not once per period it rolls over', () => {
+  it('the settled commission carried on a payout is the increment, and prior ones subtract', async () => {
+    const sellerId = await makeSeller();
+
+    // Period 1 settles 12,000 of commission.
+    const first = await createPayout({ sellerId, periodKey: '2026-06', amountAgorot: 88_000, commissionAgorot: 12_000, bankSnapshot: null });
+    expect(first!.commissionAgorot).toBe(12_000);
+
+    // Period 2: the cumulative figure has grown to 20,000, so only 8,000 is new.
+    const payouts = await getPayoutsForSeller(sellerId);
+    const alreadyInvoiced = payouts.reduce((sum, p) => (p.status === 'failed' ? sum : sum + p.commissionAgorot), 0);
+    expect(Math.max(0, 20_000 - alreadyInvoiced)).toBe(8_000);
+  });
+
+  it('a FAILED payout settled no commission either, so its slice becomes billable again', async () => {
+    const sellerId = await makeSeller();
+    const payout = await createPayout({ sellerId, periodKey: '2026-06', amountAgorot: 50_000, commissionAgorot: 9_000, bankSnapshot: null });
+    await setPayoutStatus(payout!.id, 'failed', 'bank rejected');
+
+    const payouts = await getPayoutsForSeller(sellerId);
+    const alreadyInvoiced = payouts.reduce((sum, p) => (p.status === 'failed' ? sum : sum + p.commissionAgorot), 0);
+    // Same rule as `paidOut`: the transfer came back, so nothing about it was settled.
+    expect(alreadyInvoiced).toBe(0);
+  });
+
+  it('defaults to 0 rather than guessing from the amount', async () => {
+    // A manual or corrective payout settles no commission, and amount and commission are not
+    // proportional once an adjustment is in play — so there is nothing to infer.
+    const sellerId = await makeSeller();
+    const manual = await createPayout({ sellerId, periodKey: '2026-07', amountAgorot: 5_000, bankSnapshot: null });
+    expect(manual!.commissionAgorot).toBe(0);
+  });
+});
+
 describe('a failed payout gives the money back', () => {
   it('is excluded from paidOut, so the amount becomes payable again', async () => {
     const sellerId = await makeSeller();

@@ -111,6 +111,16 @@ CREATE TABLE IF NOT EXISTS seller_payouts (
   -- month and the UNIQUE below would let the month be paid twice.
   period_key     text NOT NULL,
   amount_agorot  bigint NOT NULL CHECK (amount_agorot > 0),
+  -- The commission this payout SETTLED — not the seller's lifetime commission, the slice of it that
+  -- was deducted from the money being sent now.
+  --
+  -- It is stored rather than derived because the releasable figure is cumulative: a balance that sat
+  -- below the payout minimum last month is still releasable this month, so "commission on what is
+  -- releasable" restates every earlier period's commission every time. That is harmless in a
+  -- balance and NOT harmless on the platform's tax invoice to the seller, which is generated from
+  -- it — the seller would be invoiced twice for the same commission. Subtracting the sum of this
+  -- column across prior payouts is what makes each period's figure the increment.
+  commission_agorot bigint NOT NULL DEFAULT 0 CHECK (commission_agorot >= 0),
   -- pending: row exists, no money has moved. sent: handed to the bank. paid: confirmed.
   -- failed: the bank rejected it — the row STAYS, and the amount returns to payable through the
   -- balance calculation rather than by deleting evidence. A money row is never deleted.

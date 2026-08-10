@@ -2,8 +2,12 @@ import { rows, firstRow, isUuid } from './db.js';
 import { recordMoneyEvent } from './money-events.js';
 import { RELEASABLE_SQL, releasableParams } from './payout-hold.js';
 import { NET_SQL } from './order-reporting.js';
+import { REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES } from './order-status-rules.js';
 import { SELLER_TIERS, DEFAULT_TIER } from './pricing.js';
 import { businessTodayISO } from './business-day.js';
+import { buildSellerAccount, type AccountSlice, type SellerAccount } from './seller-account.js';
+import { getSellerById } from './seller-auth.js';
+import type { Order } from './orders.js';
 
 /**
  * Storage for the two things the agent model made real: **a transfer that left**, and **a debt that
@@ -44,6 +48,10 @@ export interface SellerPayout {
   /** 'YYYY-MM' on the BUSINESS calendar — `businessMonthKey`, never UTC. */
   periodKey: string;
   amountAgorot: number;
+  /** The commission this payout settled — the INCREMENT, not the seller's lifetime total. See the
+   *  column comment in migration 0023: the releasable figure is cumulative, so the platform's tax
+   *  invoice has to be generated from the difference or it bills the same commission twice. */
+  commissionAgorot: number;
   status: PayoutStatus;
   bankSnapshot: BankSnapshot | null;
   createdAt: string;
@@ -74,6 +82,7 @@ interface PayoutRow {
   seller_id: string;
   period_key: string;
   amount_agorot: string | number;
+  commission_agorot: string | number;
   status: PayoutStatus;
   bank_snapshot: unknown;
   created_at: Date | string;
@@ -120,6 +129,7 @@ function toPayout(row: PayoutRow): SellerPayout {
     sellerId: row.seller_id,
     periodKey: row.period_key,
     amountAgorot: big(row.amount_agorot),
+    commissionAgorot: big(row.commission_agorot),
     status: row.status,
     bankSnapshot: toBankSnapshot(row.bank_snapshot),
     createdAt: iso(row.created_at)!,
@@ -217,6 +227,83 @@ export async function getReleasableBySeller(
   });
 }
 
+/**
+ * One seller's account, ready for their screen — the slices, the holds, and every sum.
+ *
+ * The counterpart to `getReleasableBySeller`, and the split between them is deliberate. That one
+ * aggregates in SQL because it runs across every seller at once and must never load orders into
+ * memory. This one is for ONE seller looking at their own page, where the per-order list IS the
+ * point — "when does this release, and why" is the question the screen exists to answer, and a
+ * SUM cannot answer it.
+ *
+ * Bounded rather than unbounded, and the bound is chosen not guessed: only orders whose money is
+ * still in play. Anything already released is represented by the sums, and a seller who has traded
+ * for three years does not need three years of settled slices rendered to be told what they are
+ * owed today. `limit` caps the tail for a seller with an unusually large open book.
+ */
+export async function getSellerAccountRows(sellerId: string, limit = 500): Promise<AccountSlice[]> {
+  if (!isUuid(sellerId)) return [];
+  const found = await rows<{
+    order_id: string; store_slug: string; net: string | number;
+    payment_status: Order['paymentStatus']; shipping_status: Order['shippingStatus'];
+    paid_at: Date | string | null; delivered_at: Date | string | null;
+  }>(
+    `SELECT os.order_id, os.store_slug, ${NET_SQL} AS net,
+            o.payment_status, o.shipping_status, o.paid_at, o.delivered_at
+       FROM order_stores os
+       JOIN orders o  ON o.id = os.order_id
+       JOIN stores st ON st.slug = os.store_slug
+      WHERE st.seller_id = $1
+        AND o.payment_status = ANY($2::text[])
+        AND o.shipping_status = ANY($3::text[])
+      ORDER BY o.paid_at DESC NULLS LAST, os.order_id
+      LIMIT $4`,
+    [sellerId, REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES, limit],
+  );
+  return found.map((r) => ({
+    orderId: r.order_id,
+    storeSlug: r.store_slug,
+    netAgorot: big(r.net),
+    order: {
+      paymentStatus: r.payment_status,
+      shippingStatus: r.shipping_status,
+      paidAt: iso(r.paid_at),
+      deliveredAt: iso(r.delivered_at),
+    },
+  }));
+}
+
+/**
+ * Everything one seller's payments screen needs, in one call and three queries.
+ *
+ * Assembled here rather than in the page so the seller's own view and the admin's view of the same
+ * seller are literally the same function — `reporting-invariants.test.ts` exists because two
+ * surfaces computing one number separately is how they came to disagree.
+ */
+export async function getSellerAccountFor(sellerId: string): Promise<{
+  account: SellerAccount;
+  payouts: SellerPayout[];
+  adjustments: LedgerAdjustment[];
+} | null> {
+  if (!isUuid(sellerId)) return null;
+  const seller = await getSellerById(sellerId);
+  if (!seller) return null;
+
+  // Independent reads, so one round trip rather than three sequential ones
+  // (`project_sequential_await_latency`).
+  const [slices, payouts, adjustments] = await Promise.all([
+    getSellerAccountRows(sellerId),
+    getPayoutsForSeller(sellerId),
+    getAdjustmentsForSeller(sellerId),
+  ]);
+
+  return {
+    account: buildSellerAccount(seller.tier, slices, payouts, adjustments),
+    payouts,
+    adjustments,
+  };
+}
+
 // ── Writes ───────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -233,6 +320,10 @@ export async function createPayout(input: {
   sellerId: string;
   periodKey: string;
   amountAgorot: number;
+  /** Commission settled by THIS payout. Defaults to 0 for a manual or corrective payout that
+   *  settles no commission — never guessed from the amount, because the two are not proportional
+   *  once an adjustment is in play. */
+  commissionAgorot?: number;
   bankSnapshot: BankSnapshot | null;
   detail?: string;
 }): Promise<SellerPayout | null> {
@@ -243,11 +334,15 @@ export async function createPayout(input: {
   if (!Number.isInteger(input.amountAgorot) || input.amountAgorot <= 0) return null;
 
   const created = await firstRow<PayoutRow>(
-    `INSERT INTO seller_payouts (seller_id, period_key, amount_agorot, bank_snapshot, detail)
-          VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO seller_payouts (seller_id, period_key, amount_agorot, commission_agorot, bank_snapshot, detail)
+          VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (seller_id, period_key) DO NOTHING
        RETURNING *`,
-    [input.sellerId, input.periodKey, input.amountAgorot, input.bankSnapshot ?? null, input.detail ?? null],
+    [
+      input.sellerId, input.periodKey, input.amountAgorot,
+      Math.max(0, Math.round(input.commissionAgorot ?? 0)),
+      input.bankSnapshot ?? null, input.detail ?? null,
+    ],
   );
   if (!created) return null;
 
