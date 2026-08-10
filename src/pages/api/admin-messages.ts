@@ -9,6 +9,7 @@ import {
   replyToAdminThread,
   MAX_ADMIN_CONTENT_LEN,
 } from '../../lib/admin-messages.js';
+import { checkMessageFlood, countMessageSent, floodRefusal, replyRules } from '../../lib/message-flood.js';
 
 const json = { 'Content-Type': 'application/json' };
 
@@ -57,6 +58,19 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return new Response(JSON.stringify({ error: 'Invalid content' }), { status: 400, headers: json });
   }
 
+  // Same gate as a buyer thread, and it has to be here or `msg-send` is not a ceiling: without it a
+  // seller's system thread is an unlimited write path beside a limited one, which is the shape a
+  // limiter is routed around. A thread here carries `fromRole` rather than an account id, so the
+  // run is measured over roles — 'seller' against 'admin' is exactly the two sides it counts.
+  const rules = replyRules(sellerId);
+  const verdict = await checkMessageFlood(
+    rules,
+    thread.messages.map((m) => ({ fromUserId: m.fromRole })),
+    'seller',
+  );
+  if (!verdict.allowed) return floodRefusal(verdict, cookies);
+
   const message = await replyToAdminThread(threadId, 'seller', content);
+  await countMessageSent(rules);
   return new Response(JSON.stringify({ ok: true, message }), { headers: json });
 };

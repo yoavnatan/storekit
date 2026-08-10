@@ -27,7 +27,9 @@ vi.mock('../src/lib/seller-auth.js', async (importOriginal) => ({
 
 const { GET, POST } = await import('../src/pages/api/messages.js');
 
-const cookies = {} as never;
+// A real-enough `AstroCookies`: the route reads `lang` when it has to write a refusal in the
+// sender's own language (lib/message-flood.ts), and `{}` blows up on `.get`.
+const cookies = { get: () => undefined } as never;
 
 function get(qs: string) {
   return GET({ request: new Request(`https://x.test/api/messages${qs}`), cookies } as never) as Promise<Response>;
@@ -42,6 +44,11 @@ function post(body: unknown) {
 beforeEach(async () => {
   await query('DELETE FROM messages');
   await query('DELETE FROM notifications');
+  // The flood limiter counts SENDS and nothing clears its rows on success (that is the point —
+  // lib/message-flood.ts). Without this, the fourth test in this file to open a thread against the
+  // same store would be answered 429 by the third one's leftovers, and the failure would look like
+  // a bug in whatever that fourth test was actually about.
+  await query('DELETE FROM auth_attempts');
   session = SELLER;
 });
 

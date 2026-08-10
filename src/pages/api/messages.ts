@@ -17,6 +17,14 @@ import {
 import { getStoreById } from '../../lib/stores.js';
 import { createNotification, deleteNotificationsByRelatedIds } from '../../lib/notifications.js';
 import { withTransaction } from '../../lib/db.js';
+import {
+  checkMessageFlood,
+  countMessageSent,
+  floodRefusal,
+  newThreadRules,
+  replyRules,
+} from '../../lib/message-flood.js';
+import { NOTIFY_NEW_MESSAGE_FROM_BUYER, NOTIFY_NEW_MESSAGE_FROM_SELLER } from '../../lib/notification-copy.js';
 
 export const GET: APIRoute = async ({ request, cookies }) => {
   const userId = getSellerSession(cookies);
@@ -130,6 +138,14 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       return new Response(JSON.stringify({ error: 'Content too long' }), { status: 400 });
     }
 
+    // Flood gate — asked BEFORE the write, counted after it (lib/message-flood.ts). The thread is
+    // read root-first so `unansweredRun` sees the same order the dashboard renders; a seller pushing
+    // replies at a buyer and a buyer pushing them at a seller are the same call with the same cap.
+    const rules = replyRules(userId);
+    const thread = [original, ...await getMessageReplies(body.replyToId)];
+    const verdict = await checkMessageFlood(rules, thread, userId);
+    if (!verdict.allowed) return floodRefusal(verdict, cookies);
+
     // One transaction: a reply with no notification leaves its recipient with no badge, and a
     // notification with no reply is a deep-link into nothing. `toStoreId` is deliberately empty —
     // a reply is addressed to a person, not to a shop front — and lands as NULL (messages.ts).
@@ -150,7 +166,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         userId: toId,
         role: isSeller ? 'buyer' : 'seller',
         type: isSeller ? 'seller_reply' : 'new_message',
-        title: isSeller ? 'יש לך הודעה חדשה ממוכר' : 'יש לך הודעה חדשה מקונה',
+        title: isSeller ? NOTIFY_NEW_MESSAGE_FROM_SELLER : NOTIFY_NEW_MESSAGE_FROM_BUYER,
         body: '',
         relatedId: written.id,
         storeName: original.toStoreName,
@@ -158,6 +174,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
       return written;
     });
+
+    await countMessageSent(rules);
 
     return new Response(JSON.stringify({ ok: true, message: reply }), {
       headers: { 'Content-Type': 'application/json' },
@@ -183,6 +201,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const store = await getStoreById(toStoreId);
   if (!store) return new Response(JSON.stringify({ error: 'Store not found' }), { status: 404 });
 
+  // A brand-new thread has no run to extend, so only the rate half applies — and the per-store
+  // bucket is the one that matters: opening a fresh conversation is exactly how a sender routes
+  // around a per-thread cap.
+  const newRules = newThreadRules(userId, store.id);
+  const newVerdict = await checkMessageFlood(newRules, [], userId);
+  if (!newVerdict.allowed) return floodRefusal(newVerdict, cookies);
+
   const msg = await withTransaction(async (tx) => {
     const written = await createMessage({
       fromUserId: userId,
@@ -200,7 +225,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       userId: store.sellerId,
       role: 'seller',
       type: 'new_message',
-      title: 'יש לך הודעה חדשה מקונה',
+      title: NOTIFY_NEW_MESSAGE_FROM_BUYER,
       body: '',
       relatedId: written.id,
       storeName: store.name,
@@ -208,6 +233,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
     return written;
   });
+
+  await countMessageSent(newRules);
 
   return new Response(JSON.stringify({ ok: true, message: msg }), {
     headers: { 'Content-Type': 'application/json' },

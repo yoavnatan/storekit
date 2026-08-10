@@ -75,6 +75,10 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     replyPlaceholder: msgDashI18nDict.msgReplyPlaceholder ?? 'כתוב תשובה...',
     replySend: msgDashI18nDict.msgReplySend ?? 'שלח',
     replyClose: msgDashI18nDict.msgReplyClose ?? 'סגור שיחה',
+    replyOpen: msgDashI18nDict.msgReplyOpen ?? 'כתוב תגובה',
+    replyCancel: msgDashI18nDict.msgReplyCancel ?? 'ביטול',
+    subjectLabel: msgDashI18nDict.msgSubjectLabel ?? 'נושא',
+    aboutProduct: msgDashI18nDict.msgAboutProduct ?? 'בנוגע למוצר',
     you: msgDashI18nDict.msgYou ?? 'אתה',
   };
 
@@ -403,6 +407,17 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
       <div class="msg-thread-entry__body">${escMsg(entry.content)}</div>
     </div>`;
   }
+  /** The product chip in the opened thread's header — twin of SellerMessageRow.astro's.
+   *  A thread with no product renders nothing at all rather than an em-dash: the table
+   *  column needs a placeholder to keep its width, a header line does not. */
+  function threadHeadProductHtml(name: string, href: string): string {
+    const icon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+    const label = `${icon}<span>${escMsg(msgI18n.aboutProduct)}: ${escMsg(name)}</span>`;
+    return href
+      ? `<a class="msg-thread-head__product" href="${escMsg(href)}" target="_blank" rel="noopener">${label}</a>`
+      : `<span class="msg-thread-head__product">${label}</span>`;
+  }
+
   function buildMessageRow(data: MessageRowData): [HTMLTableRowElement, HTMLTableRowElement] {
     const row = document.createElement('tr');
     row.className = `msg-table__row${data.hasUnread ? ' msg-table__row--unread' : ''}`;
@@ -440,12 +455,18 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     threadRow.hidden = true;
     threadRow.innerHTML = `
       <td colspan="7">
+        <div class="msg-thread-head">
+          <p class="msg-thread-head__subject"><span class="msg-thread-head__label">${escMsg(msgI18n.subjectLabel)}</span>${escMsg(data.subject)}</p>
+          ${data.productName ? threadHeadProductHtml(data.productName, data.productHref) : ''}
+        </div>
         <div class="msg-thread msg-thread--seller-pov" id="replies-${data.id}">${data.entries.map(entryBubbleHtml).join('')}</div>
         <div class="seller-msg-reply-form" data-reply-for="${escMsg(data.id)}" style="padding:0.75rem 1rem;border-top:1px solid var(--color-border)">
-          <textarea class="seller-msg-reply-textarea" placeholder="${escMsg(msgI18n.replyPlaceholder)}" rows="3"></textarea>
-          <div style="display:flex;justify-content:flex-end;gap:0.5rem">
+          <textarea class="seller-msg-reply-textarea" placeholder="${escMsg(msgI18n.replyPlaceholder)}" rows="3" hidden></textarea>
+          <div class="seller-msg-reply-actions">
             <button class="seller-msg-reply-close" type="button">${escMsg(msgI18n.replyClose)}</button>
-            <button class="seller-msg-reply-send" type="button">${escMsg(msgI18n.replySend)}</button>
+            <button class="seller-msg-reply-cancel" type="button" hidden>${escMsg(msgI18n.replyCancel)}</button>
+            <button class="seller-msg-reply-open" type="button" aria-expanded="false">${escMsg(msgI18n.replyOpen)}</button>
+            <button class="seller-msg-reply-send" type="button" hidden>${escMsg(msgI18n.replySend)}</button>
           </div>
         </div>
       </td>`;
@@ -487,9 +508,12 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
         .then(() => window.dispatchEvent(new CustomEvent('notif-refreshed'))).catch(() => {});
     }
 
+    // Scrolls the reply CONTROLS into view, and deliberately does not focus the box —
+    // the box is closed until "כתוב תגובה" is pressed (2026-08-10), and auto-focusing
+    // a field the reader has not asked for is the chat-window posture the change
+    // exists to remove. Opening the box focuses it; arriving at a thread does not.
     function focusReplyBox(): void {
       threadRow?.querySelector<HTMLElement>('[data-reply-for]')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      threadRow?.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true });
     }
 
     // A system thread reads/writes /api/admin-messages instead of
@@ -574,9 +598,34 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
 
     const replyForm = threadRow?.querySelector<HTMLElement>('[data-reply-for]');
     if (replyForm) {
-      const textarea = replyForm.querySelector<HTMLTextAreaElement>('textarea')!;
-      const sendBtn  = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-send')!;
-      const closeBtn = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-close')!;
+      const textarea  = replyForm.querySelector<HTMLTextAreaElement>('textarea')!;
+      const sendBtn   = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-send')!;
+      const closeBtn  = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-close')!;
+      const openBtn   = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-open')!;
+      const cancelBtn = replyForm.querySelector<HTMLButtonElement>('.seller-msg-reply-cancel')!;
+
+      // Two states over one button row: at rest "סגור שיחה | כתוב תגובה", while
+      // composing "ביטול | שלח". Nothing moves except which pair is showing.
+      const setComposing = (on: boolean): void => {
+        textarea.hidden = !on;
+        sendBtn.hidden = !on;
+        cancelBtn.hidden = !on;
+        openBtn.hidden = on;
+        closeBtn.hidden = on;
+        openBtn.setAttribute('aria-expanded', String(on));
+      };
+      openBtn.addEventListener('click', () => {
+        setComposing(true);
+        textarea.focus();
+      });
+      // Focus MOVES back to the button that reopens the box. Leaving it on a control
+      // that is about to become `hidden` drops the caret to <body>, which for a
+      // keyboard user means the next Tab restarts at the top of the dashboard.
+      cancelBtn.addEventListener('click', () => {
+        textarea.value = '';
+        setComposing(false);
+        openBtn.focus();
+      });
       closeBtn.addEventListener('click', () => {
         close();
         row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -591,7 +640,7 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(isSystem ? { threadId: id, content } : { replyToId: id, content }),
           });
-          const data = await res.json() as { ok?: boolean; message?: { content: string; createdAt: string } };
+          const data = await res.json() as { ok?: boolean; error?: string; message?: { content: string; createdAt: string } };
           // The REQUEST decides whether this failed — deliberately not `&& repliesEl`, which is a
           // question about the DOM. A reply that reached the server while its thread happened not
           // to be expanded must never be reported as not sent; that is a worse lie than the
@@ -601,7 +650,13 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
             // the button re-enabled, the typed text stayed in the box and no bubble appeared,
             // which reads as "sent, the thread just hasn't refreshed". The text is left in the
             // textarea on purpose, so pressing send again re-sends it.
-            showActionFailedToast();
+            //
+            // `data.error` when the server sent one, and it is not the generic case dressed up:
+            // the flood limiter (lib/message-flood.ts) refuses on a RULE, already worded in the
+            // reader's language, and "something went wrong, try again" is wrong advice for it —
+            // trying again is exactly what will not work.
+            if (data.error) showErrorToast(data.error);
+            else showActionFailedToast();
           } else {
             if (repliesEl) {
               repliesEl.insertAdjacentHTML('beforeend', entryBubbleHtml({
@@ -610,6 +665,8 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
             }
             applyLastMessage(data.message.content, data.message.createdAt, true);
             textarea.value = '';
+            setComposing(false);
+            openBtn.focus();
           }
         } catch {
           showActionFailedToast();
