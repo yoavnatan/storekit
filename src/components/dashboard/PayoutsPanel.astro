@@ -1,0 +1,241 @@
+---
+/**
+ * The seller's money: what is payable now, what is still on hold and why, where it goes, and what
+ * has already been sent.
+ *
+ * **The only panel in this dashboard that is not about the store in the switcher.** A payout is per
+ * registered business — one subscription, one commission rate, one bank account, however many
+ * stores (`pricing.ts`, `seller-account.ts`) — so this covers all of them and says so in a line
+ * rather than leaving the seller to reconcile a figure that looks too large.
+ *
+ * **Server-rendered, unlike Reports and Performance.** Those defer because a report is the heaviest
+ * thing the dashboard can build. This is three small queries assembled by one call
+ * (`payouts.ts#getSellerAccountFor`) and its numbers are the reason a seller opens the tab at all —
+ * a screen about money that arrives a beat later reads as a screen that is not sure.
+ *
+ * **Every number here comes from `buildSellerAccount` and none is computed in this file.** That is
+ * the rule `reporting-invariants.test.ts` exists for: the payout run and this screen must answer
+ * from the same function, or a seller reads one figure and is paid another.
+ *
+ * The bank form lives HERE and not in Settings, and that is a deliberate reading of the rule it is
+ * under (`feedback_seller_form_burden`): what the rule forbids is meeting these fields at
+ * registration or store-opening. Splitting one form across two tabs — the money on this screen, the
+ * account it goes to on another — costs the seller the one context in which the fields make sense.
+ */
+import { formatAgorot } from '../../lib/money.js';
+import { formatBusinessDayLabel, formatBusinessDateShort } from '../../lib/format-date.js';
+import { PAYOUT_DAY_OF_MONTH, MIN_PAYOUT_AGOROT } from '../../lib/payout-schedule.js';
+import { BUSINESS_TYPES, hasPayableBank, maskedBankLine, type PayoutDetails } from '../../lib/payout-details.js';
+import type { SellerAccount } from '../../lib/seller-account.js';
+import type { SellerPayout } from '../../lib/payouts.js';
+import type { getT } from '../../i18n/index.js';
+
+interface Props {
+  account: SellerAccount;
+  payouts: SellerPayout[];
+  seller: PayoutDetails;
+  /** More than one store, so the "all your stores" line is worth saying. */
+  multiStore: boolean;
+  d: ReturnType<typeof getT>['dashboard'];
+}
+const { account, payouts, seller, multiStore, d } = Astro.props;
+
+/** Only what is still moving. A released slice is already inside `payableNowAgorot` above, and a
+ *  seller who has traded for a year does not need every settled order rendered to be told what is
+ *  waiting (the same bound `getSellerAccountRows` argues for). */
+const heldSlices = account.slices.filter((s) => s.hold.state === 'held');
+/**
+ * How many of those rows are actually drawn.
+ *
+ * This panel is rendered on EVERY dashboard load, hidden or not — that is what pays for the tab's
+ * badge — so its markup is a cost the seller carries on every page of the dashboard, not only on
+ * this tab (memory `project_dashboard_html_weight`). `getSellerAccountRows` already bounds the
+ * query at 500, and 500 rows of table here is a quarter of a megabyte on a page that mostly is not
+ * looking at them. The sums above are computed from ALL of them and are unaffected by this cap.
+ *
+ * Announced rather than applied quietly: a table that stops at 25 with nothing said reads as
+ * "these are all of them", which is exactly the wrong thing to tell someone counting their money.
+ */
+const HELD_ROWS_SHOWN = 25;
+const heldShown = heldSlices.slice(0, HELD_ROWS_SHOWN);
+const heldHidden = heldSlices.length - heldShown.length;
+
+const WHY: Record<string, string> = {
+  delivery: d.payWhyDelivery,
+  payment: d.payWhyPayment,
+  unshipped: d.payWhyUnshipped,
+};
+const STATUS: Record<SellerPayout['status'], string> = {
+  pending: d.payStatusPending,
+  sent: d.payStatusSent,
+  paid: d.payStatusPaid,
+  failed: d.payStatusFailed,
+};
+const TYPE_LABEL: Record<string, string> = {
+  exempt: d.payBusinessExempt,
+  licensed: d.payBusinessLicensed,
+  company: d.payBusinessCompany,
+};
+
+const bankLine = maskedBankLine(seller);
+const TILE = 'border [border-color:var(--color-border)] rounded-[var(--radius)] p-3';
+const CELL = 'py-2 px-2.5 text-[0.85rem]';
+---
+
+<div id="payouts-root">
+  <div class="dash-panel-head mb-4 py-[0.6rem] border-b [border-color:var(--color-border)]">
+    <h2 class="m-0 text-base font-semibold">{d.payTitle}</h2>
+    <p class="muted text-[0.82rem] m-0 mt-1">{d.paySubtitle}{multiStore ? ` · ${d.payAllStores}` : ''}</p>
+  </div>
+
+  <dl class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+    <div class={TILE}>
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payPayableNow}</dt>
+      {/* The one figure a seller acts on, so it is the one that takes the accent. The others are
+          context and stay in the ordinary text colour — three coloured numbers say nothing. */}
+      <dd class={`m-0 text-[1.1rem] font-bold ${account.payableNowAgorot > 0 ? '[color:var(--color-accent)]' : ''}`} id="pay-kpi-now">{formatAgorot(account.payableNowAgorot)}</dd>
+    </div>
+    <div class={TILE}>
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payHeld}</dt>
+      <dd class="m-0 text-[1.1rem] font-bold">{formatAgorot(account.heldAgorot)}</dd>
+    </div>
+    <div class={TILE}>
+      <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payPaidOut}</dt>
+      <dd class="m-0 text-[1.1rem] font-bold">{formatAgorot(account.paidOutAgorot)}</dd>
+    </div>
+    {/* Rendered only when it exists. A permanent "0 ₪ debt" tile teaches a seller to expect a debt
+        column, which is the wrong thing for a screen most of them will never see one on. */}
+    {account.carriedAgorot > 0 && (
+      <div class={TILE}>
+        <dt class="text-[0.76rem] [color:var(--color-muted)] font-medium mb-1">{d.payCarried}</dt>
+        <dd class="m-0 text-[1.1rem] font-bold [color:var(--color-danger)]">{formatAgorot(account.carriedAgorot)}</dd>
+        <p class="muted m-0 mt-1 text-[0.72rem]">{d.payCarriedHint}</p>
+      </div>
+    )}
+  </dl>
+
+  <p class="muted m-0 mb-4 text-[0.8rem]">
+    {d.payNextRun.replace('{day}', String(PAYOUT_DAY_OF_MONTH))}
+    {' '}
+    {d.payMinNote.replace('{min}', formatAgorot(MIN_PAYOUT_AGOROT))}
+  </p>
+
+  {/* The banner. It appears on ONE condition — money is genuinely released and there is nowhere to
+      send it — because a standing "complete your profile" prompt is the entry barrier this project
+      refuses to build (`feedback_seller_form_burden`). Nothing here is required until it is. */}
+  {account.payableNowAgorot > 0 && !hasPayableBank(seller) && (
+    <div class="card card--flat p-4 mb-4 [border-color:var(--color-warning)]" role="status" id="pay-no-bank-banner">
+      <h3 class="text-[0.98rem] font-bold m-0">{d.payNoBankTitle}</h3>
+      <p class="muted m-0 mt-1 text-[0.85rem]">{d.payNoBankBody}</p>
+      <a class="btn btn--sm mt-3 inline-block" href="#pay-details-form">{d.payNoBankCta}</a>
+    </div>
+  )}
+
+  <form class="card card--flat p-4 md:p-5" id="pay-details-form" data-unsaved-guard>
+    <h3 class="text-[1.05rem] font-bold m-0">{d.payBankTitle}</h3>
+    <p class="muted m-0 mt-1 text-[0.82rem]">{d.payBankHint}</p>
+    {bankLine && <p class="m-0 mt-2 text-[0.82rem]">{d.payCurrentBank} <code dir="ltr">{bankLine}</code></p>}
+
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
+      {/* `inputmode="numeric"` + `dir="ltr"`: these are ASCII numbers on an RTL page, and left to
+          inherit they render with their digits grouped the wrong way round. */}
+      <label class="field">
+        <span class="text-[0.85rem]">{d.payBankCode}</span>
+        <input class="input" name="bankCode" id="pay-bank-code" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="2" value={seller.bankCode ?? ''} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.payBankBranch}</span>
+        <input class="input" name="bankBranch" id="pay-bank-branch" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="3" value={seller.bankBranch ?? ''} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.payBankAccount}</span>
+        <input class="input" name="bankAccount" id="pay-bank-account" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="20" value={seller.bankAccount ?? ''} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.payBankHolder}</span>
+        <input class="input" name="bankAccountHolder" id="pay-bank-holder" autocomplete="off" maxlength="120" value={seller.bankAccountHolder ?? ''} />
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBankHolderHint}</p>
+      </label>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2 mt-1">
+      <label class="field">
+        <span class="text-[0.85rem]">{d.payBusinessId}</span>
+        <input class="input" name="businessId" id="pay-business-id" dir="ltr" inputmode="numeric" autocomplete="off" maxlength="9" value={seller.businessId ?? ''} />
+      </label>
+      <label class="field">
+        <span class="text-[0.85rem]">{d.payBusinessType}</span>
+        <select class="input" name="businessType" id="pay-business-type">
+          <option value="">{d.payBusinessNone}</option>
+          {BUSINESS_TYPES.map((t) => (
+            <option value={t} selected={seller.businessType === t}>{TYPE_LABEL[t]}</option>
+          ))}
+        </select>
+        <p class="muted m-0 mt-1 text-[0.76rem]">{d.payBusinessHint}</p>
+      </label>
+    </div>
+
+    <p class="hidden text-sm [color:var(--color-danger)] mt-1 mb-3" id="pay-details-error" role="alert"></p>
+    <button type="submit" class="btn btn--sm mt-3" id="pay-details-save">{d.payDetailsSave}</button>
+  </form>
+
+  <h3 class="text-[1.05rem] font-bold m-0 mt-6 mb-2">{d.payHeldTitle}</h3>
+  {heldSlices.length === 0 ? <p class="muted m-0 text-[0.85rem]">{d.payHeldEmpty}</p> : (
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse text-start">
+        <thead>
+          <tr class="[color:var(--color-muted)] text-[0.76rem]">
+            <th class={`${CELL} text-start font-medium`}>{d.payColOrder}</th>
+            {multiStore && <th class={`${CELL} text-start font-medium`}>{d.payColStore}</th>}
+            <th class={`${CELL} text-start font-medium`}>{d.payColAmount}</th>
+            <th class={`${CELL} text-start font-medium`}>{d.payColRelease}</th>
+            <th class={`${CELL} text-start font-medium`}>{d.payColWhy}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {heldShown.map((slice) => (
+            <tr class="border-t [border-color:var(--color-border)]">
+              <td class={CELL}><code dir="ltr" class="text-[0.76rem]">{slice.orderId.slice(0, 8)}</code></td>
+              {multiStore && <td class={CELL}>{slice.storeSlug}</td>}
+              <td class={CELL}>{formatAgorot(slice.netOfCommissionAgorot)}</td>
+              {/* An em dash, not a blank: `basis: 'unshipped'` has NO date because the thing the
+                  date would depend on has not happened, and the column beside it says so. A blank
+                  reads as a value that failed to load. */}
+              <td class={CELL}>{slice.hold.releaseDayISO ? formatBusinessDayLabel(slice.hold.releaseDayISO) : '—'}</td>
+              <td class={`${CELL} [color:var(--color-muted)]`}>{WHY[slice.hold.basis ?? ''] ?? d.payWhyUnknown}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {heldHidden > 0 && <p class="muted m-0 mt-2 text-[0.78rem]">{d.payHeldMore.replace('{n}', String(heldHidden))}</p>}
+    </div>
+  )}
+
+  <h3 class="text-[1.05rem] font-bold m-0 mt-6 mb-2">{d.payHistoryTitle}</h3>
+  {payouts.length === 0 ? <p class="muted m-0 text-[0.85rem]">{d.payHistoryEmpty}</p> : (
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse text-start">
+        <thead>
+          <tr class="[color:var(--color-muted)] text-[0.76rem]">
+            <th class={`${CELL} text-start font-medium`}>{d.payColPeriod}</th>
+            <th class={`${CELL} text-start font-medium`}>{d.payColAmount}</th>
+            <th class={`${CELL} text-start font-medium`}>{d.payColStatus}</th>
+            <th class={`${CELL} text-start font-medium`}>{d.payColSent}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payouts.map((p) => (
+            <tr class="border-t [border-color:var(--color-border)]">
+              <td class={CELL}><code dir="ltr" class="text-[0.76rem]">{p.periodKey}</code></td>
+              <td class={CELL}>{formatAgorot(p.amountAgorot)}</td>
+              {/* A failed transfer is the one row in this table a seller has to act on — it is
+                  money that came back and is payable again — so it is the only one that colours. */}
+              <td class={`${CELL} ${p.status === 'failed' ? '[color:var(--color-danger)]' : ''}`}>{STATUS[p.status]}</td>
+              <td class={`${CELL} [color:var(--color-muted)]`}>{p.sentAt ? formatBusinessDateShort(p.sentAt) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>

@@ -6,7 +6,7 @@ import { REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES } from './order-sta
 import { SELLER_TIERS, DEFAULT_TIER } from './pricing.js';
 import { businessTodayISO } from './business-day.js';
 import { buildSellerAccount, type AccountSlice, type SellerAccount } from './seller-account.js';
-import { getSellerById } from './seller-auth.js';
+import { getSellerById, type Seller } from './seller-auth.js';
 import type { Order } from './orders.js';
 import type { DeliveryMethod } from './shipping.js';
 
@@ -295,6 +295,10 @@ export async function getSellerAccountFor(sellerId: string): Promise<{
   account: SellerAccount;
   payouts: SellerPayout[];
   adjustments: LedgerAdjustment[];
+  /** The account row this was computed from — it is read here anyway, for the tier, and every
+   *  caller that renders the numbers also needs the bank details beside them. Returning it saves
+   *  the seller's own dashboard a second read of the same row. */
+  seller: Seller;
 } | null> {
   if (!isUuid(sellerId)) return null;
   const seller = await getSellerById(sellerId);
@@ -312,6 +316,7 @@ export async function getSellerAccountFor(sellerId: string): Promise<{
     account: buildSellerAccount(seller.tier, slices, payouts, adjustments),
     payouts,
     adjustments,
+    seller,
   };
 }
 

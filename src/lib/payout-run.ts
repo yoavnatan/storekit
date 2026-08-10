@@ -9,6 +9,7 @@ import {
 } from './payouts.js';
 import { getSellerById } from './seller-auth.js';
 import { planPlatformInvoice } from './invoicing/index.js';
+import { hasPayableBank, type PayoutDetails } from './payout-details.js';
 
 /**
  * The monthly payout run: turn every seller's released balance into a payout row.
@@ -59,13 +60,15 @@ export function isPayoutDay(todayISO: string = businessTodayISO()): boolean {
 
 /** The bank details a transfer needs, or null when the seller has not supplied them.
  *  All four or none: a transfer missing any one of them cannot be made, and a half-filled form
- *  must read as "not ready" rather than produce a payout that will bounce. */
-function bankOf(seller: {
-  bankCode?: string; bankBranch?: string; bankAccount?: string; bankAccountHolder?: string;
-}): BankSnapshot | null {
-  const { bankCode, bankBranch, bankAccount, bankAccountHolder } = seller;
-  if (!bankCode || !bankBranch || !bankAccount || !bankAccountHolder) return null;
-  return { code: bankCode, branch: bankBranch, account: bankAccount, holder: bankAccountHolder };
+ *  must read as "not ready" rather than produce a payout that will bounce. The question itself is
+ *  `hasPayableBank`, shared with the seller's own screen — a banner saying "add your bank details"
+ *  while this run would happily pay (or the reverse) is worse than either alone. */
+function bankOf(seller: PayoutDetails): BankSnapshot | null {
+  if (!hasPayableBank(seller)) return null;
+  return {
+    code: seller.bankCode!, branch: seller.bankBranch!,
+    account: seller.bankAccount!, holder: seller.bankAccountHolder!,
+  };
 }
 
 /**

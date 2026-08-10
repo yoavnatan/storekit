@@ -30,6 +30,7 @@ import { getCampaignsForStore } from '../ad-campaign-health.js';
 import { runMerchantStatusCheck } from '../merchant-status-check.js';
 import { rebuildCatalogArtifact, FEED_ARTIFACT, SITEMAP_ARTIFACT, CATALOG_ARTIFACT_INTERVAL_SEC } from '../catalog-artifacts.js';
 import { runPayouts, isPayoutDay } from '../payout-run.js';
+import { runOrderSla } from '../order-sla-run.js';
 import { PAYOUT_DAY_OF_MONTH } from '../payout-schedule.js';
 import { businessTodayISO } from '../business-day.js';
 
@@ -353,4 +354,34 @@ const payoutRun: Job = {
   },
 };
 
-export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, payoutRun, purgeVisitorDetail];
+/**
+ * Warn a seller whose order is late, and cancel the one they never sent.
+ *
+ * *What it fixes:* the rule existed and nothing ran it (`order-sla.ts`, GO_LIVE §5.0-ב). Without a
+ * caller, an order the seller never shipped left the buyer's money with the PLATFORM indefinitely —
+ * the payout gate correctly refused to send it on, and nothing sent it back. This is the only job
+ * in the registry that gives money back to a real person, which is why it is also the only one that
+ * cancels anything.
+ *
+ * *Idempotent:* a cancelled order fails `REVENUE_SHIPPING_STATUSES` and is not a candidate on the
+ * next pass; if a race got one through, `canTransition` refuses a move out of a terminal status.
+ * The warning is deduplicated against the seller's own notification feed, so a second pass in the
+ * same day says nothing twice (`order-sla-run.ts`).
+ *
+ * *Daily:* both thresholds are whole days on the business calendar, so asking more often re-asks a
+ * question whose answer changes once a day. The lease is generous because the overdue branch reads
+ * a whole order and restocks every line.
+ */
+const orderSla: Job = {
+  name: 'order-sla',
+  intervalSec: 24 * HOUR,
+  leaseSec: 30 * MINUTE,
+  async run() {
+    const r = await runOrderSla();
+    const capped = r.capped ? ` · capped at the batch, the rest go first next run` : '';
+    return `late ${r.scanned} · warned ${r.warned} · cancelled ${r.cancelled} `
+      + `(${r.refundOwedAgorot} agorot owed back to buyers) · failed ${r.failed}${capped}`;
+  },
+};
+
+export const JOBS: readonly Job[] = [purgeCheckouts, purgeAuthAttempts, campaignSweep, feedSync, customDomainCheck, merchantStatus, feedArtifact, sitemapArtifact, payoutRun, orderSla, purgeVisitorDetail];

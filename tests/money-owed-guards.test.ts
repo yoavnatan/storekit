@@ -86,11 +86,52 @@ describe('a status move that undoes a paid purchase records what is owed', () =>
         if (!/shippingStatus/.test(call)) continue;
         if (/paymentStatus:\s*'failed'/.test(call)) continue;
         const vicinity = src.slice(match.index, match.index + 2000);
-        expect(vicinity.includes('recordRefundOwed'),
-          `${file}: moves an order's shipping status near "${call.slice(0, 70).replace(/\s+/g, ' ')}" without calling recordRefundOwed() from lib/refund-owed.ts — a cancelled PAID order leaves the buyer's money with us and no screen says so`,
+        // Two acceptable answers, and the second is a delegation rather than a loophole: handing
+        // the whole status change to `order-status-change.ts` IS going through `refund-owed.ts`,
+        // because that module does nothing else with it — and the test below pins that it still
+        // does. The alternative was for every caller to repeat the five consequences of a status
+        // move, which is precisely the duplication that put this guard here.
+        expect(/recordRefundOwed|settleStatusChange/.test(vicinity),
+          `${file}: moves an order's shipping status near "${call.slice(0, 70).replace(/\s+/g, ' ')}" without calling recordRefundOwed() from lib/refund-owed.ts, or handing the move to settleStatusChange() from lib/order-status-change.ts — a cancelled PAID order leaves the buyer's money with us and no screen says so`,
         ).toBe(true);
       }
     }
+  });
+
+  /**
+   * The STOCK twin of the same rule, and it walks the same list on purpose.
+   *
+   * A cancellation does two irreversible things — it stops the money counting and it puts units
+   * back on the shelf — and they are irreversible in opposite directions: forget the refund and the
+   * buyer's money stays with us, forget the restock and a product nobody can buy sits at zero. The
+   * check above covers the first. Nothing covered the second until an automatic canceller existed
+   * (`order-sla-run.ts`, 2026-08-10), at which point "the job restocks and the dashboard restocks"
+   * became two places that could drift.
+   */
+  it('each one puts stock back through the same path, rather than its own loop', () => {
+    for (const file of STATUS_WRITERS) {
+      const src = SRC.get(file)!;
+      for (const match of src.matchAll(/updateOrder\(/g)) {
+        const call = src.slice(match.index, match.index + 200);
+        if (!/shippingStatus/.test(call)) continue;
+        // Same carve-out as above: `failCapture` sets `paymentStatus: 'failed'` in the same call,
+        // and the checkout has already rolled its own decrements back by then.
+        if (/paymentStatus:\s*'failed'/.test(call)) continue;
+        const vicinity = src.slice(match.index, match.index + 2000);
+        expect(/restockProduct|settleStatusChange/.test(vicinity),
+          `${file}: moves an order's shipping status without restocking through orderHoldsStock, or handing the move to settleStatusChange() from lib/order-status-change.ts — a cancelled order that keeps its units off the shelf is stock nobody can sell and nothing reports`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  // The delegation the check above accepts, pinned. Without this, "calls settleStatusChange" would
+  // be an escape hatch that empties the guard the day somebody simplifies that function.
+  it('the one module every caller delegates to really does record the obligation', () => {
+    const owner = SRC.get('src/lib/order-status-change.ts');
+    expect(owner, 'src/lib/order-status-change.ts is gone — the guard above now accepts a delegation to nothing').toBeTruthy();
+    expect(owner).toMatch(/from '\.\/refund-owed\.js'/);
+    expect(owner).toMatch(/await recordRefundOwed\(/);
   });
 
   it('nobody decides "money is owed" by testing for the word cancelled', () => {
