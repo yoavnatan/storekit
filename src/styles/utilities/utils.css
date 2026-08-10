@@ -340,6 +340,13 @@
 .msg-table__th--from { width: 16%; }
 .msg-table__th--subject { width: 26%; }
 .msg-table__th--product { width: 13%; }
+/* The SELLER's inbox goes three points further, and needs its own rule to do it:
+   16% is the floor for the shared class only because the buyer's twin puts a 24px
+   store avatar in this same cell. The seller's holds a bare name, so the same width
+   still read as a name, a gap, then a clipped subject (owner, twice). Scoped by the
+   panel id — an ID beats the class above it, so nothing here fights for order. */
+#dash-panel-messages .msg-table__th--from { width: 13%; }
+#dash-panel-messages .msg-table__th--subject { width: 29%; }
 /* Wide enough for the longest "30.7.2026, 14:32" + cell padding — a date that
    ellipsises is worse than one that costs 28 extra px. */
 .msg-table__th--date { width: 124px; }
