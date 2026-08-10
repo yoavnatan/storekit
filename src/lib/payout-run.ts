@@ -8,6 +8,7 @@ import {
   type BankSnapshot,
 } from './payouts.js';
 import { getSellerById } from './seller-auth.js';
+import { planPlatformInvoice } from './invoicing/index.js';
 
 /**
  * The monthly payout run: turn every seller's released balance into a payout row.
@@ -122,6 +123,33 @@ export async function runPayouts(todayISO: string = businessTodayISO()): Promise
 
     result.created++;
     result.totalAgorot += payout.amountAgorot;
+
+    // ── The platform's own invoice to this seller, for the same period ──
+    //
+    // Placed here, in the payout run, because this is the moment the three figures exist together
+    // and agree with what the seller is about to see on their statement.
+    //
+    // **The commission invoiced is the commission on what was RELEASED this period, not on the
+    // month's orders**, and that choice is deliberate. Commission on orders would invoice a seller
+    // for money still sitting in hold — a document for a fee not yet taken, arriving before the
+    // payout it relates to. Invoicing what was actually deducted means the document and the payout
+    // describe the same transaction, which is the only version a seller can reconcile.
+    //
+    // The subscription is included because reaching a payout PROVES a sale happened, which is
+    // exactly the trigger `pricing.ts` names for billing to start. ⚠️ Its other half — the 2-month
+    // cap that starts billing a seller who has NOT sold — is not here and cannot be: it needs a
+    // card on file and a gateway, neither of which exists (GO_LIVE §3). The ad margin is 0 until an
+    // ad account is connected (GO_LIVE §2), so its line is present and empty rather than absent.
+    //
+    // Failure is swallowed: the money is already committed by this point, and a document that could
+    // not be planned must not undo a payout. The row is either there or it is in the pending
+    // backlog, and `countPendingDocuments()` reports the gap either way.
+    await planPlatformInvoice({
+      seller,
+      periodKey,
+      commissionAgorot: row.commissionAgorot,
+      includeSubscription: true,
+    }).catch(() => null);
   }
 
   return result;
