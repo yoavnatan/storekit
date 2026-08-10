@@ -1,121 +1,80 @@
 ---
 import { getLang, getT } from '../i18n/index.js';
+import {
+  MARK_PATH,
+  LETTERS_PATH,
+  STROKE_WIDTH,
+  VIEW_BOX,
+  HEIGHT_EM,
+  GRADIENT,
+  TAGLINE,
+} from '../lib/brand-lockup.js';
 /**
- * The platform's wordmark: a drawn `D` followed by "ezabin" in the site's own
- * font. One component, so the logo can never drift between the header, the auth
- * pages and whatever comes next.
+ * The platform's wordmark: a drawn `D` followed by "ezabin". One component, so
+ * the logo can never drift between the header, the auth pages and whatever
+ * comes next.
  *
- * WHY THE D IS A DRAWING AND NOT A LETTER (CURRENT_TASK סשן ב׳, 2026-08-05).
- * It is the right half of an octagon: a straight back, and a bowl made of three
- * cut edges. Everything about it is matched to the wordmark's own font by
- * MEASUREMENT rather than by eye — the numbers below were read off the font by
- * rendering it to a canvas and scanning pixels, because two earlier attempts at
- * "looks about right" were both visibly wrong (too light, then too narrow).
+ * THE LETTERS ARE OUTLINES, NOT TEXT (2026-08-10). This is the one thing to
+ * understand before changing anything here. The wordmark is Chakra Petch 700
+ * thickened by 0.014em, and a thickening is an outline — the family stops at
+ * 700 and has no variable axis, so there is no heavier cut to switch to. CSS
+ * cannot paint `-webkit-text-stroke` with a gradient, so a text wordmark would
+ * have to outline itself in a flat colour and would halo against the ramp.
+ * Hence SVG; and once it is SVG, paths cost nothing and buy a lot:
  *
- * THE DENSITY IS THE POINT — 800 AT -0.04em (owner, סשן ג׳, 2026-08-05).
- * Heavy weight plus negative tracking is what closes the seven letters into ONE
- * SOLID SHAPE, and that shape is the logo. This is worth stating because the
- * opposite was tried first, the same day: the wordmark went to 600 at zero
- * tracking on the theory that 700 read as "bold UI text", it shipped, and the
- * owner's verdict was that it had become *cheaper* — "לפחות קודם זה היה גוש
- * אחיד". It was reverted within the hour. Opening a wordmark up reads as thin,
- * and thin reads as cheap. **Do not lighten or open this again.** What moved
- * instead is the axis he actually asked about: one weight heavier and one step
- * tighter, so the block is denser than it was.
+ *   • CHAKRA PETCH IS NEVER SENT. Nothing else on the site uses it, so the
+ *     alternative was an eleventh font preload on every page for seven letters.
+ *   • THE LOGO CANNOT PAINT IN THE WRONG FACE. Every face in main.css is
+ *     `font-display: optional`, which means a face not already available at
+ *     first paint is not used AT ALL for that page view. That is exactly how
+ *     the previous lockup shipped 24px misaligned in August — twice — because
+ *     both "fixes" were measured against a fallback. A path has no such state.
+ *   • The site's logo and `public/brand/*.svg` are the same drawing.
  *
- * IT STANDS TO THE ASCENDER (0.75em), NOT TO THE CAP LINE (owner, סשן ג׳: "רואים
- * בבירור שה-D יותר נמוכה ורחבה"). He was right, and it is measurable. In Heebo
- * 800 the ink tops are: b 0.75em, i 0.745em, D 0.71em. A capital is SHORTER than
- * the ascenders around it — normal in running text, where a capital reads as a
- * capital. Here the mark is a flat-topped slab and the deficit reads as squat
- * instead, and it is the widest single glyph in the word (0.5525em against the
- * b's 0.485), so "low and wide" was a literal description of a 0.04em gap.
+ * Everything geometric lives in `src/lib/brand-lockup.ts`, which
+ * `scripts/generate-wordmark.mjs` writes from the font itself. Do not retype a
+ * number from it here. Its header records what is authored (the octagon's cut,
+ * the two optical ratios, the tracking, the thickening) and what is derived
+ * (everything else).
  *
- * THIS IS A DELIBERATE LOGOTYPE OVERRIDE, NOT A METRIC ERROR — DO NOT "FIX" IT.
- * Cap height IS the typographically correct height for a capital, and the mark
- * was moved back to 0.71em for exactly one hour on 2026-08-05 to check. Heebo's
- * own overshoot table, measured off the font, leaves no room to argue the point
- * on typographic grounds:
+ * WHY THE D IS A DRAWING AND NOT THE FONT'S LETTER (asked and answered
+ * 2026-08-10). Chakra Petch cuts its own D's corner at 45°, exactly as this mark
+ * does — the same language, which is most of why this face fits. What differs is
+ * depth: the mark cuts 29.3% of its height, the font 17.1%. Rendered side by
+ * side, the owner kept the drawn one. The reason it matters is the icon, where
+ * the D stands alone and the deep cut is what makes it a shape rather than a
+ * letter — and it is the only part of the wordmark that is ours rather than the
+ * typeface's.
  *
- *   flat tops    H, E, D    0% above the cap line
- *   round tops   O, C, S    +1.41%
- *   pointed      A, V, W    0%
+ * THE DENSITY IS THE POINT. Heavy plus tight is what closes the seven letters
+ * into ONE SOLID SHAPE, and that shape is the logo. The opposite was tried in
+ * August — Heebo 600 at zero tracking — shipped, and the owner's verdict was
+ * that it had become *cheaper* ("לפחות קודם זה היה גוש אחיד"). Reverted within
+ * the hour. **Do not lighten or open this.** The 0.014em thickening exists for
+ * the same reason: Chakra Petch 700's stem is 0.136em against Heebo 800's
+ * 0.167em, and the block would otherwise have gone thinner in the move.
  *
- * Only curves overshoot in this font, and this mark's top edge is flat across
- * 60% of its width against Heebo's own D at 51% — it is FLATTER than the letter
- * it replaces, so by the font's rules it earns nothing at all. The owner was
- * shown that and chose the taller mark anyway, which is his call to make: this
- * is a drawn symbol standing in for a letter, not a letter, and aligning such a
- * mark to the tallest thing in the word is ordinary logotype practice. The rule
- * being broken is a rule about TEXT.
+ * IT STANDS TO THE ASCENDER, NOT TO THE CAP LINE. A deliberate logotype
+ * override made with the rule in hand (owner, 2026-08-05, after the mark was
+ * moved back to cap height for an hour to check): a drawn symbol standing in for
+ * a letter is not a letter, and aligning one to the tallest thing in the word is
+ * ordinary practice. The rule it breaks is a rule about running text. In Chakra
+ * Petch the two are only 0.013em apart, so it now costs almost nothing — but it
+ * stays, because it is the same mark.
  *
- * The other repair was tried too and is a dead end: deepening the octagon's cut
- * to shorten that flat top (10.7 units matches Heebo's D exactly) turns the
- * counter into a wedge, and the mark reads as a ▶ play triangle instead of a D.
- * The cut stays at 8.2. Don't re-walk either of these.
+ * COLOUR. The letters carry the site's brand gradient — the one `.btn` wears,
+ * unchanged — as ONE ramp across the whole wordmark. That needs
+ * `gradientUnits="userSpaceOnUse"`: the default is objectBoundingBox, which
+ * resolves per element, so every letter would get its own full ramp and the word
+ * would read as pieces stuck together. Same failure the old code avoided by
+ * giving the D a hand-computed slice; there is nothing to hand-compute now.
  *
- * The fix is height only. The ink is NOT wider or narrower than before — the
- * width/height ratio drops from 0.78 to 0.74 because the height moved, which is
- * the whole trick: nothing about the letter's mass changed, it simply stopped
- * being the short one. The stem is held at its measured ABSOLUTE weight while
- * the box grows, or a taller mark would silently become a heavier one.
- *
- * The bottom stays ON the baseline. Round letters (e, a, o) overshoot 0.0075em
- * below it and flat ones do not; that asymmetry is the font's, and copying the
- * overshoot onto a flat edge would make the mark hang.
- *
- * EVERY OTHER NUMBER FOLLOWS THE WEIGHT, because they are all Heebo's own,
- * re-measured at 800 (the same scan reproduces the previous figures exactly at
- * 700, which is what says it is the method that produced them). In this viewBox
- * 28 units = 0.75em, so a unit is 0.02679em:
- *
- *   height            28 units = 0.75em — Heebo 800's ascender, not its cap
- *   back (vertical)   6.160 = 0.165em — Heebo 800's stem, unchanged in absolute
- *                             terms (it was 6.507 units when a unit was smaller)
- *   bowl's right side 6.160 — a straight edge beside a straight edge; a lighter
- *                             one reads as a mistake rather than as contrast
- *   diagonals         5.567 = 0.9037 of the stem — a diagonal looks lighter than
- *                             its measured width
- *   horizontals       4.922 = 0.799 of the stem — a horizontal looks heavier
- *   letter width      20.626 = 0.5525em, exactly Heebo 800's own D — unchanged
- *   octagon cut       8.2 = 28/(2+√2), tied to the HEIGHT, which is what keeps
- *                             the silhouette half of a REGULAR octagon
- *
- * The two optical ratios (0.799 and 0.9037) are deliberately CARRIED OVER from
- * the 700 drawing rather than re-measured: they correct for how an eye reads a
- * horizontal and a diagonal, which is not a fact about a weight. The stem and
- * the width are the only measured inputs.
- *
- * THE `-0.0163em` BETWEEN THE D AND THE `e` is derived, not chosen:
- *   margin = the font's own D right-side-bearing + the tracking - the SVG's padding
- *          = 0.03711 + (-0.04) - 0.01339
- * (the padding term is 0.5 units, so it moved when the unit did)
- * The bearing is Heebo 800's; the tracking is there because every OTHER pair in
- * the word gets it, so a mark that skipped it would sit looser than the letters
- * around it; the padding is the 0.5 units this viewBox carries outside the ink.
- * A mark spaced like a symbol instead of like a letter is what made early
- * versions read as "an icon glued next to a word".
- *
- * COLOUR. On a light surface the letters carry the site's brand gradient — the
- * one `.btn` uses, unchanged — as ONE ramp across the whole wordmark rather than
- * per letter. The D covers the first 16.7% of the wordmark's width, so it gets
- * exactly that slice (#2a3c40 → #2d4045) and the text continues from there.
- * Giving the D its own full gradient makes it end light and the `e` restart
- * dark, which reads as two pieces stuck together.
- *
- * Height is a hard-coded `0.75em`, not a font-relative unit like `1cap` or
- * `1ex`: Heebo's metrics are known and measured here, and hard-coding them
- * means the mark can't shift if the font fails to load and a fallback with
- * different metrics paints for a frame.
- *
- * ACCESSIBILITY. The `D` is a drawing and the rest is text, so the DOM says
- * "ezabin" — a screen reader, and anything else reading the accessible name,
- * would announce the brand without its first letter. The whole lockup is
- * therefore one `role="img"` with the real name on it, and everything inside is
- * hidden from the tree. The visible text stays real text (it is what gives the
- * mark the font's own kerning and what keeps it sharp at any zoom); it is simply
- * not what the name is read from.
+ * ACCESSIBILITY. The whole lockup is one `role="img"` with the real name on it
+ * and everything inside hidden from the tree. That was true when the letters
+ * were text (the DOM said "ezabin", so the name was read without its first
+ * letter) and it is more necessary now that there is no text at all.
  */
+
 interface Props {
   /** `brand` = the site gradient inside the letters (light surfaces).
    *  `white` = solid white, for a brand-coloured surface. */
@@ -123,7 +82,7 @@ interface Props {
   /** Any CSS length. Everything else is in `em`, so this is the only size knob;
    *  omit it to inherit (the header sizes the logo through `.logo`). */
   size?: string;
-  /** Adds the Hebrew line under the name. Off by default: in a header or a form
+  /** Adds the Hebrew line under the mark. Off by default: in a header or a form
    *  it would be a second voice in a place that has room for one. */
   tagline?: boolean;
   class?: string;
@@ -136,28 +95,48 @@ const { tone = 'brand', size, tagline = false, class: className = '' } = Astro.p
 const NAME = 'Dezabin';
 
 /**
- * The tagline follows the visitor's language in both places it appears — the drawn
- * line under the mark and the `aria-label` that is the homepage `<h1>`'s whole
- * accessible name. Both read `home.startSelling`.
+ * The tagline follows the visitor's language in both places it appears — the
+ * drawn line under the mark and the `aria-label` that is the homepage `<h1>`'s
+ * whole accessible name. Both read `home.startSelling`. It is the one part of
+ * the lockup that stays LIVE TEXT, precisely because it changes with the
+ * language; it is Heebo, which the site already ships, so it costs nothing.
  *
- * They are laid out differently, and the reason is arithmetic rather than taste.
- * The Hebrew is 19 glyphs and the measurement above the span solves it to sit flush
- * with the wordmark on one line. "A home for independent stores" is 28 characters —
- * roughly half again as wide at the same size — so no single line of it fits a
- * 3.2925em mark, and the flush-both-edges result the Hebrew gets is not available
- * to it at all.
- *
- * The owner's call (2026-08-07) was that two lines are fine, and that being aligned
- * matters more than being one line. So the English is not a re-derivation of the
- * three numbers: it is given the wordmark's own ink width as a box and allowed to
- * wrap inside it. Alignment on the leading edge then holds by construction, and
- * there is nothing left to bisect.
+ * The two languages are laid out differently, and the reason is arithmetic
+ * rather than taste. The Hebrew is 19 glyphs and `TAGLINE.sizeEm` solves it to
+ * sit flush with the wordmark on one line. "A home for independent stores" is 28
+ * characters — roughly half again as wide at the same size — so no single line
+ * of it fits the mark, and the flush-both-edges result the Hebrew gets is not
+ * available to it at all. The owner's call (2026-08-07) was that two lines are
+ * fine and that being aligned matters more than being one line.
  */
 const lang = getLang(Astro.cookies);
 const isHe = lang === 'he';
 const t = getT(lang);
 
-const toneClass =
+/**
+ * A gradient is referenced by id, and two logos on one page (the header and the
+ * homepage h1) would otherwise ship the same id twice. The counter only has to
+ * be unique WITHIN a document, which it is even when two requests interleave —
+ * it never decides anything a visitor sees, so it is not the kind of shared
+ * state `feedback_scalability` is about.
+ */
+const seq = globalThis as { __dzLogoSeq?: number };
+seq.__dzLogoSeq = (seq.__dzLogoSeq ?? 0) + 1;
+const gradId = `dz-ramp-${seq.__dzLogoSeq}`;
+const paint = tone === 'white' ? '#fff' : `url(#${gradId})`;
+
+/**
+ * The TAGLINE's colour, which the SVG does not inherit and must not.
+ *
+ * This used to sit on the outer span and paint both halves at once — the
+ * wordmark was text, so a `background-clip:text` ramp across the column caught
+ * the Hebrew line as well. The wordmark is paths now and takes its ramp from
+ * inside the SVG, so the class has to be aimed at the line that is still text or
+ * it silently falls back to whatever colour the surrounding page happens to
+ * have. It is the same ramp and the same clip, so the line is painted exactly as
+ * it was before.
+ */
+const taglineTone =
   tone === 'white'
     ? 'text-white'
     : 'bg-[linear-gradient(135deg,#2a3c40,#3a5260)] bg-clip-text text-transparent';
@@ -175,129 +154,113 @@ const toneClass =
     // The Hebrew line is narrower than the mark and hangs off the start edge by
     // design, so the column aligns to start. The English line is WIDER than the
     // mark, which makes it the widest child and therefore the column's width —
-    // start-aligning there would pin the mark to one edge with the whole overhang
-    // on the other. Centring the column instead splits the overhang evenly and
-    // keeps the mark on the lockup's axis. Only reachable with `tagline`, i.e.
-    // the homepage h1; the header and the auth pages draw no line at all.
+    // start-aligning there would pin the mark to one edge with the whole
+    // overhang on the other. Centring the column instead splits the overhang
+    // evenly and keeps the mark on the lockup's axis. Only reachable with
+    // `tagline`, i.e. the homepage h1; the header and the auth pages draw none.
     isHe || !tagline ? 'items-start' : 'items-center',
-    toneClass,
     className,
   ]}
   style={size ? `font-size:${size}` : undefined}
 >
-  <span dir="ltr" class="inline-flex items-baseline font-extrabold leading-none whitespace-nowrap tracking-[-0.04em] text-[1em]">
   {/* `max-w-none` is not decoration: reset.css sets `svg { max-width:100% }`,
       which clamps a fixed-size inline SVG inside a narrow box — the same trap
       that shrank icons in the products table. `shrink-0` does not cover it,
-      because max-width is not flex shrinking. */}
+      because max-width is not flex shrinking.
+
+      The height is an inline style rather than an `h-[...]` class on purpose:
+      Tailwind scans source text for class names, so a value interpolated from a
+      module would never be emitted at all. That is the same failure mode as the
+      old `text-[0.390em]` trap (a trailing zero silently dropped the class),
+      and going through `style` removes the whole class of it. */}
   <svg
-    class="h-[0.75em] w-auto max-w-none shrink-0 block me-[-0.0163em]"
-    viewBox="10.75 8 21.626 28"
+    class="block w-auto max-w-none shrink-0"
+    style={`height:${HEIGHT_EM}em`}
+    viewBox={VIEW_BOX}
     aria-hidden="true"
     focusable="false"
   >
     {tone === 'brand' && (
       <defs>
-        {/* The D's slice of the shared ramp — see the header comment. */}
-        <linearGradient id="dz-d-grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#2a3c40" />
-          <stop offset="1" stop-color="#2d4045" />
+        <linearGradient
+          id={gradId}
+          gradientUnits="userSpaceOnUse"
+          x1={GRADIENT.x1}
+          y1={GRADIENT.y1}
+          x2={GRADIENT.x2}
+          y2={GRADIENT.y2}
+        >
+          <stop offset="0" stop-color={GRADIENT.from} />
+          <stop offset="1" stop-color={GRADIENT.to} />
         </linearGradient>
       </defs>
     )}
-    <path
-      fill={tone === 'white' ? '#fff' : 'url(#dz-d-grad)'}
-      fill-rule="evenodd"
-      d="M11.25 8 L23.676 8 L31.876 16.2 L31.876 27.8 L23.676 36 L11.25 36 Z
-         M17.410 12.922 L20.726 12.922 L25.716 17.912 L25.716 26.088 L20.726 31.078 L17.410 31.078 Z"
-    />
-    </svg><span class="text-[1em] leading-none" aria-hidden="true">ezabin</span>
-  </span>
+    {/* The thickening is a centred stroke in the SAME paint as the fill, on the
+        mark and the letters alike — `paint-order="stroke"` keeps it behind the
+        fill so the join never prints over a corner. Stroking one and not the
+        other is the way to make the D stop matching the word. */}
+    <g
+      fill={paint}
+      stroke={paint}
+      stroke-width={STROKE_WIDTH}
+      stroke-linejoin="miter"
+      paint-order="stroke"
+    >
+      <path fill-rule="evenodd" d={MARK_PATH} />
+      <path d={LETTERS_PATH} />
+    </g>
+  </svg>
   {tagline && (
-    /* HEEBO, AT ITS NATURAL SPACING — both halves of that are the fix (2026-08-05).
+    /* HEEBO, AT ITS NATURAL SPACING — both halves of that are the fix
+     * (2026-08-05). It was Rubik 600 stretched with +0.0356em of tracking to
+     * reach the name's width. Two problems, one cause. Hebrew is drawn to sit
+     * close: tracking it open does not enlarge it, it loosens it, and a loosened
+     * Hebrew word under a tight Latin wordmark is what read as amateur (owner:
+     * "לא מספיק מקצועי ולא מספיק מתאים לאתר"). And a second family for one line
+     * on one page failed the first design-line test — is it already in the
+     * system — while costing a preload on EVERY page.
      *
-     * It was Rubik 600 stretched with +0.0356em of tracking to reach the name's
-     * width. Two problems, one cause. Hebrew is drawn to sit close: tracking it
-     * open does not enlarge it, it loosens it, and a loosened Hebrew word under a
-     * tight Latin wordmark is what reads as amateur (owner: "לא מספיק מקצועי ולא
-     * מספיק מתאים לאתר"). And a second family for one line on one page fails the
-     * first design-line test — is it already in the system — while costing an
-     * eleventh font preload on EVERY page and a second face that `font-display:
-     * optional` can refuse at first paint. Rubik and Heebo are siblings anyway
-     * (Heebo is Rubik's Latin with Hebrew drawn for it), so the family was buying
-     * almost no difference for all of that.
+     * The width match is kept, because it is what makes this a lockup rather
+     * than two stacked lines, and it is solved with SIZE at the font's own
+     * spacing. `TAGLINE.sizeEm` is that ratio, computed by the generator from
+     * both faces' real ink widths.
      *
-     * The width match is kept — it is what makes this a lockup rather than two
-     * stacked lines — and it is solved with SIZE at the font's own spacing.
+     * FLUSH ON BOTH ENDS, INK TO INK, AND THAT IS WHAT THE MARGIN IS FOR
+     * (owner, 2026-08-05: "חשוב שהטקסט בעברית — כולל הצ׳ופצ׳יק של הי׳ — ישב בול
+     * על הרוחב"). Matching the two ink WIDTHS is only half the job. The other
+     * half is that a line box is not its ink: Heebo leaves a side bearing to the
+     * right of the מ, while the wordmark now has none at all — its viewBox is
+     * cropped to the stroked ink. Align the boxes, which is all `items-start`
+     * can do, and the Hebrew therefore starts a visible pixel INSIDE the
+     * English however exact the ratio is. `TAGLINE.marginEm` is exactly that
+     * bearing, negated, in the tagline's OWN em — which is why it is applied
+     * here and not on the column.
      *
-     * FLUSH ON BOTH ENDS, INK TO INK, AND THAT NEEDS THE MARGIN BELOW (owner,
-     * סשן ג׳, 2026-08-05: "חשוב שהטקסט בעברית — כולל הצ׳ופצ׳יק של הי׳ — ישב בול
-     * על הרוחב"). Matching the two ink WIDTHS is only half the job, and it is the
-     * half that was done before. The other half is that a line box is not its
-     * ink: Heebo 500 leaves 0.0725em of side bearing to the right of the מ, while
-     * the wordmark leaves only 0.0075em to the right of the n. Align the boxes —
-     * which is what a flex column with `items-start` does on its own — and the
-     * Hebrew therefore starts a visible pixel INSIDE the English at the hero's
-     * size, every time, no matter how exact the width ratio is. Both numbers were
-     * read by rendering each line and scanning the pixels; the margin cancels the
-     * difference:
-     *
-     *   margin-inline-start = (the wordmark's 0.0075 - 0.0725 x 0.3886) / 0.3886
-     *
-     * The division is because `em` in this span resolves against the span's OWN
-     * font-size. In the lockup's em it is only -0.0206em, so the line hangs that
-     * far past the lockup's right edge on purpose — that overhang IS the fix.
-     *
-     * 0.3886em is the SIZE, and it is the arithmetic ratio plus a correction that
-     * only a real build could give. The ratio first: the wordmark's ink is
-     * 3.2925em (the D's 0.5525 + a 0.0303 gap + "ezabin" at 2.71 with the
-     * tracking already in it) and Heebo 500's own "מתחם חנויות דיגיטלי" is
-     * 8.4825em, so 3.2925/8.4825 = 0.3882. Shipped at 0.3882 the Hebrew still
-     * ended a pixel INSIDE the D on every desktop viewport — sub-pixel rounding
-     * of a 19-glyph run, which no amount of arithmetic predicts. So the last step
-     * was a bisection against the built site, scanning the rendered pixels of the
-     * hero at 11 viewports x DPR 1/2/3: 0.3899 crossed OUTSIDE by a pixel, 0.3882
-     * sat one inside, 0.3886 is the crossover.
-     *
-     * WHAT IT ACHIEVES, measured, and this is the bar to beat if anyone changes
-     * it: the right edge is EXACTLY flush in all 33 combinations, and the left is
-     * 0 on desktop at DPR 1 and never more than one device pixel anywhere. That
-     * is the floor — `text-align:justify` on a fixed width was built and measured
-     * as an alternative and did not beat it, at the cost of a fixed width that
-     * would overflow if the Hebrew face ever fell back.
-     *
-     * RE-SOLVE ALL THREE (size, margin, and the D) if the name's weight, its
-     * tracking, or the slogan's text ever change — they are one calculation.
-     *
-     * Trailing zeros are not decorative here: Tailwind emits no rule at all for
-     * `text-[0.390em]`, so the class silently does nothing and the line renders at
-     * the inherited size. Never end one of these values in a zero.
-     *
-     * Weight 500 under an 800: the two-step gap is what keeps this a subtitle
+     * Weight 500 under the wordmark: the gap is what keeps this a subtitle
      * rather than a second name. */
     <span
       dir={isHe ? 'rtl' : 'ltr'}
       class:list={[
-        'font-medium text-[0.3886em]',
+        'font-medium',
+        taglineTone,
         // Hebrew: the measured lockup above — one line, flush by construction.
-        isHe && 'leading-none ms-[-0.0532em]',
+        isHe && 'leading-none',
         // English: one line, centred on the mark, and allowed to overhang it.
         //
         // "A home for independent stores" is 28 characters against the Hebrew's
-        // 19, so it cannot be flush inside a 3.2925em mark at this size — and
-        // the owner's call (2026-08-07) was that overhanging is fine and centred
-        // is what matters. Centred, not start-aligned, because an overhang that
+        // 19, so it cannot be flush inside the mark at this size — and the
+        // owner's call (2026-08-07) was that overhanging is fine and centred is
+        // what matters. Centred, not start-aligned, because an overhang that
         // spills to one side only reads as a mistake; split evenly it reads as
         // the lockup being wider than the mark.
         //
-        // A first attempt boxed it at `w-[3.2925em]` to wrap instead, and gave
-        // one word per line: `em` inside this span resolves against the span's
-        // OWN font-size, so that box was 3.2925 x 0.3886 = 1.28 of the lockup's
-        // em, a third of the mark. It is the same trap the margin note above
-        // spells out, walked into one element lower. Any length here has to be
-        // divided by 0.3886 first — which is why there is no length here now.
+        // A first attempt boxed it to wrap instead, and gave one word per line:
+        // `em` inside this span resolves against the span's OWN font-size, so
+        // the box was a third of what was intended. Any length here has to be
+        // divided by the size first — which is why there is no length here now.
         !isHe && 'whitespace-nowrap leading-none',
       ]}
+      style={`font-size:${TAGLINE.sizeEm}em${isHe ? `;margin-inline-start:${TAGLINE.marginEm}em` : ''}`}
       aria-hidden="true"
     >{t.home.startSelling}</span>
   )}

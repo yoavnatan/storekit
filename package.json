@@ -24,7 +24,8 @@
     "lint:prune": "eslint . --suppressions-location .eslint-baseline.json --prune-suppressions",
     "brand:assets": "node scripts/generate-brand-assets.mjs",
     "copy:review": "node scripts/copy-review.mjs export",
-    "copy:apply": "node scripts/copy-review.mjs apply"
+    "copy:apply": "node scripts/copy-review.mjs apply",
+    "brand:wordmark": "node scripts/generate-wordmark.mjs"
   },
   "dependencies": {
     "@astrojs/node": "^11.0.2",
@@ -48,6 +49,7 @@
     "eslint-plugin-sonarjs": "^4.2.0",
     "globals": "^17.8.0",
     "jsdom": "^29.1.1",
+    "opentype.js": "^2.0.0",
     "playwright": "^1.61.1",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.10"
