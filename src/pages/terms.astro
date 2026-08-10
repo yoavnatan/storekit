@@ -20,9 +20,15 @@
  *  appointing us to collect. Neither may be reworded without the other.
  *
  *  The hold/payout periods are interpolated from `lib/payout-schedule.ts` — the same constants the
- *  scheduler runs on — and are ⚠️ PLACEHOLDERS pending the owner's decision, which is the same
- *  decision as the returns window above. They cannot be set independently: a hold shorter than the
- *  return window pays a seller for goods the buyer may still send back.
+ *  scheduler runs on — and are ⚠️ PLACEHOLDERS pending the owner's decision. They cannot be set
+ *  independently of the returns window: a hold shorter than it pays a seller for goods the buyer
+ *  may still send back, which is why `HOLD_DAYS_AFTER_DELIVERY` now exceeds the statutory 14 days.
+ *
+ *  **The supply deadline is stated here because stating it is the legal duty.** Israeli law
+ *  requires a distance seller to DISCLOSE the supply date and method (§14ג) and — checked
+ *  2026-08-10 — sets no general maximum; so the exposure is an undisclosed supply time, not a slow
+ *  one. The clause also says the courier's own delay does not count against the seller, which is
+ *  the fairness rule `order-sla.ts` implements rather than a courtesy.
  *
  *  ⚠️ NOT a substitute for legal review before launch. It is accurate, not lawyered — and the
  *  agency clauses above are exactly what `docs/legal-brief-agent-model.md` puts in front of the עו״ד.
@@ -46,6 +52,8 @@ import {
   FALLBACK_DAYS_AFTER_PAYMENT,
   PAYOUT_DAY_OF_MONTH,
   MIN_PAYOUT_AGOROT,
+  SHIP_DEADLINE_BUSINESS_DAYS,
+  SHIP_AUTO_CANCEL_DAYS,
 } from '../lib/payout-schedule.js';
 import { formatAgorot } from '../lib/money.js';
 
@@ -85,7 +93,9 @@ const clauses: { h: string; p: string[] }[] = [
   {
     h: 'משלוחים',
     p: [
-      'דמי המשלוח נקבעים בידי הפלטפורמה ומוצגים בצ׳ק-אאוט לפני התשלום. מוכר יכול להציע איסוף עצמי כחלופה. מועד האספקה תלוי במוכר ובחברת השילוח.',
+      'דמי המשלוח נקבעים בידי הפלטפורמה ומוצגים בצ׳ק-אאוט לפני התשלום. מוכר יכול להציע איסוף עצמי כחלופה.',
+      `המוכר נדרש למסור את ההזמנה לחברת השילוח — או להעמידה לאיסוף — בתוך ${SHIP_DEADLINE_BUSINESS_DAYS} ימי עסקים ממועד ההזמנה. זמן ההגעה עצמו תלוי בחברת השילוח וביעד.`,
+      `לא נמסרה ההזמנה בתוך ${SHIP_AUTO_CANCEL_DAYS} ימים ממועד התשלום, היא תבוטל אוטומטית והתמורה תוחזר לקונה במלואה, ללא דמי ביטול.`,
     ],
   },
   {
@@ -104,6 +114,7 @@ const clauses: { h: string; p: string[] }[] = [
       'זיכוי, ביטול או חיוב-חוזר בהזמנה ששולמה כבר למוכר מקוזזים מהתשלום הבא. אין בכך כדי לגרוע מאחריות המוכר לעסקה מול הקונה.',
       'תשלום מותנה במסירת פרטי חשבון בנק ופרטי עסק תקינים באזור האישי. עד למסירתם היתרה נצברת ואינה נגרעת.',
       `${platform.name} מפיקה עבור המוכר חשבונית מס לקונה בשמו על כל הזמנה, ומוציאה למוכר חשבונית מס על עמלת המכירה, דמי המנוי והפרסום. אחריות הדיווח לרשויות המס בגין מכירותיו היא של המוכר.`,
+      `על המוכר למסור את ההזמנה לשילוח, או להעמידה לאיסוף, בתוך ${SHIP_DEADLINE_BUSINESS_DAYS} ימי עסקים. הזמנה שלא טופלה בתוך ${SHIP_AUTO_CANCEL_DAYS} ימים תבוטל והתמורה תוחזר לקונה. עיכוב שמקורו בחברת השילוח לאחר מסירת ההזמנה אינו באחריות המוכר ואינו נספר במניין הימים.`,
       'מוכר יכול להשהות או לסגור את חנותו בכל עת. סגירה נכנסת לתוקף לאחר טיפול בהזמנות הפתוחות, ויתרה שטרם שולמה משולמת במועד התשלום הבא שלאחר סיומן.',
     ],
   },

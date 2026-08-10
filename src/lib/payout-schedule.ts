@@ -27,24 +27,70 @@
 /**
  * How long a delivered order's money waits before it may be paid out.
  *
- * ⚠️ PLACEHOLDER — owner decision, must equal or exceed the returns window.
+ * **21, and the number is derived rather than chosen.** Israeli consumer law gives a distance-sale
+ * buyer **14 days from RECEIVING the goods** to cancel (חוק הגנת הצרכן §14ג + תקנות ביטול עסקה
+ * תשע"א-2010; checked 2026-08-10 against kolzchut.org.il, not recalled). A 14-day hold therefore
+ * released a seller's money on the very last day the buyer could still cancel — and a cancellation
+ * that lands after the payout is a debt to chase instead of money we are holding. It has to clear
+ * the statutory window with room for the notice to reach us, not land exactly on it.
+ *
+ * ⚠️ Still an owner decision, and still tied to the returns policy — but it may not go BELOW the
+ * statutory window whatever that policy says. `tests/payout-schedule.test.ts` pins that floor.
  */
-export const HOLD_DAYS_AFTER_DELIVERY = 14;
+export const HOLD_DAYS_AFTER_DELIVERY = 21;
 
 /**
  * The backstop for an order the seller never marked delivered.
  *
  * Without one, a seller who simply does not touch the status dropdown freezes their own money
- * forever and blames the platform; with one set too short, "never mark it delivered" becomes the
- * fastest way to get paid. So it is deliberately LONGER than the delivery-based hold rather than
- * shorter — waiting is the penalty for not reporting, and reporting is the faster path.
+ * forever and blames the platform.
  *
- * ⚠️ PLACEHOLDER — owner decision.
+ * **30, and the reason it is not 21 is a correction.** It was justified as "longer than the
+ * delivery hold, so reporting is always the faster path". That does not follow: with a hold of H
+ * and a fallback of F, reporting wins only while delivery happens within F − H days. At 14 and 21
+ * that was a 7-day window — deliver on day 12 and staying silent paid SOONER, which is the exact
+ * incentive the fallback was supposed to remove. 30 against a 21-day hold restores a 9-day margin,
+ * and the real fix is not a bigger number: it is taking `delivered` from the courier's webhook
+ * instead of the seller's click (GO_LIVE §5), after which the seller has nothing to withhold.
+ *
+ * ⚠️ PLACEHOLDER — owner decision, but it must stay above `HOLD_DAYS_AFTER_DELIVERY`.
  */
-export const FALLBACK_DAYS_AFTER_PAYMENT = 21;
+export const FALLBACK_DAYS_AFTER_PAYMENT = 30;
 
-/** Day of month the payout run builds payouts for everything released since the last run.
- *  ⚠️ PLACEHOLDER — owner decision. */
+/**
+ * ── The fulfilment clock, which is a different question from the payout clock ──
+ *
+ * How long the seller has to do their part before the platform steps in. Deliberately NOT derived
+ * from statute: the law requires a distance seller to DISCLOSE the supply date and method
+ * (§14ג(א) and the written document), and — checked 2026-08-10 — sets no general maximum for it.
+ * So these are a platform POLICY, which makes publishing them mandatory rather than optional:
+ * an undisclosed supply time is the actual legal exposure, not a slow one.
+ *
+ * The deadline is on the milestone the seller CONTROLS, never on one that depends on a courier
+ * turning up — `order-status-rules.ts`'s payout-clock columns already draw exactly that line.
+ */
+
+/** Business days from payment for the seller to reach their own milestone: `shipped` for a courier
+ *  order, `ready` for self-pickup. ⚠️ PLACEHOLDER — owner. */
+export const SHIP_DEADLINE_BUSINESS_DAYS = 2;
+
+/** Calendar days from payment after which an unshipped order warns the seller (and the platform).
+ *  ⚠️ PLACEHOLDER — owner. */
+export const SHIP_WARNING_DAYS = 7;
+
+/**
+ * Calendar days from payment after which an order the seller never acted on is cancelled and the
+ * buyer refunded.
+ *
+ * This exists because without it the money simply stays with the platform forever: the payout gate
+ * correctly refuses to pay a seller who never shipped, and nothing was giving it back. Cancelling
+ * for non-supply is also the case where the law allows the business NO cancellation fee and puts
+ * collection on the seller — so there is nothing to deduct here, the buyer is made whole.
+ *
+ * ⚠️ PLACEHOLDER — owner.
+ */
+export const SHIP_AUTO_CANCEL_DAYS = 14;
+
 export const PAYOUT_DAY_OF_MONTH = 10;
 
 /**
