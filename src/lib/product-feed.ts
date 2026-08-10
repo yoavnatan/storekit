@@ -6,7 +6,8 @@ import { adPolicyViolation } from './ad-policy.js';
 import { generateCombos, comboKey, canonicalDimName } from './variant-combo.js';
 import { adItemId, adComboItemId } from './ad-item-id.js';
 import { isColorVariant } from './color-variants.js';
-import { resolvePrice, type StoreSale } from './discounts.js';
+import { resolvePrice, activeDiscountWindow, type StoreSale } from './discounts.js';
+import { businessDayISO, businessOffsetForDay } from './business-day.js';
 import { toAbsoluteImageUrl } from './image-url.js';
 import { xmlEscape, xmlCdata } from './xml-text.js';
 import { feedShippingWeight } from './product-weight.js';
@@ -48,6 +49,11 @@ export interface FeedAttributes {
    *  and a feed that omitted it would advertise a price the landing page contradicts, which
    *  is a Merchant Center disapproval, not just a cosmetic mismatch. */
   salePrice?: number;
+  /** `sale_price_effective_date` — the window `salePrice` is the price for, as Google's ISO-8601
+   *  range. Present only alongside `salePrice`, and only when the winning discount has an end
+   *  date; an open-ended markdown has no window to state and omitting it is how you say so.
+   *  Built by `salePriceEffectiveDate` below, which is also where the format is documented. */
+  salePriceEffectiveDate?: string;
   brand: string;
   condition: 'new' | 'used' | 'refurbished';
   gender: 'male' | 'female' | 'unisex';
@@ -110,6 +116,38 @@ function clampText(s: string, max: number): string {
   return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
 }
 
+/**
+ * `sale_price_effective_date` — one string, `<start>/<end>`, each side
+ * `YYYY-MM-DDThh:mm±hhmm` (checked against the attribute's own Merchant Center help page,
+ * 2026-08-10; the spec's example is `2016-02-24T13:00-0800/2016-02-29T15:30-0800`).
+ *
+ * **Why send it at all, when it is optional.** Without it Google's own wording is that "the sale
+ * price will be used for your product immediately" — with no end. Our feed is not pushed, it is
+ * FETCHED on Google's schedule, so between the hour a seller's sale expires and the next fetch,
+ * the feed advertises a price the landing page has already stopped honouring. That is a
+ * feed/landing mismatch, the one family that gets accounts suspended (memory
+ * `project_merchant_brand_mismatch_verified`) — and the seller never did anything wrong: they set
+ * an end date and it arrived. This attribute is Google holding the expiry itself, so the gap
+ * closes without depending on how fast anyone re-crawls.
+ *
+ * **The times are the seller's calendar day made explicit.** A schedule here is a date-only string
+ * on the business calendar (`discounts.ts`), where `endsAt` is INCLUSIVE — the sale runs through
+ * the end of that day. Written out that is 00:00 on the first day to 23:59 on the last, at the
+ * offset Israel was actually on for each (`business-day.ts#businessOffsetForDay`, resolved per day
+ * so a range crossing a DST change is right at both ends). Sending bare dates instead would let
+ * Google apply its documented default of UTC, which retires an Israeli sale two or three hours
+ * early on its last evening — the same off-by-one `priceValidUntil` exists to avoid, in hours
+ * rather than days.
+ */
+function salePriceEffectiveDate(endsAt: string, startsAt: string | undefined, todayISO: string): string {
+  // A discount with no start has been running since before anyone asked; the feed can only speak
+  // for the catalogue it is generating, so today is the honest opening bound. The schedule is
+  // known OPEN at this point (an unopened one is not discounted at all, so there is no sale price
+  // to date), which is what guarantees start <= end.
+  const from = startsAt ?? todayISO;
+  return `${from}T00:00${businessOffsetForDay(from)}/${endsAt}T23:59${businessOffsetForDay(endsAt)}`;
+}
+
 export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedContext): FeedAttributes {
   const inferText = [ctx.categoryPath, product.name, ...(product.tags ?? [])];
   const g = inferAudienceGender(inferText);
@@ -126,7 +164,13 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
   const gtin = undefined; // no barcode field yet — optional in the feed spec
   const identifierExists = Boolean(gtin || (mpn && brand));
 
-  const pv = resolvePrice(product, ctx.sale);
+  // One clock for the whole row. `nowMs` used to reach only the recency label while the PRICE read
+  // the wall clock, so a test (or a feed rebuilt from a fixed instant) could pin one and not the
+  // other; a scheduled sale would then be resolved against a different moment than the row it
+  // labels. Same instant to both, and to the date range below.
+  const now = ctx.nowMs !== undefined ? new Date(ctx.nowMs) : new Date();
+  const pv = resolvePrice(product, ctx.sale, now);
+  const saleWindow = activeDiscountWindow(product, ctx.sale, now);
 
   // Five stable, positional segmentation labels — all zero-touch (product-labels.ts).
   // Bucketed on the price a shopper would PAY, so a discounted product segments into the
@@ -158,6 +202,9 @@ export function buildProductFeedAttributes(product: StoreProduct, ctx: FeedConte
     availability: product.stock > 0 ? 'in_stock' : 'out_of_stock',
     price: pv.basePrice,
     ...(pv.isDiscounted ? { salePrice: pv.price } : {}),
+    ...(pv.isDiscounted && saleWindow?.endsAt
+      ? { salePriceEffectiveDate: salePriceEffectiveDate(saleWindow.endsAt, saleWindow.startsAt, businessDayISO(now)) }
+      : {}),
     brand,
     condition: 'new',
     gender,
@@ -384,6 +431,11 @@ function itemXml(it: FeedItem, currency: string): string {
   lines.push(g('availability', it.availability));
   lines.push(g('price', `${it.price.toFixed(2)} ${currency}`));
   if (it.salePrice !== undefined) lines.push(g('sale_price', `${it.salePrice.toFixed(2)} ${currency}`));
+  // Emitted only next to a sale_price — on its own it is an attribute dating a price that has no
+  // sale, which the builder above cannot produce and this line must not invent.
+  if (it.salePrice !== undefined && it.salePriceEffectiveDate) {
+    lines.push(g('sale_price_effective_date', it.salePriceEffectiveDate));
+  }
   lines.push(g('brand', it.brand));
   lines.push(g('condition', it.condition));
   lines.push(g('gender', it.gender));

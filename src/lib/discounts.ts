@@ -161,6 +161,33 @@ export function resolvePrice(
 }
 
 /**
+ * The schedule of the discount that ACTUALLY WON, or undefined when nothing is discounted.
+ *
+ * Two outside systems need this window and they must never describe different sales: the product
+ * page publishes when the price expires (`priceValidUntil` below) and the ad feed publishes the
+ * whole range (`product-feed.ts`). Asking "which lever won" twice is how they would drift — a
+ * product carrying a dated markdown that LOST to a bigger store-wide sale would otherwise have the
+ * feed quoting the loser's dates against the winner's price.
+ *
+ * Only well-formed `YYYY-MM-DD` bounds come back (`isDayISO`): a stored `2026-02-30` is not a
+ * shorter range, it is a value the consumer would publish as a date.
+ */
+export function activeDiscountWindow(
+  product: { id?: string; price: number; discount?: ProductDiscount; categoryId?: string },
+  sale?: StoreSale | null,
+  now: Date = new Date(),
+): { startsAt?: string; endsAt?: string } | undefined {
+  const view = resolvePrice(product, sale, now);
+  if (!view.isDiscounted) return undefined;
+  const won = view.source === 'product' ? product.discount : sale;
+  if (!won) return undefined;
+  return {
+    ...(won.startsAt && isDayISO(won.startsAt) ? { startsAt: won.startsAt } : {}),
+    ...(won.endsAt && isDayISO(won.endsAt) ? { endsAt: won.endsAt } : {}),
+  };
+}
+
+/**
  * The date the currently-shown price stops being the price — schema.org `priceValidUntil`, which
  * Google requires on a merchant listing offer and treats as "after this, the price is unknown".
  *
@@ -182,10 +209,8 @@ export function priceValidUntil(
   sale?: StoreSale | null,
   now: Date = new Date(),
 ): string | undefined {
-  const view = resolvePrice(product, sale, now);
-  if (!view.isDiscounted) return undefined;
-  const endsAt = view.source === 'product' ? product.discount?.endsAt : sale?.endsAt;
-  if (!endsAt || !isDayISO(endsAt)) return undefined;
+  const endsAt = activeDiscountWindow(product, sale, now)?.endsAt;
+  if (!endsAt) return undefined;
   const dayAfter = new Date(`${endsAt}T00:00:00Z`);
   dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
   return calendarDayISO(dayAfter);
