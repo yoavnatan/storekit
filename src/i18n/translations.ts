@@ -708,9 +708,15 @@ export const translations = {
       repSubtitle: 'טבלה מסודרת לכל שאלה, וייצוא לאקסל בלחיצה.',
       repPickLabel: 'בחירת דוח',
       repPeriodLabel: 'תקופה:',
+      repFrom: 'מ־',
+      repTo: 'עד',
       repExportCsv: 'ייצוא לאקסל',
       repLoading: 'טוען דוח…',
       repEmpty: 'אין נתונים בתקופה שנבחרה.',
+      // A refusal the seller can act on, so it gets its own sentence rather than the generic one:
+      // the endpoint caps a report window at two years (MAX_DAYS in /api/seller/reports).
+      repRangeTooLongTitle: 'הטווח ארוך מדי',
+      repRangeTooLongBody: 'אפשר להפיק דוח לטווח של עד שנתיים. בחרו טווח קצר יותר.',
       repLoadFailedTitle: 'לא הצלחנו לטעון את הדוח',
       repLoadFailedBody: 'בדקו את החיבור ונסו שוב.',
 
@@ -2185,9 +2191,13 @@ export const translations = {
       repSubtitle: 'A clean table for each question, and a one-click export to Excel.',
       repPickLabel: 'Choose a report',
       repPeriodLabel: 'Period:',
+      repFrom: 'From',
+      repTo: 'To',
       repExportCsv: 'Export to Excel',
       repLoading: 'Loading report…',
       repEmpty: 'No data for the selected period.',
+      repRangeTooLongTitle: 'That range is too long',
+      repRangeTooLongBody: 'A report can cover up to two years. Please choose a shorter range.',
       repLoadFailedTitle: 'We could not load the report',
       repLoadFailedBody: 'Check your connection and try again.',
 

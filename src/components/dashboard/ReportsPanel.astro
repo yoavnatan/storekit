@@ -22,6 +22,7 @@
  */
 import { PERIOD_PRESETS } from '../../lib/date-range.js';
 import { REPORT_IDS } from '../../lib/seller-report-shapes.js';
+import { businessDayISO } from '../../lib/business-day.js';
 
 interface Props {
   storeSlug: string;
@@ -29,6 +30,11 @@ interface Props {
   d: Record<string, string>;
 }
 const { storeSlug, d } = Astro.props;
+
+/** `max` on both date fields. The BUSINESS day, not the browser's — a seller whose laptop is on
+ *  another timezone must not be offered a "tomorrow" the server will reject, or be refused a
+ *  today it would have accepted. */
+const todayISO = businessDayISO(new Date());
 
 const REPORT_META: Record<string, { titleKey: string; descKey: string; icon: 'receipt' | 'box' | 'layers' }> = {
   sales:    { titleKey: 'repSalesTitle',    descKey: 'repSalesDesc',    icon: 'receipt' },
@@ -89,6 +95,29 @@ const PRESET_LABEL_KEY: Record<string, string> = {
         aria-pressed={p === 'thisMonth'}
       >{d[PRESET_LABEL_KEY[p]]}</button>
     ))}
+
+    {/* An arbitrary window, and this tab needed it more than the two that already had it. A preset
+        answers "how is this month going"; a report is read against a quarter's books, a supplier's
+        invoice period or a tax year, and none of those is one of seven buttons. Performance and
+        Advertising both carry these two fields already — this row was the odd one out, and that
+        was an oversight rather than a decision.
+
+        A native `<input type="date">` and not a built calendar: it gives the seller their own
+        locale's format and, on a phone, the OS date wheel — neither of which anything hand-rolled
+        here would match. `dir="ltr"` on both, because a date field is an LTR run and inheriting
+        the page direction renders the browser's own segments in the wrong order (the same fix
+        advertising.ts's picker carries). */}
+    <span class="[background:var(--color-border)] w-px h-4 self-center mx-1" aria-hidden="true"></span>
+    <label class="text-[0.8rem] [color:var(--color-muted)] flex items-center gap-1.5">
+      {d.repFrom}
+      <input type="date" id="reports-from" dir="ltr" max={todayISO}
+        class="font-[inherit] text-[0.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.2rem] px-[.5rem] outline-none focus:[border-color:var(--color-primary)]" />
+    </label>
+    <label class="text-[0.8rem] [color:var(--color-muted)] flex items-center gap-1.5">
+      {d.repTo}
+      <input type="date" id="reports-to" dir="ltr" max={todayISO}
+        class="font-[inherit] text-[0.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.2rem] px-[.5rem] outline-none focus:[border-color:var(--color-primary)]" />
+    </label>
   </div>
 
   <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
