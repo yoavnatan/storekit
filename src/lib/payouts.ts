@@ -452,14 +452,4 @@ export async function recordAdjustment(input: {
   return adjustment;
 }
 
-/** Every seller with a payout in this period — the job's own "have I already run" check, used for
- *  reporting rather than for correctness, since the unique index is what actually prevents a
- *  double payment. */
-export async function getPayoutsForPeriod(periodKey: string): Promise<SellerPayout[]> {
-  const result = await rows<PayoutRow>(
-    'SELECT * FROM seller_payouts WHERE period_key = $1 ORDER BY created_at',
-    [periodKey],
-  );
-  return result.map(toPayout);
-}
 
