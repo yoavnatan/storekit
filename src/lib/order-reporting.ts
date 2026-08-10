@@ -49,8 +49,13 @@ const COUNTS_AS_REVENUE = 'o.payment_status = ANY($1::text[]) AND o.shipping_sta
 const REVENUE_PARAMS = [REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES] as const;
 
 /** One store's slice of one order, net of the seller's own discount and never below zero.
- *  The SQL twin of `admin-stats.ts#orderNetForStore`. */
+ *  The SQL twin of `admin-stats.ts#orderNetForStore`.
+ *
+ *  Exported as `NET_SQL` because `payouts.ts` aggregates the same slice for the payout run, and a
+ *  second copy of this expression is a second definition of what a seller earned on an order —
+ *  which is the one number the whole payout is computed from. */
 const NET = 'GREATEST(os.subtotal_agorot - os.discount_applied_agorot, 0)';
+export { NET as NET_SQL };
 
 /** The business day/month an order landed on, in SQL. The platform has ONE calendar
  *  (business-day.ts) and it is not the server's: UTC files every sale between local midnight and

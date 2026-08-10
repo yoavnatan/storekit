@@ -3,7 +3,7 @@ import { escapeHtml as escMsg } from '../../lib/html-escape.js';
 import { toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
 import { lockTableColumns, unlockTableColumns } from '../../lib/table-column-lock.js';
 import { SYSTEM_SENDER_LABEL } from '../../lib/seller-messages-query.js';
-import { showErrorToast } from '../../lib/toast.js';
+import { showErrorToast, showActionFailedToast } from '../../lib/toast.js';
 import { registerPanelRefresh } from './tab-sync.js';
 import { scrollBelowPinnedChrome } from './scroll-utils.js';
 
@@ -79,7 +79,6 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
     replyCancel: msgDashI18nDict.msgReplyCancel ?? 'ביטול',
     subjectLabel: msgDashI18nDict.msgSubjectLabel ?? 'נושא',
     aboutProduct: msgDashI18nDict.msgAboutProduct ?? 'בנוגע למוצר',
-    replyFailed: msgDashI18nDict.msgReplyFailed ?? 'ההודעה לא נשלחה. נסה שוב.',
     you: msgDashI18nDict.msgYou ?? 'אתה',
   };
 
@@ -642,24 +641,35 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
             body: JSON.stringify(isSystem ? { threadId: id, content } : { replyToId: id, content }),
           });
           const data = await res.json() as { ok?: boolean; error?: string; message?: { content: string; createdAt: string } };
-          if (res.ok && data.ok && data.message && repliesEl) {
-            repliesEl.insertAdjacentHTML('beforeend', entryBubbleHtml({
-              who: msgI18n.you, fromSelf: true, content: data.message.content, createdAt: data.message.createdAt, unread: false,
-            }));
+          // The REQUEST decides whether this failed — deliberately not `&& repliesEl`, which is a
+          // question about the DOM. A reply that reached the server while its thread happened not
+          // to be expanded must never be reported as not sent; that is a worse lie than the
+          // silence this replaced, because the seller then sends it twice.
+          if (!res.ok || !data.ok || !data.message) {
+            // Until 2026-08-10 this branch did not exist and the catch below was `/* ignore */`:
+            // the button re-enabled, the typed text stayed in the box and no bubble appeared,
+            // which reads as "sent, the thread just hasn't refreshed". The text is left in the
+            // textarea on purpose, so pressing send again re-sends it.
+            //
+            // `data.error` when the server sent one, and it is not the generic case dressed up:
+            // the flood limiter (lib/message-flood.ts) refuses on a RULE, already worded in the
+            // reader's language, and "something went wrong, try again" is wrong advice for it —
+            // trying again is exactly what will not work.
+            if (data.error) showErrorToast(data.error);
+            else showActionFailedToast();
+          } else {
+            if (repliesEl) {
+              repliesEl.insertAdjacentHTML('beforeend', entryBubbleHtml({
+                who: msgI18n.you, fromSelf: true, content: data.message.content, createdAt: data.message.createdAt, unread: false,
+              }));
+            }
             applyLastMessage(data.message.content, data.message.createdAt, true);
             textarea.value = '';
             setComposing(false);
             openBtn.focus();
-          } else {
-            // A refusal used to be swallowed here: the box kept the text, nothing
-            // appeared, and the only reading available was "the button is broken".
-            // The flood limiter (lib/message-flood.ts) makes that a routine answer
-            // rather than a rarity, and it sends the sentence down ready to show —
-            // so the draft stays put and the reason is said out loud.
-            showErrorToast(data.error || msgI18n.replyFailed);
           }
         } catch {
-          showErrorToast(msgI18n.replyFailed);
+          showActionFailedToast();
         } finally {
           sendBtn.disabled = false;
         }
@@ -696,10 +706,16 @@ export function initMessagesTab(onAlertsChanged: () => void): void {
 
     let data: { ok: boolean; items?: MessageRowData[]; page?: number; totalPages?: number; total?: number };
     try {
+    // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
+    // the list would claim the filter matched nothing — but it is silent unless it says so, and
+    // "nothing moved" is indistinguishable from "the filter matched what was already here".
       const res = await fetch(`/api/seller/messages?${params.toString()}`);
       data = await res.json() as typeof data;
-    } catch { return; }
-    if (!data.ok) return;
+    } catch {
+      showActionFailedToast();
+      return;
+    }
+    if (!data.ok) { showActionFailedToast(); return; }
 
     messagesCurrentPage = data.page ?? 1;
 

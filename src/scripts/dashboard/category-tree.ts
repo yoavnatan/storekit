@@ -94,7 +94,8 @@ export function initCategoryTreeEditor(): void {
       const res = await fetch('/api/store-category', { method: 'POST', body: fd });
       return await res.json() as { ok: boolean; tree?: CategoryNode[]; error?: string };
     } catch {
-      return { ok: false, error: 'שגיאת רשת.' };
+      // silent: the caller renders this `error` string in the tree panel.
+    return { ok: false, error: 'שגיאת רשת.' };
     }
   }
 
@@ -169,8 +170,12 @@ export function initCategoryTreeEditor(): void {
           okLabel: i.deleteCategory ?? 'Delete',
           onConfirm: async () => {
             const data = await callApi('delete-category', { categoryId });
-            if (data.ok && data.tree) { tree = data.tree; render(); }
-            else if (data.error) showError(data.error);
+            if (data.ok && data.tree) { tree = data.tree; render(); return; }
+            // `else if (data.error)` was the whole failure handling, which left two shapes silent:
+            // a refusal carrying no `error` field, and an `ok` response with no tree. In both the
+            // category stayed exactly where it was and the seller was told nothing — after
+            // confirming a delete, which reads as done.
+            showError(data.error ?? (i.deleteCategoryFailed ?? ''));
           },
         },
       }));

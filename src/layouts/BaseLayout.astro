@@ -77,6 +77,13 @@ const needsDashboardStrings = DASHBOARD_ROUTES.some((p) => Astro.url.pathname.st
 const i18nJson = jsonForScript({
   cart: t.cart,
   confirm: t.confirm,
+  // Ungated, unlike `dashboard` below: forms exist on shopper-facing pages too (message
+  // compose, search), it is ten short strings, and a missing slice here degrades to the
+  // Hebrew fallbacks baked into lib/field-validity.ts — i.e. silently wrong in English.
+  formErrors: t.formErrors,
+  // Two strings, and ungated for the same reason: `showActionFailedToast` is the answer on every
+  // surface that can fail, shopper-facing ones included.
+  common: t.common,
   gallery: t.gallery,
   wishlist: t.wishlist,
   // Gated on `isLoggedIn`, not on a path: the notification bell Header draws is
@@ -302,6 +309,7 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
     <script>import '../lib/cart-sync.js';</script>
     <script>import { initErrorReporter } from '../scripts/error-reporter.js'; initErrorReporter();</script>
     <script>import { initIconTooltips } from '../scripts/icon-tooltips.js'; initIconTooltips();</script>
+    <script>import { initFormValidity } from '../scripts/form-validity.js'; initFormValidity();</script>
     <script>import { initNavProgress } from '../scripts/nav-progress.js'; initNavProgress();</script>
     {sessionUserId && (
       <script is:inline set:html={`
@@ -349,6 +357,8 @@ const initialUnreadCount = sessionUserId ? await getUnreadCountForUser(sessionUs
       // next since-filtered poll silently excluded it forever: unreadCount still
       // counted it, since that's always recomputed fresh, but no toast ever fired).
       if(notifs.length>0){ lastCheck=notifs[0].createdAt; localStorage.setItem(CURSOR_KEY,lastCheck); }
+    // silent: the 15s notification poll. Nothing is waiting on it, the badge keeps its last
+    // true value, and the next tick retries.
     }).catch(function(){});
   }
   poll();

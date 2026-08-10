@@ -36,6 +36,9 @@ const i18n = {
   close: lang === 'he' ? 'סגור' : 'Close',
   showMore: lang === 'he' ? 'עוד' : 'More',
   showLess: lang === 'he' ? 'פחות' : 'Less',
+  // Same sentence ProductQuickView shows in its own body when the fetch fails. This modal has
+  // no body to put it in at that point — it has not opened yet — so it goes to the toast.
+  loadError: lang === 'he' ? 'שגיאה בטעינת המוצר' : 'Error loading product',
 };
 ---
 
@@ -96,6 +99,7 @@ const i18n = {
   import { markStoreScrollReturn } from '../lib/scroll-restore.js';
   import { initLiquidDots } from '../lib/carousel-dots.js';
   import { priceHtml, saleBadgeHtml } from '../lib/price-html.js';
+  import { showErrorToast } from '../lib/toast.js';
   import type { PriceView } from '../lib/discounts.js';
 
   interface SPMProduct {
@@ -275,6 +279,11 @@ const i18n = {
         product = await res.json() as SPMProduct;
         cache.set(key, product);
       } catch {
+        // Was a bare `return` until 2026-08-10: the shopper tapped a product card and NOTHING
+        // happened — no modal, no message, no way to tell a failed request from a dead button.
+        // There is no dialog on screen to write an inline error into (this runs before it opens),
+        // which is exactly the case the toast surface exists for.
+        showErrorToast(i18n.loadError ?? '');
         return;
       }
     }

@@ -51,6 +51,7 @@ function initExportSharing(storeId: string, i: Record<string, string>): void {
     try {
       const res = await fetch('/api/store', { method: 'POST', body: form });
       return await res.json() as { ok: boolean; token?: string };
+    // silent: the caller renders `feedErrorMessage` from this.
     } catch { return { ok: false }; }
   }
 

@@ -49,6 +49,23 @@
  *                                needs the payment provider's refund call, and no provider is
  *                                chosen (GO_LIVE_CHECKLIST §3). Its absence is what keeps every
  *                                obligation visible instead of quietly closing itself.
+ *
+ * The four below arrived with the agent model (2026-08-10), where the platform holds the seller's
+ * money and later sends it. That direction — money leaving US, to a seller — had no vocabulary at
+ * all before, because under the sub-merchant model it never happened: the processor paid sellers
+ * directly and there was nothing for this journal to witness. A journal that records every shekel
+ * arriving and none leaving cannot be reconciled, which is the one thing it exists for.
+ *
+ *   payout_created             — a payout row was created for a seller and a period. NO money has
+ *                                moved yet; this is the obligation being named, the same split
+ *                                `refund_due`/`refund_settled` makes.
+ *   payout_sent                — the transfer was handed to the bank, or confirmed after it.
+ *   payout_failed              — the bank rejected it. The amount returns to payable (the row is
+ *                                kept and excluded from `paidOut`), so this is not a dead end —
+ *                                it is a seller who has not been paid and does not know why.
+ *   seller_debited             — a chargeback, a post-payout refund clawback or a correction moved
+ *                                against a seller's balance. The counterpart to `refund_due`: that
+ *                                one says the BUYER is owed, this one says who it comes out of.
  */
 export const MONEY_EVENT_TYPES = [
   'payment_attempted',
@@ -60,6 +77,10 @@ export const MONEY_EVENT_TYPES = [
   'order_discount_changed',
   'refund_due',
   'refund_settled',
+  'payout_created',
+  'payout_sent',
+  'payout_failed',
+  'seller_debited',
 ] as const;
 
 export type MoneyEventType = (typeof MONEY_EVENT_TYPES)[number];
@@ -83,6 +104,10 @@ export const MONEY_EVENT_LABELS: Record<MoneyEventType, string> = {
   order_discount_changed: 'סכום הזמנה שונה',
   refund_due: 'זיכוי מגיע לקונה',
   refund_settled: 'זיכוי בוצע',
+  payout_created: 'תשלום למוכר נוצר',
+  payout_sent: 'תשלום למוכר בוצע',
+  payout_failed: 'תשלום למוכר נכשל',
+  seller_debited: 'חיוב למוכר',
 };
 
 /** Type guard for a request-supplied value (`?mtype=`). */

@@ -18,6 +18,8 @@
 </dialog>
 
 <script>
+  import { showActionFailedToast } from '../lib/toast.js';
+
   function getI18n() {
     try { return JSON.parse(document.getElementById('i18n-data')?.textContent ?? '{}'); } catch { return {}; }
   }
@@ -79,6 +81,17 @@
     okBtn.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.5em">${workingLabel}<span class="dot-pulse" role="status" aria-label="${workingLabel}"><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span><span class="dot-pulse__dot"></span></span></span>`;
     try {
       await action();
+    } catch {
+      // **Every destructive action on this site funnels through here**, which is why the missing
+      // `catch` mattered more than any single one of them. `finally` closed the dialog and put the
+      // button back exactly as it does on success, so a delete whose fetch was dropped LOOKED
+      // DELETED: the confirm box vanished, nothing was said, and the only trace was an unhandled
+      // rejection in the console. A confirmed action that then does nothing, silently, is the
+      // worst shape a failure can take — the user has already decided, so they do not check.
+      //
+      // Handlers that detect their own failure (a non-`ok` body) report it themselves and return
+      // normally, so they never reach this. Only a THROW does, which means no double message.
+      showActionFailedToast();
     } finally {
       busy = false;
       okBtn.disabled = false;

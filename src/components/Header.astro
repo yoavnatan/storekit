@@ -26,6 +26,7 @@ import CsrfField from './CsrfField.astro';
 import StoreAvatar from './StoreAvatar.astro';
 import BrandLogo from './BrandLogo.astro';
 import { getLang, getT } from '../i18n/index.js';
+import { MARK_PATH, MARK_VIEW_BOX, STROKE_WIDTH } from '../lib/brand-lockup.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { sellerHasAnyAlert } from '../lib/seller-alerts.js';
 
@@ -214,6 +215,7 @@ const strEmpty   = t.store.noProductsFound;
         data-str-stores={t.home.searchSectionStores}
         data-str-products={t.home.searchSectionProducts}
         data-str-empty={t.home.searchEmpty}
+        data-str-failed={t.home.searchFailed}
         data-str-view-all={t.search.viewAllResults}
         data-str-recents={strRecents}
         data-str-clear={strClear}
@@ -468,10 +470,13 @@ const strEmpty   = t.store.noProductsFound;
           </button>
           <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
             {/* The D rather than a house: this row goes to the platform's own home,
-                and the mark says which platform. Same path as BrandLogo.astro and the
-                favicon — one drawing, three surfaces. */}
+                and the mark says which platform. The path is IMPORTED, not retyped —
+                src/lib/brand-lockup.ts is the one drawing the component, this row, the
+                favicon and the poster files all read, so they cannot drift apart.
+                It carries the wordmark's thickening too (same stroke, same paint as the
+                fill), or the menu's D would be lighter than the header's. */}
             <a href="/" class="user-dropdown__item" role="menuitem">
-              <svg width="11" height="14" viewBox="10.75 8 21.626 28" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M11.25 8 L23.676 8 L31.876 16.2 L31.876 27.8 L23.676 36 L11.25 36 Z M17.410 12.922 L20.726 12.922 L25.716 17.912 L25.716 26.088 L20.726 31.078 L17.410 31.078 Z"/></svg>
+              <svg width="11" height="14" viewBox={MARK_VIEW_BOX} aria-hidden="true"><path fill="currentColor" stroke="currentColor" stroke-width={STROKE_WIDTH} stroke-linejoin="miter" paint-order="stroke" fill-rule="evenodd" d={MARK_PATH}/></svg>
               {t.nav.home}
             </a>
             {/* Saved stores (CURRENT_TASK → סשן ג׳ 1). The only route to them used to be the
@@ -592,6 +597,7 @@ const strEmpty   = t.store.noProductsFound;
 
 <script>
   import { initHeaderScrolled } from '../lib/sticky-bar.js';
+  import { showActionFailedToast } from '../lib/toast.js';
   import { animateScrollTo } from '../scripts/dashboard/scroll-utils.js';
   import { getCount } from '../lib/cart.js';
   import { getWishlistCount } from '../lib/wishlist.js';
@@ -805,8 +811,8 @@ const strEmpty   = t.store.noProductsFound;
             ? `<a href="/?panel=liked" role="menuitem" class="flex items-center w-full py-1.5 px-2 rounded-sm text-[0.78rem] font-medium text-[color:var(--color-primary)] no-underline transition-colors hover:bg-[color:var(--color-bg)] focus-visible:[outline-offset:-2px]">${escH(strSavedAll)}</a>`
             : '');
     } catch {
-      // The disclosure stays empty rather than claiming "you saved nothing", and the flag goes
-      // back so the next open genuinely retries.
+      // silent: nobody is waiting on a number. The disclosure stays empty rather than claiming
+      // "you saved nothing", and the flag goes back so the next open genuinely retries.
       savedStoresLoaded = false;
     }
   }
@@ -974,11 +980,23 @@ const strEmpty   = t.store.noProductsFound;
           notifList.innerHTML = emptyNotifHtml();
         }
         if (clearAllBtn && !notifList?.querySelector('.notif-item')) clearAllBtn.hidden = true;
+        // The card is already off screen — an optimistic delete, which is right for something this
+        // small. What was wrong is what happened when the request did not land: `.catch(() => {})`
+        // swallowed it, `loadNotifs` never ran, and the notification stayed on the server while
+        // the user watched it disappear. It then reappeared on the next page load, with no
+        // explanation, looking like the site had undone their action by itself.
+        // `loadNotifs` on BOTH paths, so the list always ends up showing server truth.
         fetch('/api/notifications', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'delete', id }),
-        }).then(loadNotifs).catch(() => {});
+        }).then((res) => {
+          if (!res.ok) throw new Error('delete failed');
+          return loadNotifs();
+        }).catch(() => {
+          showActionFailedToast();
+          void loadNotifs();
+        });
       });
     });
     notifList.querySelectorAll<HTMLElement>('[data-id]').forEach((el) => {
@@ -995,6 +1013,9 @@ const strEmpty   = t.store.noProductsFound;
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'mark-read', id }),
             keepalive: true,
+          // silent: this fires as the page is navigating away, so there is no surface left to put
+          // a message on. It is also self-correcting — the item simply stays unread and the next
+          // click marks it again.
           }).catch(() => {});
         }
         const type = el.dataset.type ?? '';
@@ -1080,6 +1101,8 @@ const strEmpty   = t.store.noProductsFound;
       setBadge(unreadCount ?? 0);
       const sellerReplyCount = (notifications ?? []).filter((n: NotifItem) => n.type === 'seller_reply' && !n.read).length;
       window.dispatchEvent(new CustomEvent('msg-badge-update', { detail: sellerReplyCount }));
+    // silent: the notification poll. The badge keeps its last true count and the next tick
+    // retries — a toast on a timer is how a toast surface stops being read.
     } catch { /* ignore */ }
     finally {
       loadingDot?.setAttribute('hidden', '');
@@ -1137,6 +1160,8 @@ const strEmpty   = t.store.noProductsFound;
         const { hasAlert } = await res.json() as { hasAlert: boolean };
         avatarDot?.toggleAttribute('hidden', !hasAlert);
         dropdownDot?.toggleAttribute('hidden', !hasAlert);
+      // silent: a 30s background poll for the avatar's alert dot. Same reasoning as the
+      // notification poll above.
       } catch { /* ignore */ }
     }
 
@@ -1243,6 +1268,7 @@ const strEmpty   = t.store.noProductsFound;
     const strStores   = homeSearchWrap?.dataset.strStores ?? 'חנויות';
     const strProducts = homeSearchWrap?.dataset.strProducts ?? 'מוצרים';
     const strEmptyRes = homeSearchWrap?.dataset.strEmpty ?? 'לא נמצאו תוצאות';
+    const strSearchFailed = homeSearchWrap?.dataset.strFailed ?? 'החיפוש אינו זמין כרגע';
     const strViewAll  = homeSearchWrap?.dataset.strViewAll ?? 'לכל התוצאות';
     // The same two labels the STORE search dropdown renders (its own strRecents/
     // strClear further down). That copy has always read them off the wrapper;
@@ -1319,14 +1345,23 @@ const strEmpty   = t.store.noProductsFound;
       const token = ++homeSearchToken;
       let stores: SiteSearchStore[] = [];
       let products: SiteSearchProduct[] = [];
+      // A failed search and a search with nothing in it are different answers, and until
+      // 2026-08-10 they produced the same line: a network error rendered "לא נמצאו תוצאות",
+      // i.e. told the shopper their query has no matches on the strength of a request that
+      // never came back. The old comment here said so out loud and shipped anyway.
+      let searchOk = false;
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
         const data = await res.json() as { ok: boolean; stores?: SiteSearchStore[]; products?: SiteSearchProduct[] };
-        if (data.ok) { stores = data.stores ?? []; products = data.products ?? []; }
-      } catch { /* network error — falls through to the empty-results message */ }
+        if (data.ok) { stores = data.stores ?? []; products = data.products ?? []; searchOk = true; }
+      // silent: reported below — `searchOk` stays false, which draws the "search unavailable"
+      // line instead of "no results".
+      } catch { /* searchOk stays false */ }
       if (token !== homeSearchToken) return;
 
-      if (!stores.length && !products.length) {
+      if (!searchOk) {
+        homeSearchDdEl!.innerHTML = `<div class="hsd-empty" role="alert">${strSearchFailed}</div>`;
+      } else if (!stores.length && !products.length) {
         homeSearchDdEl!.innerHTML = `<div class="hsd-empty">${strEmptyRes}</div>`;
       } else {
         const storesHtml = !stores.length ? '' : `
@@ -1431,10 +1466,15 @@ const strEmpty   = t.store.noProductsFound;
      * is idempotent and shares one in-flight promise, so those two calls are one request.
      *
      * A failure leaves `products` empty: the dropdown offers nothing and Enter still
-     * submits the query, which is exactly what a visitor without JS gets.
+     * submits the query, which is exactly what a visitor without JS gets. `indexReady` is
+     * what keeps that promise honest — without it "the index never arrived" and "the index
+     * arrived and this store has no match" were the same empty array, and the dropdown said
+     * "לא נמצאו מוצרים" for both. Suggestions being unavailable is silence, not a claim about
+     * the store's catalogue.
      */
     type SearchProduct = { slug: string; name: string; price: number; basePrice?: number; image: string };
     let products: SearchProduct[] = [];
+    let indexReady = false;
     let indexLoad: Promise<void> | null = null;
 
     function loadIndex(): Promise<void> {
@@ -1442,7 +1482,7 @@ const strEmpty   = t.store.noProductsFound;
         indexLoad = fetch(`/api/store-search-index?store=${encodeURIComponent(storeSlug)}`)
           .then((r) => (r.ok ? r.json() : null))
           .then((data: { ok?: boolean; products?: SearchProduct[] } | null) => {
-            if (data?.ok && Array.isArray(data.products)) products = data.products;
+            if (data?.ok && Array.isArray(data.products)) { products = data.products; indexReady = true; }
           })
           .catch(() => { /* suggestions unavailable; Enter still searches */ });
       }
@@ -1554,6 +1594,9 @@ const strEmpty   = t.store.noProductsFound;
       // The index may have taken longer than the next keystroke or a blur. Anything
       // rendered now would be answering a question the box no longer asks.
       if (input.value.trim() !== q) return;
+      // The index never loaded — say nothing rather than "this store has no such product".
+      // Enter still runs the real server-side search, which is the recovery path.
+      if (!indexReady) { hideDropdown(); return; }
       const hits = products.filter((p) => matchesSearch(q, p.name)).slice(0, 5);
       if (!hits.length) {
         dropdown.innerHTML = `<div class="hsd-empty">${strEmpty}</div>`;

@@ -76,3 +76,35 @@ describe('a truncating label isolates its direction instead of adopting it', () 
     expect(offenders, 'wrap the text in <bdi> and drop dir="auto" — see this file\'s header').toEqual([]);
   });
 });
+
+/**
+ * A range picker's custom row may not carry `dir="ltr"` on the row itself.
+ *
+ * Same shape as the trap above, and as the one price-html.ts's badge fell into: `dir` decides the
+ * direction of the TEXT and the direction of the BOX, and here only the first was wanted. The row
+ * holds two date fields and an Apply button. A date is an LTR run, so each FIELD needs the
+ * attribute — but on the row it also flipped the layout, and Apply landed at that row's
+ * left-to-right end, which on a Hebrew page is the RIGHT: the action sat before the fields it
+ * applies to instead of after them (owner, 2026-08-10, on the reports picker).
+ *
+ * Three pickers emit this row — performance, advertising, reports — and two had it wrong.
+ * Advertising was right, which is exactly why this is a test and not a note: the correct version
+ * was already in the tree and got copied past anyway.
+ */
+describe('the custom-range row keeps its direction on the fields, not on itself', () => {
+  const PICKERS = [
+    'src/scripts/dashboard/reports.ts',
+    'src/scripts/dashboard/performance.ts',
+    'src/scripts/dashboard/advertising.ts',
+  ];
+
+  it.each(PICKERS)('%s puts dir="ltr" only on the date inputs', (file) => {
+    const src = readFileSync(file, 'utf8');
+    expect(src, 'this file should still emit a custom-range row').toContain('data-range-apply');
+    // Every TAG carrying the attribute. A `//` comment explaining the rule is not a tag, so the
+    // match has to start at `<`.
+    const tags = [...src.matchAll(/<([a-z]+)[^>]*\bdir="ltr"/g)].map((m) => m[1]);
+    expect(tags.length, 'the scan should be seeing the date fields').toBeGreaterThan(0);
+    expect(tags.filter((tag) => tag !== 'input')).toEqual([]);
+  });
+});

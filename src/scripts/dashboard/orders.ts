@@ -1,4 +1,5 @@
 import { createFloatingPortal, toolbarMenuTitle, filterClearButtonHtml } from '../../lib/toolbar-portal.js';
+import { showActionFailedToast } from '../../lib/toast.js';
 import { orderAgeChipHtml } from '../../lib/order-age.js';
 import { CANCELLABLE_FROM } from '../../lib/order-status-rules.js';
 import { encodeList, debounce } from '../../lib/admin-nav.js';
@@ -212,6 +213,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           body: JSON.stringify({ orderId, storeSlug, sellerNotes: notes }),
         });
         return res.ok;
+      // silent: `commitNote`/`deleteNote` own the answer — they revert the list and toast.
       } catch { return false; }
     }
     // ✓ — append the new note (or replace the one being edited), then persist.
@@ -227,13 +229,21 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       if (noteSaveBtn) noteSaveBtn.disabled = false;
       if (noteCancelBtn) noteCancelBtn.disabled = false;
       if (ok) { renderNotes(); closeNoteEditor(); }
-      else { notes = prev; } // revert; leave the editor open to retry
+      else {
+        // Revert, and leave the editor open holding the text so one more press re-sends it. The
+        // revert alone was the whole failure handling until 2026-08-10, which from the seller's
+        // side is a note that quietly refused to save.
+        notes = prev;
+        showActionFailedToast();
+      }
     }
     async function deleteNote(idx: number): Promise<void> {
       const prev = notes.slice();
       notes.splice(idx, 1);
       renderNotes(); // optimistic
-      if (!(await persistNotes())) { notes = prev; renderNotes(); }
+      // The row reappears where it was. Without the notice that reads as the delete not registering
+      // the click at all, and the seller presses it again.
+      if (!(await persistNotes())) { notes = prev; renderNotes(); showActionFailedToast(); }
     }
     noteAddBtn?.addEventListener('click', () => openNoteEditor(null));
     noteSaveBtn?.addEventListener('click', commitNote);
@@ -368,6 +378,7 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         // already known client-side, no need to re-fetch the whole page.
         if (!rowMatchesOrderFilters(card)) card.style.display = 'none';
         return true;
+      // silent: both callers (the card's Save and the quick status menu) toast on `false`.
       } catch { return false; }
     }
 
@@ -378,6 +389,12 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
       if (ok) {
         if (saveStatus) { saveStatus.hidden = false; setTimeout(() => { saveStatus.hidden = true; }, 2500); }
         setTimeout(closeCard, 700);
+      } else {
+        // The status did not save. `applyStatusSave` leaves every badge showing the OLD value, so
+        // the card is honest about the data — but silently, and a seller who pressed Save and saw
+        // the button come back reads that as done. A status is what tells the buyer their parcel
+        // is on its way, so believing a failed save is the expensive half of this.
+        showActionFailedToast();
       }
       saveBtn.disabled = false;
     });
@@ -412,7 +429,9 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
           saveQuick.disabled = true;
           const ok = await applyStatusSave(pending);
           if (ok) orderStatusPortal.close();
-          else saveQuick.disabled = false;
+          // The menu stays open with its button live, which is the retry — but it looked identical
+          // to a menu nobody had pressed yet.
+          else { saveQuick.disabled = false; showActionFailedToast(); }
         });
       });
     });
@@ -430,7 +449,10 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, storeSlug, shippingStatus: 'cancelled' }),
       });
-      if (!res.ok) return;
+      // A cancellation is the one status change that also puts stock back and takes the order out
+      // of every revenue figure. Failing it silently leaves the seller believing all three
+      // happened.
+      if (!res.ok) { showActionFailedToast(); return; }
       const badge = card.querySelector<HTMLElement>('.order-card__status-badge');
       if (badge) {
         badge.style.background = `${colorMap.cancelled ?? '#6b7280'}1a`;
@@ -841,10 +863,16 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
 
     let data: { ok: boolean; items?: Parameters<typeof buildOrderCard>[0][]; page?: number; totalPages?: number; total?: number };
     try {
+    // A failed load leaves the PREVIOUS page on screen. That is the right thing to keep — blanking
+    // the list would claim the filter matched nothing — but it is silent unless it says so, and
+    // "nothing moved" is indistinguishable from "the filter matched what was already here".
       const res = await fetch(`/api/seller/orders?${params.toString()}`);
       data = await res.json() as typeof data;
-    } catch { return; }
-    if (!data.ok) return;
+    } catch {
+      showActionFailedToast();
+      return;
+    }
+    if (!data.ok) { showActionFailedToast(); return; }
 
     ordersCurrentPage = data.page ?? 1;
     list.innerHTML = (data.items ?? []).map(buildOrderCard).join('');
@@ -911,6 +939,8 @@ export function initOrdersTab(onAlertsChanged: () => void): void {
     async function fetchStoreOrders(): Promise<Parameters<typeof buildOrderCard>[0][] | null> {
       try {
         const res = await fetch(`/api/seller/orders?storeSlug=${encodeURIComponent(storeSlugForOrders)}`);
+        // silent: a background refresh of one card's data, not something anyone pressed — the card
+        // already on screen stays correct and the next poll retries.
         if (!res.ok) return null;
         const { orders } = await res.json() as { orders: Parameters<typeof buildOrderCard>[0][] };
         return orders;

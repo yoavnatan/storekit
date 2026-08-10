@@ -1307,23 +1307,8 @@ body:has(.site-header.is-stuck) .store-banner {
 .badge--stock { background: #dcfce7; color: #166534; font-size: 0.7rem; }
 .badge--muted { background: var(--color-bg); color: var(--color-muted); font-size: 0.7rem; border: 1px solid var(--color-border); }
 
-@keyframes badge-pulse {
-  0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-accent) 50%, transparent); }
-  80%  { box-shadow: 0 0 0 7px color-mix(in srgb, var(--color-accent) 0%,  transparent); }
-  100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--color-accent) 0%,  transparent); }
-}
-
-.badge--new {
-  position: absolute;
-  top: 0.5rem;
-  inset-inline-start: 0.5rem;
-  z-index: 1;
-  background: color-mix(in srgb, var(--color-accent) 90%, transparent);
-  color: #fff;
-  font-weight: 700;
-  font-size: 0.7rem;
-  animation: badge-pulse 2.5s ease-out infinite;
-}
+/* `.badge--new` moved to utilities/utils.css on 2026-08-10, next to `.sale-badge`: the two
+   share one box now and a private copy in a page stylesheet is how they drifted apart. */
 
 .empty-state {
   display: flex;
