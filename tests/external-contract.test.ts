@@ -172,6 +172,11 @@ const FEED_LIMITS: Record<string, number> = {
   'g:age_group': 20,
   'g:price': 40,
   'g:sale_price': 40,
+  // A date RANGE, so like `shipping_weight` the real rule is the format, not a length — two
+  // ISO-8601 instants separated by '/', each `YYYY-MM-DDThh:mm±hhmm` (Merchant Center help for the
+  // attribute, checked 2026-08-10). That is 43 characters and cannot vary; the number here is only
+  // the ceiling this file needs, and the shape is asserted below where it belongs.
+  'g:sale_price_effective_date': 60,
   'g:identifier_exists': 5,
 };
 
@@ -232,6 +237,31 @@ describe('the Merchant/Catalog feed cannot emit a value the platforms reject', (
       .filter(([tag, value]) => value.length > (FEED_LIMITS[tag] ?? Infinity))
       .map(([tag, value]) => `${tag}: ${value.length} > ${FEED_LIMITS[tag]}`);
     expect(over, 'clamp it in product-feed.ts — an over-length attribute is a dropped item').toEqual([]);
+  });
+
+  it('dates a sale price in the exact shape the spec accepts', () => {
+    // Its own fixture rather than a discount on the adversarial product: this is the one attribute
+    // whose value is a FORMAT, and a malformed one is not a clamped value, it is a rejected item.
+    // The adversarial row carries no discount, so the scan above can only prove the tag is
+    // declared — not that what it holds would parse.
+    const discounted = { ...adversarialProduct(), discount: { type: 'percent' as const, value: 20, startsAt: '2026-08-01', endsAt: '2026-08-14' } };
+    const values = feedTagValues(
+      toMerchantXml(buildFeedItems(discounted, { ...FEED_CTX, nowMs: Date.parse('2026-08-10T09:00:00.000Z') }), {
+        title: 'feed', link: 'https://dezabin.co.il', description: 'feed', currency: 'ILS',
+      }),
+    );
+    const dates = values.filter(([tag]) => tag === 'g:sale_price_effective_date').map(([, v]) => v);
+    expect(dates.length, 'the fixture stopped producing a sale price').toBe(4);
+    const ISO_RANGE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}[+-]\d{4}\/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}[+-]\d{4}$/;
+    for (const d of dates) {
+      expect(d, `not the spec's date-range format: ${d}`).toMatch(ISO_RANGE);
+      const [from, to] = d.split('/') as [string, string];
+      // A range that ends before it starts is well-formed and meaningless; Google would apply the
+      // sale price for no window at all, i.e. advertise a price the landing page contradicts.
+      expect(new Date(to).getTime()).toBeGreaterThan(new Date(from).getTime());
+    }
+    // Never dated without the price it dates.
+    expect(values.filter(([tag]) => tag === 'g:sale_price')).toHaveLength(4);
   });
 
   it('emits no attribute this file has never heard of', () => {

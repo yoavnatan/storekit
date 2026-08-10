@@ -327,7 +327,10 @@ const pmI18n = {
         </svg>
         {lang === 'he' ? 'לחנות' : 'To store'}
       </a>
-      <a href={checkoutHref}
+      <!-- Stays a real <a href> — with JS off, or when this product cannot be added at all (out of
+           stock, no add-to-cart row rendered), "go to checkout" is exactly what it should still do.
+           The script upgrades it to buy-now; see the "Nav 'לתשלום' = buy now" block. -->
+      <a href={checkoutHref} id="nav-to-checkout-btn"
          class="inline-flex items-center gap-1.5 text-sm transition-colors duration-150 hover:[color:var(--color-text)]"
          style="color:var(--color-muted);text-decoration:none">
         {lang === 'he' ? 'לתשלום' : 'Checkout'}
@@ -833,7 +836,7 @@ const pmI18n = {
   import { setLightboxImage, resetLightboxImage, lightboxWidth, warmLightboxImage, neighbourIndexes } from '../../lib/lightbox-image.js';
   import { spawnHeartBurst } from '../../lib/burst.js';
   import { recordStoreVisit } from '../../lib/recent-stores.js';
-  import { initCustomDomainLinks, initAdLandingLinks, readPlatformBoundary } from '../../lib/custom-domain-links.js';
+  import { initCustomDomainLinks, initAdLandingLinks, readPlatformBoundary, refreshCheckoutCartFragment } from '../../lib/custom-domain-links.js';
 
   const page = document.querySelector<HTMLElement>('.product-detail-page');
   const storeSlug = page?.dataset.storeSlug ?? '';
@@ -842,7 +845,8 @@ const pmI18n = {
   // Clean in-store URLs when served on the store's own verified domain, and — the load-bearing
   // half — every PLATFORM-owned link (cart, checkout, login, buyer area) sent to the platform
   // origin, carrying the basket and the visitor's identity with it (custom-domain-links.ts).
-  initCustomDomainLinks(storeSlug, page?.dataset.customHost ?? '', readPlatformBoundary(page));
+  const platformBoundary = readPlatformBoundary(page);
+  initCustomDomainLinks(storeSlug, page?.dataset.customHost ?? '', platformBoundary);
   // The crossing that goes the other way: an ad landing is on the platform, and the 301 off it
   // carries no handoff, so the click after the landing would drop the ad attribution.
   initAdLandingLinks(storeSlug, page?.dataset.adLanding === '1');
@@ -1381,6 +1385,51 @@ const pmI18n = {
         addBtn.classList.remove('btn--confirmed');
         applyStockState(); // re-enables only if stock remains, not blindly
       }, 1400);
+    });
+  }
+
+  // ── Nav "לתשלום" = buy now ─────────────────────────────────────────
+  // The other two checkout buttons on this page (#to-checkout-btn, #sticky-to-checkout-btn) START
+  // HIDDEN and are revealed by add-to-cart, so pressing either always means "pay for what I just
+  // added". This one sits in the top nav and is visible on arrival, which made it the only
+  // checkout on the page that could be pressed with the product NOT in the cart — from a fresh
+  // visit it opened a checkout with nothing on it. The link was never wrong about the store
+  // (`?store=` has always been on it); it was wrong that there was anything to pay for.
+  //
+  // So it now does the whole gesture: choose → add → checkout. Deliberately NOT a fourth code path
+  // — it reuses this module's own selection state, the same `flagMissingVariants` gate and the same
+  // `addItem`, because a second implementation of "what did the buyer pick" is how the swatch and
+  // the cart end up disagreeing.
+  const navToCheckoutBtn = document.getElementById('nav-to-checkout-btn') as HTMLAnchorElement | null;
+  if (navToCheckoutBtn && addBtn) {
+    navToCheckoutBtn.addEventListener('click', (e) => {
+      // Sold out: nothing to add, and the href is then the honest action. Also leaves middle-click
+      // / ⌘-click / "open in new tab" alone — those never fire a plain left click.
+      if (addBtn.disabled || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      // Variants unchosen → stay on the page and shake the missing dimension(s). Same gate as
+      // add-to-cart, so a product needing a size can no more be bought from here than from there.
+      if (pageVariants.length && flagMissingVariants()) return;
+
+      const { slug = '', productId = '', name = '', price = '0', image = '', category = '' } = addBtn.dataset;
+      const variantsCopy = Object.keys(selectedVariants).length ? { ...selectedVariants } : undefined;
+      // Already in the cart — from an earlier press of add-to-cart, or a previous visit. Adding
+      // again would silently double the quantity of someone who only asked to go and pay.
+      if (getCartQty(storeSlug, slug, variantsCopy) === 0) {
+        addItem(storeSlug, storeName, { slug, productId, name, price: Number(price), image, stock: maxStock }, qty, variantsCopy, false);
+        // `addItem` can REFUSE — a seller may not buy from their own store, and it says so in a
+        // toast (own-store-guard.ts). Navigating on top of that answers the explanation by moving
+        // them to a checkout with nothing on it. Re-reading the cart, rather than re-testing that
+        // one rule here, is what keeps a future refusal from silently doing the same.
+        if (getCartQty(storeSlug, slug, variantsCopy) === 0) return;
+        trackAddToCart({ id: adItemId(productId, variantsCopy), productId, name, price: Number(price), category }, qty);
+      }
+      // The delegated refresh in `initCustomDomainLinks` already ran (capture phase) — but it ran
+      // BEFORE the add above, so on a custom domain it stamped the basket without this item.
+      // Re-stamp now that there is something to carry, then read the attribute back: `href`, not
+      // the constant, because the rewrite is what points this at the platform origin at all.
+      refreshCheckoutCartFragment(navToCheckoutBtn, storeSlug, platformBoundary);
+      window.location.href = navToCheckoutBtn.href;
     });
   }
 
