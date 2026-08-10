@@ -728,9 +728,17 @@ export const translations = {
       repColDate: 'תאריך',
       repColCustomer: 'לקוח',
       repColItems: 'פריטים',
-      repColGross: 'ברוטו',
+      // ── The money columns, and why none of them says "נטו" ──────────────────────────────
+      // They used to read ברוטו · הנחה · נטו · עמלה · לתשלום לך, and the owner read that row and
+      // asked what the difference between the last two was — which is the right question, because
+      // in Israeli business Hebrew נטו is what is left AFTER deductions, i.e. the last column.
+      // The word had leaked out of the code, where `netAgorot` legitimately means "net of the
+      // discount"; a field name is not a column heading.
+      // So the row now spells the arithmetic instead of naming it: 100 · −10 · 90 · −11 · 79.
+      // Nothing is called נטו, because two columns were competing for it.
+      repColGross: 'לפני הנחה',
       repColDiscount: 'הנחה',
-      repColNet: 'נטו',
+      repColNet: 'סכום המכירה',
       repColCommission: 'עמלה',
       repColPayout: 'לתשלום לך',
       repColState: 'מצב',
@@ -750,7 +758,7 @@ export const translations = {
 
       repSumOrders: 'הזמנות:',
       repSumUnits: 'יחידות:',
-      repSumNet: 'נטו:',
+      repSumNet: 'מחזור:',
       repSumCommission: 'עמלה:',
       repSumPayout: 'לתשלום לך:',
       repSumProducts: 'מוצרים:',
@@ -2207,9 +2215,9 @@ export const translations = {
       repColDate: 'Date',
       repColCustomer: 'Customer',
       repColItems: 'Items',
-      repColGross: 'Gross',
+      repColGross: 'Before discount',
       repColDiscount: 'Discount',
-      repColNet: 'Net',
+      repColNet: 'Sale total',
       repColCommission: 'Commission',
       repColPayout: 'Your payout',
       repColState: 'State',
@@ -2227,7 +2235,7 @@ export const translations = {
 
       repSumOrders: 'Orders:',
       repSumUnits: 'Units:',
-      repSumNet: 'Net:',
+      repSumNet: 'Turnover:',
       repSumCommission: 'Commission:',
       repSumPayout: 'Your payout:',
       repSumProducts: 'Products:',

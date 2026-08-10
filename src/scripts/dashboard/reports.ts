@@ -17,7 +17,7 @@
  */
 import { escapeHtml as esc } from '../../lib/html-escape.js';
 import { formatAgorot } from '../../lib/money.js';
-import { periodRange, shortDate, PERIOD_PRESETS, PERIOD_PRESET_LABEL_KEY, type PeriodPreset } from '../../lib/date-range.js';
+import { periodRange, shortDate, displayDate, PERIOD_PRESETS, PERIOD_PRESET_LABEL_KEY, type PeriodPreset } from '../../lib/date-range.js';
 import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 // `seller-report-shapes.js`, never `seller-reports.js`: the builders there import `orders.ts`,
 // which reaches `db.ts`, which opens a connection pool at module scope — so importing them from a
@@ -61,7 +61,9 @@ const SORT_CHEVRON = '<svg class="sort-icon" width="10" height="10" viewBox="0 0
 
 export function columnsFor(report: ReportId, t: Record<string, string>): Column<never>[] {
   const sales: Column<SalesRow>[] = [
-    { key: 'day', head: t.repColDate ?? '', cell: (r) => esc(r.dayISO), sortBy: (r) => r.dayISO },
+    // DD/MM/YYYY on screen, and the ISO string as the sort key — sorting the formatted text would
+    // put 03/08 before 31/07, which is the classic way a date column silently sorts wrong.
+    { key: 'day', head: t.repColDate ?? '', cell: (r) => esc(displayDate(r.dayISO)), sortBy: (r) => r.dayISO },
     { key: 'buyer', head: t.repColCustomer ?? '', cell: (r) => esc(r.buyerName) },
     { key: 'items', head: t.repColItems ?? '', num: true, cell: (r) => String(r.items) },
     { key: 'gross', head: t.repColGross ?? '', num: true, cell: (r) => money(r.grossAgorot) },
@@ -283,14 +285,21 @@ export function initReportsTab(): void {
       `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p}" style="${p === active ? 'font-weight:700;color:var(--color-primary)' : ''}">${esc(t[PERIOD_PRESET_LABEL_KEY[p]] ?? p)}</button>`;
     // Both fields AND Apply on ONE line, and the whole menu tall enough not to scroll — both
     // learned by the performance picker, whose Apply button fell below the portal's 320px cap.
+    // `dir="ltr"` belongs on each DATE FIELD, never on the row that holds them. A date is an LTR
+    // run and its segments need it; the row is a Hebrew reading order, and the attribute on the
+    // row flipped the whole thing — so "החל" sat on the RIGHT, at the START of an RTL row, before
+    // the fields it applies to. On an RTL page the action belongs at the END, which is the left.
+    // (Reported on the reports picker 2026-08-10. The advertising picker had it right all along
+    // and is what both of these now match. Same trap as price-html.ts's badge: a direction set on
+    // a container resolves that container's own inline axis too.)
     return `${PERIOD_PRESETS.map(item).join('')}
       <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>
       <div class="px-3 pt-1.5 pb-2">
         <div class="text-[.72rem] [color:var(--color-muted)] mb-1.5">${esc(t.perfPresetCustom ?? '')}</div>
-        <div class="flex items-center gap-1.5" dir="ltr">
-          <input type="date" data-range-from value="${esc(fromInput?.value ?? '')}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+        <div class="flex items-center gap-1.5">
+          <input type="date" dir="ltr" data-range-from value="${esc(fromInput?.value ?? '')}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
           <span class="muted text-[0.8rem] shrink-0">–</span>
-          <input type="date" data-range-to value="${esc(toInput?.value ?? '')}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+          <input type="date" dir="ltr" data-range-to value="${esc(toInput?.value ?? '')}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
           <button type="button" class="btn btn--sm btn--ghost shrink-0" data-range-apply>${esc(t.perfApply ?? '')}</button>
         </div>
       </div>`;

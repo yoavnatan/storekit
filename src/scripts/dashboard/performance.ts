@@ -755,14 +755,21 @@ export function initPerformanceTab(): void {
     // inline Apply sit on ONE line (so the button never falls below the fold,
     // forcing a scroll — CURRENT_TASK item 1). A labelled sub-group makes clear
     // this Apply commits only the custom dates, not "the whole menu".
+    // `dir="ltr"` belongs on each DATE FIELD, never on the row that holds them. A date is an LTR
+    // run and its segments need it; the row is a Hebrew reading order, and the attribute on the
+    // row flipped the whole thing — so "החל" sat on the RIGHT, at the START of an RTL row, before
+    // the fields it applies to. On an RTL page the action belongs at the END, which is the left.
+    // (Reported on the reports picker 2026-08-10. The advertising picker had it right all along
+    // and is what both of these now match. Same trap as price-html.ts's badge: a direction set on
+    // a container resolves that container's own inline axis too.)
     return `${presetsHtml}
       <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>
       <div class="px-3 pt-1.5 pb-2">
         <div class="text-[.72rem] [color:var(--color-muted)] mb-1.5">${i18n.perfPresetCustom ?? 'Custom'}</div>
-        <div class="flex items-center gap-1.5" dir="ltr">
-          <input type="date" data-range-from value="${fromInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+        <div class="flex items-center gap-1.5">
+          <input type="date" dir="ltr" data-range-from value="${fromInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
           <span class="muted text-[0.8rem] shrink-0">–</span>
-          <input type="date" data-range-to value="${toInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+          <input type="date" dir="ltr" data-range-to value="${toInput?.value ?? ''}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
           <button type="button" class="btn btn--sm btn--ghost shrink-0" data-range-apply>${i18n.perfApply ?? 'Apply'}</button>
         </div>
       </div>`;

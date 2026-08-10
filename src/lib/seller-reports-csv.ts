@@ -18,6 +18,13 @@
  * Money is written as a plain decimal (`123.45`), never formatted with a ₪ or a thousands
  * separator: the point of the column is that it can be summed in the spreadsheet, and `1,234 ₪` is
  * text there.
+ *
+ * **The date stays ISO in the FILE while the screen shows DD/MM/YYYY, and that is deliberate.** A
+ * spreadsheet parses `2026-08-03` as a real date on every machine and then renders it in the
+ * reader's own locale — so on an Israeli Excel the bookkeeper sees 03/08/2026 anyway, and the
+ * column still sorts and filters as a date. Writing `03/08/2026` into the file instead would be
+ * read as March 8th by any machine set to a US locale, which is a wrong date with no error
+ * anywhere. The unambiguous form travels; the readable form is the screen's job.
  */
 import { BOM, toCsvCell, sanitizeCsvCell } from './csv-bulk.js';
 import { fromAgorot } from './money.js';
@@ -35,10 +42,10 @@ const SALES_HEADERS: Header[] = [
   { he: 'לקוח', en: 'Customer' },
   { he: 'עיר', en: 'City' },
   { he: 'פריטים', en: 'Items' },
-  { he: 'ברוטו', en: 'Gross' },
+  { he: 'לפני הנחה', en: 'Before discount' },
   { he: 'הנחה', en: 'Discount' },
   { he: 'קוד קופון', en: 'Coupon code' },
-  { he: 'נטו', en: 'Net' },
+  { he: 'סכום המכירה', en: 'Sale total' },
   { he: 'משלוח', en: 'Shipping' },
   { he: 'עמלת פלטפורמה', en: 'Platform commission' },
   { he: 'לתשלום למוכר', en: 'Seller payout' },
@@ -51,9 +58,9 @@ const PRODUCT_HEADERS: Header[] = [
   { he: 'מוצר', en: 'Product' },
   { he: 'מק"ט', en: 'SKU' },
   { he: 'יחידות', en: 'Units' },
-  { he: 'ברוטו', en: 'Gross' },
+  { he: 'לפני הנחה', en: 'Before discount' },
   { he: 'הנחה (יחסית)', en: 'Discount (allocated)' },
-  { he: 'נטו', en: 'Net' },
+  { he: 'סכום המכירה', en: 'Sale total' },
   { he: 'מלאי נוכחי', en: 'Current stock' },
 ];
 

@@ -188,6 +188,23 @@ export function coerceRange(fromRaw: unknown, toRaw: unknown, today: Date = new 
 }
 
 /** Compact day.month caption from an ISO date, e.g. "2026-07-08" → "8.7". */
+/**
+ * A day for a person to READ, in the Israeli order: `2026-08-03` → `03/08/2026`.
+ *
+ * String surgery, not `toLocaleDateString`: an ISO day has no time and no zone, and handing it to
+ * `new Date()` gives it both — parsed as UTC midnight and then rendered in the browser's zone,
+ * which in a negative offset prints the day before. The report's date column showed a raw ISO
+ * string until 2026-08-10, which is unambiguous and correct and reads as machine output to an
+ * Israeli seller.
+ *
+ * `shortDate` below stays as it is — `3.8` is the idiomatic compact form for a RANGE label in a
+ * button, and it is shared with the ad picker.
+ */
+export function displayDate(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
+
 export function shortDate(iso: string): string {
   const [, m, d] = iso.split('-');
   return `${Number(d)}.${Number(m)}`;
