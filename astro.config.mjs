@@ -86,7 +86,11 @@ export default defineConfig({
   // fetch their HTML on hover/touch-start, so the click that follows renders from
   // cache instead of waiting on the server. Genuine navigations only — Back keeps
   // using bfcache, which is still the one path that restores with zero work.
-  // Marked today: the product page's "לחנות" link and StoreCard.
+  // Marked today: the product page's "לחנות" link, StoreCard, the homepage spotlight tile and
+  // its shelf-header store link (both point at a store page, like StoreCard), and the SEARCH
+  // result card. That search card is the ONLY product-page link marked anywhere, and the reason
+  // is the limit below rather than a preference: the store page's product name is hijacked into
+  // the quick-view modal, so prefetching it would download a page the click does not open.
   // The limit worth knowing before you try to work around it (moved here from AI_INSTRUCTIONS.md
   // 2026-07-31): prefetch binds only to links PRESENT AT LOAD, so a link built later via innerHTML
   // — the quick-view modal's "לדף המוצר המלא" — cannot use it, and `astro:prefetch`'s prefetch()
