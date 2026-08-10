@@ -52,6 +52,7 @@ import AdminPanelShell from '../../components/admin/AdminPanelShell.astro';
 import { loadMoneyLogPanel } from '../../lib/admin-moneylog-panel.js';
 import { reconcilePlatform } from '../../lib/reconcile.js';
 import { planPayouts } from '../../lib/payout-run.js';
+import AdminPayoutPlanCard from '../../components/admin/AdminPayoutPlanCard.astro';
 import { getAnalyticsOverview } from '../../lib/analytics.js';
 import { getSellerFunnel } from '../../lib/seller-funnel.js';
 
@@ -70,6 +71,9 @@ const tabs = [
   { id: 'advertising', label: 'פרסום' },
   { id: 'messages', label: 'הודעות' },
   { id: 'alerts', label: 'התראות ושגיאות' },
+  // Beside the journal and before it: this one is what is ABOUT to happen and the journal is what
+  // already did, and a number you can still act on comes before a number you can only check.
+  { id: 'payouts', label: 'תשלומים למוכרים' },
   { id: 'moneylog', label: 'יומן כספי' },
 ] as const;
 
@@ -268,7 +272,7 @@ const [
   // sellers are stuck with money we cannot send. Four queries whatever the platform's size
   // (payout-run.ts#planPayouts), and it is the SAME function the run then acts on, so this figure
   // and the transfers cannot be two answers. Money tab only, like the reconciliation beside it.
-  only(['moneylog'], () => planPayouts(), null),
+  only(['payouts'], () => planPayouts(), null),
   // Filter, sort, "new only" and the page slice are ALL in the query (orders.ts#getAdminOrdersPage).
   // This used to read every order the platform has ever taken, to render fifteen rows.
   only(['orders'], () => getAdminOrdersPage(
@@ -670,8 +674,16 @@ const badgeFor: Record<string, number> = badgeCounts;
         />
       </AdminPanelShell>
 
-      <AdminPanelShell panel="moneylog" active={!!moneyLog && !!reconciliation && !!payoutPlan}>
-        {moneyLog && reconciliation && payoutPlan && <AdminMoneyLogPanel
+      <AdminPanelShell panel="payouts" active={!!payoutPlan}>
+        {payoutPlan && <AdminPayoutPlanCard
+          plan={payoutPlan}
+          page={parsePage(sp, 'paypage')}
+          buildUrl={(p) => tabUrl('payouts', { paypage: p > 1 ? String(p) : undefined })}
+        />}
+      </AdminPanelShell>
+
+      <AdminPanelShell panel="moneylog" active={!!moneyLog && !!reconciliation}>
+        {moneyLog && reconciliation && <AdminMoneyLogPanel
           events={moneyLog!.events}
           query={moneyLog!.query}
           targetMissing={moneyLog!.targetMissing}
@@ -686,16 +698,6 @@ const badgeFor: Record<string, number> = badgeCounts;
             mlpage: p > 1 ? String(p) : undefined,
           })}
           reconciliation={reconciliation!}
-          payoutPlan={payoutPlan!}
-          payoutPage={parsePage(sp, 'paypage')}
-          payoutPageUrl={(p) => tabUrl('moneylog', {
-            mtype: moneyLog!.query.type,
-            mq: moneyLog!.query.q || undefined,
-            mfrom: moneyLog!.query.from || undefined,
-            mto: moneyLog!.query.to || undefined,
-            mlpage: moneyLog!.page > 1 ? String(moneyLog!.page) : undefined,
-            paypage: p > 1 ? String(p) : undefined,
-          })}
         />}
       </AdminPanelShell>
     </div>
