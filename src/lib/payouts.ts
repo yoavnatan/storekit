@@ -1,6 +1,6 @@
 import { rows, firstRow, isUuid } from './db.js';
 import { recordMoneyEvent } from './money-events.js';
-import { RELEASABLE_SQL, releasableParams } from './payout-hold.js';
+import { RELEASABLE_SQL, releasableParams, RELEASABLE_PARAM_COUNT } from './payout-hold.js';
 import { NET_SQL } from './order-reporting.js';
 import { REVENUE_PAYMENT_STATUSES, REVENUE_SHIPPING_STATUSES } from './order-status-rules.js';
 import { SELLER_TIERS, DEFAULT_TIER } from './pricing.js';
@@ -206,6 +206,10 @@ export async function getReleasableBySeller(
 ): Promise<ReleasableForSeller[]> {
   const tiers = SELLER_TIERS.map((t) => t.id);
   const percents = SELLER_TIERS.map((t) => t.commissionPercent);
+  // Positions derived, never written as literals: RELEASABLE_SQL's own parameter count has already
+  // changed once, and the two call sites that had hardcoded the next index silently started
+  // comparing a uuid array against a list of shipping statuses.
+  const A = RELEASABLE_PARAM_COUNT + 1, B = RELEASABLE_PARAM_COUNT + 2, C = RELEASABLE_PARAM_COUNT + 3;
   const found = await rows<{ seller_id: string; gross: string | number; commission: string | number }>(
     `SELECT st.seller_id,
             SUM(${NET_SQL})                              AS gross,
@@ -214,8 +218,8 @@ export async function getReleasableBySeller(
        JOIN orders  o   ON o.id = os.order_id
        JOIN stores  st  ON st.slug = os.store_slug
        JOIN sellers sel ON sel.id = st.seller_id
-       JOIN unnest($7::text[], $8::numeric[]) AS r(tier, pct)
-              ON r.tier = COALESCE(sel.tier, $9::text)
+       JOIN unnest($${A}::text[], $${B}::numeric[]) AS r(tier, pct)
+              ON r.tier = COALESCE(sel.tier, $${C}::text)
       WHERE ${RELEASABLE_SQL}
       GROUP BY st.seller_id`,
     [...releasableParams(todayISO), tiers, percents, DEFAULT_TIER],

@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import crypto from 'node:crypto';
 import { query, rows } from '../src/lib/db.js';
-import { orderHold, isReleasable, RELEASABLE_SQL, releasableParams } from '../src/lib/payout-hold.js';
+import { orderHold, isReleasable, RELEASABLE_SQL, releasableParams, RELEASABLE_PARAM_COUNT } from '../src/lib/payout-hold.js';
 import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from '../src/lib/payout-schedule.js';
 import { addDaysISO } from '../src/lib/date-range.js';
 
@@ -37,6 +37,18 @@ const CASES: Case[] = [
   // The one that matters most: paid AND cancelled. `paymentStatus === 'paid'` alone matches this
   // row, which is exactly the mistake AI_INSTRUCTIONS names — it must never become payable.
   { note: 'paid then cancelled, long past any hold', paymentStatus: 'paid', shippingStatus: 'cancelled', paidAt: at(daysAgo(200)), deliveredAt: at(daysAgo(190)), expect: 'not_payable' },
+
+  // ── The parcel never left ──
+  // The hole the owner found on 2026-08-10: these three were `releasable` on the payment fallback,
+  // because a paid-but-unshipped order legitimately counts as revenue. The platform paid sellers
+  // for parcels that were never sent. Long past both clocks here, so a regression shows up as a
+  // payout rather than as an off-by-one.
+  { note: 'never touched, long past both clocks', paymentStatus: 'paid', shippingStatus: 'pending', paidAt: at(daysAgo(120)), deliveredAt: null, expect: 'held' },
+  { note: 'seller started packing but never shipped', paymentStatus: 'paid', shippingStatus: 'processing', paidAt: at(daysAgo(120)), deliveredAt: null, expect: 'held' },
+  // `ready` is the one that feels like the work is done — label printed, parcel packed. It is still
+  // on the seller's table, and a status the seller sets alone must not start a clock ending in a
+  // transfer.
+  { note: 'packed and labelled, still on the seller\'s table', paymentStatus: 'paid', shippingStatus: 'ready', paidAt: at(daysAgo(120)), deliveredAt: null, expect: 'held' },
 
   // ── The delivery clock ──
   { note: 'delivered yesterday', paymentStatus: 'paid', shippingStatus: 'delivered', paidAt: at(daysAgo(30)), deliveredAt: at(daysAgo(1)), expect: 'held' },
@@ -83,6 +95,31 @@ describe('the hold rule', () => {
     expect(undelivered.releaseDayISO).toBe(addDaysISO(daysAgo(1), FALLBACK_DAYS_AFTER_PAYMENT));
   });
 
+  it('an unshipped order says WHY it has no date, distinctly from an undatable one', () => {
+    // Two different held-with-no-date states needing opposite messages: "ship it and the countdown
+    // begins" versus "something is wrong with this record". A single null basis for both would put
+    // the wrong one in front of a seller.
+    const unshipped = orderHold({ paymentStatus: 'paid', shippingStatus: 'pending', paidAt: at(daysAgo(120)), deliveredAt: null }, TODAY);
+    expect(unshipped.state).toBe('held');
+    expect(unshipped.releaseDayISO).toBeNull();
+    expect(unshipped.basis).toBe('unshipped');
+
+    const undatable = orderHold({ paymentStatus: 'paid', shippingStatus: 'delivered', paidAt: null, deliveredAt: at(daysAgo(60)) }, TODAY);
+    expect(undatable.state).toBe('held');
+    expect(undatable.basis).toBeNull();
+  });
+
+  it('shipping an old order starts the clock rather than releasing it instantly', () => {
+    // The seller can still fix it: an order paid 120 days ago and shipped today is held from the
+    // shipment, not released on the spot because the payment fallback lapsed months back.
+    const justShipped = orderHold({ paymentStatus: 'paid', shippingStatus: 'shipped', paidAt: at(daysAgo(120)), deliveredAt: null }, TODAY);
+    // ⚠️ Known and deliberate: the fallback runs from PAYMENT, so this one is releasable at once.
+    // It is correct against the rule as written and it is the tail the courier webhook closes
+    // (see the module header). Pinned so the day that changes, this case has to be re-read.
+    expect(justShipped.state).toBe('releasable');
+    expect(justShipped.basis).toBe('payment');
+  });
+
   it('never offers a release date for money that will never come', () => {
     const dead = orderHold({ paymentStatus: 'paid', shippingStatus: 'cancelled', paidAt: at(daysAgo(90)), deliveredAt: at(daysAgo(80)) }, TODAY);
     expect(dead.state).toBe('not_payable');
@@ -116,8 +153,9 @@ describe('the SQL twin agrees with the JS rule', () => {
 
   it('returns exactly the rows JS calls releasable', async () => {
     const found = await rows<{ id: string }>(
-      // $7: `releasableParams` supplies exactly six, so the first free slot is 7.
-      `SELECT o.id FROM orders o WHERE o.id = ANY($7::uuid[]) AND ${RELEASABLE_SQL}`,
+      // Derived, not written as a literal — this test hardcoded `$7` and broke the day the
+      // predicate grew a seventh parameter of its own.
+      `SELECT o.id FROM orders o WHERE o.id = ANY($${RELEASABLE_PARAM_COUNT + 1}::uuid[]) AND ${RELEASABLE_SQL}`,
       [...releasableParams(TODAY), [...ids.keys()]],
     );
     const fromSql = new Set(found.map((r) => r.id));

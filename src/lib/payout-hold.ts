@@ -3,8 +3,10 @@ import { addDaysISO } from './date-range.js';
 import {
   orderCountsAsRevenue,
   orderMoneyWasTaken,
+  orderPayoutClockRuns,
   REVENUE_PAYMENT_STATUSES,
   REVENUE_SHIPPING_STATUSES,
+  PAYOUT_CLOCK_SHIPPING_STATUSES,
 } from './order-status-rules.js';
 import { HOLD_DAYS_AFTER_DELIVERY, FALLBACK_DAYS_AFTER_PAYMENT } from './payout-schedule.js';
 import type { Order } from './orders.js';
@@ -34,13 +36,24 @@ import type { Order } from './orders.js';
  * `shippingStatus === 'cancelled'` here would be the third place in the codebase to redefine what
  * cancelled means, which is the exact bug `order-status-rules.ts` was extracted to end.
  *
- * ── Why two clocks ──
+ * ── Why two clocks, and the gate in front of both ──
  * The delivery clock is the honest one: the return window starts when the buyer has the goods. But
  * it depends on a seller pressing a button, and a seller who never presses it would freeze their
- * own money forever and reasonably blame us. So there is a payment-based fallback — and it is
- * deliberately LONGER, not shorter. If it were shorter, "never mark it delivered" would be the
- * fastest route to getting paid, and the delivery status the whole fulfilment pipeline depends on
- * would quietly rot.
+ * own money forever and reasonably blame us. So there is a payment-based fallback.
+ *
+ * **Neither clock starts until the parcel has left** (`payoutClockRuns`). Without that gate the
+ * fallback paid out orders the seller never touched — the hole the owner found on 2026-08-10.
+ *
+ * ⚠️ **A correction, recorded because the wrong version was said out loud and is worth not
+ * re-deriving.** The fallback being LONGER than the delivery hold was justified as "reporting is
+ * the faster path, so nobody games it by staying quiet". That is only true when the parcel arrives
+ * within (fallback − hold) days: at 14 and 21, delivery on day 3 releases on 17 and silence
+ * releases on 21, but delivery on day 12 releases on 26 while silence still releases on 21. On a
+ * slow route, saying nothing pays sooner. The gate above removes the worst of it — you cannot get
+ * paid without shipping at all — but it does not remove this, and the real fix is not a bigger
+ * number: it is taking `delivered` from the COURIER's webhook rather than the seller's click
+ * (GO_LIVE §5), after which there is nothing for the seller to withhold. Until then, pick the
+ * fallback generously.
  *
  * Everything here is a business-calendar DAY, not an instant: `businessDayISO` for the event and
  * plain calendar arithmetic on top (the composition `visitor-retention.ts` already uses). Israel is
@@ -61,8 +74,13 @@ export interface OrderHold {
   /** Business day the money becomes releasable, or null when `state` is 'not_payable'. */
   releaseDayISO: string | null;
   /** Which clock decided it — carried so the seller's screen can say "14 days from delivery"
-   *  rather than an unexplained date, and so a support question has an answer. */
-  basis: 'delivery' | 'payment' | null;
+   *  rather than an unexplained date, and so a support question has an answer.
+   *
+   *  `'unshipped'` is the one that carries no date: the parcel has not left, so no clock has
+   *  started. It is deliberately distinct from `null` (which means we could not date the order at
+   *  all — an anomaly), because the two need opposite messages: one is "ship it and the countdown
+   *  begins", the other is "something is wrong with this record". */
+  basis: 'delivery' | 'payment' | 'unshipped' | null;
 }
 
 /** The order fields this rule reads. A projection rather than a full `Order` so a query may select
@@ -89,6 +107,26 @@ export function orderHold(order: HoldableOrder, todayISO: string = businessToday
   // have since been cancelled.
   if (!orderMoneyWasTaken(order)) return notPayable;
   if (!orderCountsAsRevenue(order)) return notPayable;
+
+  // ── The parcel has to have LEFT before any clock starts ──
+  //
+  // The hole this closes, found by the owner on 2026-08-10 and it was real: the fallback clock
+  // below releases money N days after payment so a seller who ships and never marks it delivered
+  // does not freeze their own funds. But the two checks above are TRUE from `pending` onward — a
+  // paid order that has not shipped is still revenue, correctly — so an order the seller never
+  // touched at all sat on the same timer and paid out. **The platform paid for parcels that were
+  // never sent, and nothing anywhere said so.**
+  //
+  // Not `not_payable`: nothing is lost and the seller can still ship tomorrow, at which point the
+  // clock starts normally. It is `held` with NO release date, because there genuinely is no date
+  // to show — the thing the date would depend on has not happened. `basis: 'unshipped'` is what
+  // lets the seller's screen say "ship it to start the countdown" instead of showing a blank.
+  //
+  // ⚠️ What this does NOT solve: an order that is never shipped at all now holds the buyer's money
+  // indefinitely. That is strictly better than paying the seller for it, and it is still wrong —
+  // the buyer is owed a cancellation and a refund after some number of days. That mechanism does
+  // not exist and the number is an owner decision (CURRENT_TASK §ג.11, with the returns policy).
+  if (!orderPayoutClockRuns(order)) return { state: 'held', releaseDayISO: null, basis: 'unshipped' };
 
   // A captured order with no `paid_at` cannot be dated, and dating it from something else would be
   // guessing with a seller's money. It stays held rather than releasable — the safe direction — and
@@ -141,6 +179,12 @@ export function isReleasable(order: HoldableOrder, todayISO: string = businessTo
 export const RELEASABLE_SQL = `
   o.payment_status = ANY($1::text[])
   AND o.shipping_status = ANY($2::text[])
+  -- The parcel has to have LEFT. ANDed with the revenue list rather than replacing it: revenue
+  -- excludes a cancelled order, this excludes one that was never sent, and they are different
+  -- questions. Its own list off payoutClockRuns, so a new status propagates here by filling in a
+  -- row and never by someone remembering this string exists.
+  -- (No backticks anywhere in this string: it is a template literal, and one would end it.)
+  AND o.shipping_status = ANY($7::text[])
   AND o.paid_at IS NOT NULL
   -- Prefilter on the RAW column so orders_payout_scan_idx stays in the plan. An order paid fewer
   -- than min(hold, fallback) days ago cannot be releasable under EITHER clock, so this excludes
@@ -153,9 +197,21 @@ export const RELEASABLE_SQL = `
      OR (o.delivered_at IS NULL AND (o.paid_at AT TIME ZONE $3)::date + $5::int <= ($6::date))
       )`;
 
-/** The six parameters `RELEASABLE_SQL` reads, in order. Built here so the SQL and its arguments
- *  cannot be assembled apart. `$6` (today) is supplied by the caller so a run and a report can be
- *  asked about the same day. */
+/**
+ * How many parameters `RELEASABLE_SQL` consumes — so a caller appending its OWN parameters says
+ * `$${RELEASABLE_PARAM_COUNT + 1}` instead of a literal.
+ *
+ * Added after the count went from six to seven and silently broke both call sites: they had written
+ * `$7` for their first extra argument, which now collided with this predicate's last one. The
+ * failure was loud in a test and would have been a wrong `WHERE` in production — a predicate
+ * comparing a uuid array against a list of shipping statuses. A positional parameter written as a
+ * literal after a variable-length prefix is a number that goes stale the moment the prefix changes.
+ */
+export const RELEASABLE_PARAM_COUNT = 7;
+
+/** The parameters `RELEASABLE_SQL` reads, in order. Built here so the SQL and its arguments cannot
+ *  be assembled apart. `$6` (today) is supplied by the caller so a run and a report can be asked
+ *  about the same day. */
 export function releasableParams(todayISO: string = businessTodayISO()): readonly unknown[] {
   return [
     REVENUE_PAYMENT_STATUSES,
@@ -164,5 +220,6 @@ export function releasableParams(todayISO: string = businessTodayISO()): readonl
     HOLD_DAYS_AFTER_DELIVERY,
     FALLBACK_DAYS_AFTER_PAYMENT,
     todayISO,
+    PAYOUT_CLOCK_SHIPPING_STATUSES,
   ];
 }

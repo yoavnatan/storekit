@@ -59,15 +59,40 @@ export interface ShippingStatusRule {
    *  parcel that is still their responsibility is not an operational choice. 'shipped' still
    *  counts: it is moving, and the seller is the one who marks it arrived. */
   blocksStoreClosure: boolean;
+  /**
+   * Has the parcel actually LEFT the seller — so the payout clock may run?
+   *
+   * Its own column, and the reason is a hole this table was asked to close (2026-08-10, owner:
+   * *"he can just never send the product, and the money still goes to him?"* — and it did).
+   * `payout-hold.ts` has a fallback clock: an order nobody marked delivered releases N days after
+   * payment, so a seller who ships and then never touches the status dropdown does not freeze their
+   * own money forever. That rule read `countsAsRevenue`, which is TRUE from `pending` onward — so
+   * an order the seller never touched at all released on the same timer. **The platform paid for
+   * parcels that were never sent.**
+   *
+   * `countsAsRevenue` could not have answered this: a paid order that has not shipped yet IS
+   * revenue — the sale happened, the money is real, every report is right to count it. "Is this a
+   * sale" and "has the seller done enough to be paid for it" are different questions, and this is
+   * the second one.
+   *
+   * `ready` is FALSE, and it is the row worth pausing on: the seller has packed the parcel and
+   * printed a label, which feels like having done the work. It is not — the parcel is still on
+   * their table, and a status the seller sets alone must never start a clock that ends in a
+   * transfer. `shipped` means it is with the courier and moving, which is the first point anyone
+   * outside the seller can corroborate. ⚠️ And it is still the SELLER who sets `shipped` today;
+   * the honest source is the courier's webhook (GO_LIVE §5), which is why this column is a floor
+   * and not the whole answer.
+   */
+  payoutClockRuns: boolean;
 }
 
 export const SHIPPING_STATUS_RULES: Record<ShippingStatus, ShippingStatusRule> = {
-  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true  },
-  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true  },
-  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true  },
-  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true  },
-  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false },
-  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false },
+  pending:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false },
+  processing: { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: false, buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false },
+  ready:      { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: true,  terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: false },
+  shipped:    { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: true , buyerAwaiting: true,  blocksStoreClosure: true,  payoutClockRuns: true  },
+  delivered:  { countsAsRevenue: true,  holdsStock: true,  cancellableFrom: false, terminal: false, notifiesBuyer: false, buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: true  },
+  cancelled:  { countsAsRevenue: false, holdsStock: false, cancellableFrom: false, terminal: true,  notifiesBuyer: true , buyerAwaiting: false, blocksStoreClosure: false, payoutClockRuns: false },
 };
 
 export interface PaymentStatusRule {
@@ -137,6 +162,17 @@ export const REVENUE_SHIPPING_STATUSES = shippingWhere('countsAsRevenue');
  */
 export const SHIPPING_PIPELINE_ORDER: ShippingStatus[] =
   (Object.keys(SHIPPING_STATUS_RULES) as ShippingStatus[]).filter((s) => !SHIPPING_STATUS_RULES[s].terminal);
+
+/** The shipping statuses from which a payout clock may run (`payoutClockRuns`), for the SQL half of
+ *  the hold rule in `payout-hold.ts`. ANDed with the revenue lists, never instead of them: a
+ *  cancelled order is excluded by revenue, an unshipped one by this. */
+export const PAYOUT_CLOCK_SHIPPING_STATUSES = shippingWhere('payoutClockRuns');
+
+/** Has the parcel left the seller, so money may release on a timer? Asked of the table rather than
+ *  compared against 'shipped'/'delivered' — the whole reason the table exists. */
+export function orderPayoutClockRuns(o: Pick<Order, 'shippingStatus'>): boolean {
+  return SHIPPING_STATUS_RULES[o.shippingStatus]?.payoutClockRuns === true;
+}
 
 /** Both halves of `orderBlocksStoreClosure`. */
 export const CLOSURE_BLOCKING_PAYMENT_STATUSES = paymentWhere('blocksStoreClosure');
