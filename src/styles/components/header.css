@@ -755,7 +755,17 @@ nav a:hover { color: var(--color-text); }
    renders a <span> when the seller uploaded nothing and an <img> when they did,
    so stores with no logo had their badge pushed 4px down and stores with one did
    not. Two stores, two vertical positions, from a selector that looked harmless. */
-.site-header .dz-logo { transform: translateY(0.113em); }
+.site-header .dz-logo { transform: translateY(0.0248em); }
+/* RE-DERIVED 2026-08-10, when the wordmark became outlines. It was 0.113em, and
+   that value was right for a lockup whose box was Heebo's LINE box — most of the
+   nudge was cancelling the half-leading above the letters. The SVG's viewBox is
+   cropped to the stroked ink, so the box now IS the band, and it very nearly
+   centres itself: at 0 the ink sits only 0.516px high, against the ~2.4px that
+   made this rule necessary in the first place.
+   Measured by the method above and not by any other: endpoints at 0em (-0.516px)
+   and 0.166em (+2.937px) on the built site, crossing at 0.0248em. Kept rather
+   than deleted because it is in `em` and therefore holds at every size this row
+   is used at, and half a pixel at header size is a whole one on a phone. */
 /* RE-MEASURED 2026-08-09 when the store name moved to Noto Serif, and deliberately
    NOT changed. The obvious expectation was that a value bisected against Heebo's
    metrics would be wrong for another family — that is the class of bug the note at

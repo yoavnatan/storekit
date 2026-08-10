@@ -26,6 +26,7 @@ import CsrfField from './CsrfField.astro';
 import StoreAvatar from './StoreAvatar.astro';
 import BrandLogo from './BrandLogo.astro';
 import { getLang, getT } from '../i18n/index.js';
+import { MARK_PATH, MARK_VIEW_BOX, STROKE_WIDTH } from '../lib/brand-lockup.js';
 import { getSellerSession } from '../lib/seller-auth.js';
 import { sellerHasAnyAlert } from '../lib/seller-alerts.js';
 
@@ -468,10 +469,13 @@ const strEmpty   = t.store.noProductsFound;
           </button>
           <div class="user-dropdown" id="user-dropdown" role="menu" hidden>
             {/* The D rather than a house: this row goes to the platform's own home,
-                and the mark says which platform. Same path as BrandLogo.astro and the
-                favicon — one drawing, three surfaces. */}
+                and the mark says which platform. The path is IMPORTED, not retyped —
+                src/lib/brand-lockup.ts is the one drawing the component, this row, the
+                favicon and the poster files all read, so they cannot drift apart.
+                It carries the wordmark's thickening too (same stroke, same paint as the
+                fill), or the menu's D would be lighter than the header's. */}
             <a href="/" class="user-dropdown__item" role="menuitem">
-              <svg width="11" height="14" viewBox="10.75 8 21.626 28" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M11.25 8 L23.676 8 L31.876 16.2 L31.876 27.8 L23.676 36 L11.25 36 Z M17.410 12.922 L20.726 12.922 L25.716 17.912 L25.716 26.088 L20.726 31.078 L17.410 31.078 Z"/></svg>
+              <svg width="11" height="14" viewBox={MARK_VIEW_BOX} aria-hidden="true"><path fill="currentColor" stroke="currentColor" stroke-width={STROKE_WIDTH} stroke-linejoin="miter" paint-order="stroke" fill-rule="evenodd" d={MARK_PATH}/></svg>
               {t.nav.home}
             </a>
             {/* Saved stores (CURRENT_TASK → סשן ג׳ 1). The only route to them used to be the
