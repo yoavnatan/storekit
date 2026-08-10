@@ -1,23 +1,19 @@
 export const prerender = false;
 import type { APIContext } from 'astro';
-import { getSellerSession, getSellerById } from '../../../lib/seller-auth.js';
+import { getSellerSession } from '../../../lib/seller-auth.js';
 import { findStoreBySlugOrPrevious, getStoresBySellerId } from '../../../lib/stores.js';
 import { getOrdersByStoreSlug, getOrderById, updateOrder, orderStoreNotes, orderBelongsToStore } from '../../../lib/orders.js';
-import { settleStoreClosure } from '../../../lib/store-lifecycle.js';
 import { readJsonBody, BODY_LIMIT } from '../../../lib/request-body.js';
-import { sendStoreLifecycleEmail } from '../../../lib/email/store-lifecycle-email.js';
 import type { StoreSubtotal } from '../../../lib/orders.js';
-import { notifyOrderStatusChanged } from '../../../lib/order-notify.js';
-import { restockProduct } from '../../../lib/store-products.js';
 import { filterAndSortSellerOrders, parseSellerOrderQuery } from '../../../lib/seller-orders-query.js';
 import { paginate, parsePage } from '../../../lib/pagination.js';
 import type { Order } from '../../../lib/orders.js';
 import { orderNetForStore } from '../../../lib/admin-stats.js';
 import { recordMoneyEvent } from '../../../lib/money-events.js';
-import { recordRefundOwed } from '../../../lib/refund-owed.js';
+import { settleStatusChange } from '../../../lib/order-status-change.js';
 import { storeSliceTotalAgorot } from '../../../lib/order-totals.js';
 import { toAgorot } from '../../../lib/money.js';
-import { SHIPPING_STATUS_RULES, canTransition, orderHoldsStock, type ShippingStatus } from '../../../lib/order-status-rules.js';
+import { SHIPPING_STATUS_RULES, canTransition, type ShippingStatus } from '../../../lib/order-status-rules.js';
 import { isValidEmail } from '../../../lib/email-address.js';
 
 // Never ship the whole per-store sellerNotes map to the client — on a multi-store
@@ -284,35 +280,14 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
   const updated = await updateOrder(orderId, updates as Parameters<typeof updateOrder>[1]);
   if (!updated) return json({ error: 'Order not found' }, 404);
 
-  // Journal every money-relevant mutation before acting on it (lib/money-events.ts).
-  // A status move is a money event even though no amount changes hands: 'cancelled'
-  // is what takes an order OUT of every revenue sum while leaving paymentStatus at
-  // 'paid', so without this entry there is no record of why a seller's reported
-  // revenue dropped between two views of the same period.
+  // Every consequence of a status move — journal, refund obligation, restock, buyer notification,
+  // pending store closure — belongs to `order-status-change.ts` and not to this route. It was all
+  // inline here until 2026-08-10, which was fine while a seller's click was the only way a status
+  // could change; the SLA job that cancels an unshipped order and gives the buyer their money back
+  // is the second caller, and a second copy of this sequence would be a second definition of what a
+  // cancellation does to stock and to money. That module's header carries the reasoning.
   if (prevStatus && updated.shippingStatus !== prevStatus) {
-    await recordMoneyEvent({
-      type: 'shipping_status_changed',
-      orderId,
-      checkoutRef: updated.checkoutRef,
-      storeSlug,
-      amountAgorot: orderNetForStore(updated, storeSlug),
-      from: prevStatus,
-      to: updated.shippingStatus,
-      actor: sellerId,
-      detail: !orderHoldsStock(updated)
-        ? 'cancelled — items restocked, order leaves every revenue sum (countsAsRevenue)'
-        : undefined,
-    });
-    // …and, separately, whether that move left the BUYER owed money. The row above is a fulfilment
-    // fact: the order stopped counting and the seller stopped owing a parcel. It says nothing about
-    // the money, which was really captured off a real card and is still ours until someone gives it
-    // back. `refund-owed.ts` owns the rule and writes the obligation; without it the only trace was
-    // a status row whose meaning a reader had to infer.
-    // `sellerId` twice, and they are two different things: the fourth argument is the ACTOR (who
-    // performed the cancellation, for the journal), the fifth is whose BALANCE it comes out of.
-    // They coincide here because a seller is cancelling their own order; on an admin path they
-    // would not.
-    await recordRefundOwed(before, updated, storeSlug, sellerId, sellerId);
+    await settleStatusChange({ before, after: updated, store, actor: sellerId });
   }
   const newNet = orderNetForStore(updated, storeSlug);
   if (newNet !== prevNet) {
@@ -327,60 +302,6 @@ export async function PATCH({ request, cookies }: APIContext): Promise<Response>
       actor: sellerId,
       detail: 'seller edited items / shipping / discount on this order',
     });
-  }
-
-  if (prevStatus && updated.shippingStatus !== prevStatus) {
-    // Stock goes back when the order stops holding it — asked of the status table
-    // (holdsStock) rather than tested against 'cancelled', so a future "returned"
-    // or "refunded" status restocks by filling in a row instead of by someone
-    // remembering this line exists. Each order is single-store (checkout creates one
-    // per store), so all items belong to this seller — safe to restock the lot.
-    // Guarded by the prev!==new check above, so a repeat request can't double-restock.
-    if (orderHoldsStock({ shippingStatus: prevStatus as ShippingStatus }) && !orderHoldsStock(updated)) {
-      for (const item of updated.items) {
-        await restockProduct(item.productId, item.qty, item.selectedVariants);
-      }
-    }
-    // Source-agnostic status pipeline: whoever moved the status (seller today,
-    // carrier webhook later), the buyer gets told. No-op if no buyer account —
-    // see order-notify.ts.
-    //
-    // **Caught, because of what sits AFTER it.** The status is already persisted and the stock is
-    // already back by this line, so telling the buyer is the least load-bearing thing in the block —
-    // but it is in the middle of it. A throw here would 500 a status change that had in fact
-    // succeeded, and, worse, would skip `settleStoreClosure` below: a seller who asked to close
-    // their store and was waiting on this last open order would have the closure silently not
-    // happen, with nothing to retry because the status change will never fire again. Both halves
-    // inside `notifyOrderStatusChanged` already swallow their own failures, so this is the outer
-    // net for the parts that are not I/O — and the ordering, not the odds, is the reason it is here.
-    //
-    // `try`/`catch` and not `.catch()`: this covers a SYNCHRONOUS throw as well as a rejection, and
-    // the two are different paths — the first version chained `.catch` and blew up on a stub that
-    // returns nothing, which is a fair warning about assuming the shape of what comes back.
-    try {
-      await notifyOrderStatusChanged(updated, prevStatus, { storeName: store.name, storeSlug: store.slug });
-    } catch { /* the status change and the restock both stand */ }
-    // A seller who asked to close the store while orders were still open gets that closure
-    // completed HERE, the moment the last one stops being an open obligation — rather than
-    // having to come back and press the button a second time (store-lifecycle.ts). No-op unless
-    // a closure is actually pending and actually unblocked, so it costs one status read on a
-    // status change and nothing at all otherwise.
-    const justClosed = await settleStoreClosure(store.slug);
-    // The one state change in this whole feature the seller did NOT just click a button for — it
-    // happened because they finished an order. Without this mail the store would close silently
-    // and they would find out by visiting it. Not awaited; it never throws.
-    if (justClosed) {
-      const seller = await getSellerById(store.sellerId);
-      if (seller) {
-        void sendStoreLifecycleEmail({
-          to: seller.email,
-          sellerName: seller.name,
-          store: justClosed,
-          state: 'closed',
-          openOrders: 0,
-        });
-      }
-    }
   }
 
   return json({ ok: true, order: scopeOrder(updated, storeSlug) });
