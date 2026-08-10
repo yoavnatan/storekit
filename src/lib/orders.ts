@@ -125,6 +125,13 @@ export interface Order {
    *  store, so the campaign names in here are the OWNER's marketing structure and not the seller's
    *  data. */
   attribution?: OrderAttribution;
+  /** When the capture succeeded, and when the seller first marked it delivered — the two clocks
+   *  `payout-hold.ts` runs on. Written by `updateOrder` on the FIRST transition into each status
+   *  and never cleared (see the CASE expressions there for why "first, and never"). Absent means
+   *  it has not happened: an order that was never captured has no `paidAt`, and one nobody marked
+   *  delivered has no `deliveredAt` — which is precisely what makes the fallback clock fire. */
+  paidAt?: string;
+  deliveredAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -215,6 +222,8 @@ interface OrderRow {
    *  our own column, which also means a row written by an older or hand-edited shape degrades to
    *  "no attribution" instead of putting a malformed record on an order. */
   attribution: unknown;
+  paid_at: Date | string | null;
+  delivered_at: Date | string | null;
   created_at: Date | string | null;
   updated_at: Date | string | null;
   items: ItemRow[] | null;
@@ -309,6 +318,10 @@ function toOrder(row: OrderRow): Order {
   if (row.buyer_id) order.buyerId = row.buyer_id;
   if (row.payment_ref) order.paymentRef = row.payment_ref;
   if (row.tracking_number) order.trackingNumber = row.tracking_number;
+  // Absent, not null, when the event has not happened — `payout-hold.ts` branches on presence and
+  // an `undefined` that is really `null` reads as "delivered at an unknown time" to a `?? ` chain.
+  if (row.paid_at) order.paidAt = isoOf(row.paid_at);
+  if (row.delivered_at) order.deliveredAt = isoOf(row.delivered_at);
   // Through the sanitiser, not straight off the column — see its doc for why our own `jsonb` is
   // still re-validated, and why NO lookback window is applied on the way out.
   const attribution = sanitizeAttribution(row.attribution);
@@ -338,7 +351,7 @@ const SELECT_ORDERS = `
   SELECT o.id, o.checkout_ref, o.buyer_id, o.buyer_name, o.buyer_email, o.buyer_phone,
          o.buyer_city, o.buyer_street, o.buyer_zip, o.shipping_agorot, o.total_agorot,
          o.payment_ref, o.payment_status, o.shipping_status, o.tracking_number,
-         o.attribution, o.created_at, o.updated_at,
+         o.attribution, o.paid_at, o.delivered_at, o.created_at, o.updated_at,
          i.items, s.stores
     FROM orders o
     LEFT JOIN LATERAL (
@@ -829,6 +842,25 @@ export async function updateOrder(id: string, updates: Partial<Omit<Order, 'id' 
       if (!column) continue;
       params.push((updates as Record<string, unknown>)[key] ?? null);
       sets.push(`${column} = $${params.length}`);
+      // ── The two payout clocks, stamped here and nowhere else ──
+      //
+      // `paid_at` and `delivered_at` are what `payout-hold.ts` runs on, and they are written as a
+      // side effect of the status write rather than by the callers, because there are several
+      // callers (checkout capture, the seller's order editor, the admin) and a clock that depends
+      // on every one of them remembering is a clock that will be wrong for whichever one is added
+      // next. Every path that changes a status comes through this loop.
+      //
+      // FIRST transition only — `IS NULL` guards it — and never cleared. The columns answer "when
+      // did this happen", not "what is it now", so a correction that moves a status back and forth
+      // must not restart a hold the buyer's return window already ran through, and a seller fixing
+      // a tracking number three weeks later must not push their own payout out by three weeks. The
+      // CASE reads the OLD row, which is what an UPDATE's SET expressions see in Postgres.
+      if (key === 'paymentStatus') {
+        sets.push(`paid_at = CASE WHEN paid_at IS NULL AND $${params.length} = 'paid' THEN now() ELSE paid_at END`);
+      }
+      if (key === 'shippingStatus') {
+        sets.push(`delivered_at = CASE WHEN delivered_at IS NULL AND $${params.length} = 'delivered' THEN now() ELSE delivered_at END`);
+      }
     }
     if ('shippingAgorot' in updates) {
       params.push(nonNegative(updates.shippingAgorot));

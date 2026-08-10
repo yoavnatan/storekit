@@ -25,6 +25,8 @@ import { readJsonBody, BODY_LIMIT } from '../../lib/request-body.js';
 import { readAttribution } from '../../lib/attribution.js';
 import { getCouponByCode, claimCoupon, releaseCoupon } from '../../lib/store-coupons.js';
 import { checkCoupon, normalizeCouponCode } from '../../lib/coupons.js';
+import { planBuyerInvoice } from '../../lib/invoicing/index.js';
+import { getSellerById } from '../../lib/seller-auth.js';
 
 interface CartItemInput {
   storeSlug: unknown;
@@ -657,6 +659,32 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
           resolutionHint: 'התשלום נגבה וההזמנה קיימת — רק ההתראה למוכר נכשלה. ההזמנה מופיעה בדשבורד שלו, אבל בלי התראה הוא עלול לא לשים לב אליה. שווה ליידע אותו ידנית.',
         });
       });
+
+      // The buyer's tax invoice for this slice, owed by the SELLER — under the agent model they are
+      // the one selling, and `terms.astro` promises the buyer that we produce it for them.
+      //
+      // Planned here rather than issued: no document is created yet, because issuing in another
+      // business's name binds a מספר הקצאה to THEIR tax file and whether we may is a רו״ח question
+      // that is open (`lib/invoicing/index.ts`). The row makes the obligation real and countable
+      // from the moment the money is taken, which is the only moment at which it is certainly owed.
+      //
+      // After the capture and after the notification, deliberately: nothing in this block may
+      // affect whether the purchase stands, and the seller finding out about the order matters more
+      // than a document nothing issues yet. Not logged as an error — a failure to plan leaves the
+      // same state as never having planned, and `countPendingDocuments()` reports the backlog
+      // rather than each miss.
+      //
+      // **try/catch, NOT `.catch()`, and that distinction cost a real bug.** This was written as
+      // `getSellerById(...).catch(() => null)`, which handles a REJECTED promise and does nothing
+      // at all about a synchronous throw — and a synchronous throw here escaped the loop entirely
+      // and skipped the low-stock and out-of-stock alerts below it, on a purchase that had already
+      // been charged. `tests/checkout.test.ts` caught it. Anything running after `committed` on a
+      // money path gets a statement-level guard, because the failure mode is never "this bit did
+      // not happen" — it is "everything after this bit did not happen".
+      try {
+        const invoiceSeller = await getSellerById(store.sellerId);
+        if (invoiceSeller) await planBuyerInvoice(storeOrder, store.slug, invoiceSeller);
+      } catch { /* the obligation stays unplanned; the backlog count is the record */ }
     }
 
     for (const alert of stockAlerts) {

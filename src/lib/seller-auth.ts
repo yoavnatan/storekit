@@ -22,6 +22,27 @@ export interface Seller {
    *  older deploy reading this record is unaffected. Applies to ALL of a seller's stores — the
    *  subscription is per account/registered business, not per store. */
   tier?: SellerTierId;
+  /**
+   * Where a payout goes, and who the invoice is from (migration 0023).
+   *
+   * All optional, and that is a product rule rather than a schema convenience
+   * (`feedback_seller_form_burden`): none of these is asked for at registration or at
+   * store-opening. A seller uploads a catalogue, designs a store and takes orders without ever
+   * meeting these fields — they are required only when there is a real balance to send, and until
+   * then it accrues and is never forfeited (`terms.astro`, "פתיחת חנות").
+   *
+   * `businessType` decides how the seller's invoice to the buyer must look: an עוסק פטור charges
+   * no VAT, so it is not cosmetic and not derivable from anything else we hold.
+   */
+  bankCode?: string;
+  bankBranch?: string;
+  bankAccount?: string;
+  /** The name the account is held under. Separate from `name` because a bank rejects a transfer
+   *  whose payee does not match the account, and the account is usually in the business's name
+   *  while `name` is the person who signed up. */
+  bankAccountHolder?: string;
+  businessId?: string;
+  businessType?: 'exempt' | 'licensed' | 'company';
   createdAt: string;
 }
 
@@ -96,7 +117,7 @@ function needsRehash(stored: string): boolean {
  * One seller row. Every read below selects these columns explicitly rather than `SELECT *`, so a
  * column added by a later migration cannot silently change what this module returns.
  */
-const COLUMNS = 'id, name, email, password_hash, google_id, tier, created_at';
+const COLUMNS = 'id, name, email, password_hash, google_id, tier, bank_code, bank_branch,\n                 bank_account, bank_account_holder, business_id, business_type, created_at';
 
 interface SellerRow {
   id: string;
@@ -105,6 +126,12 @@ interface SellerRow {
   password_hash: string;
   google_id: string | null;
   tier: string | null;
+  bank_code: string | null;
+  bank_branch: string | null;
+  bank_account: string | null;
+  bank_account_holder: string | null;
+  business_id: string | null;
+  business_type: string | null;
   created_at: Date | string | null;
 }
 
@@ -125,6 +152,15 @@ function toSeller(row: SellerRow): Seller {
   };
   if (row.google_id) seller.googleId = row.google_id;
   if (row.tier) seller.tier = row.tier as SellerTierId;
+  // Payout details (migration 0023). Absent rather than empty-string when unset: `payout-run.ts`
+  // treats a missing field as "this seller is not ready to be paid", and '' would satisfy a bare
+  // truthiness check nowhere but read as a real value in a form.
+  if (row.bank_code) seller.bankCode = row.bank_code;
+  if (row.bank_branch) seller.bankBranch = row.bank_branch;
+  if (row.bank_account) seller.bankAccount = row.bank_account;
+  if (row.bank_account_holder) seller.bankAccountHolder = row.bank_account_holder;
+  if (row.business_id) seller.businessId = row.business_id;
+  if (row.business_type) seller.businessType = row.business_type as Seller['businessType'];
   return seller;
 }
 

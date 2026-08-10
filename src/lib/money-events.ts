@@ -58,6 +58,10 @@ export interface MoneyEvent {
   /** Ties the (possibly multi-store) orders of one checkout together. */
   checkoutRef?: string;
   storeSlug?: string;
+  /** The seller this concerns, for events that belong to no single order or store — a payout spans
+   *  an arbitrary set of both, and a clawback outlives the order it came from. Absent on the
+   *  purchase-side events, which are identified by the three fields above. */
+  sellerId?: string;
   /** The amount at stake, in integer agorot (§7.7 — the unit flipped with `orders`; see that
    *  module's header for why the field was RENAMED rather than reinterpreted). For a status change
    *  this is the order's own total — what stops or starts counting as revenue because of it. */
@@ -78,6 +82,7 @@ interface EventRow {
   order_id: string | null;
   checkout_ref: string | null;
   store_slug: string | null;
+  seller_id: string | null;
   amount_agorot: string | number | null;
   from_value: string | null;
   to_value: string | null;
@@ -98,6 +103,7 @@ function toEvent(row: EventRow): MoneyEvent {
   if (row.order_id) event.orderId = row.order_id;
   if (row.checkout_ref) event.checkoutRef = row.checkout_ref;
   if (row.store_slug) event.storeSlug = row.store_slug;
+  if (row.seller_id) event.sellerId = row.seller_id;
   // `bigint` comes back from `pg` as a string and from PGlite as a number; untouched, the admin's
   // free-text search would match '1250' one way and 1250 the other.
   if (row.amount_agorot !== null && row.amount_agorot !== undefined) {
@@ -126,13 +132,13 @@ export async function recordMoneyEvent(event: Omit<MoneyEvent, 'id' | 'at'>): Pr
   };
   try {
     await query(
-      `INSERT INTO money_events (id, at, type, order_id, checkout_ref, store_slug,
+      `INSERT INTO money_events (id, at, type, order_id, checkout_ref, store_slug, seller_id,
                                  amount_agorot, from_value, to_value, actor, detail)
-       VALUES ($1, $2::timestamptz, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+       VALUES ($1, $2::timestamptz, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         entry.id, entry.at, entry.type, entry.orderId ?? null, entry.checkoutRef ?? null,
-        entry.storeSlug ?? null, entry.amountAgorot ?? null, entry.from ?? null, entry.to ?? null,
-        entry.actor, entry.detail ?? null,
+        entry.storeSlug ?? null, entry.sellerId ?? null, entry.amountAgorot ?? null,
+        entry.from ?? null, entry.to ?? null, entry.actor, entry.detail ?? null,
       ],
     );
   } catch {
@@ -144,8 +150,8 @@ export async function recordMoneyEvent(event: Omit<MoneyEvent, 'id' | 'at'>): Pr
 /** Always aliased `e`, in every query below and in `moneylog-search.ts`: the permalink rank joins
  *  this table to itself, where an unqualified `id` is ambiguous rather than merely untidy — and one
  *  spelling everywhere is what stops the two modules' fragments from only composing by luck. */
-const EVENT_COLUMNS = `e.id, e.at, e.type, e.order_id, e.checkout_ref, e.store_slug, e.amount_agorot,
-                       e.from_value, e.to_value, e.actor, e.detail`;
+const EVENT_COLUMNS = `e.id, e.at, e.type, e.order_id, e.checkout_ref, e.store_slug, e.seller_id,
+                       e.amount_agorot, e.from_value, e.to_value, e.actor, e.detail`;
 
 /** The narrowing shared by every read here: the type filter, the business-day window, and the
  *  free-text search. Returns SQL fragments and appends their parameters to `params`, so the caller
