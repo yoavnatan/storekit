@@ -125,6 +125,20 @@ export function quickRange(id: QuickRangeId, today: Date = new Date()): { from: 
 export type PeriodPreset = 'today' | 'thisWeek' | 'thisMonth' | 'lastMonth' | '7d' | '30d' | '90d';
 export const PERIOD_PRESETS: readonly PeriodPreset[] = ['today', 'thisWeek', 'thisMonth', 'lastMonth', '7d', '30d', '90d'];
 
+/** The i18n key each preset's label lives under. Here rather than in each picker, because there
+ *  are three of them now (the performance dropdown, the reports dropdown, and the reports panel's
+ *  server-rendered initial label) and a preset whose name differs between two tabs of the same
+ *  dashboard is the drift `periodRange` moved here to end. */
+export const PERIOD_PRESET_LABEL_KEY: Record<PeriodPreset, string> = {
+  today: 'perfPresetToday',
+  thisWeek: 'perfPresetThisWeek',
+  thisMonth: 'perfPresetThisMonth',
+  lastMonth: 'perfPresetLastMonth',
+  '7d': 'perfPreset7d',
+  '30d': 'perfPreset30d',
+  '90d': 'perfPreset90d',
+};
+
 export function periodRange(preset: string, today: Date = new Date()): { from: string; to: string } {
   const to = businessDayISO(today);
   if (preset === 'today') return { from: to, to };

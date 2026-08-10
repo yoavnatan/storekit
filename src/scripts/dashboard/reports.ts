@@ -17,7 +17,8 @@
  */
 import { escapeHtml as esc } from '../../lib/html-escape.js';
 import { formatAgorot } from '../../lib/money.js';
-import { periodRange } from '../../lib/date-range.js';
+import { periodRange, shortDate, PERIOD_PRESETS, PERIOD_PRESET_LABEL_KEY, type PeriodPreset } from '../../lib/date-range.js';
+import { createFloatingPortal } from '../../lib/toolbar-portal.js';
 // `seller-report-shapes.js`, never `seller-reports.js`: the builders there import `orders.ts`,
 // which reaches `db.ts`, which opens a connection pool at module scope — so importing them from a
 // browser file would bundle Postgres into the seller dashboard.
@@ -53,6 +54,10 @@ export interface Column<R> {
 }
 
 const money = (agorot: number): string => formatAgorot(agorot);
+
+/** The products table's sort chevron, to the attribute. Inline SVG and not a glyph — the site has
+ *  a standing rule against emoji/geometric characters in place of an icon. */
+const SORT_CHEVRON = '<svg class="sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>';
 
 export function columnsFor(report: ReportId, t: Record<string, string>): Column<never>[] {
   const sales: Column<SalesRow>[] = [
@@ -144,13 +149,23 @@ function tableHtml(report: ReportId, rows: AnyRow[], t: Record<string, string>, 
     const cls = c.num ? ' class="report-num"' : '';
     if (!c.sortBy) return `<th scope="col"${cls}>${esc(c.head)}</th>`;
     const on = c.key === sortKey;
-    // `aria-sort` on the header is what a screen reader reads the order off; the arrow is the
-    // sighted half of the same fact, never the only one (no colour-only, no glyph-only state).
+    // `.sort-btn` + `.sort-icon` — the products table's own header control, not a second one.
+    // Everything about it already exists in dashboard.css: the chevron sits at 20% opacity on
+    // every sortable column (so a seller can SEE which columns sort before clicking one), goes to
+    // full opacity when active, and rotates 180° for descending. The first version of this table
+    // drew ▲/▼ text glyphs that appeared only once a column was active — which invented a
+    // vocabulary AND hid which columns were sortable.
+    // `aria-sort` carries the same fact for a screen reader, so the state is never icon-only.
     const ariaSort = on ? (sortDir === 1 ? 'ascending' : 'descending') : 'none';
-    const arrow = on ? (sortDir === 1 ? '▲' : '▼') : '';
-    return `<th scope="col"${cls} aria-sort="${ariaSort}">`
-      + `<button type="button" class="report-sort" data-sort="${esc(c.key)}">`
-      + `${esc(c.head)}<span class="report-sort__arrow" aria-hidden="true">${arrow}</span></button></th>`;
+    // The accessible name is "מיין לפי <column>" — the same one the products table's sort buttons
+    // carry, and it is the hover tooltip too. `t.sortByLabel` is written inline in the attribute
+    // rather than through a local: tests/icon-tooltips.test.ts reads the `<button …>` tag out of the
+    // SOURCE and requires that key by name, which is what makes the rule enforceable at all. It
+    // caught this button with no label, then again with the label built one line above.
+    // The whole tag on one template literal for the same reason — a tag split across `+` is a tag
+    // that scan cannot see.
+    const dir = sortDir === 1 ? 'asc' : 'desc';
+    return `<th scope="col"${cls} aria-sort="${ariaSort}"><button type="button" class="sort-btn" data-sort="${esc(c.key)}" data-active="${on}" data-dir="${dir}" aria-label="${esc(`${t.sortByLabel ?? 'Sort by'} ${c.head}`)}"><span class="sort-btn__label">${esc(c.head)}</span>${SORT_CHEVRON}</button></th>`;
   }).join('');
   const body = sortRows(rows, active, sortDir).map((row) => {
     const cells = cols.map((c) =>
@@ -197,11 +212,18 @@ export function initReportsTab(): void {
   const exportLink = document.getElementById('reports-export') as HTMLAnchorElement | null;
   const fromInput = document.getElementById('reports-from') as HTMLInputElement | null;
   const toInput = document.getElementById('reports-to') as HTMLInputElement | null;
+  const picker = document.getElementById('reports-range-picker') as HTMLElement | null;
+  const rangeTrigger = document.getElementById('reports-range-trigger') as HTMLElement | null;
+  const rangeLabel = document.getElementById('reports-range-label') as HTMLElement | null;
+  const rangePortal = createFloatingPortal('reports-range-portal');
   const t = i18n();
 
-  // The selection whose rows are actually ON SCREEN, as opposed to the one just clicked. A failed
-  // fetch restores from this, so the chips can never name a period the table below them is not.
-  let shown = { report: 'sales' as ReportId, preset: 'thisMonth' };
+  // The selection whose rows are actually ON SCREEN, as opposed to the one just chosen — including
+  // the trigger's LABEL, which is the whole point. A failed load puts all of it back, so the
+  // control can never name a window the table below it is not showing. Restoring the dates without
+  // the label is what makes last month's revenue read as this month's (performance.ts learned it
+  // first, and this control has a label precisely because it is a dropdown now).
+  let shown = { report: 'sales' as ReportId, preset: 'thisMonth', from: '', to: '', label: '' };
   let inFlight = 0;
   // Whether a table has ever been painted. On a LATER failure the previous rows stay on screen and
   // the toast is the whole message; on the FIRST one there is nothing behind the loading line, and
@@ -216,25 +238,79 @@ export function initReportsTab(): void {
 
   const currentReport = (): ReportId => (isReportId(root.dataset.report) ? root.dataset.report : 'sales');
 
-  /**
-   * The window the table is showing: whatever is typed in the two date fields, else the pressed
-   * preset. Both fields must be filled and in order before a custom window counts — a half-typed
-   * range would otherwise fire a load on every keystroke of the year, and `from > to` is a request
-   * the server rejects with a 400 the seller cannot act on.
-   */
+  /** The window the table is showing. Both hidden fields are written by the picker below, whether
+   *  the seller chose a preset or typed two dates, so there is exactly one place to read it from. */
   function currentRange(): { from: string; to: string } {
     const from = fromInput?.value ?? '';
     const to = toInput?.value ?? '';
     if (from && to && from <= to) return { from, to };
-    return periodRange(root!.dataset.preset ?? 'thisMonth');
+    return periodRange(picker?.dataset.preset ?? 'thisMonth');
   }
 
-  /** True while the two fields hold a usable window — which is what un-presses the chips. */
-  const customActive = (): boolean => {
-    const from = fromInput?.value ?? '';
-    const to = toInput?.value ?? '';
-    return !!from && !!to && from <= to;
-  };
+  function setRange(from: string, to: string, preset: string, labelText: string): void {
+    if (fromInput) fromInput.value = from;
+    if (toInput) toInput.value = to;
+    if (picker) {
+      if (preset) picker.dataset.preset = preset;
+      else delete picker.dataset.preset;
+    }
+    if (rangeLabel) rangeLabel.textContent = labelText;
+  }
+
+  function applyPreset(preset: PeriodPreset): void {
+    const { from, to } = periodRange(preset);
+    setRange(from, to, preset, t[PERIOD_PRESET_LABEL_KEY[preset]] ?? preset);
+    rangePortal.close();
+    void load();
+  }
+
+  /** An arbitrary window. Refuses an incomplete or backwards pair rather than sending it: the
+   *  endpoint answers `from > to` with a 400 the seller can do nothing with, and a half-typed year
+   *  is not a range anybody asked for. The menu stays open so the fix is one more click. */
+  function applyCustom(from: string, to: string): void {
+    if (!from || !to || from > to) return;
+    // The label becomes the dates themselves, and no preset stays marked — a lit "this month"
+    // above a table covering a different fortnight is the same lie as a stale range label
+    // (performance.ts's `restoreShownRange` note).
+    setRange(from, to, '', `${shortDate(from)}–${shortDate(to)}`);
+    rangePortal.close();
+    void load();
+  }
+
+  function rangeMenuHtml(): string {
+    const active = picker?.dataset.preset ?? '';
+    const item = (p: PeriodPreset): string =>
+      `<button type="button" class="product-menu__item flex items-center gap-2 w-full py-[.45rem] px-3 rounded-[var(--radius-sm)] bg-transparent border-0 cursor-pointer font-[inherit] text-[.875rem] [color:var(--color-text)] text-start transition-colors duration-100 hover:bg-[color:var(--color-bg)]" data-preset="${p}" style="${p === active ? 'font-weight:700;color:var(--color-primary)' : ''}">${esc(t[PERIOD_PRESET_LABEL_KEY[p]] ?? p)}</button>`;
+    // Both fields AND Apply on ONE line, and the whole menu tall enough not to scroll — both
+    // learned by the performance picker, whose Apply button fell below the portal's 320px cap.
+    return `${PERIOD_PRESETS.map(item).join('')}
+      <div class="product-menu__divider h-px bg-[color:var(--color-border)] my-[.3rem]"></div>
+      <div class="px-3 pt-1.5 pb-2">
+        <div class="text-[.72rem] [color:var(--color-muted)] mb-1.5">${esc(t.perfPresetCustom ?? '')}</div>
+        <div class="flex items-center gap-1.5" dir="ltr">
+          <input type="date" data-range-from value="${esc(fromInput?.value ?? '')}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+          <span class="muted text-[0.8rem] shrink-0">–</span>
+          <input type="date" data-range-to value="${esc(toInput?.value ?? '')}" class="font-[inherit] text-[.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.3rem] px-[.5rem] outline-none min-w-0 flex-1" />
+          <button type="button" class="btn btn--sm btn--ghost shrink-0" data-range-apply>${esc(t.perfApply ?? '')}</button>
+        </div>
+      </div>`;
+  }
+
+  rangeTrigger?.addEventListener('click', () => {
+    if (rangePortal.currentTrigger() === rangeTrigger) { rangePortal.close(); return; }
+    rangePortal.open(rangeTrigger, '19rem', rangeMenuHtml, (portal) => {
+      portal.style.maxHeight = 'min(80vh, 30rem)';
+      portal.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => applyPreset((btn.dataset.preset as PeriodPreset) ?? 'thisMonth'));
+      });
+      portal.querySelector('[data-range-apply]')?.addEventListener('click', () => {
+        applyCustom(
+          portal.querySelector<HTMLInputElement>('[data-range-from]')?.value ?? '',
+          portal.querySelector<HTMLInputElement>('[data-range-to]')?.value ?? '',
+        );
+      });
+    });
+  });
 
   function query(format?: 'csv'): string {
     const report = currentReport();
@@ -253,15 +329,8 @@ export function initReportsTab(): void {
     for (const btn of root!.querySelectorAll<HTMLElement>('.report-pick')) {
       btn.setAttribute('aria-pressed', String(btn.dataset.report === report));
     }
-    // No chip is pressed while a custom window is in force: leaving "this month" lit beside two
-    // date fields naming a different fortnight is the same class of lie as a range label that
-    // outlives the figures under it (performance.ts's `restoreShownRange` note).
-    const custom = customActive();
-    for (const btn of root!.querySelectorAll<HTMLElement>('.report-preset')) {
-      btn.setAttribute('aria-pressed', String(!custom && btn.dataset.preset === root!.dataset.preset));
-    }
-    // A stocktake has no period. Hidden rather than disabled: a row of seven dead chips is a
-    // question the seller cannot answer and should not have been asked.
+    // A stocktake has no period. Hidden rather than disabled: a dead control is a question the
+    // seller cannot answer and should not have been asked.
     if (rangeRow) rangeRow.hidden = report === 'stock';
   }
 
@@ -295,7 +364,7 @@ export function initReportsTab(): void {
 
     if (!payload?.ok || !payload.rows) {
       root!.dataset.report = shown.report;
-      root!.dataset.preset = shown.preset;
+      setRange(shown.from, shown.to, shown.preset, shown.label);
       paintControls();
       if (wrap) {
         wrap.removeAttribute('aria-busy');
@@ -309,12 +378,16 @@ export function initReportsTab(): void {
       return;
     }
 
-    // A new report or a new window is a new question — the previous column's order would be
-    // carried onto data it was never chosen for, and the server's own ordering (newest first,
-    // biggest earner first, most urgent stock first) is the better default every time.
+    // **A new REPORT resets the sort; a new PERIOD keeps it.** Those are different questions and
+    // the first version got it wrong by resetting on both. Changing the report changes the columns
+    // outright — the key would name a column that no longer exists — and the server's own ordering
+    // (biggest earner first, most urgent stock first) is the right default for a table nobody has
+    // expressed a preference about yet. Changing the period asks the SAME question of a different
+    // month: a seller who sorted by payout to find the big orders and then stepped back a month is
+    // still looking for the big orders, and re-sorting by hand every time is the friction every
+    // other table on this site avoids.
     lastRows = payload.rows;
-    sortKey = '';
-    sortDir = 1;
+    if (report !== shown.report) { sortKey = ''; sortDir = 1; }
     if (wrap) {
       wrap.innerHTML = tableHtml(report, lastRows, t, sortKey, sortDir);
       wrap.removeAttribute('aria-busy');
@@ -328,7 +401,13 @@ export function initReportsTab(): void {
       if (payload.rows.length === 0) exportLink.setAttribute('aria-disabled', 'true');
       else exportLink.removeAttribute('aria-disabled');
     }
-    shown = { report, preset: root!.dataset.preset ?? 'thisMonth' };
+    shown = {
+      report,
+      preset: picker?.dataset.preset ?? '',
+      from: fromInput?.value ?? '',
+      to: toInput?.value ?? '',
+      label: rangeLabel?.textContent ?? '',
+    };
   }
 
   root.addEventListener('click', (e) => {
@@ -336,37 +415,12 @@ export function initReportsTab(): void {
     if (pick && pick.dataset.report !== root.dataset.report) {
       root.dataset.report = pick.dataset.report ?? 'sales';
       void load();
-      return;
-    }
-    const preset = (e.target as HTMLElement).closest<HTMLElement>('.report-preset');
-    if (preset) {
-      // Pressing a chip CLEARS the custom window — otherwise the chip lights up and the table does
-      // not move, because `currentRange` would still be reading the two date fields. Handled even
-      // when the same chip is re-pressed, since that is the gesture for "back to this preset".
-      const wasCustom = customActive();
-      if (fromInput) fromInput.value = '';
-      if (toInput) toInput.value = '';
-      if (wasCustom || preset.dataset.preset !== root.dataset.preset) {
-        root.dataset.preset = preset.dataset.preset ?? 'thisMonth';
-        void load();
-      }
     }
   });
 
-  // `change`, not `input`: a date field fires `input` per segment, so typing a year would send
-  // three requests for windows the seller never asked for. `change` is the browser saying the
-  // value is complete.
-  for (const el of [fromInput, toInput]) {
-    el?.addEventListener('change', () => {
-      // An incomplete or backwards pair is not an error to shout about — the seller is mid-typing.
-      // It simply falls back to the pressed preset, and `paintControls` re-lights the chip.
-      void load();
-    });
-  }
-
   // Sort: same column toggles direction, a new column starts ascending. No fetch — see sortRows.
   wrap?.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLElement>('.report-sort');
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('.sort-btn');
     const key = btn?.dataset.sort;
     if (!key) return;
     if (key === sortKey) sortDir = sortDir === 1 ? -1 : 1;
@@ -380,5 +434,14 @@ export function initReportsTab(): void {
     if (exportLink.getAttribute('aria-disabled') === 'true' || !exportLink.getAttribute('href')) e.preventDefault();
   });
 
+  // Seeded from what the server rendered, so a failure on the FIRST load restores a real label
+  // rather than blanking the trigger.
+  shown = {
+    report: 'sales',
+    preset: picker?.dataset.preset ?? 'thisMonth',
+    from: '',
+    to: '',
+    label: rangeLabel?.textContent ?? '',
+  };
   void load();
 }

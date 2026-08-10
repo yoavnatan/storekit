@@ -1667,33 +1667,10 @@ textarea.input { resize: none; }
 .report-table tbody tr:last-child td { border-bottom: 0; }
 .report-table tbody tr:hover { background: var(--color-bg); }
 
-/* A sortable heading. A button rather than a click handler on the <th>, so it is tabbable and
-   answers Enter and Space without anything being wired for it — and `inherit` everywhere so the
-   header row looks exactly as it did before sorting existed. The arrow is a fixed-width slot,
-   reserved whether or not it holds a glyph, because a column that widens when you sort it shifts
-   every column beside it. */
-.report-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0;
-  background: none;
-  border: 0;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.report-sort:hover { color: var(--color-primary); }
-.report-sort__arrow {
-  display: inline-block;
-  width: 0.7em;
-  font-size: 0.7em;
-  color: var(--color-primary);
-}
-/* The heading a sort is currently ON. Weight, not colour alone — the arrow and the weight are two
-   channels for one fact, which is the same rule `.report-state` follows below. */
-.report-table th[aria-sort="ascending"] .report-sort,
-.report-table th[aria-sort="descending"] .report-sort { color: var(--color-text); font-weight: 700; }
+/* The report table's sortable headings reuse .sort-btn / .sort-icon from the products table
+   above — there is deliberately nothing here for them. The first version of this table drew its
+   own arrows and its own button, which is the invent-per-component failure the design line's
+   first test asks about. */
 
 /* Money and counts: aligned to the END of the column and tabular, so a column of figures forms a
    readable stack instead of a ragged edge. `font-variant-numeric`, not a monospace face — Heebo's

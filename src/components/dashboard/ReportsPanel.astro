@@ -20,9 +20,8 @@
  * columns, which is right for a table you SCAN and wrong for one you reconcile against a bank
  * statement, where losing a column loses the point of the export.
  */
-import { PERIOD_PRESETS } from '../../lib/date-range.js';
+import { PERIOD_PRESET_LABEL_KEY } from '../../lib/date-range.js';
 import { REPORT_IDS } from '../../lib/seller-report-shapes.js';
-import { businessDayISO } from '../../lib/business-day.js';
 
 interface Props {
   storeSlug: string;
@@ -31,21 +30,12 @@ interface Props {
 }
 const { storeSlug, d } = Astro.props;
 
-/** `max` on both date fields. The BUSINESS day, not the browser's — a seller whose laptop is on
- *  another timezone must not be offered a "tomorrow" the server will reject, or be refused a
- *  today it would have accepted. */
-const todayISO = businessDayISO(new Date());
-
 const REPORT_META: Record<string, { titleKey: string; descKey: string; icon: 'receipt' | 'box' | 'layers' }> = {
   sales:    { titleKey: 'repSalesTitle',    descKey: 'repSalesDesc',    icon: 'receipt' },
   products: { titleKey: 'repProductsTitle', descKey: 'repProductsDesc', icon: 'box' },
   stock:    { titleKey: 'repStockTitle',    descKey: 'repStockDesc',    icon: 'layers' },
 };
 
-const PRESET_LABEL_KEY: Record<string, string> = {
-  today: 'perfPresetToday', thisWeek: 'perfPresetThisWeek', thisMonth: 'perfPresetThisMonth',
-  lastMonth: 'perfPresetLastMonth', '7d': 'perfPreset7d', '30d': 'perfPreset30d', '90d': 'perfPreset90d',
-};
 ---
 
 <div id="reports-root" data-store-slug={storeSlug} data-report="sales" data-preset="thisMonth">
@@ -80,44 +70,36 @@ const PRESET_LABEL_KEY: Record<string, string> = {
     ))}
   </div>
 
-  {/* The period. A chip row rather than the dropdown Performance uses: seven short labels fit a
-      row, and a horizontal scroller is already this site's answer to a row that does not
-      (chip-scroller.ts, the store's category strip). `hidden` for the stock report — a stocktake
-      is a statement about NOW, and offering it a date range would promise a period the file's
-      contents do not describe. */}
+  {/* The period — the SAME control the Performance and Advertising tabs carry: one trigger that
+      names the current window, opening a menu of presets plus an arbitrary from/to.
+
+      It started as a row of seven chips with the two date fields beside them, which broke onto a
+      second line and read as loose furniture (owner, on seeing it). The chips were the invented
+      thing here; the dropdown was already the site's answer to exactly this control, on two tabs,
+      and one trigger costs one line whatever the viewport. Design line, first test: prefer the
+      existing gesture over one invented for a single component.
+
+      `hidden` for the stock report — a stocktake is a statement about NOW, and offering it a date
+      range would promise a period the file's contents do not describe. */}
   <div id="reports-range" class="flex items-center gap-2 flex-wrap mb-4">
     <span class="muted text-[0.8rem] shrink-0">{d.repPeriodLabel}</span>
-    {PERIOD_PRESETS.map((p) => (
+    <div id="reports-range-picker" data-preset="thisMonth">
       <button
         type="button"
-        class="report-preset text-[0.8rem] rounded-full border [border-color:var(--color-border)] bg-[color:var(--color-surface)] py-[.25rem] px-[.7rem] cursor-pointer font-[inherit] transition-colors duration-120 hover:[border-color:var(--color-primary)] aria-pressed:[border-color:var(--color-primary)] aria-pressed:[color:var(--color-primary)] aria-pressed:font-semibold"
-        data-preset={p}
-        aria-pressed={p === 'thisMonth'}
-      >{d[PRESET_LABEL_KEY[p]]}</button>
-    ))}
-
-    {/* An arbitrary window, and this tab needed it more than the two that already had it. A preset
-        answers "how is this month going"; a report is read against a quarter's books, a supplier's
-        invoice period or a tax year, and none of those is one of seven buttons. Performance and
-        Advertising both carry these two fields already — this row was the odd one out, and that
-        was an oversight rather than a decision.
-
-        A native `<input type="date">` and not a built calendar: it gives the seller their own
-        locale's format and, on a phone, the OS date wheel — neither of which anything hand-rolled
-        here would match. `dir="ltr"` on both, because a date field is an LTR run and inheriting
-        the page direction renders the browser's own segments in the wrong order (the same fix
-        advertising.ts's picker carries). */}
-    <span class="[background:var(--color-border)] w-px h-4 self-center mx-1" aria-hidden="true"></span>
-    <label class="text-[0.8rem] [color:var(--color-muted)] flex items-center gap-1.5">
-      {d.repFrom}
-      <input type="date" id="reports-from" dir="ltr" max={todayISO}
-        class="font-[inherit] text-[0.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.2rem] px-[.5rem] outline-none focus:[border-color:var(--color-primary)]" />
-    </label>
-    <label class="text-[0.8rem] [color:var(--color-muted)] flex items-center gap-1.5">
-      {d.repTo}
-      <input type="date" id="reports-to" dir="ltr" max={todayISO}
-        class="font-[inherit] text-[0.8rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.2rem] px-[.5rem] outline-none focus:[border-color:var(--color-primary)]" />
-    </label>
+        id="reports-range-trigger"
+        class="table-toolbar-btn group inline-flex items-center gap-[.4rem] font-[inherit] text-[.82rem] [color:var(--color-text)] bg-[color:var(--color-surface)] border [border-color:var(--color-border)] rounded-full py-[.35rem] px-[.85rem] cursor-pointer transition-colors duration-[120ms] hover:border-[color:var(--color-primary)] hover:[color:var(--color-primary)] aria-expanded:border-[color:var(--color-primary)] aria-expanded:[color:var(--color-primary)]"
+        aria-haspopup="true"
+        aria-expanded="false"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span id="reports-range-label">{d[PERIOD_PRESET_LABEL_KEY.thisMonth]}</span>
+        <svg class="table-toolbar-btn__chevron shrink-0 transition-transform duration-150 ease-out group-aria-expanded:rotate-180" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      {/* The resolved window, so the script has one place to read it from whether it came from a
+          preset or from the two date fields — the same shape #perf-range-picker uses. */}
+      <input type="hidden" id="reports-from" />
+      <input type="hidden" id="reports-to" />
+    </div>
   </div>
 
   <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
