@@ -144,7 +144,7 @@ async function failCapture(orderIds: string[], checkoutRef: string, amountAgorot
     amountAgorot,
     to: 'failed',
     actor: 'buyer',
-    detail: `capture failed: ${error ?? 'unknown'}; ${orderIds.length} order(s) cancelled, stock restored`,
+    detail: `החיוב נכשל (${error ?? 'סיבה לא ידועה'}) — ${orderIds.length} הזמנות בוטלו והמלאי הוחזר`,
   }).catch(() => { /* the endpoint's own logError still fires */ });
 }
 
@@ -159,7 +159,7 @@ async function markOrdersPaid(orderIds: string[], checkoutRef: string, paymentRe
     checkoutRef,
     to: 'paid',
     actor: 'buyer',
-    detail: `captured ref=${paymentRef ?? '—'}; ${orderIds.length} order(s)`,
+    detail: `הכסף נגבה בפועל · אסמכתת סליקה ${paymentRef ?? '—'} · ${orderIds.length} הזמנות`,
   });
 }
 
@@ -255,7 +255,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     await recordMoneyEvent({
       type: 'duplicate_checkout_blocked',
       actor: 'buyer',
-      detail: `idempotencyKey=${keyForLog}; presented by a different buyer than the one who completed it`,
+      detail: `מפתח תשלום של קונה אחד הוצג על ידי קונה אחר; נחסם (מפתח ${keyForLog})`,
     });
     return json({ error: 'checkout-in-progress' }, 409);
   }
@@ -267,7 +267,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
       type: 'duplicate_checkout_blocked',
       checkoutRef: claim.record.checkoutRef,
       actor: 'buyer',
-      detail: `idempotencyKey=${keyForLog}; replayed ${claim.record.orderIds?.length ?? 0} order(s)`,
+      detail: `שליחה חוזרת של אותו תשלום — הוחזרו ${claim.record.orderIds?.length ?? 0} ההזמנות הקיימות במקום לחייב שוב (מפתח ${keyForLog})`,
     });
     return json({ orderIds: claim.record.orderIds ?? [], checkoutRef: claim.record.checkoutRef, replayed: true });
   }
@@ -277,7 +277,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
     await recordMoneyEvent({
       type: 'duplicate_checkout_blocked',
       actor: 'buyer',
-      detail: `idempotencyKey=${keyForLog}; concurrent submit while the first was still in flight`,
+      detail: `אותו תשלום נשלח פעמיים במקביל; השני נחסם (מפתח ${keyForLog})`,
     });
     return json({ error: 'checkout-in-progress' }, 409);
   }
@@ -580,7 +580,7 @@ export async function POST({ request, cookies }: APIContext): Promise<Response> 
         amountAgorot: storeTotalAgorot,
         to: 'pending',
         actor: 'buyer',
-        detail: `${storeItems.length} item(s); authorized ref=${payment.paymentRef ?? '—'}`,
+        detail: `${storeItems.length} פריטים · אסמכתת סליקה ${payment.paymentRef ?? '—'}`,
       });
     }
 

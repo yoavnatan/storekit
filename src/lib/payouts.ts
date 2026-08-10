@@ -171,6 +171,54 @@ export async function getAdjustmentsForSeller(sellerId: string): Promise<LedgerA
   return result.map(toAdjustment);
 }
 
+/** Everything already sent to one seller, and everything already invoiced. Both exclude `failed`
+ *  rows for the same reason `seller-account.ts` does: a bounced transfer is money that came back. */
+export interface PayoutTotals {
+  paidOutAgorot: number;
+  /** Commission settled by those payouts — what the platform has already invoiced this seller for.
+   *  The releasable figure is cumulative, so the next invoice is the difference. */
+  commissionSettledAgorot: number;
+  /** True when this seller already has a payout row for the period being asked about. */
+  hasPeriod: boolean;
+}
+
+/**
+ * The two per-seller sums, for EVERY seller, in one query each.
+ *
+ * These replace a pair of reads issued once per seller inside the payout run's loop. That shape was
+ * defensible while only a monthly job asked the question — it is a few rows per seller — and it
+ * stops being defensible the moment an admin SCREEN asks it, because a page that costs 2N queries
+ * is the shape `feedback_scalability` exists to reject. Nothing about the arithmetic changes: these
+ * are plain `SUM`s keyed by `seller_id` with no join to orders, which is the specific risk
+ * `getReleasableBySeller` warns about and the reason THAT one is not folded in here.
+ */
+export async function getPayoutTotalsBySeller(periodKey: string): Promise<Map<string, PayoutTotals>> {
+  const found = await rows<{
+    seller_id: string; paid_out: string | number; commission_settled: string | number; this_period: string | number;
+  }>(
+    `SELECT seller_id,
+            COALESCE(SUM(amount_agorot)     FILTER (WHERE status <> 'failed'), 0) AS paid_out,
+            COALESCE(SUM(commission_agorot) FILTER (WHERE status <> 'failed'), 0) AS commission_settled,
+            COUNT(*)                        FILTER (WHERE period_key = $1)        AS this_period
+       FROM seller_payouts
+      GROUP BY seller_id`,
+    [periodKey],
+  );
+  return new Map(found.map((r) => [r.seller_id, {
+    paidOutAgorot: big(r.paid_out),
+    commissionSettledAgorot: big(r.commission_settled),
+    hasPeriod: big(r.this_period) > 0,
+  }]));
+}
+
+/** Every seller's signed adjustment total, in one query. Negative reduces what we owe. */
+export async function getAdjustmentTotalsBySeller(): Promise<Map<string, number>> {
+  const found = await rows<{ seller_id: string; total: string | number }>(
+    'SELECT seller_id, COALESCE(SUM(amount_agorot), 0) AS total FROM seller_ledger_adjustments GROUP BY seller_id',
+  );
+  return new Map(found.map((r) => [r.seller_id, big(r.total)]));
+}
+
 /** One seller's releasable total, as the database computed it. */
 export interface ReleasableForSeller {
   sellerId: string;

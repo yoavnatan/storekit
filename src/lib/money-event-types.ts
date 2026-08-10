@@ -114,3 +114,24 @@ export const MONEY_EVENT_LABELS: Record<MoneyEventType, string> = {
 export function isMoneyEventType(value: string): value is MoneyEventType {
   return (MONEY_EVENT_TYPES as readonly string[]).includes(value);
 }
+
+/**
+ * Who performed an event, in words.
+ *
+ * `actor` holds one of three things — the literal `'buyer'`, the literal `'system'` (a scheduled
+ * job), or a seller's uuid — and the journal row used to print the raw value with no label, on the
+ * same line and behind the same `·` as the order and checkout references. The owner read
+ * `אסמכתא 03BE8146 · buyer` as one phrase and asked what a "buyer reference" was, which is the
+ * right question to ask of that string: three unrelated fields separated by the same character,
+ * two of them labelled and the third not.
+ *
+ * A uuid is shortened rather than resolved to a name: this runs per row, a lookup per row is a
+ * query per row, and the id is a link the owner can already trace. It says WHICH KIND of actor,
+ * which is the part that was missing.
+ */
+export function moneyActorLabel(actor: string): string {
+  if (actor === 'buyer') return 'הקונה';
+  if (actor === 'system') return 'המערכת (ג׳וב מתוזמן)';
+  if (actor === 'admin') return 'אדמין';
+  return actor ? `מוכר/ת ${actor.slice(0, 8)}` : '—';
+}

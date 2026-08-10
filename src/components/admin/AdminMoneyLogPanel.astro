@@ -1,15 +1,17 @@
 ---
 import { formatAgorot } from '../../lib/money.js';
 import { formatBusinessTime, formatBusinessDateShort, formatBusinessDayLabel } from '../../lib/format-date.js';
-import { MONEY_EVENT_LABELS, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
+import { MONEY_EVENT_LABELS, moneyActorLabel, type MoneyEvent, type MoneyEventType } from '../../lib/money-events.js';
 import { businessDayISO } from '../../lib/business-day.js';
 import { buildAdminUrl } from '../../lib/admin-nav.js';
 import { hasActiveMoneyLogFilters, MONEY_LOG_DEFAULT_DAYS, type MoneyLogQuery } from '../../lib/admin-moneylog-filter.js';
 import AdminPager from './AdminPager.astro';
 import AdminReconciliationCard from './AdminReconciliationCard.astro';
+import AdminPayoutPlanCard from './AdminPayoutPlanCard.astro';
 import AdminMoneyLogToolbar from './AdminMoneyLogToolbar.astro';
 
 import type { ReconciliationReport } from '../../lib/reconcile.js';
+import type { PayoutPlan } from '../../lib/payout-run.js';
 
 interface Props {
   /** One page of events, already filtered + sliced by the page (admin/index.astro). */
@@ -23,8 +25,13 @@ interface Props {
   totalPages: number;
   buildUrl: (page: number) => string;
   reconciliation: ReconciliationReport;
+  /** What the next payout run would do. The journal is a record of what HAS happened; this is the
+   *  one surface that looks forward, and the forward number is the one the owner plans around. */
+  payoutPlan: PayoutPlan;
+  payoutPage: number;
+  payoutPageUrl: (page: number) => string;
 }
-const { events, query, targetMissing, total, page, totalPages, buildUrl, reconciliation } = Astro.props;
+const { events, query, targetMissing, total, page, totalPages, buildUrl, reconciliation, payoutPlan, payoutPage, payoutPageUrl } = Astro.props;
 
 // The tone is the point: a reader scanning this log is looking for the two rows that
 // mean something went wrong, not reading all of them. Green = money arrived, red =
@@ -102,6 +109,10 @@ const highlightId = targetMissing ? '' : query.eventId;
     </p>
   </header>
 
+  {/* Before the reconciliation and before the log, and the order is the argument: those two answer
+      "is what already happened correct", and this answers "what is about to happen". A number you
+      can still act on comes before a number you can only check. */}
+  <AdminPayoutPlanCard plan={payoutPlan} page={payoutPage} buildUrl={payoutPageUrl} />
   <AdminReconciliationCard reconciliation={reconciliation} />
   <AdminMoneyLogToolbar query={query} total={total} />
 
@@ -192,7 +203,11 @@ const highlightId = targetMissing ? '' : query.eventId;
                         {e.checkoutRef && (
                           <Fragment> · <a href={traceUrl(e.checkoutRef)} title="כל האירועים של אסמכתא זו" class="[color:var(--color-primary)] no-underline hover:underline">אסמכתא {e.checkoutRef}</a></Fragment>
                         )}
-                        {` · ${e.actor}`}
+                        {/* Labelled, and it is not decoration. Unlabelled behind the same `·` as
+                            the two links above it, the raw value read as part of the reference
+                            beside it — the owner asked what an "אסמכתא … buyer" was, which is
+                            exactly what that line said. */}
+                        {` · בוצע ע״י ${moneyActorLabel(e.actor)}`}
                       </span>
                     </td>
                     <td class="py-2 text-center">

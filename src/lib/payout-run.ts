@@ -2,12 +2,12 @@ import { businessTodayISO, businessMonthKey } from './business-day.js';
 import { MIN_PAYOUT_AGOROT, PAYOUT_DAY_OF_MONTH } from './payout-schedule.js';
 import {
   getReleasableBySeller,
-  getPayoutsForSeller,
-  getAdjustmentsForSeller,
+  getPayoutTotalsBySeller,
+  getAdjustmentTotalsBySeller,
   createPayout,
   type BankSnapshot,
 } from './payouts.js';
-import { getSellerById } from './seller-auth.js';
+import { getAllSellers, type Seller } from './seller-auth.js';
 import { planPlatformInvoice } from './invoicing/index.js';
 import { hasPayableBank, type PayoutDetails } from './payout-details.js';
 
@@ -72,66 +72,196 @@ function bankOf(seller: PayoutDetails): BankSnapshot | null {
 }
 
 /**
- * Build this period's payouts.
+ * ── The DECISION, separated from the act ──
  *
- * `todayISO` is a parameter so the job, a test and a dry run can all be asked about the same day —
- * the same reason `orderHold` takes one.
+ * `planPayouts` answers "who gets paid on the next payout day, how much, and why not", and writes
+ * nothing. `runPayouts` is that answer plus the rows.
+ *
+ * They are split because the owner has to SEE the coming transfer before it happens — how much
+ * leaves the company's account on the 10th, and which sellers are stuck on a form nobody has asked
+ * them to fill in. A screen that computed that separately would be a second definition of who gets
+ * paid, and when two definitions of that disagree, one of them is a number somebody acted on.
  */
-export async function runPayouts(todayISO: string = businessTodayISO()): Promise<PayoutRunResult> {
+export type PayoutState =
+  /** Would be transferred on the payout day. */
+  | 'payable'
+  /** Real money, below the transfer minimum. Rolls over; nothing is deducted. */
+  | 'below_minimum'
+  /** Real money with nowhere to send it — the seller has not filled in their bank details. */
+  | 'no_bank'
+  /** A payout for this period already exists. A re-run, and the normal case for a second tick. */
+  | 'already_paid'
+  /** Everything released has already been sent. The steady state, and most rows most months. */
+  | 'settled';
+
+export interface PayoutPlanRow {
+  sellerId: string;
+  sellerName: string;
+  sellerEmail: string;
+  /** What this seller is owed right now: released − already paid ± adjustments, floored at 0.
+   *  A balance that goes below zero is a carried DEBT, and `seller-account.ts` is what reports it —
+   *  a negative number on a "to be paid" column would be read as a payment. */
+  balanceAgorot: number;
+  /** Commission this payout would settle — the INCREMENT, never the cumulative figure. */
+  commissionAgorot: number;
+  state: PayoutState;
+  bank: BankSnapshot | null;
+  /** Carried through so `runPayouts` can invoice without a second read per seller. Narrow on
+   *  purpose: the invoice needs the business type, and nothing here needs a password hash. */
+  seller: Pick<Seller, 'id' | 'name' | 'email' | 'tier' | 'businessType'>;
+}
+
+export interface PayoutPlan {
+  periodKey: string;
+  /** Business day the transfer would go out. */
+  payoutDayISO: string;
+  /** Every seller with money out of hold. Ordered by what is owed, most first. */
+  rows: PayoutPlanRow[];
+  /** Sum of the `payable` rows — what actually leaves the company's account. */
+  payableAgorot: number;
+  payableSellers: number;
+  /** Real money that will NOT go out, and why. Both accrue; nothing is ever forfeited. */
+  noBankAgorot: number;
+  noBankSellers: number;
+  belowMinimumAgorot: number;
+  belowMinimumSellers: number;
+}
+
+/**
+ * The next occurrence of `PAYOUT_DAY_OF_MONTH` on or after `todayISO`, on the business calendar.
+ *
+ * String arithmetic on a `YYYY-MM-DD` key rather than `Date` maths, for the reason `business-day.ts`
+ * exists: a `Date` carries a timezone this question does not have, and constructing one from a day
+ * key is how a payout date lands on the 9th for anyone east of UTC.
+ */
+export function nextPayoutDayISO(todayISO: string = businessTodayISO()): string {
+  const day = String(PAYOUT_DAY_OF_MONTH).padStart(2, '0');
+  const thisMonth = `${todayISO.slice(0, 7)}-${day}`;
+  if (thisMonth >= todayISO) return thisMonth;
+  const year = Number(todayISO.slice(0, 4));
+  const month = Number(todayISO.slice(5, 7));
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}-${day}`;
+}
+
+/**
+ * Who would be paid, how much, and why not — reading only.
+ *
+ * **Four queries, whatever the platform's size.** The two per-seller reads this replaced were fine
+ * for a monthly job and are not fine for a SCREEN: a page costing 2N queries is the shape
+ * `feedback_scalability` exists to reject. Both sums arrive as one aggregate each
+ * (`payouts.ts#getPayoutTotalsBySeller`), which are plain `SUM`s keyed by `seller_id` with no join
+ * to orders. `getReleasableBySeller` deliberately stays its own query — folding THAT one in is the
+ * join that could silently under- or over-pay every seller at once.
+ */
+export async function planPayouts(todayISO: string = businessTodayISO()): Promise<PayoutPlan> {
   const periodKey = businessMonthKey(new Date(`${todayISO}T12:00:00Z`));
-  const result: PayoutRunResult = {
-    periodKey, created: 0, totalAgorot: 0,
-    skippedBelowMinimum: 0, skippedNoBank: 0, skippedAlreadyPaid: 0,
-  };
+  const [releasable, totals, adjustments, sellers] = await Promise.all([
+    getReleasableBySeller(todayISO),
+    getPayoutTotalsBySeller(periodKey),
+    getAdjustmentTotalsBySeller(),
+    getAllSellers(),
+  ]);
+  const byId = new Map(sellers.map((s) => [s.id, s]));
 
-  const releasable = await getReleasableBySeller(todayISO);
-
+  const rows: PayoutPlanRow[] = [];
   for (const row of releasable) {
-    // Everything already sent, and everything owed against this seller. Read per seller rather than
-    // in the aggregate query because both are small per seller (a payout a month, a rare
-    // adjustment) and folding them into that GROUP BY would make one wrong join silently
-    // under- or over-pay every seller at once.
-    const [payouts, adjustments, seller] = await Promise.all([
-      getPayoutsForSeller(row.sellerId),
-      getAdjustmentsForSeller(row.sellerId),
-      getSellerById(row.sellerId),
-    ]);
+    const seller = byId.get(row.sellerId);
     if (!seller) continue;
-
-    if (payouts.some((p) => p.periodKey === periodKey)) {
-      result.skippedAlreadyPaid++;
-      continue;
-    }
-
-    // `failed` excluded for the same reason `seller-account.ts` excludes it: a bounced transfer is
-    // money that came back, and counting it would withhold that amount forever.
-    const paidOut = payouts.reduce((sum, p) => (p.status === 'failed' ? sum : sum + p.amountAgorot), 0);
-    const adjusted = adjustments.reduce((sum, a) => sum + a.amountAgorot, 0);
-    const payable = row.netAgorot - paidOut + adjusted;
+    const paid = totals.get(row.sellerId);
+    const paidOut = paid?.paidOutAgorot ?? 0;
+    const adjusted = adjustments.get(row.sellerId) ?? 0;
+    const balance = row.netAgorot - paidOut + adjusted;
 
     // ── The commission INCREMENT, and why it is not `row.commissionAgorot` ──
     // `getReleasableBySeller` is cumulative: it answers "commission on everything out of hold",
     // which still includes every earlier period, because a balance that sat below the minimum last
     // month is still releasable this month. Harmless in a balance — prior payouts are subtracted
-    // above — and NOT harmless on the tax invoice generated below, which would bill the seller a
-    // second time for commission they were already invoiced for. So each payout records the slice
-    // it settled and the next one subtracts them all. A failed payout is excluded here for the
-    // same reason it is excluded from `paidOut`: its commission was never really settled either.
-    const commissionInvoiced = payouts.reduce((sum, p) => (p.status === 'failed' ? sum : sum + p.commissionAgorot), 0);
-    const commissionThisPeriod = Math.max(0, row.commissionAgorot - commissionInvoiced);
-
-    if (payable < MIN_PAYOUT_AGOROT) { result.skippedBelowMinimum++; continue; }
-
+    // above — and NOT harmless on the tax invoice, which would bill the seller a second time for
+    // commission they were already invoiced for. So each payout records the slice it settled and
+    // the next one subtracts them all. A failed payout is excluded here for the same reason it is
+    // excluded from `paidOut`: its commission was never really settled either.
+    const commissionAgorot = Math.max(0, row.commissionAgorot - (paid?.commissionSettledAgorot ?? 0));
     const bank = bankOf(seller);
-    if (!bank) { result.skippedNoBank++; continue; }
+
+    // The order of these tests IS the order of the reasons, and it matters on screen. `settled` is
+    // split out of `below_minimum` for one reason: a seller paid in full last month has a balance
+    // of zero, zero is below the minimum, and listing them that way buries the handful of sellers
+    // who are genuinely stuck among everyone who is perfectly fine.
+    const state: PayoutState =
+      paid?.hasPeriod ? 'already_paid'
+      : balance <= 0 ? 'settled'
+      : balance < MIN_PAYOUT_AGOROT ? 'below_minimum'
+      : !bank ? 'no_bank'
+      : 'payable';
+
+    rows.push({
+      sellerId: row.sellerId,
+      sellerName: seller.name,
+      sellerEmail: seller.email,
+      balanceAgorot: Math.max(0, balance),
+      commissionAgorot,
+      state,
+      bank,
+      seller: {
+        id: seller.id, name: seller.name, email: seller.email,
+        ...(seller.tier ? { tier: seller.tier } : {}),
+        ...(seller.businessType ? { businessType: seller.businessType } : {}),
+      },
+    });
+  }
+
+  // Most owed first, then by id so two equal balances do not reshuffle between loads (§7.13).
+  rows.sort((a, b) => b.balanceAgorot - a.balanceAgorot || a.sellerId.localeCompare(b.sellerId));
+  const sum = (st: PayoutState) => rows.reduce((t, r) => (r.state === st ? t + r.balanceAgorot : t), 0);
+  const count = (st: PayoutState) => rows.reduce((t, r) => (r.state === st ? t + 1 : t), 0);
+
+  return {
+    periodKey,
+    payoutDayISO: nextPayoutDayISO(todayISO),
+    rows,
+    payableAgorot: sum('payable'),
+    payableSellers: count('payable'),
+    noBankAgorot: sum('no_bank'),
+    noBankSellers: count('no_bank'),
+    belowMinimumAgorot: sum('below_minimum'),
+    belowMinimumSellers: count('below_minimum'),
+  };
+}
+
+/**
+ * Build this period's payouts — the plan above, plus the rows it implies.
+ *
+ * Everything this used to decide for itself now comes from `planPayouts`, so the figure the owner
+ * was shown before the run and the transfers the run actually creates cannot be two answers.
+ *
+ * `todayISO` is a parameter so the job, a test and a dry run can all be asked about the same day —
+ * the same reason `orderHold` takes one.
+ */
+export async function runPayouts(todayISO: string = businessTodayISO()): Promise<PayoutRunResult> {
+  const plan = await planPayouts(todayISO);
+  const result: PayoutRunResult = {
+    periodKey: plan.periodKey, created: 0, totalAgorot: 0,
+    skippedBelowMinimum: 0, skippedNoBank: 0, skippedAlreadyPaid: 0,
+  };
+
+  for (const row of plan.rows) {
+    // `settled` is counted as below-minimum, which is exactly what this counter has always
+    // reported: a seller whose released money has all been sent has a balance of zero, and zero is
+    // below the minimum. Kept as one number here so the run's log line does not change meaning;
+    // the plan keeps them apart, because a screen has to.
+    if (row.state === 'already_paid') { result.skippedAlreadyPaid++; continue; }
+    if (row.state === 'below_minimum' || row.state === 'settled') { result.skippedBelowMinimum++; continue; }
+    if (row.state === 'no_bank') { result.skippedNoBank++; continue; }
 
     const payout = await createPayout({
       sellerId: row.sellerId,
-      periodKey,
-      amountAgorot: payable,
-      commissionAgorot: commissionThisPeriod,
-      bankSnapshot: bank,
-      detail: `released ${row.netAgorot} − paid ${paidOut} ${adjusted >= 0 ? '+' : '−'} adj ${Math.abs(adjusted)}; commission settled ${commissionThisPeriod}`,
+      periodKey: plan.periodKey,
+      amountAgorot: row.balanceAgorot,
+      commissionAgorot: row.commissionAgorot,
+      bankSnapshot: row.bank,
+      detail: `payable ${row.balanceAgorot}; commission settled ${row.commissionAgorot}`,
     });
     // Null means the UNIQUE index caught a concurrent run. Not an error — the other run created it.
     if (!payout) { result.skippedAlreadyPaid++; continue; }
@@ -144,9 +274,9 @@ export async function runPayouts(todayISO: string = businessTodayISO()): Promise
     // Placed here, in the payout run, because this is the moment the three figures exist together
     // and agree with what the seller is about to see on their statement.
     //
-    // **The commission invoiced is the commission SETTLED BY THIS PAYOUT** — the increment computed
-    // above, never the cumulative figure and never commission on the month's orders. Commission on
-    // orders would bill a seller for money still sitting in hold, a fee not yet taken arriving
+    // **The commission invoiced is the commission SETTLED BY THIS PAYOUT** — the increment the plan
+    // computed, never the cumulative figure and never commission on the month's orders. Commission
+    // on orders would bill a seller for money still sitting in hold, a fee not yet taken arriving
     // before the payout it relates to; the cumulative figure would bill them again for every period
     // that rolled over below the minimum. Invoicing exactly what was deducted from this transfer is
     // the only version that reconciles against the payout beside it.
@@ -161,9 +291,9 @@ export async function runPayouts(todayISO: string = businessTodayISO()): Promise
     // not be planned must not undo a payout. The row is either there or it is in the pending
     // backlog, and `countPendingDocuments()` reports the gap either way.
     await planPlatformInvoice({
-      seller,
-      periodKey,
-      commissionAgorot: commissionThisPeriod,
+      seller: row.seller,
+      periodKey: plan.periodKey,
+      commissionAgorot: row.commissionAgorot,
       includeSubscription: true,
     }).catch(() => null);
   }

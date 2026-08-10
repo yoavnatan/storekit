@@ -34,7 +34,9 @@ export const ADMIN_TAB_PARAMS: Record<string, readonly string[]> = {
   advertising: ['adpreset', 'adfrom', 'adto'],
   messages: ['msort', 'munread', 'mpage'],
   alerts: ['alsort', 'alsource', 'alsev', 'alref', 'alq', 'alstore', 'alfrom', 'alto', 'alpage', 'alnew'],
-  moneylog: ['mtype', 'mlpage', 'mq', 'mfrom', 'mto', 'mev'],
+  // `paypage` is the payout-plan card's own table, which lives on this tab beside the journal —
+  // two paged lists on one panel, so two params (AdminPayoutPlanCard.astro).
+  moneylog: ['mtype', 'mlpage', 'mq', 'mfrom', 'mto', 'mev', 'paypage'],
 };
 
 /** Drops every OTHER tab's params from `url`, keeping `panel` and the params the
